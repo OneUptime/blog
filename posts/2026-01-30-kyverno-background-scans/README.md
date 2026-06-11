@@ -37,7 +37,7 @@ flowchart LR
 - **Policy Retroactivity**: Policies applied after resources were created still get evaluated
 - **Configuration Drift Detection**: Catch resources that were manually modified outside GitOps
 - **Continuous Compliance**: Generate ongoing compliance reports for auditors
-- **Soft Enforcement**: Audit mode policies only work with background scanning enabled
+- **Soft Enforcement**: Background scanning records results for existing resources without blocking them
 
 ## Basic Background Scan Configuration
 
@@ -58,7 +58,6 @@ spec:
   # Enable background scanning for this policy
   background: true
   # Audit mode reports violations without blocking
-  validationFailureAction: Audit
   rules:
     - name: check-team-label
       match:
@@ -67,6 +66,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Audit
         message: "The label 'team' is required."
         pattern:
           metadata:
@@ -87,7 +87,6 @@ metadata:
 spec:
   # Disable background scanning
   background: false
-  validationFailureAction: Enforce
   rules:
     - name: require-digest
       match:
@@ -96,6 +95,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Images must use digests, not tags."
         pattern:
           spec:
@@ -105,33 +105,28 @@ spec:
 
 ## Scan Interval Configuration
 
-The background scan interval is configured globally in the Kyverno ConfigMap.
+The background scan interval is configured globally for the reports controller.
 
 ### Adjust Scan Interval
 
 ```yaml
-# kyverno-configmap.yaml
-# Controls how often background scans run
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kyverno
-  namespace: kyverno
-data:
-  # Scan interval in hours (default is 1 hour)
-  backgroundScanInterval: "1h"
-  # For more frequent scans during testing
-  # backgroundScanInterval: "15m"
+# values.yaml
+# Controls how often background scans run when installing with Helm
+features:
+  backgroundScan:
+    # Background scans are enabled by default
+    enabled: true
+    # Scan interval (default is 1h)
+    backgroundScanInterval: 1h
+    # For more frequent scans during testing
+    # backgroundScanInterval: 15m
 ```
 
-Apply and restart Kyverno:
+Apply the updated Helm values:
 
 ```bash
-# Apply the updated ConfigMap
-kubectl apply -f kyverno-configmap.yaml
-
-# Restart Kyverno to pick up changes
-kubectl rollout restart deployment kyverno -n kyverno
+# Apply the updated values
+helm upgrade kyverno kyverno/kyverno -n kyverno -f values.yaml
 ```
 
 ### Scan Interval Guidelines
@@ -142,7 +137,7 @@ kubectl rollout restart deployment kyverno -n kyverno
 | Medium (1000-10000 resources) | 1h | Balance between load and freshness |
 | Large (> 10000 resources) | 2h-4h | Reduce API server pressure |
 
-Resource Selection and Filtering
+## Resource Selection and Filtering
 
 Control which resources get scanned with match and exclude rules.
 
@@ -157,7 +152,6 @@ metadata:
   name: prod-security-baseline
 spec:
   background: true
-  validationFailureAction: Audit
   rules:
     - name: check-security-context
       match:
@@ -169,11 +163,25 @@ spec:
                 - production
                 - staging
       validate:
+        failureAction: Audit
         message: "Pods must run as non-root."
-        pattern:
-          spec:
-            securityContext:
-              runAsNonRoot: true
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+              =(initContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): true
+              containers:
+                - =(securityContext):
+                    =(runAsNonRoot): true
+          - spec:
+              =(initContainers):
+                - securityContext:
+                    runAsNonRoot: true
+              containers:
+                - securityContext:
+                    runAsNonRoot: true
 ```
 
 ### Exclude System Namespaces
@@ -187,7 +195,6 @@ metadata:
   name: require-resource-limits
 spec:
   background: true
-  validationFailureAction: Audit
   rules:
     - name: check-limits
       match:
@@ -204,6 +211,7 @@ spec:
                 - cert-manager
                 - ingress-nginx
       validate:
+        failureAction: Audit
         message: "Resource limits are required."
         pattern:
           spec:
@@ -225,7 +233,6 @@ metadata:
   name: pci-compliance
 spec:
   background: true
-  validationFailureAction: Audit
   rules:
     - name: pci-encryption-check
       match:
@@ -237,11 +244,12 @@ spec:
                 matchLabels:
                   compliance-scope: pci
       validate:
-        message: "PCI workloads must use encrypted volumes only."
+        failureAction: Audit
+        message: "PCI workloads must not use hostPath volumes."
         pattern:
           spec:
-            volumes:
-              - (emptyDir): null
+            =(volumes):
+              - X(hostPath): "null"
 ```
 
 ## Background Scan Workflow
@@ -251,7 +259,7 @@ Here is how Kyverno processes background scans end to end:
 ```mermaid
 sequenceDiagram
     participant Timer as Scan Timer
-    participant Controller as Background Controller
+    participant Controller as Reports Controller
     participant API as Kubernetes API
     participant Policy as Policy Engine
     participant Report as Report Generator
@@ -360,21 +368,14 @@ kubectl get policyreport -A -o json | jq -r '
 ### Send Reports to Prometheus
 
 ```yaml
-# kyverno-service-monitor.yaml
-# Kyverno exposes metrics for policy report results
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: kyverno
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: kyverno
-  endpoints:
-    - port: metrics
-      interval: 30s
-      path: /metrics
+# values.yaml
+# Enable the reports controller ServiceMonitor when using Prometheus Operator
+reportsController:
+  metricsService:
+    create: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
 ```
 
 Key metrics to monitor:
@@ -382,30 +383,34 @@ Key metrics to monitor:
 ```bash
 # Prometheus queries for background scan results
 # Count of policy violations by namespace
-kyverno_policy_results_total{rule_result="fail"}
+sum by (resource_namespace) (
+  increase(kyverno_policy_results{rule_result="fail",rule_execution_cause="background_scan"}[1h])
+)
 
-# Background scan duration
-kyverno_background_scan_duration_seconds
+# Background scan policy execution latency
+histogram_quantile(
+  0.95,
+  sum(rate(kyverno_policy_execution_duration_seconds_bucket{rule_execution_cause="background_scan"}[5m])) by (le)
+)
 
-# Resources processed per scan
-kyverno_background_scan_resources_processed_total
+# Number of background scan evaluations
+sum(increase(kyverno_policy_results{rule_execution_cause="background_scan"}[1h]))
 ```
 
-### Webhook Notifications
+### Alert Metadata for Downstream Tools
 
 ```yaml
-# policy-with-webhook.yaml
-# Trigger webhook on violations
+# high-severity-policy.yaml
+# Mark high-severity violations for downstream alerting tools
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
   name: critical-violation-alert
   annotations:
-    # Notify external system on violation
+    # Expose severity metadata in policy reports
     policies.kyverno.io/severity: high
 spec:
   background: true
-  validationFailureAction: Audit
   rules:
     - name: no-privileged-containers
       match:
@@ -414,6 +419,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Audit
         message: "Privileged containers are not allowed."
         pattern:
           spec:
@@ -427,77 +433,49 @@ spec:
 ### Optimize Resource Requests
 
 ```yaml
-# kyverno-deployment-tuned.yaml
-# Increase resources for large clusters
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kyverno
-  namespace: kyverno
-spec:
-  template:
-    spec:
-      containers:
-        - name: kyverno
-          resources:
-            requests:
-              # Increase for clusters with many resources
-              memory: "512Mi"
-              cpu: "500m"
-            limits:
-              memory: "2Gi"
-              cpu: "2000m"
-          # Environment variables for tuning
-          env:
-            # Number of workers for background scanning
-            - name: BACKGROUND_SCAN_WORKERS
-              value: "4"
-            # Batch size for processing resources
-            - name: BACKGROUND_SCAN_BATCH_SIZE
-              value: "100"
+# values.yaml
+# Increase reports controller resources for large clusters
+reportsController:
+  resources:
+    requests:
+      # Increase for clusters with many resources
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+
+features:
+  backgroundScan:
+    # Number of reports-controller workers for background scanning
+    backgroundScanWorkers: 4
 ```
 
 ### Distribute Load Across Replicas
 
 ```yaml
-# kyverno-ha-deployment.yaml
-# Run multiple replicas with leader election for HA
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kyverno
-  namespace: kyverno
-spec:
-  # Multiple replicas for high availability
+# values.yaml
+# Run multiple reports-controller replicas for HA
+reportsController:
+  # Multiple replicas improve availability; one leader processes reports
   replicas: 3
-  template:
-    spec:
-      containers:
-        - name: kyverno
-          args:
-            # Enable leader election for background controller
-            - "--enableLeaderElection=true"
-            # Only leader runs background scans
-            - "--backgroundScan=true"
+
+features:
+  backgroundScan:
+    enabled: true
 ```
 
 ### Limit Concurrent Scans
 
 ```yaml
-# kyverno-configmap-tuned.yaml
+# values.yaml
 # Configure scan behavior for large clusters
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kyverno
-  namespace: kyverno
-data:
+features:
+  backgroundScan:
+    enabled: true
   # Longer interval for large clusters
-  backgroundScanInterval: "4h"
-  # Limit resources processed per interval
-  backgroundScanResources: "5000"
-  # Enable incremental scanning (only check changed resources)
-  enableIncrementalScan: "true"
+    backgroundScanInterval: 4h
+    # Lower worker count reduces concurrent API activity
+    backgroundScanWorkers: 1
 ```
 
 ### Monitor Scan Performance
@@ -510,17 +488,17 @@ data:
 echo "=== Kyverno Background Scan Status ==="
 
 # Check if scans are running
-kubectl logs -n kyverno deployment/kyverno --tail=100 | \
+kubectl logs -n kyverno deployment/kyverno-reports-controller --tail=100 | \
   grep -i "background scan" | tail -5
 
 echo -e "\n=== Scan Duration Metrics ==="
 # Get scan duration from metrics endpoint
-kubectl port-forward -n kyverno svc/kyverno-svc 8000:443 &
+kubectl port-forward -n kyverno svc/kyverno-reports-controller-metrics 8000:8000 &
 PF_PID=$!
 sleep 2
 
-curl -sk https://localhost:8000/metrics 2>/dev/null | \
-  grep kyverno_background_scan_duration
+curl -s http://localhost:8000/metrics 2>/dev/null | \
+  grep 'kyverno_policy_execution_duration_seconds.*background_scan'
 
 kill $PF_PID 2>/dev/null
 
@@ -545,7 +523,6 @@ metadata:
   name: detect-gitops-drift
 spec:
   background: true
-  validationFailureAction: Audit
   rules:
     - name: check-managed-by-label
       match:
@@ -563,6 +540,7 @@ spec:
               namespaces:
                 - kube-system
       validate:
+        failureAction: Audit
         message: "Resource missing ArgoCD management label. Was it modified manually?"
         pattern:
           metadata:
@@ -581,7 +559,6 @@ metadata:
   name: security-baseline-audit
 spec:
   background: true
-  validationFailureAction: Audit
   rules:
     # Rule 1: No privileged containers
     - name: no-privileged
@@ -591,15 +568,19 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Audit
         message: "Privileged containers are not allowed."
         pattern:
           spec:
+            =(ephemeralContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+            =(initContainers):
+              - =(securityContext):
+                  =(privileged): "false"
             containers:
-              - securityContext:
-                  privileged: "!true"
-            initContainers:
-              - securityContext:
-                  privileged: "!true"
+              - =(securityContext):
+                  =(privileged): "false"
 
     # Rule 2: No host networking
     - name: no-host-network
@@ -609,10 +590,11 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Audit
         message: "Host networking is not allowed."
         pattern:
           spec:
-            hostNetwork: "!true"
+            =(hostNetwork): "false"
 
     # Rule 3: No host PID
     - name: no-host-pid
@@ -622,10 +604,11 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Audit
         message: "Host PID namespace is not allowed."
         pattern:
           spec:
-            hostPID: "!true"
+            =(hostPID): "false"
 
     # Rule 4: Read-only root filesystem
     - name: readonly-root
@@ -635,6 +618,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Audit
         message: "Root filesystem should be read-only."
         pattern:
           spec:
@@ -654,7 +638,6 @@ metadata:
   name: resource-quota-compliance
 spec:
   background: true
-  validationFailureAction: Audit
   rules:
     - name: require-requests-limits
       match:
@@ -669,6 +652,7 @@ spec:
                 - kube-system
                 - kyverno
       validate:
+        failureAction: Audit
         message: "CPU and memory requests/limits are required."
         pattern:
           spec:
@@ -688,10 +672,11 @@ spec:
 
 ```bash
 # Check Kyverno logs for background scan activity
-kubectl logs -n kyverno deployment/kyverno | grep -i "background"
+kubectl logs -n kyverno deployment/kyverno-reports-controller | grep -i "background"
 
-# Verify background scanning is enabled in ConfigMap
-kubectl get configmap kyverno -n kyverno -o yaml | grep background
+# Verify reports controller arguments include background scan settings
+kubectl get deployment kyverno-reports-controller -n kyverno -o json | \
+  jq '.spec.template.spec.containers[].args[] | select(test("backgroundScan"))'
 
 # Check if policies have background=true
 kubectl get clusterpolicy -o json | \
@@ -715,15 +700,14 @@ kubectl logs -n kyverno -l app.kubernetes.io/component=reports-controller
 
 ```bash
 # Increase scan interval
-kubectl patch configmap kyverno -n kyverno \
-  --type merge \
-  -p '{"data":{"backgroundScanInterval":"4h"}}'
+helm upgrade kyverno kyverno/kyverno -n kyverno \
+  --reuse-values \
+  --set features.backgroundScan.backgroundScanInterval=4h
 
 # Reduce concurrent workers
-kubectl set env deployment/kyverno -n kyverno BACKGROUND_SCAN_WORKERS=2
-
-# Restart Kyverno to apply changes
-kubectl rollout restart deployment kyverno -n kyverno
+helm upgrade kyverno kyverno/kyverno -n kyverno \
+  --reuse-values \
+  --set features.backgroundScan.backgroundScanWorkers=1
 ```
 
 ## Best Practices Checklist
