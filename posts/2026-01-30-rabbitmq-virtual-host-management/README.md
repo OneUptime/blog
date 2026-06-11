@@ -105,7 +105,7 @@ rabbitmqctl add_vhost /tenant-acme \
 rabbitmqctl list_vhosts name description tags
 
 # Get detailed vhost info
-rabbitmqctl list_vhosts name messages consumers
+rabbitmqctl list_vhosts name cluster_state default_queue_type tracing
 ```
 
 ### Using the HTTP API
@@ -192,7 +192,7 @@ curl -u admin:password -X DELETE \
   http://localhost:15672/api/permissions/%2Ftenant-acme/acme-app
 ```
 
-Resource Limits and Quotas
+## Resource Limits and Quotas
 
 RabbitMQ 3.8+ supports per-vhost resource limits. This prevents a single tenant from consuming all broker resources.
 
@@ -374,8 +374,8 @@ echo "Connection string: amqp://$APP_USER:$APP_PASS@$RABBITMQ_HOST/$ENCODED_VHOS
 ### Check Vhost Status
 
 ```bash
-# List vhosts with message counts
-rabbitmqctl list_vhosts name messages consumers
+# List vhosts with their state and configuration
+rabbitmqctl list_vhosts name cluster_state default_queue_type tracing
 
 # Get detailed queue stats for a vhost
 rabbitmqctl list_queues -p /tenant-acme \
