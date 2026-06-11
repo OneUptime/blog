@@ -45,7 +45,7 @@ Every object cache needs four building blocks: a storage mechanism, a key strate
 | Serialization | Converts objects for storage | JSON, MessagePack, Protocol Buffers |
 | Eviction Policy | Removes stale or excess entries | TTL, LRU, LFU |
 
-Choosing the right combination depends on your scale and consistency requirements. For single-server applications, an in-memory Map with TTL works well. For distributed systems, Redis with LRU eviction provides durability and shared access.
+Choosing the right combination depends on your scale and consistency requirements. For single-server applications, an in-memory Map with TTL works well. For distributed systems, Redis with LRU eviction provides shared access and optional persistence.
 
 ---
 
@@ -96,6 +96,7 @@ class ObjectCache<T> {
   // Clear all entries matching a pattern
   invalidatePattern(pattern: RegExp): void {
     for (const key of this.store.keys()) {
+      pattern.lastIndex = 0;
       if (pattern.test(key)) {
         this.store.delete(key);
       }
@@ -214,9 +215,10 @@ For JSON serialization with proper type handling, use a reviver function:
 ```typescript
 // Serialize with type hints for complex objects
 function serialize(obj: unknown): string {
-  return JSON.stringify(obj, (key, value) => {
-    if (value instanceof Date) {
-      return { __type: 'Date', value: value.toISOString() };
+  return JSON.stringify(obj, function (this: Record<string, unknown>, key, value) {
+    const originalValue = this[key];
+    if (originalValue instanceof Date) {
+      return { __type: 'Date', value: originalValue.toISOString() };
     }
     if (value instanceof Map) {
       return { __type: 'Map', value: Array.from(value.entries()) };
@@ -282,7 +284,7 @@ class CoalescingCache<T> {
   async getOrFetch(key: string, fetcher: () => Promise<T>): Promise<T> {
     // Check cache first
     const cached = this.cache.get(key);
-    if (cached) return cached;
+    if (cached !== null) return cached;
 
     // If a fetch is already in progress, wait for it
     if (this.pending.has(key)) {
@@ -290,11 +292,14 @@ class CoalescingCache<T> {
     }
 
     // Start the fetch and track the promise
-    const fetchPromise = fetcher().then(value => {
-      this.cache.set(key, value);
-      this.pending.delete(key);
-      return value;
-    });
+    const fetchPromise = fetcher()
+      .then(value => {
+        this.cache.set(key, value);
+        return value;
+      })
+      .finally(() => {
+        this.pending.delete(key);
+      });
 
     this.pending.set(key, fetchPromise);
     return fetchPromise;
