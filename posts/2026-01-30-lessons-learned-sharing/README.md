@@ -209,6 +209,37 @@ class LessonsDigest:
 
         top_category = max(categories, key=categories.get)
         return f"This week: {len(lessons)} lessons captured. Primary focus area: {top_category}."
+
+    def _rank_lessons(self, lessons: List[dict]) -> List[dict]:
+        """Rank lessons by broad applicability and severity."""
+        applicability_weight = {
+            'industry': 4,
+            'organization': 3,
+            'department': 2,
+            'team': 1
+        }
+        severity_weight = {'SEV1': 4, 'SEV2': 3, 'SEV3': 2, 'SEV4': 1}
+
+        return sorted(
+            lessons,
+            key=lambda lesson: (
+                applicability_weight.get(lesson.get('applicability'), 0),
+                severity_weight.get(lesson.get('severity'), 0)
+            ),
+            reverse=True
+        )
+
+    def _get_upcoming_actions(self) -> List[dict]:
+        """Fetch action items due soon from the knowledge base."""
+        return self.kb.query_action_items(
+            due_before=datetime.now() + timedelta(days=7),
+            status=['open', 'in-progress']
+        )
+
+    def _get_recommendations(self, lessons: List[dict]) -> List[dict]:
+        """Fetch related reading based on lesson tags."""
+        tags = sorted({tag for lesson in lessons for tag in lesson.get('tags', [])})
+        return self.kb.query_recommendations(tags=tags) if tags else []
 ```
 
 ### Learning Sessions
@@ -302,7 +333,7 @@ class ElasticsearchLessonsRepository implements LessonsRepository {
   async index(lesson: LessonsLearned): Promise<string> {
     const result = await this.client.index({
       index: this.indexName,
-      body: {
+      document: {
         ...lesson,
         indexedAt: new Date(),
         // Generate embeddings for semantic search
@@ -318,33 +349,31 @@ class ElasticsearchLessonsRepository implements LessonsRepository {
   async search(query: SearchQuery): Promise<SearchResult> {
     const response = await this.client.search({
       index: this.indexName,
-      body: {
-        query: {
-          bool: {
-            must: [
-              { multi_match: { query: query.text, fields: ['title^2', 'description', 'fullText'] } }
-            ],
-            filter: [
-              ...(query.tags ? [{ terms: { tags: query.tags } }] : []),
-              ...(query.severity ? [{ term: { severity: query.severity } }] : []),
-              ...(query.dateRange ? [{
-                range: {
-                  date: {
-                    gte: query.dateRange.start,
-                    lte: query.dateRange.end
-                  }
+      query: {
+        bool: {
+          must: [
+            { multi_match: { query: query.text, fields: ['title^2', 'description', 'fullText'] } }
+          ],
+          filter: [
+            ...(query.tags ? [{ terms: { tags: query.tags } }] : []),
+            ...(query.severity ? [{ term: { severity: query.severity } }] : []),
+            ...(query.dateRange ? [{
+              range: {
+                date: {
+                  gte: query.dateRange.start,
+                  lte: query.dateRange.end
                 }
-              }] : [])
-            ]
-          }
-        },
-        highlight: {
-          fields: { description: {}, fullText: {} }
-        },
-        aggs: {
-          by_category: { terms: { field: 'category.keyword' } },
-          by_system: { terms: { field: 'affectedSystems.keyword' } }
+              }
+            }] : [])
+          ]
         }
+      },
+      highlight: {
+        fields: { description: {}, fullText: {} }
+      },
+      aggs: {
+        by_category: { terms: { field: 'category.keyword' } },
+        by_system: { terms: { field: 'affectedSystems.keyword' } }
       }
     });
 
@@ -357,19 +386,38 @@ class ElasticsearchLessonsRepository implements LessonsRepository {
 
     const response = await this.client.search({
       index: this.indexName,
-      body: {
-        query: {
-          more_like_this: {
-            fields: ['tags', 'affectedSystems', 'description'],
-            like: [{ _index: this.indexName, _id: lessonId }],
-            min_term_freq: 1,
-            min_doc_freq: 1
-          }
+      query: {
+        more_like_this: {
+          fields: ['tags', 'affectedSystems', 'description'],
+          like: [{ _index: this.indexName, _id: lessonId }],
+          min_term_freq: 1,
+          min_doc_freq: 1
         }
       }
     });
 
     return response.hits.hits.map(hit => hit._source as LessonsLearned);
+  }
+
+  async getPatterns(timeRange: TimeRange): Promise<Pattern[]> {
+    const response = await this.client.search({
+      index: this.indexName,
+      size: 0,
+      query: {
+        range: {
+          date: {
+            gte: timeRange.start,
+            lte: timeRange.end
+          }
+        }
+      },
+      aggs: {
+        recurring_tags: { terms: { field: 'tags.keyword', min_doc_count: 3 } },
+        system_hotspots: { terms: { field: 'affectedSystems.keyword', min_doc_count: 4 } }
+      }
+    });
+
+    return this.formatPatterns(response);
   }
 }
 ```
@@ -437,8 +485,7 @@ Individual incidents are data points. Patterns across incidents reveal systemic 
 # pattern_detector.py
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple
-import numpy as np
+from typing import List, Dict
 
 class PatternDetector:
     def __init__(self, lessons_repository):
@@ -540,6 +587,39 @@ class PatternDetector:
                 })
 
         return patterns
+
+    def _find_time_patterns(self, lessons: List[dict]) -> List[Dict]:
+        """Find days of week that have repeated incidents."""
+        by_day = defaultdict(list)
+        for lesson in lessons:
+            occurred_at = lesson.get('date')
+            if isinstance(occurred_at, str):
+                occurred_at = datetime.fromisoformat(occurred_at)
+            if isinstance(occurred_at, datetime):
+                by_day[occurred_at.strftime('%A')].append(lesson['incidentId'])
+
+        return [
+            {
+                'type': 'time_correlation',
+                'day': day,
+                'incident_count': len(incidents),
+                'incidents': incidents,
+                'recommendation': f"Investigate scheduled work or traffic patterns on {day}s"
+            }
+            for day, incidents in by_day.items()
+            if len(incidents) >= 3
+        ]
+
+    def _rank_patterns(self, patterns: List[Dict]) -> List[Dict]:
+        """Rank patterns by their observed frequency or severity score."""
+        return sorted(
+            patterns,
+            key=lambda pattern: (
+                pattern.get('severity_score', 0),
+                pattern.get('incident_count', pattern.get('occurrence_count', 0))
+            ),
+            reverse=True
+        )
 ```
 
 ### Pattern Visualization Dashboard
@@ -703,6 +783,23 @@ ${lesson.externalCommunications || 'No external communication required'}
       format: 'moderate'
     };
   }
+
+  private customerSuccessSummary(lesson: LessonsLearned): Summary {
+    return {
+      title: lesson.title,
+      content: `
+## Customer Impact
+${this.describeCustomerImpact(lesson)}
+
+## Support Guidance
+${this.generateSupportGuidance(lesson)}
+
+## Communication Status
+${lesson.externalCommunications || 'No external communication required'}
+      `,
+      format: 'moderate'
+    };
+  }
 }
 ```
 
@@ -735,7 +832,7 @@ Track whether lessons learned actually prevent future incidents:
 # learning_effectiveness_metrics.py
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List
 
 @dataclass
 class LearningMetrics:
@@ -795,6 +892,10 @@ class LearningEffectivenessTracker:
             metrics.action_items_completed / metrics.action_items_created * 100
             if metrics.action_items_created > 0 else 0
         )
+        share_rate = (
+            metrics.lessons_shared / metrics.lessons_captured * 100
+            if metrics.lessons_captured > 0 else 0
+        )
 
         return f"""
 # Learning Effectiveness Report - {metrics.period}
@@ -802,7 +903,7 @@ class LearningEffectivenessTracker:
 ## Capture Metrics
 - Lessons documented: {metrics.lessons_captured}
 - Lessons shared org-wide: {metrics.lessons_shared}
-- Share rate: {metrics.lessons_shared / metrics.lessons_captured * 100:.1f}%
+- Share rate: {share_rate:.1f}%
 
 ## Action Item Metrics
 - Total created: {metrics.action_items_created}
@@ -924,6 +1025,27 @@ class PublicPostmortemGenerator:
                 })
 
         return public_lessons
+
+    def _sanitize_timeline(self, timeline: List[dict]) -> List[dict]:
+        """Redact sensitive text from timeline entries."""
+        return [
+            {
+                **entry,
+                'description': self._redact_text(entry.get('description', ''))
+            }
+            for entry in timeline
+        ]
+
+    def _generalize_actions(self, action_items: List[dict]) -> List[dict]:
+        """Keep public action items useful without exposing internal details."""
+        return [
+            {
+                'description': self._redact_text(action.get('description', '')),
+                'category': action.get('category', 'prevention'),
+                'status': action.get('status', 'planned')
+            }
+            for action in action_items
+        ]
 ```
 
 ### External Sharing Channels
