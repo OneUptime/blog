@@ -72,10 +72,11 @@ A model registry is the foundation of rollback capability. It stores versioned m
 # MLflow-based model registry with versioning and rollback support
 
 import mlflow
+import mlflow.sklearn
+from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-import json
 
 
 class ModelRegistry:
@@ -93,7 +94,7 @@ class ModelRegistry:
     def register_model(
         self,
         model_name: str,
-        model_artifact_path: str,
+        sk_model: Any,
         metrics: Dict[str, float],
         parameters: Dict[str, Any],
         tags: Optional[Dict[str, str]] = None
@@ -111,9 +112,9 @@ class ModelRegistry:
             mlflow.log_params(parameters)
 
             # Log the model artifact to the registry
-            model_uri = mlflow.sklearn.log_model(
-                sk_model=model_artifact_path,
-                artifact_path="model",
+            mlflow.sklearn.log_model(
+                sk_model=sk_model,
+                name="model",
                 registered_model_name=model_name
             )
 
@@ -142,18 +143,18 @@ class ModelRegistry:
         self,
         model_name: str,
         version: Optional[str] = None,
-        stage: Optional[str] = None
+        alias: Optional[str] = None
     ):
         """
-        Load a specific model version or the model at a given stage.
-        Stage can be: None, Staging, Production, Archived
+        Load a specific model version or the model assigned to an alias.
+        Common aliases include "champion" for production and "candidate" for staging.
         """
         if version:
             # Load specific version
             model_uri = f"models:/{model_name}/{version}"
-        elif stage:
-            # Load model at specific stage (Production, Staging, etc.)
-            model_uri = f"models:/{model_name}/{stage}"
+        elif alias:
+            # Load model by alias
+            model_uri = f"models:/{model_name}@{alias}"
         else:
             # Load latest version
             model_uri = f"models:/{model_name}/latest"
@@ -180,7 +181,7 @@ class ModelRegistry:
 
             version_info.append({
                 "version": v.version,
-                "stage": v.current_stage,
+                "aliases": list(v.aliases),
                 "created_at": v.creation_timestamp,
                 "metrics": run.data.metrics,
                 "parameters": run.data.params,
@@ -196,29 +197,31 @@ class ModelRegistry:
         version: str
     ) -> None:
         """
-        Promote a model version to production stage.
-        Archives the current production model.
+        Promote a model version by assigning the production alias.
         """
-        # First, archive any existing production model
-        prod_versions = self.client.get_latest_versions(
-            model_name,
-            stages=["Production"]
-        )
-        for pv in prod_versions:
-            self.client.transition_model_version_stage(
-                name=model_name,
-                version=pv.version,
-                stage="Archived"
+        try:
+            previous = self.client.get_model_version_by_alias(
+                model_name,
+                "champion"
             )
+            self.client.set_model_version_tag(
+                name=model_name,
+                version=previous.version,
+                key="replaced_by",
+                value=version
+            )
+        except MlflowException:
+            # No production alias exists yet.
+            pass
 
-        # Promote the specified version to production
-        self.client.transition_model_version_stage(
+        # Promote the specified version to production by moving the alias
+        self.client.set_registered_model_alias(
             name=model_name,
-            version=version,
-            stage="Production"
+            alias="champion",
+            version=version
         )
 
-        print(f"Model {model_name} version {version} promoted to Production")
+        print(f"Model {model_name} version {version} promoted to champion")
 
     def rollback_to_version(
         self,
@@ -231,11 +234,14 @@ class ModelRegistry:
         Logs the rollback event for audit purposes.
         """
         # Get current production version for logging
-        current_prod = self.client.get_latest_versions(
-            model_name,
-            stages=["Production"]
-        )
-        current_version = current_prod[0].version if current_prod else "None"
+        try:
+            current_prod = self.client.get_model_version_by_alias(
+                model_name,
+                "champion"
+            )
+            current_version = current_prod.version
+        except MlflowException:
+            current_version = "None"
 
         # Perform the rollback
         self.promote_to_production(model_name, target_version)
@@ -350,6 +356,7 @@ class RollbackTriggerManager:
     def __init__(self):
         self.triggers: Dict[str, RollbackTrigger] = {}
         self.metric_windows: Dict[str, deque] = {}
+        self.metric_context: Dict[str, Dict[str, str]] = {}
         self.last_trigger_times: Dict[str, float] = {}
         self.callbacks: Dict[TriggerSeverity, List[Callable]] = {
             severity: [] for severity in TriggerSeverity
@@ -378,7 +385,12 @@ class RollbackTriggerManager:
         """
         self.callbacks[severity].append(callback)
 
-    def record_metric(self, metric_name: str, value: float) -> None:
+    def record_metric(
+        self,
+        metric_name: str,
+        value: float,
+        model_name: Optional[str] = None
+    ) -> None:
         """
         Record a metric value and check all relevant triggers.
         """
@@ -387,6 +399,8 @@ class RollbackTriggerManager:
             self.metric_windows[metric_name] = deque(maxlen=1000)
 
         self.metric_windows[metric_name].append(value)
+        if model_name:
+            self.metric_context[metric_name] = {"model_name": model_name}
 
         # Check all triggers for this metric
         for trigger in self.triggers.values():
@@ -445,6 +459,7 @@ class RollbackTriggerManager:
             "severity": trigger.severity.value,
             "timestamp": time.time()
         }
+        trigger_info.update(self.metric_context.get(trigger.metric_name, {}))
 
         print(f"TRIGGER FIRED: {trigger.name}")
         print(f"  Metric: {trigger.metric_name} = {metric_value:.4f}")
@@ -707,6 +722,14 @@ class RollbackController:
         # Find potential rollback target
         target_version = await self._find_rollback_target(model_name)
 
+        if not target_version:
+            logger.error("No suitable rollback target found")
+            return {
+                "status": "failed",
+                "reason": "no_suitable_target",
+                "model_name": model_name
+            }
+
         # Store pending approval request
         self.pending_approvals[approval_id] = {
             "model_name": model_name,
@@ -793,11 +816,6 @@ class RollbackController:
         accuracy = metrics.get("accuracy", 0)
         if accuracy < 0.80:
             return False
-
-        # Check if version was ever in production successfully
-        if version_info.get("stage") == "Archived":
-            # Archived versions that were in production are OK
-            return True
 
         return True
 
@@ -927,7 +945,7 @@ flowchart LR
 # Blue-green deployment strategy for instant model rollback
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from enum import Enum
 import time
 import threading
@@ -1015,7 +1033,7 @@ class BlueGreenDeploymentManager:
         self,
         model_name: str,
         instant: bool = True
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Switch traffic to the inactive environment.
         For instant rollback, set instant=True.
@@ -1041,6 +1059,11 @@ class BlueGreenDeploymentManager:
             current_deployment = self.deployments[model_name].get(current_active)
             new_deployment = self.deployments[model_name].get(new_active)
 
+            if new_deployment is None:
+                raise ValueError(
+                    f"No deployment exists in {new_active.value} for {model_name}"
+                )
+
             result = {
                 "model_name": model_name,
                 "previous_environment": current_active.value,
@@ -1055,11 +1078,46 @@ class BlueGreenDeploymentManager:
 
             return result
 
-    def rollback(self, model_name: str) -> Dict[str, any]:
+    def rollback(self, model_name: str) -> Dict[str, Any]:
         """
-        Perform instant rollback by switching to the standby environment.
+        Perform instant rollback.
+        During a canary, this restores 100% traffic to the stable active environment.
+        After a full switch, it switches back to the standby environment.
         """
-        print(f"ROLLBACK: Switching {model_name} to standby environment")
+        print(f"ROLLBACK: Switching {model_name} to rollback target")
+        with self._lock:
+            if model_name not in self.active_environment:
+                raise ValueError(f"Model {model_name} not deployed")
+
+            active = self.active_environment[model_name]
+            weights = self.traffic_weights[model_name]
+
+            if weights[active] < 1.0:
+                other_env = (
+                    Environment.GREEN if active == Environment.BLUE
+                    else Environment.BLUE
+                )
+                self.traffic_weights[model_name] = {
+                    active: 1.0,
+                    other_env: 0.0
+                }
+
+                active_deployment = self.deployments[model_name].get(active)
+                other_deployment = self.deployments[model_name].get(other_env)
+
+                return {
+                    "model_name": model_name,
+                    "previous_environment": other_env.value,
+                    "new_environment": active.value,
+                    "previous_version": (
+                        other_deployment.version if other_deployment else None
+                    ),
+                    "new_version": (
+                        active_deployment.version if active_deployment else None
+                    ),
+                    "traffic_weights": self.traffic_weights[model_name]
+                }
+
         return self.switch_traffic(model_name, instant=True)
 
     def gradual_shift(
@@ -1112,7 +1170,7 @@ class BlueGreenDeploymentManager:
 
             return self.deployments[model_name].get(target_env)
 
-    def get_status(self, model_name: str) -> Dict[str, any]:
+    def get_status(self, model_name: str) -> Dict[str, Any]:
         """Get current deployment status for a model."""
         with self._lock:
             if model_name not in self.deployments:
@@ -1472,18 +1530,22 @@ class MLOpsRollbackSystem:
         Record metrics from a prediction for trigger evaluation.
         Call this after each prediction to enable automatic rollback.
         """
-        self.triggers.record_metric("accuracy", accuracy)
-        self.triggers.record_metric("prediction_latency_p99", latency_ms / 1000)
+        self.triggers.record_metric("accuracy", accuracy, model_name)
+        self.triggers.record_metric(
+            "prediction_latency_p99",
+            latency_ms / 1000,
+            model_name
+        )
 
         # Track error rate
         error_value = 1.0 if error else 0.0
-        self.triggers.record_metric("error_rate", error_value)
+        self.triggers.record_metric("error_rate", error_value, model_name)
 
     def deploy_new_version(
         self,
         model_name: str,
         version: str,
-        model_artifact_path: str,
+        sk_model: Any,
         metrics: Dict[str, float]
     ):
         """
@@ -1492,7 +1554,7 @@ class MLOpsRollbackSystem:
         # Register in MLflow
         self.registry.register_model(
             model_name=model_name,
-            model_artifact_path=model_artifact_path,
+            sk_model=sk_model,
             metrics=metrics,
             parameters={"version": version}
         )
@@ -1543,11 +1605,20 @@ class MLOpsRollbackSystem:
 # Example usage
 async def main():
     """Demonstrate the complete rollback system."""
+    from sklearn.dummy import DummyClassifier
 
     # Initialize the system
     system = MLOpsRollbackSystem(
         mlflow_tracking_uri="http://localhost:5000",
         mlflow_registry_uri="http://localhost:5000"
+    )
+    trained_fraud_model_v1 = DummyClassifier(strategy="most_frequent").fit(
+        [[0], [1]],
+        [0, 1]
+    )
+    trained_fraud_model_v2 = DummyClassifier(strategy="stratified").fit(
+        [[0], [1]],
+        [0, 1]
     )
 
     # Simulate deployment and rollback scenario
@@ -1555,7 +1626,7 @@ async def main():
     system.deploy_new_version(
         model_name="fraud_detector",
         version="1.0",
-        model_artifact_path="./models/fraud_v1",
+        sk_model=trained_fraud_model_v1,
         metrics={"accuracy": 0.92, "f1_score": 0.89}
     )
     system.activate_new_version("fraud_detector", gradual=False)
@@ -1564,7 +1635,7 @@ async def main():
     system.deploy_new_version(
         model_name="fraud_detector",
         version="2.0",
-        model_artifact_path="./models/fraud_v2",
+        sk_model=trained_fraud_model_v2,
         metrics={"accuracy": 0.94, "f1_score": 0.91}
     )
     system.activate_new_version("fraud_detector", gradual=True)
