@@ -56,15 +56,15 @@ Before implementing Status History, ensure you have:
 
 ### Step 1: Prepare Your Data
 
-Status History requires data in a specific format. Each data point should represent a state at a given time. The value can be numeric (which you map to states) or string-based.
+Status History works best with data that includes a timestamp, an entity name, and a state value. The value can be numeric (which you map to states), boolean, or string-based.
 
 Here is a Prometheus query that returns pod status using kube-state-metrics.
 
 ```promql
-kube_pod_status_phase{namespace="production"} == 1
+kube_pod_status_phase{namespace="production", phase=~"Running|Pending|Failed|Succeeded|Unknown"} == 1
 ```
 
-This query returns 1 when a pod is in a specific phase, allowing you to track Running, Pending, Failed, and other states.
+This query returns the active pod phase series, with the current phase in the `phase` label and a value of 1. Use the pod and phase labels in the legend or transform the result if you want one row per pod.
 
 ### Step 2: Create the Panel
 
@@ -115,13 +115,13 @@ This Prometheus query calculates a health score that maps to different severity 
 ```promql
 ceil(
   (
-    rate(http_requests_total{status=~"5.."}[5m]) /
-    rate(http_requests_total[5m])
+    sum by (job) (rate(http_requests_total{status=~"5.."}[5m])) /
+    sum by (job) (rate(http_requests_total[5m]))
   ) * 100
 )
 ```
 
-The corresponding value mapping configuration handles four distinct states based on error percentage thresholds.
+The corresponding value mapping configuration handles three distinct states based on error percentage thresholds.
 
 ```json
 {
@@ -140,7 +140,7 @@ The corresponding value mapping configuration handles four distinct states based
     {
       "type": "range",
       "options": {
-        "from": 1,
+        "from": 2,
         "to": 5,
         "result": {
           "text": "Degraded",
@@ -151,7 +151,7 @@ The corresponding value mapping configuration handles four distinct states based
     {
       "type": "range",
       "options": {
-        "from": 5,
+        "from": 6,
         "to": 100,
         "result": {
           "text": "Critical",
@@ -264,9 +264,9 @@ Here is a complete Grafana dashboard JSON snippet that implements a Status Histo
 
 ## Integration with Alerting
 
-Status History becomes more powerful when combined with Grafana alerting. You can create alerts that fire when state changes occur.
+Status History becomes more powerful when combined with alerting. You can create alerts that fire when state changes occur.
 
-The following alerting rule triggers when a service has been down for more than 5 minutes.
+The following Prometheus-compatible alerting rule triggers when a service has been down for more than 5 minutes.
 
 ```yaml
 groups:
@@ -299,20 +299,20 @@ stateDiagram-v2
     Healthy --> [*]
 ```
 
-This recording rule calculates the duration of downtime events for MTTR analysis.
+This recording rule tracks current downtime duration for targets that were up at least once in the last 24 hours, which can feed MTTR analysis.
 
-```promql
+```yaml
 # Recording rule for tracking downtime duration
 
-- record: service:downtime_duration:seconds
-  expr: |
-    (
-      time() -
-      (up == 0) * on(instance, job) group_left
-      topk by(instance, job) (1,
-        timestamp(up == 1)
-      )
-    ) * (up == 0)
+groups:
+  - name: service_status_recording
+    rules:
+      - record: service:current_downtime:seconds
+        expr: |
+          (
+            time() -
+            max_over_time((timestamp(up == 1))[24h:])
+          ) * (up == bool 0)
 ```
 
 ---
@@ -339,19 +339,28 @@ Adopt a standard color palette across all Status History panels.
 
 Status History panels can be resource-intensive with long time ranges. Use recording rules to pre-aggregate data.
 
-This recording rule pre-computes the service status to reduce query load.
+This recording rule pre-computes the service health score to reduce query load.
 
-```promql
-# Recording rule for pre-aggregated status
-- record: service:status:current
-  expr: |
-    clamp_max(
-      clamp_min(
-        (1 - (rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]))) * 100,
-        0
-      ),
-      100
-    )
+```yaml
+# Recording rule for pre-aggregated health score
+groups:
+  - name: service_status_recording
+    rules:
+      - record: service:health_score:percent
+        expr: |
+          clamp_max(
+            clamp_min(
+              (
+                1 -
+                (
+                  sum by (job) (rate(http_requests_total{status=~"5.."}[5m])) /
+                  sum by (job) (rate(http_requests_total[5m]))
+                )
+              ) * 100,
+              0
+            ),
+            100
+          )
 ```
 
 ---
@@ -368,7 +377,7 @@ If your Status History panel shows "No data," verify the following.
 
 ### Gaps in the Timeline
 
-Gaps typically indicate missing data points. Ensure your scrape interval is consistent and consider using the "Connect null values" option in panel settings.
+Gaps typically indicate missing or null data points. Ensure your scrape interval is consistent, verify the query returns samples across the selected time range, and fill missing values in the data source query or with Grafana transformations when that matches your monitoring semantics.
 
 ### Performance Issues
 
@@ -397,20 +406,23 @@ Grafana offers two similar visualizations: Status History and State Timeline. He
 
 While Grafana provides excellent visualization capabilities, integrating with a comprehensive observability platform like OneUptime enhances your monitoring workflow. OneUptime can:
 
-- Send status data to Grafana via its metrics endpoints
+- Centralize incidents, status pages, and telemetry alongside your Grafana dashboards
 - Trigger alerts based on state changes detected in Grafana
 - Provide a unified view of incidents, status pages, and metrics
 
-To export OneUptime monitor status to Prometheus format for Grafana visualization, configure the OneUptime Prometheus exporter.
+To visualize OneUptime-related monitor status in Grafana, scrape a Prometheus-compatible exporter that exposes those statuses. Use the actual exporter host and metrics path for your deployment, and use Prometheus' current `authorization` block if the endpoint requires a bearer token.
 
 ```yaml
-# OneUptime to Prometheus integration
+# Prometheus scrape configuration for a status exporter
 scrape_configs:
-  - job_name: 'oneuptime'
-    metrics_path: '/api/metrics'
+  - job_name: 'oneuptime-status-exporter'
+    metrics_path: '/metrics'
+    scheme: https
     static_configs:
-      - targets: ['oneuptime.example.com']
-    bearer_token: 'your-api-token'
+      - targets: ['oneuptime-exporter.example.com']
+    authorization:
+      type: Bearer
+      credentials: 'your-api-token'
 ```
 
 ---
