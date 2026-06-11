@@ -228,7 +228,8 @@ def calculate_confidence_interval(samples, confidence=0.95):
 def is_regression_significant(baseline_samples, current_samples, alpha=0.05):
     """
     Use Welch's t-test to determine if regression is statistically significant.
-    Returns True if current performance is significantly worse than baseline.
+    Returns a dict whose `is_significant` field is True when current
+    performance is significantly worse than baseline.
     """
     # Perform one-tailed t-test (we care if current is worse)
     t_stat, p_value = stats.ttest_ind(baseline_samples, current_samples,
@@ -325,8 +326,11 @@ jobs:
 
       - name: Run performance tests
         run: |
-          # Run k6 load test and output results
-          k6 run --out json=results.json tests/performance/load-test.js
+          # Run k6 load test and export the end-of-test summary.
+          # We use --summary-export because the script below expects the
+          # aggregated summary structure (e.g. metrics.http_req_duration["p(95)"]),
+          # not the line-delimited point stream produced by --out json.
+          k6 run --summary-export=results.json tests/performance/load-test.js
 
       - name: Analyze results
         id: analyze
@@ -367,6 +371,7 @@ jobs:
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 
@@ -455,8 +460,12 @@ def main():
     with open(args.output, 'w') as f:
         json.dump(analysis, f, indent=2)
 
-    # Output for GitHub Actions
-    print(f"::set-output name=regression_detected::{str(analysis['regression_detected']).lower()}")
+    # Output for GitHub Actions via the $GITHUB_OUTPUT environment file.
+    # (The legacy `::set-output` workflow command was deprecated in 2022.)
+    github_output = os.environ.get('GITHUB_OUTPUT')
+    if github_output:
+        with open(github_output, 'a') as f:
+            f.write(f"regression_detected={str(analysis['regression_detected']).lower()}\n")
 
     # Print summary
     print("\nPerformance Analysis Summary")
