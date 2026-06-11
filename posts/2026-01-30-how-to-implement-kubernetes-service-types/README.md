@@ -55,7 +55,7 @@ Access this service at `http://<any-node-ip>:30080`. NodePort is useful for deve
 
 ## LoadBalancer: Production Cloud Deployments
 
-LoadBalancer provisions an external load balancer from your cloud provider (AWS, GCP, Azure) and assigns a public IP address. This is the standard way to expose services in production cloud environments.
+LoadBalancer provisions an external load balancer from your cloud provider (AWS, GCP, Azure) and assigns an external IP address, which may be public or internal depending on provider configuration. This is a standard way to expose services in supported production cloud environments.
 
 ```yaml
 apiVersion: v1
@@ -96,7 +96,7 @@ Pods can now access `external-database` and Kubernetes DNS will return a CNAME r
 
 ## Headless Services: Direct Pod Access
 
-A headless Service is created by setting `clusterIP: None`. Instead of load balancing, DNS returns the IP addresses of all pods directly. This is essential for stateful applications like databases that need peer discovery.
+A headless Service is created by setting `clusterIP: None`. Instead of load balancing through a virtual Service IP, DNS returns the IP addresses of the Service's endpoints directly. This is essential for stateful applications like databases that need peer discovery.
 
 ```yaml
 apiVersion: v1
@@ -112,7 +112,7 @@ spec:
       targetPort: 9042
 ```
 
-DNS queries for `cassandra-headless` return A records for each pod. Combined with a StatefulSet, each pod gets a predictable DNS name like `cassandra-0.cassandra-headless.default.svc.cluster.local`.
+DNS queries for `cassandra-headless` return A records for the selected endpoints. Combined with a StatefulSet whose `serviceName` is `cassandra-headless`, each pod gets a predictable DNS name like `cassandra-0.cassandra-headless.default.svc.cluster.local`.
 
 ## Choosing the Right Service Type
 
@@ -120,7 +120,7 @@ Select your Service type based on these guidelines:
 
 - **ClusterIP**: Default choice for internal services. Use for databases, message queues, and internal APIs.
 - **NodePort**: Quick external access for development. Avoid in production due to limited port range and security concerns.
-- **LoadBalancer**: Production external services on cloud providers. Integrates with cloud-native features like health checks and SSL termination.
+- **LoadBalancer**: Production external services on cloud providers. Integrates with cloud-native features like health checks and, depending on provider configuration, SSL termination.
 - **ExternalName**: Abstracting external dependencies. Useful during migrations or for third-party service integration.
 - **Headless**: StatefulSets requiring direct pod addressing. Essential for distributed databases and clustered applications.
 
