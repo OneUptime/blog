@@ -111,10 +111,6 @@ super_read_only = ON
 # Enable GTIDs to match source configuration
 gtid_mode = ON
 enforce_gtid_consistency = ON
-
-# Store replication metadata in tables for crash safety
-master_info_repository = TABLE
-relay_log_info_repository = TABLE
 ```
 
 ### Taking an Initial Data Snapshot
@@ -149,8 +145,11 @@ xtrabackup --backup \
 # Prepare the backup
 xtrabackup --prepare --target-dir=/backup/mysql/
 
-# Copy to replica and restore
+# Copy to replica, stop MySQL, restore into an empty data directory, and fix ownership
+sudo systemctl stop mysql
 xtrabackup --copy-back --target-dir=/backup/mysql/
+sudo chown -R mysql:mysql /var/lib/mysql
+sudo systemctl start mysql
 ```
 
 ### Starting Replication with Binary Log Position
@@ -162,7 +161,7 @@ If using traditional binary log position replication, first identify the positio
 -- Then configure the replication connection
 
 -- Check the backup file for the binary log position
--- Look for: CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000003', MASTER_LOG_POS=154;
+-- Look for: CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='mysql-bin.000003', SOURCE_LOG_POS=154;
 
 CHANGE REPLICATION SOURCE TO
     SOURCE_HOST = '192.168.1.10',
@@ -253,11 +252,11 @@ INSERT INTO mysql_servers (hostgroup_id, hostname, port, weight)
 VALUES (1, '192.168.1.12', 3306, 1);
 
 -- Configure query routing rules
-INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup)
-VALUES (1, 1, '^SELECT.*FOR UPDATE', 0);
+INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
+VALUES (1, 1, '^SELECT.*FOR UPDATE', 0, 1);
 
-INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup)
-VALUES (2, 1, '^SELECT', 1);
+INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
+VALUES (2, 1, '^SELECT', 1, 1);
 
 -- Apply the configuration
 LOAD MYSQL SERVERS TO RUNTIME;
@@ -393,19 +392,23 @@ SHOW REPLICA STATUS FOR CHANNEL 'inventory_channel'\G
 When replicating from multiple sources, ensure database and table names do not conflict.
 
 ```sql
--- Use replication filters to map databases to different names if needed
--- Configure in my.cnf or via CHANGE REPLICATION SOURCE
+-- Use replication filters to include only the intended databases
+-- Configure in my.cnf or via CHANGE REPLICATION FILTER
 
 -- Example: replicate sales_db from source A
 -- Configure on replica
+STOP REPLICA SQL_THREAD FOR CHANNEL 'sales_channel';
 CHANGE REPLICATION FILTER
     REPLICATE_DO_DB = (sales_db)
     FOR CHANNEL 'sales_channel';
+START REPLICA SQL_THREAD FOR CHANNEL 'sales_channel';
 
 -- Example: replicate inventory_db from source B
+STOP REPLICA SQL_THREAD FOR CHANNEL 'inventory_channel';
 CHANGE REPLICATION FILTER
     REPLICATE_DO_DB = (inventory_db)
     FOR CHANNEL 'inventory_channel';
+START REPLICA SQL_THREAD FOR CHANNEL 'inventory_channel';
 ```
 
 ## Circular Replication
@@ -524,33 +527,39 @@ Replication filters allow you to selectively replicate databases, tables, or eve
 
 ```sql
 -- Replicate only specific databases
+STOP REPLICA SQL_THREAD;
 CHANGE REPLICATION FILTER
     REPLICATE_DO_DB = (production_db, analytics_db);
+START REPLICA SQL_THREAD;
 
 -- Ignore specific databases
+STOP REPLICA SQL_THREAD;
 CHANGE REPLICATION FILTER
     REPLICATE_IGNORE_DB = (test_db, development_db);
-
--- Apply filters and restart replication
-STOP REPLICA;
-START REPLICA;
+START REPLICA SQL_THREAD;
 ```
 
 ### Table-Level Filters
 
 ```sql
 -- Replicate only specific tables
+STOP REPLICA SQL_THREAD;
 CHANGE REPLICATION FILTER
     REPLICATE_DO_TABLE = (production_db.orders, production_db.customers);
+START REPLICA SQL_THREAD;
 
 -- Ignore specific tables (useful for large log tables)
+STOP REPLICA SQL_THREAD;
 CHANGE REPLICATION FILTER
     REPLICATE_IGNORE_TABLE = (production_db.audit_log, production_db.session_data);
+START REPLICA SQL_THREAD;
 
 -- Use wildcards for pattern matching
+STOP REPLICA SQL_THREAD;
 CHANGE REPLICATION FILTER
     REPLICATE_WILD_DO_TABLE = ('production_db.%'),
     REPLICATE_WILD_IGNORE_TABLE = ('production_db.temp_%');
+START REPLICA SQL_THREAD;
 ```
 
 ### Filter Configuration via my.cnf
@@ -686,7 +695,7 @@ SELECT * FROM performance_schema.replication_applier_status\G
 -- View individual worker thread status (for parallel replication)
 SELECT * FROM performance_schema.replication_applier_status_by_worker;
 
--- Comprehensive replication lag query
+-- Comprehensive replication applier status query
 SELECT
     CHANNEL_NAME,
     SERVICE_STATE,
@@ -708,10 +717,10 @@ Enable parallel replication to apply transactions concurrently on replicas.
 # Number of parallel worker threads
 replica_parallel_workers = 8
 
-# Use logical clock for better parallelization
+# Use logical clock for better parallelization (the default in MySQL 8.4)
 replica_parallel_type = LOGICAL_CLOCK
 
-# Preserve commit order (recommended for consistency)
+# Preserve commit order (the default in MySQL 8.4)
 replica_preserve_commit_order = ON
 ```
 
@@ -729,14 +738,19 @@ binlog_transaction_compression_level_zstd = 3
 ### Network Optimization
 
 ```ini
-# Increase network buffer sizes for high-throughput replication
+# Increase packet size for high-throughput replication
 [mysqld]
-# On source
 max_allowed_packet = 1073741824
-
-# On replica
 replica_net_timeout = 60
-replica_compressed_protocol = ON
+```
+
+```sql
+-- Configure replica connection compression
+STOP REPLICA IO_THREAD;
+CHANGE REPLICATION SOURCE TO
+    SOURCE_COMPRESSION_ALGORITHMS = 'zstd,zlib,uncompressed',
+    SOURCE_ZSTD_COMPRESSION_LEVEL = 3;
+START REPLICA IO_THREAD;
 ```
 
 ## Handling Replication Failures
@@ -748,7 +762,8 @@ replica_compressed_protocol = ON
 -- First, identify the problematic GTID
 SHOW REPLICA STATUS\G
 
--- Set the GTID as already executed
+-- Stop the applier, then set the GTID as already executed
+STOP REPLICA SQL_THREAD;
 SET GTID_NEXT = 'source-uuid:transaction-id';
 BEGIN; COMMIT;
 SET GTID_NEXT = 'AUTOMATIC';
