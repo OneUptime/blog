@@ -266,8 +266,10 @@ def collect_slowlog(host, port, password=None, count=100):
     normalized = []
 
     for entry in entries:
-        # Extract command name (first element of args)
-        command = entry['command'].upper() if entry.get('command') else 'UNKNOWN'
+        # redis-py joins the command and its args into a single string,
+        # so split on whitespace to isolate the command name for grouping.
+        full_command = entry.get('command', '')
+        command = full_command.split(' ', 1)[0].upper() if full_command else 'UNKNOWN'
 
         normalized.append({
             'id': entry['id'],
@@ -275,7 +277,7 @@ def collect_slowlog(host, port, password=None, count=100):
             'duration_us': entry['duration'],
             'duration_ms': entry['duration'] / 1000,
             'command': command,
-            'full_command': entry.get('command', ''),
+            'full_command': full_command,
             'client_address': entry.get('client_address', ''),
             'client_name': entry.get('client_name', ''),
             'redis_host': host,
