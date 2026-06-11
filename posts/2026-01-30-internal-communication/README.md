@@ -61,13 +61,14 @@ Here is a practical example of automatically creating a war room when an inciden
 const { WebClient } = require('@slack/web-api');
 
 class WarRoomManager {
-  constructor(slackToken) {
+  constructor(slackToken, onCallResponderProvider) {
     this.slack = new WebClient(slackToken);
+    this.onCallResponderProvider = onCallResponderProvider;
     this.activeWarRooms = new Map();
   }
 
   async createWarRoom(incident) {
-    const channelName = `inc-${incident.id}-${this.sanitizeName(incident.title)}`;
+    const channelName = this.buildChannelName(incident);
 
     try {
       // Create dedicated incident channel
@@ -150,7 +151,7 @@ class WarRoomManager {
   }
 
   async inviteOnCallResponders(channelId, severity) {
-    const responders = await this.getOnCallResponders(severity);
+    const responders = await this.onCallResponderProvider.getResponders(severity);
 
     if (responders.length > 0) {
       await this.slack.conversations.invite({
@@ -160,10 +161,18 @@ class WarRoomManager {
     }
   }
 
+  buildChannelName(incident) {
+    const incidentId = this.sanitizeName(String(incident.id));
+    const title = this.sanitizeName(incident.title);
+    return `inc-${incidentId}-${title}`.substring(0, 80);
+  }
+
   sanitizeName(name) {
     return name.toLowerCase()
-      .replace(/[^a-z0-9-]/g, '-')
-      .substring(0, 20);
+      .replace(/[^a-z0-9_-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .substring(0, 40);
   }
 }
 
@@ -554,13 +563,14 @@ graph TB
 const { App } = require('@slack/bolt');
 
 class IncidentBot {
-  constructor(config) {
+  constructor(config, incidentService) {
     this.app = new App({
       token: config.slackToken,
       signingSecret: config.signingSecret,
       socketMode: true,
       appToken: config.appToken
     });
+    this.incidentService = incidentService;
 
     this.setupCommands();
     this.setupActions();
@@ -621,7 +631,7 @@ class IncidentBot {
     this.app.command('/timeline', async ({ command, ack, respond }) => {
       await ack();
 
-      const timeline = await this.getIncidentTimeline(command.channel_id);
+      const timeline = await this.incidentService.getIncidentTimeline(command.channel_id);
       await respond({
         blocks: this.formatTimeline(timeline)
       });
@@ -641,7 +651,7 @@ class IncidentBot {
         timestamp: new Date()
       };
 
-      await this.postStatusUpdate(body.user.id, update, client);
+      await this.incidentService.postStatusUpdate(body.user.id, update, client);
     });
 
     // Handle role claim
@@ -653,7 +663,7 @@ class IncidentBot {
         text: `<@${body.user.id}> has claimed the Incident Commander role.`
       });
 
-      await this.assignRole(body.channel.id, 'IC', body.user.id);
+      await this.incidentService.assignRole(body.channel.id, 'IC', body.user.id);
     });
   }
 
@@ -664,7 +674,7 @@ class IncidentBot {
 
       await client.views.open({
         trigger_id: shortcut.trigger_id,
-        view: this.buildEscalationModal()
+        view: this.incidentService.buildEscalationModal()
       });
     });
   }
@@ -947,9 +957,10 @@ sequenceDiagram
 ```javascript
 // handoff-manager.js
 class HandoffManager {
-  constructor(slackClient, incidentTracker) {
+  constructor(slackClient, incidentTracker, handoffAdvisor) {
     this.slack = slackClient;
     this.tracker = incidentTracker;
+    this.handoffAdvisor = handoffAdvisor;
     this.pendingHandoffs = new Map();
   }
 
@@ -1059,8 +1070,8 @@ class HandoffManager {
     return {
       statusSummary: this.formatStatusSummary(incident),
       recentActions: this.formatRecentActions(recentEvents),
-      openQuestions: await this.getOpenQuestions(incident.id),
-      nextSteps: await this.getRecommendedNextSteps(incident)
+      openQuestions: await this.handoffAdvisor.getOpenQuestions(incident.id),
+      nextSteps: await this.handoffAdvisor.getRecommendedNextSteps(incident)
     };
   }
 
