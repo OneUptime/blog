@@ -143,7 +143,7 @@ sequenceDiagram
     Git->>Jenkins: POST /github-webhook/
     Jenkins->>Pipeline: Trigger Build
     Pipeline-->>Jenkins: Build Result
-    Jenkins-->>Git: Update Commit Status
+    Jenkins-->>Git: Optional Status Update
 ```
 
 ### GitHub Webhook Setup
@@ -173,7 +173,7 @@ pipeline {
 3. In GitHub repository settings, add a webhook:
    - Payload URL: `https://jenkins.example.com/github-webhook/`
    - Content type: `application/json`
-   - Events: Push events, Pull request events
+   - Events: Push events
 
 ### GitLab Webhook Setup
 
@@ -441,7 +441,7 @@ pipeline {
     stages {
         stage('Integration Tests') {
             steps {
-                echo 'All builds complete, running integration tests'
+                echo 'An upstream build completed, running integration tests'
                 sh './run-integration-tests.sh'
             }
         }
@@ -522,10 +522,6 @@ Trigger builds programmatically via Jenkins REST API.
 pipeline {
     agent any
 
-    triggers {
-        // No automatic trigger - API only
-    }
-
     parameters {
         string(name: 'ENVIRONMENT', defaultValue: 'staging')
         string(name: 'VERSION', defaultValue: 'latest')
@@ -564,16 +560,18 @@ curl -X POST \
 
 ### Token-Based Authentication
 
-Create a dedicated build trigger token in your job configuration:
+Create a dedicated build trigger token in your job configuration. On secured Jenkins instances, include API authentication as well:
 
 ```bash
 # Using build token
 curl -X POST \
-  "https://jenkins.example.com/job/my-pipeline/build?token=BUILD_TOKEN"
+  "https://jenkins.example.com/job/my-pipeline/build?token=BUILD_TOKEN" \
+  -u "username:api-token"
 
 # With parameters
 curl -X POST \
-  "https://jenkins.example.com/job/my-pipeline/buildWithParameters?token=BUILD_TOKEN&ENVIRONMENT=staging"
+  "https://jenkins.example.com/job/my-pipeline/buildWithParameters?token=BUILD_TOKEN&ENVIRONMENT=staging" \
+  -u "username:api-token"
 ```
 
 ### API Trigger from Scripts
@@ -676,45 +674,55 @@ pipeline {
 ### Advanced Parameter Types
 
 ```groovy
-pipeline {
-    agent any
-
-    parameters {
+properties([
+    parameters([
         // Multi-line text
         text(
             name: 'RELEASE_NOTES',
             defaultValue: '',
             description: 'Release notes for this deployment'
-        )
+        ),
 
-        // File parameter
-        file(
+        // File parameter (requires File Parameter plugin)
+        base64File(
             name: 'CONFIG_FILE',
             description: 'Upload configuration file'
-        )
+        ),
 
         // Git parameter (requires Git Parameter plugin)
         gitParameter(
             name: 'TAG',
             type: 'PT_TAG',
-            defaultValue: 'origin/main',
+            defaultValue: '',
             description: 'Select a tag to deploy'
-        )
+        ),
 
         // Active choices (requires Active Choices plugin)
-        activeChoice(
-            name: 'REGION',
+        [
+            $class: 'ChoiceParameter',
             choiceType: 'PT_SINGLE_SELECT',
+            name: 'REGION',
             script: [
                 $class: 'GroovyScript',
+                fallbackScript: [
+                    classpath: [],
+                    sandbox: true,
+                    script: "return ['us-east-1']"
+                ],
                 script: [
+                    classpath: [],
+                    sandbox: true,
                     script: '''
                         return ['us-east-1', 'us-west-2', 'eu-west-1']
                     '''
                 ]
             ]
-        )
-    }
+        ]
+    ])
+])
+
+pipeline {
+    agent any
 
     stages {
         stage('Deploy') {
@@ -878,7 +886,7 @@ pipeline {
     agent any
 
     options {
-        // Require authentication for all builds
+        // Keep build history bounded
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
