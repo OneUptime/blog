@@ -12,11 +12,11 @@ Redis Functions, introduced in Redis 7.0, represent a significant evolution from
 
 ## Redis Functions vs Lua Scripts
 
-Traditional Lua scripts in Redis using `EVAL` have served developers well, but they come with limitations. Scripts must be loaded on every connection, lack persistence across restarts, and can be difficult to manage at scale.
+Traditional Lua scripts in Redis using `EVAL` have served developers well, but they come with limitations. Scripts sent with `EVAL` must be sent every time they run, cached scripts can be lost after events such as `SCRIPT FLUSH`, restarts, or failover, and script SHA1 hashes can be difficult to manage at scale.
 
 Redis Functions address these issues by introducing:
 
-- **Persistence**: Functions survive server restarts
+- **Persistence**: Functions survive server restarts when Redis persistence is enabled
 - **Named references**: Call functions by name instead of SHA1 hashes
 - **Library organization**: Group related functions together
 - **Better error handling**: Improved debugging capabilities
@@ -104,8 +104,7 @@ end
 
 redis.register_function{
     function_name = 'check_rate_limit',
-    callback = check_rate_limit,
-    flags = { 'no-writes' }
+    callback = check_rate_limit
 }
 ```
 
@@ -125,8 +124,10 @@ redis.register_function{
 
 Available flags include:
 - `no-writes`: Function only reads data
-- `allow-stale`: Can run on replicas even with stale data
+- `allow-stale`: Can run against a stale replica for functions that do not access stale data
 - `no-cluster`: Not compatible with Redis Cluster
+- `allow-oom`: Can run when the server is out of memory
+- `allow-cross-slot-keys`: Allows a function to access keys from multiple slots
 
 ## Debugging Functions
 
@@ -150,13 +151,13 @@ redis-cli FUNCTION LIST LIBRARYNAME mylib
 
 ## Persistence and Replication
 
-Redis Functions persist automatically when using RDB or AOF persistence. They also replicate to replica nodes, ensuring consistency across your cluster.
+Redis Functions persist automatically when using RDB or AOF persistence. They also replicate to replica nodes. In Redis Cluster, load libraries on all primary nodes because Redis Cluster does not automatically propagate loaded functions to every node.
 
 To dump and restore functions:
 
 ```bash
 redis-cli FUNCTION DUMP > functions.dump
-redis-cli FUNCTION RESTORE < functions.dump
+redis-cli -x FUNCTION RESTORE < functions.dump
 ```
 
 ## Best Practices
