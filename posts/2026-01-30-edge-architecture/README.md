@@ -195,14 +195,17 @@ The following script installs K3s with sensible defaults for edge deployment. It
 K3S_URL="https://k3s-server.example.com:6443"
 K3S_TOKEN="your-node-token"
 NODE_NAME="edge-store-001"
-NODE_LABELS="location=store-001,region=us-west"
+NODE_LABELS=("node-role=edge" "location=store-001" "region=us-west")
 
 curl -sfL https://get.k3s.io | sh -s - agent \
   --server "$K3S_URL" \
   --token "$K3S_TOKEN" \
   --node-name "$NODE_NAME" \
-  --node-label "$NODE_LABELS" \
-  --kubelet-arg="--max-pods=50"
+  --node-label "${NODE_LABELS[0]}" \
+  --node-label "${NODE_LABELS[1]}" \
+  --node-label "${NODE_LABELS[2]}" \
+  --node-taint "node-role=edge:NoSchedule" \
+  --kubelet-arg="max-pods=50"
 ```
 
 ### Edge Node Configuration
@@ -229,7 +232,7 @@ spec:
       nodeSelector:
         node-role: edge
 
-      # Tolerate edge node conditions
+      # Tolerate the edge node taint
       tolerations:
         - key: "node-role"
           operator: "Equal"
@@ -316,13 +319,14 @@ sequenceDiagram
 
 ### Sync Service Implementation
 
-This Node.js example shows a robust sync service with retry logic and batching. It uses exponential backoff for retries and persists unsynced data locally.
+This Node.js example shows a robust sync service with retry logic and batching. It uses a fixed retry delay and persists unsynced data locally.
 
 ```javascript
 // sync-service.js
 // Handles reliable data sync from edge to cloud
 
 const Queue = require('better-queue');
+const SQLStore = require('better-queue-sql');
 const axios = require('axios');
 const fs = require('fs').promises;
 
@@ -333,17 +337,18 @@ class EdgeSyncService {
     this.maxRetries = config.maxRetries || 5;
     this.persistPath = config.persistPath || '/var/lib/edge-sync';
 
-    // Initialize the processing queue with persistence
+    // Initialize the processing queue with SQLite-backed persistence
+    const store = new SQLStore({
+      dialect: 'sqlite',
+      path: `${this.persistPath}/queue.db`
+    });
+
     this.queue = new Queue(this.processBatch.bind(this), {
       batchSize: this.batchSize,
       batchDelay: 1000,
       maxRetries: this.maxRetries,
       retryDelay: 5000,
-      // Store queue state on disk for crash recovery
-      store: {
-        type: 'file',
-        path: `${this.persistPath}/queue.db`
-      }
+      store
     });
   }
 
@@ -425,9 +430,11 @@ This configuration sync service periodically polls for updates and applies them 
 
 const axios = require('axios');
 const fs = require('fs').promises;
+const EventEmitter = require('events');
 
-class ConfigSyncService {
+class ConfigSyncService extends EventEmitter {
   constructor(config) {
+    super();
     this.cloudEndpoint = config.cloudEndpoint;
     this.configPath = config.configPath || '/etc/edge/config.json';
     this.syncInterval = config.syncInterval || 60000;
@@ -468,7 +475,8 @@ class ConfigSyncService {
             nodeId: process.env.NODE_NAME,
             currentVersion: this.currentVersion
           },
-          timeout: 10000
+          timeout: 10000,
+          validateStatus: status => status === 304 || (status >= 200 && status < 300)
         }
       );
 
@@ -523,7 +531,7 @@ Move decision logic to the edge. This example shows an alerting service that eva
 
 from dataclasses import dataclass
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 
 @dataclass
@@ -562,7 +570,7 @@ class EdgeAlertEngine:
     def record_metric(self, metric: str, value: float, timestamp: datetime = None):
         """Record a metric value for evaluation."""
         if timestamp is None:
-            timestamp = datetime.utcnow()
+            timestamp = datetime.now(timezone.utc)
 
         if metric not in self.metric_history:
             self.metric_history[metric] = []
@@ -570,7 +578,7 @@ class EdgeAlertEngine:
         self.metric_history[metric].append((timestamp, value))
 
         # Keep only last hour of data
-        cutoff = datetime.utcnow() - timedelta(hours=1)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
         self.metric_history[metric] = [
             (ts, val) for ts, val in self.metric_history[metric]
             if ts > cutoff
@@ -579,7 +587,7 @@ class EdgeAlertEngine:
     def evaluate(self) -> List[Dict[str, Any]]:
         """Evaluate all rules against current metrics."""
         alerts = []
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for rule in self.rules:
             if rule.metric not in self.metric_history:
@@ -651,7 +659,7 @@ Use SQLite for structured data at the edge. It is reliable, requires no separate
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 import json
 
@@ -734,7 +742,7 @@ class EdgeLocalStore:
                 device_id,
                 event_type,
                 json.dumps(payload),
-                datetime.utcnow().isoformat()
+                datetime.now(timezone.utc).isoformat()
             ))
             return cursor.lastrowid
 
@@ -762,13 +770,16 @@ class EdgeLocalStore:
 
     def mark_synced(self, event_ids: List[int]):
         """Mark telemetry events as successfully synced."""
+        if not event_ids:
+            return
+
         with self._get_connection() as conn:
             placeholders = ','.join('?' * len(event_ids))
             conn.execute(f'''
                 UPDATE telemetry_buffer
                 SET synced_at = ?
                 WHERE id IN ({placeholders})
-            ''', [datetime.utcnow().isoformat()] + event_ids)
+            ''', [datetime.now(timezone.utc).isoformat()] + event_ids)
 
     def cleanup_synced(self, older_than_hours: int = 24):
         """Remove old synced telemetry to free space."""
@@ -834,9 +845,13 @@ exporters:
       enabled: true
       initial_interval: 5s
       max_interval: 300s
-      max_elapsed_time: 3600s
+      max_elapsed_time: 0s
+    sending_queue:
+      enabled: true
+      queue_size: 10000
+      storage: file_storage
 
-  # Fallback: write to local file when cloud unreachable
+  # Local audit copy for offline inspection
   file:
     path: /var/log/otel/metrics.json
     rotation:
@@ -921,7 +936,7 @@ spec:
         - protocol: UDP
           port: 53
 
-    # Allow sync to cloud endpoint only
+    # Allow HTTPS egress for cloud sync
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -993,36 +1008,23 @@ Use Flux or Argo CD with location-specific overlays.
 # fleet.yaml
 # Rancher Fleet configuration for edge deployments
 
-kind: Fleet
-metadata:
-  name: edge-applications
-spec:
-  # Target all edge clusters
-  clusterSelector:
-    matchLabels:
-      node-role: edge
+namespace: edge-applications
 
-  # Source from git
-  repo: https://github.com/org/edge-configs
-  branch: main
-  paths:
-    - /base
+# Location-specific customization
+targetCustomizations:
+  - name: us-west-stores
+    clusterSelector:
+      matchLabels:
+        region: us-west
+    kustomize:
+      dir: overlays/us-west
 
-  # Location-specific customization
-  targetCustomizations:
-    - name: us-west-stores
-      clusterSelector:
-        matchLabels:
-          region: us-west
-      kustomize:
-        dir: overlays/us-west
-
-    - name: us-east-stores
-      clusterSelector:
-        matchLabels:
-          region: us-east
-      kustomize:
-        dir: overlays/us-east
+  - name: us-east-stores
+    clusterSelector:
+      matchLabels:
+        region: us-east
+    kustomize:
+      dir: overlays/us-east
 ```
 
 ## Real-World Example: Retail Edge
