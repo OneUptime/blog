@@ -205,11 +205,11 @@ CREATE TABLE transactions_2026 PARTITION OF transactions
 -- Sub-partitions within the 2026 range
 CREATE TABLE transactions_2026_p0
     PARTITION OF transactions_2026
-    FOR VALUES WITH (MODULUS 4, REMAINDER 0);
+    FOR VALUES WITH (MODULUS 2, REMAINDER 0);
 
 CREATE TABLE transactions_2026_p1
     PARTITION OF transactions_2026
-    FOR VALUES WITH (MODULUS 4, REMAINDER 1);
+    FOR VALUES WITH (MODULUS 2, REMAINDER 1);
 ```
 
 ## Partition Management Operations
