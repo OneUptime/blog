@@ -67,8 +67,8 @@ sequenceDiagram
 
 **Advantages:**
 - Strong consistency guarantees
-- Zero data loss on primary failure
-- Replicas always have current data
+- Acknowledged writes are protected from primary-only failure when replicas persist before acknowledging
+- Healthy replicas that acknowledge the write have current data
 
 **Disadvantages:**
 - Higher write latency
@@ -142,7 +142,7 @@ class SynchronousReplicationManager:
         operation = WriteOperation(
             key=key,
             value=value,
-            timestamp=asyncio.get_event_loop().time(),
+            timestamp=asyncio.get_running_loop().time(),
             sequence_number=self.sequence_number
         )
 
@@ -241,7 +241,7 @@ Here is a Python implementation for asynchronous replication:
 import asyncio
 from collections import deque
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from datetime import datetime
 import logging
 
@@ -265,6 +265,8 @@ class AsyncReplicaNode:
         self.latency_ms = latency_ms
         self.data: Dict[str, Any] = {}
         self.last_applied_sequence: int = 0
+        self.applied_sequences: set[int] = set()
+        self.key_sequences: Dict[str, int] = {}
         self.is_healthy = True
         self.replication_lag_ms: float = 0
 
@@ -276,17 +278,31 @@ class AsyncReplicaNode:
         # Simulate network latency
         await asyncio.sleep(self.latency_ms / 1000)
 
-        # Check for out-of-order delivery
-        if event.sequence_number <= self.last_applied_sequence:
+        # Check for duplicate delivery
+        if event.sequence_number in self.applied_sequences:
             logger.warning(
-                f"Replica {self.node_id}: Skipping duplicate/old event "
+                f"Replica {self.node_id}: Skipping duplicate event "
                 f"seq={event.sequence_number}"
             )
             return True
 
+        # Avoid stale retries overwriting newer values for the same key
+        if event.sequence_number < self.key_sequences.get(event.key, 0):
+            logger.warning(
+                f"Replica {self.node_id}: Skipping stale event "
+                f"seq={event.sequence_number} for {event.key}"
+            )
+            self.applied_sequences.add(event.sequence_number)
+            return True
+
         # Apply the write
         self.data[event.key] = event.value
-        self.last_applied_sequence = event.sequence_number
+        self.last_applied_sequence = max(
+            self.last_applied_sequence,
+            event.sequence_number
+        )
+        self.key_sequences[event.key] = event.sequence_number
+        self.applied_sequences.add(event.sequence_number)
 
         # Calculate replication lag
         self.replication_lag_ms = (
@@ -382,8 +398,9 @@ class AsynchronousReplicationManager:
                         f"Failed to replicate to {replica.node_id}: {e}"
                     )
                     if event.retries < event.max_retries:
-                        event.retries += 1
-                        self.failed_events[replica.node_id].append(event)
+                        self.failed_events[replica.node_id].append(
+                            replace(event, retries=event.retries + 1)
+                        )
 
     async def _retry_failed_events(self):
         """Retry failed replication events."""
@@ -398,8 +415,9 @@ class AsynchronousReplicationManager:
                         await replica.apply_write(event)
                     except Exception:
                         if event.retries < event.max_retries:
-                            event.retries += 1
-                            self.failed_events[replica.node_id].append(event)
+                            self.failed_events[replica.node_id].append(
+                                replace(event, retries=event.retries + 1)
+                            )
 
     def get_replication_status(self) -> Dict[str, Any]:
         """Get current replication status for monitoring."""
@@ -474,7 +492,7 @@ class SemiSynchronousReplicationManager:
         operation = WriteOperation(
             key=key,
             value=value,
-            timestamp=asyncio.get_event_loop().time(),
+            timestamp=asyncio.get_running_loop().time(),
             sequence_number=self.sequence_number
         )
 
@@ -683,7 +701,7 @@ class ChainReplicationManager:
         self.sequence_number += 1
 
         # Create a future to wait for tail acknowledgment
-        ack_future = asyncio.get_event_loop().create_future()
+        ack_future = asyncio.get_running_loop().create_future()
 
         request = WriteRequest(
             sequence=self.sequence_number,
@@ -1422,7 +1440,7 @@ graph LR
         A[Availability]
         P[Partition Tolerance]
 
-        C --- CA[CA Systems<br/>Traditional RDBMS]
+        C --- CA[CA Systems<br/>Single-node or non-partitioned RDBMS]
         C --- CP[CP Systems<br/>HBase, MongoDB]
         A --- CA
         A --- AP[AP Systems<br/>Cassandra, DynamoDB]
@@ -1625,14 +1643,15 @@ class ConsistencyCalculator:
         """
         Analyze the consistency guarantees based on R + W vs N.
 
-        If R + W > N, strong consistency is guaranteed.
-        If R + W <= N, eventual consistency.
+        If R + W > N, read and write quorums overlap, so acknowledged writes
+        can be visible to quorum reads when replicas return the newest version.
+        If R + W <= N, quorum overlap is not guaranteed.
         """
         n = replication_factor
         r = read_consistency
         w = write_consistency
 
-        strong_consistency = (r + w) > n
+        quorum_intersection = (r + w) > n
 
         # Calculate fault tolerance
         read_fault_tolerance = n - r
@@ -1642,14 +1661,14 @@ class ConsistencyCalculator:
             "replication_factor": n,
             "read_quorum": r,
             "write_quorum": w,
-            "strong_consistency": strong_consistency,
-            "consistency_type": "strong" if strong_consistency else "eventual",
+            "strong_consistency": quorum_intersection,
+            "consistency_type": "quorum-overlap" if quorum_intersection else "eventual",
             "read_fault_tolerance": read_fault_tolerance,
             "write_fault_tolerance": write_fault_tolerance,
             "explanation": (
                 f"With R={r} and W={w} against N={n} replicas: "
-                f"R+W={'>' if strong_consistency else '<='}{n}. "
-                f"This provides {'strong' if strong_consistency else 'eventual'} consistency. "
+                f"R+W={r + w} {'>' if quorum_intersection else '<='} {n}. "
+                f"This provides {'a quorum-overlap guarantee for acknowledged writes' if quorum_intersection else 'eventual consistency'}. "
                 f"Can tolerate {read_fault_tolerance} replica failures for reads and "
                 f"{write_fault_tolerance} for writes."
             )
