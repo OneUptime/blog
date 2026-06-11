@@ -102,7 +102,7 @@ The Controller Quorum uses the Raft consensus protocol to:
 
 Before building a Controller Quorum, ensure you have:
 
-- Kafka 3.3+ (KRaft is production-ready from 3.3)
+- Kafka 3.3+ (KRaft is production-ready from 3.3; these examples use the static quorum configuration used by Kafka 3.x)
 - Java 11 or later
 - At least 3 nodes for high availability
 - Dedicated storage for metadata logs
@@ -253,7 +253,7 @@ kafka-storage.sh format -t $KAFKA_CLUSTER_ID -c /etc/kafka/controller-3.properti
 The output should show:
 
 ```text
-Formatting /var/lib/kafka/metadata with metadata.version 3.7-IV4.
+Formatting /var/lib/kafka/metadata with metadata.version ...
 ```
 
 ## Step 4: Start the Controller Quorum
@@ -335,6 +335,12 @@ log.segment.bytes=1073741824
 log.retention.check.interval.ms=300000
 ```
 
+Format each broker before starting it:
+
+```bash
+kafka-storage.sh format -t $KAFKA_CLUSTER_ID -c /etc/kafka/broker.properties
+```
+
 ## Step 6: Combined Mode (Development Only)
 
 For development or small deployments, you can run controllers and brokers on the same nodes:
@@ -394,17 +400,17 @@ flowchart TB
 
 ```bash
 # Describe the metadata quorum
-kafka-metadata.sh --snapshot /var/lib/kafka/metadata/__cluster_metadata-0/00000000000000000000.log --command "describe"
+kafka-metadata-quorum.sh --bootstrap-controller controller-1:9093 describe --status
 
-# Check active controller
-kafka-metadata.sh --snapshot /var/lib/kafka/metadata/__cluster_metadata-0/00000000000000000000.log --command "node"
+# Check replication status
+kafka-metadata-quorum.sh --bootstrap-controller controller-1:9093 describe --replication
 ```
 
-### Using kafka-metadata.sh
+### Using kafka-metadata-quorum.sh
 
 ```bash
 # Connect to the controller quorum
-kafka-metadata.sh --connect controller-1:9093 --command "quorum-info"
+kafka-metadata-quorum.sh --bootstrap-controller controller-1:9093 describe --status
 
 # Example output:
 # ClusterId:              MkU3OEVBNTcwNTJENDM2Qk
@@ -420,11 +426,8 @@ kafka-metadata.sh --connect controller-1:9093 --command "quorum-info"
 ### Check Broker Registration
 
 ```bash
-# List registered brokers
+# List brokers reachable through the cluster
 kafka-broker-api-versions.sh --bootstrap-server broker-1:9092
-
-# Describe cluster
-kafka-cluster.sh describe --bootstrap-server broker-1:9092
 ```
 
 ## Security Configuration
@@ -470,16 +473,19 @@ for i in 1 2 3; do
     # Generate keystore
     keytool -keystore $HOSTNAME.keystore.jks -alias $HOSTNAME \
         -validity $VALIDITY -genkey -keyalg RSA -storepass $KEYSTORE_PASSWORD \
-        -keypass $KEY_PASSWORD -dname "CN=$HOSTNAME"
+        -keypass $KEY_PASSWORD -dname "CN=$HOSTNAME" \
+        -ext SAN=dns:$HOSTNAME
 
     # Create certificate signing request
     keytool -keystore $HOSTNAME.keystore.jks -alias $HOSTNAME \
-        -certreq -file $HOSTNAME.csr -storepass $KEYSTORE_PASSWORD
+        -certreq -file $HOSTNAME.csr -storepass $KEYSTORE_PASSWORD \
+        -ext SAN=dns:$HOSTNAME
 
     # Sign with CA
     openssl x509 -req -CA ca-cert.pem -CAkey ca-key.pem \
         -in $HOSTNAME.csr -out $HOSTNAME-signed.crt \
-        -days $VALIDITY -CAcreateserial -passin pass:$KEYSTORE_PASSWORD
+        -days $VALIDITY -CAcreateserial -passin pass:$KEYSTORE_PASSWORD \
+        -extfile <(printf "subjectAltName=DNS:$HOSTNAME")
 
     # Import CA and signed cert into keystore
     keytool -keystore $HOSTNAME.keystore.jks -alias CARoot \
@@ -531,7 +537,7 @@ spec:
             - name: KAFKA_NODE_ID
               valueFrom:
                 fieldRef:
-                  fieldPath: metadata.name
+                  fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
             - name: KAFKA_PROCESS_ROLES
               value: "controller"
             - name: KAFKA_CONTROLLER_QUORUM_VOTERS
@@ -542,6 +548,10 @@ spec:
               value: "CONTROLLER"
             - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
               value: "CONTROLLER:PLAINTEXT"
+            - name: KAFKA_METADATA_LOG_DIR
+              value: "/var/lib/kafka/metadata"
+            - name: KAFKA_LOG_DIRS
+              value: "/var/lib/kafka/logs"
           volumeMounts:
             - name: data
               mountPath: /var/lib/kafka
@@ -742,29 +752,31 @@ kafka-server-stop.sh
 ### Adding a New Controller
 
 ```bash
-# 1. Configure the new controller with the existing quorum voters
+# For Kafka 3.9+ dynamic quorums:
+# 1. Configure the new controller with the existing quorum bootstrap settings
 # 2. Format storage with the cluster ID
-kafka-storage.sh format -t $KAFKA_CLUSTER_ID -c /etc/kafka/controller-4.properties
+kafka-storage.sh format -t $KAFKA_CLUSTER_ID -c /etc/kafka/controller-4.properties --no-initial-controllers
 
 # 3. Start the new controller
 kafka-server-start.sh /etc/kafka/controller-4.properties
 
-# 4. Add to quorum voters (requires rolling restart of all controllers)
-# Update controller.quorum.voters in all configs:
-# controller.quorum.voters=1@c1:9093,2@c2:9093,3@c3:9093,4@c4:9093
+# 4. Add the controller
+kafka-metadata-quorum.sh --command-config /etc/kafka/controller-4.properties \
+    --bootstrap-controller controller-1:9093 add-controller
 ```
 
 ### Removing a Controller
 
 ```bash
+# For Kafka 3.9+ dynamic quorums:
 # 1. Ensure the controller to remove is not the leader
 # 2. Stop the controller
 kafka-server-stop.sh
 
-# 3. Update controller.quorum.voters on remaining controllers
-# Remove the node from the voters list
-
-# 4. Rolling restart remaining controllers
+# 3. Remove it from the quorum
+kafka-metadata-quorum.sh --bootstrap-controller controller-1:9093 remove-controller \
+    --controller-id 4 \
+    --controller-directory-id <directory-id>
 ```
 
 ## Performance Tuning
@@ -824,7 +836,7 @@ grep "controller.quorum.voters" /etc/kafka/controller.properties
 
 ```bash
 # Check follower lag
-kafka-metadata.sh --connect controller-1:9093 --command "quorum-info"
+kafka-metadata-quorum.sh --bootstrap-controller controller-1:9093 describe --replication
 
 # If lag is high, check:
 # 1. Network bandwidth between controllers
@@ -873,15 +885,18 @@ flowchart TB
 ### Migration Steps
 
 ```bash
-# 1. Deploy controller quorum alongside existing ZooKeeper cluster
-# 2. Migrate metadata
-kafka-metadata.sh --bootstrap-server broker-1:9092 \
-    --command "migrate" \
-    --controller-quorum-voters "1@c1:9093,2@c2:9093,3@c3:9093"
+# 1. Use a Kafka 3.9 bridge release for ZooKeeper-to-KRaft migration.
+# 2. Retrieve the existing ZooKeeper cluster ID.
+zookeeper-shell.sh zk-1:2181 get /cluster/id
 
-# 3. Reconfigure brokers to use KRaft mode
-# 4. Restart brokers with new configuration
-# 5. Decommission ZooKeeper cluster
+# 3. Format the KRaft controllers with that existing cluster ID.
+kafka-storage.sh format --standalone \
+    --cluster-id <zookeeper-cluster-id> \
+    -c /etc/kafka/controller.properties
+
+# 4. Enable zookeeper.metadata.migration.enable=true on controllers and brokers.
+# 5. Roll brokers through migration mode, then restart them as KRaft brokers.
+# 6. Finalize migration and decommission ZooKeeper after verification.
 ```
 
 ## Best Practices
