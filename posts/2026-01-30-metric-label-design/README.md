@@ -90,10 +90,10 @@ labels:
 
 ## Cardinality Calculation
 
-Before deploying a metric, estimate total series count:
+Before deploying a metric, estimate the number of label combinations:
 
 ```text
-Total Series = product of (unique values per label)
+Label Combinations = product of (unique values per label)
 ```
 
 Example for `http_request_duration_seconds`:
@@ -105,11 +105,13 @@ Example for `http_request_duration_seconds`:
 | endpoint | 50 |
 | service | 8 |
 
-Total: 5 x 10 x 50 x 8 = **20,000 series**
+Total: 5 x 10 x 50 x 8 = **20,000 label combinations**
+
+For counters and gauges, each label combination usually maps to one time series. For classic Prometheus histograms, multiply by the exported bucket series plus `_sum` and `_count`.
 
 That is manageable. But add `user_agent` with 2,000 unique values:
 
-5 x 10 x 50 x 8 x 2,000 = **40,000,000 series**
+5 x 10 x 50 x 8 x 2,000 = **40,000,000 label combinations**
 
 That will break most backends.
 
