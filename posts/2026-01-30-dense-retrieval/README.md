@@ -170,7 +170,11 @@ class VectorIndex:
 
         elif self.index_type == "hnsw":
             # HNSW - great balance of speed and accuracy
-            index = faiss.IndexHNSWFlat(self.dimension, 32)  # 32 neighbors
+            index = faiss.IndexHNSWFlat(
+                self.dimension,
+                32,  # 32 neighbors
+                faiss.METRIC_INNER_PRODUCT
+            )
             index.hnsw.efConstruction = 200  # Build-time accuracy
             index.hnsw.efSearch = 128  # Search-time accuracy
             return index
@@ -179,7 +183,13 @@ class VectorIndex:
             # IVF - good for large datasets
             nlist = 100  # Number of clusters
             quantizer = faiss.IndexFlatIP(self.dimension)
-            index = faiss.IndexIVFFlat(quantizer, self.dimension, nlist)
+            index = faiss.IndexIVFFlat(
+                quantizer,
+                self.dimension,
+                nlist,
+                faiss.METRIC_INNER_PRODUCT
+            )
+            index.nprobe = 10  # Number of clusters to search at query time
             return index
 
         elif self.index_type == "ivfpq":
@@ -187,7 +197,15 @@ class VectorIndex:
             nlist = 100
             m = 8  # Number of subquantizers
             quantizer = faiss.IndexFlatIP(self.dimension)
-            index = faiss.IndexIVFPQ(quantizer, self.dimension, nlist, m, 8)
+            index = faiss.IndexIVFPQ(
+                quantizer,
+                self.dimension,
+                nlist,
+                m,
+                8,
+                faiss.METRIC_INNER_PRODUCT
+            )
+            index.nprobe = 10  # Number of clusters to search at query time
             return index
 
         else:
@@ -202,8 +220,10 @@ class VectorIndex:
         """Add vectors to the index."""
         vectors = vectors.astype(np.float32)
         if ids is not None:
-            # Use IndexIDMap if you need custom IDs
-            self.index.add_with_ids(vectors, ids)
+            # Wrap indexes that do not natively support custom IDs
+            if not isinstance(self.index, faiss.IndexIDMap):
+                self.index = faiss.IndexIDMap(self.index)
+            self.index.add_with_ids(vectors, ids.astype(np.int64))
         else:
             self.index.add(vectors)
 
@@ -248,6 +268,7 @@ Now let us combine everything into a production-ready retrieval system:
 ```python
 import json
 import os
+import faiss
 from dataclasses import dataclass
 from typing import List, Dict, Optional
 import numpy as np
@@ -320,7 +341,7 @@ class DenseRetriever:
         for score, idx in zip(scores[0], indices[0]):
             if idx == -1:  # FAISS returns -1 for empty slots
                 continue
-            if score_threshold and score < score_threshold:
+            if score_threshold is not None and score < score_threshold:
                 continue
 
             results.append(RetrievalResult(
@@ -437,15 +458,13 @@ For repeated queries, caching encoded vectors significantly reduces latency:
 
 ```python
 from functools import lru_cache
-import hashlib
 
 class CachedEncoder(DenseEncoder):
     def __init__(self, model_name: str, cache_size: int = 10000):
         super().__init__(model_name)
-        self._cache_size = cache_size
+        self._cached_encode = lru_cache(maxsize=cache_size)(self._encode_query_uncached)
 
-    @lru_cache(maxsize=10000)
-    def _cached_encode(self, text: str) -> tuple:
+    def _encode_query_uncached(self, text: str) -> tuple:
         """Cache-friendly encoding that returns a tuple."""
         embedding = super().encode_query(text)
         return tuple(embedding.tolist())
@@ -673,9 +692,13 @@ class BatchRetriever:
     ) -> List[List[RetrievalResult]]:
         """Retrieve for multiple queries efficiently."""
         # Batch encode all queries
-        query_vectors = np.array([
-            self.retriever.encoder.encode_query(q) for q in queries
-        ])
+        query_prefix = getattr(self.retriever.encoder, "query_prefix", "")
+        query_texts = [query_prefix + query for query in queries]
+        query_vectors = self.retriever.encoder.model.encode(
+            query_texts,
+            batch_size=32,
+            normalize_embeddings=True
+        ).astype(np.float32)
 
         # Batch search
         scores, indices = self.retriever.index.search(query_vectors, top_k)
