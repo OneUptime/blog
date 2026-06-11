@@ -119,7 +119,7 @@ Build consumers that handle multiple versions by checking the version field and 
 type EventHandler<T> = (payload: T) => Promise<void>;
 
 interface VersionHandlers {
-  [version: number]: EventHandler<unknown>;
+  [version: number]: EventHandler<VersionedEvent<unknown>>;
 }
 
 class OrderEventConsumer {
@@ -128,8 +128,8 @@ class OrderEventConsumer {
   constructor() {
     // Register handlers for OrderPlaced event
     this.handlers.set('OrderPlaced', {
-      1: this.handleOrderPlacedV1.bind(this),
-      2: this.handleOrderPlacedV2.bind(this)
+      1: async (event) => this.handleOrderPlacedV1(event.payload as OrderPlacedV1),
+      2: async (event) => this.handleOrderPlacedV2(event.payload as OrderPlacedV2)
     });
   }
 
@@ -146,7 +146,7 @@ class OrderEventConsumer {
       throw new Error(`No handler for ${eventType} version ${version}`);
     }
 
-    await handler(event.payload);
+    await handler(event);
   }
 
   private async handleOrderPlacedV1(payload: OrderPlacedV1): Promise<void> {
@@ -470,8 +470,20 @@ Use a validation library to define schemas with default values and transformatio
 import { z } from 'zod';
 
 // Zod schema with transformations and defaults
-const OrderPlacedSchema = z.object({
-  orderId: z.string().or(z.object({ order_id: z.string() }).transform(o => o.order_id)),
+const OrderPlacedSchema = z.preprocess((raw) => {
+  if (!raw || typeof raw !== 'object') {
+    return raw;
+  }
+
+  const input = raw as OrderPlacedInput;
+
+  return {
+    ...input,
+    orderId: input.orderId ?? input.order_id,
+    customerId: input.customerId ?? input.customer_id ?? null
+  };
+}, z.object({
+  orderId: z.string(),
 
   // Handle both old and new amount formats
   amount: z.number().optional(),
@@ -483,7 +495,7 @@ const OrderPlacedSchema = z.object({
   customerId: z.string().nullable().default(null),
 
   // Ignore unknown fields
-}).passthrough().transform(data => {
+}).passthrough()).transform(data => {
   // Normalize the amount fields
   const subtotal = data.subtotal ?? data.amount ?? 0;
 
@@ -746,6 +758,11 @@ const orderPlacedV3Schema = {
       name: 'customerId',
       type: ['null', 'string'],
       default: null
+    },
+    {
+      name: 'customerEmail',
+      type: ['null', 'string'],
+      default: null
     }
   ]
 };
@@ -793,13 +810,16 @@ interface CompatibilityResult {
 }
 
 class SchemaVersionManager {
-  constructor(private registry: SchemaRegistry) {}
+  constructor(
+    private registry: SchemaRegistry,
+    private registryHost: string
+  ) {}
 
   async setCompatibilityLevel(
     subject: string,
     level: CompatibilityLevel
   ): Promise<void> {
-    await fetch(`${this.registry}/config/${subject}`, {
+    await fetch(`${this.registryHost}/config/${subject}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ compatibility: level })
@@ -811,7 +831,7 @@ class SchemaVersionManager {
     newSchema: object
   ): Promise<CompatibilityResult> {
     const response = await fetch(
-      `${this.registry}/compatibility/subjects/${subject}/versions/latest`,
+      `${this.registryHost}/compatibility/subjects/${subject}/versions/latest?verbose=true`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -883,8 +903,7 @@ class OrderEventProducer {
     await this.producer.connect();
 
     // Get the latest schema ID for this subject
-    const { id } = await this.registry.getLatestSchemaId(this.subject);
-    this.schemaId = id;
+    this.schemaId = await this.registry.getLatestSchemaId(this.subject);
   }
 
   async publishOrderPlaced(order: OrderPlacedV3): Promise<void> {
@@ -1020,6 +1039,7 @@ interface OrderPlacedV5 {
   tax: number;
   currency: string;
   customerId: string | null;
+  customerEmail: string | null;
 
   // Deprecated: use lineItems instead
   // Will always be empty string in V5+
