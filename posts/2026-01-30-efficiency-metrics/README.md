@@ -49,7 +49,7 @@ The first step is identifying what constitutes a "transaction" for your business
 ```python
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from enum import Enum
 import statistics
 
@@ -77,7 +77,7 @@ class TransactionMetric:
     timestamp: datetime
     transaction_type: str
     count: int
-    metadata: Dict[str, any] = None
+    metadata: Dict[str, Any] = None
 
 class CostPerTransactionCalculator:
     """Calculate and track cost per transaction metrics."""
@@ -280,7 +280,7 @@ graph LR
 ```python
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple, Optional
+from typing import Any, List, Dict, Tuple, Optional
 from enum import Enum
 import statistics
 
@@ -470,7 +470,7 @@ class UtilizationAnalyzer:
         resource_type: ResourceType,
         start: datetime,
         end: datetime
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Calculate aggregate efficiency across all resources of a type.
 
@@ -594,7 +594,7 @@ flowchart TD
 ```python
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from enum import Enum
 import statistics
 
@@ -720,7 +720,7 @@ class RevenueEfficiencyCalculator:
         period1_end: datetime,
         period2_start: datetime,
         period2_end: datetime
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Compare efficiency between two periods.
 
@@ -764,6 +764,14 @@ class RevenueEfficiencyCalculator:
         metrics2: RevenueEfficiencyMetrics
     ) -> str:
         """Generate human-readable comparison summary."""
+        if metrics1.efficiency_ratio == 0:
+            if metrics2.efficiency_ratio == 0:
+                return "Efficiency remained stable between periods."
+            return (
+                f"Efficiency improved from zero. "
+                f"Each dollar of infrastructure now generates ${metrics2.efficiency_ratio:.2f} in revenue."
+            )
+
         if metrics2.efficiency_ratio > metrics1.efficiency_ratio:
             return (
                 f"Efficiency improved by "
@@ -865,7 +873,7 @@ graph TD
 ```python
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Tuple
+from typing import Any, List, Dict, Optional, Tuple
 from enum import Enum
 import statistics
 import math
@@ -882,7 +890,7 @@ class EfficiencyDataPoint:
     timestamp: datetime
     metric_name: str
     value: float
-    metadata: Dict[str, any] = None
+    metadata: Dict[str, Any] = None
 
 @dataclass
 class TrendAnalysis:
@@ -1068,7 +1076,7 @@ class EfficiencyTrendTracker:
         metrics: List[str],
         start: datetime,
         end: datetime
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Generate comprehensive trend report for multiple metrics.
         """
@@ -1196,8 +1204,8 @@ graph TD
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 from enum import Enum
 
 class BenchmarkCategory(Enum):
@@ -1322,7 +1330,7 @@ class BenchmarkAnalyzer:
         if lower_is_better:
             # For metrics where lower is better, invert the comparison
             if value <= top_quartile:
-                return 75 + ((top_quartile - value) / top_quartile * 25)
+                return min(100, 75 + ((top_quartile - value) / top_quartile * 25))
             elif value <= industry_avg:
                 return 50 + ((industry_avg - value) / (industry_avg - top_quartile) * 25)
             else:
@@ -1330,7 +1338,7 @@ class BenchmarkAnalyzer:
         else:
             # For metrics where higher is better
             if value >= top_quartile:
-                return 75 + ((value - top_quartile) / top_quartile * 25)
+                return min(100, 75 + ((value - top_quartile) / top_quartile * 25))
             elif value >= industry_avg:
                 return 50 + ((value - industry_avg) / (top_quartile - industry_avg) * 25)
             else:
@@ -1397,7 +1405,7 @@ class BenchmarkAnalyzer:
         self,
         metrics: Dict[str, float],
         lower_is_better_metrics: List[str] = None
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Generate comprehensive benchmark comparison report.
 
@@ -1408,7 +1416,7 @@ class BenchmarkAnalyzer:
         lower_is_better = lower_is_better_metrics or []
 
         report = {
-            'generated_at': datetime.utcnow().isoformat(),
+            'generated_at': datetime.now(timezone.utc).isoformat(),
             'comparisons': {},
             'summary': {
                 'excellent': [],
@@ -1556,7 +1564,7 @@ graph TD
 
 ```python
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 from enum import Enum
 import json
@@ -1619,11 +1627,11 @@ class EfficiencyDashboard:
 
         This can be serialized to JSON and consumed by a frontend.
         """
-        end = period_end or datetime.utcnow()
+        end = period_end or datetime.now(timezone.utc)
         start = end - timedelta(days=period_days)
 
         dashboard = {
-            'generated_at': datetime.utcnow().isoformat(),
+            'generated_at': datetime.now(timezone.utc).isoformat(),
             'period': {
                 'start': start.isoformat(),
                 'end': end.isoformat(),
@@ -1797,7 +1805,7 @@ class EfficiencyDashboard:
                 'severity': 'warning',
                 'metric': 'cost_per_transaction',
                 'message': f'Cost per transaction increasing at {abs(cost_trend.slope):.4f}/day',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
 
         # Check for anomalies
@@ -1806,7 +1814,7 @@ class EfficiencyDashboard:
                 'severity': 'info',
                 'metric': 'cost_per_transaction',
                 'message': f'{len(cost_trend.anomalies)} anomalies detected in cost metrics',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             })
 
         return alerts
@@ -1891,7 +1899,7 @@ def setup_dashboard():
 
     # Generate dashboard data
     data = dashboard.generate_dashboard_data(
-        period_end=datetime.utcnow(),
+        period_end=datetime.now(timezone.utc),
         period_days=30
     )
 
@@ -1986,9 +1994,9 @@ groups:
 
       - record: efficiency:revenue_per_cpu_hour:rate1h
         expr: |
-          sum(increase(revenue_dollars_total[1h]))
+          sum(rate(revenue_dollars_total[1h]))
           /
-          sum(increase(cpu_usage_seconds_total[1h])) * 3600
+          sum(rate(cpu_usage_seconds_total[1h])) * 3600
 
       - record: efficiency:utilization_score:avg5m
         expr: |
