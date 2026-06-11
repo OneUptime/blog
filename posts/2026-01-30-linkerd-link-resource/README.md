@@ -57,24 +57,27 @@ The Link resource defines how your source cluster connects to a target cluster. 
 
 ```yaml
 # link.yaml - Defines connection from source to target cluster
-apiVersion: multicluster.linkerd.io/v1alpha1
+apiVersion: multicluster.linkerd.io/v1alpha3
 kind: Link
 metadata:
   name: target-cluster        # Name used to identify this link
   namespace: linkerd-multicluster
 spec:
+  # Secret containing a kubeconfig for the target cluster
+  clusterCredentialsSecret: cluster-credentials-target-cluster
+
   # Target cluster name - used in service mirror naming
   targetClusterName: target-cluster
 
   # Gateway address configuration
   gatewayAddress: gateway.target-cluster.example.com
-  gatewayPort: 4143
+  gatewayPort: "4143"
   gatewayIdentity: gateway.linkerd-multicluster.serviceaccount.identity.linkerd.cluster.local
 
   # Probe specification for health checking
   probeSpec:
     path: /ready
-    port: 4191
+    port: "4191"
     period: 3s
 
   # Service selector - which services to mirror
@@ -82,10 +85,10 @@ spec:
     matchLabels:
       mirror.linkerd.io/exported: "true"
 
-  # Remote discovery selector for namespace filtering
+  # Remote discovery selector - which services to mirror in remote discovery mode
   remoteDiscoverySelector:
     matchLabels:
-      linkerd.io/is-remote-discovery: "true"
+      mirror.linkerd.io/exported: "remote-discovery"
 ```
 
 ## Gateway Address Configuration
@@ -96,7 +99,7 @@ The gateway address tells your cluster where to send traffic destined for the ta
 # External gateway with DNS
 spec:
   gatewayAddress: linkerd-gateway.prod-east.example.com
-  gatewayPort: 4143
+  gatewayPort: "4143"
   gatewayIdentity: gateway.linkerd-multicluster.serviceaccount.identity.linkerd.cluster.local
 ```
 
@@ -104,13 +107,13 @@ spec:
 # Gateway with IP address (not recommended for production)
 spec:
   gatewayAddress: 203.0.113.50
-  gatewayPort: 4143
+  gatewayPort: "4143"
   gatewayIdentity: gateway.linkerd-multicluster.serviceaccount.identity.linkerd.cluster.local
 ```
 
 ### Gateway Identity
 
-The `gatewayIdentity` field specifies the expected identity of the target gateway for mTLS verification. This follows the SPIFFE format:
+The `gatewayIdentity` field specifies the expected Linkerd identity of the target gateway for mTLS verification. It follows Linkerd's service account identity format:
 
 ```text
 <service-account>.<namespace>.serviceaccount.identity.linkerd.<trust-domain>
@@ -136,8 +139,8 @@ data:
 Generate the credentials from the target cluster:
 
 ```bash
-# On the target cluster - generate link credentials
-linkerd multicluster link --cluster-name target-cluster > link-credentials.yaml
+# On the target cluster - generate link credentials and the Link resource
+linkerd multicluster link-gen --cluster-name target-cluster > link-credentials.yaml
 
 # Review the generated resources
 cat link-credentials.yaml
@@ -146,27 +149,36 @@ cat link-credentials.yaml
 kubectl apply -f link-credentials.yaml
 ```
 
-The generated kubeconfig uses a service account with minimal permissions:
+The generated kubeconfig uses the remote-access service account created by the multi-cluster extension with limited permissions:
 
 ```yaml
 # ServiceAccount on target cluster for remote access
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: linkerd-service-mirror-target-cluster
+  name: linkerd-service-mirror-remote-access-default
   namespace: linkerd-multicluster
 ---
-# ClusterRole with read-only access to services and endpoints
+# ClusterRole with read-only access to resources used for service mirroring
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: linkerd-service-mirror-target-cluster
+  name: linkerd-service-mirror-remote-access-default
 rules:
-  - apiGroups: [""]
-    resources: ["services", "endpoints"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
-    resources: ["namespaces"]
+    resources: ["pods", "endpoints", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy.linkerd.io"]
+    resources: ["servers"]
     verbs: ["get", "list", "watch"]
 ```
 
@@ -230,23 +242,23 @@ kubectl label svc my-service mirror.linkerd.io/exported=true
 kubectl label svc --all mirror.linkerd.io/exported=true -n production
 ```
 
-### Mirror by Namespace
+### Mirror by Remote Discovery
 
 ```yaml
-# Only mirror services from specific namespaces
+# Mirror selected services in remote discovery mode
 spec:
   selector:
     matchLabels:
       mirror.linkerd.io/exported: "true"
   remoteDiscoverySelector:
     matchLabels:
-      linkerd.io/is-remote-discovery: "true"
+      mirror.linkerd.io/exported: "remote-discovery"
 ```
 
-Label the namespace on the target cluster:
+Label the service on the target cluster:
 
 ```bash
-kubectl label namespace production linkerd.io/is-remote-discovery=true
+kubectl label svc my-service mirror.linkerd.io/exported=remote-discovery -n production
 ```
 
 ### Mirror by Custom Labels
@@ -273,7 +285,7 @@ The probe spec defines how Linkerd checks the health of the gateway connection.
 spec:
   probeSpec:
     path: /ready        # Health check endpoint path
-    port: 4191          # Probe port on the gateway
+    port: "4191"        # Probe port on the gateway
     period: 3s          # How often to probe
 ```
 
@@ -286,7 +298,7 @@ sequenceDiagram
     participant SVC as Remote Service
 
     loop Every 3 seconds
-        SM->>GW: GET /ready:4191
+        SM->>GW: GET /ready on port 4191
         alt Gateway Healthy
             GW-->>SM: 200 OK
             SM->>SM: Mark endpoints alive
@@ -306,7 +318,7 @@ sequenceDiagram
 spec:
   probeSpec:
     path: /ready
-    port: 4191
+    port: "4191"
     period: 1s          # Check every second
 ```
 
@@ -315,7 +327,7 @@ spec:
 spec:
   probeSpec:
     path: /ready
-    port: 4191
+    port: "4191"
     period: 10s         # Check every 10 seconds
 ```
 
@@ -327,12 +339,32 @@ spec:
 # Generate shared trust anchor (do this once)
 step certificate create root.linkerd.cluster.local ca.crt ca.key \
   --profile root-ca --no-password --insecure
+step certificate create identity.linkerd.cluster.local issuer.crt issuer.key \
+  --profile intermediate-ca --not-after 8760h --no-password --insecure \
+  --ca ca.crt --ca-key ca.key
 
 # Install Linkerd with shared trust anchor on each cluster
+cat > cluster-a-multicluster-values.yaml <<EOF
+controllers:
+  - link:
+      ref:
+        name: cluster-b
+  - link:
+      ref:
+        name: cluster-c
+EOF
+
 for ctx in cluster-a cluster-b cluster-c; do
+  linkerd install --crds --context=$ctx | kubectl apply --context=$ctx -f -
   linkerd install --context=$ctx \
-    --identity-trust-anchors-file ca.crt | kubectl apply --context=$ctx -f -
-  linkerd multicluster install --context=$ctx | kubectl apply --context=$ctx -f -
+    --identity-trust-anchors-file ca.crt \
+    --identity-issuer-certificate-file issuer.crt \
+    --identity-issuer-key-file issuer.key | kubectl apply --context=$ctx -f -
+  if [ "$ctx" = "cluster-a" ]; then
+    linkerd multicluster install --context=$ctx -f cluster-a-multicluster-values.yaml | kubectl apply --context=$ctx -f -
+  else
+    linkerd multicluster install --context=$ctx | kubectl apply --context=$ctx -f -
+  fi
 done
 ```
 
@@ -340,10 +372,10 @@ done
 
 ```bash
 # From cluster-b, generate link for cluster-a to use
-linkerd multicluster link --context=cluster-b --cluster-name=cluster-b > link-b.yaml
+linkerd --context=cluster-b multicluster link-gen --cluster-name=cluster-b > link-b.yaml
 
 # From cluster-c, generate link for cluster-a to use
-linkerd multicluster link --context=cluster-c --cluster-name=cluster-c > link-c.yaml
+linkerd --context=cluster-c multicluster link-gen --cluster-name=cluster-c > link-c.yaml
 
 # Apply links on cluster-a
 kubectl apply --context=cluster-a -f link-b.yaml
@@ -354,23 +386,24 @@ kubectl apply --context=cluster-a -f link-c.yaml
 
 ```yaml
 # link-to-production.yaml
-apiVersion: multicluster.linkerd.io/v1alpha1
+apiVersion: multicluster.linkerd.io/v1alpha3
 kind: Link
 metadata:
   name: production-cluster
   namespace: linkerd-multicluster
 spec:
+  clusterCredentialsSecret: cluster-credentials-production-cluster
   targetClusterName: production-cluster
 
   # Gateway configuration
   gatewayAddress: gateway.prod.example.com
-  gatewayPort: 4143
+  gatewayPort: "4143"
   gatewayIdentity: gateway.linkerd-multicluster.serviceaccount.identity.linkerd.cluster.local
 
   # Health checking
   probeSpec:
     path: /ready
-    port: 4191
+    port: "4191"
     period: 3s
 
   # Only mirror production services
@@ -379,12 +412,12 @@ spec:
       mirror.linkerd.io/exported: "true"
       env: production
 
-  # Only from approved namespaces
+  # Mirror selected services in remote discovery mode
   remoteDiscoverySelector:
     matchExpressions:
-      - key: linkerd.io/is-remote-discovery
+      - key: mirror.linkerd.io/exported
         operator: In
-        values: ["true"]
+        values: ["remote-discovery"]
       - key: env
         operator: NotIn
         values: ["dev", "staging"]
@@ -450,6 +483,8 @@ spec:
 
 ### Traffic Splitting Across Clusters
 
+If the Linkerd SMI extension is installed, you can use a TrafficSplit to distribute load across clusters:
+
 ```yaml
 # TrafficSplit to distribute load across clusters
 apiVersion: split.smi-spec.io/v1alpha1
@@ -480,7 +515,7 @@ kubectl get links -n linkerd-multicluster
 kubectl describe link production-cluster -n linkerd-multicluster
 
 # Check service mirror controller logs
-kubectl logs -n linkerd-multicluster deploy/linkerd-service-mirror -f
+kubectl logs -n linkerd-multicluster deploy/controller-production-cluster -f
 ```
 
 ### Common Issues
@@ -490,9 +525,9 @@ kubectl logs -n linkerd-multicluster deploy/linkerd-service-mirror -f
 # Verify gateway is exposed
 kubectl get svc -n linkerd-multicluster linkerd-gateway
 
-# Test connectivity from source cluster
+# Test the gateway health endpoint from the source cluster
 kubectl run -it --rm debug --image=curlimages/curl -- \
-  curl -v https://gateway.prod.example.com:4143/ready
+  curl -v http://gateway.prod.example.com:4191/ready
 ```
 
 **Services not mirroring:**
@@ -500,8 +535,8 @@ kubectl run -it --rm debug --image=curlimages/curl -- \
 # Check if services have the export label
 kubectl get svc -l mirror.linkerd.io/exported=true --all-namespaces
 
-# Verify namespace has discovery label
-kubectl get ns -l linkerd.io/is-remote-discovery=true
+# Check services selected for remote discovery
+kubectl get svc -l mirror.linkerd.io/exported=remote-discovery --all-namespaces
 ```
 
 **Probe failures:**
@@ -510,10 +545,10 @@ kubectl get ns -l linkerd.io/is-remote-discovery=true
 linkerd multicluster gateways
 
 # View probe metrics
-kubectl port-forward -n linkerd-multicluster deploy/linkerd-service-mirror 9999:9999
+kubectl port-forward -n linkerd-multicluster deploy/controller-production-cluster 9999:9999
 curl localhost:9999/metrics | grep gateway
 ```
 
 ---
 
-The Link resource is the foundation of Linkerd multi-cluster networking. Start with a simple configuration using the generated link command, then customize selectors and probe settings based on your requirements. Always verify connectivity with `linkerd multicluster check` before deploying applications that depend on cross-cluster communication.
+The Link resource is the foundation of Linkerd multi-cluster networking. Start with a simple configuration using the generated link-gen command, then customize selectors and probe settings based on your requirements. Always verify connectivity with `linkerd multicluster check` before deploying applications that depend on cross-cluster communication.
