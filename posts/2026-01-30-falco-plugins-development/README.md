@@ -60,7 +60,7 @@ flowchart TB
 
 ### Prerequisites
 
-You need Go 1.21 or later and the Falco plugin SDK.
+You need Go 1.19 or later and the Falco plugin SDK.
 
 ```bash
 # Verify Go installation
@@ -73,6 +73,7 @@ go mod init github.com/myorg/falco-github-plugin
 
 # Add the Falco plugin SDK
 go get github.com/falcosecurity/plugin-sdk-go@latest
+go get github.com/alecthomas/jsonschema@latest
 ```
 
 ### Project Structure
@@ -108,10 +109,11 @@ Create the main plugin file that defines capabilities and metadata.
 package github
 
 import (
+    "encoding/json"
+
+    "github.com/alecthomas/jsonschema"
     "github.com/falcosecurity/plugin-sdk-go/pkg/sdk"
     "github.com/falcosecurity/plugin-sdk-go/pkg/sdk/plugins"
-    "github.com/falcosecurity/plugin-sdk-go/pkg/sdk/plugins/source"
-    "github.com/falcosecurity/plugin-sdk-go/pkg/sdk/plugins/extractor"
 )
 
 // Plugin name and version constants
@@ -157,6 +159,10 @@ func (p *GitHubPlugin) Init(cfg string) error {
         BufferSize: 1000,
     }
 
+    if cfg == "" {
+        return nil
+    }
+
     // Parse JSON configuration from Falco
     return json.Unmarshal([]byte(cfg), &p.config)
 }
@@ -187,9 +193,13 @@ package github
 
 import (
     "context"
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
     "encoding/json"
     "io"
     "net/http"
+    "strings"
     "time"
 
     "github.com/falcosecurity/plugin-sdk-go/pkg/sdk"
@@ -246,21 +256,21 @@ func (p *GitHubPlugin) Open(params string) (source.Instance, error) {
 // handleWebhook processes incoming GitHub webhooks
 func (i *GitHubInstance) handleWebhook(secret string) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
-        // Validate webhook signature if secret is configured
-        if secret != "" {
-            signature := r.Header.Get("X-Hub-Signature-256")
-            if !validateSignature(r, signature, secret) {
-                http.Error(w, "Invalid signature", http.StatusUnauthorized)
-                return
-            }
-        }
-
         body, err := io.ReadAll(r.Body)
         if err != nil {
             http.Error(w, "Failed to read body", http.StatusBadRequest)
             return
         }
         defer r.Body.Close()
+
+        // Validate webhook signature if secret is configured
+        if secret != "" {
+            signature := r.Header.Get("X-Hub-Signature-256")
+            if !validateSignature(body, signature, secret) {
+                http.Error(w, "Invalid signature", http.StatusUnauthorized)
+                return
+            }
+        }
 
         // Parse the raw payload
         var payload map[string]interface{}
@@ -300,6 +310,25 @@ func (i *GitHubInstance) handleWebhook(secret string) http.HandlerFunc {
             http.Error(w, "Buffer full", http.StatusServiceUnavailable)
         }
     }
+}
+
+// validateSignature verifies GitHub's sha256 HMAC webhook signature
+func validateSignature(body []byte, signature string, secret string) bool {
+    const prefix = "sha256="
+    if !strings.HasPrefix(signature, prefix) {
+        return false
+    }
+
+    mac := hmac.New(sha256.New, []byte(secret))
+    mac.Write(body)
+    expected := mac.Sum(nil)
+
+    actual, err := hex.DecodeString(strings.TrimPrefix(signature, prefix))
+    if err != nil {
+        return false
+    }
+
+    return hmac.Equal(actual, expected)
 }
 
 // NextBatch returns the next batch of events
@@ -354,11 +383,12 @@ var fields = []sdk.FieldEntry{
     {Type: "string", Name: "github.repository", Desc: "Full repository name (owner/repo)"},
     {Type: "string", Name: "github.sender", Desc: "User who triggered the event"},
     {Type: "string", Name: "github.branch", Desc: "Branch name for push/PR events"},
+    {Type: "bool", Name: "github.forced", Desc: "Whether a push was forced"},
     {Type: "uint64", Name: "github.commits_count", Desc: "Number of commits in push event"},
     {Type: "string", Name: "github.pr.title", Desc: "Pull request title"},
     {Type: "string", Name: "github.pr.state", Desc: "Pull request state"},
+    {Type: "bool", Name: "github.pr.merged", Desc: "Whether the pull request was merged"},
     {Type: "string", Name: "github.pr.merged_by", Desc: "User who merged the PR"},
-    {Type: "string", Name: "github.member.permission", Desc: "Permission level for member events"},
     {Type: "string", Name: "github.org", Desc: "Organization name"},
 }
 
@@ -398,6 +428,10 @@ func (p *GitHubPlugin) Extract(req sdk.ExtractRequest, evt sdk.EventReader) erro
         branch := extractNestedString(event.RawPayload, "ref")
         req.SetValue(branch)
 
+    case "github.forced":
+        forced, _ := event.RawPayload["forced"].(bool)
+        req.SetValue(forced)
+
     case "github.commits_count":
         if commits, ok := event.RawPayload["commits"].([]interface{}); ok {
             req.SetValue(uint64(len(commits)))
@@ -411,13 +445,13 @@ func (p *GitHubPlugin) Extract(req sdk.ExtractRequest, evt sdk.EventReader) erro
         state := extractNestedString(event.RawPayload, "pull_request", "state")
         req.SetValue(state)
 
+    case "github.pr.merged":
+        merged := extractNestedBool(event.RawPayload, "pull_request", "merged")
+        req.SetValue(merged)
+
     case "github.pr.merged_by":
         mergedBy := extractNestedString(event.RawPayload, "pull_request", "merged_by", "login")
         req.SetValue(mergedBy)
-
-    case "github.member.permission":
-        permission := extractNestedString(event.RawPayload, "membership", "permission")
-        req.SetValue(permission)
 
     case "github.org":
         org := extractNestedString(event.RawPayload, "organization", "login")
@@ -444,6 +478,25 @@ func extractNestedString(data map[string]interface{}, keys ...string) string {
         }
     }
     return ""
+}
+
+// extractNestedBool safely extracts a bool from nested maps
+func extractNestedBool(data map[string]interface{}, keys ...string) bool {
+    current := data
+    for i, key := range keys {
+        if i == len(keys)-1 {
+            if val, ok := current[key].(bool); ok {
+                return val
+            }
+            return false
+        }
+        if next, ok := current[key].(map[string]interface{}); ok {
+            current = next
+        } else {
+            return false
+        }
+    }
+    return false
 }
 ```
 
@@ -507,7 +560,7 @@ Create rules that use your custom fields to detect security-relevant events.
   condition: >
     github.event_type = "push" and
     (github.branch = "refs/heads/main" or github.branch = "refs/heads/master") and
-    json.value[/forced] = "true"
+    github.forced = true
   output: >
     Force push to protected branch
     (repo=%github.repository branch=%github.branch user=%github.sender)
@@ -515,15 +568,14 @@ Create rules that use your custom fields to detect security-relevant events.
   source: github
   tags: [github, code_integrity]
 
-# Detect new admin collaborators
-- rule: GitHub Admin Collaborator Added
-  desc: A user was granted admin access to a repository
+# Detect new collaborators
+- rule: GitHub Collaborator Added
+  desc: A user was added as a repository collaborator
   condition: >
     github.event_type = "member" and
-    github.action = "added" and
-    github.member.permission = "admin"
+    github.action = "added"
   output: >
-    Admin collaborator added
+    Repository collaborator added
     (repo=%github.repository user=%github.sender)
   priority: WARNING
   source: github
@@ -555,13 +607,13 @@ Create rules that use your custom fields to detect security-relevant events.
   source: github
   tags: [github, security_config]
 
-# Detect suspicious PR merges
-- rule: GitHub Large PR Merged Without Review
-  desc: A pull request with many changes was merged quickly
+# Detect pull request merges
+- rule: GitHub Pull Request Merged
+  desc: A pull request was merged
   condition: >
     github.event_type = "pull_request" and
     github.action = "closed" and
-    github.pr.state = "merged"
+    github.pr.merged = true
   output: >
     Pull request merged
     (repo=%github.repository title=%github.pr.title merged_by=%github.pr.merged_by)
@@ -591,7 +643,7 @@ clean:
 	rm -f lib$(PLUGIN_NAME).so
 
 install: build
-	mkdir -p ~/.falco/plugins
+	mkdir -p ~/.falco/plugins ~/.falco/rules.d
 	cp lib$(PLUGIN_NAME).so ~/.falco/plugins/
 	cp rules/github_rules.yaml ~/.falco/rules.d/
 
@@ -607,7 +659,7 @@ make build
 
 # Verify the output
 file libgithub.so
-# Output: libgithub.so: Mach-O 64-bit dynamically linked shared library arm64
+# Output: libgithub.so: ELF 64-bit LSB shared object, x86-64
 ```
 
 ### Configure Falco to Load Your Plugin
@@ -639,7 +691,8 @@ Run Falco with your plugin and send test events.
 # Start Falco with the plugin
 sudo falco -c falco.yaml
 
-# In another terminal, simulate a GitHub webhook
+# In another terminal, simulate a GitHub webhook.
+# For this unsigned local test, set webhook_secret: "" in falco.yaml.
 curl -X POST http://localhost:8080/webhook \
   -H "Content-Type: application/json" \
   -H "X-GitHub-Event: repository" \
@@ -910,12 +963,10 @@ spec:
       serviceAccountName: falco
       containers:
         - name: falco
-          image: falcosecurity/falco:latest
+          image: myregistry/falco-github:0.1.0 # built with libgithub.so in /usr/share/falco/plugins
           securityContext:
             privileged: true
           volumeMounts:
-            - name: plugins
-              mountPath: /usr/share/falco/plugins
             - name: rules
               mountPath: /etc/falco/rules.d
             - name: config
@@ -925,9 +976,6 @@ spec:
             - containerPort: 8080
               name: webhook
       volumes:
-        - name: plugins
-          configMap:
-            name: falco-plugins
         - name: rules
           configMap:
             name: falco-rules
