@@ -600,7 +600,7 @@ Test your tracing setup with mock exporters:
 
 ```typescript
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { InMemorySpanExporter } from '@opentelemetry/sdk-trace-base';
+import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { trace } from '@opentelemetry/api';
 
 describe('Tracing', () => {
