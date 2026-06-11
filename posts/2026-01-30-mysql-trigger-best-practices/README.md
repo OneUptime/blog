@@ -50,7 +50,7 @@ flowchart LR
     B -->|Cascade Updates| D
     C --> E[Can modify NEW values]
     C --> F[Can reject operation]
-    D --> G[Data already committed]
+    D --> G[Row change already occurred]
     D --> H[Safer for logging]
 ```
 
@@ -279,6 +279,7 @@ CREATE TRIGGER validate_order_before_insert
 BEGIN
     DECLARE customer_exists INT;
     DECLARE product_stock INT;
+    DECLARE product_price DECIMAL(10,2);
 
     -- Verify customer exists and is active
     SELECT COUNT(*) INTO customer_exists
@@ -291,7 +292,7 @@ BEGIN
     END IF;
 
     -- Check product availability
-    SELECT stock_quantity INTO product_stock
+    SELECT stock_quantity, price INTO product_stock, product_price
     FROM products
     WHERE id = NEW.product_id;
 
@@ -311,9 +312,7 @@ BEGIN
 
     -- Calculate order total if not provided
     IF NEW.total_amount IS NULL THEN
-        SELECT (price * NEW.quantity) INTO NEW.total_amount
-        FROM products
-        WHERE id = NEW.product_id;
+        SET NEW.total_amount = product_price * NEW.quantity;
     END IF;
 END //
 
@@ -347,7 +346,7 @@ CREATE TRIGGER update_pending_orders_on_price_change
     AFTER UPDATE ON products
     FOR EACH ROW
 BEGIN
-    IF OLD.price <> NEW.price THEN
+    IF NOT (OLD.price <=> NEW.price) THEN
         UPDATE orders
         SET total_amount = NEW.price * quantity,
             updated_at = NOW()
@@ -441,9 +440,9 @@ CREATE TRIGGER efficient_audit_update
     FOR EACH ROW
 BEGIN
     -- Only log if relevant fields changed
-    IF OLD.price <> NEW.price
-       OR OLD.name <> NEW.name
-       OR OLD.status <> NEW.status THEN
+    IF NOT (OLD.price <=> NEW.price)
+       OR NOT (OLD.name <=> NEW.name)
+       OR NOT (OLD.status <=> NEW.status) THEN
 
         INSERT INTO audit_log (table_name, record_id, action, old_values, new_values)
         VALUES ('products', NEW.id, 'UPDATE',
@@ -456,10 +455,10 @@ END //
 DELIMITER ;
 ```
 
-3. **Avoid operations on the same table**: This can cause deadlocks and unexpected behavior.
+3. **Avoid operations on the same table**: MySQL does not permit a trigger to modify the table that is already being used by the statement that invoked the trigger.
 
 ```sql
--- Avoid this pattern - can cause issues
+-- Avoid this pattern - MySQL rejects it
 CREATE TRIGGER bad_pattern
     AFTER INSERT ON orders
     FOR EACH ROW
@@ -552,10 +551,10 @@ WHERE TRIGGER_SCHEMA = DATABASE();
 
 ## Common Pitfalls and Solutions
 
-### Pitfall 1: Infinite Loops
+### Pitfall 1: Updating the Triggering Table
 
 ```sql
--- Problem: Trigger updates same table, causing recursion
+-- Problem: Trigger updates the same table that fired it
 CREATE TRIGGER infinite_loop_risk
     AFTER UPDATE ON inventory
     FOR EACH ROW
@@ -682,6 +681,13 @@ CREATE TABLE inventory_movements (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    type VARCHAR(50) NOT NULL,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 DELIMITER //
 
 -- Trigger 1: Validate and enrich order before insert
@@ -691,6 +697,11 @@ CREATE TRIGGER order_before_insert
 BEGIN
     DECLARE v_price DECIMAL(10,2);
     DECLARE v_stock INT;
+    DECLARE EXIT HANDLER FOR NOT FOUND
+    BEGIN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Product does not exist';
+    END;
 
     -- Get product info
     SELECT price, stock_quantity INTO v_price, v_stock
