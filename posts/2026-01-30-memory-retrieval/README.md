@@ -109,7 +109,7 @@ While vector search captures semantic meaning, keyword search ensures exact term
 ```python
 import math
 from collections import Counter
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 class BM25SearchEngine:
     def __init__(self, k1: float = 1.5, b: float = 0.75):
@@ -209,8 +209,9 @@ flowchart LR
 ```
 
 ```python
+import math
 import time
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass
 
 @dataclass
@@ -550,7 +551,7 @@ flowchart TD
 import hashlib
 import json
 import time
-from typing import Optional, Any
+from typing import List, Optional, Any
 from collections import OrderedDict
 from functools import wraps
 
@@ -697,6 +698,7 @@ Here is a complete example showing how to build and use a memory retrieval syste
 
 ```python
 from sentence_transformers import SentenceTransformer
+import time
 import uuid
 
 # Initialize components
