@@ -46,11 +46,11 @@ flowchart TB
 
 Before you start, ensure you have:
 
-- Istio 1.8+ installed with mesh expansion enabled
+- A supported Istio sidecar-mode installation with the control plane exposed for VM access
 - VMs with network connectivity to the Kubernetes cluster
 - DNS resolution working between VMs and the cluster
 
-Enable mesh expansion in your Istio installation:
+Configure Istio for VM integration:
 
 ```yaml
 # istio-operator.yaml
@@ -63,10 +63,10 @@ metadata:
 spec:
   values:
     global:
-      meshExpansion:
-        enabled: true
+      meshID: mesh1
       multiCluster:
         clusterName: main-cluster
+      network: kube-network
     pilot:
       env:
         PILOT_ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION: "true"
@@ -79,7 +79,7 @@ The WorkloadGroup defines common properties for a set of VM workloads. Think of 
 
 ```yaml
 # workloadgroup.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: legacy-payment-service
@@ -90,6 +90,7 @@ spec:
     labels:
       app: payment-service
       version: v1
+      runtime: vm
       environment: production
     annotations:
       sidecar.istio.io/statsInclusionPrefixes: "cluster.outbound"
@@ -155,10 +156,10 @@ kubectl create serviceaccount payment-service-sa -n payments --dry-run=client -o
 
 # Generate bootstrap files for the WorkloadGroup
 istioctl x workload entry configure \
-  --name legacy-payment-vm \
+  --name legacy-payment-service \
   --namespace payments \
-  --workloadGroup legacy-payment-service \
   --clusterID main-cluster \
+  --autoregister \
   --output ./vm-bootstrap-files/
 ```
 
@@ -182,7 +183,7 @@ Transfer the bootstrap files to your VM and run the installation:
 # install-sidecar.sh - Run this on the VM
 
 # Set variables
-ISTIO_VERSION="1.20.0"
+ISTIO_VERSION="1.30.1"
 VM_NAMESPACE="payments"
 WORKLOAD_GROUP="legacy-payment-service"
 SERVICE_ACCOUNT="payment-service-sa"
@@ -197,6 +198,7 @@ sudo dpkg -i istio-sidecar.deb
 sudo mkdir -p /etc/certs
 sudo mkdir -p /var/run/secrets/tokens
 sudo mkdir -p /var/lib/istio/envoy
+sudo mkdir -p /etc/istio/config
 sudo mkdir -p /etc/istio/proxy
 
 # Copy certificates
@@ -232,20 +234,21 @@ kubectl get workloadentry -n payments
 
 # Example output:
 # NAME                        AGE   ADDRESS
-# legacy-payment-vm-10.0.1.5  2m    10.0.1.5
+# legacy-payment-service-10.0.1.5  2m    10.0.1.5
 ```
 
 The auto-registered WorkloadEntry looks like this:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
-  name: legacy-payment-vm-10.0.1.5
+  name: legacy-payment-service-10.0.1.5
   namespace: payments
   labels:
     app: payment-service
     version: v1
+    runtime: vm
     environment: production
   annotations:
     # Indicates this was auto-registered
@@ -257,6 +260,7 @@ spec:
   labels:
     app: payment-service
     version: v1
+    runtime: vm
   ports:
     http: 8080
     grpc: 9090
@@ -269,7 +273,7 @@ For more control, you can manually create WorkloadEntry resources:
 
 ```yaml
 # workloadentry-manual.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: legacy-db-server-1
@@ -359,7 +363,7 @@ Istio can perform health checks on VM workloads and remove unhealthy instances f
 ### HTTP Health Probe
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: api-gateway-vms
@@ -391,7 +395,7 @@ spec:
 For services that do not have an HTTP endpoint:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: tcp-service-vms
@@ -418,7 +422,7 @@ spec:
 Run a command inside the VM to determine health:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: custom-health-vms
@@ -450,7 +454,7 @@ Check the health status of WorkloadEntries:
 kubectl get workloadentry -n payments -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[*].type}{"\t"}{.status.conditions[*].status}{"\n"}{end}'
 
 # Detailed health status
-kubectl describe workloadentry legacy-payment-vm-10.0.1.5 -n payments
+kubectl describe workloadentry legacy-payment-service-10.0.1.5 -n payments
 ```
 
 ## Network Policies for VM Workloads
@@ -461,7 +465,7 @@ Istio uses AuthorizationPolicy to control traffic between services, including VM
 
 ```yaml
 # Allow only frontend to call payment-service (VMs and pods)
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-service-authz
@@ -482,11 +486,11 @@ spec:
             paths: ["/api/v1/*"]
 ```
 
-### Deny Traffic from External Networks
+### Deny Traffic from Namespaces Outside an Allow List
 
 ```yaml
-# Deny all traffic except from mesh services
-apiVersion: security.istio.io/v1beta1
+# Deny traffic from namespaces outside the allow list
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-external-to-vms
@@ -510,7 +514,7 @@ spec:
 Ensure VMs use strict mTLS:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: vm-mtls-strict
@@ -543,7 +547,7 @@ flowchart TB
     EXT[External Client]
 
     FE -->|Allowed| PAY
-    ORD -->|Allowed| PAY
+    ORD -->|Denied| PAY
     EXT -->|Denied| PAY
     AP -.->|Enforces| PAY
 ```
@@ -556,7 +560,7 @@ Route traffic between VM and containerized versions of the same service:
 
 ```yaml
 # VirtualService for traffic splitting
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-vs
@@ -585,7 +589,7 @@ spec:
           weight: 10
 ---
 # DestinationRule to define subsets
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-dr
@@ -614,7 +618,7 @@ spec:
 Protect against slow or failing VMs:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-circuit-breaker
@@ -658,7 +662,7 @@ metadata:
   namespace: hybrid-app
 ---
 # 3. WorkloadGroup for database VMs
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: legacy-database
@@ -694,7 +698,7 @@ spec:
     app: legacy-database
 ---
 # 5. Authorization policy
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: legacy-db-policy
@@ -714,7 +718,7 @@ spec:
             ports: ["5432"]
 ---
 # 6. PeerAuthentication for mTLS
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: legacy-db-mtls
@@ -727,7 +731,7 @@ spec:
     mode: STRICT
 ---
 # 7. DestinationRule for connection management
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: legacy-db-dr
@@ -756,8 +760,8 @@ sudo systemctl status istio
 # Check sidecar logs
 sudo journalctl -u istio -f
 
-# Verify connectivity to istiod
-curl -v http://istiod.istio-system.svc:15012/debug/adsz
+# Verify TLS connectivity to istiod xDS
+openssl s_client -connect istiod.istio-system.svc:15012 -CAfile /etc/certs/root-cert.pem
 ```
 
 ### Verify WorkloadEntry Registration
@@ -782,8 +786,8 @@ curl -v http://kubernetes-service.namespace.svc.cluster.local:8080
 # Check if the sidecar is intercepting traffic
 sudo iptables -t nat -L -n | grep ISTIO
 
-# Verify certificates
-openssl s_client -connect payment-service.payments.svc:8080 -CAfile /etc/certs/root-cert.pem
+# Verify the installed root certificate
+openssl x509 -in /etc/certs/root-cert.pem -noout -subject -issuer
 ```
 
 ### Common Issues and Solutions
@@ -792,7 +796,7 @@ openssl s_client -connect payment-service.payments.svc:8080 -CAfile /etc/certs/r
 |-------|-------|----------|
 | WorkloadEntry not created | Sidecar cannot reach istiod | Check network connectivity and firewall rules |
 | mTLS handshake fails | Certificate mismatch | Regenerate bootstrap files with correct cluster ID |
-| Service not reachable | DNS resolution failure | Verify /etc/hosts entries from bootstrap |
+| Service not reachable | DNS resolution failure | Ensure DNS proxy or service DNS resolution is configured, and verify the `/etc/hosts` entry for istiod |
 | Health check fails | Wrong port or path | Update probe configuration in WorkloadGroup |
 | Traffic not routed | Missing Service selector | Ensure labels match between Service and WorkloadEntry |
 
