@@ -130,19 +130,20 @@ fn sum_array<const N: usize>(arr: [i32; N]) -> i32 {
     total
 }
 
-// Find the maximum element in a non-empty array
-// The where clause ensures N is at least 1
-fn max_array<const N: usize>(arr: [i32; N]) -> i32
-where
-    [(); N - 1]:,  // This constraint ensures N >= 1
-{
+// Find the maximum element in an array, or None if empty
+// On stable Rust we cannot constrain N >= 1 at compile time without
+// the unstable generic_const_exprs feature, so we return an Option
+fn max_array<const N: usize>(arr: [i32; N]) -> Option<i32> {
+    if N == 0 {
+        return None;
+    }
     let mut max = arr[0];
     for i in 1..N {
         if arr[i] > max {
             max = arr[i];
         }
     }
-    max
+    Some(max)
 }
 
 // Reverse an array, returning a new array
@@ -163,7 +164,7 @@ fn main() {
     let numbers = [5, 2, 8, 1, 9];
 
     println!("Sum: {}", sum_array(numbers));        // Output: 25
-    println!("Max: {}", max_array(numbers));        // Output: 9
+    println!("Max: {}", max_array(numbers).unwrap());  // Output: 9
     println!("Reversed: {:?}", reverse_array(numbers));  // Output: [9, 1, 8, 2, 5]
 }
 ```
@@ -384,8 +385,9 @@ where
     // Create a new empty SmallVec
     fn new() -> Self {
         SmallVec {
-            // SAFETY: MaybeUninit does not require initialization
-            data: unsafe { MaybeUninit::uninit().assume_init() },
+            // Inline const blocks (stable since 1.79) avoid requiring
+            // T: Copy and the older MaybeUninit::uninit().assume_init() trick
+            data: [const { MaybeUninit::uninit() }; N],
             len: 0,
         }
     }
@@ -480,7 +482,8 @@ pub struct StaticBuffer<T: Copy + Default, const CAPACITY: usize> {
 
 impl<T: Copy + Default, const CAPACITY: usize> StaticBuffer<T, CAPACITY> {
     // Create a new buffer with all elements set to default
-    pub const fn new() -> Self {
+    // Cannot be const fn on stable because Default::default() is not const
+    pub fn new() -> Self {
         StaticBuffer {
             storage: [T::default(); CAPACITY],
             write_pos: 0,
@@ -575,7 +578,6 @@ Const generics can encode units at the type level, catching unit mismatch errors
 
 ```rust
 use std::ops::{Add, Mul};
-use std::marker::PhantomData;
 
 // Dimensional analysis using const generics
 // Each const parameter represents an exponent in SI base units
@@ -735,6 +737,8 @@ trait Split<const SPLIT_AT: usize> {
 }
 
 // Split an array of size N into two arrays
+// Note: the `[T; N - SPLIT_AT]:` bound uses arithmetic on a const generic
+// and requires the unstable `#![feature(generic_const_exprs)]` (nightly only)
 impl<T: Copy + Default, const N: usize, const SPLIT_AT: usize> Split<SPLIT_AT> for [T; N]
 where
     [T; SPLIT_AT]:,
@@ -883,8 +887,6 @@ impl<T: Default + Copy, const N: usize> ConditionalBuffer<T, N> {
 Const generics enable compile-time optimizations that would not be possible otherwise:
 
 ```rust
-use std::time::Instant;
-
 // The compiler can unroll loops when N is known at compile time
 fn sum_unrolled<const N: usize>(arr: &[i32; N]) -> i32 {
     let mut sum = 0;
