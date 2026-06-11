@@ -152,7 +152,12 @@ const dependencies: FlagDependency[] = [
   { flag: 'newCheckoutV2', requiresFlag: 'newCheckout', requiresValue: true }
 ];
 
-const filteredMatrix = generateDependencyAwareMatrix(flags, dependencies);
+const dependencyFlags: FeatureFlag[] = [
+  ...flags,
+  { name: 'newCheckoutV2', values: [true, false] }
+];
+
+const filteredMatrix = generateDependencyAwareMatrix(dependencyFlags, dependencies);
 ```
 
 ### Priority-Based Matrix
@@ -345,7 +350,6 @@ afterAll(async () => {
 ```
 
 ```json
-// package.json
 {
   "scripts": {
     "test": "jest",
@@ -402,32 +406,46 @@ function generatePairwiseTests(config: PairwiseConfig): TestCase[] {
 
   // Greedily generate test cases that cover pairs
   while (pairs.size > 0) {
-    const testCase: Record<string, boolean> = {};
-    let coveredCount = 0;
+    let bestTestCase: Record<string, boolean> = {};
+    let bestCoveredPairs: string[] = [];
 
-    // Try to cover as many pairs as possible
-    for (const flag of flags) {
-      let bestValue = values[0];
-      let bestCoverage = 0;
+    for (const pair of pairs) {
+      const testCase = seedTestCaseFromPair(pair);
 
-      for (const value of values) {
-        const tempCase = { ...testCase, [flag]: value };
-        const coverage = countCoveredPairs(tempCase, pairs, flags);
-        if (coverage > bestCoverage) {
-          bestCoverage = coverage;
-          bestValue = value;
+      // Try to cover as many additional pairs as possible
+      for (const flag of flags) {
+        if (testCase[flag] !== undefined) continue;
+
+        let bestValue = values[0];
+        let bestCoverage = -1;
+
+        for (const value of values) {
+          const tempCase = { ...testCase, [flag]: value };
+          const coverage = countCoveredPairs(tempCase, pairs, flags);
+          if (coverage > bestCoverage) {
+            bestCoverage = coverage;
+            bestValue = value;
+          }
         }
+
+        testCase[flag] = bestValue;
       }
 
-      testCase[flag] = bestValue;
+      const coveredPairs = getCoveredPairs(testCase, pairs, flags);
+      if (coveredPairs.length > bestCoveredPairs.length) {
+        bestTestCase = testCase;
+        bestCoveredPairs = coveredPairs;
+      }
     }
 
     // Remove covered pairs
-    removeCoveredPairs(testCase, pairs, flags);
+    for (const pair of bestCoveredPairs) {
+      pairs.delete(pair);
+    }
 
     testCases.push({
-      flags: testCase,
-      description: describeFlags(testCase)
+      flags: bestTestCase,
+      description: describeFlags(bestTestCase)
     });
   }
 
@@ -439,35 +457,37 @@ function countCoveredPairs(
   pairs: Set<string>,
   flags: string[]
 ): number {
-  let count = 0;
-  const definedFlags = Object.keys(testCase);
-
-  for (let i = 0; i < definedFlags.length; i++) {
-    for (let j = i + 1; j < definedFlags.length; j++) {
-      const f1 = definedFlags[i];
-      const f2 = definedFlags[j];
-      const pair = `${f1}:${testCase[f1]},${f2}:${testCase[f2]}`;
-      if (pairs.has(pair)) count++;
-    }
-  }
-
-  return count;
+  return getCoveredPairs(testCase, pairs, flags).length;
 }
 
-function removeCoveredPairs(
+function getCoveredPairs(
   testCase: Record<string, boolean>,
   pairs: Set<string>,
   flags: string[]
-): void {
+): string[] {
+  const coveredPairs: string[] = [];
+
   for (let i = 0; i < flags.length; i++) {
     for (let j = i + 1; j < flags.length; j++) {
       const f1 = flags[i];
       const f2 = flags[j];
       if (testCase[f1] !== undefined && testCase[f2] !== undefined) {
-        pairs.delete(`${f1}:${testCase[f1]},${f2}:${testCase[f2]}`);
+        const pair = `${f1}:${testCase[f1]},${f2}:${testCase[f2]}`;
+        if (pairs.has(pair)) coveredPairs.push(pair);
       }
     }
   }
+
+  return coveredPairs;
+}
+
+function seedTestCaseFromPair(pair: string): Record<string, boolean> {
+  return Object.fromEntries(
+    pair.split(',').map(part => {
+      const [flag, value] = part.split(':');
+      return [flag, value === 'true'];
+    })
+  );
 }
 ```
 
@@ -634,7 +654,7 @@ class EnvironmentTestRunner {
     // Implementation depends on your test framework
     const jest = require('jest');
     const result = await jest.runCLI(
-      { testPathPattern: `.*\\.${suite}\\.test\\.ts$` },
+      { testPathPatterns: `.*\\.${suite}\\.test\\.ts$` },
       [process.cwd()]
     );
 
@@ -680,10 +700,7 @@ jobs:
         run: npm ci
 
       - name: Run tests for ${{ matrix.environment }} with ${{ matrix.flag-state }}
-        run: |
-          npm run test:flags -- \
-            --environment=${{ matrix.environment }} \
-            --flag-state=${{ matrix.flag-state }}
+        run: npm test
         env:
           FLAG_ENVIRONMENT: ${{ matrix.environment }}
           FLAG_TEST_STATE: ${{ matrix.flag-state }}
@@ -884,6 +901,7 @@ Testing in production requires careful strategies to minimize risk while validat
 interface CanaryConfig {
   flag: string;
   rolloutPercentage: number;
+  observationPeriodMinutes: number;
   metrics: string[];
   thresholds: Record<string, number>;
   rollbackOnFailure: boolean;
