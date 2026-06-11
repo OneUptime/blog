@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Redis, Rate Limiting, API, Distributed System
 
-Description: Build a distributed rate limiter in Go using Redis with sliding window, token bucket, and leaky bucket algorithms for API protection.
+Description: Build a distributed rate limiter in Go using Redis with fixed window, sliding window, and token bucket algorithms for API protection.
 
 ---
 
@@ -42,7 +42,6 @@ Create a reusable Redis client with connection pooling:
 package ratelimit
 
 import (
-    "context"
     "os"
     "time"
 
@@ -52,12 +51,21 @@ import (
 // NewRedisClient creates a configured Redis client with connection pooling
 func NewRedisClient() *redis.Client {
     redisURL := os.Getenv("REDIS_URL")
-    if redisURL == "" {
-        redisURL = "localhost:6379"
+    if redisURL != "" {
+        opts, err := redis.ParseURL(redisURL)
+        if err != nil {
+            panic(err)
+        }
+        opts.PoolSize = 100
+        opts.MinIdleConns = 10
+        opts.DialTimeout = 5 * time.Second
+        opts.ReadTimeout = 3 * time.Second
+        opts.WriteTimeout = 3 * time.Second
+        return redis.NewClient(opts)
     }
 
     return redis.NewClient(&redis.Options{
-        Addr:         redisURL,
+        Addr:         "localhost:6379",
         Password:     os.Getenv("REDIS_PASSWORD"),
         DB:           0,
         PoolSize:     100,              // Connection pool size
@@ -109,6 +117,18 @@ type FixedWindowLimiter struct {
     prefix   string        // Key prefix for namespacing
 }
 
+var fixedWindowScript = redis.NewScript(`
+    local key = KEYS[1]
+    local window = tonumber(ARGV[1])
+
+    local count = redis.call('INCR', key)
+    if count == 1 then
+        redis.call('EXPIRE', key, window)
+    end
+
+    return count
+`)
+
 // NewFixedWindowLimiter creates a new fixed window rate limiter
 func NewFixedWindowLimiter(client *redis.Client, limit int64, window time.Duration) *FixedWindowLimiter {
     return &FixedWindowLimiter{
@@ -125,15 +145,10 @@ func (l *FixedWindowLimiter) Allow(ctx context.Context, key string) (bool, error
     windowStart := time.Now().Truncate(l.window).Unix()
     redisKey := fmt.Sprintf("%s%s:%d", l.prefix, key, windowStart)
 
-    // Increment counter atomically
-    count, err := l.client.Incr(ctx, redisKey).Result()
+    // Increment counter and set expiration atomically
+    count, err := fixedWindowScript.Run(ctx, l.client, []string{redisKey}, int64(l.window.Seconds())).Int64()
     if err != nil {
         return false, fmt.Errorf("failed to increment counter: %w", err)
-    }
-
-    // Set expiration on first request in window
-    if count == 1 {
-        l.client.Expire(ctx, redisKey, l.window)
     }
 
     return count <= l.limit, nil
@@ -281,6 +296,39 @@ func (l *SlidingWindowLimiter) Allow(ctx context.Context, key string) (bool, err
     allowed := result[0].(int64) == 1
     return allowed, nil
 }
+
+func (l *SlidingWindowLimiter) GetRemaining(ctx context.Context, key string) (int64, error) {
+    now := time.Now()
+    windowSeconds := int64(l.window.Seconds())
+    windowStart := now.Truncate(l.window).Unix()
+
+    currentKey := fmt.Sprintf("%s%s:%d", l.prefix, key, windowStart)
+    previousKey := fmt.Sprintf("%s%s:%d", l.prefix, key, windowStart-windowSeconds)
+
+    currentCount, err := l.client.Get(ctx, currentKey).Int64()
+    if err == redis.Nil {
+        currentCount = 0
+    } else if err != nil {
+        return 0, err
+    }
+
+    previousCount, err := l.client.Get(ctx, previousKey).Int64()
+    if err == redis.Nil {
+        previousCount = 0
+    } else if err != nil {
+        return 0, err
+    }
+
+    elapsed := now.Unix() - windowStart
+    weight := float64(windowSeconds-elapsed) / float64(windowSeconds)
+    weightedCount := float64(previousCount)*weight + float64(currentCount)
+
+    remaining := l.limit - int64(weightedCount)
+    if remaining < 0 {
+        remaining = 0
+    }
+    return remaining, nil
+}
 ```
 
 ---
@@ -306,6 +354,7 @@ package ratelimit
 import (
     "context"
     "fmt"
+    "strconv"
     "time"
 
     "github.com/redis/go-redis/v9"
@@ -347,17 +396,17 @@ var tokenBucketScript = redis.NewScript(`
     -- Check if we have enough tokens
     if tokens < requested then
         -- Update timestamp even on denial to prevent token accumulation
-        redis.call('HMSET', key, 'tokens', tokens, 'last_update', now)
+        redis.call('HSET', key, 'tokens', tokens, 'last_update', now)
         redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) * 2)
-        return {0, tokens}  -- Denied
+        return {0, tostring(tokens)}  -- Denied
     end
 
     -- Consume tokens
     tokens = tokens - requested
-    redis.call('HMSET', key, 'tokens', tokens, 'last_update', now)
+    redis.call('HSET', key, 'tokens', tokens, 'last_update', now)
     redis.call('EXPIRE', key, math.ceil(capacity / refill_rate) * 2)
 
-    return {1, tokens}  -- Allowed
+    return {1, tostring(tokens)}  -- Allowed
 `)
 
 func NewTokenBucketLimiter(client *redis.Client, capacity int64, refillRate float64) *TokenBucketLimiter {
@@ -388,7 +437,10 @@ func (l *TokenBucketLimiter) Allow(ctx context.Context, key string) (bool, float
     }
 
     allowed := result[0].(int64) == 1
-    remaining, _ := result[1].(float64)
+    remaining, err := strconv.ParseFloat(result[1].(string), 64)
+    if err != nil {
+        return false, 0, fmt.Errorf("failed to parse remaining tokens: %w", err)
+    }
 
     return allowed, remaining, nil
 }
@@ -405,6 +457,7 @@ Wrap the rate limiter in HTTP middleware for easy integration with your API:
 package ratelimit
 
 import (
+    "context"
     "net/http"
     "strconv"
 )
