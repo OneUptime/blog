@@ -25,15 +25,15 @@ MongoDB wildcard indexes let you index fields without knowing their names in adv
 
 ### Indexing All Fields
 
-The `$**` pattern creates an index on every field in every document. MongoDB recursively indexes all scalar values in the document, including nested objects and arrays.
+The `$**` pattern creates an index on every field in every document except `_id`, which MongoDB omits from wildcard indexes by default. MongoDB recursively indexes all scalar values in the document, including nested objects and arrays.
 
 ```javascript
-// Create a wildcard index on all fields in the collection
+// Create a wildcard index on all fields in the collection except _id
 // This indexes every scalar value at any path in the document
 db.products.createIndex({ "$**": 1 });
 ```
 
-This single index supports queries on any field:
+This single index supports queries on any indexed field:
 
 ```javascript
 // All of these queries can use the wildcard index
@@ -92,7 +92,7 @@ For a document like this:
 }
 ```
 
-The wildcard index creates entries for:
+The wildcard index creates entries for fields other than `_id`:
 - `name: "Laptop"`
 - `specs.cpu: "M2"`
 - `specs.ram: 16`
@@ -257,8 +257,8 @@ db.events.insertMany([
   }
 ]);
 
-// Create compound index: event type + wildcard on properties
-// This supports queries filtered by type with any property condition
+// Create separate indexes for event type and dynamic properties
+// In MongoDB 7.0+, use a compound wildcard index for this pattern
 db.events.createIndex({ type: 1 });
 db.events.createIndex({ "properties.$**": 1 });
 
@@ -295,8 +295,8 @@ MongoDB considers wildcard indexes during query planning. Use `explain()` to ver
 // Check if wildcard index is used for this query
 db.products.find({ "attributes.color": "red" }).explain("executionStats");
 
-// Look for these fields in the output:
-// - winningPlan.inputStage.indexName should show your wildcard index
+// Look for these indicators in the output:
+// - winningPlan should contain an IXSCAN stage with your wildcard index name
 // - executionStats.totalDocsExamined should be close to totalKeysExamined
 ```
 
@@ -336,10 +336,11 @@ Each tag and each author field generates separate index entries, so be mindful o
 | Equality queries | Yes | - |
 | Range queries | Yes | - |
 | Regex queries | Yes | - |
-| `$exists` queries | Yes | - |
-| Sorting | No | Create regular index on sort field |
-| Compound conditions on multiple fields | No | Use multiple queries or compound index |
-| Covered queries | No | Regular index can cover queries |
+| `$exists: true` queries | Yes | - |
+| `$exists: false` queries | No | Use a regular index or schema change |
+| Sorting | Limited | Can sort only on the same non-array field used by the query predicate |
+| Compound conditions on multiple wildcard fields | Limited | A wildcard term supports one query predicate; use a compound wildcard index or regular compound index |
+| Covered queries | Limited | Only for a single non-array query field with a projection that excludes `_id` |
 | Unique constraints | No | Use regular unique index |
 
 ### Performance Trade-offs
@@ -363,7 +364,7 @@ console.log(`Insert took ${duration}ms`);
 Wildcard indexes can grow large with documents that have many fields. Monitor index size relative to available RAM.
 
 ```javascript
-// Check index size and memory usage
+// Check index usage statistics
 db.products.aggregate([
   { $indexStats: {} }
 ]);
@@ -460,6 +461,6 @@ db.products.aggregate([
 | **Projections** | Exclude large or rarely-queried fields |
 | **Performance** | Monitor write overhead and index size |
 | **Compound** | Combine with regular fields in MongoDB 7.0+ |
-| **Limitations** | Cannot sort or cover queries |
+| **Limitations** | Sorting and covered queries have strict conditions |
 
 Wildcard indexes solve the problem of querying documents with unpredictable structures. They trade some write performance and storage for query flexibility. Use them strategically on dynamic portions of your schema while keeping traditional indexes for known, high-traffic query patterns.
