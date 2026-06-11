@@ -84,7 +84,7 @@ pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
 
 ```bash
 # Install OpenTelemetry packages
-npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node
+npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-trace-otlp-grpc @opentelemetry/resources @opentelemetry/semantic-conventions
 ```
 
 #### Java
@@ -94,12 +94,12 @@ npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instr
 <dependency>
     <groupId>io.opentelemetry</groupId>
     <artifactId>opentelemetry-api</artifactId>
-    <version>1.34.0</version>
+    <version>1.63.0</version>
 </dependency>
 <dependency>
     <groupId>io.opentelemetry</groupId>
     <artifactId>opentelemetry-sdk</artifactId>
-    <version>1.34.0</version>
+    <version>1.63.0</version>
 </dependency>
 ```
 
@@ -158,8 +158,8 @@ def setup_tracer(service_name: str) -> trace.Tracer:
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 /**
  * Initialize the OpenTelemetry SDK with auto-instrumentation.
@@ -169,9 +169,9 @@ const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventi
  */
 function setupTracer(serviceName) {
     // Create a resource identifying your service
-    const resource = new Resource({
-        [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-        [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+    const resource = resourceFromAttributes({
+        [ATTR_SERVICE_NAME]: serviceName,
+        [ATTR_SERVICE_VERSION]: '1.0.0',
     });
 
     // Configure the OTLP exporter
