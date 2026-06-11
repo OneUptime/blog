@@ -108,8 +108,8 @@ Before enabling tiered storage, ensure your environment meets these requirements
 ### Kafka Version Requirements
 
 Tiered storage is available in:
-- Apache Kafka 3.6.0+ (KIP-405 implementation)
-- Confluent Platform 7.5+
+- Apache Kafka 3.6.0+ (KIP-405 implementation; production readiness improves in later releases)
+- Confluent Platform 7.5+ (uses Confluent-specific tiered storage configuration)
 
 ```bash
 # Check your Kafka version
@@ -144,46 +144,43 @@ Add these settings to your `server.properties` file:
 # This activates the remote log manager in the broker
 remote.log.storage.system.enable=true
 
-# Remote storage manager class for S3
-# This tells Kafka which implementation to use for remote storage
-remote.log.storage.manager.class.name=org.apache.kafka.tiered.storage.s3.S3RemoteStorageManager
-
 # Remote log metadata manager class
 # Manages the metadata about which segments are stored remotely
-remote.log.metadata.manager.class.name=org.apache.kafka.tiered.storage.internals.metadatamanager.RemoteLogMetadataManagerConfig
+remote.log.metadata.manager.class.name=org.apache.kafka.server.log.remote.metadata.storage.TopicBasedRemoteLogMetadataManager
+remote.log.metadata.manager.listener.name=PLAINTEXT
+
+# Remote storage manager plugin for S3
+# Apache Kafka does not ship an S3 implementation; this example uses the Aiven plugin
+remote.log.storage.manager.class.path=/opt/kafka/plugins/tiered-storage/core/*:/opt/kafka/plugins/tiered-storage/s3/*
+remote.log.storage.manager.class.name=io.aiven.kafka.tieredstorage.RemoteStorageManager
 
 # S3 bucket configuration
 # Use a dedicated bucket for Kafka tiered storage
-remote.log.storage.manager.class.path=/opt/kafka/libs/kafka-tiered-storage-s3-*.jar
-remote.log.storage.s3.bucket.name=kafka-tiered-storage-prod
+rsm.config.storage.backend.class=io.aiven.kafka.tieredstorage.storage.s3.S3Storage
+rsm.config.storage.s3.bucket.name=kafka-tiered-storage-prod
 
 # AWS region where your bucket is located
 # Choose a region close to your Kafka cluster for lower latency
-remote.log.storage.s3.region=us-east-1
+rsm.config.storage.s3.region=us-east-1
 
 # Authentication options (choose one):
 
 # Option 1: IAM role (recommended for EC2/EKS)
-# No additional config needed - uses instance profile
-remote.log.storage.s3.credentials.provider=DEFAULT
+# No additional config needed - uses the AWS SDK default credentials chain
 
 # Option 2: Access keys (for non-AWS deployments)
-# remote.log.storage.s3.credentials.provider=STATIC
-# remote.log.storage.s3.access.key.id=AKIAIOSFODNN7EXAMPLE
-# remote.log.storage.s3.secret.access.key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+# rsm.config.storage.aws.access.key.id=AKIAIOSFODNN7EXAMPLE
+# rsm.config.storage.aws.secret.access.key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 
 # Performance tuning
-# Maximum segment size to upload in a single request (multipart threshold)
-remote.log.storage.s3.multipart.upload.threshold.bytes=104857600
+# Chunk size for range-fetching and transforms
+rsm.config.chunk.size=4194304
 
 # Part size for multipart uploads (5MB minimum for S3)
-remote.log.storage.s3.multipart.upload.part.size.bytes=5242880
+rsm.config.storage.s3.multipart.upload.part.size=10485760
 
-# Connection pool size for S3 operations
-remote.log.storage.s3.max.connections=50
-
-# Read buffer size when fetching from S3
-remote.log.storage.s3.read.buffer.size.bytes=1048576
+# Timeout for S3 API calls
+rsm.config.storage.s3.api.call.timeout=300000
 ```
 
 ### IAM Policy for S3 Access
@@ -252,18 +249,10 @@ aws s3api put-public-access-block \
         "RestrictPublicBuckets": true
     }'
 
-# Enable intelligent tiering for automatic cost optimization
-aws s3api put-bucket-intelligent-tiering-configuration \
-    --bucket kafka-tiered-storage-prod \
-    --id kafka-auto-tiering \
-    --intelligent-tiering-configuration '{
-        "Id": "kafka-auto-tiering",
-        "Status": "Enabled",
-        "Tierings": [
-            {"Days": 90, "AccessTier": "ARCHIVE_ACCESS"},
-            {"Days": 180, "AccessTier": "DEEP_ARCHIVE_ACCESS"}
-        ]
-    }'
+# Optional: upload new objects directly to S3 Intelligent-Tiering
+# Do not enable Archive Access or Deep Archive Access tiers for data Kafka may read
+# because those tiers require asynchronous restore before objects are accessible.
+# rsm.config.storage.s3.storage.class=INTELLIGENT_TIERING
 ```
 
 ---
@@ -278,28 +267,30 @@ For GCP deployments, use Google Cloud Storage as your remote storage backend.
 # Enable tiered storage
 remote.log.storage.system.enable=true
 
-# GCS remote storage manager
-remote.log.storage.manager.class.name=org.apache.kafka.tiered.storage.gcs.GcsRemoteStorageManager
+# Remote log metadata manager
+remote.log.metadata.manager.class.name=org.apache.kafka.server.log.remote.metadata.storage.TopicBasedRemoteLogMetadataManager
+remote.log.metadata.manager.listener.name=PLAINTEXT
+
+# GCS remote storage manager plugin
+remote.log.storage.manager.class.path=/opt/kafka/plugins/tiered-storage/core/*:/opt/kafka/plugins/tiered-storage/gcs/*
+remote.log.storage.manager.class.name=io.aiven.kafka.tieredstorage.RemoteStorageManager
 
 # GCS bucket configuration
-remote.log.storage.gcs.bucket.name=kafka-tiered-storage-prod
-
-# GCS project ID
-remote.log.storage.gcs.project.id=your-gcp-project-id
+rsm.config.storage.backend.class=io.aiven.kafka.tieredstorage.storage.gcs.GcsStorage
+rsm.config.storage.gcs.bucket.name=kafka-tiered-storage-prod
 
 # Authentication options:
 
 # Option 1: Application Default Credentials (recommended for GKE)
 # Uses Workload Identity automatically
-remote.log.storage.gcs.credentials.provider=APPLICATION_DEFAULT
+rsm.config.storage.gcs.credentials.default=true
 
 # Option 2: Service account key file
-# remote.log.storage.gcs.credentials.provider=SERVICE_ACCOUNT_FILE
-# remote.log.storage.gcs.credentials.file=/etc/kafka/gcs-credentials.json
+# rsm.config.storage.gcs.credentials.path=/etc/kafka/gcs-credentials.json
 
 # Performance settings
-remote.log.storage.gcs.chunk.size.bytes=16777216
-remote.log.storage.gcs.max.connections=50
+rsm.config.chunk.size=4194304
+rsm.config.storage.gcs.resumable.upload.chunk.size=16777216
 ```
 
 ### GCS IAM Configuration
@@ -347,29 +338,33 @@ For Azure deployments, configure Azure Blob Storage as your cold tier.
 # Enable tiered storage
 remote.log.storage.system.enable=true
 
-# Azure Blob remote storage manager
-remote.log.storage.manager.class.name=org.apache.kafka.tiered.storage.azure.AzureBlobRemoteStorageManager
+# Remote log metadata manager
+remote.log.metadata.manager.class.name=org.apache.kafka.server.log.remote.metadata.storage.TopicBasedRemoteLogMetadataManager
+remote.log.metadata.manager.listener.name=PLAINTEXT
+
+# Azure Blob remote storage manager plugin
+remote.log.storage.manager.class.path=/opt/kafka/plugins/tiered-storage/core/*:/opt/kafka/plugins/tiered-storage/azure/*
+remote.log.storage.manager.class.name=io.aiven.kafka.tieredstorage.RemoteStorageManager
 
 # Azure storage account and container
-remote.log.storage.azure.account.name=kafkatieredstorage
-remote.log.storage.azure.container.name=kafka-segments
+rsm.config.storage.backend.class=io.aiven.kafka.tieredstorage.storage.azure.AzureBlobStorage
+rsm.config.storage.azure.account.name=kafkatieredstorage
+rsm.config.storage.azure.container.name=kafka-segments
 
 # Authentication options:
 
-# Option 1: Managed Identity (recommended for Azure VMs/AKS)
-remote.log.storage.azure.credentials.provider=MANAGED_IDENTITY
+# Option 1: Default Azure credentials (recommended for Azure VMs/AKS)
+# No account key or SAS token needed when the workload identity has Blob permissions
 
 # Option 2: Account key
-# remote.log.storage.azure.credentials.provider=ACCOUNT_KEY
-# remote.log.storage.azure.account.key=BASE64_ENCODED_ACCOUNT_KEY
+# rsm.config.storage.azure.account.key=BASE64_ENCODED_ACCOUNT_KEY
 
 # Option 3: SAS token
-# remote.log.storage.azure.credentials.provider=SAS_TOKEN
-# remote.log.storage.azure.sas.token=sv=2021-06-08&ss=b&srt=sco...
+# rsm.config.storage.azure.sas.token=sv=2021-06-08&ss=b&srt=sco...
 
 # Performance settings
-remote.log.storage.azure.block.size.bytes=4194304
-remote.log.storage.azure.max.connections=50
+rsm.config.chunk.size=4194304
+rsm.config.storage.azure.upload.block.size=4194304
 ```
 
 ### Azure Storage Account Setup
@@ -572,18 +567,18 @@ flowchart LR
         C1[7-30 days<br/>Infrequent Access<br/>$0.0125/GB/month]
     end
 
-    subgraph Archive["Archive Tier (Glacier)"]
-        A1[30+ days<br/>Rare Access<br/>$0.004/GB/month]
+    subgraph Archive["Archive Tier (Separate Export)"]
+        A1[30+ days<br/>Compliance archive<br/>Async restore]
     end
 
     Hot -->|Offload| Warm
     Warm -->|Lifecycle| Cold
-    Cold -->|Lifecycle| Archive
+    Cold -.->|Export, not live tier| Archive
 ```
 
 ### S3 Lifecycle Policy Configuration
 
-Configure S3 lifecycle rules to automatically move data to cheaper storage classes:
+Configure S3 lifecycle rules to automatically move data to cheaper storage classes that still support immediate reads. Do not transition Kafka remote log objects to S3 Glacier Flexible Retrieval or S3 Glacier Deep Archive unless the data is no longer expected to be read through Kafka, because those storage classes require restore before reads.
 
 ```json
 {
@@ -602,14 +597,6 @@ Configure S3 lifecycle rules to automatically move data to cheaper storage class
                 {
                     "Days": 30,
                     "StorageClass": "GLACIER_IR"
-                },
-                {
-                    "Days": 90,
-                    "StorageClass": "GLACIER"
-                },
-                {
-                    "Days": 365,
-                    "StorageClass": "DEEP_ARCHIVE"
                 }
             ],
             "Expiration": {
@@ -664,7 +651,7 @@ def estimate_monthly_cost(
         local_retention_days: Days to keep on local broker storage
         warm_retention_days: Days in S3 Standard
         cold_retention_days: Days in S3 Standard-IA
-        archive_retention_days: Days in Glacier
+        archive_retention_days: Days in a separate archive copy, not the live Kafka remote tier
         read_ratio_warm: Percentage of warm data read per month
         read_ratio_cold: Percentage of cold data read per month
         local_storage_per_gb: Cost per GB for local SSD storage
@@ -685,6 +672,8 @@ def estimate_monthly_cost(
     # Remote storage (single copy, S3 handles durability)
     warm_data_gb = daily_ingestion_gb * warm_retention_days
     cold_data_gb = daily_ingestion_gb * cold_retention_days
+    # Optional archive copy for compliance or offline analytics. Do not count this
+    # as Kafka-readable remote storage unless the class supports immediate reads.
     archive_data_gb = daily_ingestion_gb * archive_retention_days
 
     # Storage costs
@@ -785,44 +774,61 @@ Effective monitoring is critical for tiered storage success. Here are the key me
 # Prometheus JMX Exporter configuration for Kafka tiered storage metrics
 rules:
   # Remote storage manager metrics
-  - pattern: 'kafka.log.remote<type=RemoteLogManager, name=(.+)><>(Count|Value)'
+  - pattern: 'kafka.log.remote<type=RemoteLogManager, name=(.+)><>Value'
     name: kafka_remote_log_manager_$1
     type: GAUGE
 
+  # Remote log size
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=RemoteLogSizeBytes><>Value'
+    name: kafka_remote_log_size_bytes
+    type: GAUGE
+
   # Segment upload metrics
-  - pattern: 'kafka.log.remote<type=RemoteLogManager, name=RemoteLogSegmentBytes><>Count'
-    name: kafka_remote_log_segment_bytes_total
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=RemoteCopyBytesPerSec><>Count'
+    name: kafka_remote_copy_bytes_total
     type: COUNTER
 
   # Upload/download rates
-  - pattern: 'kafka.log.remote<type=RemoteLogManager, name=RemoteCopyBytesPerSec><>Count'
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=RemoteCopyBytesPerSec><>OneMinuteRate'
     name: kafka_remote_copy_bytes_per_sec
     type: GAUGE
 
-  - pattern: 'kafka.log.remote<type=RemoteLogManager, name=RemoteFetchBytesPerSec><>Count'
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=RemoteFetchBytesPerSec><>OneMinuteRate'
     name: kafka_remote_fetch_bytes_per_sec
     type: GAUGE
 
   # Error metrics
-  - pattern: 'kafka.log.remote<type=RemoteLogManager, name=RemoteCopyErrors><>Count'
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=RemoteCopyErrorsPerSec><>Count'
     name: kafka_remote_copy_errors_total
     type: COUNTER
 
-  - pattern: 'kafka.log.remote<type=RemoteLogManager, name=RemoteFetchErrors><>Count'
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=RemoteFetchErrorsPerSec><>Count'
     name: kafka_remote_fetch_errors_total
     type: COUNTER
+
+  # Remote read queue size
+  - pattern: 'org.apache.kafka.storage.internals.log<type=RemoteStorageThreadPool, name=RemoteLogReaderTaskQueueSize><>Value'
+    name: kafka_remote_log_reader_task_queue_size
+    type: GAUGE
+
+  # Segments eligible for tiering but not yet copied
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=RemoteCopyLagSegments><>Value'
+    name: kafka_remote_copy_lag_segments
+    type: GAUGE
 ```
 
 ### Critical Metrics Dashboard
 
 | Metric | Description | Alert Threshold |
 |--------|-------------|-----------------|
-| `kafka_remote_log_segment_bytes_total` | Total bytes in remote storage | Track trend |
+| `kafka_remote_log_size_bytes` | Total bytes in remote storage | Track trend |
+| `kafka_remote_copy_bytes_total` | Total bytes copied to remote storage | Track trend |
 | `kafka_remote_copy_bytes_per_sec` | Upload throughput | < expected rate |
 | `kafka_remote_fetch_bytes_per_sec` | Download throughput | Unexpected spikes |
 | `kafka_remote_copy_errors_total` | Upload failures | > 0 |
 | `kafka_remote_fetch_errors_total` | Download failures | > 0 |
 | `kafka_remote_copy_lag_segments` | Segments waiting upload | > threshold |
+| `kafka_remote_log_reader_task_queue_size` | Remote read tasks waiting | > threshold |
 
 ### Prometheus Alert Rules
 
@@ -859,11 +865,21 @@ groups:
           severity: warning
         annotations:
           summary: "Kafka remote copy lag is high"
-          description: "{{ $value }} segments waiting to be uploaded"
+          description: "{{ $value }} segments are eligible for tiering but not yet copied"
+
+      # Alert on remote read queue growth
+      - alert: KafkaRemoteReadQueueHigh
+        expr: kafka_remote_log_reader_task_queue_size > 100
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka remote read queue is high"
+          description: "{{ $value }} remote read tasks are waiting to be scheduled"
 
       # Alert on zero upload activity (may indicate problems)
       - alert: KafkaNoRemoteCopyActivity
-        expr: rate(kafka_remote_copy_bytes_per_sec[1h]) == 0
+        expr: avg_over_time(kafka_remote_copy_bytes_per_sec[1h]) == 0
         for: 2h
         labels:
           severity: warning
@@ -893,16 +909,16 @@ if [ -z "$METRICS" ]; then
 fi
 
 # Extract key metrics
-COPY_ERRORS=$(echo "$METRICS" | grep 'kafka_remote_copy_errors_total' | awk '{print $2}')
-FETCH_ERRORS=$(echo "$METRICS" | grep 'kafka_remote_fetch_errors_total' | awk '{print $2}')
-COPY_RATE=$(echo "$METRICS" | grep 'kafka_remote_copy_bytes_per_sec' | awk '{print $2}')
+COPY_ERRORS=$(echo "$METRICS" | awk '/^kafka_remote_copy_errors_total/ {sum += $2} END {print sum + 0}')
+FETCH_ERRORS=$(echo "$METRICS" | awk '/^kafka_remote_fetch_errors_total/ {sum += $2} END {print sum + 0}')
+COPY_RATE=$(echo "$METRICS" | awk '/^kafka_remote_copy_bytes_per_sec/ {sum += $2} END {print sum + 0}')
 
 echo "Remote copy errors: $COPY_ERRORS"
 echo "Remote fetch errors: $FETCH_ERRORS"
 echo "Remote copy rate: $COPY_RATE bytes/sec"
 
 # Alert on errors
-if [ "${COPY_ERRORS:-0}" -gt 0 ]; then
+if awk "BEGIN {exit !($COPY_ERRORS > 0)}"; then
     echo "WARNING: Remote copy errors detected"
     curl -X POST "$ALERT_ENDPOINT" \
         -H "Content-Type: application/json" \
@@ -913,7 +929,7 @@ if [ "${COPY_ERRORS:-0}" -gt 0 ]; then
         }"
 fi
 
-if [ "${FETCH_ERRORS:-0}" -gt 0 ]; then
+if awk "BEGIN {exit !($FETCH_ERRORS > 0)}"; then
     echo "WARNING: Remote fetch errors detected"
     curl -X POST "$ALERT_ENDPOINT" \
         -H "Content-Type: application/json" \
@@ -1050,14 +1066,20 @@ spec:
             # Enable tiered storage
             - name: KAFKA_REMOTE_LOG_STORAGE_SYSTEM_ENABLE
               value: "true"
+            - name: KAFKA_REMOTE_LOG_METADATA_MANAGER_LISTENER_NAME
+              value: "PLAINTEXT"
+            - name: KAFKA_REMOTE_LOG_STORAGE_MANAGER_CLASS_PATH
+              value: "/opt/kafka/plugins/tiered-storage/core/*:/opt/kafka/plugins/tiered-storage/s3/*"
             - name: KAFKA_REMOTE_LOG_STORAGE_MANAGER_CLASS_NAME
-              value: "org.apache.kafka.tiered.storage.s3.S3RemoteStorageManager"
-            - name: KAFKA_REMOTE_LOG_STORAGE_S3_BUCKET_NAME
+              value: "io.aiven.kafka.tieredstorage.RemoteStorageManager"
+            - name: KAFKA_RSM_CONFIG_STORAGE_BACKEND_CLASS
+              value: "io.aiven.kafka.tieredstorage.storage.s3.S3Storage"
+            - name: KAFKA_RSM_CONFIG_STORAGE_S3_BUCKET_NAME
               valueFrom:
                 configMapKeyRef:
                   name: kafka-config
                   key: s3-bucket
-            - name: KAFKA_REMOTE_LOG_STORAGE_S3_REGION
+            - name: KAFKA_RSM_CONFIG_STORAGE_S3_REGION
               value: "us-east-1"
             # Use IRSA for AWS credentials
             - name: AWS_WEB_IDENTITY_TOKEN_FILE
@@ -1135,12 +1157,16 @@ metadata:
 remote.log.storage.system.enable=true
 
 # S3 configuration
-remote.log.storage.manager.class.name=org.apache.kafka.tiered.storage.s3.S3RemoteStorageManager
-remote.log.storage.s3.bucket.name=kafka-tiered-storage-prod
-remote.log.storage.s3.region=us-east-1
+remote.log.metadata.manager.listener.name=PLAINTEXT
+remote.log.storage.manager.class.path=/opt/kafka/plugins/tiered-storage/core/*:/opt/kafka/plugins/tiered-storage/s3/*
+remote.log.storage.manager.class.name=io.aiven.kafka.tieredstorage.RemoteStorageManager
+rsm.config.storage.backend.class=io.aiven.kafka.tieredstorage.storage.s3.S3Storage
+rsm.config.storage.s3.bucket.name=kafka-tiered-storage-prod
+rsm.config.storage.s3.region=us-east-1
 
 # Use IAM roles (no hardcoded credentials)
-remote.log.storage.s3.credentials.provider=DEFAULT
+# No static credentials are required when the AWS SDK default credentials chain
+# can resolve an instance profile, pod identity, or IRSA role.
 
 # Performance tuning for production
 # Larger segments = fewer uploads, better efficiency
@@ -1150,23 +1176,19 @@ log.segment.bytes=1073741824
 log.roll.ms=86400000
 
 # Multipart upload settings
-remote.log.storage.s3.multipart.upload.threshold.bytes=104857600
-remote.log.storage.s3.multipart.upload.part.size.bytes=10485760
+rsm.config.storage.s3.multipart.upload.part.size=10485760
 
-# Connection pool for remote operations
-remote.log.storage.s3.max.connections=100
-
-# Read buffer for fetch operations
-remote.log.storage.s3.read.buffer.size.bytes=4194304
+# Chunking for remote range reads
+rsm.config.chunk.size=4194304
 
 ########################
 # Metadata Manager
 ########################
 
 # Remote log metadata topic configuration
-remote.log.metadata.topic.replication.factor=3
-remote.log.metadata.topic.num.partitions=50
-remote.log.metadata.topic.retention.ms=-1
+rlmm.config.remote.log.metadata.topic.replication.factor=3
+rlmm.config.remote.log.metadata.topic.num.partitions=50
+rlmm.config.remote.log.metadata.topic.retention.ms=-1
 
 ########################
 # Local Retention Defaults
@@ -1187,20 +1209,14 @@ log.local.retention.ms=86400000
 remote.log.manager.task.interval.ms=30000
 
 # Maximum concurrent uploads per broker
-remote.log.manager.max.thread.pool.size=10
+remote.log.manager.copier.thread.pool.size=10
 
 ########################
 # Reliability Settings
 ########################
 
-# Retry failed uploads
-remote.log.manager.max.copy.retries=5
-
-# Backoff between retries
-remote.log.manager.copy.retry.backoff.ms=5000
-
-# Timeout for upload operations (5 minutes)
-remote.log.storage.s3.request.timeout.ms=300000
+# Timeout for S3 API operations (5 minutes)
+rsm.config.storage.s3.api.call.timeout=300000
 ```
 
 ---
@@ -1236,7 +1252,7 @@ curl -s http://localhost:7071/metrics | grep remote_copy_bytes
 
 # Solutions:
 # 1. Increase thread pool size
-# remote.log.manager.max.thread.pool.size=20
+# remote.log.manager.copier.thread.pool.size=20
 
 # 2. Use larger segment sizes for fewer uploads
 # log.segment.bytes=2147483648
@@ -1254,13 +1270,13 @@ curl -s http://localhost:7071/metrics | grep remote_copy_bytes
 curl -s http://localhost:7071/metrics | grep remote_fetch
 
 # Solutions:
-# 1. Increase read buffer size
-# remote.log.storage.s3.read.buffer.size.bytes=8388608
+# 1. Tune chunk size and cache settings in the RemoteStorageManager plugin
+# rsm.config.chunk.size=8388608
 
 # 2. Consider keeping more data locally
 # log.local.retention.ms=172800000  # 2 days
 
-# 3. Enable S3 prefetch/caching at client level
+# 3. Enable prefetch/caching in the RemoteStorageManager plugin, if supported
 
 # 4. Use S3 Intelligent-Tiering to avoid retrieval delays
 ```
@@ -1278,9 +1294,9 @@ kafka-console-consumer.sh --bootstrap-server localhost:9092 \
     --from-beginning \
     --max-messages 10
 
-# If metadata is corrupted, you may need to rebuild
-# WARNING: This is a destructive operation
-# kafka-storage.sh format --config /etc/kafka/server.properties --rebuild-metadata
+# If metadata is missing or corrupted, stop and restore from backups or vendor
+# runbooks. Reformatting Kafka storage is destructive and is not a metadata
+# repair procedure.
 ```
 
 ---
