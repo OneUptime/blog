@@ -184,8 +184,8 @@ from typing import Optional
 class KSTestResult:
     """Result of Kolmogorov-Smirnov test for drift detection"""
     statistic: float      # Maximum distance between CDFs
-    p_value: float        # Probability distributions are the same
-    drift_detected: bool  # Whether drift exceeds threshold
+    p_value: float        # Probability of this statistic under the null hypothesis
+    drift_detected: bool  # Whether the test rejects the null hypothesis
     interpretation: str   # Human-readable explanation
 
 def ks_drift_test(
@@ -235,7 +235,7 @@ def ks_drift_test(
     )
 
 
-def ks_drift_test_categorical(
+def chi_squared_drift_test(
     reference: np.ndarray,
     current: np.ndarray,
     significance_level: float = 0.05
@@ -253,12 +253,13 @@ def ks_drift_test_categorical(
     ref_counts = np.array([np.sum(reference == cat) for cat in categories])
     cur_counts = np.array([np.sum(current == cat) for cat in categories])
 
-    # Normalize current counts to match reference sample size
+    # Normalize reference counts to match current sample size
     # This allows fair comparison when sample sizes differ
     expected = ref_counts * (len(current) / len(reference))
 
-    # Avoid division by zero
+    # Avoid zero expected counts while preserving the expected total.
     expected = np.maximum(expected, 1e-10)
+    expected = expected * (cur_counts.sum() / expected.sum())
 
     # Chi-squared test
     statistic, p_value = stats.chisquare(cur_counts, expected)
@@ -317,8 +318,8 @@ def js_divergence(
     bin_edges = np.linspace(min_val, max_val, bins + 1)
 
     # Compute normalized histograms (probability distributions)
-    p, _ = np.histogram(reference, bins=bin_edges, density=True)
-    q, _ = np.histogram(current, bins=bin_edges, density=True)
+    p, _ = np.histogram(reference, bins=bin_edges)
+    q, _ = np.histogram(current, bins=bin_edges)
 
     # Add small epsilon to avoid log(0)
     epsilon = 1e-10
@@ -335,6 +336,7 @@ def js_divergence(
     # JSD = 0.5 * KL(P||M) + 0.5 * KL(Q||M)
     # rel_entr computes element-wise KL divergence
     jsd = 0.5 * np.sum(rel_entr(p, m)) + 0.5 * np.sum(rel_entr(q, m))
+    jsd = jsd / np.log(2)  # Normalize from natural log units to [0, 1]
 
     # Interpret the result
     if jsd < 0.1:
@@ -407,6 +409,7 @@ This core class orchestrates drift detection across all features with configurab
 # Production drift detection system
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Callable
 from datetime import datetime
@@ -459,7 +462,7 @@ class DriftMonitor:
         Args:
             reference_data: DataFrame of training/reference data
             feature_configs: Per-feature configuration dict
-            default_method: Default detection method (psi, ks, js)
+            default_method: Default detection method (psi, ks, js, chi2)
             default_threshold: Default drift threshold
             drift_percentage_threshold: Fraction of features that must
                 drift to trigger overall drift alert
@@ -482,11 +485,12 @@ class DriftMonitor:
         self.reference_stats = {}
         for col in self.reference_data.columns:
             data = self.reference_data[col].dropna()
+            is_numeric = is_numeric_dtype(data)
             self.reference_stats[col] = {
-                'mean': data.mean() if data.dtype != object else None,
-                'std': data.std() if data.dtype != object else None,
-                'min': data.min() if data.dtype != object else None,
-                'max': data.max() if data.dtype != object else None,
+                'mean': data.mean() if is_numeric else None,
+                'std': data.std() if is_numeric else None,
+                'min': data.min() if is_numeric else None,
+                'max': data.max() if is_numeric else None,
                 'unique_count': data.nunique(),
                 'dtype': str(data.dtype)
             }
@@ -536,26 +540,42 @@ class DriftMonitor:
             details = {'breakdown': breakdown}
 
         elif method == 'ks':
-            result = ks_drift_test(reference, current)
+            result = ks_drift_test(reference, current, significance_level=threshold)
             score = result.statistic
             details = {'p_value': result.p_value}
+            drift_detected = result.drift_detected
+
+        elif method == 'chi2':
+            result = chi_squared_drift_test(reference, current, significance_level=threshold)
+            score = result.statistic
+            details = {'p_value': result.p_value}
+            drift_detected = result.drift_detected
 
         elif method == 'js':
             score, diagnostics = js_divergence(reference, current)
             details = diagnostics
+            drift_detected = score > threshold
 
         else:
             raise ValueError(f"Unknown drift detection method: {method}")
 
-        drift_detected = score > threshold
+        if method == 'psi':
+            drift_detected = score > threshold
 
         # Add comparison statistics
         details['reference_stats'] = self.reference_stats[feature_name]
-        details['current_stats'] = {
-            'mean': float(np.mean(current)),
-            'std': float(np.std(current)),
-            'count': len(current)
-        }
+        current_series = pd.Series(current)
+        if is_numeric_dtype(current_series):
+            details['current_stats'] = {
+                'mean': float(np.mean(current)),
+                'std': float(np.std(current)),
+                'count': len(current)
+            }
+        else:
+            details['current_stats'] = {
+                'unique_count': int(current_series.nunique()),
+                'count': len(current)
+            }
 
         return DriftResult(
             feature_name=feature_name,
@@ -842,9 +862,11 @@ This integration module exports drift metrics via OpenTelemetry for OneUptime in
 # oneuptime_integration.py
 # Export drift metrics to OneUptime via OpenTelemetry
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from typing import Iterable
 import logging
 
 logger = logging.getLogger(__name__)
@@ -859,19 +881,25 @@ class DriftMetricsExporter:
     def __init__(
         self,
         endpoint: str,
+        ingestion_token: str,
         service_name: str = "ml-drift-monitor",
         export_interval_ms: int = 60000
     ):
         """
         Args:
             endpoint: OneUptime OTLP endpoint
+            ingestion_token: OneUptime telemetry ingestion token
             service_name: Name for this service in metrics
             export_interval_ms: How often to export metrics
         """
+        # Store latest values for gauge callbacks
+        self._latest_scores = {}
+        self._features_drifted = {}
+
         # Configure OTLP exporter
         exporter = OTLPMetricExporter(
             endpoint=endpoint,
-            insecure=False
+            headers={"x-oneuptime-token": ingestion_token}
         )
 
         reader = PeriodicExportingMetricReader(
@@ -887,6 +915,7 @@ class DriftMetricsExporter:
         # Create metric instruments
         self.drift_score_gauge = self.meter.create_observable_gauge(
             name="ml.drift.score",
+            callbacks=[self._observe_drift_scores],
             description="Current drift score per feature",
             unit="1"
         )
@@ -899,15 +928,31 @@ class DriftMetricsExporter:
 
         self.features_drifted_gauge = self.meter.create_observable_gauge(
             name="ml.drift.features.drifted",
+            callbacks=[self._observe_features_drifted],
             description="Number of features currently drifted",
             unit="1"
         )
 
-        # Store latest values for gauge callbacks
-        self._latest_scores = {}
-        self._features_drifted = 0
-
         logger.info(f"DriftMetricsExporter initialized for {endpoint}")
+
+    def _observe_drift_scores(
+        self,
+        options: CallbackOptions
+    ) -> Iterable[Observation]:
+        """Callback for per-feature drift score gauge"""
+        for (model_name, feature_name), score in self._latest_scores.items():
+            yield Observation(
+                score,
+                {"model": model_name, "feature": feature_name}
+            )
+
+    def _observe_features_drifted(
+        self,
+        options: CallbackOptions
+    ) -> Iterable[Observation]:
+        """Callback for drifted feature count gauge"""
+        for model_name, count in self._features_drifted.items():
+            yield Observation(count, {"model": model_name})
 
     def record_drift_report(self, report: DriftReport, model_name: str):
         """
@@ -922,7 +967,7 @@ class DriftMetricsExporter:
             self._latest_scores[(model_name, result.feature_name)] = result.drift_score
 
         # Update drifted features count
-        self._features_drifted = report.drifted_features
+        self._features_drifted[model_name] = report.drifted_features
 
         # Increment alert counter if drift detected
         if report.overall_drift_detected:
@@ -937,11 +982,6 @@ class DriftMetricsExporter:
                 f"Drift alert recorded for {model_name}: "
                 f"{report.drifted_features} features drifted"
             )
-
-    def get_latest_scores(self):
-        """Callback for observable gauge"""
-        return self._latest_scores
-
 
 def create_drift_alert_rule():
     """
@@ -1112,7 +1152,7 @@ def main():
     feature_configs = {
         'user_age': {'method': 'psi', 'threshold': 0.15},
         'transaction_amount': {'method': 'ks', 'threshold': 0.1},
-        'category': {'method': 'psi', 'threshold': 0.25},  # Categorical - higher tolerance
+        'category': {'method': 'chi2', 'threshold': 0.05},  # Categorical feature
     }
 
     # Initialize drift monitor
@@ -1137,7 +1177,8 @@ def main():
 
     # Metrics exporter
     exporter = DriftMetricsExporter(
-        endpoint="https://otlp.oneuptime.com:4317",
+        endpoint="https://oneuptime.com/otlp/v1/metrics",
+        ingestion_token="YOUR_ONEUPTIME_SERVICE_TOKEN",
         service_name="recommendation-model-drift"
     )
 
