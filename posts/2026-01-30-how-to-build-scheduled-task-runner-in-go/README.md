@@ -111,10 +111,7 @@ func (s *Scheduler) Register(task Task) error {
     defer s.mu.Unlock()
 
     id, err := s.cron.AddFunc(task.Schedule, func() {
-        ctx := context.Background()
-        if err := task.Handler(ctx); err != nil {
-            // Log error
-        }
+        s.safeExecute(task)
     })
     if err != nil {
         return err
@@ -194,7 +191,7 @@ func main() {
 When running multiple instances, use distributed locking to prevent duplicate task execution. Redis is a popular choice:
 
 ```go
-import "github.com/go-redis/redis/v8"
+import "github.com/redis/go-redis/v9"
 
 type DistributedScheduler struct {
     *Scheduler
@@ -216,7 +213,7 @@ func (ds *DistributedScheduler) executeWithLock(task Task) {
 }
 ```
 
-For production environments, consider using libraries like `redsync` for more robust distributed mutex implementation with automatic renewal and proper failover handling.
+For production environments, consider using libraries like `redsync` for a more robust Redis-based distributed mutex implementation with lock ownership values, retries, and explicit expiry extension.
 
 ## Conclusion
 
