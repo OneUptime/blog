@@ -998,11 +998,11 @@ Parallel chunking for batch document processing.
 """
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import List, Dict
+from typing import List, Dict, Any, Optional
 import multiprocessing
 
 
-def chunk_document(doc: Dict[str, str]) -> Dict[str, any]:
+def chunk_document(doc: Dict[str, str]) -> Dict[str, Any]:
     """
     Chunk a single document. Designed for parallel execution.
 
@@ -1030,8 +1030,8 @@ def chunk_document(doc: Dict[str, str]) -> Dict[str, any]:
 
 def batch_chunk_documents(
     documents: List[Dict[str, str]],
-    max_workers: int = None
-) -> List[Dict[str, any]]:
+    max_workers: Optional[int] = None
+) -> List[Dict[str, Any]]:
     """
     Process multiple documents in parallel.
 
