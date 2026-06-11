@@ -156,6 +156,9 @@ override:
             value: 70
           - color: "red"
             value: 90
+    - id: color
+      value:
+        mode: thresholds
     - id: custom.thresholdsStyle
       value:
         mode: "line+area"
@@ -286,23 +289,23 @@ In this example, the series matches all three overrides. It gets line width from
 
 Use this behavior intentionally: set broad defaults early, then add specific refinements later in the list.
 
-## Dynamic Overrides with Variables
+## Dynamic Dashboards with Variables
 
-Grafana variables can be used within override configurations to create dynamic, reusable dashboards.
+Grafana variables can be used in queries and display names to create dynamic, reusable dashboards. Use variables to control which metrics are returned by the query, then apply overrides to the resulting field names or query references.
 
-If you have a variable called `$environment`, you can create overrides that change based on selection.
+For example, if you have a variable called `$environment`, filter the query by that environment and apply an override to the query result that should stand out.
 
 ```yaml
 override:
   matcher:
-    id: byRegexp
-    options: ".*${environment}.*"
+    id: byFrameRefID
+    options: "A"
   properties:
     - id: custom.lineWidth
       value: 3
 ```
 
-This pattern highlights metrics matching the currently selected environment, making it easier to focus on specific infrastructure segments.
+This pattern highlights the metrics returned for the currently selected environment, making it easier to focus on specific infrastructure segments.
 
 ## Common Pitfalls and Solutions
 
@@ -330,7 +333,7 @@ Overrides are evaluated at render time. Complex regex patterns on panels with ma
 
 ## Integrating with OneUptime
 
-If you are using OneUptime for observability, you can leverage these Grafana override techniques alongside OneUptime metrics. OneUptime exports metrics in OpenTelemetry format, which Grafana can query through compatible data sources like Prometheus or the native OTLP data source.
+If you are using OneUptime for observability, you can leverage these Grafana override techniques alongside OneUptime metrics. OneUptime exports metrics in OpenTelemetry format, which can be ingested into Prometheus-compatible backends such as Prometheus or Grafana Mimir and then queried from Grafana.
 
 The patterns described here work equally well whether your metrics come from OneUptime, Prometheus, InfluxDB, or other sources. The key is understanding your field names and applying overrides that make visual sense for your operations team.
 
@@ -343,7 +346,7 @@ Time series overrides transform cluttered Grafana panels into clear, actionable 
 - Use the right matcher for your use case: exact names for specific metrics, regex for patterns, query references for grouping
 - Apply meaningful visual distinctions: color-code by metric type, separate scales onto different axes
 - Order overrides intentionally: broad rules first, specific refinements last
-- Keep overrides maintainable: prefer patterns over lists, use variables for dynamic behavior
+- Keep overrides maintainable: prefer patterns over lists, and use variables in queries to keep dashboards reusable
 
 Start with one or two overrides on your most-used panels. Once you see the clarity they bring, you will find yourself applying them across your dashboard fleet.
 
