@@ -222,11 +222,11 @@ spec:
   # Metrics to evaluate
   metrics:
   - name: success-rate
-    # Run every 30 seconds
+    # Sample the metric every 30 seconds
     interval: 30s
-    # Require 3 successful measurements
+    # Measurement is successful when success rate is at least 95%
     successCondition: result[0] >= 0.95
-    # Fail after 3 consecutive failures
+    # Fail the analysis after 3 failed measurements
     failureLimit: 3
     provider:
       prometheus:
