@@ -100,9 +100,9 @@ The foundation is attaching flag state to every error and request span.
 
 ```typescript
 // flag-context.ts
-import { context, trace, Span } from '@opentelemetry/api';
+import { context, createContextKey, trace } from '@opentelemetry/api';
 
-interface FlagEvaluation {
+export interface FlagEvaluation {
   flagKey: string;
   value: boolean | string | number;
   variant: string;
@@ -110,7 +110,7 @@ interface FlagEvaluation {
 }
 
 // Store active flag evaluations for the current request
-const FLAG_CONTEXT_KEY = Symbol('flag-context');
+const FLAG_CONTEXT_KEY = createContextKey('flag-context');
 
 export class FlagContext {
   private evaluations: Map<string, FlagEvaluation> = new Map();
@@ -332,7 +332,7 @@ interface CohortMetrics {
   windowEnd: Date;
 }
 
-interface CorrelationResult {
+export interface CorrelationResult {
   flagKey: string;
   controlErrorRate: number;
   treatmentErrorRate: number;
@@ -392,7 +392,7 @@ export class CorrelationEngine {
 
     const absoluteIncrease = treatmentRate - controlRate;
 
-    // Chi-squared test for statistical significance
+    // Two-proportion z-test for statistical significance
     const confidenceScore = this.computeConfidence(control, treatment);
 
     const isSignificant =
@@ -441,10 +441,23 @@ export class CorrelationEngine {
     if (se === 0) return p1 === p2 ? 0 : 1;
 
     const z = Math.abs(p2 - p1) / se;
+    const pValue = 2 * (1 - this.normalCdf(z));
 
-    // Convert z-score to confidence (simplified)
-    // z=1.96 corresponds to 95% confidence
-    return Math.min(1, z / 1.96 * 0.95);
+    return 1 - pValue;
+  }
+
+  private normalCdf(z: number): number {
+    // Abramowitz and Stegun approximation for the standard normal CDF
+    const sign = z < 0 ? -1 : 1;
+    const x = Math.abs(z) / Math.sqrt(2);
+    const t = 1 / (1 + 0.3275911 * x);
+    const a1 = 0.254829592;
+    const a2 = -0.284496736;
+    const a3 = 1.421413741;
+    const a4 = -1.453152027;
+    const a5 = 1.061405429;
+    const erf = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+    return 0.5 * (1 + sign * erf);
   }
 }
 ```
@@ -509,7 +522,7 @@ const rollbackCounter = meter.createCounter('flag.rollbacks', {
   description: 'Automatic flag rollbacks triggered',
 });
 
-interface RollbackConfig {
+export interface RollbackConfig {
   flagKey: string;
   autoRollbackEnabled: boolean;
   rollbackThreshold: number;    // Relative increase threshold (e.g., 1.0 = 100%)
@@ -797,9 +810,8 @@ export class PatternDetector {
       return { patternType: 'none', confidence: 0, description: '', flagKey, evidence: {} };
     }
 
-    // Calculate linear regression slope
-    const values = errorTimeSeries.map(p => p.value);
-    const slope = this.linearRegressionSlope(values);
+    // Calculate linear regression slope in error-rate units per minute
+    const slope = this.linearRegressionSlope(errorTimeSeries);
 
     // Positive slope indicates increasing errors
     const isDegrading = slope > 0.001; // Threshold for meaningful increase
@@ -816,6 +828,7 @@ export class PatternDetector {
         slope,
         percentIncreasePerHour,
         dataPoints: errorTimeSeries.length,
+        windowMinutes,
       },
     };
   }
@@ -901,13 +914,15 @@ export class PatternDetector {
     return Math.sqrt(this.average(squareDiffs));
   }
 
-  private linearRegressionSlope(values: number[]): number {
-    const n = values.length;
-    const indices = values.map((_, i) => i);
-    const sumX = indices.reduce((a, b) => a + b, 0);
-    const sumY = values.reduce((a, b) => a + b, 0);
-    const sumXY = indices.reduce((total, x, i) => total + x * values[i], 0);
-    const sumXX = indices.reduce((total, x) => total + x * x, 0);
+  private linearRegressionSlope(points: TimeSeriesPoint[]): number {
+    const n = points.length;
+    const startMs = points[0].timestamp.getTime();
+    const xValues = points.map(p => (p.timestamp.getTime() - startMs) / 60000);
+    const yValues = points.map(p => p.value);
+    const sumX = xValues.reduce((a, b) => a + b, 0);
+    const sumY = yValues.reduce((a, b) => a + b, 0);
+    const sumXY = xValues.reduce((total, x, i) => total + x * yValues[i], 0);
+    const sumXX = xValues.reduce((total, x) => total + x * x, 0);
 
     return (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
   }
@@ -1163,21 +1178,21 @@ groups:
 route:
   receiver: default
   routes:
-    - match:
-        alertname: FlagAutoRollbackTriggered
+    - matchers:
+        - alertname = "FlagAutoRollbackTriggered"
       receiver: incident-channel
       continue: true
 
-    - match:
-        severity: critical
-        team: platform
+    - matchers:
+        - severity = "critical"
+        - team = "platform"
       receiver: platform-oncall
       group_wait: 30s
       group_interval: 5m
 
-    - match:
-        severity: warning
-        team: platform
+    - matchers:
+        - severity = "warning"
+        - team = "platform"
       receiver: platform-slack
       group_wait: 5m
       group_interval: 15m
@@ -1212,7 +1227,7 @@ Tie everything together into a production service.
 import { trace, metrics } from '@opentelemetry/api';
 import { CorrelationEngine, CorrelationResult } from './correlation-engine';
 import { PatternDetector } from './pattern-detector';
-import { RollbackController, RollbackConfig } from './rollback-controller';
+import { RollbackController } from './rollback-controller';
 
 const tracer = trace.getTracer('flag-error-tracker');
 const meter = metrics.getMeter('flag-error-tracker');
