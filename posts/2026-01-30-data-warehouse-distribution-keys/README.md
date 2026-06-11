@@ -8,7 +8,7 @@ Description: Learn to create distribution keys for optimizing data distribution 
 
 ---
 
-In massively parallel processing (MPP) data warehouses like Amazon Redshift, Snowflake, and Azure Synapse, data distribution is fundamental to query performance. Distribution keys determine how your data is spread across compute nodes, directly impacting join operations, aggregations, and overall query speed. This guide will walk you through creating effective distribution keys with practical examples and best practices.
+In massively parallel processing (MPP) data warehouses like Amazon Redshift and Azure Synapse dedicated SQL pools, data distribution is fundamental to query performance. Snowflake also partitions table data automatically with micro-partitions, but it does not use Redshift-style distribution keys. Distribution keys determine how your data is spread across compute nodes in systems that expose this control, directly impacting join operations, aggregations, and overall query speed. This guide will walk you through creating effective distribution keys with Amazon Redshift examples and best practices.
 
 ## Understanding Data Distribution in MPP Databases
 
@@ -37,11 +37,11 @@ graph TB
 
 ## Distribution Styles
 
-There are three main distribution styles in MPP databases. Each serves a specific purpose depending on your table size and query patterns.
+Amazon Redshift supports four distribution styles: AUTO, KEY, ALL, and EVEN. If you do not specify a distribution style, Redshift uses AUTO and can choose or adjust the effective style automatically. The examples below focus on the three styles you choose explicitly when you do not want Redshift to manage the choice automatically.
 
 ### 1. KEY Distribution
 
-Key distribution places rows with the same key value on the same node. This is ideal for large tables that are frequently joined together.
+Key distribution places rows with the same key value on the same node slice. This is ideal for large tables that are frequently joined together.
 
 ```sql
 -- Create a large fact table with KEY distribution
@@ -75,11 +75,11 @@ DISTKEY (customer_id);  -- Same key ensures co-location
 
 ### 2. ALL Distribution
 
-All distribution copies the entire table to every node. This is best for small dimension tables that are joined with large fact tables.
+All distribution copies the entire table to every node. This is best for slow-moving dimension tables where avoiding repeated data redistribution outweighs the extra storage, load, and maintenance cost.
 
 ```sql
--- Create a small lookup table with ALL distribution
--- This table has only ~200 rows, so copying to all nodes is efficient
+-- Create a slow-moving lookup table with ALL distribution
+-- Copying this table to all nodes can avoid repeated redistribution during joins
 CREATE TABLE product_categories (
     category_id     INTEGER NOT NULL,
     category_name   VARCHAR(100) NOT NULL,
@@ -89,8 +89,8 @@ CREATE TABLE product_categories (
 )
 DISTSTYLE ALL;  -- Copy entire table to every node
 
--- Create another small dimension table with ALL distribution
--- Region lookup tables are typically small and frequently joined
+-- Create another slow-moving dimension table with ALL distribution
+-- Region lookup tables are often small, stable, and frequently joined
 CREATE TABLE regions (
     region_id       INTEGER NOT NULL,
     region_name     VARCHAR(50) NOT NULL,
@@ -134,9 +134,9 @@ DISTSTYLE EVEN;  -- No specific join pattern, spread evenly
 ```mermaid
 graph LR
     subgraph "KEY Distribution"
-        K1[Node 1: customer_id 1-1000]
-        K2[Node 2: customer_id 1001-2000]
-        K3[Node 3: customer_id 2001-3000]
+        K1[Node 1: customer_id hash group A]
+        K2[Node 2: customer_id hash group B]
+        K3[Node 3: customer_id hash group C]
     end
 
     subgraph "ALL Distribution"
@@ -154,7 +154,7 @@ graph LR
 
 ## Co-location for Optimized Joins
 
-Co-location is the key benefit of proper distribution key selection. When two tables share the same distribution key, their matching rows reside on the same node, eliminating network data transfer during joins.
+Co-location is the key benefit of proper distribution key selection. When two tables share the same distribution key, their matching rows reside on the same node slice, eliminating network data transfer during joins.
 
 ```mermaid
 graph TB
@@ -167,9 +167,9 @@ graph TB
 
     subgraph "With Co-location"
         direction TB
-        CN1[Node 1: Orders + Customers for ID 1-1000]
-        CN2[Node 2: Orders + Customers for ID 1001-2000]
-        CN3[Node 3: Orders + Customers for ID 2001-3000]
+        CN1[Node 1: Orders + Customers for hash group A]
+        CN2[Node 2: Orders + Customers for hash group B]
+        CN3[Node 3: Orders + Customers for hash group C]
     end
 ```
 
@@ -237,12 +237,10 @@ Data skew occurs when data is unevenly distributed across nodes, causing some no
 -- A well-distributed table should have similar row counts per slice
 SELECT
     slice,
-    COUNT(*) AS row_count,
-    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 2) AS percentage
-FROM stv_blocklist b
-INNER JOIN stv_tbl_perm p ON b.tbl = p.id
-WHERE p.name = 'orders'
-GROUP BY slice
+    rows AS row_count,
+    ROUND(100.0 * rows / NULLIF(SUM(rows) OVER(), 0), 2) AS percentage
+FROM stv_tbl_perm
+WHERE name = 'orders'
 ORDER BY row_count DESC;
 
 -- Calculate skew ratio
@@ -252,11 +250,9 @@ SELECT
     MIN(row_count) AS min_rows,
     ROUND(MAX(row_count)::DECIMAL / NULLIF(MIN(row_count), 0), 2) AS skew_ratio
 FROM (
-    SELECT slice, COUNT(*) AS row_count
-    FROM stv_blocklist b
-    INNER JOIN stv_tbl_perm p ON b.tbl = p.id
-    WHERE p.name = 'orders'
-    GROUP BY slice
+    SELECT slice, rows AS row_count
+    FROM stv_tbl_perm
+    WHERE name = 'orders'
 ) slice_counts;
 ```
 
@@ -273,7 +269,7 @@ graph TB
     subgraph "Solutions"
         S1[Choose High Cardinality Key]
         S2[Handle NULLs Explicitly]
-        S3[Use Composite Keys or EVEN]
+        S3[Use a Different Key or EVEN]
     end
 
     C1 --> S1
@@ -285,7 +281,7 @@ Here are SQL examples for preventing skew:
 
 ```sql
 -- BAD: Using a low-cardinality column as distribution key
--- Only 5 status values means only 5 nodes will have data
+-- Only 5 status values means at most 5 slices will receive those hash values
 CREATE TABLE orders_bad (
     order_id        BIGINT,
     status          VARCHAR(20)  -- Only: pending, processing, shipped, delivered, cancelled
@@ -314,6 +310,7 @@ DISTSTYLE KEY
 DISTKEY (session_id);  -- Avoid user_id which may have NULLs
 
 -- Alternative: Use a surrogate key when natural keys cause skew
+-- and join co-location is less important for this table
 CREATE TABLE transactions (
     transaction_id  BIGINT IDENTITY(1,1),
     merchant_id     INTEGER NOT NULL,  -- Large merchant has 80% of transactions
@@ -330,7 +327,7 @@ DISTKEY (transaction_id);  -- Even distribution using surrogate key
 ```mermaid
 flowchart TD
     A[New Table] --> B{Table Size?}
-    B -->|Small < 1M rows| C[Use ALL Distribution]
+    B -->|Small, stable, join-sensitive| C[Use AUTO or ALL Distribution]
     B -->|Large >= 1M rows| D{Frequent Joins?}
     D -->|No| E[Use EVEN Distribution]
     D -->|Yes| F{Join Key High Cardinality?}
@@ -344,7 +341,7 @@ flowchart TD
 ### Complete Example Schema
 
 ```sql
--- Dimension: Small table, copy to all nodes
+-- Dimension: Small, slow-moving table, copy to all nodes
 CREATE TABLE dim_date (
     date_key        INTEGER NOT NULL,
     full_date       DATE NOT NULL,
@@ -359,7 +356,7 @@ CREATE TABLE dim_date (
 DISTSTYLE ALL
 SORTKEY (full_date);  -- Sort by date for range queries
 
--- Dimension: Small table, copy to all nodes
+-- Dimension: Small, slow-moving table, copy to all nodes
 CREATE TABLE dim_product (
     product_key     INTEGER NOT NULL,
     product_id      VARCHAR(20) NOT NULL,
@@ -446,7 +443,6 @@ GROUP BY c.customer_name;
 
 -- Check actual data distribution per node
 SELECT
-    owner AS table_owner,
     name AS table_name,
     slice,
     rows
@@ -459,12 +455,13 @@ ORDER BY slice;
 
 Effective distribution key selection is critical for MPP data warehouse performance. Remember these key principles:
 
-1. Use KEY distribution for large tables that are frequently joined, ensuring related tables share the same distribution key for co-location
-2. Use ALL distribution for small dimension tables (under 1 million rows) that are joined with many fact tables
-3. Use EVEN distribution for staging tables or when there is no clear join pattern
-4. Choose high-cardinality columns as distribution keys to prevent data skew
-5. Avoid using columns with many NULL values as distribution keys
-6. Monitor your data distribution regularly and adjust as data patterns change
+1. Use AUTO distribution when you want Redshift to choose and adjust the distribution style automatically
+2. Use KEY distribution for large tables that are frequently joined, ensuring related tables share the same distribution key for co-location
+3. Use ALL distribution for small, slow-moving dimension tables that are joined with many fact tables
+4. Use EVEN distribution for staging tables or when there is no clear join pattern
+5. Choose high-cardinality columns as distribution keys to prevent data skew
+6. Avoid using columns with many NULL values as distribution keys
+7. Monitor your data distribution regularly and adjust as data patterns change
 
 By following these guidelines and using the examples provided, you can optimize your data warehouse queries and achieve significant performance improvements in your analytical workloads.
 
