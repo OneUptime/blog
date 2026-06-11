@@ -128,7 +128,7 @@ This implementation provides a clean interface for idempotent operations with pr
 
 ```typescript
 import { Pool, PoolClient } from 'pg';
-import crypto from 'crypto';
+import * as crypto from 'node:crypto';
 
 // Status enum for the idempotency record lifecycle
 enum IdempotencyStatus {
@@ -186,8 +186,31 @@ class IdempotencyStore {
     // Generate a hash of the request body for validation
     // This ensures retries have the same payload as the original
     private hashRequest(body: unknown): string {
-        const content = JSON.stringify(body, Object.keys(body as object).sort());
+        const content = JSON.stringify(this.normalizeForHash(body));
         return crypto.createHash('sha256').update(content).digest('hex');
+    }
+
+    // Recursively sort object keys for stable hashing
+    private normalizeForHash(value: unknown): unknown {
+        if (value === null || value === undefined) {
+            return null;
+        }
+
+        if (Array.isArray(value)) {
+            return value.map(item => this.normalizeForHash(item));
+        }
+
+        if (typeof value === 'object') {
+            const sorted: Record<string, unknown> = {};
+            Object.keys(value as object)
+                .sort()
+                .forEach(key => {
+                    sorted[key] = this.normalizeForHash((value as Record<string, unknown>)[key]);
+                });
+            return sorted;
+        }
+
+        return value;
     }
 
     // Try to acquire an idempotency lock, or return existing record
@@ -202,10 +225,11 @@ class IdempotencyStore {
         const expiresAt = new Date(Date.now() + this.config.ttlSeconds * 1000);
 
         try {
-            // Use SERIALIZABLE isolation to prevent race conditions
-            await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+            // Use a transaction so row locks and state changes are atomic
+            await client.query('BEGIN');
 
-            // Check for existing record
+            // Check for existing record, including expired records that still
+            // occupy the unique (key, scope) constraint.
             const existing = await client.query<IdempotencyRecord>(
                 `SELECT id, key, scope, status,
                         response_code as "responseCode",
@@ -216,7 +240,7 @@ class IdempotencyStore {
                         completed_at as "completedAt",
                         expires_at as "expiresAt"
                  FROM idempotency_keys
-                 WHERE key = $1 AND scope = $2 AND expires_at > NOW()
+                 WHERE key = $1 AND scope = $2
                  FOR UPDATE`,
                 [key, effectiveScope]
             );
@@ -224,9 +248,26 @@ class IdempotencyStore {
             if (existing.rows.length > 0) {
                 const record = existing.rows[0];
 
+                if (record.expiresAt <= new Date()) {
+                    await client.query(
+                        `UPDATE idempotency_keys
+                         SET status = 'processing',
+                             request_hash = $2,
+                             response_code = NULL,
+                             response_body = NULL,
+                             response_headers = NULL,
+                             created_at = NOW(),
+                             completed_at = NULL,
+                             expires_at = $3
+                         WHERE id = $1`,
+                        [record.id, requestHash, expiresAt]
+                    );
+                    await client.query('COMMIT');
+                    return { isNew: true, record: null };
+                }
+
                 // Validate request hash matches original
                 if (record.requestHash && record.requestHash !== requestHash) {
-                    await client.query('ROLLBACK');
                     throw new IdempotencyMismatchError(
                         'Request body does not match original request'
                     );
@@ -239,9 +280,12 @@ class IdempotencyStore {
                         // Reset stuck record
                         await client.query(
                             `UPDATE idempotency_keys
-                             SET status = 'processing', created_at = NOW()
+                             SET status = 'processing',
+                                 request_hash = $2,
+                                 created_at = NOW(),
+                                 expires_at = $3
                              WHERE id = $1`,
-                            [record.id]
+                            [record.id, requestHash, expiresAt]
                         );
                         await client.query('COMMIT');
                         return { isNew: true, record: null };
@@ -257,9 +301,41 @@ class IdempotencyStore {
                 `INSERT INTO idempotency_keys
                  (key, scope, status, request_hash, expires_at)
                  VALUES ($1, $2, 'processing', $3, $4)
+                 ON CONFLICT (key, scope) DO NOTHING
                  RETURNING id`,
                 [key, effectiveScope, requestHash, expiresAt]
             );
+
+            if (result.rows.length === 0) {
+                const conflict = await client.query<IdempotencyRecord>(
+                    `SELECT id, key, scope, status,
+                            response_code as "responseCode",
+                            response_body as "responseBody",
+                            response_headers as "responseHeaders",
+                            request_hash as "requestHash",
+                            created_at as "createdAt",
+                            completed_at as "completedAt",
+                            expires_at as "expiresAt"
+                     FROM idempotency_keys
+                     WHERE key = $1 AND scope = $2
+                     FOR UPDATE`,
+                    [key, effectiveScope]
+                );
+
+                const record = conflict.rows[0];
+                if (!record) {
+                    throw new Error('Idempotency record disappeared during lock acquisition');
+                }
+
+                if (record.requestHash && record.requestHash !== requestHash) {
+                    throw new IdempotencyMismatchError(
+                        'Request body does not match original request'
+                    );
+                }
+
+                await client.query('COMMIT');
+                return { isNew: false, record };
+            }
 
             await client.query('COMMIT');
             return { isNew: true, record: null };
@@ -278,11 +354,13 @@ class IdempotencyStore {
         responseCode: number,
         responseBody: Record<string, unknown>,
         responseHeaders: Record<string, string> = {},
-        scope?: string
+        scope?: string,
+        client?: PoolClient
     ): Promise<void> {
         const effectiveScope = scope || this.config.defaultScope;
+        const queryable = client || this.pool;
 
-        await this.pool.query(
+        await queryable.query(
             `UPDATE idempotency_keys
              SET status = 'completed',
                  response_code = $3,
@@ -299,11 +377,13 @@ class IdempotencyStore {
         key: string,
         responseCode: number,
         errorBody: Record<string, unknown>,
-        scope?: string
+        scope?: string,
+        client?: PoolClient
     ): Promise<void> {
         const effectiveScope = scope || this.config.defaultScope;
+        const queryable = client || this.pool;
 
-        await this.pool.query(
+        await queryable.query(
             `UPDATE idempotency_keys
              SET status = 'failed',
                  response_code = $3,
@@ -478,13 +558,13 @@ class RequestFingerprint {
         method: string,
         path: string,
         body: unknown,
-        significantHeaders: string[] = []
+        significantHeaders: Record<string, string | undefined> = {}
     ): string {
         const content = {
             method: method.toUpperCase(),
             path: this.normalizePath(path),
             body: this.normalizeBody(body),
-            headers: significantHeaders.sort()
+            headers: this.normalizeHeaders(significantHeaders)
         };
 
         return crypto
@@ -493,10 +573,26 @@ class RequestFingerprint {
             .digest('hex');
     }
 
+    // Normalize headers by lowercasing names and sorting keys
+    private static normalizeHeaders(
+        headers: Record<string, string | undefined>
+    ): Record<string, string> {
+        const normalized: Record<string, string> = {};
+
+        Object.entries(headers)
+            .filter(([, value]) => value !== undefined)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .forEach(([key, value]) => {
+                normalized[key.toLowerCase()] = value as string;
+            });
+
+        return normalized;
+    }
+
     // Normalize path by removing trailing slashes and query params
     private static normalizePath(path: string): string {
         const url = new URL(path, 'http://localhost');
-        return url.pathname.replace(/\/+$/, '');
+        return url.pathname.replace(/\/+$/, '') || '/';
     }
 
     // Recursively sort object keys for consistent hashing
@@ -528,9 +624,16 @@ class RequestFingerprint {
         fingerprint2: string
     ): boolean {
         // Use timing-safe comparison to prevent timing attacks
+        const buffer1 = Buffer.from(fingerprint1);
+        const buffer2 = Buffer.from(fingerprint2);
+
+        if (buffer1.length !== buffer2.length) {
+            return false;
+        }
+
         return crypto.timingSafeEqual(
-            Buffer.from(fingerprint1),
-            Buffer.from(fingerprint2)
+            buffer1,
+            buffer2
         );
     }
 }
@@ -636,9 +739,10 @@ async function withIdempotencyLock<T>(
             // We have the lock, execute the operation
             try {
                 const result = await operation();
+                await store.complete(key, 200, result as Record<string, unknown>);
                 return { result, wasReplayed: false };
             } catch (error) {
-                // Let the store handle failure recording
+                await store.fail(key, 500, { error: (error as Error).message });
                 throw error;
             }
         }
@@ -690,8 +794,18 @@ async function executeIdempotent<T>(
 ): Promise<T> {
     const { isNew, record } = await store.checkAndLock(key, body);
 
-    if (!isNew && record?.status === IdempotencyStatus.Completed) {
-        return record.responseBody as T;
+    if (!isNew && record) {
+        if (record.status === IdempotencyStatus.Completed) {
+            return record.responseBody as T;
+        }
+
+        if (record.status === IdempotencyStatus.Processing) {
+            throw new IdempotencyConflictError('Request is currently being processed', 5);
+        }
+
+        if (record.status === IdempotencyStatus.Failed) {
+            throw new Error(`Previous request failed: ${JSON.stringify(record.responseBody)}`);
+        }
     }
 
     const client = await pool.connect();
@@ -701,8 +815,8 @@ async function executeIdempotent<T>(
 
         const result = await operation(client);
 
-        // Store result before committing
-        await store.complete(key, 200, result as Record<string, unknown>);
+        // Store result in the same transaction before committing
+        await store.complete(key, 200, result as Record<string, unknown>, {}, undefined, client);
 
         await client.query('COMMIT');
         return result;
@@ -750,12 +864,16 @@ async function createOrder(
 
             // Reserve inventory
             for (const item of orderData.items) {
-                await client.query(
+                const inventoryResult = await client.query(
                     `UPDATE inventory
                      SET reserved = reserved + $2
-                     WHERE product_id = $1 AND available >= $2`,
+                     WHERE product_id = $1 AND available - reserved >= $2`,
                     [item.productId, item.quantity]
                 );
+
+                if (inventoryResult.rowCount === 0) {
+                    throw new Error(`Insufficient inventory for product ${item.productId}`);
+                }
             }
 
             return {
@@ -904,6 +1022,7 @@ Write tests that verify your idempotency implementation handles all cases.
 
 ```typescript
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as crypto from 'node:crypto';
 
 describe('IdempotencyStore', () => {
     let store: IdempotencyStore;
@@ -971,13 +1090,17 @@ describe('IdempotencyStore', () => {
     it('should reset stuck processing records', async () => {
         const key = 'test-key-5';
         const body = { amount: 100 };
+        const requestHash = crypto
+            .createHash('sha256')
+            .update(JSON.stringify(body))
+            .digest('hex');
 
         // Create a stuck record (would normally happen due to crash)
         await pool.query(
             `INSERT INTO idempotency_keys
              (key, scope, status, request_hash, expires_at, created_at)
              VALUES ($1, 'global', 'processing', $2, NOW() + INTERVAL '1 day', NOW() - INTERVAL '2 minutes')`,
-            [key, RequestFingerprint.generate('POST', '/test', body)]
+            [key, requestHash]
         );
 
         // Should reset and allow new processing
