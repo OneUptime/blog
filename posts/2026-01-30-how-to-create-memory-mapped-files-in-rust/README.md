@@ -28,6 +28,7 @@ Rust provides memory mapping capabilities through the `memmap2` crate, which is 
 ```toml
 [dependencies]
 memmap2 = "0.9"
+fs2 = "0.4"  # Used later for file locking
 ```
 
 The crate provides two main types: `Mmap` for read-only mappings and `MmapMut` for read-write mappings.
@@ -131,7 +132,7 @@ The `Mmap::map` and `MmapMut::map_mut` functions are marked as `unsafe` because 
 
 3. **Concurrent access**: Multiple mutable mappings to the same file region can lead to data races.
 
-To use memory mapping safely:
+One common precaution is to lock the file so cooperating processes do not modify it while it is mapped:
 
 ```rust
 use memmap2::Mmap;
@@ -142,8 +143,8 @@ use fs2::FileExt;  // For file locking
 fn safe_mmap_read(path: &str) -> Result<()> {
     let file = File::open(path)?;
 
-    // Lock the file to prevent external modifications
-    file.lock_shared()?;
+    // Advisory lock for cooperating processes
+    FileExt::lock_shared(&file)?;
 
     let mmap = unsafe { Mmap::map(&file)? };
 
