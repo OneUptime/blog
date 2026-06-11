@@ -72,7 +72,7 @@ blocks_storage:
     sync_dir: /data/tsdb-sync
     sync_interval: 15m
 
-    # Ignore blocks older than this (reduces sync overhead)
+    # Ignore recently created blocks (reduces sync overhead)
     ignore_blocks_within: 10h
 
 # Server configuration
@@ -112,9 +112,6 @@ blocks_storage:
     # Skip recently created blocks (still being written by compactor)
     # Should be greater than compactor upload time
     ignore_blocks_within: 10h
-
-    # Limit concurrent block syncs to avoid overwhelming storage
-    max_concurrent_blocks_sync: 20
 
     # Meta sync configuration
     meta_sync_concurrency: 20
@@ -158,7 +155,7 @@ blocks_storage:
         max_size_bytes: 2147483648  # 2GB
 
     # Index header configuration
-    # Index headers are memory-mapped for fast access
+    # Index headers are stored on local disk and loaded on demand
     index_header:
       # Lazy loading reduces startup time
       lazy_loading_enabled: true
@@ -213,11 +210,8 @@ blocks_storage:
         # Chunks are typically smaller than index entries
         max_item_size: 1048576  # 1MB
 
-    # Control chunk fetching behavior
-    max_chunk_pool_bytes: 2147483648  # 2GB pool for chunk data
-
-    # Chunk selection strategy
-    chunk_ranges_per_series: 1
+      # Control how a GetRange request can be split when fetching chunks
+      max_get_range_requests: 3
 ```
 
 ### Metadata Cache
@@ -290,13 +284,11 @@ store_gateway:
     replication_factor: 3
     # Enable zone awareness
     zone_awareness_enabled: true
+    # Specify this instance's zone
+    # Set via environment variable or config per instance
+    instance_availability_zone: zone-a
     kvstore:
       store: memberlist
-
-  # Specify this instance's zone
-  # Set via environment variable or config per instance
-  sharding_ring:
-    instance_availability_zone: zone-a
 ```
 
 ## Complete Production Configuration
@@ -332,7 +324,7 @@ blocks_storage:
     sync_dir: /data/tsdb-sync
     sync_interval: 15m
     ignore_blocks_within: 10h
-    max_concurrent_blocks_sync: 20
+    block_sync_concurrency: 20
 
     # Index cache (Memcached)
     index_cache:
@@ -354,6 +346,9 @@ blocks_storage:
         max_async_concurrency: 50
         max_item_size: 1048576
 
+      # Chunk fetching settings
+      max_get_range_requests: 3
+
     # Metadata cache (Memcached)
     metadata_cache:
       backend: memcached
@@ -367,9 +362,6 @@ blocks_storage:
     index_header:
       lazy_loading_enabled: true
       lazy_loading_idle_timeout: 1h
-
-    # Memory pool for chunks
-    max_chunk_pool_bytes: 2147483648
 
 # Store gateway ring configuration
 store_gateway:
@@ -431,7 +423,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: store-gateway
-          image: grafana/mimir:2.11.0
+          image: grafana/mimir:3.1.0
           args:
             - -config.file=/etc/mimir/config.yaml
             - -config.expand-env=true
@@ -507,9 +499,9 @@ spec:
 
 ## Performance Tuning Checklist
 
-1. **Size your caches appropriately.** Index cache should be large enough to hold index headers for your most queried time ranges. Monitor cache hit rates via `/metrics`.
+1. **Size your caches appropriately.** Index cache should be large enough to hold frequently queried index entries. Monitor cache hit rates via `/metrics`.
 
-2. **Use SSDs for sync directory.** The store gateway writes temporary index data during sync. Fast local storage reduces query latency.
+2. **Use SSDs for sync directory.** The store gateway stores synchronized index headers in this directory. Fast local storage reduces startup and query latency.
 
 3. **Set appropriate replication factor.** Three replicas provides good availability. Higher values increase memory usage across the cluster.
 
@@ -546,6 +538,6 @@ histogram_quantile(0.99, sum(rate(cortex_bucket_store_series_get_all_duration_se
 
 **Blocks not appearing in queries:** Verify sync_interval is not too long. Check that ignore_blocks_within is not filtering out expected blocks.
 
-**Store gateway pods crash on startup:** Reduce max_concurrent_blocks_sync. The gateway may be overwhelming the system loading too many blocks at once.
+**Store gateway pods crash on startup:** Reduce block_sync_concurrency. The gateway may be overwhelming the system loading too many blocks at once.
 
 The Store Gateway transforms Mimir into a true long-term metrics solution. With proper caching and sharding, you can query years of metrics data with sub-second response times while keeping storage costs manageable through object storage backends.
