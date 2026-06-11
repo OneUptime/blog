@@ -89,7 +89,7 @@ This implementation wraps a database connection and intercepts queries to check 
 ```python
 import asyncio
 from typing import Any, Dict, List, Optional
-import aioredis
+import redis.asyncio as redis
 import asyncpg
 
 class QueryCache:
@@ -106,7 +106,7 @@ class QueryCache:
         self.key_generator = QueryCacheKey()
 
     async def connect(self):
-        self.cache = await aioredis.from_url(self.redis_url)
+        self.cache = await redis.from_url(self.redis_url)
 
     async def execute(
         self,
@@ -173,9 +173,10 @@ flowchart TB
 Tag-based invalidation groups cache entries by the tables they depend on. When a table changes, all related cache entries get invalidated.
 
 ```python
+import asyncio
 import json
 from typing import Any, Dict, List, Set
-import aioredis
+import redis.asyncio as redis
 
 class TaggedQueryCache:
     def __init__(self, redis_url: str):
@@ -184,7 +185,7 @@ class TaggedQueryCache:
         self.key_generator = QueryCacheKey()
 
     async def connect(self):
-        self.cache = await aioredis.from_url(self.redis_url)
+        self.cache = await redis.from_url(self.redis_url)
 
     async def set_with_tags(
         self,
@@ -294,7 +295,8 @@ class CachedDatabase:
             async with conn.transaction():
                 try:
                     yield conn
-                    # Invalidate cache after successful commit
+                    # Invalidate cache before commit so a failed commit
+                    # leaves the cache empty rather than stale
                     await self.cache.invalidate_by_tags(invalidate_tags)
                 except Exception:
                     # Transaction rolled back, cache remains valid
