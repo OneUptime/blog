@@ -229,17 +229,20 @@ app.use(compression({
   }
 }));
 
-// For internal service-to-service calls, use streaming compression
+// For internal service-to-service calls, compress request payloads
 const zlib = require('zlib');
-const { pipeline } = require('stream');
 
-async function fetchCompressedData(url) {
-  const response = await fetch(url, {
-    headers: { 'Accept-Encoding': 'gzip' }
+async function postCompressedData(url, payload) {
+  const compressed = zlib.gzipSync(Buffer.from(JSON.stringify(payload)));
+
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Encoding': 'gzip'
+    },
+    body: compressed
   });
-
-  const gunzip = zlib.createGunzip();
-  return pipeline(response.body, gunzip);
 }
 ```
 
@@ -266,6 +269,8 @@ flowchart LR
 ```vcl
 vcl 4.1;
 
+import std;
+
 backend default {
     .host = "origin.internal";
     .port = "8080";
@@ -286,6 +291,12 @@ sub vcl_recv {
     # Cache API responses with cache headers
     if (req.url ~ "^/api/" && req.http.Authorization) {
         return (hash);
+    }
+}
+
+sub vcl_hash {
+    if (req.http.Authorization) {
+        hash_data(req.http.Authorization);
     }
 }
 
@@ -321,7 +332,7 @@ flowchart TB
     end
 
     subgraph With["With VPC Endpoint"]
-        EC2b["EC2"] --> VPCEb["VPC Endpoint<br/>$0.01/hr + $0.01/GB"]
+        EC2b["EC2"] --> VPCEb["S3 Gateway Endpoint<br/>No endpoint hourly or data processing charge"]
         VPCEb --> S3b["S3"]
     end
 ```
@@ -413,10 +424,10 @@ output "endpoint_savings_estimate" {
     Estimated monthly savings with VPC Endpoints:
     - S3 Gateway Endpoint: Free (saves ~$0.045/GB via NAT)
     - DynamoDB Gateway Endpoint: Free (saves ~$0.045/GB via NAT)
-    - ECR Interface Endpoint: $7.20/month + $0.01/GB (saves ~$0.035/GB vs NAT)
+    - ECR Interface Endpoint: ~$7.20/month per AZ + $0.01/GB (saves ~$0.035/GB vs NAT data processing)
 
     For 1TB/month S3 traffic: ~$45 savings
-    For 100GB/month ECR pulls: ~$3.50 savings
+    For 100GB/month ECR pulls: data processing savings can be ~$3.50 before endpoint hourly charges
   EOT
 }
 ```
@@ -734,6 +745,8 @@ resource "aws_cloudfront_cache_policy" "optimized" {
 
 ### Monitor CDN Cache Hit Ratio
 
+Enable CloudFront additional metrics before querying `CacheHitRate`.
+
 ```bash
 #!/bin/bash
 # Monitor CloudFront cache hit ratio
@@ -753,15 +766,15 @@ aws cloudwatch get-metric-statistics \
   --statistics Average \
   --output table
 
-# Get origin requests (these cost money)
+# Get total viewer requests. Compare this with cache hit rate to estimate origin requests.
 aws cloudwatch get-metric-statistics \
   --namespace AWS/CloudFront \
-  --metric-name OriginLatency \
+  --metric-name Requests \
   --dimensions Name=DistributionId,Value=$DISTRIBUTION_ID Name=Region,Value=Global \
   --start-time $START_TIME \
   --end-time $END_TIME \
   --period 3600 \
-  --statistics SampleCount \
+  --statistics Sum \
   --output table
 
 echo "Target: Cache Hit Rate > 95%"
@@ -819,21 +832,22 @@ class NetworkCostAnalyzer:
             Metrics=['BlendedCost', 'UsageQuantity'],
             GroupBy=[
                 {'Type': 'DIMENSION', 'Key': 'USAGE_TYPE'}
-            ],
-            Filter={
-                'Or': [
-                    {'Dimensions': {'Key': 'USAGE_TYPE', 'Values': ['DataTransfer-Out-Bytes']}},
-                    {'Dimensions': {'Key': 'USAGE_TYPE', 'Values': ['DataTransfer-Regional-Bytes']}},
-                    {'Dimensions': {'Key': 'USAGE_TYPE', 'Values': ['NatGateway-Bytes']}},
-                    {'Dimensions': {'Key': 'USAGE_TYPE', 'Values': ['LoadBalancerUsage']}},
-                ]
-            }
+            ]
         )
 
         costs = defaultdict(float)
+        network_indicators = (
+            'DataTransfer',
+            'NatGateway',
+            'LoadBalancer',
+            'VpcEndpoint',
+            'TransitGateway',
+        )
         for result in response['ResultsByTime']:
             for group in result['Groups']:
                 usage_type = group['Keys'][0]
+                if not any(indicator in usage_type for indicator in network_indicators):
+                    continue
                 cost = float(group['Metrics']['BlendedCost']['Amount'])
                 costs[usage_type] += cost
 
@@ -921,7 +935,8 @@ if __name__ == '__main__':
 ### Set Up Cost Alerts
 
 ```hcl
-# CloudWatch alarm for unexpected network cost spikes
+# CloudWatch billing metrics are stored in us-east-1. Use an AWS provider
+# configured for us-east-1 for this alarm.
 resource "aws_cloudwatch_metric_alarm" "network_cost_spike" {
   alarm_name          = "network-cost-spike"
   comparison_operator = "GreaterThanThreshold"
@@ -930,7 +945,7 @@ resource "aws_cloudwatch_metric_alarm" "network_cost_spike" {
   namespace           = "AWS/Billing"
   period              = 86400
   statistic           = "Maximum"
-  threshold           = 1000  # Alert if daily network costs exceed $1000
+  threshold           = 1000  # Alert if month-to-date estimated EC2 charges exceed $1000
 
   dimensions = {
     Currency    = "USD"
@@ -939,7 +954,7 @@ resource "aws_cloudwatch_metric_alarm" "network_cost_spike" {
 
   alarm_actions = [aws_sns_topic.cost_alerts.arn]
 
-  alarm_description = "Network costs exceeded daily threshold"
+  alarm_description = "Month-to-date estimated EC2 charges exceeded threshold"
 }
 
 # Budget alert for monthly network spending
