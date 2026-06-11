@@ -63,7 +63,7 @@ For a deployment with 4 replicas using these settings, Kubernetes will ensure at
 
 ## Implementing Readiness Gates
 
-Readiness gates provide additional control over when a Pod is considered ready. This is particularly useful when you need external systems to verify the Pod status before it receives traffic.
+Readiness gates provide additional control over when a Pod is considered ready. This is particularly useful when you need an external controller to set custom Pod conditions before it receives traffic.
 
 ```yaml
 apiVersion: apps/v1
@@ -72,7 +72,13 @@ metadata:
   name: my-application
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: my-application
   template:
+    metadata:
+      labels:
+        app: my-application
     spec:
       readinessGates:
       - conditionType: "custom.io/gate"
@@ -88,7 +94,7 @@ spec:
           failureThreshold: 3
 ```
 
-The readiness probe ensures that new Pods only receive traffic after they pass health checks, preventing requests from being routed to instances that are not yet ready.
+The readiness probe ensures that new Pods only receive traffic after they pass health checks, and the readiness gate keeps the Pod unready until the custom condition is set to `True`.
 
 ## Monitoring Rollout Status
 
@@ -123,11 +129,11 @@ kubectl rollout undo deployment/my-application --to-revision=2
 kubectl rollout status deployment/my-application
 ```
 
-To preserve rollout history with meaningful annotations, record changes when applying updates:
+To preserve rollout history with meaningful annotations, set the change-cause annotation before applying the update:
 
 ```bash
+kubectl annotate deployment/my-application kubernetes.io/change-cause="Updated to v2 with new feature X" --overwrite
 kubectl apply -f deployment.yaml
-kubectl annotate deployment/my-application kubernetes.io/change-cause="Updated to v2 with new feature X"
 ```
 
 ## Pause and Resume Updates
