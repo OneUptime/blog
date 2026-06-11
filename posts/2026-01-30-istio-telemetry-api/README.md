@@ -12,7 +12,7 @@ Istio's Telemetry API gives you fine-grained control over observability data flo
 
 ## Understanding the Telemetry API Architecture
 
-The Telemetry API was introduced in Istio 1.11 and became the recommended approach in Istio 1.14+. It replaces the older MeshConfig and EnvoyFilter-based approaches with a cleaner, more declarative model.
+The Telemetry API was introduced in Istio 1.11 and is the recommended approach for workload-level telemetry customization in modern Istio. The API was promoted to `telemetry.istio.io/v1` in Istio 1.22, although some alpha fields, such as access log filters, are still available through the shared CRD schema.
 
 ```mermaid
 flowchart TB
@@ -103,7 +103,7 @@ istioctl analyze
 A Telemetry resource has three main sections: metrics, tracing, and accessLogging.
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: example-telemetry
@@ -124,7 +124,7 @@ spec:
           tagOverrides:
             custom_label:
               operation: UPSERT
-              value: "my-value"
+              value: '"my-value"'
 
   # Tracing configuration
   tracing:
@@ -146,7 +146,7 @@ Apply this in the `istio-system` namespace for mesh-wide effect:
 
 ```yaml
 # mesh-metrics.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -163,7 +163,7 @@ Add custom dimensions to standard Istio metrics:
 
 ```yaml
 # custom-metrics.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-metrics
@@ -180,7 +180,7 @@ spec:
           tagOverrides:
             environment:
               operation: UPSERT
-              value: "production"
+              value: '"production"'
 
         # Add request_protocol to request count metric
         - match:
@@ -207,7 +207,7 @@ Reduce metric cardinality by disabling unused metrics:
 
 ```yaml
 # disable-metrics.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: reduce-metrics
@@ -237,7 +237,7 @@ Apply different configurations to specific services:
 
 ```yaml
 # payment-service-metrics.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: payment-service-telemetry
@@ -298,7 +298,7 @@ flowchart LR
 
 ```yaml
 # basic-tracing.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-tracing
@@ -317,7 +317,7 @@ Different environments need different sampling rates:
 
 ```yaml
 # production-tracing.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: production-tracing
@@ -330,7 +330,7 @@ spec:
       randomSamplingPercentage: 1.0
 ---
 # staging-tracing.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: staging-tracing
@@ -343,7 +343,7 @@ spec:
       randomSamplingPercentage: 50.0
 ---
 # debug-tracing.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: debug-tracing
@@ -362,7 +362,7 @@ Enrich traces with custom metadata:
 
 ```yaml
 # custom-span-tags.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-tracing
@@ -384,13 +384,13 @@ spec:
             name: x-user-id
             defaultValue: "anonymous"
 
-        # Tag from environment variable
+        # Tag from environment variable visible to the proxy
         build_version:
           environment:
             name: BUILD_VERSION
             defaultValue: "unknown"
 
-        # Tag from pod label
+        # Tag from environment variable visible to the proxy
         team:
           environment:
             name: TEAM_LABEL
@@ -403,7 +403,7 @@ Increase sampling for critical services:
 
 ```yaml
 # critical-service-tracing.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: checkout-tracing
@@ -426,28 +426,23 @@ spec:
             value: "critical"
 ```
 
-### Multiple Tracing Providers
+### Choosing a Tracing Provider
 
-Send traces to multiple backends:
+Select one tracing provider per tracing rule. If you need to export to multiple backends, send traces to an OpenTelemetry Collector and fan out from the collector:
 
 ```yaml
-# multi-provider-tracing.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+# tracing-provider.yaml
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
-  name: multi-tracing
+  name: production-tracing
   namespace: production
 spec:
   tracing:
-    # Send to Jaeger for real-time analysis
-    - providers:
-        - name: jaeger
-      randomSamplingPercentage: 10.0
-
-    # Also send to OTEL Collector for long-term storage
+    # Send to OTEL Collector, which can export to Jaeger and long-term storage
     - providers:
         - name: otel-tracing
-      randomSamplingPercentage: 100.0
+      randomSamplingPercentage: 10.0
 ```
 
 ## Configuring Access Logging
@@ -456,7 +451,7 @@ spec:
 
 ```yaml
 # basic-access-logging.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-access-logging
@@ -471,9 +466,11 @@ spec:
 
 Send access logs to an OTEL Collector:
 
+The `accessLogging.filter` field remains alpha in current Istio releases. It is accepted by the shared Telemetry CRD schema, but avoid it in clusters that enforce Istio's stable validation policy.
+
 ```yaml
 # otel-access-logging.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: otel-access-logs
@@ -493,7 +490,7 @@ Log only errors or slow requests:
 
 ```yaml
 # conditional-access-logging.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: error-logging
@@ -506,7 +503,7 @@ spec:
         # Log all errors (4xx and 5xx)
         expression: response.code >= 400
 ---
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: slow-request-logging
@@ -520,7 +517,7 @@ spec:
         - name: otel-access-logging
       filter:
         # Log requests slower than 1 second
-        expression: response.duration > 1000
+        expression: request.duration > duration('1s')
 ```
 
 ### Disable Access Logging for Health Checks
@@ -529,7 +526,7 @@ Reduce log noise by filtering health check requests:
 
 ```yaml
 # exclude-health-checks.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: exclude-health-logs
@@ -629,7 +626,7 @@ spec:
 
 ```yaml
 # production-namespace-telemetry.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: production-defaults
@@ -646,10 +643,10 @@ spec:
           tagOverrides:
             environment:
               operation: UPSERT
-              value: "production"
+              value: '"production"'
             namespace:
               operation: UPSERT
-              value: "production"
+              value: '"production"'
 
   # Tracing configuration with low sampling
   tracing:
@@ -670,14 +667,14 @@ spec:
     - providers:
         - name: otel-access-logging
       filter:
-        expression: response.code >= 400 || response.duration > 2000
+        expression: response.code >= 400 || request.duration > duration('2s')
 ```
 
 ### Critical Service Override
 
 ```yaml
 # payment-service-telemetry.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: payment-telemetry
@@ -703,7 +700,7 @@ spec:
               value: request.headers['x-card-type']
             environment:
               operation: UPSERT
-              value: "production"
+              value: '"production"'
 
   # Higher sampling for payment flows
   tracing:
