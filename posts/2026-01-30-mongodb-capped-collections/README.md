@@ -10,7 +10,7 @@ Description: Learn to implement capped collections for fixed-size storage with a
 
 ## Introduction
 
-Capped collections are a special type of fixed-size collection in MongoDB that automatically overwrites the oldest documents when the size limit is reached. They work like circular buffers, maintaining insertion order and providing high-throughput operations. This makes them ideal for logging, caching, and real-time data streaming scenarios.
+Capped collections are a special type of fixed-size collection in MongoDB that automatically overwrites the oldest documents when the size limit is reached. They work like circular buffers, maintaining natural order for sequential reads. This makes them useful for logging, caching, and real-time data streaming scenarios where a rolling window of recent data is enough.
 
 ```mermaid
 flowchart LR
@@ -62,7 +62,7 @@ db.createCollection("recentEvents", {
 - The `size` parameter is required and must be specified in bytes
 - The `max` parameter is optional and sets the maximum document count
 - MongoDB removes the oldest documents first when either limit is reached
-- Documents are stored in insertion order (natural order)
+- Documents are stored in natural order, which matches insertion order for single-writer workloads
 
 ### Verifying Collection Properties
 
@@ -130,16 +130,16 @@ db.createCollection("weeklyLogs", {
 ### Constraints to Remember
 
 1. **Cannot delete individual documents** - You cannot use `deleteOne()` or `deleteMany()` on capped collections
-2. **Cannot update document size** - Updates that increase document size will fail
+2. **Cannot change document size with updates** - Updates or replacements that change the document size will fail
 3. **Cannot shard** - Capped collections cannot be sharded
-4. **Minimum size** - MongoDB rounds up small sizes to a minimum of 4096 bytes
+4. **Size rounding** - MongoDB rounds the specified size up to the nearest multiple of 256 bytes
 
 ```javascript
 // This will FAIL on a capped collection
 db.logs.deleteOne({ _id: ObjectId("...") });
 // Error: cannot remove from a capped collection
 
-// This will FAIL if it increases document size
+// This will FAIL if it changes document size
 db.logs.updateOne(
     { _id: ObjectId("...") },
     { $set: { message: "A much longer message that exceeds original size" }}
@@ -585,10 +585,10 @@ async function monitorCappedCollection(collectionName) {
 Capped collections provide an efficient solution for fixed-size storage scenarios in MongoDB. Key takeaways include:
 
 - **Automatic rotation** - Old documents are automatically removed when limits are reached
-- **Insertion order preservation** - Documents maintain their natural insertion order
-- **High throughput** - Optimized for fast writes and sequential reads
+- **Natural order reads** - Documents can be read efficiently in natural order, with insertion-order results for single-writer workloads
+- **Sequential access** - Useful for rolling logs and sequential reads, though capped collections serialize writes
 - **Tailable cursors** - Enable real-time streaming of new documents
-- **Fixed constraints** - Cannot delete individual documents or increase document size
+- **Fixed constraints** - Cannot delete individual documents or change document size with updates
 
 Use capped collections when you need:
 - Logging and audit trails with automatic cleanup
