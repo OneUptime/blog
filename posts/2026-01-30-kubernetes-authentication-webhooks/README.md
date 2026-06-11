@@ -52,7 +52,7 @@ When a user presents a bearer token, Kubernetes sends a TokenReview object to yo
 }
 ```
 
-The `spec.token` field contains the bearer token that needs validation. The optional `audiences` field lists the intended audiences for the token.
+The `spec.token` field contains the bearer token that needs validation. The optional `audiences` field lists the intended audiences for the token. Audience-aware webhooks should verify that the token is valid for at least one requested audience and return the compatible audience identifiers in `status.audiences`.
 
 ### TokenReview Response Structure
 
@@ -121,7 +121,7 @@ flowchart TB
 
 ## Building the Authentication Webhook in Go
 
-Let us build a production-ready authentication webhook in Go. This implementation includes proper error handling, logging, and TLS support.
+Let us build a complete authentication webhook example in Go. This implementation includes proper error handling, logging, and TLS support.
 
 ### Project Structure
 
@@ -169,7 +169,7 @@ type TokenReviewStatus struct {
     Authenticated bool `json:"authenticated"`
 
     // User contains information about the authenticated user
-    User UserInfo `json:"user,omitempty"`
+    User *UserInfo `json:"user,omitempty"`
 
     // Audiences are the audiences accepted by the server
     Audiences []string `json:"audiences,omitempty"`
@@ -223,6 +223,7 @@ var (
 // TokenInfo stores information about a valid token
 type TokenInfo struct {
     User      types.UserInfo
+    Audiences []string
     ExpiresAt time.Time
     Revoked   bool
 }
@@ -259,9 +260,10 @@ func (v *Validator) addSampleTokens() {
             UID:      "1001",
             Groups:   []string{"system:masters", "cluster-admins"},
             Extra: map[string][]string{
-                "department": {"platform"},
+                "department": []string{"platform"},
             },
         },
+        Audiences: []string{"api"},
         ExpiresAt: time.Now().Add(24 * time.Hour),
         Revoked:   false,
     }
@@ -272,9 +274,10 @@ func (v *Validator) addSampleTokens() {
             UID:      "2001",
             Groups:   []string{"developers"},
             Extra: map[string][]string{
-                "department": {"engineering"},
+                "department": []string{"engineering"},
             },
         },
+        Audiences: []string{"api"},
         ExpiresAt: time.Now().Add(24 * time.Hour),
         Revoked:   false,
     }
@@ -286,8 +289,8 @@ func (v *Validator) hashToken(token string) string {
     return hex.EncodeToString(hash[:])
 }
 
-// Validate checks if a token is valid and returns user info
-func (v *Validator) Validate(ctx context.Context, token string) (*types.UserInfo, error) {
+// Validate checks if a token is valid and returns user info and accepted audiences
+func (v *Validator) Validate(ctx context.Context, token string, requestedAudiences []string) (*types.UserInfo, []string, error) {
     v.mu.RLock()
     defer v.mu.RUnlock()
 
@@ -297,22 +300,27 @@ func (v *Validator) Validate(ctx context.Context, token string) (*types.UserInfo
     // Look up the token
     info, exists := v.tokens[hashedToken]
     if !exists {
-        return nil, ErrTokenNotFound
+        return nil, nil, ErrTokenNotFound
     }
 
     // Check if the token has been revoked
     if info.Revoked {
-        return nil, ErrTokenRevoked
+        return nil, nil, ErrTokenRevoked
     }
 
     // Check if the token has expired
     if time.Now().After(info.ExpiresAt) {
-        return nil, ErrTokenExpired
+        return nil, nil, ErrTokenExpired
+    }
+
+    acceptedAudiences := audienceIntersection(requestedAudiences, info.Audiences)
+    if len(requestedAudiences) > 0 && len(acceptedAudiences) == 0 {
+        return nil, nil, errors.New("token is not valid for the requested audience")
     }
 
     // Return a copy of the user info
     userCopy := info.User
-    return &userCopy, nil
+    return &userCopy, acceptedAudiences, nil
 }
 
 // RevokeToken marks a token as revoked
@@ -325,6 +333,26 @@ func (v *Validator) RevokeToken(token string) {
         info.Revoked = true
         v.tokens[hashedToken] = info
     }
+}
+
+func audienceIntersection(requested, tokenAudiences []string) []string {
+    if len(requested) == 0 {
+        return nil
+    }
+
+    tokenAudienceSet := make(map[string]struct{}, len(tokenAudiences))
+    for _, audience := range tokenAudiences {
+        tokenAudienceSet[audience] = struct{}{}
+    }
+
+    accepted := make([]string, 0, len(requested))
+    for _, audience := range requested {
+        if _, ok := tokenAudienceSet[audience]; ok {
+            accepted = append(accepted, audience)
+        }
+    }
+
+    return accepted
 }
 ```
 
@@ -385,6 +413,12 @@ func (h *TokenReviewHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    if tokenReview.APIVersion != "authentication.k8s.io/v1" {
+        log.Printf("Unsupported apiVersion: %s", tokenReview.APIVersion)
+        h.sendErrorResponse(w, "Expected authentication.k8s.io/v1 apiVersion")
+        return
+    }
+
     // Extract the token from the request
     token := tokenReview.Spec.Token
     if token == "" {
@@ -398,7 +432,7 @@ func (h *TokenReviewHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     defer cancel()
 
     // Validate the token
-    userInfo, err := h.validator.Validate(ctx, token)
+    userInfo, acceptedAudiences, err := h.validator.Validate(ctx, token, tokenReview.Spec.Audiences)
     if err != nil {
         log.Printf("Token validation failed: %v", err)
         h.sendUnauthenticatedResponse(w, &tokenReview, err.Error())
@@ -409,7 +443,7 @@ func (h *TokenReviewHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     log.Printf("Authenticated user: %s (uid: %s)", userInfo.Username, userInfo.UID)
 
     // Send successful response
-    h.sendAuthenticatedResponse(w, &tokenReview, userInfo)
+    h.sendAuthenticatedResponse(w, &tokenReview, userInfo, acceptedAudiences)
 }
 
 // sendAuthenticatedResponse sends a successful TokenReview response
@@ -417,14 +451,15 @@ func (h *TokenReviewHandler) sendAuthenticatedResponse(
     w http.ResponseWriter,
     request *types.TokenReview,
     user *types.UserInfo,
+    acceptedAudiences []string,
 ) {
     response := types.TokenReview{
         APIVersion: request.APIVersion,
         Kind:       request.Kind,
         Status: types.TokenReviewStatus{
             Authenticated: true,
-            User:          *user,
-            Audiences:     request.Spec.Audiences,
+            User:          user,
+            Audiences:     acceptedAudiences,
         },
     }
 
@@ -517,7 +552,6 @@ func main() {
     tlsConfig := &tls.Config{
         MinVersion:               tls.VersionTLS12,
         CurvePreferences:         []tls.CurveID{tls.X25519, tls.CurveP256},
-        PreferServerCipherSuites: true,
         CipherSuites: []uint16{
             tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
             tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
@@ -759,6 +793,7 @@ spec:
     - kube-apiserver
     - --authentication-token-webhook-config-file=/etc/kubernetes/auth-webhook/webhook-config.yaml
     - --authentication-token-webhook-cache-ttl=2m
+    - --authentication-token-webhook-version=v1
     # ... other flags
     volumeMounts:
     - name: webhook-config
@@ -874,11 +909,11 @@ When building authentication webhooks, keep these security practices in mind:
 
 1. **Always use TLS** for communication between the API server and webhook.
 2. **Validate client certificates** if possible to ensure requests come from the API server.
-3. **Deploy in the kube-system namespace** to benefit from network policies.
+3. **Apply NetworkPolicies or equivalent controls** to restrict access to the webhook service.
 
 ### High Availability
 
-1. **Run multiple replicas** of your webhook to handle API server restarts.
+1. **Run multiple replicas** of your webhook to handle webhook pod failures and increased authentication load.
 2. **Set appropriate timeouts** so authentication does not block the API server.
 3. **Implement health checks** to enable Kubernetes to route traffic away from unhealthy pods.
 
