@@ -21,7 +21,7 @@ struct SelfReferential {
 }
 ```
 
-If this struct is moved in memory, the `ptr` field would still point to the old location, creating a dangling pointer. This is undefined behavior in Rust.
+If this struct is moved in memory, the `ptr` field would still point to the old location, creating a dangling pointer. Dereferencing that stale pointer would be undefined behavior in Rust.
 
 Async blocks in Rust compile into state machines that can be self-referential. When you write:
 
@@ -33,7 +33,7 @@ async fn example() {
 }
 ```
 
-The compiler generates a struct that holds both `data` and a reference to it across the await point. If this struct were moved, the internal reference would become invalid.
+The compiler generates a struct that can hold both `data` and an in-flight future or reference that borrows it across the await point. If this struct were moved after being pinned and polled, the internal reference could become invalid.
 
 ## How Pin Works
 
@@ -61,7 +61,7 @@ use std::future::Future;
 
 fn spawn_task(future: Pin<Box<dyn Future<Output = ()>>>) {
     // The future is pinned on the heap
-    // It will never move for its entire lifetime
+    // The pointee will not move while it remains pinned
 }
 
 // Creating a pinned box
@@ -70,7 +70,7 @@ let pinned = Box::pin(async {
 });
 ```
 
-**Pin<&mut T>** - Stack pinning with a reference:
+**Pin<&mut T>** - Local pinning with a reference:
 
 ```rust
 use std::pin::pin;
@@ -83,7 +83,7 @@ async fn example() {
 }
 ```
 
-Use `Pin<Box<T>>` when you need ownership or dynamic dispatch. Use `Pin<&mut T>` for stack-local pinning with zero allocation overhead.
+Use `Pin<Box<T>>` when you need ownership or dynamic dispatch. Use `Pin<&mut T>` for local pinning without adding a heap allocation.
 
 ## The Unpin Trait
 
@@ -116,7 +116,7 @@ Futures created by async blocks are typically `!Unpin` (not Unpin) because they 
 
 ## Using the pin! Macro
 
-The `pin!` macro (stabilized in Rust 1.68) provides ergonomic stack pinning:
+The `pin!` macro (stabilized in Rust 1.68) provides ergonomic local pinning:
 
 ```rust
 use std::pin::pin;
@@ -142,7 +142,7 @@ async fn old_style<F: Future<Output = i32>>(fut: F) -> i32 {
 
 ## Practical Async Example
 
-Here is a real-world example using `select!` which requires pinned futures:
+Here is a real-world example using `select!` with explicitly pinned futures:
 
 ```rust
 use tokio::select;
@@ -192,7 +192,7 @@ impl Future for MyFuture {
 Pin exists to make self-referential types safe in Rust, which is essential for async/await. Remember these key points:
 
 - Use `Box::pin()` for heap-allocated pinned values
-- Use the `pin!` macro for stack pinning
+- Use the `pin!` macro for local pinning
 - Most types are `Unpin` and can be moved freely
 - Async blocks produce `!Unpin` futures
 - When implementing `Future`, you receive `Pin<&mut Self>`
