@@ -70,7 +70,7 @@ graph LR
 
 | Aspect | Bi-Encoder | Cross-Encoder |
 |--------|------------|---------------|
-| Inference Speed | Fast (O(1) for pre-computed docs) | Slow (O(n) per query-doc pair) |
+| Inference Speed | Fast (O(1) per query with pre-computed docs) | Slow (O(n) forward passes for n candidates) |
 | Accuracy | Good | Better |
 | Document Pre-computation | Yes (offline indexing) | No |
 | Memory Usage | Higher (store embeddings) | Lower |
@@ -1542,7 +1542,7 @@ import time
 class ReRankRequest(BaseModel):
     """Re-ranking request payload."""
     query: str = Field(..., min_length=1, max_length=1000)
-    documents: List[str] = Field(..., min_items=1, max_items=1000)
+    documents: List[str] = Field(..., min_length=1, max_length=1000)
     top_k: Optional[int] = Field(10, ge=1, le=100)
 
 
@@ -1620,7 +1620,7 @@ async def rerank(request: ReRankRequest):
 
     try:
         # Run re-ranking (in thread pool for CPU-bound work)
-        results = await asyncio.get_event_loop().run_in_executor(
+        results = await asyncio.get_running_loop().run_in_executor(
             None,
             lambda: state.reranker.rerank(
                 query=request.query,
