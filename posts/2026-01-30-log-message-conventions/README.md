@@ -137,9 +137,9 @@ interface BaseLogContext {
   requestId?: string;
 
   // Service identification
-  service: string;
-  environment: string;
-  version: string;
+  "service.name": string;
+  "deployment.environment.name": string;
+  "service.version": string;
 
   // Timing
   timestamp: string;
@@ -303,25 +303,25 @@ OpenTelemetry defines semantic conventions for common attributes. Use them:
 ```typescript
 // HTTP attributes
 {
-  "http.method": "POST",
-  "http.url": "/api/users",
-  "http.status_code": 201,
+  "http.request.method": "POST",
+  "url.path": "/api/users",
+  "http.response.status_code": 201,
   "http.request.body.size": 1024
 }
 
 // Database attributes
 {
-  "db.system": "postgresql",
-  "db.name": "users",
-  "db.operation": "INSERT",
-  "db.statement": "INSERT INTO users...",
+  "db.system.name": "postgresql",
+  "db.namespace": "users",
+  "db.operation.name": "INSERT",
+  "db.query.text": "INSERT INTO users...",
 }
 
 // Error attributes
 {
-  "error.type": "ValidationError",
-  "error.message": "Email format invalid",
-  "error.stack": "...",
+  "exception.type": "ValidationError",
+  "exception.message": "Email format invalid",
+  "exception.stacktrace": "...",
 }
 ```
 
@@ -335,7 +335,7 @@ Document your custom attributes so everyone uses the same names:
 | `order.id` | string | Order identifier | `"ord_456def"` |
 | `payment.amount` | number | Amount in smallest unit | `9999` |
 | `payment.currency` | string | ISO 4217 code | `"USD"` |
-| `feature.flag` | string | Feature flag name | `"new_checkout"` |
+| `feature_flag.key` | string | Feature flag name | `"new_checkout"` |
 | `experiment.variant` | string | A/B test variant | `"control"` |
 
 ---
@@ -419,9 +419,9 @@ function enrichWithTraceContext(ctx: LogContext): LogContext {
     ...ctx,
     traceId: spanContext?.traceId,
     spanId: spanContext?.spanId,
-    service: process.env.SERVICE_NAME,
-    environment: process.env.NODE_ENV,
-    version: process.env.APP_VERSION
+    "service.name": process.env.SERVICE_NAME,
+    "deployment.environment.name": process.env.NODE_ENV,
+    "service.version": process.env.APP_VERSION
   };
 }
 
@@ -476,9 +476,9 @@ export const paymentLogger = {
     logger.error("Failed payment processing", {
       "payment.id": payment.id,
       "payment.amount": payment.amount,
-      "error.code": error.code,
-      "error.message": error.message,
-      "error.processorCode": error.processorCode,
+      "error.type": error.code,
+      "exception.message": error.message,
+      "payment.processor_code": error.processorCode,
       "suggestion": getSuggestionForError(error.code)
     });
   }
@@ -579,16 +579,24 @@ try {
 Add ESLint rules to catch common violations:
 
 ```javascript
-// .eslintrc.js
-module.exports = {
-  rules: {
-    // Ban console.log in favor of structured logger
-    'no-console': 'error',
+// eslint.config.js
+export default [
+  {
+    rules: {
+      // Ban console.log in favor of structured logger
+      "no-console": "error",
 
-    // Custom rule: require static log messages
-    'no-template-literals-in-logs': 'error'
+      // Require static log messages
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "CallExpression[callee.object.name='logger'][callee.property.name=/^(trace|debug|info|warn|error|fatal)$/] > TemplateLiteral.arguments",
+          message: "Use a static log message and put variables in structured attributes."
+        }
+      ]
+    }
   }
-};
+];
 ```
 
 ### Code Review Checklist
