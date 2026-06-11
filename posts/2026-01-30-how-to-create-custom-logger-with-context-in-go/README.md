@@ -102,19 +102,19 @@ Now create logging methods that automatically include context values.
 // Info logs at info level with context values.
 func (l *Logger) InfoCtx(ctx context.Context, msg string, args ...any) {
     args = l.appendContextFields(ctx, args)
-    l.Logger.Info(msg, args...)
+    l.Logger.InfoContext(ctx, msg, args...)
 }
 
 // Error logs at error level with context values.
 func (l *Logger) ErrorCtx(ctx context.Context, msg string, args ...any) {
     args = l.appendContextFields(ctx, args)
-    l.Logger.Error(msg, args...)
+    l.Logger.ErrorContext(ctx, msg, args...)
 }
 
 // Debug logs at debug level with context values.
 func (l *Logger) DebugCtx(ctx context.Context, msg string, args ...any) {
     args = l.appendContextFields(ctx, args)
-    l.Logger.Debug(msg, args...)
+    l.Logger.DebugContext(ctx, msg, args...)
 }
 
 // appendContextFields extracts values from context and adds them to log args.
