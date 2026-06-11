@@ -120,7 +120,7 @@ flowchart TD
 
 1. **Metadata store**: Holds the mapping of key ranges to shard addresses. This can be a dedicated service (like ZooKeeper or etcd), a table in a coordination database, or embedded in the router itself.
 
-2. **Router/coordinator**: Receives queries, looks up which shard owns the target range, and forwards the request. Some systems embed routing logic in application drivers (MongoDB, CockroachDB), while others use a dedicated proxy layer.
+2. **Router/coordinator**: Receives queries, looks up which shard owns the target range, and forwards the request. Some systems embed routing logic in application drivers (Apache Cassandra's token-aware drivers), others use a dedicated proxy layer (MongoDB's mongos, Vitess's vtgate), and some build routing into every database node so any node can act as a gateway (CockroachDB, TiDB).
 
 3. **Shards**: The actual database instances holding partitioned data. Each shard is a complete database that can be scaled independently.
 
@@ -244,19 +244,20 @@ sequenceDiagram
 **Online splits with double-writes**: During the transition, write to both old and new shards. Once the new shard catches up, flip reads and stop writing to the old location. This minimizes downtime but requires careful coordination.
 
 ```python
-class SplitAwarRouter:
+class SplitAwareRouter:
     def __init__(self):
-        self.splitting = {}  # range -> (old_shard, new_shard)
+        # Each entry: (low, high) -> (old_shard, new_shard)
+        self.splitting = {}
 
     def write(self, key: int, data: dict):
-        if key in self.splitting:
-            old_shard, new_shard = self.splitting[key]
-            # Double-write during split
-            old_shard.write(key, data)
-            new_shard.write(key, data)
-        else:
-            shard = self.get_shard(key)
-            shard.write(key, data)
+        for (low, high), (old_shard, new_shard) in self.splitting.items():
+            if low <= key <= high:
+                # Double-write during split
+                old_shard.write(key, data)
+                new_shard.write(key, data)
+                return
+        shard = self.get_shard(key)
+        shard.write(key, data)
 ```
 
 **Scheduled maintenance windows**: For less critical systems, pause writes for the affected range, copy data, update metadata, and resume. Keep windows short by pre-copying most data and only syncing deltas during the pause.
