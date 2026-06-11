@@ -193,6 +193,10 @@ var (
     deserializer  = codecFactory.UniversalDeserializer()
 )
 
+func init() {
+    _ = admissionv1.AddToScheme(runtimeScheme)
+}
+
 // HandleValidate processes validation admission requests
 func HandleValidate(w http.ResponseWriter, r *http.Request) {
     // Read the request body
@@ -208,16 +212,26 @@ func HandleValidate(w http.ResponseWriter, r *http.Request) {
         http.Error(w, fmt.Sprintf("could not decode body: %v", err), http.StatusBadRequest)
         return
     }
+    if admissionReview.Request == nil {
+        http.Error(w, "admission review request is nil", http.StatusBadRequest)
+        return
+    }
 
     // Validate the pod and build the response
     response := validatePod(admissionReview.Request)
 
     // Construct the AdmissionReview response
-    admissionReview.Response = response
-    admissionReview.Response.UID = admissionReview.Request.UID
+    admissionResponse := admissionv1.AdmissionReview{
+        TypeMeta: metav1.TypeMeta{
+            APIVersion: admissionReview.APIVersion,
+            Kind:       admissionReview.Kind,
+        },
+        Response: response,
+    }
+    admissionResponse.Response.UID = admissionReview.Request.UID
 
     // Send the response
-    respBytes, err := json.Marshal(admissionReview)
+    respBytes, err := json.Marshal(admissionResponse)
     if err != nil {
         http.Error(w, fmt.Sprintf("could not marshal response: %v", err), http.StatusInternalServerError)
         return
@@ -246,7 +260,7 @@ func validatePod(request *admissionv1.AdmissionRequest) *admissionv1.AdmissionRe
     }
 
     // Skip validation for system namespaces
-    if pod.Namespace == "kube-system" || pod.Namespace == "kube-public" {
+    if request.Namespace == "kube-system" || request.Namespace == "kube-public" {
         return &admissionv1.AdmissionResponse{Allowed: true}
     }
 
@@ -337,12 +351,22 @@ func HandleMutate(w http.ResponseWriter, r *http.Request) {
         http.Error(w, fmt.Sprintf("could not decode body: %v", err), http.StatusBadRequest)
         return
     }
+    if admissionReview.Request == nil {
+        http.Error(w, "admission review request is nil", http.StatusBadRequest)
+        return
+    }
 
     response := mutatePod(admissionReview.Request)
-    admissionReview.Response = response
-    admissionReview.Response.UID = admissionReview.Request.UID
+    admissionResponse := admissionv1.AdmissionReview{
+        TypeMeta: metav1.TypeMeta{
+            APIVersion: admissionReview.APIVersion,
+            Kind:       admissionReview.Kind,
+        },
+        Response: response,
+    }
+    admissionResponse.Response.UID = admissionReview.Request.UID
 
-    respBytes, err := json.Marshal(admissionReview)
+    respBytes, err := json.Marshal(admissionResponse)
     if err != nil {
         http.Error(w, fmt.Sprintf("could not marshal response: %v", err), http.StatusInternalServerError)
         return
@@ -369,7 +393,7 @@ func mutatePod(request *admissionv1.AdmissionRequest) *admissionv1.AdmissionResp
     }
 
     // Skip mutation for system namespaces
-    if pod.Namespace == "kube-system" || pod.Namespace == "kube-public" {
+    if request.Namespace == "kube-system" || request.Namespace == "kube-public" {
         return &admissionv1.AdmissionResponse{Allowed: true}
     }
 
@@ -403,7 +427,7 @@ func mutatePod(request *admissionv1.AdmissionRequest) *admissionv1.AdmissionResp
         })
     }
 
-    // Add timestamp annotation
+    // Add mutation marker annotation
     patches = append(patches, patchOperation{
         Op:    "add",
         Path:  "/metadata/annotations/webhook.example.com~1mutated",
@@ -650,7 +674,6 @@ spec:
       labels:
         app: admission-webhook
     spec:
-      serviceAccountName: admission-webhook
       containers:
         - name: webhook
           image: yourorg/admission-webhook:latest
@@ -1004,8 +1027,13 @@ kind load docker-image admission-webhook:test --name webhook-test
 # Apply the secret
 kubectl apply -f certs/webhook-secret.yaml
 
-# Deploy the webhook
-kubectl apply -f deploy/
+# Deploy the webhook server
+kubectl apply -f deploy/webhook-deployment.yaml
+
+# Register the webhooks with the generated CA bundle
+CA_BUNDLE=$(base64 < certs/ca.crt | tr -d '\n')
+CA_BUNDLE=${CA_BUNDLE} envsubst < deploy/validating-webhook-config.yaml | kubectl apply -f -
+CA_BUNDLE=${CA_BUNDLE} envsubst < deploy/mutating-webhook-config.yaml | kubectl apply -f -
 
 # Wait for the webhook to be ready
 kubectl wait --for=condition=available --timeout=60s deployment/admission-webhook
@@ -1022,7 +1050,21 @@ fi
 # Test: Create a pod with resource limits (should succeed)
 echo "Testing validation webhook - expecting success..."
 kubectl run test-pod-valid --image=nginx \
-    --limits=cpu=100m,memory=128Mi
+    --overrides='{
+      "apiVersion": "v1",
+      "spec": {
+        "containers": [{
+          "name": "test-pod-valid",
+          "image": "nginx",
+          "resources": {
+            "limits": {
+              "cpu": "100m",
+              "memory": "128Mi"
+            }
+          }
+        }]
+      }
+    }'
 
 # Check if the mutation was applied
 echo "Testing mutation webhook..."
