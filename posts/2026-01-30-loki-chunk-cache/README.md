@@ -21,7 +21,7 @@ Loki stores log data in two layers:
 
 Without caching, every query fetches chunks from the storage backend. Object stores like S3 have latency measured in tens of milliseconds per request. Multiply that by hundreds of chunks for a single query and you get slow dashboards.
 
-The chunk cache stores decompressed chunk data in memory. When the same time range and labels are queried again, Loki serves results directly from cache.
+The chunk cache stores chunk data in memory, keyed by Loki's chunk references. When the same chunks are needed again, Loki can read them from cache instead of the backing store.
 
 Benefits:
 
@@ -70,17 +70,16 @@ Deploy Memcached as a StatefulSet or use a managed service. For production, run 
 # Chunk cache configuration using Memcached backend
 
 chunk_store_config:
-  # Maximum time range to look back when querying
-  max_look_back_period: 0s
-
   # Chunk cache settings
   chunk_cache_config:
     # Use Memcached as the cache backend
     memcached:
-      # How long to wait for batch operations
+      # How many keys to fetch in each batch
       batch_size: 256
       # Number of parallel fetches
       parallelism: 10
+      # How long items stay in cache (TTL)
+      expiration: 1h
 
     # Connection settings for Memcached cluster
     memcached_client:
@@ -90,10 +89,6 @@ chunk_store_config:
       timeout: 500ms
       # Maximum idle connections per address
       max_idle_conns: 100
-      # How long items stay in cache (TTL)
-      expiration: 1h
-      # Update TTL on read to keep hot items cached
-      update_cache_timestamp: true
 ```
 
 ### Memcached StatefulSet Example
@@ -121,7 +116,7 @@ spec:
     spec:
       containers:
       - name: memcached
-        image: memcached:1.6-alpine
+        image: memcached:1.6.32-alpine
         ports:
         - containerPort: 11211
           name: memcached
@@ -201,10 +196,8 @@ For larger deployments, use Redis Cluster mode:
 chunk_store_config:
   chunk_cache_config:
     redis:
-      # Use cluster mode for horizontal scaling
-      cluster_enabled: true
-      # List of cluster seed nodes
-      endpoint: redis-cluster.loki.svc.cluster.local:6379
+      # Comma-separated cluster seed endpoints
+      endpoint: redis-cluster-0.loki.svc.cluster.local:6379,redis-cluster-1.loki.svc.cluster.local:6379,redis-cluster-2.loki.svc.cluster.local:6379
       timeout: 500ms
       expiration: 1h
       pool_size: 100
@@ -297,7 +290,7 @@ TTL (Time To Live) determines how long chunks stay in cache:
 
 chunk_store_config:
   chunk_cache_config:
-    memcached_client:
+    memcached:
       # Short TTL for high-churn environments
       expiration: 30m
 
@@ -306,6 +299,9 @@ chunk_store_config:
 
       # Very long TTL (use with LRU eviction)
       # expiration: 24h
+
+    memcached_client:
+      addresses: dns+memcached.loki.svc.cluster.local:11211
 ```
 
 TTL recommendations:
@@ -314,40 +310,35 @@ TTL recommendations:
 - **6 to 24 hours**: Use when queries often span the same time ranges (dashboards with fixed lookback periods).
 - **Match your retention period**: If you retain logs for 7 days, a 24h cache TTL covers a large percentage of queries.
 
-The cache backend handles eviction when memory fills up (LRU in both Memcached and Redis).
+Memcached evicts items when memory fills up. For Redis, configure a cache-friendly `maxmemory-policy` such as `allkeys-lru` so it evicts old cache entries instead of rejecting writes.
 
 ## Advanced Configuration Options
 
-### Write-Behind Cache for Ingesters
+### Embedded First-Level Cache
 
-Ingesters can also benefit from caching recently written chunks:
+Queriers can use an embedded in-process cache as a fast first layer:
 
 ```yaml
 # loki-config.yaml
-# Ingester chunk cache (write path)
+# Embedded chunk cache
 
-ingester:
-  chunk_encoding: snappy
-  chunk_idle_period: 30m
-  chunk_retain_period: 1m
-
-# Enable chunk cache for both read and write paths
 chunk_store_config:
   chunk_cache_config:
-    # Write-back cache settings
-    enable_fifocache: true
-    fifocache:
-      # In-memory cache size
-      max_size_bytes: 1073741824  # 1GB
+    # Embedded in-process cache settings
+    embedded_cache:
+      enabled: true
+      # In-memory cache size in MB
+      max_size_mb: 1024
       # Maximum items in cache
       max_size_items: 10000
       # Item TTL
       ttl: 1h
 
     # External cache (Memcached/Redis) as second layer
+    memcached:
+      expiration: 1h
     memcached_client:
       addresses: dns+memcached.loki.svc.cluster.local:11211
-      expiration: 1h
 ```
 
 ### Background Cache Population
@@ -360,9 +351,11 @@ Enable background cache writes to avoid blocking queries:
 
 chunk_store_config:
   chunk_cache_config:
+    memcached:
+      expiration: 1h
+
     memcached_client:
       addresses: dns+memcached.loki.svc.cluster.local:11211
-      expiration: 1h
 
     # Write to cache asynchronously (does not block query response)
     background:
@@ -372,7 +365,7 @@ chunk_store_config:
 
 ### Multi-Tier Caching
 
-Combine in-memory FIFO cache with external Memcached for optimal performance:
+Combine embedded cache with external Memcached for optimal performance:
 
 ```yaml
 # loki-config.yaml
@@ -381,18 +374,19 @@ Combine in-memory FIFO cache with external Memcached for optimal performance:
 chunk_store_config:
   chunk_cache_config:
     # First tier: fast in-process cache
-    enable_fifocache: true
-    fifocache:
-      max_size_bytes: 536870912  # 512MB per querier
+    embedded_cache:
+      enabled: true
+      max_size_mb: 512
       ttl: 30m
 
     # Second tier: shared Memcached cluster
+    memcached:
+      expiration: 2h
     memcached_client:
       addresses: dns+memcached.loki.svc.cluster.local:11211
-      expiration: 2h
 ```
 
-The querier checks the FIFO cache first, then Memcached, then storage backend.
+The querier checks the embedded cache first, then Memcached, then storage backend.
 
 ## Monitoring Cache Hit Rates
 
@@ -402,21 +396,24 @@ Cache effectiveness is meaningless if you cannot measure it. Loki exposes Promet
 
 ```promql
 # Cache hit rate (higher is better, aim for > 80%)
-sum(rate(loki_cache_hits_total{cache="chunks"}[5m]))
+sum(rate(loki_cache_hits_total{name=~"chunks.*"}[5m]))
 /
-sum(rate(loki_cache_fetched_keys_total{cache="chunks"}[5m]))
+sum(rate(loki_cache_fetched_keys_total{name=~"chunks.*"}[5m]))
 
 # Cache miss rate
-sum(rate(loki_cache_misses_total{cache="chunks"}[5m]))
+sum(rate(loki_cache_fetched_keys_total{name=~"chunks.*"}[5m]))
+-
+sum(rate(loki_cache_hits_total{name=~"chunks.*"}[5m]))
 
 # Cache request latency
 histogram_quantile(0.99,
-  sum(rate(loki_cache_request_duration_seconds_bucket{cache="chunks"}[5m])) by (le)
+  sum(rate(loki_cache_request_duration_seconds_bucket{name=~"chunks.*"}[5m])) by (le)
 )
 
-# Bytes fetched from cache vs storage
-sum(rate(loki_chunk_fetched_bytes_total{source="cache"}[5m]))
-sum(rate(loki_chunk_fetched_bytes_total{source="store"}[5m]))
+# Cached value size
+histogram_quantile(0.99,
+  sum(rate(loki_cache_value_size_bytes_bucket{name=~"chunks.*", method="fetch"}[5m])) by (le)
+)
 ```
 
 ### Grafana Dashboard Panels
@@ -436,7 +433,7 @@ Example dashboard JSON snippet:
   "type": "stat",
   "targets": [
     {
-      "expr": "sum(rate(loki_cache_hits_total{cache=\"chunks\"}[5m])) / sum(rate(loki_cache_fetched_keys_total{cache=\"chunks\"}[5m])) * 100",
+      "expr": "sum(rate(loki_cache_hits_total{name=~\"chunks.*\"}[5m])) / sum(rate(loki_cache_fetched_keys_total{name=~\"chunks.*\"}[5m])) * 100",
       "legendFormat": "Hit Rate %"
     }
   ],
@@ -469,9 +466,9 @@ groups:
   # Alert when hit rate drops below 50%
   - alert: LokiChunkCacheHitRateLow
     expr: |
-      sum(rate(loki_cache_hits_total{cache="chunks"}[15m]))
+      sum(rate(loki_cache_hits_total{name=~"chunks.*"}[15m]))
       /
-      sum(rate(loki_cache_fetched_keys_total{cache="chunks"}[15m]))
+      sum(rate(loki_cache_fetched_keys_total{name=~"chunks.*"}[15m]))
       < 0.5
     for: 10m
     labels:
@@ -484,7 +481,7 @@ groups:
   - alert: LokiChunkCacheLatencyHigh
     expr: |
       histogram_quantile(0.99,
-        sum(rate(loki_cache_request_duration_seconds_bucket{cache="chunks"}[5m])) by (le)
+        sum(rate(loki_cache_request_duration_seconds_bucket{name=~"chunks.*"}[5m])) by (le)
       ) > 0.1
     for: 5m
     labels:
@@ -565,21 +562,20 @@ schema_config:
 chunk_store_config:
   # In-memory first-level cache
   chunk_cache_config:
-    enable_fifocache: true
-    fifocache:
-      max_size_bytes: 536870912  # 512MB
+    embedded_cache:
+      enabled: true
+      max_size_mb: 512
       ttl: 30m
 
     # Memcached second-level cache
     memcached:
       batch_size: 256
       parallelism: 10
+      expiration: 2h
     memcached_client:
       addresses: dns+memcached.loki.svc.cluster.local:11211
       timeout: 500ms
       max_idle_conns: 100
-      expiration: 2h
-      update_cache_timestamp: true
 
     # Async cache writes
     background:
@@ -596,10 +592,11 @@ query_range:
   cache_results: true
   results_cache:
     cache:
+      memcached:
+        expiration: 1h
       memcached_client:
         addresses: dns+memcached.loki.svc.cluster.local:11211
         timeout: 500ms
-        expiration: 1h
 
 # Limits
 limits_config:
