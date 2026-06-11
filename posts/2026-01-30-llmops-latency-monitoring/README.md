@@ -108,6 +108,8 @@ npm install @opentelemetry/api \
             @opentelemetry/sdk-node \
             @opentelemetry/sdk-metrics \
             @opentelemetry/exporter-metrics-otlp-http \
+            @opentelemetry/resources \
+            @opentelemetry/semantic-conventions \
             openai
 ```
 
@@ -119,8 +121,12 @@ npm install @opentelemetry/api \
 
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+    ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+    ATTR_SERVICE_NAME,
+    ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
 // Create the OTLP exporter for metrics
 // This sends metrics to your observability backend (OneUptime, Prometheus, etc.)
@@ -140,10 +146,10 @@ const metricReader = new PeriodicExportingMetricReader({
 
 // Create the meter provider with service identification
 export const meterProvider = new MeterProvider({
-    resource: new Resource({
-        [SemanticResourceAttributes.SERVICE_NAME]: 'llm-application',
-        [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-        [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+    resource: resourceFromAttributes({
+        [ATTR_SERVICE_NAME]: 'llm-application',
+        [ATTR_SERVICE_VERSION]: '1.0.0',
+        [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
     }),
     readers: [metricReader],
 });
@@ -199,13 +205,6 @@ export const tokenCounter = meter.createCounter('llm.tokens.generated', {
     description: 'Total number of tokens generated',
     unit: 'tokens',
     valueType: ValueType.INT,
-});
-
-// Gauge for tokens per second (streaming throughput)
-export const tokenRateGauge = meter.createObservableGauge('llm.tokens.rate', {
-    description: 'Current token generation rate',
-    unit: 'tokens/s',
-    valueType: ValueType.DOUBLE,
 });
 
 // Counter for request outcomes (success, timeout, error)
@@ -286,7 +285,7 @@ export class LLMLatencyMonitor {
         content: string;
         metrics: LatencyMetrics;
     }> {
-        const model = options.model || 'gpt-4';
+        const model = options.model || 'gpt-4o';
         const streaming = options.stream ?? true;
 
         // Initialize metrics tracking
@@ -334,7 +333,7 @@ export class LLMLatencyMonitor {
         const stream = await this.client.chat.completions.create({
             model: metrics.model,
             messages,
-            max_tokens: options.maxTokens,
+            max_completion_tokens: options.maxTokens,
             temperature: options.temperature,
             stream: true,
             stream_options: { include_usage: true }, // Get token counts
@@ -350,12 +349,6 @@ export class LLMLatencyMonitor {
             if (metrics.firstTokenTime === null && chunk.choices[0]?.delta?.content) {
                 metrics.firstTokenTime = now;
 
-                // Calculate and record TTFT
-                const ttft = metrics.firstTokenTime - metrics.requestStartTime;
-                ttftHistogram.record(ttft, {
-                    ...baseAttributes,
-                    prompt_tokens_bucket: bucketPromptTokens(metrics.promptTokens),
-                });
             }
 
             // Process content tokens
@@ -370,7 +363,17 @@ export class LLMLatencyMonitor {
             // Capture usage info if present (usually in final chunk)
             if (chunk.usage) {
                 metrics.promptTokens = chunk.usage.prompt_tokens;
+                metrics.tokenCount = chunk.usage.completion_tokens;
             }
+        }
+
+        // Record TTFT after usage arrives so the prompt token bucket is accurate
+        if (metrics.firstTokenTime !== null) {
+            const ttft = metrics.firstTokenTime - metrics.requestStartTime;
+            ttftHistogram.record(ttft, {
+                ...baseAttributes,
+                prompt_tokens_bucket: bucketPromptTokens(metrics.promptTokens),
+            });
         }
 
         // Calculate and record inter-token latencies
@@ -392,7 +395,7 @@ export class LLMLatencyMonitor {
         const response = await this.client.chat.completions.create({
             model: metrics.model,
             messages,
-            max_tokens: options.maxTokens,
+            max_completion_tokens: options.maxTokens,
             temperature: options.temperature,
             stream: false,
         });
@@ -575,6 +578,12 @@ export class PercentileTracker {
         valueType: ValueType.DOUBLE,
     });
 
+    private p95ItlGauge = meter.createObservableGauge('llm.itl.p95', {
+        description: 'Inter-Token Latency 95th percentile',
+        unit: 'ms',
+        valueType: ValueType.DOUBLE,
+    });
+
     constructor() {
         // Register callback to export percentile metrics periodically
         this.registerPercentileCallbacks();
@@ -621,6 +630,17 @@ export class PercentileTracker {
                 }
             },
             [this.p50TtftGauge, this.p95TtftGauge, this.p99TtftGauge]
+        );
+
+        // ITL percentile callback
+        meter.addBatchObservableCallback(
+            (observableResult) => {
+                for (const [model, buffer] of this.itlBuffers) {
+                    const percentiles = buffer.getPercentiles();
+                    observableResult.observe(this.p95ItlGauge, percentiles.p95, { model });
+                }
+            },
+            [this.p95ItlGauge]
         );
     }
 
@@ -717,13 +737,13 @@ export const llmLatencyDashboard: DashboardConfig = {
         {
             title: 'Request Rate',
             type: 'stat',
-            metrics: ['rate(llm.request.outcome{outcome="success"})'],
+            metrics: ['sum(rate(llm_request_outcome_total{outcome="success"}[5m]))'],
             description: 'Successful requests per second',
         },
         {
             title: 'Error Rate',
             type: 'stat',
-            metrics: ['rate(llm.request.outcome{outcome="error"})'],
+            metrics: ['sum(rate(llm_request_outcome_total{outcome="error"}[5m]))'],
             description: 'Failed requests per second',
         },
 
@@ -742,9 +762,9 @@ export const llmLatencyDashboard: DashboardConfig = {
             title: 'Total Latency Over Time',
             type: 'timeseries',
             metrics: [
-                'histogram_quantile(0.5, llm.request.duration)',
-                'histogram_quantile(0.95, llm.request.duration)',
-                'histogram_quantile(0.99, llm.request.duration)',
+                'histogram_quantile(0.5, sum by (le) (rate(llm_request_duration_bucket[5m])))',
+                'histogram_quantile(0.95, sum by (le) (rate(llm_request_duration_bucket[5m])))',
+                'histogram_quantile(0.99, sum by (le) (rate(llm_request_duration_bucket[5m])))',
             ],
             description: 'Total request latency percentiles over time',
         },
@@ -768,15 +788,15 @@ export const llmLatencyDashboard: DashboardConfig = {
             title: 'Latency by Model',
             type: 'table',
             metrics: [
-                'avg(llm.ttft.duration) by model',
-                'avg(llm.request.duration) by model',
+                'sum by (model) (rate(llm_ttft_duration_sum[5m])) / sum by (model) (rate(llm_ttft_duration_count[5m]))',
+                'sum by (model) (rate(llm_request_duration_sum[5m])) / sum by (model) (rate(llm_request_duration_count[5m]))',
             ],
             description: 'Average latencies broken down by model',
         },
         {
             title: 'Token Throughput',
             type: 'timeseries',
-            metrics: ['rate(llm.tokens.generated)'],
+            metrics: ['sum(rate(llm_tokens_generated_total[5m]))'],
             description: 'Tokens generated per second',
         },
     ],
@@ -821,8 +841,6 @@ Set up intelligent alerts that catch real issues without alert fatigue:
 ```typescript
 // alerting.ts
 // Alert configuration for LLM latency monitoring
-
-import { meter } from './metrics-config';
 
 // Alert rule configuration
 export interface AlertRule {
@@ -876,7 +894,7 @@ export const latencyAlertRules: AlertRule[] = [
     {
         name: 'llm_total_latency_high',
         description: 'Total request latency P95 is above SLO',
-        metric: 'histogram_quantile(0.95, llm.request.duration)',
+        metric: 'histogram_quantile(0.95, sum by (le) (rate(llm_request_duration_bucket[5m])))',
         condition: 'gt',
         threshold: 10000, // 10 seconds
         duration: '5m',
@@ -888,7 +906,7 @@ export const latencyAlertRules: AlertRule[] = [
     {
         name: 'llm_error_rate_elevated',
         description: 'LLM request error rate is elevated',
-        metric: 'rate(llm.request.outcome{outcome="error"}[5m]) / rate(llm.request.outcome[5m])',
+        metric: 'sum(rate(llm_request_outcome_total{outcome="error"}[5m])) / sum(rate(llm_request_outcome_total[5m]))',
         condition: 'gt',
         threshold: 0.05, // 5% error rate
         duration: '5m',
@@ -898,7 +916,7 @@ export const latencyAlertRules: AlertRule[] = [
     {
         name: 'llm_error_rate_critical',
         description: 'LLM request error rate is critically high',
-        metric: 'rate(llm.request.outcome{outcome="error"}[5m]) / rate(llm.request.outcome[5m])',
+        metric: 'sum(rate(llm_request_outcome_total{outcome="error"}[5m])) / sum(rate(llm_request_outcome_total[5m]))',
         condition: 'gt',
         threshold: 0.15, // 15% error rate
         duration: '2m',
@@ -910,7 +928,7 @@ export const latencyAlertRules: AlertRule[] = [
     {
         name: 'llm_throughput_low',
         description: 'Token generation throughput is below expected',
-        metric: 'rate(llm.tokens.generated[5m])',
+        metric: 'sum(rate(llm_tokens_generated_total[5m]))',
         condition: 'lt',
         threshold: 100, // Tokens per second
         duration: '10m',
@@ -922,6 +940,7 @@ export const latencyAlertRules: AlertRule[] = [
 // Alert evaluator class for runtime checking
 export class AlertEvaluator {
     private activeAlerts: Map<string, { rule: AlertRule; triggeredAt: Date }> = new Map();
+    private pendingAlerts: Map<string, { rule: AlertRule; firstSeenAt: Date }> = new Map();
 
     // Evaluate a metric value against all applicable rules
     evaluate(metricName: string, value: number, labels: Record<string, string> = {}): AlertRule[] {
@@ -944,17 +963,29 @@ export class AlertEvaluator {
             }
 
             if (triggered) {
-                triggeredRules.push(rule);
+                const pending = this.pendingAlerts.get(rule.name);
+                const now = new Date();
+                const firstSeenAt = pending?.firstSeenAt ?? now;
 
-                if (!this.activeAlerts.has(rule.name)) {
-                    this.activeAlerts.set(rule.name, {
-                        rule,
-                        triggeredAt: new Date(),
-                    });
-                    console.log(`[ALERT] ${rule.severity.toUpperCase()}: ${rule.description}`);
-                    console.log(`  Metric: ${metricName} = ${value} (threshold: ${rule.threshold})`);
+                if (!pending) {
+                    this.pendingAlerts.set(rule.name, { rule, firstSeenAt });
+                }
+
+                if (now.getTime() - firstSeenAt.getTime() >= this.parseDurationMs(rule.duration)) {
+                    triggeredRules.push(rule);
+
+                    if (!this.activeAlerts.has(rule.name)) {
+                        this.activeAlerts.set(rule.name, {
+                            rule,
+                            triggeredAt: now,
+                        });
+                        console.log(`[ALERT] ${rule.severity.toUpperCase()}: ${rule.description}`);
+                        console.log(`  Metric: ${metricName} = ${value} (threshold: ${rule.threshold})`);
+                    }
                 }
             } else {
+                this.pendingAlerts.delete(rule.name);
+
                 if (this.activeAlerts.has(rule.name)) {
                     const alert = this.activeAlerts.get(rule.name)!;
                     console.log(`[RESOLVED] ${rule.name} after ${this.formatDuration(alert.triggeredAt)}`);
@@ -964,6 +995,20 @@ export class AlertEvaluator {
         }
 
         return triggeredRules;
+    }
+
+    private parseDurationMs(duration: string): number {
+        const match = duration.match(/^(\d+)([smh])$/);
+        if (!match) {
+            throw new Error(`Invalid duration: ${duration}`);
+        }
+
+        const value = Number(match[1]);
+        const unit = match[2];
+
+        if (unit === 's') return value * 1000;
+        if (unit === 'm') return value * 60 * 1000;
+        return value * 60 * 60 * 1000;
     }
 
     private formatDuration(since: Date): string {
@@ -1290,7 +1335,7 @@ async function main() {
             // Make the monitored LLM call
             const { content, metrics } = await latencyMonitor.createChatCompletion(
                 [{ role: 'user', content: prompt }],
-                { model: 'gpt-4', stream: true }
+                { model: 'gpt-4o', stream: true }
             );
 
             // Calculate latencies
@@ -1300,13 +1345,13 @@ async function main() {
             // Record in percentile tracker (with sampling)
             if (sampler.shouldSample(totalLatency, false)) {
                 await resilientMonitor.recordMetric(() => {
-                    percentileTracker.recordTTFT('gpt-4', ttft);
-                    percentileTracker.recordTotalLatency('gpt-4', totalLatency);
+                    percentileTracker.recordTTFT('gpt-4o', ttft);
+                    percentileTracker.recordTotalLatency('gpt-4o', totalLatency);
 
                     // Record ITL values
                     for (let i = 1; i < metrics.tokenTimestamps.length; i++) {
                         const itl = metrics.tokenTimestamps[i] - metrics.tokenTimestamps[i - 1];
-                        percentileTracker.recordITL('gpt-4', itl);
+                        percentileTracker.recordITL('gpt-4o', itl);
                     }
                 }, 'latency-recording');
             }
@@ -1371,14 +1416,14 @@ export const llmLatencySLOs: SLO[] = [
     {
         name: 'total_latency_p99',
         description: 'Total latency should be under 30s for 99% of requests',
-        metric: 'histogram_quantile(0.99, llm.request.duration)',
+        metric: 'histogram_quantile(0.99, sum by (le) (rate(llm_request_duration_bucket[5m])))',
         target: 30000,
         window: '30d',
     },
     {
         name: 'availability',
         description: 'Success rate should be above 99.5%',
-        metric: '1 - (rate(llm.request.outcome{outcome="error"}) / rate(llm.request.outcome))',
+        metric: '1 - (sum(rate(llm_request_outcome_total{outcome="error"}[5m])) / sum(rate(llm_request_outcome_total[5m])))',
         target: 0.995,
         window: '30d',
     },
