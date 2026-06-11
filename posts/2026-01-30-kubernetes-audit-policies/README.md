@@ -12,7 +12,7 @@ Kubernetes audit logging is essential for security compliance. Whether you need 
 
 ## What is Kubernetes Audit Logging?
 
-Kubernetes audit logs record every request to the API server. They capture authentication details, authorization decisions, request payloads, and response data. This creates an immutable trail of all cluster activity.
+Kubernetes audit logs can record requests to the API server according to the policy you configure. They capture authentication details, authorization decisions, request payloads, and response data. This creates an audit trail of cluster activity.
 
 ```mermaid
 flowchart LR
@@ -66,8 +66,8 @@ flowchart TB
 |-------|-------------|----------------|----------|
 | None | Nothing | Zero | Exclude noisy or sensitive resources |
 | Metadata | Request metadata (user, timestamp, resource, verb) | Low | General activity tracking |
-| Request | Metadata + request body | Medium | Track what changes were requested |
-| RequestResponse | Metadata + request body + response body | High | Full forensic capability |
+| Request | Metadata + request body for resource requests | Medium | Track what changes were requested |
+| RequestResponse | Metadata + request body + response body for resource requests | High | Full forensic capability |
 
 ## Basic Audit Policy Structure
 
@@ -189,11 +189,11 @@ rules:
     verbs: ["get", "list", "watch"]
 
   # ============================================
-  # RULE 3: Skip kubelet read operations
-  # Kubelet constantly reads pod specs - not security relevant
+  # RULE 3: Skip kubelet node status reads
+  # Kubelets authenticate as system:node:<nodeName> in the system:nodes group
   # ============================================
   - level: None
-    users: ["kubelet"]
+    userGroups: ["system:nodes"]
     verbs: ["get"]
     resources:
       - group: ""
@@ -693,11 +693,11 @@ data:
         Listen       0.0.0.0
         Port         8443
         tls          on
-        tls.cert_file /etc/tls/tls.crt
+        tls.crt_file  /etc/tls/tls.crt
         tls.key_file  /etc/tls/tls.key
 
     [OUTPUT]
-        Name         elasticsearch
+        Name         es
         Match        *
         Host         elasticsearch.logging.svc.cluster.local
         Port         9200
@@ -716,7 +716,7 @@ Each audit event is a JSON object with this structure:
   "kind": "Event",
   "apiVersion": "audit.k8s.io/v1",
   "level": "RequestResponse",
-  "auditID": "a]b1c2d3-e4f5-6789-abcd-ef0123456789",
+  "auditID": "a1b1c2d3-e4f5-6789-abcd-ef0123456789",
   "stage": "ResponseComplete",
   "requestURI": "/api/v1/namespaces/production/pods",
   "verb": "create",
