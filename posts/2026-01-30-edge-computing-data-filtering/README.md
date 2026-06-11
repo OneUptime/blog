@@ -875,7 +875,7 @@ class ReservoirSampler(Sampler):
         self.reservoir_size = reservoir_size
         self.reservoir: List[DataPoint] = []
         self.count = 0  # Total items seen
-        self.stats = {"total": 0, "current_size": 0}
+        self.stats = {"total": 0, "sampled": 0, "current_size": 0}
 
     def should_sample(self, data: DataPoint) -> bool:
         """
@@ -891,6 +891,7 @@ class ReservoirSampler(Sampler):
             # Reservoir not full, always add
             self.reservoir.append(data)
             self.stats["current_size"] = len(self.reservoir)
+            self.stats["sampled"] += 1
             return True
 
         # Reservoir full, randomly replace with decreasing probability
@@ -899,6 +900,7 @@ class ReservoirSampler(Sampler):
 
         if replace_index < self.reservoir_size:
             self.reservoir[replace_index] = data
+            self.stats["sampled"] += 1
             return True  # Item was added (replacing old item)
 
         return False  # Item was not added
@@ -926,7 +928,7 @@ if __name__ == "__main__":
     # Create samplers
     samplers = {
         "Random (10%)": RandomSampler(sample_rate=0.1),
-        "Time-Based (1s)": TimeBasedSampler(interval_seconds=0.1),
+        "Time-Based (0.1s)": TimeBasedSampler(interval_seconds=0.1),
         "Adaptive": AdaptiveSampler(base_rate=0.1, anomaly_rate=1.0),
         "Reservoir (50)": ReservoirSampler(reservoir_size=50)
     }
@@ -1311,17 +1313,18 @@ if __name__ == "__main__":
 
     # Flush remaining data
     print("\nFlushing remaining buckets...")
-    remaining = aggregator.flush_all()
-    for bucket in remaining:
-        print(f"\nFinal bucket for {bucket.sensor_id}:")
-        print(json.dumps(bucket.to_dict(), indent=2, default=str))
+    aggregator.flush_all()
 
     # Summary
     stats = aggregator.get_stats()
+    compression_ratio = (
+        stats["points_received"] / stats["buckets_completed"]
+        if stats["buckets_completed"] > 0 else 0
+    )
     print("\n" + "=" * 60)
     print(f"Total points received: {stats['points_received']}")
     print(f"Buckets completed: {stats['buckets_completed']}")
-    print(f"Compression ratio: {stats['points_received']}:1 per bucket")
+    print(f"Average compression ratio: {compression_ratio:.1f}:1")
 ```
 
 ---
