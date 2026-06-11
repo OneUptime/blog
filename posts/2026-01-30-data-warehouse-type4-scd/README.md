@@ -55,7 +55,7 @@ flowchart TB
     E5 --> E6
     E6 --> C
     E5 --> H
-    E4 -->|No| E3
+    E4 -->|No| E7[Skip]
     C -.->|Read for Compare| E3
 ```
 
@@ -234,8 +234,8 @@ BEGIN
     -- This simulates data coming from a staging area
     CREATE TEMP TABLE IF NOT EXISTS stg_customer (
         customer_id VARCHAR(50) PRIMARY KEY,
-        first_name VARCHAR(100),
-        last_name VARCHAR(100),
+        first_name VARCHAR(100) NOT NULL,
+        last_name VARCHAR(100) NOT NULL,
         email VARCHAR(255),
         phone VARCHAR(20),
         address_line1 VARCHAR(255),
@@ -330,16 +330,17 @@ BEGIN
         'UPDATE',
         -- Track which columns changed
         ARRAY_REMOVE(ARRAY[
-            CASE WHEN d.first_name != s.first_name THEN 'first_name' END,
-            CASE WHEN d.last_name != s.last_name THEN 'last_name' END,
+            CASE WHEN d.first_name IS DISTINCT FROM s.first_name THEN 'first_name' END,
+            CASE WHEN d.last_name IS DISTINCT FROM s.last_name THEN 'last_name' END,
             CASE WHEN d.email IS DISTINCT FROM s.email THEN 'email' END,
             CASE WHEN d.phone IS DISTINCT FROM s.phone THEN 'phone' END,
             CASE WHEN d.address_line1 IS DISTINCT FROM s.address_line1 THEN 'address_line1' END,
+            CASE WHEN d.address_line2 IS DISTINCT FROM s.address_line2 THEN 'address_line2' END,
             CASE WHEN d.city IS DISTINCT FROM s.city THEN 'city' END,
             CASE WHEN d.state IS DISTINCT FROM s.state THEN 'state' END,
             CASE WHEN d.postal_code IS DISTINCT FROM s.postal_code THEN 'postal_code' END,
             CASE WHEN d.country IS DISTINCT FROM s.country THEN 'country' END,
-            CASE WHEN d.customer_tier IS DISTINCT FROM s.customer_tier THEN 'customer_tier' END
+            CASE WHEN d.customer_tier IS DISTINCT FROM COALESCE(s.customer_tier, d.customer_tier) THEN 'customer_tier' END
         ], NULL),
         p_source_system,
         p_batch_id
@@ -347,8 +348,8 @@ BEGIN
     INNER JOIN stg_customer s ON d.customer_id = s.customer_id
     WHERE
         -- Check if any attribute has changed
-        d.first_name != s.first_name
-        OR d.last_name != s.last_name
+        d.first_name IS DISTINCT FROM s.first_name
+        OR d.last_name IS DISTINCT FROM s.last_name
         OR d.email IS DISTINCT FROM s.email
         OR d.phone IS DISTINCT FROM s.phone
         OR d.address_line1 IS DISTINCT FROM s.address_line1
@@ -357,7 +358,7 @@ BEGIN
         OR d.state IS DISTINCT FROM s.state
         OR d.postal_code IS DISTINCT FROM s.postal_code
         OR d.country IS DISTINCT FROM s.country
-        OR d.customer_tier IS DISTINCT FROM s.customer_tier;
+        OR d.customer_tier IS DISTINCT FROM COALESCE(s.customer_tier, d.customer_tier);
 
     -- Step 4: Update the current table with new values
     UPDATE dim_customer d
@@ -377,8 +378,8 @@ BEGIN
     FROM stg_customer s
     WHERE d.customer_id = s.customer_id
     AND (
-        d.first_name != s.first_name
-        OR d.last_name != s.last_name
+        d.first_name IS DISTINCT FROM s.first_name
+        OR d.last_name IS DISTINCT FROM s.last_name
         OR d.email IS DISTINCT FROM s.email
         OR d.phone IS DISTINCT FROM s.phone
         OR d.address_line1 IS DISTINCT FROM s.address_line1
@@ -387,7 +388,7 @@ BEGIN
         OR d.state IS DISTINCT FROM s.state
         OR d.postal_code IS DISTINCT FROM s.postal_code
         OR d.country IS DISTINCT FROM s.country
-        OR d.customer_tier IS DISTINCT FROM s.customer_tier
+        OR d.customer_tier IS DISTINCT FROM COALESCE(s.customer_tier, d.customer_tier)
     );
 
     GET DIAGNOSTICS v_updated_count = ROW_COUNT;
@@ -399,7 +400,8 @@ BEGIN
     -- Clean up temporary table
     DROP TABLE IF EXISTS stg_customer;
 
-    COMMIT;
+    -- COMMIT can be added here only when the procedure is called at top level
+    -- and not from inside an explicit transaction block.
 END;
 $$;
 ```
@@ -431,7 +433,7 @@ BEGIN
         FROM stg_customer s
         JOIN dim_customer d ON s.customer_id = d.customer_id
         WHERE s.customer_id = p_customer_id
-        AND s.first_name != d.first_name
+        AND s.first_name IS DISTINCT FROM d.first_name
 
         UNION ALL
 
@@ -439,7 +441,7 @@ BEGIN
         FROM stg_customer s
         JOIN dim_customer d ON s.customer_id = d.customer_id
         WHERE s.customer_id = p_customer_id
-        AND s.last_name != d.last_name
+        AND s.last_name IS DISTINCT FROM d.last_name
 
         UNION ALL
 
@@ -455,7 +457,7 @@ BEGIN
         FROM stg_customer s
         JOIN dim_customer d ON s.customer_id = d.customer_id
         WHERE s.customer_id = p_customer_id
-        AND s.customer_tier IS DISTINCT FROM d.customer_tier
+        AND d.customer_tier IS DISTINCT FROM COALESCE(s.customer_tier, d.customer_tier)
     ) changes;
 
     RETURN QUERY
@@ -539,7 +541,8 @@ WITH point_in_time AS (
         'HISTORICAL' AS data_source
     FROM dim_customer_history
     WHERE customer_id = 'CUST-12345'
-    AND '2025-06-15'::TIMESTAMP BETWEEN valid_from AND valid_to
+    AND '2025-06-15'::TIMESTAMP >= valid_from
+    AND '2025-06-15'::TIMESTAMP < valid_to
 
     UNION ALL
 
@@ -554,10 +557,12 @@ WITH point_in_time AS (
         'CURRENT' AS data_source
     FROM dim_customer
     WHERE customer_id = 'CUST-12345'
+    AND '2025-06-15'::TIMESTAMP >= updated_at
     AND NOT EXISTS (
         SELECT 1 FROM dim_customer_history h
         WHERE h.customer_id = 'CUST-12345'
-        AND '2025-06-15'::TIMESTAMP BETWEEN h.valid_from AND h.valid_to
+        AND '2025-06-15'::TIMESTAMP >= h.valid_from
+        AND '2025-06-15'::TIMESTAMP < h.valid_to
     )
 )
 SELECT * FROM point_in_time;
@@ -620,7 +625,7 @@ SELECT
     h.customer_id,
     c.first_name || ' ' || c.last_name AS current_name,
     h.change_type,
-    h.valid_from AS change_timestamp,
+    h.valid_to AS change_timestamp,
     h.changed_columns,
     h.change_source,
     h.etl_batch_id,
@@ -635,7 +640,8 @@ SELECT
     END AS new_tier
 FROM dim_customer_history h
 LEFT JOIN dim_customer c ON h.customer_sk = c.customer_sk
-WHERE h.valid_to BETWEEN '2025-01-01' AND '2025-12-31'
+WHERE h.valid_to >= TIMESTAMP '2025-01-01'
+AND h.valid_to < TIMESTAMP '2026-01-01'
 ORDER BY h.valid_to DESC, h.customer_id;
 ```
 
@@ -680,9 +686,9 @@ CREATE INDEX idx_customer_tier_city ON dim_customer(customer_tier, city);
 CREATE INDEX idx_history_temporal ON dim_customer_history(customer_id, valid_from, valid_to);
 CREATE INDEX idx_history_batch ON dim_customer_history(etl_batch_id);
 
--- Partial index for recent history (if frequently queried)
+-- Partial index for a fixed recent-history window (refresh periodically)
 CREATE INDEX idx_history_recent ON dim_customer_history(customer_id, valid_from)
-WHERE valid_from >= CURRENT_DATE - INTERVAL '1 year';
+WHERE valid_from >= TIMESTAMP '2025-01-01';
 ```
 
 ### 2. Partitioning History Table
