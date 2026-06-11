@@ -320,7 +320,7 @@ LOCK TABLES orders WRITE;
 
 ### Avoiding Lock Escalation
 
-Most databases will escalate from row locks to table locks when too many rows are locked. To prevent this:
+PostgreSQL and MySQL InnoDB don't escalate row locks to table locks the way SQL Server does, but locking large numbers of rows still hurts: it increases lock memory usage, raises the chance of deadlocks, and serializes more concurrent work than necessary. To minimize these costs:
 
 1. **Lock fewer rows**: Use specific WHERE clauses
 2. **Process in batches**: Lock 100 rows at a time, not 10,000
@@ -503,8 +503,11 @@ WHERE NOT blocked_locks.granted;
 ### MySQL: View Current Locks
 
 ```sql
--- InnoDB lock waits
+-- InnoDB lock waits (MySQL 5.7 and earlier — removed in MySQL 8.0)
 SELECT * FROM information_schema.INNODB_LOCK_WAITS;
+
+-- MySQL 8.0+: use performance_schema instead
+SELECT * FROM performance_schema.data_lock_waits;
 
 -- Current transactions and their locks
 SELECT
@@ -516,7 +519,7 @@ SELECT
   trx_query
 FROM information_schema.INNODB_TRX;
 
--- Performance schema for lock analysis (MySQL 8.0+)
+-- Performance schema for full lock detail (MySQL 8.0+)
 SELECT * FROM performance_schema.data_locks;
 ```
 
