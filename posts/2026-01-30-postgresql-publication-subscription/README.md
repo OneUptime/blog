@@ -139,10 +139,8 @@ Allow the subscriber to connect by editing `pg_hba.conf` on the publisher:
 ```conf
 # Allow replication connections from subscriber IP
 # Format: host database user address method
+# Logical replication connects to the actual database (not the "replication" pseudo-database)
 host    mydb    replication_user    10.0.0.50/32    scram-sha-256
-
-# For replication connections
-host    replication    replication_user    10.0.0.50/32    scram-sha-256
 ```
 
 Reload configuration:
