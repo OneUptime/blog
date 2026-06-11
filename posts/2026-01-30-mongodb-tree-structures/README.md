@@ -173,27 +173,27 @@ const departmentSchema = {
 // Example: Company organization structure
 const departments = [
   {
-    _id: ObjectId("60a1b2c3d4e5f6g7h8i9j0k1"),
+    _id: ObjectId("60a1b2c3d4e5f6a7b8c9d0e1"),
     name: "Company HQ",
     children: [
-      ObjectId("60a1b2c3d4e5f6g7h8i9j0k2"),  // Engineering
-      ObjectId("60a1b2c3d4e5f6g7h8i9j0k3")   // Marketing
+      ObjectId("60a1b2c3d4e5f6a7b8c9d0e2"),  // Engineering
+      ObjectId("60a1b2c3d4e5f6a7b8c9d0e3")   // Marketing
     ],
     manager: "CEO",
     budget: 10000000
   },
   {
-    _id: ObjectId("60a1b2c3d4e5f6g7h8i9j0k2"),
+    _id: ObjectId("60a1b2c3d4e5f6a7b8c9d0e2"),
     name: "Engineering",
     children: [
-      ObjectId("60a1b2c3d4e5f6g7h8i9j0k4"),  // Backend Team
-      ObjectId("60a1b2c3d4e5f6g7h8i9j0k5")   // Frontend Team
+      ObjectId("60a1b2c3d4e5f6a7b8c9d0e4"),  // Backend Team
+      ObjectId("60a1b2c3d4e5f6a7b8c9d0e5")   // Frontend Team
     ],
     manager: "VP of Engineering",
     budget: 5000000
   },
   {
-    _id: ObjectId("60a1b2c3d4e5f6g7h8i9j0k4"),
+    _id: ObjectId("60a1b2c3d4e5f6a7b8c9d0e4"),
     name: "Backend Team",
     children: [],  // Leaf node, no children
     manager: "Backend Lead",
@@ -225,20 +225,20 @@ const children = db.departments.find({
 
 // Add a new child department
 db.departments.updateOne(
-  { _id: ObjectId("60a1b2c3d4e5f6g7h8i9j0k2") },
+  { _id: ObjectId("60a1b2c3d4e5f6a7b8c9d0e2") },
   {
     $push: {
-      children: ObjectId("60a1b2c3d4e5f6g7h8i9j0k6")
+      children: ObjectId("60a1b2c3d4e5f6a7b8c9d0e6")
     }
   }
 );
 
 // Remove a child department
 db.departments.updateOne(
-  { _id: ObjectId("60a1b2c3d4e5f6g7h8i9j0k2") },
+  { _id: ObjectId("60a1b2c3d4e5f6a7b8c9d0e2") },
   {
     $pull: {
-      children: ObjectId("60a1b2c3d4e5f6g7h8i9j0k4")
+      children: ObjectId("60a1b2c3d4e5f6a7b8c9d0e4")
     }
   }
 );
@@ -294,28 +294,28 @@ const fileSchema = {
 // Example: File system structure
 const files = [
   {
-    _id: ObjectId("70a1b2c3d4e5f6g7h8i9j0k1"),
+    _id: ObjectId("70a1b2c3d4e5f6a7b8c9d0e1"),
     name: "root",
     path: "root",
     type: "folder",
     createdAt: new Date("2024-01-01")
   },
   {
-    _id: ObjectId("70a1b2c3d4e5f6g7h8i9j0k2"),
+    _id: ObjectId("70a1b2c3d4e5f6a7b8c9d0e2"),
     name: "documents",
     path: "root,documents",
     type: "folder",
     createdAt: new Date("2024-01-02")
   },
   {
-    _id: ObjectId("70a1b2c3d4e5f6g7h8i9j0k3"),
+    _id: ObjectId("70a1b2c3d4e5f6a7b8c9d0e3"),
     name: "projects",
     path: "root,documents,projects",
     type: "folder",
     createdAt: new Date("2024-01-03")
   },
   {
-    _id: ObjectId("70a1b2c3d4e5f6g7h8i9j0k4"),
+    _id: ObjectId("70a1b2c3d4e5f6a7b8c9d0e4"),
     name: "report.pdf",
     path: "root,documents,projects,report.pdf",
     type: "file",
@@ -378,7 +378,7 @@ const oldPath = "root,documents,projects";
 const newPath = "root,archive,projects";
 
 db.files.updateMany(
-  { path: { $regex: /^root,documents,projects/ } },
+  { path: { $regex: /^root,documents,projects(,|$)/ } },
   [
     {
       $set: {
@@ -472,49 +472,49 @@ const categorySchema = {
 // Example: Category tree with nested set values
 const categories = [
   {
-    _id: ObjectId("80a1b2c3d4e5f6g7h8i9j0k1"),
+    _id: ObjectId("80a1b2c3d4e5f6a7b8c9d0e1"),
     name: "Electronics",
     left: 1,
     right: 14,
     depth: 0
   },
   {
-    _id: ObjectId("80a1b2c3d4e5f6g7h8i9j0k2"),
+    _id: ObjectId("80a1b2c3d4e5f6a7b8c9d0e2"),
     name: "Computers",
     left: 2,
     right: 9,
     depth: 1
   },
   {
-    _id: ObjectId("80a1b2c3d4e5f6g7h8i9j0k3"),
+    _id: ObjectId("80a1b2c3d4e5f6a7b8c9d0e3"),
     name: "Laptops",
     left: 3,
     right: 6,
     depth: 2
   },
   {
-    _id: ObjectId("80a1b2c3d4e5f6g7h8i9j0k4"),
+    _id: ObjectId("80a1b2c3d4e5f6a7b8c9d0e4"),
     name: "Gaming Laptops",
     left: 4,
     right: 5,
     depth: 3
   },
   {
-    _id: ObjectId("80a1b2c3d4e5f6g7h8i9j0k5"),
+    _id: ObjectId("80a1b2c3d4e5f6a7b8c9d0e5"),
     name: "Desktops",
     left: 7,
     right: 8,
     depth: 2
   },
   {
-    _id: ObjectId("80a1b2c3d4e5f6g7h8i9j0k6"),
+    _id: ObjectId("80a1b2c3d4e5f6a7b8c9d0e6"),
     name: "Mobile",
     left: 10,
     right: 13,
     depth: 1
   },
   {
-    _id: ObjectId("80a1b2c3d4e5f6g7h8i9j0k7"),
+    _id: ObjectId("80a1b2c3d4e5f6a7b8c9d0e7"),
     name: "Phones",
     left: 11,
     right: 12,
@@ -571,45 +571,38 @@ Inserting into a nested set requires updating multiple documents:
 // Insert a new category "Ultrabooks" under "Laptops"
 async function insertNode(parentName, newNodeName) {
   const session = db.getMongo().startSession();
+  const sessionCategories = session.getDatabase(db.getName()).getCollection("categories");
 
   try {
-    session.startTransaction();
+    await session.withTransaction(async () => {
+      // Find the parent node
+      const parent = await sessionCategories.findOne({ name: parentName });
 
-    // Find the parent node
-    const parent = await db.categories.findOne(
-      { name: parentName },
-      { session }
-    );
+      // New node will be inserted at parent's right position
+      const newLeft = parent.right;
+      const newRight = parent.right + 1;
 
-    // New node will be inserted at parent's right position
-    const newLeft = parent.right;
-    const newRight = parent.right + 1;
+      // Make room: increment left values >= parent.right by 2
+      await sessionCategories.updateMany(
+        { left: { $gte: parent.right } },
+        { $inc: { left: 2 } }
+      );
 
-    // Make room: increment left values >= parent.right by 2
-    await db.categories.updateMany(
-      { left: { $gte: parent.right } },
-      { $inc: { left: 2 } },
-      { session }
-    );
+      // Make room: increment right values >= parent.right by 2
+      await sessionCategories.updateMany(
+        { right: { $gte: parent.right } },
+        { $inc: { right: 2 } }
+      );
 
-    // Make room: increment right values >= parent.right by 2
-    await db.categories.updateMany(
-      { right: { $gte: parent.right } },
-      { $inc: { right: 2 } },
-      { session }
-    );
-
-    // Insert the new node
-    await db.categories.insertOne({
-      name: newNodeName,
-      left: newLeft,
-      right: newRight,
-      depth: parent.depth + 1
-    }, { session });
-
-    await session.commitTransaction();
+      // Insert the new node
+      await sessionCategories.insertOne({
+        name: newNodeName,
+        left: newLeft,
+        right: newRight,
+        depth: parent.depth + 1
+      });
+    });
   } catch (error) {
-    await session.abortTransaction();
     throw error;
   } finally {
     session.endSession();
@@ -675,15 +668,15 @@ const categorySchema = {
 
 // Example document
 const category = {
-  _id: ObjectId("90a1b2c3d4e5f6g7h8i9j0k1"),
+  _id: ObjectId("90a1b2c3d4e5f6a7b8c9d0e1"),
   name: "Gaming Laptops",
-  parent: ObjectId("90a1b2c3d4e5f6g7h8i9j0k2"),
+  parent: ObjectId("90a1b2c3d4e5f6a7b8c9d0e2"),
   path: "Electronics,Computers,Laptops,Gaming Laptops",
   depth: 3,
   ancestorIds: [
-    ObjectId("90a1b2c3d4e5f6g7h8i9j0k3"),  // Electronics
-    ObjectId("90a1b2c3d4e5f6g7h8i9j0k4"),  // Computers
-    ObjectId("90a1b2c3d4e5f6g7h8i9j0k2")   // Laptops
+    ObjectId("90a1b2c3d4e5f6a7b8c9d0e3"),  // Electronics
+    ObjectId("90a1b2c3d4e5f6a7b8c9d0e4"),  // Computers
+    ObjectId("90a1b2c3d4e5f6a7b8c9d0e2")   // Laptops
   ]
 };
 ```
