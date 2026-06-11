@@ -49,8 +49,8 @@ class AgentResult(BaseModel):
     task_id: str = Field(..., min_length=1, max_length=64)
     status: TaskStatus
     output: str = Field(..., min_length=1)
-    confidence_score: float = Field(..., ge=0.0, le=1.0)
     reasoning_steps: List[str] = Field(default_factory=list)
+    confidence_score: float = Field(..., ge=0.0, le=1.0)
     metadata: Optional[dict] = None
 
     @validator('output')
@@ -73,7 +73,7 @@ def validate_agent_result(raw_result: dict) -> AgentResult:
     try:
         return AgentResult(**raw_result)
     except Exception as e:
-        raise ValidationError(f"Result validation failed: {e}")
+        raise ValueError(f"Result validation failed: {e}")
 ```
 
 This schema enforces structure while also catching semantic issues like placeholder text or unreasonable confidence scores.
