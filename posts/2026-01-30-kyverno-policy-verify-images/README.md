@@ -47,7 +47,10 @@ helm repo update
 helm install kyverno kyverno/kyverno \
   --namespace kyverno \
   --create-namespace \
-  --set replicaCount=3
+  --set admissionController.replicas=3 \
+  --set backgroundController.replicas=2 \
+  --set cleanupController.replicas=2 \
+  --set reportsController.replicas=2
 ```
 
 ### Install cosign
@@ -263,6 +266,8 @@ Attestations are signed statements about an image, like SBOM (Software Bill of M
 
 ### Create an Attestation
 
+For the vulnerability scan example, `vuln-scan.json` should be a custom summary predicate with `criticalCount` and `highCount` fields.
+
 ```bash
 # Create an SBOM attestation
 cosign attest --key cosign.key \
@@ -273,7 +278,7 @@ cosign attest --key cosign.key \
 # Create a vulnerability scan attestation
 cosign attest --key cosign.key \
   --predicate vuln-scan.json \
-  --type vuln \
+  --type https://example.com/attestation/vuln-summary/v1 \
   myregistry.com/myapp:v1.0.0
 ```
 
@@ -304,7 +309,7 @@ spec:
             - "myregistry.com/*"
           attestations:
             # Verify the vulnerability scan attestation
-            - predicateType: https://cosign.sigstore.dev/attestation/vuln/v1
+            - predicateType: https://example.com/attestation/vuln-summary/v1
               attestors:
                 - count: 1
                   entries:
@@ -318,11 +323,11 @@ spec:
               conditions:
                 - all:
                     # Ensure no critical vulnerabilities
-                    - key: "{{ scanner.result.criticalCount }}"
+                    - key: "{{ criticalCount }}"
                       operator: Equals
                       value: 0
                     # Ensure no high vulnerabilities
-                    - key: "{{ scanner.result.highCount }}"
+                    - key: "{{ highCount }}"
                       operator: LessThanOrEquals
                       value: 5
 ```
@@ -632,7 +637,7 @@ kubectl logs -n kyverno -l app.kubernetes.io/name=kyverno --tail=100
 # Enable debug logging
 helm upgrade kyverno kyverno/kyverno \
   --namespace kyverno \
-  --set extraArgs='{--v=4}'
+  --set features.logging.verbosity=4
 ```
 
 ## Security Checklist
