@@ -6,7 +6,7 @@ Tags: Observability, Metric, Prometheus, Monitoring
 
 Description: Learn how to design and implement metric aggregation strategies for scalable monitoring systems.
 
-You're running a microservices platform with 500 services, each exposing 200 metrics, scraped every 15 seconds. That's 40 million data points per minute. Your Prometheus instance is groaning under the load, queries timeout after 30 seconds, and your storage costs are climbing faster than your user base.
+You're running a microservices platform with 500 services, each exposing 200 metrics, scraped every 15 seconds. That's 400,000 data points per minute before accounting for label cardinality. Your Prometheus instance is groaning under the load, queries timeout after 30 seconds, and your storage costs are climbing faster than your user base.
 
 Sound familiar? The solution isn't more hardware. It's smarter aggregation.
 
@@ -110,8 +110,8 @@ Spatial aggregation reduces the number of unique time series by combining metric
 # Total requests across all pods in a service
 sum(rate(http_requests_total[5m])) by (service)
 
-# Average latency per region
-avg(http_request_duration_seconds) by (region)
+# Average CPU usage per region
+avg(node_cpu_usage_percent) by (region)
 
 # Max memory usage per node
 max(container_memory_usage_bytes) by (node)
@@ -124,7 +124,7 @@ count(up == 1) by (service)
 
 Consider this metric with high cardinality:
 
-```promql
+```text
 # Original: 500 services x 50 pods x 10 endpoints x 5 status codes
 # = 1.25 million time series
 http_requests_total{service, pod, endpoint, status}
@@ -165,7 +165,7 @@ sum(rate(http_requests_total[5m])) by (user_id)  # Don't do this
 
 ## Recording Rules: Pre-Aggregation at Scale
 
-Recording rules compute aggregations at scrape time, storing the results as new time series. They're essential for:
+Recording rules compute aggregations on a regular evaluation interval, storing the results as new time series. They're essential for:
 
 - Speeding up dashboards and alerts
 - Reducing query-time computation
@@ -174,7 +174,7 @@ Recording rules compute aggregations at scrape time, storing the results as new 
 ### Recording Rule Syntax
 
 ```yaml
-# prometheus.yml or rules file
+# rules file loaded by prometheus.yml
 groups:
   - name: aggregation_rules
     interval: 1m  # Evaluation frequency
@@ -228,20 +228,16 @@ Build aggregation hierarchies for flexibility:
 
 ```yaml
 groups:
-  - name: level_1_pod_aggregation
+  - name: hierarchical_aggregation
     rules:
       # First: aggregate to service level
       - record: service:http_requests:rate5m
         expr: sum(rate(http_requests_total[5m])) by (service, env, status)
 
-  - name: level_2_env_aggregation
-    rules:
       # Then: aggregate services to environment level (uses level 1)
       - record: env:http_requests:rate5m
         expr: sum(service:http_requests:rate5m) by (env, status)
 
-  - name: level_3_global_aggregation
-    rules:
       # Finally: global aggregation (uses level 2)
       - record: global:http_requests:rate5m
         expr: sum(env:http_requests:rate5m) by (status)
@@ -332,13 +328,13 @@ remote_write:
 
 ### Aggregation at the Collector Level
 
-OpenTelemetry Collector can aggregate before data leaves the node:
+OpenTelemetry Collector can aggregate within each metrics batch before export:
 
 ```yaml
 # otel-collector-config.yaml
 processors:
   # Aggregate metrics before export
-  metricstransform:
+  metrics_transform:
     transforms:
       - include: http_requests_total
         action: update
@@ -361,7 +357,7 @@ service:
   pipelines:
     metrics:
       receivers: [prometheus]
-      processors: [metricstransform, batch]
+      processors: [metrics_transform, batch]
       exporters: [prometheusremotewrite]
 ```
 
@@ -409,20 +405,17 @@ groups:
         expr: avg_over_time(downsampled:memory_usage:avg5m[1h])
 ```
 
-### Thanos/Cortex Compaction
+### Thanos Compaction
 
 For production systems, use purpose-built tools:
 
-```yaml
-# Thanos compactor config
-compactor:
-  retention:
-    # Keep raw resolution for 2 days
-    resolution_raw: 2d
-    # Keep 5m downsampled for 30 days
-    resolution_5m: 30d
-    # Keep 1h downsampled for 1 year
-    resolution_1h: 365d
+```bash
+thanos compact \
+  --data-dir=/var/thanos/compact \
+  --objstore.config-file=bucket.yml \
+  --retention.resolution-raw=2d \
+  --retention.resolution-5m=30d \
+  --retention.resolution-1h=365d
 ```
 
 ---
@@ -463,12 +456,12 @@ avg_over_time(downsampled:cpu_usage:avg1h[30d])
 
 ### Grafana Variable Optimization
 
-```promql
+```text
 # BAD: Fetches all label values, then filters in Grafana
 label_values(http_requests_total, service)
 
-# GOOD: Pre-filter to active services
-label_values(service:http_requests:rate5m > 0, service)
+# GOOD: Use a Query result variable, then extract service with regex /service="([^"]+)"/
+query_result(service:http_requests:rate5m > 0)
 ```
 
 ---
