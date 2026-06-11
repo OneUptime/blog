@@ -159,34 +159,47 @@ falco -T debug -T experimental
 falco -T pci_dss
 ```
 
+Do not combine `-t` and `-T` in the same Falco command. Use the configuration-based approach below when you need ordered enable and disable operations together.
+
 ### Configuration File Approach
 
 You can also configure tag-based filtering in your falco.yaml configuration:
 
 ```yaml
 # falco.yaml configuration for tag filtering
-rules_file:
+rules_files:
   - /etc/falco/falco_rules.yaml
   - /etc/falco/custom_rules.yaml
 
-# Enable only specific tags
-# This runs rules that have ANY of these tags
-load_plugins: []
+# Enable only specific tags by first disabling all rules,
+# then enabling rules that have ANY of these tags
+rules:
+  - disable:
+      rule: "*"
+  - enable:
+      tag: container
+  - enable:
+      tag: kubernetes
+  - disable:
+      tag: experimental
 
 # Tag filtering in Kubernetes Helm values
 # values.yaml
 falco:
-  rules_file:
+  rules_files:
     - /etc/falco/falco_rules.yaml
 
-  # Use environment variables for tag filtering
-  extra_args:
-    - "-t"
-    - "container"
-    - "-t"
-    - "kubernetes"
-    - "-T"
-    - "experimental"
+# Use extra Falco command-line arguments for tag filtering
+extra:
+  args:
+    - "-o"
+    - "rules[].disable.rule=*"
+    - "-o"
+    - "rules[].enable.tag=container"
+    - "-o"
+    - "rules[].enable.tag=kubernetes"
+    - "-o"
+    - "rules[].disable.tag=experimental"
 ```
 
 ## Creating Custom Tags
@@ -250,7 +263,7 @@ Custom tags allow you to organize rules according to your specific needs.
 
 ### Generating Tag-Based Reports
 
-Create scripts to analyze your rules by tag for compliance reporting:
+Create scripts to analyze your rules by tag for compliance reporting. This example uses `yq` to parse the rules file as YAML:
 
 ```bash
 #!/bin/bash
@@ -263,10 +276,7 @@ echo "=== Falco Rules Tag Report ==="
 echo ""
 
 # Extract all unique tags
-tags=$(grep -A 20 "^- rule:" "$RULES_FILE" | \
-       grep "^\s*-\s" | \
-       grep -v "rule:" | \
-       sed 's/^[[:space:]]*-[[:space:]]*//' | \
+tags=$(yq -r '.[] | select(has("rule") and has("tags")) | .tags[]' "$RULES_FILE" | \
        sort | uniq -c | sort -rn)
 
 echo "Tag Distribution:"
@@ -296,31 +306,20 @@ json_include_output_property: true
 
 ### Integrating with SIEM Systems
 
-Use tags to route alerts to appropriate teams or channels:
+Use tags to route alerts to appropriate teams or channels in your downstream SIEM:
 
 ```yaml
-# Falco Sidekick configuration for tag-based routing
+# Falco Sidekick configuration for forwarding tagged alerts
 # config.yaml
 
-slack:
-  webhookurl: "https://hooks.slack.com/services/XXX"
-  outputformat: "all"
+webhook:
+  address: "https://siem.example.com/falco"
+  method: "POST"
   minimumpriority: "warning"
 
-# Route by tags to different channels
+# Add static fields for downstream routing
 customfields:
   environment: "production"
-
-# Use tags in alert routing logic
-templatedfields:
-  channel: |
-    {{- if has "team_security" .Tags -}}
-    #security-alerts
-    {{- else if has "team_infrastructure" .Tags -}}
-    #infra-alerts
-    {{- else -}}
-    #general-alerts
-    {{- end -}}
 ```
 
 ## Best Practices for Tag Management
@@ -347,7 +346,7 @@ Document your tagging standards for consistency:
 
 - rule: Example Well-Tagged Rule
   desc: Demonstrates proper tagging convention
-  condition: always_true
+  condition: evt.num >= 0
   output: Example output
   priority: INFO
   tags:
@@ -370,15 +369,17 @@ Document your tagging standards for consistency:
 # Audit script for tag coverage
 
 echo "Rules without MITRE tags:"
-grep -B5 "^- rule:" /etc/falco/falco_rules.yaml | \
-  grep -A5 "rule:" | \
-  grep -L "mitre_"
+yq -r '.[] |
+  select(has("rule")) |
+  select((.tags // [] | map(test("^mitre_")) | any) | not) |
+  .rule' /etc/falco/falco_rules.yaml
 
 echo ""
 echo "Rules without compliance tags:"
-grep -B5 "^- rule:" /etc/falco/falco_rules.yaml | \
-  grep -A5 "rule:" | \
-  grep -vE "(pci_|hipaa_|soc2_)"
+yq -r '.[] |
+  select(has("rule")) |
+  select((.tags // [] | map(test("^(pci_|hipaa_|soc2_)")) | any) | not) |
+  .rule' /etc/falco/falco_rules.yaml
 ```
 
 ### 3. Use Tags for Gradual Rollouts
