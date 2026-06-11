@@ -289,6 +289,7 @@ import pika
 import time
 import threading
 import json
+import random
 from typing import Callable, Dict, List, Optional
 
 class ResilientRabbitMQ:
@@ -310,7 +311,7 @@ class ResilientRabbitMQ:
         self.max_delay = max_delay
 
         self.connection: Optional[pika.BlockingConnection] = None
-        self.channel: Optional[pika.channel.Channel] = None
+        self.channel: Optional[pika.adapters.blocking_connection.BlockingChannel] = None
 
         # Topology tracking
         self.exchanges: Dict[str, dict] = {}
@@ -536,6 +537,7 @@ Go's `amqp091-go` library uses channels (the Go kind) to notify about connection
 package main
 
 import (
+    "context"
     "encoding/json"
     "fmt"
     "log"
@@ -782,6 +784,7 @@ func (r *ResilientConnection) BindQueue(
 }
 
 func (r *ResilientConnection) Publish(
+    ctx context.Context,
     exchange, routingKey string,
     message interface{},
 ) error {
@@ -797,7 +800,8 @@ func (r *ResilientConnection) Publish(
         return err
     }
 
-    return r.channel.Publish(
+    return r.channel.PublishWithContext(
+        ctx,
         exchange,
         routingKey,
         false,
@@ -830,7 +834,7 @@ func main() {
     rabbit.BindQueue("order-processor", "events", "orders.*")
 
     message := map[string]string{"order_id": "12345"}
-    rabbit.Publish("events", "orders.created", message)
+    rabbit.Publish(context.Background(), "events", "orders.created", message)
 }
 ```
 
