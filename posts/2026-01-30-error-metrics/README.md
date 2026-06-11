@@ -72,8 +72,8 @@ const errorCounter = meter.createCounter('http_errors_total', {
 });
 
 // Histogram for request duration (useful for correlated analysis)
-const requestDuration = meter.createHistogram('http_request_duration_ms', {
-  description: 'Request duration in milliseconds',
+const requestDuration = meter.createHistogram('http_request_duration_seconds', {
+  description: 'Request duration in seconds',
 });
 
 // Middleware to capture request metrics
@@ -82,7 +82,7 @@ function errorMetricsMiddleware(req, res, next) {
 
   // Capture response finish
   res.on('finish', () => {
-    const duration = Date.now() - startTime;
+    const duration = (Date.now() - startTime) / 1000;
     const attributes = {
       method: req.method,
       path: normalizeRoutePath(req.path),
@@ -190,7 +190,7 @@ flowchart TB
 # error_classifier.py
 from enum import Enum
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Optional
 
 class ErrorCategory(Enum):
     CLIENT_INPUT = "client_input"       # Bad request, validation failed
@@ -371,8 +371,11 @@ function classifyError(error) {
   if (statusCode === 429) {
     return { category: 'rate_limited', teamOwner: 'platform_team', severity: 'medium', retryable: true };
   }
-  if (statusCode === 502 || statusCode === 503) {
+  if (statusCode === 502) {
     return { category: 'dependency', teamOwner: 'sre_team', severity: 'high', retryable: true };
+  }
+  if (statusCode === 503) {
+    return { category: 'capacity', teamOwner: 'sre_team', severity: 'high', retryable: true };
   }
   if (statusCode === 504) {
     return { category: 'timeout', teamOwner: 'sre_team', severity: 'high', retryable: true };
@@ -416,14 +419,14 @@ flowchart LR
 ```python
 # error_budget.py
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
-import math
 
 @dataclass
 class ErrorBudget:
     slo_target: float              # e.g., 0.999 for 99.9%
     window_days: int               # e.g., 30 for monthly
+    days_elapsed: float            # Days elapsed in the SLO window
     total_requests: int            # Total requests in window
     error_count: int               # Errors in window
     budget_total: float            # Total allowed errors
@@ -437,7 +440,8 @@ def calculate_error_budget(
     window_days: int,
     total_requests: int,
     error_count: int,
-    current_error_rate: float = None
+    days_elapsed: Optional[float] = None,
+    current_error_rate: Optional[float] = None
 ) -> ErrorBudget:
     """
     Calculate error budget status for a service.
@@ -447,6 +451,7 @@ def calculate_error_budget(
         window_days: SLO window in days (e.g., 30)
         total_requests: Total requests in the current window
         error_count: Total errors in the current window
+        days_elapsed: Days elapsed in the current SLO window
         current_error_rate: Current instantaneous error rate (per second)
 
     Returns:
@@ -469,7 +474,9 @@ def calculate_error_budget(
 
     # Calculate burn rate (how fast are we consuming budget)
     # Burn rate of 1.0 means we'll exactly hit the budget at window end
-    days_elapsed = window_days * (budget_consumed / 100) if budget_consumed > 0 else 0
+    if days_elapsed is None:
+        days_elapsed = window_days
+
     expected_consumption = (days_elapsed / window_days) * 100 if window_days > 0 else 0
 
     if expected_consumption > 0:
@@ -488,6 +495,7 @@ def calculate_error_budget(
     return ErrorBudget(
         slo_target=slo_target,
         window_days=window_days,
+        days_elapsed=days_elapsed,
         total_requests=total_requests,
         error_count=error_count,
         budget_total=budget_total,
@@ -537,6 +545,7 @@ if __name__ == "__main__":
         window_days=30,             # Monthly window
         total_requests=10_000_000,  # 10M requests this month
         error_count=7500,           # 7,500 errors so far
+        days_elapsed=15,            # Halfway through the window
         current_error_rate=0.5      # 0.5 errors per second currently
     )
 
@@ -643,30 +652,34 @@ class ErrorRatioCalculator {
     this.historicalErrorRate = 0.005; // 0.5% baseline
 
     // Create observable gauges
-    meter.createObservableGauge('error_rate_percent', {
+    const errorRateGauge = meter.createObservableGauge('error_rate_percent', {
       description: 'Current error rate as percentage',
-    }, (observableResult) => {
+    });
+    errorRateGauge.addCallback((observableResult) => {
       const rate = this.calculateErrorRate();
       observableResult.observe(rate);
     });
 
-    meter.createObservableGauge('success_failure_ratio', {
+    const successFailureGauge = meter.createObservableGauge('success_failure_ratio', {
       description: 'Ratio of successful to failed requests',
-    }, (observableResult) => {
+    });
+    successFailureGauge.addCallback((observableResult) => {
       const ratio = this.calculateSuccessFailureRatio();
       observableResult.observe(ratio);
     });
 
-    meter.createObservableGauge('error_rate_vs_baseline', {
+    const baselineGauge = meter.createObservableGauge('error_rate_vs_baseline', {
       description: 'Current error rate relative to historical baseline',
-    }, (observableResult) => {
+    });
+    baselineGauge.addCallback((observableResult) => {
       const change = this.calculateVsBaseline();
       observableResult.observe(change);
     });
 
-    meter.createObservableGauge('customers_affected_percent', {
+    const customersAffectedGauge = meter.createObservableGauge('customers_affected_percent', {
       description: 'Percentage of customers experiencing errors',
-    }, (observableResult) => {
+    });
+    customersAffectedGauge.addCallback((observableResult) => {
       const affected = this.calculateCustomersAffected();
       observableResult.observe(affected);
     });
@@ -781,7 +794,7 @@ flowchart LR
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime
 
 @dataclass
 class TrendAnalysis:
@@ -834,7 +847,18 @@ def analyze_error_trend(
     sum_xy = np.sum(x * y)
     sum_x2 = np.sum(x * x)
 
-    slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x * sum_x)
+    denominator = n * sum_x2 - sum_x * sum_x
+    if denominator == 0:
+        return TrendAnalysis(
+            direction="unknown",
+            slope=0.0,
+            r_squared=0.0,
+            prediction_next_hour=current_rate,
+            anomaly_detected=False,
+            confidence="low"
+        )
+
+    slope = (n * sum_xy - sum_x * sum_y) / denominator
     intercept = (sum_y - slope * sum_x) / n
 
     # Calculate R-squared
@@ -979,7 +1003,7 @@ class AttributionReport:
     by_endpoint: List[ErrorAttribution]
     by_error_type: List[ErrorAttribution]
     by_deployment: List[ErrorAttribution]
-    top_contributor: ErrorAttribution
+    top_contributor: Optional[ErrorAttribution]
 
 class ErrorAttributor:
     """
@@ -988,7 +1012,7 @@ class ErrorAttributor:
 
     def __init__(self):
         self.errors = []
-        self.requests_by_service = defaultdict(int)
+        self.requests = []
 
     def record_error(
         self,
@@ -1010,9 +1034,18 @@ class ErrorAttributor:
             'metadata': metadata or {}
         })
 
-    def record_request(self, service: str):
+    def record_request(
+        self,
+        service: str,
+        endpoint: Optional[str] = None,
+        deployment_version: Optional[str] = None
+    ):
         """Record total request for error rate calculation."""
-        self.requests_by_service[service] += 1
+        self.requests.append({
+            'service': service,
+            'endpoint': endpoint,
+            'deployment_version': deployment_version,
+        })
 
     def generate_report(self, time_window: str = "5m") -> AttributionReport:
         """Generate attribution report for current errors."""
@@ -1063,7 +1096,10 @@ class ErrorAttributor:
 
         for value, count in counts.items():
             # Calculate error rate if we have request data
-            total_requests = self.requests_by_service.get(value, 0)
+            total_requests = sum(
+                1 for request in self.requests
+                if request.get(dimension) == value
+            )
             error_rate = (count / total_requests * 100) if total_requests > 0 else 0
 
             attributions.append(ErrorAttribution(
@@ -1243,7 +1279,7 @@ const requestsTotal = meter.createCounter('http_requests_total');
 const errorsTotal = meter.createCounter('http_errors_total');
 
 // Histograms for latency correlation
-const requestDuration = meter.createHistogram('http_request_duration_ms');
+const requestDuration = meter.createHistogram('http_request_duration_seconds');
 
 // Budget tracking gauges
 const errorBudgetRemaining = meter.createObservableGauge('error_budget_remaining_percent');
@@ -1270,11 +1306,15 @@ errorBudgetRemaining.addCallback((observableResult) => {
 });
 
 errorBurnRate.addCallback((observableResult) => {
-  // Calculate burn rate as errors per hour normalized to budget
-  const errorsPerHour = windowErrors; // Simplified
-  const budgetPerHour = (windowRequests * (1 - SLO_TARGET)) / 720; // 30 days
+  if (windowRequests === 0) {
+    observableResult.observe(0);
+    return;
+  }
 
-  const burnRate = budgetPerHour > 0 ? errorsPerHour / budgetPerHour : 0;
+  // Calculate burn rate as current error rate normalized to the SLO budget.
+  const errorRate = windowErrors / windowRequests;
+  const allowedErrorRate = 1 - SLO_TARGET;
+  const burnRate = allowedErrorRate > 0 ? errorRate / allowedErrorRate : 0;
   observableResult.observe(burnRate);
 });
 
@@ -1284,7 +1324,7 @@ function completeErrorMetricsMiddleware(req, res, next) {
   const span = trace.getActiveSpan();
 
   res.on('finish', () => {
-    const duration = Date.now() - startTime;
+    const duration = (Date.now() - startTime) / 1000;
 
     const attributes = {
       method: req.method,
@@ -1310,9 +1350,9 @@ function completeErrorMetricsMiddleware(req, res, next) {
         retryable: isRetryable(res.statusCode).toString(),
       };
 
-      // Add trace context if available
+      // Keep trace IDs out of metric labels; use trace/log correlation or exemplars for drill-down.
       if (span) {
-        errorAttributes.trace_id = span.spanContext().traceId;
+        span.setAttribute('error.metric_recorded', true);
       }
 
       errorsTotal.add(1, errorAttributes);
@@ -1341,7 +1381,8 @@ function classifyError(statusCode) {
 }
 
 function categorizeError(statusCode) {
-  if (statusCode === 502 || statusCode === 503) return 'dependency';
+  if (statusCode === 502) return 'dependency';
+  if (statusCode === 503) return 'capacity';
   if (statusCode === 504) return 'timeout';
   return 'internal';
 }
@@ -1371,7 +1412,7 @@ module.exports = { completeErrorMetricsMiddleware };
 
 5. **Track error budget continuously.** Make it visible in dashboards and CI/CD gates.
 
-6. **Correlate errors with traces.** Add trace_id to error metrics for drill-down debugging.
+6. **Correlate errors with traces.** Use exemplars, logs, or trace attributes for drill-down debugging rather than adding trace IDs as metric labels.
 
 7. **Review error classification quarterly.** As your system evolves, error categories need updates.
 
