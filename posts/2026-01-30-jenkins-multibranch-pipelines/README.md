@@ -12,7 +12,7 @@ Managing CI/CD for projects with multiple branches can be challenging. Jenkins M
 
 ## What Are Multibranch Pipelines?
 
-A Multibranch Pipeline is a Jenkins job type that automatically creates a pipeline for each branch in your repository that contains a Jenkinsfile. When you push a new branch with a Jenkinsfile, Jenkins discovers it and creates a corresponding pipeline. When you delete the branch, the pipeline is removed.
+A Multibranch Pipeline is a Jenkins job type that automatically creates a pipeline for each branch in your repository that contains a Jenkinsfile. When you push a new branch with a Jenkinsfile, Jenkins discovers it and creates a corresponding pipeline. When you delete the branch, Jenkins removes or marks the pipeline orphaned after the next branch scan, depending on your orphaned item strategy.
 
 ```mermaid
 flowchart TD
@@ -33,7 +33,7 @@ flowchart TD
 1. **Automatic branch discovery** - New branches get pipelines automatically
 2. **Branch isolation** - Each branch has its own build history and workspace
 3. **Pull request integration** - Build and validate PRs before merging
-4. **Clean up** - Deleted branches have their pipelines removed automatically
+4. **Clean up** - Deleted branches can have their pipelines removed automatically after branch indexing
 5. **Branch-specific behavior** - Different actions for main vs feature branches
 
 ## Prerequisites
@@ -102,7 +102,7 @@ Control how Jenkins handles deleted branches:
 // Max number of old items to keep: 10
 ```
 
-This prevents deleted branches from consuming disk space indefinitely.
+This prevents deleted branches from consuming disk space indefinitely after Jenkins indexes the repository again.
 
 ## Writing a Jenkinsfile for Multibranch Pipelines
 
@@ -356,7 +356,7 @@ pipeline {
         success {
             script {
                 if (env.CHANGE_ID) {
-                    // Comment on PR (requires GitHub plugin)
+                    // Comment on PR (requires an additional GitHub integration step or plugin)
                     echo "PR #${env.CHANGE_ID} build succeeded"
                 }
             }
@@ -400,7 +400,7 @@ Install the GitHub Branch Source plugin for enhanced integration:
 
 ### GitHub Status Checks
 
-Report build status back to GitHub:
+Report commit status back to GitHub with the Pipeline GitHub Notify Step plugin:
 
 ```groovy
 pipeline {
@@ -526,7 +526,7 @@ pipeline {
             }
         }
 
-        // Integration tests for non-feature branches
+        // Integration tests for main, develop, and pull requests
         stage('Integration Tests') {
             when {
                 anyOf {
@@ -641,7 +641,7 @@ pipeline {
 
     post {
         always {
-            node('any') {
+            node {
                 cleanWs()
             }
         }
@@ -704,27 +704,31 @@ flowchart TB
 
 ## Configuring Branch Properties
 
-Set different properties for different branches using the Organization Folder or configure in the Jenkinsfile:
+Set different properties for different branches using the Organization Folder or configure them in the Jenkinsfile:
 
 ```groovy
 pipeline {
     agent any
 
-    // Different options based on branch
     options {
         timestamps()
-        buildDiscarder(logRotator(
-            // Keep more builds for main
-            numToKeepStr: env.BRANCH_NAME == 'main' ? '50' : '10'
-        ))
-    }
-
-    triggers {
-        // Poll SCM only for main branch
-        pollSCM(env.BRANCH_NAME == 'main' ? 'H/5 * * * *' : '')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
     stages {
+        stage('Configure Branch Properties') {
+            steps {
+                script {
+                    if (env.BRANCH_NAME == 'main') {
+                        // Keep more builds for main
+                        properties([
+                            buildDiscarder(logRotator(numToKeepStr: '50'))
+                        ])
+                    }
+                }
+            }
+        }
+
         stage('Build') {
             steps {
                 sh 'npm run build'
