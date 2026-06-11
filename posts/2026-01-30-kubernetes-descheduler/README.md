@@ -77,6 +77,7 @@ You can also deploy the descheduler directly using manifests:
 # Clone the descheduler repository
 git clone https://github.com/kubernetes-sigs/descheduler.git
 cd descheduler
+git checkout v0.36.0
 
 # Apply the RBAC and deployment manifests
 kubectl apply -f kubernetes/base/rbac.yaml
@@ -213,7 +214,7 @@ profiles:
     - name: "PodLifeTime"
       args:
         maxPodLifeTimeSeconds: 86400  # 24 hours
-        podStatusPhases:
+        states:
           - "Running"
         labelSelector:
           matchLabels:
@@ -332,9 +333,6 @@ profiles:
     - name: "LowNodeUtilization"
       args:
         evictableNamespaces:
-          include:
-            - "default"
-            - "staging"
           exclude:
             - "kube-system"
             - "monitoring"
@@ -352,10 +350,9 @@ profiles:
     pluginConfig:
     - name: "DefaultEvictor"
       args:
-        evictSystemCriticalPods: false
-        evictLocalStoragePods: false
-        evictDaemonSetPods: false
-        ignorePvcPods: true
+        podProtections:
+          extraEnabled:
+            - "PodsWithPVC"
         priorityThreshold:
           value: 10000
 ```
@@ -367,6 +364,7 @@ Specify which nodes the descheduler should consider:
 ```yaml
 apiVersion: "descheduler/v1alpha2"
 kind: "DeschedulerPolicy"
+nodeSelector: "node-type=worker"
 profiles:
   - name: ProfileName
     pluginConfig:
@@ -381,7 +379,6 @@ profiles:
         targetThresholds:
           "cpu": 50
           "memory": 50
-        nodeSelector: "node-type=worker"
 ```
 
 ## Deployment Modes
@@ -415,7 +412,7 @@ spec:
           serviceAccountName: descheduler
           containers:
           - name: descheduler
-            image: registry.k8s.io/descheduler/descheduler:v0.30.1
+            image: registry.k8s.io/descheduler/descheduler:v0.36.0
             args:
               - "--policy-config-file=/policy-dir/policy.yaml"
               - "--v=3"
@@ -450,7 +447,7 @@ spec:
       serviceAccountName: descheduler
       containers:
       - name: descheduler
-        image: registry.k8s.io/descheduler/descheduler:v0.30.1
+        image: registry.k8s.io/descheduler/descheduler:v0.36.0
         args:
           - "--policy-config-file=/policy-dir/policy.yaml"
           - "--descheduling-interval=5m"
@@ -592,7 +589,7 @@ spec:
 
 Key metrics to monitor:
 
-- `descheduler_pods_evicted`: Total number of pods evicted
+- `descheduler_pods_evicted_total`: Total number of pods evicted
 - `descheduler_build_info`: Build information
 - `descheduler_loop_duration_seconds`: Duration of each descheduling loop
 
@@ -600,10 +597,10 @@ Key metrics to monitor:
 
 ```promql
 # Pods evicted per strategy
-sum by (strategy) (increase(descheduler_pods_evicted[1h]))
+sum by (strategy) (increase(descheduler_pods_evicted_total[1h]))
 
 # Eviction rate over time
-rate(descheduler_pods_evicted[5m])
+rate(descheduler_pods_evicted_total[5m])
 ```
 
 ## Best Practices
@@ -614,14 +611,9 @@ Test your configuration before applying it to production:
 
 ```bash
 # Run descheduler in dry-run mode
-kubectl run descheduler-dry-run \
-  --image=registry.k8s.io/descheduler/descheduler:v0.30.1 \
-  --restart=Never \
-  --rm -it \
-  -- /bin/descheduler \
-    --policy-config-file=/policy-dir/policy.yaml \
-    --dry-run=true \
-    --v=4
+helm upgrade --install descheduler descheduler/descheduler \
+  --namespace kube-system \
+  --set cmdOptions.dry-run=true
 ```
 
 ### 2. Protect Critical Workloads
