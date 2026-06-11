@@ -369,10 +369,8 @@ import (
     "log"
     "net/http"
     _ "net/http/pprof"  // Import for side effects - registers handlers
-    "runtime"
     "runtime/pprof"
     "os"
-    "time"
 )
 
 // CPUProfiler wraps pprof functionality for easier use
