@@ -78,7 +78,8 @@ Configure each MySQL instance with the following settings in `/etc/mysql/mysql.c
 [mysqld]
 # Server identification
 
-server_id=1  # Unique for each node (1, 2, 3...)
+# Unique for each node (1, 2, 3...)
+server_id=1
 bind-address=0.0.0.0
 
 # InnoDB Cluster requirements
@@ -91,13 +92,12 @@ enforce_gtid_consistency=ON
 # Binary logging
 log_bin=mysql-bin
 binlog_format=ROW
+# Required before MySQL 8.0.21; optional on newer versions
 binlog_checksum=NONE
 
 # Replication settings
 relay_log=relay-bin
 log_slave_updates=ON
-master_info_repository=TABLE
-relay_log_info_repository=TABLE
 
 # Group Replication settings
 plugin_load_add='group_replication.so'
@@ -107,8 +107,6 @@ group_replication_local_address="mysql-node1:33061"
 group_replication_group_seeds="mysql-node1:33061,mysql-node2:33061,mysql-node3:33061"
 group_replication_bootstrap_group=OFF
 
-# Performance tuning
-transaction_write_set_extraction=XXHASH64
 ```
 
 ## Creating the InnoDB Cluster
@@ -117,10 +115,11 @@ transaction_write_set_extraction=XXHASH64
 
 Connect to each MySQL instance and configure it for InnoDB Cluster:
 
-```javascript
-// Connect to MySQL Shell
+```bash
 mysqlsh
+```
 
+```javascript
 // Configure the first instance
 dba.configureInstance('root@mysql-node1:3306', {
     clusterAdmin: 'clusteradmin',
@@ -160,6 +159,7 @@ dba.configureInstance('root@mysql-node3:3306', {
 
 // Create the cluster
 var cluster = dba.createCluster('ProductionCluster', {
+    communicationStack: 'XCOM',
     ipAllowlist: '192.168.1.0/24,10.0.0.0/8',
     memberWeight: 50,
     autoRejoinTries: 3,
@@ -197,7 +197,7 @@ The `memberWeight` parameter influences primary election - higher weight means h
 
 ```mermaid
 flowchart LR
-    subgraph InnoDB Cluster - ProductionCluster
+    subgraph InnoDBCluster[InnoDB Cluster - ProductionCluster]
         subgraph Primary
             P[mysql-node1<br/>PRIMARY<br/>Weight: 50]
         end
@@ -401,29 +401,29 @@ InnoDB Cluster handles automatic failover when the primary node fails:
 
 ```mermaid
 flowchart TB
-    subgraph Before Failover
+    subgraph BeforeFailover[Before Failover]
         direction TB
         P1[mysql-node1<br/>PRIMARY]
         S1a[mysql-node2<br/>SECONDARY]
         S2a[mysql-node3<br/>SECONDARY]
     end
 
-    subgraph Primary Failure
+    subgraph PrimaryFailure[Primary Failure]
         direction TB
         P2[mysql-node1<br/>OFFLINE]
         S1b[mysql-node2<br/>SECONDARY]
         S2b[mysql-node3<br/>SECONDARY]
     end
 
-    subgraph After Failover
+    subgraph AfterFailover[After Failover]
         direction TB
         P3[mysql-node1<br/>OFFLINE]
         S1c[mysql-node2<br/>PRIMARY]
         S2c[mysql-node3<br/>SECONDARY]
     end
 
-    Before_Failover --> Primary_Failure
-    Primary_Failure -->|Auto Election| After_Failover
+    BeforeFailover --> PrimaryFailure
+    PrimaryFailure -->|Auto Election| AfterFailover
 ```
 
 ### Manual Primary Switchover
@@ -454,7 +454,7 @@ cluster.status({extended: 1});
 // Force quorum with remaining online members
 cluster.forceQuorumUsingPartitionOf('clusteradmin@mysql-node2:3306');
 
-// This makes mysql-node2 the new primary and removes unreachable members
+// This restores quorum using the partition that contains mysql-node2
 ```
 
 ## Recovery Procedures
@@ -485,9 +485,12 @@ If all instances fail, rebootstrap from the most recent data:
 
 // Reboot cluster from complete outage
 var cluster = dba.rebootClusterFromCompleteOutage('ProductionCluster', {
-    primary: 'mysql-node1:3306',
-    rejoinInstances: ['mysql-node2:3306', 'mysql-node3:3306']
+    primary: 'mysql-node1:3306'
 });
+
+// Rejoin any recovered members after the cluster is back online
+cluster.rejoinInstance('clusteradmin@mysql-node2:3306');
+cluster.rejoinInstance('clusteradmin@mysql-node3:3306');
 
 // Verify recovery
 cluster.status();
@@ -568,12 +571,20 @@ SELECT
     MEMBER_ROLE
 FROM performance_schema.replication_group_members;
 
--- Check replication lag
+-- Check recovery channel status
 SELECT
     CHANNEL_NAME,
-    RECEIVED_TRANSACTION_SET,
-    LAST_APPLIED_TRANSACTION_END_APPLY_TIMESTAMP
+    SERVICE_STATE,
+    RECEIVED_TRANSACTION_SET
 FROM performance_schema.replication_connection_status;
+
+-- Check worker apply timestamps for Group Replication
+SELECT
+    CHANNEL_NAME,
+    WORKER_ID,
+    LAST_APPLIED_TRANSACTION_END_APPLY_TIMESTAMP
+FROM performance_schema.replication_applier_status_by_worker
+WHERE CHANNEL_NAME = 'group_replication_applier';
 
 -- Monitor Group Replication statistics
 SELECT * FROM performance_schema.replication_group_member_stats\G
@@ -597,9 +608,10 @@ MEMBER_COUNT=$(mysql -u$MYSQL_USER -p$MYSQL_PASS -h$MYSQL_HOST -N -e \
 
 # Get replication lag in seconds
 REPLICATION_LAG=$(mysql -u$MYSQL_USER -p$MYSQL_PASS -h$MYSQL_HOST -N -e \
-    "SELECT TIMESTAMPDIFF(SECOND, LAST_APPLIED_TRANSACTION_END_APPLY_TIMESTAMP, NOW())
-     FROM performance_schema.replication_connection_status
-     WHERE CHANNEL_NAME='group_replication_applier'" 2>/dev/null || echo 0)
+    "SELECT COALESCE(MAX(TIMESTAMPDIFF(SECOND, LAST_APPLIED_TRANSACTION_END_APPLY_TIMESTAMP, NOW())), 0)
+     FROM performance_schema.replication_applier_status_by_worker
+     WHERE CHANNEL_NAME='group_replication_applier'
+       AND LAST_APPLIED_TRANSACTION_END_APPLY_TIMESTAMP IS NOT NULL" 2>/dev/null || echo 0)
 
 # Output in Prometheus format
 echo "# HELP mysql_cluster_online_members Number of online cluster members"
@@ -681,6 +693,7 @@ cluster.options();
 ```javascript
 // Create cluster with SSL requirement
 var cluster = dba.createCluster('SecureCluster', {
+    communicationStack: 'XCOM',
     memberSslMode: 'REQUIRED',
     ipAllowlist: '10.0.0.0/8'
 });
