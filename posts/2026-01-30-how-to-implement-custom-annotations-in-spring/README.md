@@ -45,7 +45,7 @@ Spring AOP allows you to define aspects that intercept method calls annotated wi
 ```xml
 <dependency>
     <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-aop</artifactId>
+    <artifactId>spring-boot-starter-aspectj</artifactId>
 </dependency>
 ```
 
@@ -57,7 +57,6 @@ The `@Around` advice gives you complete control over method execution:
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
-import org.aspectj.lang.reflect.MethodSignature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -104,6 +103,11 @@ public class LoggingAspect {
 Here's a more advanced example implementing rate limiting:
 
 ```java
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 public @interface RateLimited {
@@ -114,6 +118,16 @@ public @interface RateLimited {
 ```
 
 ```java
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.springframework.stereotype.Component;
+
+import java.util.Deque;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingDeque;
+
 @Aspect
 @Component
 public class RateLimitingAspect {
@@ -151,6 +165,12 @@ public class RateLimitingAspect {
         return joinPoint.proceed();
     }
 }
+
+class RateLimitExceededException extends RuntimeException {
+    RateLimitExceededException(String message) {
+        super(message);
+    }
+}
 ```
 
 ## Practical Example: Simple Caching
@@ -158,6 +178,11 @@ public class RateLimitingAspect {
 Custom annotations can also implement caching logic:
 
 ```java
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 public @interface SimpleCache {
@@ -166,6 +191,15 @@ public @interface SimpleCache {
 ```
 
 ```java
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.springframework.stereotype.Component;
+
+import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 @Aspect
 @Component
 public class SimpleCacheAspect {
@@ -184,16 +218,30 @@ public class SimpleCacheAspect {
         }
 
         Object result = joinPoint.proceed();
-        cache.put(cacheKey, new CacheEntry(result, simpleCache.ttlSeconds()));
+        cache.put(cacheKey, new CacheEntry(
+            result,
+            System.currentTimeMillis(),
+            simpleCache.ttlSeconds() * 1000L
+        ));
 
         return result;
+    }
+
+    private record CacheEntry(Object value, long createdAt, long ttlMillis) {
+        boolean isExpired() {
+            return System.currentTimeMillis() - createdAt >= ttlMillis;
+        }
+
+        Object getValue() {
+            return value;
+        }
     }
 }
 ```
 
 ## Using Your Custom Annotations
 
-Apply your annotations to any Spring-managed bean method:
+Apply your annotations to public Spring-managed bean methods that are invoked through the Spring proxy:
 
 ```java
 @Service
