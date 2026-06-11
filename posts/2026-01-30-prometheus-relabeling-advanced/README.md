@@ -156,10 +156,12 @@ Combine multiple source labels into a single derived label.
 ```yaml
 relabel_configs:
   # Create a unique identifier: namespace/deployment/pod
+  # Source labels are concatenated with the separator before regex matching,
+  # so the default regex (.*) captures the entire joined string as ${1}.
   - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_pod_controller_name, __meta_kubernetes_pod_name]
     separator: '/'
     target_label: workload_id
-    replacement: '${1}/${2}/${3}'
+    replacement: '${1}'
 ```
 
 ---
@@ -528,21 +530,23 @@ relabel_configs:
     replacement: '${1}'
 ```
 
-### Avoid Regex When Possible
+### Prefer Specific Regex Patterns
 
-Simple equality checks are faster than regex.
+All matching in Prometheus relabeling goes through the regex engine (RE2). The regex is also implicitly fully anchored, so `'production'` and `'^production$'` are equivalent — both match only the exact string `production`. Explicit anchors are redundant but harmless.
 
 ```yaml
-# Slower - uses regex engine
+# Equivalent: both match only "production" exactly
 - source_labels: [__meta_kubernetes_namespace]
   regex: 'production'
   action: keep
 
-# Equivalent but explicit
+# The explicit anchors below have no effect
 - source_labels: [__meta_kubernetes_namespace]
   regex: '^production$'
   action: keep
 ```
+
+For performance, prefer specific patterns over broad ones like `.*` and avoid unnecessary alternation, since broad patterns force more work for every target and metric the engine evaluates.
 
 ### Cardinality Impact
 
