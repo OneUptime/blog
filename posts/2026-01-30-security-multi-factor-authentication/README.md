@@ -38,7 +38,7 @@ SMS-based OTP has known vulnerabilities including SIM swapping and SS7 protocol 
 
 ## TOTP Implementation
 
-TOTP generates time-based codes using a shared secret and the current timestamp. The algorithm is defined in RFC 6238 and works with authenticator apps like Google Authenticator, Authy, and 1Password.
+TOTP generates time-based codes using a shared secret and the current timestamp. The algorithm is defined in RFC 6238 and works with authenticator apps like Google Authenticator, Microsoft Authenticator, and 1Password.
 
 ### How TOTP Works
 
@@ -386,7 +386,7 @@ WebAuthn enables passwordless authentication using platform authenticators (fing
 ### WebAuthn Registration
 
 ```javascript
-// Install: npm install @simplewebauthn/server @simplewebauthn/browser
+// Install: npm install @simplewebauthn/server@^9 @simplewebauthn/browser@^9
 
 // Server-side: Registration options generation
 const {
@@ -1088,20 +1088,23 @@ async function handleEmailRecovery(user) {
  * Complete recovery and reset MFA
  */
 async function completeRecovery(token, ipAddress) {
-  // Find and validate token
-  const recovery = await db.collection('recovery_tokens').findOne({
+  // Token is bcrypt-hashed in storage, so we cannot query by it directly.
+  // Fetch active candidates and compare against each.
+  const candidates = await db.collection('recovery_tokens').find({
     expiry: { $gt: new Date() },
     used: false
-  });
+  }).toArray();
+
+  let recovery = null;
+  for (const candidate of candidates) {
+    if (await bcrypt.compare(token, candidate.tokenHash)) {
+      recovery = candidate;
+      break;
+    }
+  }
 
   if (!recovery) {
     return { success: false, error: 'Invalid or expired token' };
-  }
-
-  const tokenValid = await bcrypt.compare(token, recovery.tokenHash);
-
-  if (!tokenValid) {
-    return { success: false, error: 'Invalid token' };
   }
 
   // Mark token as used
