@@ -49,8 +49,9 @@ flowchart LR
 
 ### Prerequisites
 
-- GKE cluster (Standard or Autopilot)
+- GKE cluster. The GKE Config Connector add-on is available only on GKE Standard clusters; manual operator installation can be used on Standard or Autopilot clusters.
 - Workload Identity enabled on the cluster
+- Kubernetes Engine Monitoring enabled on the cluster
 - Google Cloud project with billing enabled
 
 ### Option 1: Enable During Cluster Creation
@@ -58,8 +59,11 @@ flowchart LR
 ```bash
 gcloud container clusters create my-cluster \
   --region us-central1 \
+  --release-channel regular \
   --workload-pool=PROJECT_ID.svc.id.goog \
-  --addons=ConfigConnector
+  --addons=ConfigConnector \
+  --logging=SYSTEM \
+  --monitoring=SYSTEM
 ```
 
 ### Option 2: Enable on Existing Cluster
@@ -71,6 +75,12 @@ gcloud container clusters update my-cluster \
   --region us-central1 \
   --workload-pool=PROJECT_ID.svc.id.goog
 
+# Enable Workload Identity metadata on existing node pools
+gcloud container node-pools update my-node-pool \
+  --cluster my-cluster \
+  --region us-central1 \
+  --workload-metadata=GKE_METADATA
+
 # Enable Config Connector addon
 gcloud container clusters update my-cluster \
   --region us-central1 \
@@ -81,9 +91,14 @@ gcloud container clusters update my-cluster \
 
 ```bash
 # Download and apply the Config Connector operator
-gsutil cp gs://configconnector-operator/latest/release-bundle.tar.gz release-bundle.tar.gz
+gcloud storage cp gs://configconnector-operator/latest/release-bundle.tar.gz release-bundle.tar.gz
 tar zxvf release-bundle.tar.gz
+
+# For GKE Standard clusters
 kubectl apply -f operator-system/configconnector-operator.yaml
+
+# For GKE Autopilot clusters, use:
+# kubectl apply -f operator-system/autopilot-configconnector-operator.yaml
 ```
 
 ## Setting Up Identity and Permissions
@@ -134,6 +149,7 @@ metadata:
   namespace: default
 spec:
   googleServiceAccount: "config-connector-sa@PROJECT_ID.iam.gserviceaccount.com"
+  stateIntoSpec: Absent
 ```
 
 For cluster-wide configuration:
@@ -146,6 +162,7 @@ metadata:
 spec:
   mode: cluster
   googleServiceAccount: "config-connector-sa@PROJECT_ID.iam.gserviceaccount.com"
+  stateIntoSpec: Absent
 ```
 
 ## Managing Cloud SQL from Kubernetes
@@ -239,7 +256,6 @@ metadata:
 spec:
   instanceRef:
     name: my-postgres-instance
-  host: "%"
   password:
     valueFrom:
       secretKeyRef:
@@ -256,7 +272,7 @@ kubectl create secret generic sql-user-password \
 
 ### Complete Cloud SQL Setup
 
-Here's a complete example with all resources:
+Here's a complete example with all Cloud SQL resources, assuming `my-vpc-network` already has private services access configured:
 
 ```yaml
 ---
@@ -343,20 +359,19 @@ spec:
   uniformBucketLevelAccess: true
   versioning:
     enabled: true
-  lifecycle:
-    rule:
-      - action:
-          type: Delete
-        condition:
-          age: 365
-          isLive: false
-      - action:
-          type: SetStorageClass
-          storageClass: NEARLINE
-        condition:
-          age: 30
-          matchesStorageClass:
-            - STANDARD
+  lifecycleRule:
+    - action:
+        type: Delete
+      condition:
+        age: 365
+        withState: ARCHIVED
+    - action:
+        type: SetStorageClass
+        storageClass: NEARLINE
+      condition:
+        age: 30
+        matchesStorageClass:
+          - STANDARD
   cors:
     - origin:
         - "https://myapp.example.com"
@@ -371,33 +386,33 @@ spec:
 ### Grant Access with IAM
 
 ```yaml
-apiVersion: storage.cnrm.cloud.google.com/v1beta1
-kind: StorageBucketAccessControl
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
 metadata:
   name: my-app-assets-reader
   namespace: default
 spec:
-  bucketRef:
-    name: my-app-assets
-  entity: user-reader@example.com
-  role: READER
-```
-
-Or use IAM policies for more complex scenarios:
-
-```yaml
-apiVersion: iam.cnrm.cloud.google.com/v1beta1
-kind: IAMPolicyMember
-metadata:
-  name: bucket-viewer
-  namespace: default
-spec:
-  member: serviceAccount:my-app@PROJECT_ID.iam.gserviceaccount.com
+  member: user:reader@example.com
   role: roles/storage.objectViewer
   resourceRef:
     apiVersion: storage.cnrm.cloud.google.com/v1beta1
     kind: StorageBucket
     name: my-app-assets
+```
+
+For legacy ACL-based buckets without uniform bucket-level access, you can use `StorageBucketAccessControl`:
+
+```yaml
+apiVersion: storage.cnrm.cloud.google.com/v1beta1
+kind: StorageBucketAccessControl
+metadata:
+  name: my-legacy-assets-reader
+  namespace: default
+spec:
+  bucketRef:
+    name: my-legacy-assets
+  entity: user-reader@example.com
+  role: READER
 ```
 
 ### Create Bucket for Application Logs
@@ -414,17 +429,16 @@ spec:
   uniformBucketLevelAccess: true
   retentionPolicy:
     retentionPeriod: 2592000  # 30 days in seconds
-  lifecycle:
-    rule:
-      - action:
-          type: Delete
-        condition:
-          age: 90
-      - action:
-          type: SetStorageClass
-          storageClass: COLDLINE
-        condition:
-          age: 30
+  lifecycleRule:
+    - action:
+        type: Delete
+      condition:
+        age: 90
+    - action:
+        type: SetStorageClass
+        storageClass: COLDLINE
+      condition:
+        age: 30
 ```
 
 ## Managing Pub/Sub from Kubernetes
@@ -625,6 +639,35 @@ spec:
   autoCreateSubnetworks: false
 
 ---
+# Reserved range for private services access
+apiVersion: compute.cnrm.cloud.google.com/v1beta1
+kind: ComputeAddress
+metadata:
+  name: app-private-services-range
+  namespace: default
+spec:
+  addressType: INTERNAL
+  location: global
+  purpose: VPC_PEERING
+  prefixLength: 16
+  networkRef:
+    name: app-network
+
+---
+# Private services access connection for Cloud SQL private IP
+apiVersion: servicenetworking.cnrm.cloud.google.com/v1beta1
+kind: ServiceNetworkingConnection
+metadata:
+  name: app-private-services-connection
+  namespace: default
+spec:
+  networkRef:
+    name: app-network
+  reservedPeeringRanges:
+    - name: app-private-services-range
+  service: servicenetworking.googleapis.com
+
+---
 # Subnetwork
 apiVersion: compute.cnrm.cloud.google.com/v1beta1
 kind: ComputeSubnetwork
@@ -807,14 +850,14 @@ spec:
   # Not: instance: projects/proj/instances/my-instance
 ```
 
-### 4. Enable State Into Spec
+### 4. Disable State Into Spec
 
-Get the current state of existing resources:
+Prevent Config Connector from populating unspecified fields into the resource spec:
 
 ```yaml
 metadata:
   annotations:
-    cnrm.cloud.google.com/state-into-spec: "merge"
+    cnrm.cloud.google.com/state-into-spec: "absent"
 ```
 
 ### 5. Organize with Labels
@@ -833,10 +876,10 @@ Resource Stuck in Updating
 
 ```bash
 # Check controller logs
-kubectl logs -n cnrm-system deployment/cnrm-controller-manager -c manager
+kubectl logs -n cnrm-system -l cnrm.cloud.google.com/component=cnrm-controller-manager
 
-# Force reconciliation
-kubectl annotate sqlinstance my-instance cnrm.cloud.google.com/force-reconcile=$(date +%s) --overwrite
+# Update metadata to trigger reconciliation
+kubectl annotate sqlinstance my-instance example.com/reconcile-trigger=$(date +%s) --overwrite
 ```
 
 ### Permission Denied Errors
