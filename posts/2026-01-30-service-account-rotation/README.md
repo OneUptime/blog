@@ -371,11 +371,12 @@ spec:
     - name: sa-rotation
       rules:
         - alert: ServiceAccountKeyStale
-          # Alert if key is older than 48 hours
+          # Alert if the secret has not been recreated in 48 hours.
+          # kube_secret_created exposes the Unix creation timestamp, so the
+          # rotation script must delete and recreate the secret (not apply)
+          # for this value to update.
           expr: |
-            time() - kube_secret_annotations{
-              annotation_rotation_timestamp!=""
-            } > 172800
+            time() - kube_secret_created{secret="app-sa-credentials"} > 172800
           for: 1h
           labels:
             severity: warning
