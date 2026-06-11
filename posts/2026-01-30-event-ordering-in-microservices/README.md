@@ -67,7 +67,7 @@ flowchart LR
     Relay -->|7. Mark Sent| Outbox
 ```
 
-The key insight: write the event to a local outbox table in the same database transaction as your business data. A separate process reads the outbox and publishes events. If publishing fails, the relay retries. Events always match the database state and maintain their order.
+The key insight: write the event to a local outbox table in the same database transaction as your business data. A separate process reads the outbox and publishes events. If publishing fails, the relay retries. Events match the database state, and ordering is preserved per aggregate when the relay publishes each aggregate's events sequentially to the same broker partition.
 
 Here is the database schema for the outbox table. We include a sequence number per aggregate to guarantee ordering.
 
@@ -92,6 +92,14 @@ CREATE TABLE outbox_events (
 CREATE INDEX idx_outbox_unpublished
 ON outbox_events(created_at)
 WHERE published_at IS NULL;
+
+-- Tracks the next sequence per aggregate without racing concurrent writers
+CREATE TABLE aggregate_event_sequences (
+    aggregate_type VARCHAR(255) NOT NULL,
+    aggregate_id VARCHAR(255) NOT NULL,
+    last_sequence_number BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (aggregate_type, aggregate_id)
+);
 ```
 
 This TypeScript implementation shows how to write to the outbox within your business transaction.
@@ -124,15 +132,25 @@ export class OutboxWriter {
       // Execute the business operation first
       const result = await operation(client);
 
-      // Get next sequence number for this aggregate
-      // Using COALESCE handles the first event case
-      const seqResult = await client.query(
-        `SELECT COALESCE(MAX(sequence_number), 0) + 1 as next_seq
-         FROM outbox_events
-         WHERE aggregate_type = $1 AND aggregate_id = $2`,
+      // Get next sequence number for this aggregate.
+      // The UPDATE takes a row lock, so concurrent writers cannot allocate
+      // the same sequence number.
+      await client.query(
+        `INSERT INTO aggregate_event_sequences
+         (aggregate_type, aggregate_id, last_sequence_number)
+         VALUES ($1, $2, 0)
+         ON CONFLICT (aggregate_type, aggregate_id) DO NOTHING`,
         [event.aggregateType, event.aggregateId]
       );
-      const sequenceNumber = seqResult.rows[0].next_seq;
+
+      const seqResult = await client.query(
+        `UPDATE aggregate_event_sequences
+         SET last_sequence_number = last_sequence_number + 1
+         WHERE aggregate_type = $1 AND aggregate_id = $2
+         RETURNING last_sequence_number as next_seq`,
+        [event.aggregateType, event.aggregateId]
+      );
+      const sequenceNumber = Number(seqResult.rows[0].next_seq);
 
       // Insert into outbox table within the same transaction
       await client.query(
@@ -199,15 +217,18 @@ export class OutboxRelay {
     const client = await this.pool.connect();
 
     try {
-      // Lock and fetch unpublished events ordered by sequence
-      // FOR UPDATE SKIP LOCKED prevents multiple relays from processing same events
+      await client.query('BEGIN');
+
+      // Lock and fetch unpublished events ordered by sequence.
+      // FOR UPDATE holds these rows until commit, so another relay cannot
+      // publish the same events concurrently.
       const result = await client.query(
         `SELECT id, aggregate_type, aggregate_id, event_type, payload, sequence_number
          FROM outbox_events
          WHERE published_at IS NULL
          ORDER BY aggregate_type, aggregate_id, sequence_number
          LIMIT 100
-         FOR UPDATE SKIP LOCKED`
+         FOR UPDATE`
       );
 
       for (const row of result.rows) {
@@ -220,7 +241,7 @@ export class OutboxRelay {
               eventId: row.id,
               eventType: row.event_type,
               aggregateId: row.aggregate_id,
-              sequenceNumber: row.sequence_number,
+              sequenceNumber: Number(row.sequence_number),
               payload: row.payload,
               timestamp: Date.now()
             })
@@ -233,6 +254,11 @@ export class OutboxRelay {
           [row.id]
         );
       }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
     } finally {
       client.release();
     }
@@ -276,6 +302,7 @@ This implementation shows an event-sourced aggregate with version tracking. The 
 
 ```typescript
 // event-sourcing.ts
+import { randomUUID } from 'node:crypto';
 
 // Base event interface with ordering metadata
 interface DomainEvent {
@@ -354,7 +381,7 @@ class Order {
 
   private recordEvent(eventType: string, payload: Record<string, unknown>): void {
     const event: DomainEvent = {
-      eventId: crypto.randomUUID(),
+      eventId: randomUUID(),
       aggregateId: this.id,
       version: this.version + 1,
       eventType,
@@ -379,7 +406,7 @@ class Order {
 }
 ```
 
-The event store persists events with optimistic locking. If two processes try to append events with the same version, one fails and must retry.
+The event store persists events with optimistic locking. The `events` table should enforce `UNIQUE (aggregate_id, version)` so if two processes try to append events with the same version, one fails and must retry.
 
 ```typescript
 // event-store.ts
@@ -400,6 +427,10 @@ export class EventStore {
     try {
       await client.query('BEGIN');
 
+      // Serialize append checks so the MAX(version) read cannot race another writer.
+      // A production event store often uses a per-stream lock or expected-version insert.
+      await client.query('LOCK TABLE events IN SHARE ROW EXCLUSIVE MODE');
+
       // Check current version matches expected
       // This prevents concurrent writes from corrupting order
       const versionCheck = await client.query(
@@ -409,7 +440,7 @@ export class EventStore {
         [aggregateId]
       );
 
-      const currentVersion = versionCheck.rows[0].current_version;
+      const currentVersion = Number(versionCheck.rows[0].current_version);
 
       if (currentVersion !== expectedVersion) {
         throw new Error(
@@ -456,7 +487,7 @@ export class EventStore {
     return result.rows.map(row => ({
       eventId: row.event_id,
       aggregateId: row.aggregate_id,
-      version: row.version,
+      version: Number(row.version),
       eventType: row.event_type,
       payload: row.payload,
       timestamp: row.timestamp.getTime()
@@ -498,13 +529,13 @@ flowchart TB
     C2 --> Q4
 ```
 
-The consumer uses per-entity queues to process events for different entities in parallel while maintaining strict ordering within each entity.
+The consumer processes Kafka partitions sequentially and uses per-entity buffers to handle gaps while maintaining strict ordering within each entity. You can still parallelize across partitions by increasing partition-level concurrency when your handler is safe to run that way.
 
 ```typescript
 // ordered-consumer.ts
 import { Kafka, Consumer, EachMessagePayload } from 'kafkajs';
 
-interface OrderedEvent {
+export interface OrderedEvent {
   eventId: string;
   aggregateId: string;
   sequenceNumber: number;
@@ -544,7 +575,7 @@ export class OrderedEventConsumer {
     });
   }
 
-  private async processWithOrdering(
+  async processWithOrdering(
     event: OrderedEvent,
     handler: (event: OrderedEvent) => Promise<void>
   ): Promise<void> {
@@ -653,6 +684,10 @@ This saga implementation tracks state and ensures events are processed in the co
 
 type SagaStatus = 'pending' | 'running' | 'completed' | 'compensating' | 'failed';
 
+interface SagaStateStore {
+  save: (state: SagaState) => Promise<void>;
+}
+
 interface SagaStep {
   name: string;
   execute: (context: Record<string, unknown>) => Promise<void>;
@@ -664,7 +699,7 @@ interface SagaState {
   status: SagaStatus;
   currentStep: number;
   completedSteps: string[];
-  context: Record<string, unknown>;
+  context: Record<string, any>;
   createdAt: number;
   updatedAt: number;
 }
@@ -681,7 +716,7 @@ export class SagaOrchestrator {
     return this;
   }
 
-  async execute(sagaId: string, initialContext: Record<string, unknown>): Promise<void> {
+  async execute(sagaId: string, initialContext: Record<string, any>): Promise<void> {
     // Initialize saga state
     let state: SagaState = {
       sagaId,
@@ -749,6 +784,10 @@ export class SagaOrchestrator {
 }
 
 // Example: Order processing saga
+declare const inventoryService: any;
+declare const paymentService: any;
+declare const shippingService: any;
+
 function createOrderSaga(stateStore: SagaStateStore): SagaOrchestrator {
   return new SagaOrchestrator(stateStore)
     .addStep({
@@ -799,6 +838,9 @@ Verifying ordering guarantees requires specific test patterns. Here is how to te
 ```typescript
 // ordering-tests.ts
 import { describe, it, expect, beforeEach } from 'vitest';
+import { OrderedEventConsumer, OrderedEvent } from './ordered-consumer';
+
+declare const kafka: any;
 
 describe('Event Ordering', () => {
   let consumer: OrderedEventConsumer;
@@ -812,9 +854,9 @@ describe('Event Ordering', () => {
   it('processes events in sequence order', async () => {
     // Simulate events arriving out of order
     const events = [
-      { aggregateId: 'order-1', sequenceNumber: 3, eventType: 'C' },
-      { aggregateId: 'order-1', sequenceNumber: 1, eventType: 'A' },
-      { aggregateId: 'order-1', sequenceNumber: 2, eventType: 'B' }
+      { eventId: 'evt-3', aggregateId: 'order-1', sequenceNumber: 3, eventType: 'C', payload: {} },
+      { eventId: 'evt-1', aggregateId: 'order-1', sequenceNumber: 1, eventType: 'A', payload: {} },
+      { eventId: 'evt-2', aggregateId: 'order-1', sequenceNumber: 2, eventType: 'B', payload: {} }
     ];
 
     for (const event of events) {
@@ -829,10 +871,10 @@ describe('Event Ordering', () => {
 
   it('handles events for different aggregates independently', async () => {
     const events = [
-      { aggregateId: 'order-1', sequenceNumber: 1, eventType: 'A1' },
-      { aggregateId: 'order-2', sequenceNumber: 1, eventType: 'B1' },
-      { aggregateId: 'order-1', sequenceNumber: 2, eventType: 'A2' },
-      { aggregateId: 'order-2', sequenceNumber: 2, eventType: 'B2' }
+      { eventId: 'evt-a1', aggregateId: 'order-1', sequenceNumber: 1, eventType: 'A1', payload: {} },
+      { eventId: 'evt-b1', aggregateId: 'order-2', sequenceNumber: 1, eventType: 'B1', payload: {} },
+      { eventId: 'evt-a2', aggregateId: 'order-1', sequenceNumber: 2, eventType: 'A2', payload: {} },
+      { eventId: 'evt-b2', aggregateId: 'order-2', sequenceNumber: 2, eventType: 'B2', payload: {} }
     ];
 
     for (const event of events) {
@@ -856,9 +898,9 @@ describe('Event Ordering', () => {
 
   it('skips duplicate events', async () => {
     const events = [
-      { aggregateId: 'order-1', sequenceNumber: 1, eventType: 'A' },
-      { aggregateId: 'order-1', sequenceNumber: 1, eventType: 'A' }, // duplicate
-      { aggregateId: 'order-1', sequenceNumber: 2, eventType: 'B' }
+      { eventId: 'evt-1', aggregateId: 'order-1', sequenceNumber: 1, eventType: 'A', payload: {} },
+      { eventId: 'evt-1-duplicate', aggregateId: 'order-1', sequenceNumber: 1, eventType: 'A', payload: {} },
+      { eventId: 'evt-2', aggregateId: 'order-1', sequenceNumber: 2, eventType: 'B', payload: {} }
     ];
 
     for (const event of events) {
