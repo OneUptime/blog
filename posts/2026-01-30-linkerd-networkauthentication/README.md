@@ -25,7 +25,7 @@ Linkerd provides robust security through mutual TLS (mTLS) and workload identity
 
 ## NetworkAuthentication Resource Specification
 
-Here is the complete specification for a `NetworkAuthentication` resource:
+Here is a basic specification for a `NetworkAuthentication` resource:
 
 ```yaml
 # NetworkAuthentication defines identity based on source IP addresses
@@ -53,6 +53,7 @@ spec:
 | `metadata.namespace` | Namespace scope for the resource |
 | `spec.networks` | Array of network definitions |
 | `spec.networks[].cidr` | CIDR notation for IP range (e.g., `10.0.0.0/8` or `192.168.1.1/32`) |
+| `spec.networks[].except` | Optional list of CIDR ranges to exclude from the parent CIDR |
 
 ## Network CIDR Selectors for IP-Based Identity
 
@@ -220,7 +221,7 @@ spec:
       kind: NetworkAuthentication
       name: internal-services
 ---
-# Allow partners limited access
+# Allow partners access
 apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
@@ -282,8 +283,8 @@ metadata:
   namespace: argocd
 spec:
   networks:
-    # GitHub Actions runner IPs
-    - cidr: 140.82.112.0/20
+    # Self-hosted GitHub Actions runner subnet
+    - cidr: 10.100.4.0/24
     # Jenkins server
     - cidr: 10.100.5.50/32
     # GitLab runners
@@ -433,11 +434,11 @@ spec:
   identities:
     - "*.production.serviceaccount.identity.linkerd.cluster.local"
 ---
-# Policy allowing both types
+# Policy allowing external ingress
 apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
-  name: allow-all-trusted
+  name: allow-external-ingress
   namespace: production
 spec:
   targetRef:
@@ -448,14 +449,29 @@ spec:
     - group: policy.linkerd.io
       kind: NetworkAuthentication
       name: external-ingress
+---
+# Policy allowing internal services
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-internal-services
+  namespace: production
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: api-server
+  requiredAuthenticationRefs:
     - group: policy.linkerd.io
       kind: MeshTLSAuthentication
       name: internal-services
 ```
 
+When multiple entries are listed in a single `requiredAuthenticationRefs` array, Linkerd requires all of them to match. Use separate `AuthorizationPolicy` resources when either authentication method should be sufficient.
+
 ### 4. Test Policies Before Enforcement
 
-Use Linkerd's audit mode to test policies:
+Use Linkerd's audit mode to test policies by setting `accessPolicy: audit` on the `Server` resource, then inspect authorization decisions:
 
 ```bash
 # Check the policy status for a specific server
@@ -480,11 +496,8 @@ kubectl describe networkauthentication external-partners -n production
 ### Check Authorization Decisions
 
 ```bash
-# Use linkerd viz to see authorization metrics
-linkerd viz stat -n production deploy/api-server
-
-# Check for denied requests
-linkerd viz tap -n production deploy/api-server | grep -i denied
+# Use linkerd viz to see authorization metrics and unauthorized requests
+linkerd viz authz -n production deploy/api-server
 ```
 
 ### Common Issues
@@ -508,5 +521,5 @@ Combined with `AuthorizationPolicy` and `Server` resources, `NetworkAuthenticati
 ## Further Reading
 
 - [Linkerd Authorization Policy Documentation](https://linkerd.io/2/reference/authorization-policy/)
-- [Server Resource Reference](https://linkerd.io/2/reference/server/)
-- [Linkerd Security Model](https://linkerd.io/2/features/security/)
+- [Linkerd Authorization Policy Feature](https://linkerd.io/2/features/server-policy/)
+- [Linkerd Automatic mTLS](https://linkerd.io/2/features/automatic-mtls/)
