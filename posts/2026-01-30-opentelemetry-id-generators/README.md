@@ -48,7 +48,7 @@ Trace ID: 4bf92f3577b34da6a3ce929d0e0e4736
 Span ID:  00f067aa0ba902b7
 ```
 
-These IDs must be globally unique to avoid trace collisions. The W3C Trace Context specification requires that trace IDs and span IDs are random or pseudo-random to ensure uniqueness across distributed systems.
+These IDs must be globally unique to avoid trace collisions. The W3C Trace Context specification recommends random or pseudo-random trace IDs to ensure uniqueness across distributed systems, and Trace Context Level 2 specifically relies on the rightmost 7 bytes being uniformly random when the random trace ID flag is set.
 
 ### How IDs Flow Through a System
 
@@ -74,7 +74,7 @@ sequenceDiagram
 
 ## 2. The Default ID Generator
 
-OpenTelemetry SDKs come with a default ID generator that uses cryptographically secure random number generation. Here is how the default generator works conceptually:
+OpenTelemetry SDKs come with a default ID generator that produces valid random or pseudo-random identifiers. The exact random source is language SDK specific. Here is how a random generator works conceptually:
 
 ```typescript
 // Conceptual representation of the default generator
@@ -94,9 +94,9 @@ class DefaultIdGenerator {
 ```
 
 The default generator:
-- Uses the platform's cryptographic random number generator
+- Uses the language SDK's built-in random ID generation
 - Produces uniformly distributed IDs
-- Has extremely low collision probability (2^128 possible trace IDs)
+- Has extremely low collision probability (2^128 minus the invalid all-zero trace ID)
 - Works well for most production scenarios
 
 ---
@@ -188,7 +188,8 @@ Key requirements for any ID generator:
 1. **Thread Safety**: Must be safe to call from multiple threads/goroutines
 2. **Non-Zero IDs**: Must never return all-zero IDs (invalid per spec)
 3. **Correct Length**: Trace IDs must be 16 bytes, span IDs must be 8 bytes
-4. **Performance**: Should be fast enough to not impact request latency
+4. **Randomness for Sampling**: If you embed metadata, keep at least the rightmost 7 bytes of the trace ID uniformly random so ratio-based sampling and Trace Context Level 2 random trace flags remain correct
+5. **Performance**: Should be fast enough to not impact request latency
 
 ---
 
@@ -206,20 +207,28 @@ export class PrefixedIdGenerator implements IdGenerator {
 
   constructor(prefixHex: string = 'cafe') {
     // Ensure prefix is exactly 2 bytes (4 hex chars)
-    const normalizedPrefix = prefixHex.padStart(4, '0').slice(0, 4);
+    const sanitizedPrefix = /^[0-9a-f]{1,4}$/i.test(prefixHex) ? prefixHex : 'cafe';
+    const normalizedPrefix = sanitizedPrefix.padStart(4, '0').slice(0, 4);
     this.prefix = Buffer.from(normalizedPrefix, 'hex');
   }
 
   generateTraceId(): string {
     // 2 bytes prefix + 14 bytes random = 16 bytes total
-    const randomPart = crypto.randomBytes(14);
-    const traceId = Buffer.concat([this.prefix, randomPart]);
-    return traceId.toString('hex');
+    let traceId: string;
+    do {
+      const randomPart = crypto.randomBytes(14);
+      traceId = Buffer.concat([this.prefix, randomPart]).toString('hex');
+    } while (traceId === '00000000000000000000000000000000');
+    return traceId;
   }
 
   generateSpanId(): string {
     // Standard 8 bytes random for span ID
-    return crypto.randomBytes(8).toString('hex');
+    let spanId: string;
+    do {
+      spanId = crypto.randomBytes(8).toString('hex');
+    } while (spanId === '0000000000000000');
+    return spanId;
   }
 }
 ```
@@ -249,12 +258,16 @@ export class TimestampIdGenerator implements IdGenerator {
   }
 
   generateSpanId(): string {
-    return crypto.randomBytes(8).toString('hex');
+    let spanId: string;
+    do {
+      spanId = crypto.randomBytes(8).toString('hex');
+    } while (spanId === '0000000000000000');
+    return spanId;
   }
 }
 
 // Usage example: extracting timestamp from trace ID
-function extractTimestamp(traceId: string): Date {
+export function extractTimestamp(traceId: string): Date {
   const timestampHex = traceId.slice(0, 12);
   const timestamp = parseInt(timestampHex, 16);
   return new Date(timestamp);
@@ -294,7 +307,6 @@ export class SequentialIdGenerator implements IdGenerator {
 
 ```typescript
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { TimestampIdGenerator } from './timestamp-id-generator';
 
@@ -319,8 +331,7 @@ sdk.start();
 ### Basic Custom Generator
 
 ```python
-from opentelemetry.sdk.trace import IdGenerator
-from opentelemetry.trace import TraceId, SpanId
+from opentelemetry.sdk.trace.id_generator import IdGenerator
 import secrets
 import time
 
@@ -334,11 +345,20 @@ class PrefixedIdGenerator(IdGenerator):
         # Prefix (2 bytes) + random (14 bytes) = 16 bytes
         random_part = secrets.randbits(112)  # 14 bytes = 112 bits
         trace_id = (self.prefix << 112) | random_part
+        while trace_id == 0:
+            random_part = secrets.randbits(112)
+            trace_id = (self.prefix << 112) | random_part
         return trace_id
 
     def generate_span_id(self) -> int:
         # Standard 8 bytes random
-        return secrets.randbits(64)
+        span_id = secrets.randbits(64)
+        while span_id == 0:
+            span_id = secrets.randbits(64)
+        return span_id
+
+    def is_trace_id_random(self) -> bool:
+        return True
 
 
 class TimestampIdGenerator(IdGenerator):
@@ -352,7 +372,13 @@ class TimestampIdGenerator(IdGenerator):
         return trace_id
 
     def generate_span_id(self) -> int:
-        return secrets.randbits(64)
+        span_id = secrets.randbits(64)
+        while span_id == 0:
+            span_id = secrets.randbits(64)
+        return span_id
+
+    def is_trace_id_random(self) -> bool:
+        return True
 
     @staticmethod
     def extract_timestamp(trace_id: int) -> float:
@@ -364,7 +390,7 @@ class TimestampIdGenerator(IdGenerator):
 ### Thread-Safe Sequential Generator
 
 ```python
-from opentelemetry.sdk.trace import IdGenerator
+from opentelemetry.sdk.trace.id_generator import IdGenerator
 import threading
 
 class SequentialIdGenerator(IdGenerator):
@@ -435,12 +461,10 @@ with tracer.start_as_current_span("my-operation") as span:
 package main
 
 import (
+    "context"
     "crypto/rand"
     "encoding/binary"
-    "sync/atomic"
-    "time"
 
-    "go.opentelemetry.io/otel/sdk/trace"
     oteltrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -466,14 +490,28 @@ func (g *PrefixedIDGenerator) NewTraceID(ctx context.Context) oteltrace.TraceID 
     binary.BigEndian.PutUint16(traceID[:2], g.prefix)
 
     // Fill remaining 14 bytes with random data
-    rand.Read(traceID[2:])
+    if _, err := rand.Read(traceID[2:]); err != nil {
+        panic("failed to generate trace ID: " + err.Error())
+    }
+    for !traceID.IsValid() {
+        if _, err := rand.Read(traceID[2:]); err != nil {
+            panic("failed to generate trace ID: " + err.Error())
+        }
+    }
 
     return traceID
 }
 
 func (g *PrefixedIDGenerator) NewSpanID(ctx context.Context, traceID oteltrace.TraceID) oteltrace.SpanID {
     var spanID oteltrace.SpanID
-    rand.Read(spanID[:])
+    if _, err := rand.Read(spanID[:]); err != nil {
+        panic("failed to generate span ID: " + err.Error())
+    }
+    for !spanID.IsValid() {
+        if _, err := rand.Read(spanID[:]); err != nil {
+            panic("failed to generate span ID: " + err.Error())
+        }
+    }
     return spanID
 }
 ```
@@ -513,14 +551,28 @@ func (g *TimestampIDGenerator) NewTraceID(ctx context.Context) oteltrace.TraceID
     binary.BigEndian.PutUint64(traceID[:8], timestamp<<16)
 
     // Fill remaining 10 bytes with random data
-    rand.Read(traceID[6:])
+    if _, err := rand.Read(traceID[6:]); err != nil {
+        panic("failed to generate trace ID: " + err.Error())
+    }
+    for !traceID.IsValid() {
+        if _, err := rand.Read(traceID[6:]); err != nil {
+            panic("failed to generate trace ID: " + err.Error())
+        }
+    }
 
     return traceID
 }
 
 func (g *TimestampIDGenerator) NewSpanID(ctx context.Context, traceID oteltrace.TraceID) oteltrace.SpanID {
     var spanID oteltrace.SpanID
-    rand.Read(spanID[:])
+    if _, err := rand.Read(spanID[:]); err != nil {
+        panic("failed to generate span ID: " + err.Error())
+    }
+    for !spanID.IsValid() {
+        if _, err := rand.Read(spanID[:]); err != nil {
+            panic("failed to generate span ID: " + err.Error())
+        }
+    }
     return spanID
 }
 
@@ -589,12 +641,13 @@ package main
 import (
     "context"
     "log"
+    "time"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
 func initTracer() (*trace.TracerProvider, error) {
@@ -612,7 +665,7 @@ func initTracer() (*trace.TracerProvider, error) {
     // Create resource
     res, err := resource.New(ctx,
         resource.WithAttributes(
-            semconv.ServiceName("my-service"),
+            attribute.String("service.name", "my-service"),
         ),
     )
     if err != nil {
@@ -638,7 +691,7 @@ func main() {
     defer tp.Shutdown(context.Background())
 
     tracer := otel.Tracer("my-service")
-    ctx, span := tracer.Start(context.Background(), "my-operation")
+    _, span := tracer.Start(context.Background(), "my-operation")
 
     // Access the trace ID
     traceID := span.SpanContext().TraceID()
@@ -661,9 +714,10 @@ func main() {
 ```java
 package com.example.otel;
 
+import io.opentelemetry.api.trace.SpanId;
+import io.opentelemetry.api.trace.TraceId;
 import io.opentelemetry.sdk.trace.IdGenerator;
 import java.security.SecureRandom;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class PrefixedIdGenerator implements IdGenerator {
     private final short prefix;
@@ -675,26 +729,40 @@ public class PrefixedIdGenerator implements IdGenerator {
 
     @Override
     public String generateTraceId() {
-        // 2 bytes prefix + 14 bytes random = 16 bytes
-        byte[] traceIdBytes = new byte[16];
+        String traceId;
+        do {
+            // 2 bytes prefix + 14 bytes random = 16 bytes
+            byte[] traceIdBytes = new byte[16];
 
-        // Set prefix in first 2 bytes (big-endian)
-        traceIdBytes[0] = (byte) (prefix >> 8);
-        traceIdBytes[1] = (byte) prefix;
+            // Set prefix in first 2 bytes (big-endian)
+            traceIdBytes[0] = (byte) (prefix >> 8);
+            traceIdBytes[1] = (byte) prefix;
 
-        // Fill remaining bytes with random data
-        byte[] randomBytes = new byte[14];
-        random.nextBytes(randomBytes);
-        System.arraycopy(randomBytes, 0, traceIdBytes, 2, 14);
+            // Fill remaining bytes with random data
+            byte[] randomBytes = new byte[14];
+            random.nextBytes(randomBytes);
+            System.arraycopy(randomBytes, 0, traceIdBytes, 2, 14);
 
-        return bytesToHex(traceIdBytes);
+            traceId = bytesToHex(traceIdBytes);
+        } while (!TraceId.isValid(traceId));
+
+        return traceId;
     }
 
     @Override
     public String generateSpanId() {
-        byte[] spanIdBytes = new byte[8];
-        random.nextBytes(spanIdBytes);
-        return bytesToHex(spanIdBytes);
+        String spanId;
+        do {
+            byte[] spanIdBytes = new byte[8];
+            random.nextBytes(spanIdBytes);
+            spanId = bytesToHex(spanIdBytes);
+        } while (!SpanId.isValid(spanId));
+        return spanId;
+    }
+
+    @Override
+    public boolean generatesRandomTraceIds() {
+        return true;
     }
 
     private static String bytesToHex(byte[] bytes) {
@@ -712,6 +780,8 @@ public class PrefixedIdGenerator implements IdGenerator {
 ```java
 package com.example.otel;
 
+import io.opentelemetry.api.trace.SpanId;
+import io.opentelemetry.api.trace.TraceId;
 import io.opentelemetry.sdk.trace.IdGenerator;
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -721,33 +791,47 @@ public class TimestampIdGenerator implements IdGenerator {
 
     @Override
     public String generateTraceId() {
-        // 6 bytes timestamp + 10 bytes random = 16 bytes
-        byte[] traceIdBytes = new byte[16];
+        String traceId;
+        do {
+            // 6 bytes timestamp + 10 bytes random = 16 bytes
+            byte[] traceIdBytes = new byte[16];
 
-        // Get current timestamp in milliseconds
-        long timestampMs = System.currentTimeMillis();
+            // Get current timestamp in milliseconds
+            long timestampMs = System.currentTimeMillis();
 
-        // Write timestamp to first 6 bytes (big-endian)
-        traceIdBytes[0] = (byte) (timestampMs >> 40);
-        traceIdBytes[1] = (byte) (timestampMs >> 32);
-        traceIdBytes[2] = (byte) (timestampMs >> 24);
-        traceIdBytes[3] = (byte) (timestampMs >> 16);
-        traceIdBytes[4] = (byte) (timestampMs >> 8);
-        traceIdBytes[5] = (byte) timestampMs;
+            // Write timestamp to first 6 bytes (big-endian)
+            traceIdBytes[0] = (byte) (timestampMs >> 40);
+            traceIdBytes[1] = (byte) (timestampMs >> 32);
+            traceIdBytes[2] = (byte) (timestampMs >> 24);
+            traceIdBytes[3] = (byte) (timestampMs >> 16);
+            traceIdBytes[4] = (byte) (timestampMs >> 8);
+            traceIdBytes[5] = (byte) timestampMs;
 
-        // Fill remaining 10 bytes with random data
-        byte[] randomBytes = new byte[10];
-        random.nextBytes(randomBytes);
-        System.arraycopy(randomBytes, 0, traceIdBytes, 6, 10);
+            // Fill remaining 10 bytes with random data
+            byte[] randomBytes = new byte[10];
+            random.nextBytes(randomBytes);
+            System.arraycopy(randomBytes, 0, traceIdBytes, 6, 10);
 
-        return bytesToHex(traceIdBytes);
+            traceId = bytesToHex(traceIdBytes);
+        } while (!TraceId.isValid(traceId));
+
+        return traceId;
     }
 
     @Override
     public String generateSpanId() {
-        byte[] spanIdBytes = new byte[8];
-        random.nextBytes(spanIdBytes);
-        return bytesToHex(spanIdBytes);
+        String spanId;
+        do {
+            byte[] spanIdBytes = new byte[8];
+            random.nextBytes(spanIdBytes);
+            spanId = bytesToHex(spanIdBytes);
+        } while (!SpanId.isValid(spanId));
+        return spanId;
+    }
+
+    @Override
+    public boolean generatesRandomTraceIds() {
+        return true;
     }
 
     public static Instant extractTimestamp(String traceId) {
@@ -772,6 +856,8 @@ public class TimestampIdGenerator implements IdGenerator {
 package com.example.otel;
 
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter;
@@ -779,7 +865,6 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
-import io.opentelemetry.semconv.resource.attributes.ResourceAttributes;
 
 public class TracingSetup {
 
@@ -792,8 +877,8 @@ public class TracingSetup {
         // Create resource
         Resource resource = Resource.getDefault()
             .merge(Resource.create(
-                io.opentelemetry.api.common.Attributes.of(
-                    ResourceAttributes.SERVICE_NAME, "my-service"
+                Attributes.of(
+                    AttributeKey.stringKey("service.name"), "my-service"
                 )
             ));
 
@@ -837,7 +922,7 @@ Thorough testing ensures your ID generator works correctly in production.
 ### Unit Tests (TypeScript/Jest)
 
 ```typescript
-import { TimestampIdGenerator } from './timestamp-id-generator';
+import { TimestampIdGenerator, extractTimestamp } from './timestamp-id-generator';
 import { SequentialIdGenerator } from './sequential-id-generator';
 
 describe('TimestampIdGenerator', () => {
@@ -921,6 +1006,7 @@ describe('SequentialIdGenerator', () => {
 package main
 
 import (
+    "context"
     "sync"
     "testing"
 )
