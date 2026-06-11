@@ -113,7 +113,7 @@ public class EnumToStringConverter<TEnum> : ValueConverter<TEnum, string>
         // Convert enum to its string name for storage
         v => v.ToString(),
         // Parse string back to enum when reading
-        v => Enum.Parse<TEnum>(v, ignoreCase: true))
+        v => Enum.Parse<TEnum>(v, true))
     {
     }
 }
@@ -202,7 +202,6 @@ public class EncryptedStringConverter : ValueConverter<string, string>
 {
     // In production, load this from secure configuration (Azure Key Vault, etc.)
     private static readonly byte[] Key;
-    private static readonly byte[] IV;
 
     static EncryptedStringConverter()
     {
@@ -214,8 +213,6 @@ public class EncryptedStringConverter : ValueConverter<string, string>
         // Derive a consistent key from the string
         using var sha256 = SHA256.Create();
         Key = sha256.ComputeHash(Encoding.UTF8.GetBytes(keyString));
-        IV = new byte[16];  // Use a fixed IV or store per-record
-        Array.Copy(Key, IV, 16);
     }
 
     public EncryptedStringConverter() : base(
@@ -231,14 +228,18 @@ public class EncryptedStringConverter : ValueConverter<string, string>
 
         using var aes = Aes.Create();
         aes.Key = Key;
-        aes.IV = IV;
+        aes.GenerateIV();
 
         using var encryptor = aes.CreateEncryptor();
         var plainBytes = Encoding.UTF8.GetBytes(plainText);
         var encryptedBytes = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
 
-        // Return as Base64 for safe string storage
-        return Convert.ToBase64String(encryptedBytes);
+        // Store the IV with the ciphertext; the IV is required for decryption
+        var result = new byte[aes.IV.Length + encryptedBytes.Length];
+        Buffer.BlockCopy(aes.IV, 0, result, 0, aes.IV.Length);
+        Buffer.BlockCopy(encryptedBytes, 0, result, aes.IV.Length, encryptedBytes.Length);
+
+        return Convert.ToBase64String(result);
     }
 
     private static string Decrypt(string cipherText)
@@ -248,10 +249,13 @@ public class EncryptedStringConverter : ValueConverter<string, string>
 
         using var aes = Aes.Create();
         aes.Key = Key;
-        aes.IV = IV;
 
+        var cipherBytesWithIv = Convert.FromBase64String(cipherText);
+        var iv = cipherBytesWithIv.Take(aes.BlockSize / 8).ToArray();
+        var cipherBytes = cipherBytesWithIv.Skip(aes.BlockSize / 8).ToArray();
+
+        aes.IV = iv;
         using var decryptor = aes.CreateDecryptor();
-        var cipherBytes = Convert.FromBase64String(cipherText);
         var decryptedBytes = decryptor.TransformFinalBlock(cipherBytes, 0, cipherBytes.Length);
 
         return Encoding.UTF8.GetString(decryptedBytes);
@@ -278,6 +282,8 @@ modelBuilder.Entity<Employee>()
 Map domain-driven design value objects to database columns. This example converts a strongly-typed `Money` value object.
 
 ```csharp
+using System.Globalization;
+
 // Value object representing monetary amounts
 // Immutable and includes currency for correctness
 public record Money(decimal Amount, string Currency)
@@ -296,7 +302,7 @@ public class MoneyConverter : ValueConverter<Money, string>
 {
     public MoneyConverter() : base(
         // Store as "CURRENCY:AMOUNT" format
-        v => $"{v.Currency}:{v.Amount}",
+        v => $"{v.Currency}:{v.Amount.ToString(CultureInfo.InvariantCulture)}",
         // Parse back to Money object
         v => ParseMoney(v))
     {
@@ -311,7 +317,7 @@ public class MoneyConverter : ValueConverter<Money, string>
         if (parts.Length != 2)
             throw new FormatException($"Invalid money format: {value}");
 
-        return new Money(decimal.Parse(parts[1]), parts[0]);
+        return new Money(decimal.Parse(parts[1], CultureInfo.InvariantCulture), parts[0]);
     }
 }
 
@@ -355,6 +361,8 @@ modelBuilder.Entity<Invoice>(entity =>
 Store simple lists in a single column using delimiter separation. This works well for tags, categories, or other string lists.
 
 ```csharp
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+
 // Converts a list of strings to a delimited string for storage
 // Example: ["tag1", "tag2", "tag3"] -> "tag1|tag2|tag3"
 public class StringListConverter : ValueConverter<List<string>, string>
@@ -375,6 +383,15 @@ public class StringListConverter : ValueConverter<List<string>, string>
     }
 }
 
+public static class StringListComparer
+{
+    // Tracks in-place additions, removals, and edits on the mutable List<string>
+    public static readonly ValueComparer<List<string>> Instance = new(
+        (l, r) => l == null ? r == null : r != null && l.SequenceEqual(r),
+        v => v == null ? 0 : v.Aggregate(0, (a, item) => HashCode.Combine(a, item == null ? 0 : item.GetHashCode())),
+        v => v == null ? null : v.ToList());
+}
+
 // Usage
 public class Article
 {
@@ -387,7 +404,7 @@ public class Article
 
 modelBuilder.Entity<Article>()
     .Property(a => a.Tags)
-    .HasConversion(new StringListConverter())
+    .HasConversion(new StringListConverter(), StringListComparer.Instance)
     .HasMaxLength(1000);
 ```
 
@@ -418,23 +435,14 @@ protected override void ConfigureConventions(ModelConfigurationBuilder configura
 }
 ```
 
-## Handling Nullables
+## Nullable Properties
 
-When your property is nullable, you need to handle null values in your converter.
+EF Core does not pass null values through value converters. A null database value becomes a null entity property value, and a null entity property value becomes a null database value. Because of this, the same converter can usually be shared by nullable and non-nullable properties.
 
 ```csharp
-// Converter that properly handles nullable types
-public class NullableEnumConverter<TEnum> : ValueConverter<TEnum?, string>
-    where TEnum : struct, Enum
-{
-    public NullableEnumConverter() : base(
-        // Handle null on write
-        v => v.HasValue ? v.Value.ToString() : null,
-        // Handle null/empty on read
-        v => string.IsNullOrEmpty(v) ? null : Enum.Parse<TEnum>(v, true))
-    {
-    }
-}
+modelBuilder.Entity<Order>()
+    .Property(o => o.ShippedAt)
+    .HasConversion(new UtcDateTimeConverter());
 ```
 
 ## Value Converter with Comparer
@@ -457,11 +465,11 @@ public static class JsonConverterExtensions
         // This ensures EF detects changes within the object
         var comparer = new ValueComparer<T>(
             // Check equality by comparing JSON representations
-            (l, r) => JsonSerializer.Serialize(l) == JsonSerializer.Serialize(r),
+            (l, r) => JsonSerializer.Serialize(l, (JsonSerializerOptions)null) == JsonSerializer.Serialize(r, (JsonSerializerOptions)null),
             // Generate hash code from JSON
-            v => v == null ? 0 : JsonSerializer.Serialize(v).GetHashCode(),
+            v => v == null ? 0 : JsonSerializer.Serialize(v, (JsonSerializerOptions)null).GetHashCode(),
             // Create snapshot by deserializing a fresh copy
-            v => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(v)));
+            v => v == null ? null : JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(v, (JsonSerializerOptions)null), (JsonSerializerOptions)null));
 
         propertyBuilder.HasConversion(converter);
         propertyBuilder.Metadata.SetValueComparer(comparer);
@@ -556,12 +564,12 @@ public class ECommerceDbContext : DbContext
 
             // List as delimited string
             entity.Property(o => o.Tags)
-                .HasConversion(new StringListConverter())
+                .HasConversion(new StringListConverter(), StringListComparer.Instance)
                 .HasMaxLength(500);
 
             // Dictionary as JSON
             entity.Property(o => o.Metadata)
-                .HasConversion(new JsonConverter<Dictionary<string, string>>())
+                .HasJsonConversion()
                 .HasColumnType("nvarchar(max)");
 
             // UTC DateTime handling
@@ -617,14 +625,14 @@ Value converters run on every read and write operation. Keep these tips in mind:
 | **CPU overhead** | Keep conversion logic simple; avoid heavy computation |
 | **Memory allocation** | Reuse converter instances; avoid creating objects in conversion |
 | **Database indexing** | Converted values might not index well; test query performance |
-| **Null handling** | Always handle nulls explicitly to avoid exceptions |
+| **Null handling** | EF Core does not pass nulls through converters; know this behavior when testing converters directly |
 | **Testing** | Unit test converters independently before integration |
 
 ## Limitations
 
 Value converters have some constraints to be aware of:
 
-1. **No LINQ translation**: EF Core cannot translate converter logic to SQL. Queries filter on converted values, which may prevent index usage.
+1. **Limited LINQ translation**: EF Core applies conversions to mapped values, but it cannot translate queries that access members inside a value-converted .NET type. Store queryable data in separate columns or native JSON columns when you need relational filtering.
 
 2. **No collection navigation**: You cannot use converters on navigation properties or collection relationships.
 
