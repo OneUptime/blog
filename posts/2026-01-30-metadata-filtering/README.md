@@ -71,7 +71,7 @@ flowchart LR
 
 ### The Two-Phase Search Model
 
-Most vector databases implement metadata filtering using a two-phase approach:
+Many vector databases combine payload filtering with vector search using a query planner that can evaluate filters before, during, or after vector search depending on the engine and index:
 
 ```mermaid
 flowchart TD
@@ -105,14 +105,14 @@ flowchart TD
 ### Pre-filtering vs Post-filtering
 
 **Pre-filtering** (filter first, then vector search):
-- Pros: Guaranteed result count, efficient for selective filters
-- Cons: May miss globally optimal vectors if filter is too restrictive
+- Pros: Avoids post-filter shortfalls when enough filtered candidates exist, efficient for selective filters
+- Cons: Can reduce the candidate pool and hurt approximate recall if the filter is too restrictive
 
 **Post-filtering** (vector search first, then filter):
-- Pros: Finds best vectors, simple implementation
+- Pros: Simple implementation, preserves unfiltered vector search behavior
 - Cons: May return fewer results than requested, wasted computation
 
-**Hybrid approach** (most production systems):
+**Hybrid approach** (common in production systems):
 - Estimate filter selectivity
 - Choose strategy based on expected candidate set size
 - Fall back between strategies as needed
@@ -263,7 +263,7 @@ filter = Filter(
 
 **Milvus Style (Expression String)**:
 ```python
-filter_expr = "category == 'technical' and year >= 2023 and tags in ['python', 'ml']"
+filter_expr = "category == 'technical' and year >= 2023 and ARRAY_CONTAINS_ANY(tags, ['python', 'ml'])"
 ```
 
 **ChromaDB Style (Where Clause)**:
@@ -289,7 +289,7 @@ where = {
 | In List | `$in` | `MatchAny` | `in` | `$in` |
 | Not In List | `$nin` | `must_not + MatchAny` | `not in` | `$nin` |
 | Contains | - | `MatchText` | `like` | - |
-| Array Contains | `$in` (on array field) | `MatchAny` | `array_contains` | `$contains` |
+| Array Contains | `$in` (on array field) | `MatchAny` | `ARRAY_CONTAINS` / `ARRAY_CONTAINS_ANY` | `$contains` |
 
 ---
 
@@ -519,23 +519,16 @@ composite_indexes = [
 ### Index Configuration Example (Qdrant)
 
 ```python
-from qdrant_client import QdrantClient
-from qdrant_client.models import (
-    PayloadSchemaType,
-    PayloadIndexParams,
-    TextIndexParams,
-    IntegerIndexParams,
-    KeywordIndexParams,
-)
+from qdrant_client import QdrantClient, models
 
-client = QdrantClient("localhost", port=6333)
+client = QdrantClient(url="http://localhost:6333")
 
 # Create optimized indexes for each field type
 client.create_payload_index(
     collection_name="documents",
     field_name="department",
-    field_schema=KeywordIndexParams(
-        type="keyword",
+    field_schema=models.KeywordIndexParams(
+        type=models.KeywordIndexType.KEYWORD,
         is_tenant=True,  # Optimized for multi-tenant filtering
     )
 )
@@ -543,8 +536,8 @@ client.create_payload_index(
 client.create_payload_index(
     collection_name="documents",
     field_name="created_at",
-    field_schema=IntegerIndexParams(
-        type="integer",
+    field_schema=models.IntegerIndexParams(
+        type=models.IntegerIndexType.INTEGER,
         lookup=False,      # No exact match needed
         range=True,        # Optimize for range queries
     )
@@ -553,9 +546,9 @@ client.create_payload_index(
 client.create_payload_index(
     collection_name="documents",
     field_name="content",
-    field_schema=TextIndexParams(
-        type="text",
-        tokenizer="word",
+    field_schema=models.TextIndexParams(
+        type=models.TextIndexType.TEXT,
+        tokenizer=models.TokenizerType.WORD,
         min_token_len=2,
         max_token_len=20,
         lowercase=True,
@@ -711,7 +704,7 @@ results = batch_filtered_search(client, "documents", queries)
 ```python
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Dict, List, Optional
 import logging
 
 @dataclass
@@ -790,7 +783,7 @@ def count_filter_conditions(filter_dict: Dict[str, Any], count: int = 0) -> int:
 ```python
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 
 @dataclass
@@ -834,7 +827,7 @@ class FilteredVectorStore:
         # Enrich metadata with system fields
         enriched_metadata = {
             **metadata,
-            "indexed_at": datetime.utcnow().isoformat(),
+            "indexed_at": datetime.now(timezone.utc).isoformat(),
             "content_length": len(content),
             "content_hash": hashlib.md5(content.encode()).hexdigest(),
         }
@@ -955,8 +948,7 @@ for r in results:
 ### Multi-Tenant Implementation
 
 ```python
-from functools import wraps
-from typing import Callable
+from typing import Any, Dict, List, Optional
 
 class MultiTenantVectorStore:
     """
@@ -1045,7 +1037,7 @@ results_b = mt_store.search("query")  # Won't see Tenant A docs
 
 ```python
 from enum import Enum
-from typing import Set
+from typing import Any, Dict, List, Optional, Set
 
 class AccessLevel(Enum):
     PUBLIC = "public"
@@ -1154,7 +1146,8 @@ results = ac_store.search(
 ### Pattern 1: Temporal Filtering
 
 ```python
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional
 
 def build_temporal_filter(
     days_back: Optional[int] = None,
@@ -1164,7 +1157,7 @@ def build_temporal_filter(
     """Build filter for time-based queries."""
 
     if days_back:
-        cutoff = datetime.utcnow() - timedelta(days=days_back)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
         return {"created_at": {"$gte": cutoff.isoformat()}}
 
     if start_date and end_date:
@@ -1217,6 +1210,9 @@ eng_filter = build_category_filter("engineering", include_subcategories=True)
 ### Pattern 3: Faceted Search
 
 ```python
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
 @dataclass
 class FacetCount:
     value: str
@@ -1280,7 +1276,8 @@ def build_geo_filter(
 ) -> Dict[str, Any]:
     """
     Filter by geographic proximity.
-    Requires documents to have 'location' field with lat/lon.
+    Uses MongoDB-style geo syntax; adapt this to your vector database's
+    supported geo filter API. Requires documents to have 'location' field with lat/lon.
     """
     return {
         "location": {
@@ -1619,9 +1616,9 @@ class MonitoredVectorStore:
 ### Filter Caching
 
 ```python
-from functools import lru_cache
 import hashlib
 import json
+import time
 
 class CachedFilterStore:
     def __init__(self, store: FilteredVectorStore, cache_ttl: int = 300):
@@ -1663,8 +1660,8 @@ class CachedFilterStore:
 ### Schema Validation
 
 ```python
-from pydantic import BaseModel, validator
-from typing import Union, List, Optional
+from pydantic import BaseModel, Field, field_validator
+from typing import List
 from enum import Enum
 
 class DocumentType(str, Enum):
@@ -1683,17 +1680,19 @@ class DocumentMetadata(BaseModel):
     department: str
     status: str = "active"
     version: int = 1
-    tags: List[str] = []
+    tags: List[str] = Field(default_factory=list)
     access_level: AccessLevel = AccessLevel.INTERNAL
 
-    @validator('department')
+    @field_validator('department')
+    @classmethod
     def department_must_be_valid(cls, v):
         valid_departments = ["HR", "Engineering", "Sales", "Legal", "Finance"]
         if v not in valid_departments:
             raise ValueError(f"Invalid department. Must be one of: {valid_departments}")
         return v
 
-    @validator('tags')
+    @field_validator('tags')
+    @classmethod
     def tags_must_be_lowercase(cls, v):
         return [tag.lower() for tag in v]
 
@@ -1704,7 +1703,7 @@ def validate_and_upsert(
 ) -> str:
     """Validate metadata before upserting."""
     validated = DocumentMetadata(**metadata)
-    return store.upsert_document(content, validated.dict())
+    return store.upsert_document(content, validated.model_dump())
 ```
 
 ---
