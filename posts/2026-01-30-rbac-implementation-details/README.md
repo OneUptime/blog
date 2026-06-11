@@ -121,9 +121,14 @@ CREATE TABLE user_roles (
     -- Resource scope makes the role apply to specific resources only
     resource_id UUID REFERENCES resources(id) ON DELETE CASCADE,
     granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    granted_by UUID REFERENCES users(id),
-    PRIMARY KEY (user_id, role_id, COALESCE(resource_id, '00000000-0000-0000-0000-000000000000'))
+    granted_by UUID REFERENCES users(id)
 );
+
+-- PRIMARY KEY accepts only column names, so enforce uniqueness with an
+-- expression-based unique index that treats a NULL resource_id (global scope)
+-- as a single distinct value.
+CREATE UNIQUE INDEX user_roles_unique_assignment
+    ON user_roles (user_id, role_id, COALESCE(resource_id, '00000000-0000-0000-0000-000000000000'::UUID));
 
 -- Index for fast permission lookups
 CREATE INDEX idx_user_roles_user ON user_roles(user_id);
@@ -446,11 +451,12 @@ async function assignRole(assignment: RoleAssignment): Promise<void> {
     throw new Error('Cannot assign a role with higher privileges than your own');
   }
 
-  // Insert the role assignment
+  // Insert the role assignment. The conflict target matches the
+  // expression-based unique index defined on the user_roles table.
   await db.query(`
     INSERT INTO user_roles (user_id, role_id, resource_id, granted_by)
     VALUES ($1, $2, $3, $4)
-    ON CONFLICT (user_id, role_id, COALESCE(resource_id, '00000000-0000-0000-0000-000000000000'))
+    ON CONFLICT (user_id, role_id, (COALESCE(resource_id, '00000000-0000-0000-0000-000000000000'::UUID)))
     DO UPDATE SET granted_at = CURRENT_TIMESTAMP, granted_by = $4
   `, [assignment.userId, assignment.roleId, assignment.resourceId, assignment.grantedBy]);
 
