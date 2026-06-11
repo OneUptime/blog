@@ -37,8 +37,8 @@ This guide covers everything you need to build robust automated evaluation pipel
 
 | Challenge | Manual Evaluation | Automated Evaluation |
 |-----------|-------------------|----------------------|
-| Scale | 10-50 examples/hour | 1000+ examples/minute |
-| Consistency | Varies by reviewer | Deterministic |
+| Scale | 10-50 examples/hour | 1000+ examples/minute for local metrics; lower for LLM judges |
+| Consistency | Varies by reviewer | Repeatable for fixed metrics; may vary with LLM judges |
 | Cost | High (human time) | Low (compute time) |
 | Regression detection | Reactive | Proactive |
 | CI/CD integration | Impossible | Native |
@@ -993,7 +993,7 @@ Here is a complete evaluation pipeline that combines all components.
 import asyncio
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional, Callable
 from pathlib import Path
 import statistics
@@ -1027,7 +1027,7 @@ class EvalResult:
 
     # Metadata
     latency_ms: float = 0.0
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def overall_score(self) -> float:
         """
@@ -1262,7 +1262,7 @@ Return JSON: {{"score": <1-5>, "reasoning": "<explanation>"}}"""
             dataset_name=dataset.name,
             dataset_version=dataset.version,
             model_name=self.model_name,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             total_examples=len(results),
             results=results
         )
@@ -1271,6 +1271,20 @@ Return JSON: {{"score": <1-5>, "reasoning": "<explanation>"}}"""
         bleu_scores = [r.bleu_score for r in results if r.bleu_score is not None]
         if bleu_scores:
             report.mean_bleu = statistics.mean(bleu_scores)
+
+        # Aggregate ROUGE
+        rouge_metrics = ["rouge1", "rouge2", "rougeL"]
+        rouge_scores = {}
+        for metric in rouge_metrics:
+            values = [
+                r.rouge_scores[metric]
+                for r in results
+                if r.rouge_scores and metric in r.rouge_scores
+            ]
+            if values:
+                rouge_scores[metric] = statistics.mean(values)
+        if rouge_scores:
+            report.mean_rouge = rouge_scores
 
         # Aggregate semantic similarity
         sim_scores = [
@@ -1292,12 +1306,15 @@ Return JSON: {{"score": <1-5>, "reasoning": "<explanation>"}}"""
 
         # Overall score
         overall_scores = [r.overall_score() for r in results]
-        report.mean_overall_score = statistics.mean(overall_scores)
+        if overall_scores:
+            report.mean_overall_score = statistics.mean(overall_scores)
 
         # Latency metrics
         latencies = [r.latency_ms for r in results]
-        report.mean_latency_ms = statistics.mean(latencies)
-        report.p95_latency_ms = sorted(latencies)[int(len(latencies) * 0.95)]
+        if latencies:
+            report.mean_latency_ms = statistics.mean(latencies)
+            p95_index = max(0, min(len(latencies) - 1, int(len(latencies) * 0.95) - 1))
+            report.p95_latency_ms = sorted(latencies)[p95_index]
 
         return report
 
@@ -1312,7 +1329,7 @@ async def main():
         response = sync_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=500
+            max_completion_tokens=500
         )
         return response.choices[0].message.content
 
@@ -1622,7 +1639,7 @@ Track evaluation scores over time to catch quality regressions.
 # Integrates with CI/CD to fail builds when quality drops.
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 import json
 import statistics
@@ -1710,7 +1727,7 @@ class RegressionDetector:
     ) -> EvalSnapshot:
         """Add a new evaluation snapshot."""
         snapshot = EvalSnapshot(
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             commit_sha=commit_sha,
             model_name=model_name,
             overall_score=overall_score,
@@ -1920,6 +1937,11 @@ env:
   EVAL_DATASET_PATH: eval/datasets/production.json
   EVAL_HISTORY_PATH: eval/history/scores.json
 
+permissions:
+  contents: write      # Commit updated history on main
+  issues: write        # Comment on pull requests
+  pull-requests: read
+
 jobs:
   evaluate:
     runs-on: ubuntu-latest
@@ -2051,7 +2073,7 @@ jobs:
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-```
+````
 
 ### Evaluation Script for CI
 
@@ -2131,7 +2153,7 @@ async def main():
         response = client.chat.completions.create(
             model=args.model,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=1000
+            max_completion_tokens=1000
         )
         return response.choices[0].message.content
 
@@ -2174,7 +2196,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-````
+```
 
 ---
 
@@ -2222,7 +2244,7 @@ flowchart LR
 
 import random
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Callable
 from dataclasses import dataclass
 import threading
@@ -2316,7 +2338,7 @@ class ProductionMonitor:
 
         sample = ProductionSample(
             request_id=request_id,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             input_text=input_text,
             output_text=output_text,
             model=model,
