@@ -36,7 +36,7 @@ Atlas Search continuously syncs your collection data through change streams, mai
 
 ### Basic Index Definition
 
-Create a search index through the Atlas UI or using the MongoDB shell. Here is a comprehensive index definition for a products collection:
+Create a search index through the Atlas UI or Atlas Admin API. Here is a comprehensive index definition for a products collection:
 
 ```json
 {
@@ -54,7 +54,7 @@ Create a search index through the Atlas UI or using the MongoDB shell. Here is a
           "analyzer": "lucene.english"
         },
         "category": {
-          "type": "stringFacet"
+          "type": "token"
         },
         "price": {
           "type": "number"
@@ -84,7 +84,7 @@ The index definition above uses several field types:
 | Field Type | Use Case | Example |
 |------------|----------|---------|
 | `string` | Full-text searchable content | Product names, descriptions |
-| `stringFacet` | Categorical filtering and counting | Categories, brands |
+| `token` | Categorical filtering and counting | Categories, brands |
 | `number` | Numeric range queries | Prices, quantities |
 | `date` | Date range filtering | Creation dates, timestamps |
 | `boolean` | True/false filtering | Active status, featured flags |
@@ -130,22 +130,6 @@ Custom analyzers give you fine-grained control over text processing. Let us buil
             "maxShingleSize": 3
           }
         ]
-      },
-      {
-        "name": "autocompleteAnalyzer",
-        "tokenizer": {
-          "type": "standard"
-        },
-        "tokenFilters": [
-          {
-            "type": "lowercase"
-          },
-          {
-            "type": "edgeGram",
-            "minGram": 2,
-            "maxGram": 15
-          }
-        ]
       }
     ],
     "mappings": {
@@ -158,7 +142,6 @@ Custom analyzers give you fine-grained control over text processing. Let us buil
         },
         "nameAutocomplete": {
           "type": "autocomplete",
-          "analyzer": "autocompleteAnalyzer",
           "tokenization": "edgeGram",
           "minGrams": 2,
           "maxGrams": 15
@@ -267,7 +250,7 @@ flowchart TB
 
 ### Phrase and Near Queries
 
-Search for exact phrases or words near each other:
+Search for exact phrases or values near an origin:
 
 ```javascript
 // Exact phrase search
@@ -284,7 +267,7 @@ db.articles.aggregate([
   }
 ])
 
-// Near query - terms within proximity
+// Near query - dates near an origin
 db.articles.aggregate([
   {
     $search: {
@@ -348,16 +331,16 @@ Faceted search enables users to filter results by categories while seeing counts
           "type": "string"
         },
         "category": {
-          "type": "stringFacet"
+          "type": "token"
         },
         "brand": {
-          "type": "stringFacet"
+          "type": "token"
         },
         "price": {
-          "type": "numberFacet"
+          "type": "number"
         },
         "rating": {
-          "type": "numberFacet"
+          "type": "number"
         }
       }
     }
@@ -410,7 +393,7 @@ db.products.aggregate([
 
 ### Facet Response Structure
 
-The query returns facet counts alongside your search results:
+The query returns metadata with facet counts and the matching document count:
 
 ```javascript
 {
@@ -724,12 +707,12 @@ await atlasAdminApi.createSearchIndex(
 
 1. **Use Specific Field Mappings**: Avoid `dynamic: true` in production
 2. **Limit Returned Fields**: Project only necessary fields
-3. **Implement Pagination**: Use `$skip` and `$limit` appropriately
+3. **Implement Pagination**: Use `$skip` and `$limit` for shallow pagination, or `searchAfter` and `searchBefore` for deeper result sets
 4. **Cache Facet Results**: Cache facet counts that change infrequently
 5. **Monitor Index Size**: Track index storage and sync latency
 
 ```javascript
-// Efficient pagination pattern
+// Offset pagination pattern for shallow result sets
 async function searchWithPagination(query, page, pageSize) {
   const skip = (page - 1) * pageSize;
 
