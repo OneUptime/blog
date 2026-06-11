@@ -29,7 +29,7 @@ Model interpretability serves multiple critical functions in production ML syste
 **Key Benefits:**
 - **Debugging**: Identify when models rely on spurious correlations
 - **Trust**: Stakeholders can verify model reasoning aligns with domain knowledge
-- **Compliance**: Meet GDPR "right to explanation" and similar regulations
+- **Compliance**: Support GDPR transparency and automated-decision safeguards, plus similar regulatory requirements
 - **Monitoring**: Detect drift by tracking explanation patterns over time
 
 ---
@@ -254,7 +254,7 @@ def get_tree_feature_importance(
     Extract feature importance from a trained tree-based model.
 
     Tree-based models compute importance based on how much each feature
-    decreases impurity (Gini or entropy) across all trees.
+    reduces the model's split criterion across all trees.
 
     Args:
         model: Trained tree-based sklearn model
@@ -471,6 +471,40 @@ class SHAPExplainer:
         self.explainer = self._create_explainer()
         self.shap_values = None
 
+    def _select_shap_output(
+        self,
+        shap_values,
+        class_index: int = 1
+    ) -> np.ndarray:
+        """
+        Select one output from SHAP values.
+
+        SHAP 0.45+ returns a single ndarray for multi-output models with
+        the output class on the last axis; older versions returned a list.
+        """
+        if isinstance(shap_values, list):
+            return shap_values[min(class_index, len(shap_values) - 1)]
+
+        shap_values = np.asarray(shap_values)
+        if shap_values.ndim == 3:
+            output_index = min(class_index, shap_values.shape[-1] - 1)
+            return shap_values[..., output_index]
+
+        return shap_values
+
+    def _select_expected_value(
+        self,
+        class_index: int = 1
+    ) -> float:
+        """Select the matching base value for scalar or multi-output explainers."""
+        expected_value = np.asarray(self.explainer.expected_value)
+
+        if expected_value.ndim == 0 or expected_value.size == 1:
+            return float(expected_value.reshape(-1)[0])
+
+        output_index = min(class_index, expected_value.shape[0] - 1)
+        return float(expected_value[output_index])
+
     def _create_explainer(self) -> shap.Explainer:
         """
         Create the appropriate SHAP explainer based on model type.
@@ -519,12 +553,17 @@ class SHAPExplainer:
             Array of SHAP values with shape (n_samples, n_features)
             For binary classification, returns values for positive class
         """
-        self.shap_values = self.explainer.shap_values(X)
+        if self.model_type == 'tree':
+            raw_shap_values = self.explainer.shap_values(
+                X,
+                check_additivity=check_additivity
+            )
+        else:
+            raw_shap_values = self.explainer.shap_values(X)
 
-        # For binary classification, shap_values is a list [class_0, class_1]
-        # We typically want class 1 (positive class) explanations
-        if isinstance(self.shap_values, list):
-            self.shap_values = self.shap_values[1]
+        # For binary classification, select class 1 (positive class)
+        # when a class/output axis is present.
+        self.shap_values = self._select_shap_output(raw_shap_values)
 
         return self.shap_values
 
@@ -564,16 +603,12 @@ class SHAPExplainer:
         shap_values = self.explainer.shap_values(X_instance)
 
         # Extract values for positive class if binary classification
-        if isinstance(shap_values, list):
-            shap_values = shap_values[1]
+        shap_values = self._select_shap_output(shap_values)
 
         shap_values = shap_values.flatten()
 
         # Get base value (expected value)
-        if isinstance(self.explainer.expected_value, np.ndarray):
-            base_value = self.explainer.expected_value[1]
-        else:
-            base_value = self.explainer.expected_value
+        base_value = self._select_expected_value()
 
         # Create feature contribution DataFrame
         contributions = pd.DataFrame({
@@ -716,13 +751,9 @@ class SHAPExplainer:
         """
         shap_values = self.explainer.shap_values(X_instance)
 
-        if isinstance(shap_values, list):
-            shap_values = shap_values[1]
+        shap_values = self._select_shap_output(shap_values)
 
-        if isinstance(self.explainer.expected_value, np.ndarray):
-            base_value = self.explainer.expected_value[1]
-        else:
-            base_value = self.explainer.expected_value
+        base_value = self._select_expected_value()
 
         return shap.force_plot(
             base_value,
@@ -971,22 +1002,23 @@ class LIMEExplainer:
         Returns:
             Dictionary with explanation details
         """
-        # Get LIME explanation
-        explanation = self.explainer.explain_instance(
-            instance,
-            self.model.predict_proba,
-            num_features=num_features,
-            num_samples=num_samples
-        )
-
         # Get the predicted class
         prediction = self.model.predict(instance.reshape(1, -1))[0]
         probability = self.model.predict_proba(instance.reshape(1, -1))[0]
 
+        # Get LIME explanation for the predicted class
+        explanation = self.explainer.explain_instance(
+            instance,
+            self.model.predict_proba,
+            labels=(int(prediction),),
+            num_features=num_features,
+            num_samples=num_samples
+        )
+
         # Extract feature contributions
         # explanation.as_list() returns tuples of (feature_rule, weight)
         contributions = []
-        for feature_rule, weight in explanation.as_list():
+        for feature_rule, weight in explanation.as_list(label=int(prediction)):
             contributions.append({
                 'feature_rule': feature_rule,
                 'weight': weight,
@@ -1211,6 +1243,8 @@ def compare_lime_shap(
 
     if isinstance(shap_values, list):
         shap_values = shap_values[1]
+    elif getattr(shap_values, 'ndim', 0) == 3:
+        shap_values = shap_values[..., 1]
 
     shap_values = shap_values.flatten()
 
@@ -1219,8 +1253,12 @@ def compare_lime_shap(
 
     # Get LIME rankings
     for rank, contrib in enumerate(lime_exp['contributions'][:num_features]):
-        # Extract feature name from rule (e.g., "feature_0 <= 0.5" -> "feature_0")
-        feature = contrib['feature_rule'].split()[0]
+        # Extract feature name from rules like "feature_0 <= 0.5"
+        # or "-1.0 < feature_0 <= 0.5".
+        feature = next(
+            name for name in sorted(X_train.columns, key=len, reverse=True)
+            if name in contrib['feature_rule']
+        )
         comparison.append({
             'feature': feature,
             'lime_rank': rank + 1,
@@ -1481,6 +1519,27 @@ class InterpretabilityService:
 
         logger.info(f"InterpretabilityService initialized for model {model_version}")
 
+    @staticmethod
+    def _select_shap_output(
+        shap_values,
+        class_index: int
+    ) -> np.ndarray:
+        """
+        Select one output from SHAP values across SHAP versions.
+
+        SHAP 0.45+ returns multi-output explanations as ndarrays with the
+        output axis last. Older versions returned a list of arrays.
+        """
+        if isinstance(shap_values, list):
+            return shap_values[min(class_index, len(shap_values) - 1)]
+
+        shap_values = np.asarray(shap_values)
+        if shap_values.ndim == 3:
+            output_index = min(class_index, shap_values.shape[-1] - 1)
+            return shap_values[..., output_index]
+
+        return shap_values
+
     def explain(
         self,
         features: Dict[str, float],
@@ -1581,9 +1640,8 @@ class InterpretabilityService:
         # Calculate SHAP values
         shap_values = self.shap_explainer.shap_values(feature_array)
 
-        # Handle binary classification (list of arrays)
-        if isinstance(shap_values, list):
-            shap_values = shap_values[prediction]
+        # Handle binary classification and multi-output models
+        shap_values = self._select_shap_output(shap_values, prediction)
 
         shap_values = shap_values.flatten()
 
@@ -1616,15 +1674,20 @@ class InterpretabilityService:
         explanation = self.lime_explainer.explain_instance(
             feature_array.flatten(),
             self.model.predict_proba,
+            labels=(prediction,),
             num_features=num_features,
             num_samples=1000  # Reduced for speed
         )
 
         # Extract contributions
         contributions = []
-        for feature_rule, weight in explanation.as_list():
-            # Parse feature name from rule
-            feature_name = feature_rule.split()[0]
+        for feature_rule, weight in explanation.as_list(label=prediction):
+            # Parse feature name from rules like "income <= 0.5"
+            # or "-1.0 < income <= 0.5".
+            feature_name = next(
+                name for name in sorted(self.feature_names, key=len, reverse=True)
+                if name in feature_rule
+            )
             contributions.append({
                 'feature': feature_name,
                 'rule': feature_rule,
@@ -1728,7 +1791,11 @@ class InterpretabilityService:
             probabilities = self.model.predict_proba(feature_array)
 
             for i, features in enumerate(features_list):
-                sv = shap_values[predictions[i]][i] if isinstance(shap_values, list) else shap_values[i]
+                selected_values = self._select_shap_output(
+                    shap_values,
+                    int(predictions[i])
+                )
+                sv = selected_values[i]
 
                 contributions = []
                 indices = np.argsort(np.abs(sv))[::-1][:10]
