@@ -27,6 +27,8 @@ While the basic structure includes `vars/`, `src/`, and `resources/`, production
 |           +-- builders/
 |           |   +-- DockerBuilder.groovy
 |           |   +-- GradleBuilder.groovy
+|           |   +-- NodeBuilder.groovy
+|           |   +-- GoBuilder.groovy
 |           +-- deployers/
 |           |   +-- KubernetesDeployer.groovy
 |           |   +-- LambdaDeployer.groovy
@@ -59,6 +61,11 @@ The following class serves as the entry point for your custom DSL. It collects c
 ```groovy
 // src/org/company/pipeline/PipelineBuilder.groovy
 package org.company.pipeline
+
+import org.company.builders.GoBuilder
+import org.company.builders.GradleBuilder
+import org.company.builders.NodeBuilder
+import org.company.deployers.KubernetesDeployer
 
 class PipelineBuilder implements Serializable {
 
@@ -110,47 +117,29 @@ class PipelineBuilder implements Serializable {
 
     // Execute the pipeline with collected configuration
     def execute() {
-        script.pipeline {
-            agent any
+        script.node {
+            script.stage('Checkout') {
+                script.checkout script.scm
+            }
 
-            stages {
-                stage('Checkout') {
-                    steps {
-                        checkout scm
-                    }
-                }
+            script.stage('Build') {
+                executeBuild()
+            }
 
-                stage('Build') {
-                    steps {
-                        script {
-                            executeBuild()
-                        }
-                    }
-                }
+            script.stage('Test') {
+                executeTests()
+            }
 
-                stage('Test') {
-                    steps {
-                        script {
-                            executeTests()
-                        }
-                    }
-                }
+            // Inject custom stages if provided
+            if (customStages) {
+                customStages.delegate = script
+                customStages.resolveStrategy = Closure.DELEGATE_FIRST
+                customStages()
+            }
 
-                // Inject custom stages if provided
-                if (customStages) {
-                    customStages.delegate = script
-                    customStages()
-                }
-
-                stage('Deploy') {
-                    when {
-                        branch 'main'
-                    }
-                    steps {
-                        script {
-                            executeDeploy()
-                        }
-                    }
+            if (script.env.BRANCH_NAME == 'main') {
+                script.stage('Deploy') {
+                    executeDeploy()
                 }
             }
         }
@@ -186,11 +175,11 @@ class PipelineBuilder implements Serializable {
 Now create the vars/ entry point that exposes this DSL to Jenkinsfiles.
 
 ```groovy
-// vars/pipeline.groovy
+// vars/standardPipeline.groovy
 
 import org.company.pipeline.PipelineBuilder
 
-// This makes pipeline { ... } syntax available
+// This makes standardPipeline { ... } syntax available
 def call(Closure body) {
     def builder = new PipelineBuilder(this)
 
@@ -208,7 +197,7 @@ Teams can now write expressive Jenkinsfiles like this.
 // Jenkinsfile in any repository
 @Library('company-shared-lib@v2.0') _
 
-pipeline {
+standardPipeline {
     project 'payment-service'
     lang 'java'
 
@@ -308,7 +297,6 @@ class StageGenerator implements Serializable {
 Hard-coding environment configurations in Groovy classes limits flexibility. Loading configurations from external files enables updates without library releases.
 
 ```json
-// resources/config/environments.json
 {
   "development": {
     "cluster": "dev-cluster",
@@ -355,12 +343,12 @@ Hard-coding environment configurations in Groovy classes limits flexibility. Loa
 // src/org/company/utils/ConfigLoader.groovy
 package org.company.utils
 
-import groovy.json.JsonSlurper
+import groovy.json.JsonSlurperClassic
 
 class ConfigLoader implements Serializable {
 
     def script
-    Map environments
+    Map<String, Object> environments = [:]
 
     ConfigLoader(script) {
         this.script = script
@@ -370,7 +358,7 @@ class ConfigLoader implements Serializable {
     private void loadConfig() {
         // Load configuration from library resources
         def configText = script.libraryResource('config/environments.json')
-        environments = new JsonSlurper().parseText(configText)
+        environments = new JsonSlurperClassic().parseText(configText) as Map<String, Object>
     }
 
     Map getEnvironment(String envName) {
@@ -401,7 +389,7 @@ flowchart TB
         resources["resources/"]
 
         subgraph VarsContent["Global Variables"]
-            pipeline_var["pipeline.groovy"]
+            pipeline_var["standardPipeline.groovy"]
             deploy_var["deployToK8s.groovy"]
         end
 
