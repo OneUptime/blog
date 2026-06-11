@@ -117,8 +117,17 @@ service Controller {
   rpc ListSnapshots(ListSnapshotsRequest)
     returns (ListSnapshotsResponse) {}
 
+  rpc GetSnapshot(GetSnapshotRequest)
+    returns (GetSnapshotResponse) {}
+
   rpc ControllerExpandVolume(ControllerExpandVolumeRequest)
     returns (ControllerExpandVolumeResponse) {}
+
+  rpc ControllerGetVolume(ControllerGetVolumeRequest)
+    returns (ControllerGetVolumeResponse) {}
+
+  rpc ControllerModifyVolume(ControllerModifyVolumeRequest)
+    returns (ControllerModifyVolumeResponse) {}
 }
 ```
 
@@ -169,6 +178,8 @@ my-csi-driver/
 │   │   ├── identity.go
 │   │   ├── controller.go
 │   │   └── node.go
+│   ├── iscsi/
+│   │   └── helper.go
 │   └── storage/
 │       └── client.go
 ├── deploy/
@@ -193,8 +204,10 @@ module github.com/yourusername/my-csi-driver
 go 1.21
 
 require (
-    github.com/container-storage-interface/spec v1.9.0
+    github.com/container-storage-interface/spec v1.12.0
+    golang.org/x/sys v0.15.0
     google.golang.org/grpc v1.60.0
+    google.golang.org/protobuf v1.32.0
     k8s.io/klog/v2 v2.110.1
     k8s.io/mount-utils v0.29.0
 )
@@ -214,6 +227,7 @@ import (
     "github.com/container-storage-interface/spec/lib/go/csi"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
+    "google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // GetPluginInfo returns metadata about the CSI plugin
@@ -289,8 +303,10 @@ import (
     "fmt"
 
     "github.com/container-storage-interface/spec/lib/go/csi"
+    "github.com/yourusername/my-csi-driver/pkg/storage"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
+    "google.golang.org/protobuf/types/known/timestamppb"
     "k8s.io/klog/v2"
 )
 
@@ -468,10 +484,7 @@ func (d *Driver) ControllerGetCapabilities(ctx context.Context, req *csi.Control
     capabilities := []csi.ControllerServiceCapability_RPC_Type{
         csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
         csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
-        csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
-        csi.ControllerServiceCapability_RPC_GET_CAPACITY,
         csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
-        csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
         csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
         csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
     }
@@ -525,6 +538,24 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
     }, nil
 }
 
+// DeleteSnapshot deletes a snapshot from the storage backend
+func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
+    snapshotID := req.GetSnapshotId()
+    if snapshotID == "" {
+        return nil, status.Error(codes.InvalidArgument, "snapshot ID is required")
+    }
+
+    klog.Infof("Deleting snapshot %s", snapshotID)
+
+    if err := d.storageClient.DeleteSnapshot(ctx, snapshotID); err != nil {
+        if !isNotFoundError(err) {
+            return nil, status.Errorf(codes.Internal, "failed to delete snapshot: %v", err)
+        }
+    }
+
+    return &csi.DeleteSnapshotResponse{}, nil
+}
+
 // ControllerExpandVolume expands the capacity of a volume
 func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
     volumeID := req.GetVolumeId()
@@ -560,13 +591,12 @@ package driver
 
 import (
     "context"
-    "fmt"
     "os"
-    "path/filepath"
 
     "github.com/container-storage-interface/spec/lib/go/csi"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
+    "golang.org/x/sys/unix"
     "k8s.io/klog/v2"
     "k8s.io/mount-utils"
 )
@@ -635,7 +665,6 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
     }
 
     // Format the volume if needed and mount it
-    formatOptions := []string{}
     mountOptions := []string{}
 
     klog.Infof("Formatting and mounting device %s to %s with fsType %s",
@@ -894,18 +923,24 @@ import (
     "sync"
 
     "github.com/container-storage-interface/spec/lib/go/csi"
+    "github.com/yourusername/my-csi-driver/pkg/iscsi"
+    "github.com/yourusername/my-csi-driver/pkg/storage"
     "google.golang.org/grpc"
     "k8s.io/klog/v2"
 )
 
 // Driver implements the CSI specification
 type Driver struct {
+    csi.UnimplementedIdentityServer
+    csi.UnimplementedControllerServer
+    csi.UnimplementedNodeServer
+
     name          string
     version       string
     nodeID        string
     zone          string
     endpoint      string
-    storageClient *storage.Client
+    storageClient storage.Client
     iscsiHelper   *iscsi.Helper
 
     srv     *grpc.Server
@@ -1150,9 +1185,11 @@ sequenceDiagram
 | external-provisioner | Creates/deletes volumes | PersistentVolumeClaims |
 | external-attacher | Attaches/detaches volumes | VolumeAttachments |
 | external-resizer | Expands volumes | PersistentVolumeClaims |
-| external-snapshotter | Creates/deletes snapshots | VolumeSnapshots |
+| external-snapshotter | Calls CSI snapshot RPCs for snapshot contents | VolumeSnapshotContents |
 | node-driver-registrar | Registers the node plugin | - |
 | livenessprobe | Health checking | - |
+
+Volume snapshot support also requires the VolumeSnapshot CRDs and the snapshot-controller; the external-snapshotter sidecar handles calls from VolumeSnapshotContent objects to the CSI driver.
 
 ## Kubernetes Deployment Manifests
 
@@ -1457,7 +1494,7 @@ metadata:
 provisioner: my-csi-driver.example.com
 parameters:
   storagePool: "high-performance"
-  fsType: "ext4"
+  csi.storage.k8s.io/fstype: "ext4"
 allowVolumeExpansion: true
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
@@ -1484,6 +1521,7 @@ import (
     "testing"
 
     "github.com/container-storage-interface/spec/lib/go/csi"
+    "github.com/yourusername/my-csi-driver/pkg/storage"
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/mock"
 )
@@ -1633,8 +1671,10 @@ The CSI sanity test suite is the standard way to validate your CSI driver implem
 package sanity
 
 import (
+    "context"
     "os"
     "testing"
+    "time"
 
     "github.com/kubernetes-csi/csi-test/v5/pkg/sanity"
     "github.com/yourusername/my-csi-driver/pkg/driver"
