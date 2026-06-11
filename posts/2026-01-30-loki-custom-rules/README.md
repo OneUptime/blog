@@ -50,14 +50,8 @@ The following configuration enables the ruler with local storage and connects it
 # loki-config.yaml
 
 ruler:
-  # Enable the rules API for dynamic rule management
+  # Enable the rules API endpoints
   enable_api: true
-
-  # Where to store rule files
-  storage:
-    type: local
-    local:
-      directory: /loki/rules
 
   # How often to evaluate rules (default: 1m)
   evaluation_interval: 1m
@@ -68,19 +62,26 @@ ruler:
   # Enable remote write for recording rules
   remote_write:
     enabled: true
-    client:
-      url: http://prometheus:9090/api/v1/write
+    clients:
+      prometheus:
+        url: http://prometheus:9090/api/v1/write
 
   # Ring configuration for high availability
   ring:
     kvstore:
       store: inmemory
+
+# Where to store rule files
+ruler_storage:
+  backend: local
+  local:
+    directory: /loki/rules
 ```
 
 If you are running Prometheus, make sure to start it with the remote write receiver enabled:
 
 ```bash
-prometheus --enable-feature=remote-write-receiver
+prometheus --web.enable-remote-write-receiver
 ```
 
 ## Rule File Structure
@@ -199,9 +200,11 @@ groups:
       # Detect crash loops by counting restarts
       - alert: ServiceCrashLoop
         expr: |
-          count_over_time(
-            {namespace="production"} |= "Starting application" [15m]
-          ) by (app) > 5
+          sum by (app) (
+            count_over_time(
+              {namespace="production"} |= "Starting application" [15m]
+            )
+          ) > 5
         for: 1m
         labels:
           severity: warning
@@ -259,21 +262,21 @@ groups:
       - record: log:latency:p50_5m
         expr: |
           quantile_over_time(0.50,
-            {namespace="production"} | json | unwrap duration_ms [5m]
+            {namespace="production"} | json | unwrap duration_ms | __error__=""[5m]
           ) by (app)
 
       # P95 latency
       - record: log:latency:p95_5m
         expr: |
           quantile_over_time(0.95,
-            {namespace="production"} | json | unwrap duration_ms [5m]
+            {namespace="production"} | json | unwrap duration_ms | __error__=""[5m]
           ) by (app)
 
       # P99 latency
       - record: log:latency:p99_5m
         expr: |
           quantile_over_time(0.99,
-            {namespace="production"} | json | unwrap duration_ms [5m]
+            {namespace="production"} | json | unwrap duration_ms | __error__=""[5m]
           ) by (app)
 ```
 
@@ -333,7 +336,7 @@ spec:
 
 ## Managing Rules via API
 
-If you enabled `enable_api: true`, you can manage rules dynamically through the HTTP API.
+If you enabled `enable_api: true` and configured an object storage backend for rules, you can manage rules dynamically through the HTTP API. Local ruler storage is read-only, so use mounted files or a ConfigMap for local storage deployments.
 
 List all configured rules:
 
@@ -347,13 +350,12 @@ Create or update a rule group:
 curl -X POST http://loki:3100/loki/api/v1/rules/fake \
   -H "Content-Type: application/yaml" \
   -d '
-groups:
-  - name: dynamic_alerts
-    rules:
-      - alert: TestAlert
-        expr: sum(rate({app="test"} [5m])) > 0
-        labels:
-          severity: info
+name: dynamic_alerts
+rules:
+  - alert: TestAlert
+    expr: sum(rate({app="test"}[5m])) > 0
+    labels:
+      severity: info
 '
 ```
 
