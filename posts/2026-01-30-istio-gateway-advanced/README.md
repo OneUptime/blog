@@ -45,7 +45,7 @@ A single Gateway can handle multiple hosts with different protocols. This is ess
 # gateway-multihost.yaml
 
 # Handles traffic for multiple domains on different ports
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: multi-host-gateway
@@ -93,7 +93,7 @@ spec:
 ```yaml
 # gateway-wildcard.yaml
 # Accepts traffic for all subdomains of example.com
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: wildcard-gateway
@@ -119,7 +119,7 @@ spec:
 ```yaml
 # gateway-multiprotocol.yaml
 # Handles different protocols on different ports
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: multiprotocol-gateway
@@ -156,10 +156,7 @@ spec:
         name: tcp-postgres
         protocol: TCP
       hosts:
-        - "db.example.com"
-      tls:
-        mode: SIMPLE
-        credentialName: db-cert
+        - "*"
 
     # MongoDB traffic
     - port:
@@ -167,7 +164,7 @@ spec:
         name: tcp-mongo
         protocol: MONGO
       hosts:
-        - "mongo.example.com"
+        - "*"
 ```
 
 ## TLS Termination with Certificate Management
@@ -181,7 +178,7 @@ flowchart TB
         SIMPLE["SIMPLE<br/>Gateway terminates TLS"]
         MUTUAL["MUTUAL<br/>Gateway requires client cert"]
         PASSTHROUGH["PASSTHROUGH<br/>TLS passed to backend"]
-        ISTIO_MUTUAL["ISTIO_MUTUAL<br/>Istio mTLS between services"]
+        ISTIO_MUTUAL["ISTIO_MUTUAL<br/>Gateway uses Istio-managed certs"]
     end
 
     Client[Client] --> SIMPLE
@@ -192,7 +189,7 @@ flowchart TB
     SIMPLE --> Backend1[Backend Service]
     MUTUAL --> Backend2[Backend Service]
     PASSTHROUGH --> Backend3[Backend terminates TLS]
-    ISTIO_MUTUAL --> Backend4[Sidecar terminates]
+    ISTIO_MUTUAL --> Backend4[Backend Service]
 ```
 
 ### SIMPLE TLS Mode (Standard Termination)
@@ -200,7 +197,7 @@ flowchart TB
 ```yaml
 # gateway-tls-simple.yaml
 # Standard TLS termination at the gateway
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: tls-gateway
@@ -266,7 +263,7 @@ spec:
 ```yaml
 # gateway-mtls.yaml
 # Requires clients to present valid certificates
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: mtls-gateway
@@ -301,7 +298,7 @@ kubectl create secret generic api-example-cert \
 ```yaml
 # gateway-passthrough.yaml
 # Passes encrypted traffic directly to backend
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: passthrough-gateway
@@ -330,19 +327,18 @@ Understanding port configuration is essential for proper traffic handling.
 |----------|-------------|-----------------|----------|
 | HTTP | 80 | http | Unencrypted web traffic |
 | HTTPS | 443 | https | Encrypted web traffic |
-| HTTP2 | 443 | http2 | HTTP/2 over TLS |
-| GRPC | 443 | grpc | gRPC services |
+| HTTP2 | 443 | http2 | HTTP/2 traffic |
+| GRPC | 443 | grpc | gRPC over HTTP/2 |
 | TCP | Any | tcp-{name} | Raw TCP connections |
 | TLS | Any | tls-{name} | TLS passthrough |
 | MONGO | 27017 | mongo | MongoDB wire protocol |
-| MYSQL | 3306 | mysql | MySQL wire protocol |
 
 ### Advanced Port Configuration
 
 ```yaml
 # gateway-ports.yaml
 # Demonstrates various port configurations
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: advanced-ports-gateway
@@ -356,7 +352,6 @@ spec:
         number: 443
         name: https-primary
         protocol: HTTPS
-        targetPort: 8443  # Optional: map to different container port
       hosts:
         - "app.example.com"
       tls:
@@ -377,7 +372,7 @@ spec:
         name: tcp-legacy
         protocol: TCP
       hosts:
-        - "legacy.example.com"
+        - "*"
 ```
 
 ### Configuring the Ingress Gateway Service
@@ -443,7 +438,7 @@ sequenceDiagram
 ```yaml
 # virtualservice-cors.yaml
 # Configure CORS for API endpoints
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-virtualservice
@@ -461,7 +456,7 @@ spec:
         allowOrigins:
           - exact: "https://app.example.com"
           - exact: "https://admin.example.com"
-          - regex: "https://.*\\.example\\.com"  # Allow all subdomains
+          - regex: "^https://.*\\.example\\.com$"  # Allow all subdomains
         allowMethods:
           - GET
           - POST
@@ -491,7 +486,7 @@ spec:
 ```yaml
 # virtualservice-cors-production.yaml
 # Strict CORS for production
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-production
@@ -521,7 +516,7 @@ spec:
 ---
 # virtualservice-cors-development.yaml
 # Relaxed CORS for development
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-development
@@ -592,7 +587,7 @@ flowchart TB
 
 ```yaml
 # production-gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: production-gateway
@@ -652,7 +647,7 @@ spec:
 
 ```yaml
 # virtualservice-web.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: web-virtualservice
@@ -694,11 +689,11 @@ spec:
               number: 80
 ```
 
-### VirtualService for API with Rate Limiting Headers
+### VirtualService for API with Response Headers
 
 ```yaml
 # virtualservice-api.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-virtualservice
@@ -780,7 +775,7 @@ spec:
 
 ```yaml
 # virtualservice-grpc.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-virtualservice
