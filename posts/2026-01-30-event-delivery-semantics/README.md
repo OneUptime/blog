@@ -92,10 +92,16 @@ async function sendMetric(metric: { name: string; value: number }) {
     });
 }
 
-// Usage: acceptable to lose some metrics
-setInterval(() => {
-    sendMetric({ name: 'cpu_usage', value: Math.random() * 100 });
-}, 1000);
+async function startProducer() {
+    await producer.connect();
+
+    // Usage: acceptable to lose some metrics
+    setInterval(() => {
+        sendMetric({ name: 'cpu_usage', value: Math.random() * 100 });
+    }, 1000);
+}
+
+startProducer();
 ```
 
 The trade-off is clear: you get low latency and high throughput, but some messages will disappear during network blips or broker restarts.
@@ -144,14 +150,17 @@ async function processOrder(event: OrderEvent): Promise<void> {
     try {
         await client.query('BEGIN');
 
-        // Check if we already processed this order
-        // This query also locks the row to prevent race conditions
-        const existing = await client.query(
-            'SELECT 1 FROM processed_orders WHERE order_id = $1 FOR UPDATE',
+        // Claim this order ID first. A unique constraint on order_id
+        // prevents two consumers from processing the same order.
+        const claimed = await client.query(
+            `INSERT INTO processed_orders (order_id, processed_at)
+             VALUES ($1, NOW())
+             ON CONFLICT (order_id) DO NOTHING
+             RETURNING order_id`,
             [event.orderId]
         );
 
-        if (existing.rows.length > 0) {
+        if (claimed.rows.length === 0) {
             // Already processed - skip but still acknowledge
             console.log(`Order ${event.orderId} already processed, skipping`);
             await client.query('COMMIT');
@@ -162,12 +171,6 @@ async function processOrder(event: OrderEvent): Promise<void> {
         await client.query(
             'INSERT INTO orders (id, amount, created_at) VALUES ($1, $2, $3)',
             [event.orderId, event.amount, new Date(event.timestamp)]
-        );
-
-        // Mark as processed to prevent future duplicates
-        await client.query(
-            'INSERT INTO processed_orders (order_id, processed_at) VALUES ($1, NOW())',
-            [event.orderId]
         );
 
         await client.query('COMMIT');
@@ -209,7 +212,7 @@ Kafka supports exactly-once semantics through idempotent producers and transacti
 // exactly-once-producer.ts
 // Transactional producer that guarantees exactly-once delivery
 
-import { Kafka, CompressionTypes } from 'kafkajs';
+import { Kafka } from 'kafkajs';
 
 const kafka = new Kafka({
     brokers: ['localhost:9092'],
@@ -298,6 +301,7 @@ const consumer = kafka.consumer({
 const producer = kafka.producer({
     idempotent: true,
     transactionalId: 'enrichment-producer-1',
+    maxInFlightRequests: 1,
 });
 
 async function runEnrichmentPipeline() {
@@ -306,8 +310,13 @@ async function runEnrichmentPipeline() {
     await consumer.subscribe({ topic: 'raw-events' });
 
     await consumer.run({
+        autoCommit: false,
         eachBatchAutoResolve: false,
         eachBatch: async ({ batch, resolveOffset, heartbeat }) => {
+            if (batch.messages.length === 0) {
+                return;
+            }
+
             const transaction = await producer.transaction();
 
             try {
@@ -520,6 +529,8 @@ async function publishOutboxEvents(publisher: (event: OutboxEvent) => Promise<vo
     const client = await db.connect();
 
     try {
+        await client.query('BEGIN');
+
         // Lock and fetch unpublished events
         const result = await client.query(
             `SELECT id, aggregate_id, event_type, payload
@@ -543,6 +554,11 @@ async function publishOutboxEvents(publisher: (event: OutboxEvent) => Promise<vo
                 [row.id]
             );
         }
+
+        await client.query('COMMIT');
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
     } finally {
         client.release();
     }
