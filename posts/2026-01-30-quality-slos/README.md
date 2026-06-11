@@ -646,7 +646,7 @@ slos:
 
 from dataclasses import dataclass
 from typing import Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 @dataclass
 class SLOStatus:
@@ -673,7 +673,7 @@ def calculate_error_budget(
     Calculate error budget across all SLO dimensions.
     The overall budget is limited by the most constrained dimension.
     """
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=window_days)
 
     # Query current SLI values
@@ -812,12 +812,16 @@ groups:
       - alert: QualityBudgetLow
         expr: |
           (
-            1 - (
-              sum(increase(sli_events_total{sli_type="quality",result="bad"}[30d]))
-              /
-              sum(increase(sli_events_total{sli_type="quality"}[30d]))
+            1 -
+            (
+              (
+                sum(increase(sli_events_total{sli_type="quality",result="bad"}[30d]))
+                /
+                sum(increase(sli_events_total{sli_type="quality"}[30d]))
+              )
+              / 0.0005
             )
-          ) / 0.0005 < 0.25
+          ) < 0.25
         for: 5m
         labels:
           severity: warning
