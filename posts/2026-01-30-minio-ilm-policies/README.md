@@ -99,10 +99,13 @@ mc ilm rule add myminio/documents-bucket \
 ### Complete Versioning Lifecycle
 
 ```bash
-# Combined rule: keep current objects 365 days, noncurrent 30 days
+# Keep current objects 365 days and noncurrent versions 30 days
 mc ilm rule add myminio/backups-bucket \
   --expire-days 365 \
-  --noncurrent-expire-days 30 \
+  --noncurrent-expire-days 30
+
+# Remove expired delete markers when no versions remain
+mc ilm rule add myminio/backups-bucket \
   --expire-delete-marker
 ```
 
@@ -115,47 +118,49 @@ Tiering moves objects to cheaper storage without deleting them. You access them 
 ### Step 1: Add a Remote Tier
 
 ```bash
-# Add an S3-compatible remote tier (could be AWS S3, another MinIO, Wasabi, etc.)
-mc admin tier add s3 myminio GLACIER_TIER \
+# Add an S3-compatible remote tier (AWS S3 or another MinIO deployment)
+mc ilm tier add s3 myminio S3_IA_TIER \
   --endpoint https://s3.amazonaws.com \
   --access-key REMOTE_ACCESS_KEY \
   --secret-key REMOTE_SECRET_KEY \
   --bucket archive-bucket \
   --region us-east-1 \
-  --storage-class GLACIER
+  --storage-class STANDARD-IA
 ```
 
 For Azure Blob Storage:
 
 ```bash
 # Add Azure Blob tier
-mc admin tier add azure myminio AZURE_ARCHIVE \
+mc ilm tier add azure myminio AZURE_COOL \
   --account-name myaccount \
   --account-key AZURE_ACCOUNT_KEY \
-  --bucket archive-container
+  --bucket archive-container \
+  --storage-class Cool
 ```
 
 For Google Cloud Storage:
 
 ```bash
 # Add GCS tier
-mc admin tier add gcs myminio GCS_COLDLINE \
+mc ilm tier add gcs myminio GCS_COLDLINE \
   --credentials-file /path/to/service-account.json \
-  --bucket gcs-archive-bucket
+  --bucket gcs-archive-bucket \
+  --storage-class COLDLINE
 ```
 
 ### Step 2: Create Transition Rules
 
 ```bash
-# Transition objects to GLACIER_TIER after 90 days
+# Transition objects to S3_IA_TIER after 90 days
 mc ilm rule add myminio/data-bucket \
   --transition-days 90 \
-  --transition-tier GLACIER_TIER
+  --transition-tier S3_IA_TIER
 
 # Transition noncurrent versions after 30 days
 mc ilm rule add myminio/data-bucket \
   --noncurrent-transition-days 30 \
-  --noncurrent-transition-tier GLACIER_TIER
+  --noncurrent-transition-tier S3_IA_TIER
 ```
 
 ### Multi-Tier Lifecycle
@@ -169,8 +174,8 @@ flowchart TD
     end
     subgraph Tiers["Storage Tiers"]
         HOT["HOT: Local NVMe<br/>Days 0-30"]
-        WARM["WARM: Local HDD Pool<br/>Days 30-90"]
-        COLD["COLD: Remote S3/Glacier<br/>Days 90-365"]
+        WARM["WARM: Remote MinIO HDD Tier<br/>Days 30-90"]
+        COLD["COLD: Remote S3 IA<br/>Days 90-365"]
         DEL["Deleted"]
     end
     R1 --> WARM
@@ -213,7 +218,7 @@ mc ilm rule add myminio/documents-bucket \
 mc ilm rule add myminio/documents-bucket \
   --tags "retention=long" \
   --transition-days 365 \
-  --transition-tier GLACIER_TIER
+  --transition-tier S3_IA_TIER
 ```
 
 ### Combined Prefix and Tag Filters
@@ -259,7 +264,7 @@ For complex policies, manage rules as JSON files:
       },
       "Transition": {
         "Days": 90,
-        "StorageClass": "GLACIER_TIER"
+        "StorageClass": "S3_IA_TIER"
       }
     },
     {
@@ -271,7 +276,9 @@ For complex policies, manage rules as JSON files:
       "NoncurrentVersionExpiration": {
         "NoncurrentDays": 30
       },
-      "ExpiredObjectDeleteMarker": true
+      "Expiration": {
+        "ExpiredObjectDeleteMarker": true
+      }
     }
   ]
 }
@@ -303,11 +310,11 @@ mc ilm rule add myminio/application-logs \
   --prefix "debug/" \
   --expire-days 7
 
-# Warm retention: transition info logs to HDD tier after 14 days
+# Warm retention: transition info logs to a remote MinIO HDD tier after 14 days
 mc ilm rule add myminio/application-logs \
   --prefix "info/" \
   --transition-days 14 \
-  --transition-tier HDD_POOL
+  --transition-tier WARM_MINIO
 
 # Cold retention: move info logs to remote after 60 days, expire at 180
 mc ilm rule add myminio/application-logs \
@@ -321,12 +328,15 @@ mc ilm rule add myminio/application-logs \
   --prefix "audit/" \
   --tags "compliance=required" \
   --transition-days 30 \
-  --transition-tier GLACIER_TIER \
+  --transition-tier S3_IA_TIER \
   --expire-days 2555
 
 # Cleanup old versions across all prefixes
 mc ilm rule add myminio/application-logs \
-  --noncurrent-expire-days 14 \
+  --noncurrent-expire-days 14
+
+# Remove expired delete markers when no versions remain
+mc ilm rule add myminio/application-logs \
   --expire-delete-marker
 ```
 
@@ -342,11 +352,11 @@ flowchart TB
     end
     subgraph Lifecycle
         DEBUG -->|7 days| DEL1[Delete]
-        INFO -->|14 days| HDD[HDD Pool]
+        INFO -->|14 days| HDD[Remote MinIO HDD Tier]
         HDD -->|60 days| REMOTE[Remote S3]
         REMOTE -->|180 days| DEL2[Delete]
-        AUDIT -->|30 days| GLACIER[Glacier Tier]
-        GLACIER -->|7 years| DEL3[Delete]
+        AUDIT -->|30 days| S3IA[S3 IA Tier]
+        S3IA -->|7 years| DEL3[Delete]
     end
 ```
 
@@ -359,17 +369,18 @@ Track what ILM is doing:
 mc admin scanner status myminio
 
 # View tier statistics
-mc admin tier info myminio GLACIER_TIER
+mc ilm tier info myminio S3_IA_TIER
 
 # List all configured tiers
-mc admin tier ls myminio
+mc ilm tier ls myminio
 ```
 
 For observability integration, MinIO exposes Prometheus metrics:
 
-- `minio_ilm_transition_count` - Objects transitioned
-- `minio_ilm_expiry_count` - Objects expired
-- `minio_ilm_transition_failed_count` - Failed transitions
+- `minio_ilm_transitioned_objects` - Objects transitioned
+- `minio_ilm_transitioned_versions` - Object versions transitioned
+- `minio_ilm_action_count_delete` - Lifecycle delete actions
+- `minio_ilm_transition_missed_immediate_tasks` - Missed immediate transition tasks
 
 Scrape these into your monitoring stack to alert on ILM failures or unexpected patterns.
 
@@ -383,7 +394,7 @@ Scrape these into your monitoring stack to alert on ILM failures or unexpected p
 
 **Versioning interactions.** Expiration on versioned buckets creates delete markers rather than truly deleting objects. Add `--expire-delete-marker` and `--noncurrent-expire-days` rules to fully clean up.
 
-**Tier availability.** If a remote tier becomes unreachable, transitions fail silently. Monitor `minio_ilm_transition_failed_count` and set up alerts.
+**Tier availability.** If a remote tier becomes unreachable, transitions can fall behind. Monitor `minio_ilm_transition_pending_tasks` and `minio_ilm_transition_missed_immediate_tasks`, and set up alerts.
 
 ## Key Takeaways
 
