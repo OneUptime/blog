@@ -90,7 +90,7 @@ Full extraction pulls all data from the source system each time. This is simple 
 # Use this when data volumes are small or you need complete refreshes
 
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 def full_extract(connection_string: str, table_name: str) -> pd.DataFrame:
     """
@@ -107,7 +107,7 @@ def full_extract(connection_string: str, table_name: str) -> pd.DataFrame:
     engine = create_engine(connection_string)
 
     # Build extraction query
-    query = f"SELECT * FROM {table_name}"
+    query = text(f"SELECT * FROM {table_name}")
 
     # Execute extraction and return results
     with engine.connect() as connection:
@@ -137,7 +137,7 @@ Incremental extraction only pulls new or changed data, reducing load on source s
 # This is the preferred approach for large datasets
 
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from datetime import datetime, timedelta
 
 def incremental_extract(
@@ -164,13 +164,13 @@ def incremental_extract(
     query = f"""
         SELECT *
         FROM {table_name}
-        WHERE {timestamp_column} > %(last_extracted)s
+        WHERE {timestamp_column} > :last_extracted
         ORDER BY {timestamp_column}
     """
 
     with engine.connect() as connection:
         df = pd.read_sql(
-            query,
+            text(query),
             connection,
             params={"last_extracted": last_extracted}
         )
@@ -194,12 +194,12 @@ def get_last_extraction_timestamp(metadata_db: str, pipeline_name: str) -> datet
     query = """
         SELECT MAX(extraction_timestamp) as last_ts
         FROM pipeline_metadata
-        WHERE pipeline_name = %(pipeline_name)s
+        WHERE pipeline_name = :pipeline_name
         AND status = 'success'
     """
 
     with engine.connect() as connection:
-        result = pd.read_sql(query, connection, params={"pipeline_name": pipeline_name})
+        result = pd.read_sql(text(query), connection, params={"pipeline_name": pipeline_name})
 
     # Return last timestamp or default to 30 days ago
     if result["last_ts"].iloc[0] is None:
@@ -407,7 +407,7 @@ def create_customer_validator() -> DataValidator:
     # Rule 2: Check for valid email format
     validator.add_rule(ValidationRule(
         name="valid_email_format",
-        check=lambda df: df["email"].str.contains(r"^[\w\.-]+@[\w\.-]+\.\w+$", regex=True).all(),
+        check=lambda df: df["email"].str.contains(r"^[\w\.-]+@[\w\.-]+\.\w+$", regex=True, na=False).all(),
         severity="warning",
         description="Email should match standard format"
     ))
@@ -485,9 +485,21 @@ class DataCleaner:
             elif dtype == "float":
                 df[column] = pd.to_numeric(df[column], errors="coerce")
             elif dtype == "string":
-                df[column] = df[column].astype(str)
+                df[column] = df[column].astype("string")
             elif dtype == "boolean":
-                df[column] = df[column].astype(bool)
+                normalized = df[column].astype("string").str.strip().str.lower()
+                df[column] = normalized.map({
+                    "true": True,
+                    "t": True,
+                    "yes": True,
+                    "y": True,
+                    "1": True,
+                    "false": False,
+                    "f": False,
+                    "no": False,
+                    "n": False,
+                    "0": False,
+                }).astype("boolean")
 
         return df
 
@@ -495,7 +507,7 @@ class DataCleaner:
         """
         Standardize string columns by trimming whitespace and converting case.
         """
-        string_columns = df.select_dtypes(include=["object"]).columns
+        string_columns = df.select_dtypes(include=["object", "string"]).columns
 
         for column in string_columns:
             # Remove leading and trailing whitespace
@@ -919,7 +931,7 @@ def merge_load(
 # Snowflake-specific MERGE implementation
 def snowflake_merge_load(
     df: pd.DataFrame,
-    connection_string: str,
+    conn_params: dict,
     table_name: str,
     schema: str,
     key_columns: List[str]
@@ -932,10 +944,7 @@ def snowflake_merge_load(
     import snowflake.connector
 
     # Create staging table name
-    staging_table = f"stg_{table_name}_{pd.Timestamp.now().strftime('%Y%m%d%H%M%S')}"
-
-    # Parse connection string components
-    conn_params = parse_snowflake_connection(connection_string)
+    staging_table = f"STG_{table_name}_{pd.Timestamp.now().strftime('%Y%m%d%H%M%S')}".upper()
 
     with snowflake.connector.connect(**conn_params) as conn:
         cursor = conn.cursor()
@@ -948,7 +957,7 @@ def snowflake_merge_load(
             """)
 
             # Load data into staging
-            write_pandas(conn, df, staging_table, schema=schema)
+            write_pandas(conn, df, staging_table, schema=schema, quote_identifiers=False)
 
             # Build MERGE statement
             join_condition = " AND ".join(
@@ -1083,13 +1092,11 @@ flowchart TB
 # Complete ETL pipeline for sales data
 # Runs daily at 6 AM UTC
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
-from airflow.utils.dates import days_ago
-from airflow.utils.task_group import TaskGroup
-from datetime import datetime, timedelta
+import pendulum
+from airflow.providers.standard.operators.python import PythonOperator
+from airflow.providers.standard.operators.bash import BashOperator
+from airflow.sdk import DAG, TaskGroup
+from datetime import timedelta
 
 # Default arguments for all tasks
 default_args = {
@@ -1107,8 +1114,8 @@ dag = DAG(
     dag_id="etl_sales_pipeline",
     default_args=default_args,
     description="Daily ETL pipeline for sales data",
-    schedule_interval="0 6 * * *",      # Run at 6 AM UTC daily
-    start_date=days_ago(1),
+    schedule="0 6 * * *",               # Run at 6 AM UTC daily
+    start_date=pendulum.datetime(2024, 1, 1, tz="UTC"),
     catchup=False,                       # Do not backfill
     tags=["etl", "sales", "production"],
     max_active_runs=1,                   # Prevent concurrent runs
@@ -1118,22 +1125,24 @@ dag = DAG(
 def extract_sales_data(**context):
     """
     Extract sales data from source systems.
-    Uses incremental extraction based on execution date.
+    Uses incremental extraction based on the scheduled data interval.
     """
     from includes.extractors import SalesExtractor
 
-    # Get execution date from Airflow context
-    execution_date = context["execution_date"]
+    # Get the scheduled data interval from Airflow context
+    data_interval_start = context["data_interval_start"]
+    data_interval_end = context["data_interval_end"]
+    logical_date = context["logical_date"]
 
     extractor = SalesExtractor(
         connection_id="source_db",
-        start_date=execution_date - timedelta(days=1),
-        end_date=execution_date
+        start_date=data_interval_start,
+        end_date=data_interval_end
     )
 
     # Extract and save to staging
     df = extractor.extract()
-    staging_path = f"/data/staging/sales/{execution_date.strftime('%Y%m%d')}"
+    staging_path = f"/data/staging/sales/{logical_date.strftime('%Y%m%d')}"
     df.to_parquet(staging_path)
 
     # Push metadata to XCom for downstream tasks
@@ -1192,8 +1201,8 @@ def transform_sales_data(**context):
     transformed_df = transformer.transform(df)
 
     # Save transformed data
-    execution_date = context["execution_date"]
-    transform_path = f"/data/transformed/sales/{execution_date.strftime('%Y%m%d')}"
+    logical_date = context["logical_date"]
+    transform_path = f"/data/transformed/sales/{logical_date.strftime('%Y%m%d')}"
     transformed_df.to_parquet(transform_path)
 
     context["ti"].xcom_push(key="transform_path", value=transform_path)
@@ -1245,6 +1254,12 @@ with dag:
         python_callable=validate_extracted_data,
     )
 
+    # Python transformation task
+    transform_sales = PythonOperator(
+        task_id="transform_sales",
+        python_callable=transform_sales_data,
+    )
+
     # Run dbt transformations
     with TaskGroup(group_id="dbt_transforms") as dbt_transforms:
 
@@ -1280,7 +1295,7 @@ with dag:
     )
 
     # Define task flow
-    extract_sales >> validate_data >> dbt_transforms >> load_warehouse >> dbt_test >> notify_success
+    extract_sales >> validate_data >> transform_sales >> load_warehouse >> dbt_transforms >> dbt_test >> notify_success
 ```
 
 ### Airflow Sensor for Dependencies
@@ -1289,8 +1304,7 @@ with dag:
 # dags/includes/sensors.py
 # Custom sensors for ETL dependency management
 
-from airflow.sensors.base import BaseSensorOperator
-from airflow.utils.decorators import apply_defaults
+from airflow.sdk import BaseHook, BaseSensorOperator
 
 class DataQualitySensor(BaseSensorOperator):
     """
@@ -1298,7 +1312,6 @@ class DataQualitySensor(BaseSensorOperator):
     Useful for cross-pipeline dependencies.
     """
 
-    @apply_defaults
     def __init__(
         self,
         table_name: str,
@@ -1318,7 +1331,6 @@ class DataQualitySensor(BaseSensorOperator):
         """
         Check if data quality meets threshold.
         """
-        from airflow.hooks.base import BaseHook
         import pandas as pd
 
         # Get connection
