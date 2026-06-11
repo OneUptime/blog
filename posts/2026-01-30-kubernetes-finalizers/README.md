@@ -42,7 +42,7 @@ When you delete a resource with finalizers:
 | Purpose | Run cleanup logic before deletion | Automatic cascade deletion |
 | Control | Controller must explicitly remove | Kubernetes handles automatically |
 | Use Case | External resources, custom cleanup | Child Kubernetes resources |
-| Blocking | Blocks deletion until removed | Does not block deletion |
+| Blocking | Blocks deletion until removed | Can delay owner deletion with foreground cascading deletion |
 | Location | `metadata.finalizers` array | `metadata.ownerReferences` array |
 
 ### Common Finalizer Use Cases
@@ -87,7 +87,7 @@ kubectl patch configmap my-config -p '{"metadata":{"finalizers":["myorg.com/clea
 # View finalizers on a resource
 kubectl get configmap my-config -o jsonpath='{.metadata.finalizers}'
 
-# Add finalizer using strategic merge patch
+# Add finalizer using JSON merge patch
 kubectl patch deployment my-app --type=merge -p '
 {
   "metadata": {
@@ -753,7 +753,7 @@ func (r *DatabaseReconciler) handleDeletionWithMultipleFinalizers(ctx context.Co
 ### Diagnosing Stuck Resources
 
 ```bash
-# Find all resources with deletion timestamps (stuck in deletion)
+# Find resources returned by "kubectl get all" with deletion timestamps
 kubectl get all --all-namespaces -o json | jq -r '
   .items[] |
   select(.metadata.deletionTimestamp != null) |
@@ -878,6 +878,7 @@ package controller
 
 import (
     "context"
+    "fmt"
     "testing"
 
     "github.com/stretchr/testify/assert"
