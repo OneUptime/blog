@@ -158,8 +158,8 @@ flowchart TB
 map "$arg_version:$arg_format:$arg_region" $api_backend {
     "v2:json:eu"    eu_json_v2;
     "v2:json:us"    us_json_v2;
-    "v2:xml:~"      xml_v2;
-    "v1:~:~"        legacy_v1;
+    "~^v2:xml:"     xml_v2;
+    "~^v1:"         legacy_v1;
     default         default_api;
 }
 
@@ -411,6 +411,12 @@ map "$debug_enabled:$debug_authorized" $final_debug {
     default 0;
 }
 
+# Strip debug param from query string (used when not authorized)
+map $args $args_no_debug {
+    ~^(?<pre>.*?)(?:^|&)debug=[^&]*(?<post>(?:&.*)?)$  "$pre$post";
+    default                                              $args;
+}
+
 server {
     listen 80;
 
@@ -427,12 +433,10 @@ server {
         # Strip debug param if not authorized
         set $clean_args $args;
         if ($debug_authorized = 0) {
-            set $clean_args $args;
-            # Remove debug parameter
-            rewrite ^(.*)$ $1?$clean_args break;
+            set $clean_args $args_no_debug;
         }
 
-        proxy_pass http://backend;
+        proxy_pass http://backend$uri?$clean_args;
     }
 }
 ```
