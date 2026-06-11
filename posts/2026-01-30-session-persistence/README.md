@@ -623,8 +623,6 @@ backend web_backend
     server web3 192.168.1.12:8080 check inter 5s fall 3 rise 2 cookie web3
 
 backend api_backend
-    balance roundrobin
-
     # IP-based persistence for API (no cookies)
     balance source
     hash-type consistent
