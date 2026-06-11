@@ -32,7 +32,7 @@ flowchart TD
 
 To enable profiling, add the `profile` parameter to your search request:
 
-```json
+```console
 GET /my-index/_search
 {
   "profile": true,
@@ -77,12 +77,13 @@ flowchart LR
         "id": "[node_id][index_name][shard_number]",
         "searches": [
           {
-            "query": [...],
+            "query": [],
             "rewrite_time": 12345,
-            "collector": [...]
+            "collector": []
           }
         ],
-        "aggregations": [...]
+        "aggregations": [],
+        "fetch": {}
       }
     ]
   }
@@ -145,7 +146,7 @@ pie title Query Time Distribution Example
 
 ## Collector Breakdown Analysis
 
-Collectors are responsible for gathering the top scoring documents. Understanding collector performance is essential for optimizing result retrieval:
+Collectors are responsible for coordinating traversal, scoring, and collection of matching documents. Understanding collector performance is essential for optimizing result retrieval:
 
 ```json
 {
@@ -184,7 +185,7 @@ flowchart TD
 
 Aggregations can be profiled separately from queries. Here is how to analyze aggregation performance:
 
-```json
+```console
 GET /logs/_search
 {
   "profile": true,
@@ -266,14 +267,14 @@ GET /logs/_search
 | `collect` | Time spent collecting document values |
 | `build_aggregation` | Time to build final aggregation result |
 | `build_leaf_collector` | Time to create leaf-level collectors |
-| `reduce` | Time for cross-shard reduction |
+| `reduce` | Reserved for future use; currently returns `0` |
 
 ```mermaid
 sequenceDiagram
     participant Q as Query
     participant A as Aggregator
     participant L as LeafCollector
-    participant R as Reduce
+    participant R as Reduce Metric
 
     Q->>A: Initialize
     A->>L: Build Leaf Collector
@@ -282,8 +283,8 @@ sequenceDiagram
     end
     L->>A: Return collected data
     A->>A: Build Aggregation
-    A->>R: Reduce across shards
-    R->>Q: Final result
+    A->>R: Report reserved reduce metric
+    R->>Q: Profile result
 ```
 
 ## Query Rewrite Analysis
@@ -294,9 +295,9 @@ The `rewrite_time` metric shows how long Elasticsearch spent rewriting the query
 {
   "searches": [
     {
-      "query": [...],
+      "query": [],
       "rewrite_time": 28473,
-      "collector": [...]
+      "collector": []
     }
   ]
 }
@@ -324,7 +325,7 @@ High rewrite times often indicate:
 
 ### Example 1: Identifying Slow Nested Queries
 
-```json
+```console
 GET /products/_search
 {
   "profile": true,
@@ -364,7 +365,7 @@ Nested queries can be expensive. The profile output helps identify if the nested
 
 ### Example 2: Analyzing Multi-Match Queries
 
-```json
+```console
 GET /articles/_search
 {
   "profile": true,
@@ -393,7 +394,7 @@ flowchart TD
 
 ### Example 3: Profiling with Sorting
 
-```json
+```console
 GET /logs/_search
 {
   "profile": true,
@@ -421,7 +422,7 @@ When sorting is involved, watch for `TopFieldCollector` in the collector breakdo
       "name": "TopFieldCollector",
       "reason": "search_sort",
       "time_in_nanos": 1827364,
-      "children": [...]
+      "children": []
     }
   ]
 }
@@ -497,7 +498,7 @@ After optimization:
 ### 3. Use Index Sorting for Range Queries
 
 Configure index sorting during index creation:
-```json
+```console
 PUT /time-series-index
 {
   "settings": {
@@ -543,8 +544,9 @@ import json
 def profile_query(es_client, index, query_body):
     """Execute a query with profiling and return analysis."""
 
-    query_body["profile"] = True
-    response = es_client.search(index=index, body=query_body)
+    search_request = query_body.copy()
+    search_request["profile"] = True
+    response = es_client.search(index=index, **search_request)
 
     profile_data = response.get("profile", {})
     analysis = {
@@ -609,7 +611,7 @@ Subsequent runs may show different timings due to caching:
 - Request cache
 
 Clear caches for accurate benchmarking:
-```json
+```console
 POST /my-index/_cache/clear
 ```
 
