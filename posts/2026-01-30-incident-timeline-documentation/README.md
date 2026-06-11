@@ -103,9 +103,9 @@ interface TimelineEvent {
 }
 
 interface Actor {
-  type: 'human' | 'system' | 'automation';
+  type: 'human' | 'system' | 'automation' | 'external';
   id: string;
-  name: string;
+  displayName: string;
 }
 
 type EventSource =
@@ -153,6 +153,7 @@ class TimelineCollector extends EventEmitter {
           metric: raw.metric,
           threshold: raw.threshold,
           currentValue: raw.currentValue,
+          isFirstAlert: raw.isFirstAlert,
         },
         confidence: 'automated' as const,
       }),
@@ -169,6 +170,22 @@ class TimelineCollector extends EventEmitter {
           environment: raw.environment,
           commitSha: raw.commitSha,
           deployer: raw.triggeredBy,
+        },
+        confidence: 'automated' as const,
+      }),
+    });
+
+    // Register chat integration
+    this.eventSources.set('chat', {
+      name: 'Chat System',
+      transform: (raw: any) => ({
+        type: 'communication',
+        description: raw.message,
+        actor: raw.user
+          ? { type: 'human' as const, id: raw.user, displayName: raw.user }
+          : undefined,
+        metadata: {
+          channel: raw.channel,
         },
         confidence: 'automated' as const,
       }),
@@ -401,7 +418,7 @@ interface ClassificationRule {
 interface EventCondition {
   field: string;
   operator: 'equals' | 'contains' | 'matches' | 'exists';
-  value?: string | RegExp;
+  value?: string | boolean | RegExp;
 }
 
 const classificationRules: ClassificationRule[] = [
@@ -411,7 +428,7 @@ const classificationRules: ClassificationRule[] = [
     priority: 'critical',
     conditions: [
       { field: 'type', operator: 'equals', value: 'alert_fired' },
-      { field: 'metadata.isFirstAlert', operator: 'equals', value: 'true' },
+      { field: 'metadata.isFirstAlert', operator: 'equals', value: true },
     ],
     autoInclude: true,
   },
@@ -685,21 +702,13 @@ class TimestampNormalizer {
       return date;
     }
 
-    // Use Intl API for timezone conversion
+    // Validate the timezone name. JavaScript Date values already represent an
+    // absolute instant; use Temporal, Luxon, or date-fns-tz if you need to parse
+    // wall-clock input in a named timezone.
     try {
-      const formatter = new Intl.DateTimeFormat('en-US', {
+      new Intl.DateTimeFormat('en-US', {
         timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
       });
-
-      // This is a simplified conversion - production code should use
-      // a library like luxon or date-fns-tz for accurate conversion
       return date;
     } catch {
       return date;
@@ -1326,7 +1335,7 @@ gantt
 
 ### Timeline Renderer Implementation
 
-```typescript
+````typescript
 // timeline-renderer.ts
 
 interface TimelineEvent {
@@ -1532,7 +1541,7 @@ class TimelineRenderer {
 }
 
 export { TimelineRenderer, TimelineEvent, RenderOptions };
-```
+````
 
 ### Interactive Timeline Component (React)
 
@@ -1585,6 +1594,8 @@ export function TimelineViewer({ events, incidentId }: TimelineViewerProps) {
 
   const getEventPosition = (event: TimelineEvent): number => {
     const totalDuration = timeRange.end.getTime() - timeRange.start.getTime();
+    if (totalDuration === 0) return 50;
+
     const eventOffset = event.timestamp.getTime() - timeRange.start.getTime();
     return (eventOffset / totalDuration) * 100;
   };
@@ -1705,9 +1716,8 @@ sequenceDiagram
 // incident-timeline-workflow.ts
 
 import { TimelineCollector, TimelineEvent } from './incident-timeline-collector';
-import { ActionAttributionService, Actor, ActionType } from './action-attribution';
+import { ActionAttributionService, Actor } from './action-attribution';
 import { DecisionDocumentationService } from './decision-documentation';
-import { TimestampNormalizer } from './timestamp-normalizer';
 import { TimelineRenderer } from './timeline-renderer';
 
 interface Incident {
@@ -1723,7 +1733,6 @@ class IncidentTimelineWorkflow {
   private collector: TimelineCollector;
   private attribution: ActionAttributionService;
   private decisions: DecisionDocumentationService;
-  private normalizer: TimestampNormalizer;
   private renderer: TimelineRenderer;
   private incidents: Map<string, Incident> = new Map();
 
@@ -1731,7 +1740,6 @@ class IncidentTimelineWorkflow {
     this.collector = new TimelineCollector();
     this.attribution = new ActionAttributionService();
     this.decisions = new DecisionDocumentationService();
-    this.normalizer = new TimestampNormalizer();
     this.renderer = new TimelineRenderer();
   }
 
@@ -1863,7 +1871,7 @@ class IncidentTimelineWorkflow {
       incidentId,
       {
         result: successful ? 'successful' : 'unsuccessful',
-        actualResult: successful ? 'Issue mitigated' : 'Mitigation did not resolve issue',
+        impact: successful ? 'Issue mitigated' : 'Mitigation did not resolve issue',
       }
     );
 
