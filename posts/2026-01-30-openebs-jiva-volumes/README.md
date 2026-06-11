@@ -10,7 +10,7 @@ Description: A comprehensive guide to building and managing OpenEBS Jiva volumes
 
 Kubernetes storage comes in many flavors, but not every workload needs the complexity of distributed storage systems like Ceph. Sometimes you want replicated block storage that is simple to deploy, easy to understand, and works out of the box. That is where OpenEBS Jiva comes in.
 
-Jiva is one of the storage engines within the OpenEBS project. It provides synchronous replication across multiple nodes using a userspace implementation, making it ideal for development clusters, smaller production workloads, and teams that want storage HA without the operational overhead of enterprise solutions.
+Jiva is one of the legacy storage engines within the OpenEBS project. It provides synchronous replication across multiple nodes using a userspace implementation, making it useful for development clusters, smaller workloads, and teams that want storage HA without the operational overhead of enterprise solutions.
 
 ## What is OpenEBS Jiva?
 
@@ -64,7 +64,7 @@ flowchart TB
 
 Before deploying Jiva, ensure your cluster meets these requirements:
 
-1. **Kubernetes 1.21 or later** with CSI support enabled
+1. **Kubernetes 1.18 or later** with CSI support enabled
 2. **iSCSI initiator tools** installed on all worker nodes
 3. **At least three worker nodes** for proper replication (single-node works for testing)
 4. **Local storage paths** available on each node for replica data
@@ -77,6 +77,8 @@ On Ubuntu/Debian nodes:
 sudo apt-get update
 sudo apt-get install -y open-iscsi
 sudo systemctl enable --now iscsid
+sudo modprobe iscsi_tcp
+echo iscsi_tcp | sudo tee /etc/modules-load.d/iscsi-tcp.conf
 ```
 
 On RHEL/CentOS nodes:
@@ -84,6 +86,8 @@ On RHEL/CentOS nodes:
 ```bash
 sudo yum install -y iscsi-initiator-utils
 sudo systemctl enable --now iscsid
+sudo modprobe iscsi_tcp
+echo iscsi_tcp | sudo tee /etc/modules-load.d/iscsi-tcp.conf
 ```
 
 Verify the iSCSI service is running:
@@ -94,12 +98,12 @@ systemctl status iscsid
 
 ## Installing OpenEBS with Jiva
 
-OpenEBS provides multiple installation methods. We will use Helm for a production-ready setup.
+OpenEBS provides multiple installation methods. We will use Helm with the archived Jiva chart because Jiva is a legacy engine and is not part of the current OpenEBS 4.x Replicated Storage install path.
 
 ### Step 1: Add the OpenEBS Helm Repository
 
 ```bash
-helm repo add openebs https://openebs.github.io/openebs
+helm repo add openebs-jiva https://openebs-archive.github.io/jiva-operator
 helm repo update
 ```
 
@@ -108,24 +112,22 @@ helm repo update
 Create a values file to configure the installation:
 
 ```yaml
-# openebs-values.yaml
+# jiva-values.yaml
 
-localprovisioner:
+openebsLocalpv:
   enabled: true
-  basePath: "/var/openebs/local"
 
-jiva:
-  enabled: true
-  replicas: 3
-  defaultPolicy:
-    replicas: 3
-  defaultStoragePath: "/var/openebs"
+jivaOperator:
+  controller:
+    image:
+      tag: 3.6.0
+  replica:
+    image:
+      tag: 3.6.0
 
-cstor:
-  enabled: false
-
-mayastor:
-  enabled: false
+jivaCSIPlugin:
+  image:
+    tag: 3.6.0
 ```
 
 Install OpenEBS:
@@ -133,9 +135,9 @@ Install OpenEBS:
 ```bash
 kubectl create namespace openebs
 
-helm install openebs openebs/openebs \
+helm install openebs-jiva openebs-jiva/jiva \
   --namespace openebs \
-  --values openebs-values.yaml \
+  --values jiva-values.yaml \
   --wait
 ```
 
@@ -152,16 +154,16 @@ Expected output:
 ```text
 NAME                                           READY   STATUS    RESTARTS   AGE
 openebs-localpv-provisioner-7b8c5d4d9f-x2j4k   1/1     Running   0          2m
-openebs-jiva-csi-controller-0                  5/5     Running   0          2m
+openebs-jiva-csi-controller-0                  4/4     Running   0          2m
 openebs-jiva-csi-node-4h2x7                    2/2     Running   0          2m
 openebs-jiva-csi-node-8k3n9                    2/2     Running   0          2m
 openebs-jiva-csi-node-p5m2r                    2/2     Running   0          2m
-openebs-jiva-operator-6f8d7c9b5-qr4wt          1/1     Running   0          2m
+jiva-operator-6f8d7c9b5-qr4wt                  1/1     Running   0          2m
 ```
 
 ## Creating a Jiva StorageClass
 
-StorageClasses define the parameters for dynamically provisioned volumes. Here is a production-ready Jiva StorageClass:
+StorageClasses define the parameters for dynamically provisioned volumes. Here is a policy-based Jiva StorageClass:
 
 ```yaml
 # jiva-storageclass.yaml
@@ -175,8 +177,7 @@ provisioner: jiva.csi.openebs.io
 allowVolumeExpansion: true
 parameters:
   cas-type: jiva
-  replicaCount: "3"
-  policy: "openebs-jiva-default-policy"
+  jivaVolumePolicy: "openebs-jiva-default-policy"
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 ```
@@ -191,8 +192,7 @@ kubectl apply -f jiva-storageclass.yaml
 
 | Parameter | Description |
 |-----------|-------------|
-| `replicaCount` | Number of data replicas (use 3 for production) |
-| `policy` | References a JivaVolumePolicy CRD for advanced settings |
+| `jivaVolumePolicy` | References a JivaVolumePolicy CRD for advanced settings |
 | `volumeBindingMode` | `WaitForFirstConsumer` delays binding until a pod uses the PVC |
 | `allowVolumeExpansion` | Enables online volume resizing |
 
@@ -242,7 +242,7 @@ spec:
         requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              openebs.io/component: jiva-replica
+              openebs.io/replica-anti-affinity: demo-jiva
           topologyKey: kubernetes.io/hostname
 ```
 
@@ -254,7 +254,7 @@ kubectl apply -f jiva-policy.yaml
 
 ### Policy Highlights
 
-The `podAntiAffinity` rule ensures replicas are spread across different nodes:
+The `podAntiAffinity` rule can be used to spread replicas across different nodes when the selector matches the labels applied to the replica pods:
 
 ```mermaid
 flowchart LR
@@ -269,7 +269,7 @@ flowchart LR
     style R3 fill:#90EE90
 ```
 
-This prevents a single node failure from taking down multiple replicas.
+This helps prevent a single node failure from taking down multiple replicas.
 
 ## Deploying an Application with Jiva Storage
 
@@ -405,8 +405,8 @@ sequenceDiagram
 Key characteristics:
 
 - **Synchronous replication**: The controller waits for all replicas to acknowledge before confirming the write.
-- **Strong consistency**: All replicas have the same data at any point in time.
-- **Quorum-based reads**: Reads come from any healthy replica.
+- **Strong consistency**: Healthy read-write replicas stay in sync through the controller.
+- **Controller-mediated reads**: The controller serves the volume through the iSCSI target and uses the replica set behind it.
 
 ## Monitoring Jiva Volumes
 
@@ -414,7 +414,7 @@ OpenEBS exposes Prometheus metrics for monitoring. Here is how to scrape them.
 
 ### Enable Metrics Collection
 
-Add annotations to the Jiva controller pods:
+Enable the Jiva monitor in the JivaVolumePolicy:
 
 ```yaml
 # In your JivaVolumePolicy
@@ -427,12 +427,8 @@ spec:
 
 | Metric | Description |
 |--------|-------------|
-| `openebs_actual_used` | Actual disk space used by the volume |
-| `openebs_read_iops` | Read operations per second |
-| `openebs_write_iops` | Write operations per second |
-| `openebs_read_latency` | Average read latency in milliseconds |
-| `openebs_write_latency` | Average write latency in milliseconds |
-| `openebs_replica_status` | Health status of each replica |
+| `openebs_jiva_registration_requests_total` | Total replica registration requests received by the Jiva controller |
+| `openebs_jiva_registration_request_duration_seconds` | Histogram of replica registration request latency |
 
 ### Sample Prometheus Alert Rules
 
@@ -447,23 +443,23 @@ spec:
   groups:
   - name: jiva.rules
     rules:
-    - alert: JivaVolumeReplicaDegraded
-      expr: openebs_replica_status{status="Degraded"} == 1
+    - alert: JivaReplicaRegistrationErrors
+      expr: increase(openebs_jiva_registration_requests_total{code!~"2.."}[5m]) > 0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Jiva volume replica degraded"
-        description: "Volume {{ $labels.volume }} has a degraded replica"
+        summary: "Jiva replica registration errors"
+        description: "Jiva controller is returning non-2xx responses for replica registration"
 
-    - alert: JivaVolumeHighLatency
-      expr: openebs_write_latency > 100
+    - alert: JivaReplicaRegistrationSlow
+      expr: histogram_quantile(0.95, rate(openebs_jiva_registration_request_duration_seconds_bucket[5m])) > 1
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "Jiva volume write latency high"
-        description: "Volume {{ $labels.volume }} write latency is {{ $value }}ms"
+        summary: "Jiva replica registration latency high"
+        description: "95th percentile Jiva replica registration latency is above one second"
 ```
 
 ## Handling Failures and Recovery
@@ -539,19 +535,18 @@ The volume will expand without downtime. The filesystem inside the pod will auto
 
 ## Backup and Restore with Velero
 
-Jiva integrates with Velero for backup and disaster recovery.
+Velero can back up the Kubernetes objects for Jiva workloads. For volume data, use Velero File System Backup with the node agent; Jiva does not provide the CSI snapshot workflow used by current OpenEBS Replicated PV Mayastor.
 
-### Install Velero with OpenEBS Plugin
+### Install Velero with File System Backup
 
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.1 \
   --bucket my-backup-bucket \
   --backup-location-config region=us-east-1 \
-  --snapshot-location-config region=us-east-1 \
-  --use-volume-snapshots=true \
-  --features=EnableCSI
+  --use-node-agent \
+  --default-volumes-to-fs-backup
 ```
 
 ### Create a Backup
@@ -559,7 +554,6 @@ velero install \
 ```bash
 velero backup create demo-backup \
   --include-namespaces default \
-  --include-resources pvc,pv \
   --wait
 ```
 
@@ -621,7 +615,7 @@ flowchart TD
     B -->|High IOPS| E[Mayastor]
 
     D -->|Moderate| C
-    D -->|High| F[cStor or Mayastor]
+    D -->|High| F[Mayastor]
 
     C --> G[Simple Setup<br>Good for General Workloads]
     F --> H[Better Performance<br>More Operational Overhead]
@@ -631,14 +625,14 @@ flowchart TD
 ### Jiva is Best For
 
 - Development and testing environments
-- Moderate I/O workloads (web applications, microservices)
+- Low-capacity, moderate I/O workloads (web applications, microservices)
 - Teams wanting simple operations
 - Clusters without NVMe hardware
 
 ### Consider Alternatives When
 
 - You need very high IOPS (use Mayastor)
-- You need advanced features like snapshots and clones (use cStor)
+- You need current OpenEBS snapshot support (use Replicated PV Mayastor or Local PV engines that support snapshots)
 - You are running latency-sensitive databases (use local PVs or Mayastor)
 
 ## Troubleshooting Common Issues
@@ -689,7 +683,7 @@ kubectl delete pvc demo-jiva-pvc
 kubectl get jivavolume -n openebs
 
 # Uninstall OpenEBS
-helm uninstall openebs -n openebs
+helm uninstall openebs-jiva -n openebs
 
 # Remove the namespace
 kubectl delete namespace openebs
@@ -707,4 +701,4 @@ Key takeaways:
 4. **Plan for capacity** - Jiva stores full copies on each replica
 5. **Test failover** regularly to ensure your recovery procedures work
 
-For production workloads requiring higher performance, consider OpenEBS Mayastor or cStor. But for many use cases, Jiva delivers exactly what you need: reliable, replicated storage that just works.
+For production workloads requiring higher performance, consider current OpenEBS Replicated PV Mayastor or Local PV engines. But for legacy Jiva environments, Jiva can still deliver reliable, replicated storage for suitable low-capacity workloads.
