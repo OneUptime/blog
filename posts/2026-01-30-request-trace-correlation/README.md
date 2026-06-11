@@ -127,7 +127,7 @@ function generateRequestId(): string {
 
 | Format | Length | Sortable | URL-Safe | Collision Risk |
 |--------|--------|----------|----------|----------------|
-| UUID v4 | 36 chars | No | No (hyphens) | ~1 in 2^122 |
+| UUID v4 | 36 chars | No | Yes (hyphens are unreserved per RFC 3986) | ~1 in 2^122 |
 | ULID | 26 chars | Yes | Yes | ~1 in 2^80 per ms |
 | Nano ID (21) | 21 chars | No | Yes | ~1 in 2^126 |
 
@@ -822,7 +822,7 @@ function log(level: string, message: string, req: Request, data?: object) {
 import express from 'express';
 import { correlationMiddleware, correlatedLogger } from './correlation';
 import { startTelemetry, shutdownTelemetry } from './telemetry';
-import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 
 const app = express();
 app.use(express.json());
@@ -868,7 +868,7 @@ app.post('/api/orders', async (req, res, next) => {
       correlation: req.correlationIds,
     });
   } catch (error) {
-    const span = trace.getSpan(require('@opentelemetry/api').context.active());
+    const span = trace.getSpan(context.active());
     if (span) {
       span.recordException(error as Error);
       span.setStatus({ code: SpanStatusCode.ERROR });
