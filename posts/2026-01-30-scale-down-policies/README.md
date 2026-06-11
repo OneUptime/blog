@@ -255,20 +255,22 @@ sequenceDiagram
     participant App as Application
     participant LB as Load Balancer
 
-    K8s->>Pod: Send SIGTERM
+    Note over K8s: Pod marked Terminating, grace period starts
     K8s->>LB: Remove pod from endpoints
-    Pod->>App: Execute preStop hook
-    App->>App: Stop accepting new requests
+    K8s->>Pod: Execute preStop hook
+    Pod->>App: preStop runs (stop accepting new requests)
     App->>App: Drain existing connections
 
     Note over App: Wait for in-flight requests (30s)
 
+    K8s->>Pod: Send SIGTERM (after preStop completes)
+    Pod->>App: SIGTERM received
     App->>App: Close database connections
     App->>App: Flush buffers/caches
     App->>Pod: Exit gracefully
     Pod->>K8s: Pod terminated
 
-    Note over K8s: If not terminated after 60s
+    Note over K8s: If not terminated before grace period expires
     K8s->>Pod: Send SIGKILL (force kill)
 ```
 
