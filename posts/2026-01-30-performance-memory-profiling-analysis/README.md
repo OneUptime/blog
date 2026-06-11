@@ -1062,7 +1062,8 @@ Never load large datasets entirely into memory. Use streams instead.
 
 ```javascript
 // streamProcessing.js - Memory-efficient data processing
-const { Transform, pipeline } = require('stream');
+const { Transform } = require('stream');
+const { pipeline } = require('stream/promises');
 const fs = require('fs');
 const readline = require('readline');
 
