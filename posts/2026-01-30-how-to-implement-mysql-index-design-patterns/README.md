@@ -34,7 +34,8 @@ The order of columns in a composite index significantly impacts query performanc
 -- Create a composite index
 CREATE INDEX idx_orders_customer_date ON orders(customer_id, order_date, status);
 
--- This query uses the full index
+-- This query uses customer_id and order_date for index range access;
+-- status can still be checked from the index, but it does not narrow the range
 SELECT * FROM orders
 WHERE customer_id = 100
   AND order_date >= '2026-01-01'
@@ -49,7 +50,7 @@ WHERE customer_id = 100
 SELECT * FROM orders WHERE order_date >= '2026-01-01';
 ```
 
-Design composite indexes with the most selective columns first, followed by columns used in range conditions.
+Design composite indexes with equality conditions first, then columns used in range conditions. Among equality columns, prefer the order that best matches your query patterns and leftmost-prefix reuse.
 
 ## Covering Indexes
 
@@ -118,14 +119,14 @@ WHERE customer_id = 100 AND status = 'pending';
 ```
 
 Key indicators to monitor:
-- **type**: Should be `ref`, `range`, or `const` (avoid `ALL` for table scans)
+- **type**: Good access types often include `system`, `const`, `eq_ref`, `ref`, or `range` (avoid `ALL` for unexpected table scans)
 - **key**: Shows which index is being used
 - **rows**: Estimated rows to examine (lower is better)
 - **Extra**: Look for "Using index" (covering index) or "Using where"
 
 ## Index Hints for Query Optimization
 
-When the optimizer makes suboptimal choices, use index hints to guide execution.
+When the optimizer makes suboptimal choices, use index hints to guide execution. In current MySQL versions these table-level hints are still valid, though MySQL's newer index-level optimizer hints such as `JOIN_INDEX`, `GROUP_INDEX`, `ORDER_INDEX`, and `INDEX` are intended to supersede them.
 
 ```sql
 -- Force MySQL to use a specific index
