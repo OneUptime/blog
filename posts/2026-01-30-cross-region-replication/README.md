@@ -98,7 +98,7 @@ sequenceDiagram
 **Primary Configuration (postgresql.conf)**
 
 ```ini
-# Enable WAL archiving
+# Enable WAL for streaming replication
 
 wal_level = replica
 max_wal_senders = 10
@@ -191,6 +191,10 @@ spec:
   instances: 2
   imageName: ghcr.io/cloudnative-pg/postgresql:15.4
 
+  bootstrap:
+    pg_basebackup:
+      source: postgres-primary
+
   replica:
     enabled: true
     source: postgres-primary
@@ -234,9 +238,9 @@ gtid_mode = ON
 enforce_gtid_consistency = ON
 
 # Semi-synchronous replication
-plugin-load = "rpl_semi_sync_master=semisync_master.so"
-rpl_semi_sync_master_enabled = 1
-rpl_semi_sync_master_timeout = 10000
+plugin-load-add = "rpl_semi_sync_source=semisync_source.so"
+rpl_semi_sync_source_enabled = 1
+rpl_semi_sync_source_timeout = 10000
 ```
 
 **Create Replication User**
@@ -260,8 +264,8 @@ read_only = ON
 super_read_only = ON
 
 # Semi-synchronous replication
-plugin-load = "rpl_semi_sync_slave=semisync_slave.so"
-rpl_semi_sync_slave_enabled = 1
+plugin-load-add = "rpl_semi_sync_replica=semisync_replica.so"
+rpl_semi_sync_replica_enabled = 1
 ```
 
 **Start Replication on Replica**
@@ -443,7 +447,7 @@ SHOW REPLICA STATUS\G
 
 ```yaml
 # PostgreSQL exporter queries
-pg_replication_lag:
+pg_replication:
   query: |
     SELECT
       application_name,
@@ -474,7 +478,7 @@ groups:
           description: "Replica {{ $labels.application_name }} is {{ $value | humanize1024 }} behind"
 
       - alert: ReplicationStopped
-        expr: pg_replication_is_replica == 1 and changes(pg_replication_lag_bytes[5m]) == 0
+        expr: pg_replication_lag_bytes > 0 and changes(pg_replication_lag_bytes[5m]) == 0
         for: 10m
         labels:
           severity: critical
@@ -570,7 +574,12 @@ class DatabaseRouter:
 
     def check_lag(self, replica):
         result = replica.execute(
-            "SELECT EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp())"
+            """
+            SELECT CASE
+              WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0
+              ELSE EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp())
+            END
+            """
         )
         return result[0][0] or 0
 ```
