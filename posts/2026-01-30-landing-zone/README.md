@@ -125,8 +125,17 @@ landing-zone/
       main.tf
       variables.tf
       outputs.tf
+    logging/
+      main.tf
+      cloudtrail.tf
+      variables.tf
+      outputs.tf
     network/
       main.tf
+      variables.tf
+      outputs.tf
+    identity/
+      sso.tf
       variables.tf
       outputs.tf
   environments/
@@ -138,6 +147,9 @@ landing-zone/
       main.tf
       backend.tf
     network/
+      main.tf
+      backend.tf
+    identity/
       main.tf
       backend.tf
   policies/
@@ -166,6 +178,7 @@ resource "aws_organizations_organization" "main" {
   aws_service_access_principals = [
     "cloudtrail.amazonaws.com",
     "config.amazonaws.com",
+    "config-multiaccountsetup.amazonaws.com",
     "securityhub.amazonaws.com",
     "guardduty.amazonaws.com",
     "sso.amazonaws.com",
@@ -237,6 +250,7 @@ resource "aws_organizations_policy" "deny_security_disable" {
           "securityhub:DeleteInvitations",
           "securityhub:DisableSecurityHub",
           "securityhub:DisassociateFromMasterAccount",
+          "securityhub:DisassociateFromAdministratorAccount",
           "securityhub:DeleteMembers",
           "securityhub:DisassociateMembers"
         ]
@@ -248,7 +262,7 @@ resource "aws_organizations_policy" "deny_security_disable" {
         Action = [
           "guardduty:DeleteDetector",
           "guardduty:DeleteMembers",
-          "guardduty:DisassociateFromMasterAccount",
+          "guardduty:DisassociateFromAdministratorAccount",
           "guardduty:StopMonitoringMembers"
         ]
         Resource = "*"
@@ -633,8 +647,11 @@ resource "aws_kms_key" "log_encryption" {
         ]
         Resource = "*"
         Condition = {
+          StringEquals = {
+            "aws:SourceArn" = "arn:aws:cloudtrail:${var.region}:${var.management_account_id}:trail/organization-trail"
+          }
           StringLike = {
-            "kms:EncryptionContext:aws:cloudtrail:arn" = "arn:aws:cloudtrail:*:${var.organization_id}:trail/*"
+            "kms:EncryptionContext:aws:cloudtrail:arn" = "arn:aws:cloudtrail:*:${var.management_account_id}:trail/*"
           }
         }
       },
@@ -649,6 +666,26 @@ resource "aws_kms_key" "log_encryption" {
           "kms:Decrypt"
         ]
         Resource = "*"
+      },
+      {
+        Sid    = "Allow CloudWatch Logs to use the key"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${var.region}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          ArnLike = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/cloudtrail/organization"
+          }
+        }
       }
     ]
   })
@@ -678,11 +715,14 @@ resource "aws_s3_bucket_policy" "central_logs" {
           Service = "cloudtrail.amazonaws.com"
         }
         Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.central_logs.arn}/cloudtrail/*"
+        Resource = [
+          "${aws_s3_bucket.central_logs.arn}/cloudtrail/AWSLogs/${var.management_account_id}/*",
+          "${aws_s3_bucket.central_logs.arn}/cloudtrail/AWSLogs/${var.organization_id}/*"
+        ]
         Condition = {
           StringEquals = {
             "s3:x-amz-acl"             = "bucket-owner-full-control"
-            "aws:SourceOrgID"          = var.organization_id
+            "aws:SourceArn"            = "arn:aws:cloudtrail:${var.region}:${var.management_account_id}:trail/organization-trail"
           }
         }
       },
@@ -696,7 +736,7 @@ resource "aws_s3_bucket_policy" "central_logs" {
         Resource = aws_s3_bucket.central_logs.arn
         Condition = {
           StringEquals = {
-            "aws:SourceOrgID" = var.organization_id
+            "aws:SourceArn" = "arn:aws:cloudtrail:${var.region}:${var.management_account_id}:trail/organization-trail"
           }
         }
       },
@@ -790,6 +830,8 @@ resource "aws_cloudtrail" "organization" {
     Name      = "Organization CloudTrail"
     ManagedBy = "terraform"
   }
+
+  depends_on = [aws_s3_bucket_policy.central_logs]
 }
 
 # CloudWatch Log Group for CloudTrail
@@ -871,24 +913,6 @@ resource "aws_guardduty_organization_admin_account" "main" {
 resource "aws_guardduty_detector" "main" {
   enable = true
 
-  datasources {
-    s3_logs {
-      enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          enable = true
-        }
-      }
-    }
-  }
-
   finding_publishing_frequency = "FIFTEEN_MINUTES"
 
   tags = {
@@ -897,31 +921,49 @@ resource "aws_guardduty_detector" "main" {
   }
 }
 
+resource "aws_guardduty_detector_feature" "s3_data_events" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "eks_audit_logs" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "ebs_malware_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EBS_MALWARE_PROTECTION"
+  status      = "ENABLED"
+}
+
 # Auto-enable GuardDuty for new accounts
 resource "aws_guardduty_organization_configuration" "main" {
   auto_enable_organization_members = "ALL"
   detector_id                      = aws_guardduty_detector.main.id
-
-  datasources {
-    s3_logs {
-      auto_enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          auto_enable = true
-        }
-      }
-    }
-  }
 }
 
-# Enable AWS Config with organization-wide rules
+resource "aws_guardduty_organization_configuration_feature" "s3_data_events" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  auto_enable = "ALL"
+}
+
+resource "aws_guardduty_organization_configuration_feature" "eks_audit_logs" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  auto_enable = "ALL"
+}
+
+resource "aws_guardduty_organization_configuration_feature" "ebs_malware_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EBS_MALWARE_PROTECTION"
+  auto_enable = "ALL"
+}
+
+# Enable AWS Config with organization-wide rules. Each account must already have an AWS Config configuration recorder with the required IAM permissions.
 resource "aws_config_organization_managed_rule" "encrypted_volumes" {
   name            = "encrypted-volumes"
   rule_identifier = "ENCRYPTED_VOLUMES"
@@ -982,7 +1024,7 @@ flowchart TB
     IGW --> INTERNET((Internet))
 ```
 
-This module creates a Transit Gateway and configures route tables for hub-and-spoke connectivity.
+This module creates a Transit Gateway and the route tables you can associate with attachments for hub-and-spoke connectivity.
 
 ```hcl
 # modules/network/transit-gateway.tf
