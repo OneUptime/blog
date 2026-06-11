@@ -106,8 +106,11 @@ Azure SD automatically attaches labels to discovered targets. These labels enabl
 | Label | Description |
 |-------|-------------|
 | `__meta_azure_subscription_id` | Azure subscription ID |
-| `__meta_azure_resource_group` | Resource group containing the resource |
+| `__meta_azure_tenant_id` | Azure tenant ID |
+| `__meta_azure_machine_id` | Machine ID |
+| `__meta_azure_machine_resource_group` | Resource group containing the resource |
 | `__meta_azure_machine_name` | VM name |
+| `__meta_azure_machine_computer_name` | VM computer name |
 | `__meta_azure_machine_location` | Azure region (eastus, westeurope, etc.) |
 | `__meta_azure_machine_os_type` | Operating system (Linux or Windows) |
 | `__meta_azure_machine_size` | VM size (Standard_D2s_v3, etc.) |
@@ -366,6 +369,7 @@ scrape_configs:
   - job_name: 'azure-managed-identity'
     azure_sd_configs:
       - subscription_id: 'YOUR_SUBSCRIPTION_ID'
+        authentication_method: ManagedIdentity
         # No tenant_id, client_id, or client_secret needed
         # Prometheus uses the VM's managed identity automatically
         port: 9100
@@ -491,7 +495,7 @@ scrape_configs:
       # Standard labels
       - source_labels: [__meta_azure_machine_name]
         target_label: instance
-      - source_labels: [__meta_azure_resource_group]
+      - source_labels: [__meta_azure_machine_resource_group]
         target_label: resource_group
       - source_labels: [__meta_azure_machine_location]
         target_label: region
