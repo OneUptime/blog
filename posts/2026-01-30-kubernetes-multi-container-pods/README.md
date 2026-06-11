@@ -379,14 +379,19 @@ spec:
         limits:
           memory: "256Mi"
           cpu: "500m"
-      # Ensure logs go to files, not just stdout
-      env:
-        - name: LOG_TO_FILE
-          value: "true"
 
     # Logging sidecar using Fluent Bit
     - name: log-shipper
       image: fluent/fluent-bit:2.2
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
       volumeMounts:
         # Read logs from shared volume
         - name: app-logs
@@ -847,16 +852,16 @@ spec:
         periodSeconds: 15
 
 ---
-# ServiceMonitor for Prometheus Operator
+# PodMonitor for Prometheus Operator
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: web-app-metrics
 spec:
   selector:
     matchLabels:
       app: web-app
-  endpoints:
+  podMetricsEndpoints:
     - port: metrics
       interval: 30s
       path: /metrics
@@ -969,10 +974,10 @@ sequenceDiagram
 
     Note over K,S: Pod Termination
 
-    K->>M: SIGTERM
-    K->>S: SIGTERM
     M->>M: preStop hook
     S->>S: preStop hook
+    K->>M: SIGTERM
+    K->>S: SIGTERM
     M->>K: Exit
     S->>K: Exit
 ```
@@ -1091,65 +1096,45 @@ spec:
 
 ### Controlling Container Startup Order
 
-For sidecars that must start before the main app, use a readiness gate:
+For sidecars that must start before the main app, define the sidecar as a restartable init container with a readiness probe:
 
 ```yaml
 # startup-order.yaml
-# Ensure sidecar is ready before main app accepts traffic
+# Ensure sidecar is ready before the main app starts
 apiVersion: v1
 kind: Pod
 metadata:
   name: ordered-startup
 spec:
-  volumes:
-    - name: ready-flag
-      emptyDir: {}
-
-  containers:
-    # Sidecar that must be ready first
+  initContainers:
+    # Restartable init container that runs as a native sidecar
     - name: sidecar
-      image: envoyproxy/envoy:v1.28-latest
+      image: busybox:1.36
+      restartPolicy: Always
+      command:
+        - /bin/sh
+        - -c
+        - |
+          mkdir -p /www
+          echo ok > /www/ready
+          exec httpd -f -p 9901 -h /www
       ports:
         - containerPort: 9901
-      volumeMounts:
-        - name: ready-flag
-          mountPath: /ready
       readinessProbe:
         httpGet:
           path: /ready
           port: 9901
         initialDelaySeconds: 2
         periodSeconds: 5
-      # Signal readiness to main container
-      lifecycle:
-        postStart:
-          exec:
-            command:
-              - /bin/sh
-              - -c
-              - |
-                # Wait for Envoy to be ready
-                until curl -s http://localhost:9901/ready; do sleep 1; done
-                touch /ready/sidecar-ready
 
-    # Main app waits for sidecar
+  containers:
+    # Kubernetes starts this after the sidecar init container has started
     - name: app
       image: myapp:v1
-      volumeMounts:
-        - name: ready-flag
-          mountPath: /ready
-          readOnly: true
       command:
         - /bin/sh
         - -c
-        - |
-          # Wait for sidecar to be ready
-          echo "Waiting for sidecar..."
-          while [ ! -f /ready/sidecar-ready ]; do
-            sleep 1
-          done
-          echo "Sidecar ready, starting app..."
-          exec /app/start
+        - exec /app/start
 ```
 
 ## Real-World Multi-Container Pod Examples
@@ -1178,6 +1163,9 @@ spec:
     - name: fluent-bit-config
       configMap:
         name: fluent-bit-config
+    - name: otel-config
+      configMap:
+        name: otel-collector-config
 
   initContainers:
     # Ensure dependencies are ready
@@ -1293,9 +1281,9 @@ spec:
       args:
         - "--config=/etc/otel/config.yaml"
       volumeMounts:
-        - name: tmp
+        - name: otel-config
           mountPath: /etc/otel
-          subPath: otel-config
+          readOnly: true
       resources:
         requests:
           memory: "64Mi"
