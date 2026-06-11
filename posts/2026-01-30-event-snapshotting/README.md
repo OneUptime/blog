@@ -225,7 +225,7 @@ interface AccountState {
   balance: number;
   currency: string;
   transactionCount: number;
-  lastTransactionDate: Date | null;
+  lastTransactionDate: string | null;
 }
 
 // Reducer applies events to build current state
@@ -243,7 +243,7 @@ function accountReducer(state: AccountState, event: Event): AccountState {
         ...state,
         balance: state.balance + (event.data.amount as number),
         transactionCount: state.transactionCount + 1,
-        lastTransactionDate: event.timestamp
+        lastTransactionDate: event.timestamp.toISOString()
       };
 
     case 'MoneyWithdrawn':
@@ -251,7 +251,7 @@ function accountReducer(state: AccountState, event: Event): AccountState {
         ...state,
         balance: state.balance - (event.data.amount as number),
         transactionCount: state.transactionCount + 1,
-        lastTransactionDate: event.timestamp
+        lastTransactionDate: event.timestamp.toISOString()
       };
 
     default:
@@ -429,7 +429,7 @@ For large-scale systems, consider these optimizations.
 // snapshot.test.ts - Verify snapshot behavior
 describe('Snapshot restoration', () => {
   it('should restore state correctly from snapshot plus events', async () => {
-    // Create initial state and snapshot
+    // Create initial state
     await eventStore.append('acc-1', [
       { type: 'AccountOpened', data: { currency: 'USD', initialDeposit: 100 } },
       { type: 'MoneyDeposited', data: { amount: 50 } }
@@ -437,6 +437,15 @@ describe('Snapshot restoration', () => {
 
     const firstLoad = await repo.load('acc-1');
     expect(firstLoad.state.balance).toBe(150);
+
+    // Save a snapshot at the current event version
+    await snapshotStore.save({
+      aggregateId: 'acc-1',
+      state: firstLoad.state,
+      version: firstLoad.version,
+      schemaVersion: 1,
+      timestamp: new Date()
+    });
 
     // Add more events after snapshot
     await eventStore.append('acc-1', [
@@ -463,5 +472,5 @@ Start simple with a fixed event threshold, add schema versioning from the beginn
 **Related Reading:**
 
 - [Event Sourcing Basics](https://martinfowler.com/eaaDev/EventSourcing.html)
-- [CQRS and Event Sourcing](https://docs.microsoft.com/en-us/azure/architecture/patterns/cqrs)
+- [CQRS and Event Sourcing](https://learn.microsoft.com/en-us/azure/architecture/patterns/cqrs)
 - [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Monitor your event sourcing system with distributed tracing
