@@ -45,10 +45,10 @@ flowchart LR
 
 Before implementing the News Panel, ensure you have:
 
-- Grafana 8.0 or later (the News Panel is included by default)
+- Grafana 8.5 or later for RSS and Atom support (the News visualization is included by default)
 - Dashboard edit permissions
 - Access to RSS/Atom feed URLs you want to display
-- Network connectivity from Grafana to feed sources
+- Feed URLs that are reachable from users' browsers and allow cross-origin requests, or a rehosted/proxied feed endpoint
 
 ## Step 1: Add the News Panel to Your Dashboard
 
@@ -60,13 +60,13 @@ Navigate to your dashboard, click the "Add" button, and select "Visualization":
 Dashboard -> Add -> Visualization -> News
 ```
 
-The panel will appear empty until you configure a data source.
+The panel will use Grafana's default news feed until you configure your own feed URL.
 
 ## Step 2: Configure a Basic RSS Feed
 
 The News Panel requires a feed URL. For testing, use Grafana's official blog feed or your organization's status page.
 
-In the panel editor, locate the "Feed URL" field under the panel options and enter your RSS feed URL:
+In the panel editor, locate the "URL" field under the News options and enter your RSS feed URL:
 
 ```text
 https://grafana.com/blog/index.xml
@@ -159,7 +159,8 @@ To aggregate multiple feeds into one, use a feed aggregator service. Here is a P
 import feedparser
 from flask import Flask, Response
 from feedgen.feed import FeedGenerator
-from datetime import datetime
+from datetime import datetime, timezone
+from calendar import timegm
 
 app = Flask(__name__)
 
@@ -182,11 +183,13 @@ def aggregated_feed():
         try:
             feed = feedparser.parse(source_url)
             for entry in feed.entries[:10]:  # Limit per source
+                published_tuple = entry.get('published_parsed') or datetime.now(timezone.utc).timetuple()
                 all_entries.append({
                     'title': entry.get('title', 'No title'),
                     'link': entry.get('link', ''),
                     'description': entry.get('summary', ''),
-                    'published': entry.get('published_parsed', datetime.now().timetuple())
+                    'published': published_tuple,
+                    'published_dt': datetime.fromtimestamp(timegm(published_tuple), tz=timezone.utc)
                 })
         except Exception as e:
             print(f"Error fetching {source_url}: {e}")
@@ -199,6 +202,7 @@ def aggregated_feed():
         fe.title(entry['title'])
         fe.link(href=entry['link'])
         fe.description(entry['description'])
+        fe.pubDate(entry['published_dt'])
 
     return Response(fg.rss_str(), mimetype='application/rss+xml')
 
@@ -215,8 +219,7 @@ Key configuration options include:
 | Option | Description | Recommended Value |
 |--------|-------------|-------------------|
 | Show images | Display feed images | Off (cleaner look) |
-| Feed URL | RSS/Atom endpoint | Your feed URL |
-| Use proxy | Route through Grafana backend | On (for CORS issues) |
+| URL | RSS/Atom endpoint | Your feed URL |
 
 For consistent styling across your dashboard, set a fixed height for News Panels. A height of 300-400 pixels works well for 5-7 items.
 
@@ -224,7 +227,7 @@ For consistent styling across your dashboard, set a fixed height for News Panels
 
 If you use OneUptime for incident management, you can display your status page updates directly in Grafana.
 
-OneUptime provides RSS feeds for status pages. The feed URL format is:
+OneUptime status pages can expose RSS feeds for subscribers. Check the RSS link on your status page; for many deployments the feed URL is:
 
 ```text
 https://status.yourdomain.com/feed.xml
@@ -248,7 +251,7 @@ sequenceDiagram
 
     O->>S: Create Incident
     S->>S: Generate RSS Entry
-    G->>S: Poll Feed (every 5 min)
+    G->>S: Fetch Feed on Dashboard Load/Refresh
     S->>G: Return RSS XML
     G->>G: Parse and Display
     U->>G: View Dashboard
@@ -257,31 +260,25 @@ sequenceDiagram
 
 ## Step 7: Set Up Automatic Refresh
 
-The News Panel polls feeds at a configurable interval. Set this based on your update frequency needs.
+The News Panel reloads with the dashboard. Set the dashboard refresh interval based on your update frequency needs.
 
-In the panel options, configure the refresh interval:
+Use the refresh interval picker in the dashboard toolbar:
 
 - For incident feeds: 1-5 minutes
 - For deployment notifications: 5-10 minutes
 - For external status pages: 10-15 minutes
 
-You can also set dashboard-level refresh in the dashboard settings:
+You can also customize the dashboard's available auto-refresh options in dashboard settings:
 
 ```text
-Dashboard Settings -> General -> Auto refresh -> 5m
+Dashboard Settings -> General -> Time options -> Auto refresh
 ```
 
 ## Step 8: Handle CORS and Network Issues
 
-When fetching external feeds, you may encounter CORS restrictions. Grafana's built-in proxy helps bypass these.
+When fetching external feeds, you may encounter CORS restrictions. Grafana discontinued the News visualization's "Use Proxy" option in version 8.5, so the feed must allow browser requests from your Grafana origin or be served through a rehosted feed endpoint or CORS proxy.
 
-Enable the proxy option in the panel settings:
-
-```text
-Panel Options -> Use proxy -> On
-```
-
-If the proxy does not resolve the issue, set up a server-side feed fetcher. Here is a minimal example using nginx:
+Here is a minimal example using nginx to expose a feed through your own proxy:
 
 ```nginx
 server {
@@ -338,8 +335,8 @@ Combine security metrics with:
 
 Check the following:
 
-1. Verify the feed URL is accessible from Grafana server
-2. Enable proxy mode if CORS errors appear in browser console
+1. Verify the feed URL is accessible from users' browsers, or from your own rehosted/proxy endpoint
+2. Rehost the feed or use a CORS proxy if CORS errors appear in the browser console
 3. Confirm the feed is valid RSS/Atom (test at https://validator.w3.org/feed/)
 
 ### Stale Content
@@ -359,12 +356,12 @@ flowchart TD
     A[Panel Error] --> B{Error Type?}
     B -->|Network| C[Check connectivity]
     B -->|Parse| D[Validate feed XML]
-    B -->|CORS| E[Enable proxy]
+    B -->|CORS| E[Rehost feed or use CORS proxy]
     B -->|Auth| F[Add credentials]
 
     C --> G[Test: curl feed-url]
     D --> H[Test: Feed validator]
-    E --> I[Panel Options -> Use proxy]
+    E --> I[Serve feed with CORS headers]
     F --> J[Use authenticated proxy]
 ```
 
