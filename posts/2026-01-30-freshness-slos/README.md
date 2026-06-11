@@ -25,7 +25,7 @@ A Freshness Service Level Indicator (SLI) measures how current your data is rela
 The formal definition:
 
 ```text
-Freshness SLI = (Time periods where data age < threshold) / (Total time periods) * 100
+Freshness SLI = (Time periods where data age <= threshold) / (Total time periods) * 100
 ```
 
 For example, if your SLO states "data must be no older than 15 minutes, 99% of the time," your freshness SLI tracks how often you meet that 15-minute threshold.
@@ -212,6 +212,18 @@ processing_lag_gauge = meter.create_gauge(
     unit="s"
 )
 
+freshness_threshold_gauge = meter.create_gauge(
+    name="data.freshness.threshold",
+    description="Configured freshness threshold in seconds",
+    unit="s"
+)
+
+last_record_timestamp_gauge = meter.create_gauge(
+    name="data.freshness.last_record_timestamp",
+    description="Unix timestamp of the most recent record",
+    unit="s"
+)
+
 # Counter for freshness SLI tracking
 freshness_checks = meter.create_counter(
     name="data.freshness.checks_total",
@@ -272,6 +284,8 @@ class FreshnessMonitor:
         # Record metrics with pipeline label
         data_age_gauge.set(age_seconds, self.labels)
         processing_lag_gauge.set(lag_seconds, self.labels)
+        freshness_threshold_gauge.set(self.threshold, self.labels)
+        last_record_timestamp_gauge.set(last_record_time.timestamp(), self.labels)
 
         # Track SLI
         freshness_checks.add(1, self.labels)
@@ -321,7 +335,7 @@ Most data platforms have many tables with different freshness requirements. Here
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import json
 
 @dataclass
@@ -395,7 +409,7 @@ class DataWarehouseFreshnessTracker:
     def check_all_tables(
         self,
         table_timestamps: Dict[str, datetime]
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Check freshness for all configured tables.
 
@@ -496,7 +510,7 @@ groups:
       # Alert when no data has arrived (complete staleness)
       - alert: DataPipelineStalled
         expr: |
-          time() - data_freshness_last_record_timestamp > 1800
+          time() - data_freshness_last_record_timestamp_seconds > 1800
         for: 5m
         labels:
           severity: critical
@@ -504,7 +518,7 @@ groups:
           summary: "No new data for {{ $labels.pipeline }} in 30 minutes"
           description: |
             Pipeline {{ $labels.pipeline }} appears stalled.
-            Last record arrived at {{ $value | humanizeTimestamp }}.
+            No new record has arrived for {{ $value | humanizeDuration }}.
 ```
 
 ---
