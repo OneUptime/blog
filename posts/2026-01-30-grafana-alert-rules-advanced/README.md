@@ -53,7 +53,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: avg(rate(node_cpu_seconds_total{mode!="idle"}[5m])) by (instance) * 100
+              expr: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))
               refId: A
           - refId: B
             relativeTimeRange:
@@ -263,7 +263,8 @@ Available no-data states:
 - `NoData` - Shows as NoData state (default)
 - `Alerting` - Treats missing data as a problem
 - `OK` - Considers no data as normal
-- `KeepLast` - Maintains the previous state
+
+In the Grafana UI, you can also choose "Keep last state" to maintain the previous state during no-data evaluations.
 
 ### Implementing Keep-Alive Patterns
 
@@ -279,7 +280,7 @@ rules:
         datasourceUid: prometheus
         model:
           expr: |
-            absent(up{job="payment-service"}) or up{job="payment-service"} == 0
+            absent(up{job="payment-service"}) or (1 - up{job="payment-service"})
           refId: A
       - refId: B
         datasourceUid: __expr__
@@ -320,9 +321,8 @@ annotations:
   description: |
     CPU usage has exceeded threshold on {{ $labels.instance }}.
 
-    Current Value: {{ $values.B }}%
+    Current Value: {{ $values.B.Value }}%
     Threshold: 80%
-    Duration: {{ .Evaluation.Duration }}
   runbook_url: "https://wiki.example.com/runbooks/high-cpu"
 ```
 
@@ -330,35 +330,32 @@ annotations:
 
 ```yaml
 annotations:
-  summary: "{{ $labels.severity | title }} - {{ $labels.alertname }}"
+  summary: "{{ $labels.job }} - {{ $labels.instance }}"
   description: |
     **Alert Details**
 
     Instance: {{ $labels.instance }}
     Service: {{ $labels.job }}
-    Value: {{ printf "%.2f" $values.B }}%
+    Value: {{ printf "%.2f" $values.B.Value }}%
 
-    {{ if gt $values.B 90.0 }}
+    {{ if gt $values.B.Value 90.0 }}
     CRITICAL: Immediate attention required!
-    {{ else if gt $values.B 80.0 }}
+    {{ else if gt $values.B.Value 80.0 }}
     WARNING: Monitor closely.
     {{ end }}
-
-    Time: {{ .EvalTime.Format "2006-01-02 15:04:05" }}
 ```
 
 Available template data:
-- `$labels` - All labels from the query
-- `$values` - Computed values from expressions
-- `.EvalTime` - Evaluation timestamp
-- `.Evaluation.Duration` - How long the condition has been true
+- `$labels` - Query labels for the alert instance
+- `$values` - Labels and numeric values from instant queries and expressions, indexed by Ref ID
+- `$value` - A string containing labels and values from the rule's instant queries and expressions
 
 ### Dynamic Runbook URLs
 
 ```yaml
 annotations:
   runbook_url: |
-    https://wiki.example.com/runbooks/{{ $labels.alertname | lower }}?instance={{ $labels.instance | urlquery }}
+    https://wiki.example.com/runbooks/{{ $labels.job }}?instance={{ $labels.instance | urlquery }}
 ```
 
 ## Complex Alert Conditions
@@ -374,12 +371,12 @@ rules:
       - refId: A
         datasourceUid: prometheus
         model:
-          expr: rate(http_requests_total{status=~"5.."}[5m])
+          expr: sum by (job) (rate(http_requests_total{status=~"5.."}[5m]))
           refId: A
       - refId: B
         datasourceUid: prometheus
         model:
-          expr: rate(http_requests_total[5m])
+          expr: sum by (job) (rate(http_requests_total[5m]))
           refId: B
       - refId: C
         datasourceUid: __expr__
@@ -390,7 +387,7 @@ rules:
       - refId: D
         datasourceUid: prometheus
         model:
-          expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+          expr: histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket[5m])))
           refId: D
       - refId: E
         datasourceUid: __expr__
@@ -469,7 +466,7 @@ rules:
       depends_on: database-primary
 ```
 
-Configure notification policies to use these labels for alert routing and suppression.
+Configure an inhibition rule that matches these labels to suppress dependent alerts when the dependency alert is firing.
 
 ## Performance Optimization
 
@@ -478,8 +475,8 @@ Configure notification policies to use these labels for alert routing and suppre
 ```yaml
 # Instead of multiple queries
 
-- expr: avg(rate(cpu_usage[5m])) by (instance)
-- expr: avg(rate(memory_usage[5m])) by (instance)
+- expr: avg by (instance) (rate(cpu_usage[5m]))
+- expr: avg by (instance) (rate(memory_usage[5m]))
 
 # Use recording rules in Prometheus
 # prometheus-rules.yml
@@ -487,9 +484,9 @@ groups:
   - name: recording-rules
     rules:
       - record: instance:cpu_usage:avg_rate5m
-        expr: avg(rate(cpu_usage[5m])) by (instance)
+        expr: avg by (instance) (rate(cpu_usage[5m]))
       - record: instance:memory_usage:avg_rate5m
-        expr: avg(rate(memory_usage[5m])) by (instance)
+        expr: avg by (instance) (rate(memory_usage[5m]))
 
 # Then reference in Grafana
 - expr: instance:cpu_usage:avg_rate5m
@@ -590,13 +587,13 @@ groups:
           team: platform
           slo: availability
         annotations:
-          summary: "SLO breach imminent - {{ printf \"%.1f\" $values.E }}% error budget consumed"
+          summary: "SLO breach imminent - {{ printf \"%.1f\" $values.E.Value }}% error budget consumed"
           description: |
             The API service error budget is being consumed rapidly.
 
             **Current Status:**
-            - 30-minute error rate: {{ printf "%.4f" $values.B }}
-            - Error budget consumed: {{ printf "%.1f" $values.E }}%
+            - 30-minute error rate: {{ printf "%.4f" $values.B.Value }}
+            - Error budget consumed: {{ printf "%.1f" $values.E.Value }}%
 
             **Action Required:**
             1. Check recent deployments
