@@ -529,18 +529,14 @@ RabbitMQ exposes federation metrics in Prometheus format. Enable the Prometheus 
 rabbitmq-plugins enable rabbitmq_prometheus
 ```
 
-Key metrics to track:
+The key federation metric exposed by the plugin is:
 
 ```promql
-# Federation link status (1 = running, 0 = not running)
-rabbitmq_federation_links_running
-
-# Messages transferred via federation
-rabbitmq_federation_messages_transferred_total
-
-# Federation link errors
-rabbitmq_federation_link_errors_total
+# Number of currently running federation links on the node
+rabbitmq_federation_running_link_count
 ```
+
+For more detailed federation health information (per-link status, errors, upstream details), use the management HTTP API at `/api/federation-links` shown earlier.
 
 ### Health Check Script
 
@@ -700,20 +696,18 @@ rabbitmqctl set_parameter federation-upstream dc-east \
 
 ### Connection Settings
 
-Tune TCP settings for WAN links:
+Tune reconnection behavior for WAN links:
 
 ```bash
 rabbitmqctl set_parameter federation-upstream dc-east \
   '{
     "uri": "amqps://fed:pass@east.example.com:5671",
-    "reconnect-delay": 5,
-    "channel-use-max": 10
+    "reconnect-delay": 10
   }'
 ```
 
 Parameters:
-- `reconnect-delay`: Seconds to wait before reconnecting (default 1)
-- `channel-use-max`: Maximum channels per connection
+- `reconnect-delay`: Seconds to wait before reconnecting after a network disconnect (default 5)
 
 ### Multiple Links
 
