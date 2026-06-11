@@ -530,10 +530,11 @@ CREATE TABLE scorecard_results (
     category_scores JSONB NOT NULL,
 
     -- Store individual rule results
-    rule_results JSONB NOT NULL,
-
-    INDEX idx_service_calculated (service_id, calculated_at DESC)
+    rule_results JSONB NOT NULL
 );
+
+CREATE INDEX idx_service_calculated
+    ON scorecard_results (service_id, calculated_at DESC);
 
 -- Manual check submissions
 CREATE TABLE manual_checks (
