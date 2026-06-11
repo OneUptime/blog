@@ -290,6 +290,7 @@ import random
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Generator
+from faker import Faker
 
 @dataclass
 class SeedConfig:
@@ -928,7 +929,7 @@ jobs:
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -944,7 +945,7 @@ class ParityCheck:
 class ParityMonitor:
     """Monitor parity between environments."""
 
-    def __init__(self, alert_callback: Optional[callable] = None):
+    def __init__(self, alert_callback: Optional[Callable] = None):
         self.checks: list[ParityCheck] = []
         self.alert_callback = alert_callback
 
