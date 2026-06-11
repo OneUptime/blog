@@ -63,7 +63,7 @@ graph TB
 Before implementing searchable snapshots, ensure you have:
 
 - Elasticsearch 7.10 or later (8.x recommended for best features)
-- A valid license (Platinum or Enterprise for full functionality)
+- A valid Enterprise license
 - Object storage bucket (AWS S3, Google Cloud Storage, or Azure Blob Storage)
 - Appropriate IAM permissions for your storage backend
 
@@ -73,13 +73,9 @@ The first step is to set up a snapshot repository pointing to your object storag
 
 ### AWS S3 Repository Configuration
 
-First, install the repository-s3 plugin on all nodes:
+For current self-managed Elasticsearch clusters, the S3, GCS, and Azure repository types are built in. If you use explicit S3 access keys, add them to the Elasticsearch keystore:
 
 ```bash
-# Install the S3 repository plugin
-
-bin/elasticsearch-plugin install repository-s3
-
 # Add credentials to the Elasticsearch keystore
 bin/elasticsearch-keystore add s3.client.default.access_key
 bin/elasticsearch-keystore add s3.client.default.secret_key
@@ -326,11 +322,7 @@ PUT _ilm/policy/logs-lifecycle-policy
           "set_priority": {
             "priority": 50
           },
-          "allocate": {
-            "require": {
-              "_tier_preference": "data_warm"
-            }
-          }
+          "migrate": {}
         }
       },
       "cold": {
@@ -428,7 +420,7 @@ GET logs-2025-06-searchable/_search
 Frozen tier queries can take longer due to data fetching from object storage. Use async search for better handling:
 
 ```json
-POST logs-2025-01-frozen/_async_search
+POST logs-2025-01-frozen/_async_search?wait_for_completion_timeout=5s&keep_alive=5m
 {
   "query": {
     "bool": {
@@ -447,9 +439,7 @@ POST logs-2025-01-frozen/_async_search
         "calendar_interval": "day"
       }
     }
-  },
-  "wait_for_completion_timeout": "5s",
-  "keep_alive": "5m"
+  }
 }
 ```
 
@@ -531,13 +521,10 @@ POST logs-2025-01-frozen/_search
 ```json
 GET _searchable_snapshots/stats
 
-# Response includes cache utilization and fetch statistics
+# Response includes total and per-index searchable snapshot statistics
 {
-  "total": 1500,
-  "total_hit_count": 1200,
-  "hit_rate": 0.8,
-  "evictions": 50,
-  "eviction_rate": 0.03
+  "total": {},
+  "stats": {}
 }
 ```
 
