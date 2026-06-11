@@ -130,12 +130,17 @@ export class EventStore {
     try {
       await client.query("BEGIN");
 
-      // Get current stream version with row-level lock
+      // Serialize writers for this stream for the duration of the transaction
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtext($1))",
+        [streamId]
+      );
+
+      // Get current stream version after acquiring the stream lock
       const versionResult = await client.query(
         `SELECT COALESCE(MAX(stream_position), 0) as current_version
          FROM events
-         WHERE stream_id = $1
-         FOR UPDATE`,
+         WHERE stream_id = $1`,
         [streamId]
       );
 
@@ -386,7 +391,7 @@ Combining the event store and snapshot store, here is how you efficiently load a
 interface Aggregate<TState, TEvent> {
   state: TState;
   version: bigint;
-  apply(event: TEvent): TState;
+  apply(state: TState, event: TEvent): TState;
   getInitialState(): TState;
 }
 
@@ -414,7 +419,7 @@ export class AggregateRepository<TState, TEvent extends DomainEvent> {
     const events = await this.eventStore.readStream(streamId, fromPosition);
 
     for (const event of events) {
-      state = aggregate.apply(event as TEvent);
+      state = aggregate.apply(state, event as TEvent);
     }
 
     const currentVersion = snapshot
@@ -474,6 +479,15 @@ flowchart TB
 
     E3 -.-> P
     E4 -.-> P
+```
+
+```sql
+-- Checkpoints table for projection progress
+CREATE TABLE projection_checkpoints (
+    projection_name VARCHAR(255) PRIMARY KEY,
+    last_processed_position BIGINT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 ```
 
 ```typescript
@@ -669,6 +683,8 @@ import { Client } from "pg";
 export class EventSubscription {
   private client: Client;
   private running = false;
+  private lastProcessedPosition = 0n;
+  private catchUpPromise = Promise.resolve();
 
   constructor(
     connectionString: string,
@@ -681,38 +697,30 @@ export class EventSubscription {
   async start(fromPosition: bigint = 0n): Promise<void> {
     await this.client.connect();
     this.running = true;
+    this.lastProcessedPosition = fromPosition;
 
-    // First, catch up on any missed events
-    await this.catchUp(fromPosition);
-
-    // Then listen for new events
-    await this.client.query("LISTEN new_event");
-
-    this.client.on("notification", async (msg) => {
+    this.client.on("notification", (msg) => {
       if (!this.running || !msg.payload) return;
-
-      const notification = JSON.parse(msg.payload);
-      const events = await this.eventStore.readAll(
-        BigInt(notification.global_position) - 1n,
-        1
-      );
-
-      if (events.length > 0) {
-        await this.handler(events[0]);
-      }
+      this.scheduleCatchUp();
     });
+
+    // Listen first, then catch up from the durable event log
+    await this.client.query("LISTEN new_event");
+    await this.catchUp();
   }
 
-  private async catchUp(fromPosition: bigint): Promise<void> {
-    let position = fromPosition;
+  private scheduleCatchUp(): void {
+    this.catchUpPromise = this.catchUpPromise.then(() => this.catchUp());
+  }
 
+  private async catchUp(): Promise<void> {
     while (this.running) {
-      const events = await this.eventStore.readAll(position, 100);
+      const events = await this.eventStore.readAll(this.lastProcessedPosition, 100);
       if (events.length === 0) break;
 
       for (const event of events) {
         await this.handler(event);
-        position = event.globalPosition;
+        this.lastProcessedPosition = event.globalPosition;
       }
     }
   }
@@ -738,7 +746,7 @@ When scaling your event store, keep these factors in mind:
 
 ## Partitioning for Scale
 
-For high-volume systems, partition the events table by time range. This keeps hot data fast while allowing cold data to be archived.
+For high-volume systems, partition the events table by time range. This keeps hot data fast while allowing cold data to be archived. In PostgreSQL, unique constraints on partitioned tables must include the partition key, so enforce per-stream version uniqueness with a separate stream version table or choose a partitioning strategy that matches your consistency requirements.
 
 ```sql
 -- Partitioned events table by month
@@ -752,6 +760,9 @@ CREATE TABLE events (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     PRIMARY KEY (global_position, created_at),
+
+    -- Includes created_at because PostgreSQL requires partition keys
+    -- in unique constraints on partitioned tables.
     UNIQUE (stream_id, stream_position, created_at)
 ) PARTITION BY RANGE (created_at);
 
@@ -818,7 +829,7 @@ Building an event store is not complicated, but it requires discipline around a 
 
 4. **Projections are disposable.** Since you can always rebuild from events, treat read models as cached views that can be recreated.
 
-5. **Global ordering enables powerful patterns.** The global position lets you build exactly-once projections and reliable subscriptions.
+5. **Global ordering enables powerful patterns.** The global position lets you build ordered, resumable projections and reliable subscriptions.
 
 Event sourcing trades write complexity for read flexibility. Once you have the event store in place, you can project your data into any shape, replay history for debugging, and maintain a complete audit trail without additional effort.
 
