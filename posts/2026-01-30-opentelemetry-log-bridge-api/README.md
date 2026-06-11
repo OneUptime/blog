@@ -179,7 +179,7 @@ import {
   ConsoleLogRecordExporter,
 } from '@opentelemetry/sdk-logs';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
@@ -187,7 +187,7 @@ import {
 } from '@opentelemetry/semantic-conventions';
 
 // Define resource attributes for service identification
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: 'my-service',
   [ATTR_SERVICE_VERSION]: '1.0.0',
   [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
@@ -207,23 +207,17 @@ const consoleExporter = new ConsoleLogRecordExporter();
 // Initialize LoggerProvider
 const loggerProvider = new LoggerProvider({
   resource,
+  processors: [
+    process.env.NODE_ENV === 'production'
+      ? new BatchLogRecordProcessor(otlpExporter, {
+          maxQueueSize: 2048,
+          maxExportBatchSize: 512,
+          scheduledDelayMillis: 5000,
+          exportTimeoutMillis: 30000,
+        })
+      : new BatchLogRecordProcessor(consoleExporter),
+  ],
 });
-
-// Add processors based on environment
-if (process.env.NODE_ENV === 'production') {
-  loggerProvider.addLogRecordProcessor(
-    new BatchLogRecordProcessor(otlpExporter, {
-      maxQueueSize: 2048,
-      maxExportBatchSize: 512,
-      scheduledDelayMillis: 5000,
-      exportTimeoutMillis: 30000,
-    })
-  );
-} else {
-  loggerProvider.addLogRecordProcessor(
-    new BatchLogRecordProcessor(consoleExporter)
-  );
-}
 
 // Register as global logger provider
 logs.setGlobalLoggerProvider(loggerProvider);
@@ -242,7 +236,6 @@ export async function shutdownLogs(): Promise<void> {
 ```typescript
 // direct-usage.ts
 import { logs, SeverityNumber } from '@opentelemetry/api-logs';
-import { trace, context } from '@opentelemetry/api';
 
 // Get a logger instance
 const logger = logs.getLogger('my-component', '1.0.0');
@@ -264,8 +257,10 @@ logMessage('Application started', SeverityNumber.INFO, {
 });
 
 logMessage('Failed to connect to database', SeverityNumber.ERROR, {
-  'db.system': 'postgresql',
-  'db.connection_string': 'postgres://localhost:5432/mydb',
+  'db.system.name': 'postgresql',
+  'server.address': 'localhost',
+  'server.port': 5432,
+  'db.namespace': 'mydb',
   'error.type': 'ConnectionError',
 });
 ```
@@ -306,8 +301,8 @@ flowchart LR
 
 ```typescript
 // generic-bridge.ts
-import { logs, SeverityNumber, Logger } from '@opentelemetry/api-logs';
-import { trace, context, Span } from '@opentelemetry/api';
+import { logs, SeverityNumber, type Logger, type LogRecord } from '@opentelemetry/api-logs';
+import { ROOT_CONTEXT } from '@opentelemetry/api';
 
 // Severity mapping for common log levels
 const SEVERITY_MAP: Record<string, SeverityNumber> = {
@@ -373,12 +368,18 @@ export class GenericLogBridge {
     };
 
     // Emit the log record
-    this.logger.emit({
+    const logRecord: LogRecord = {
       severityNumber,
       severityText,
       body,
       attributes: finalAttributes,
-    });
+    };
+
+    if (!this.includeTraceContext) {
+      logRecord.context = ROOT_CONTEXT;
+    }
+
+    this.logger.emit(logRecord);
   }
 
   /**
@@ -419,7 +420,7 @@ export class GenericLogBridge {
 Winston is one of the most popular Node.js logging frameworks. Here is how to create a Log Bridge for Winston.
 
 ```bash
-npm install winston
+npm install winston winston-transport
 ```
 
 ### Winston Transport Bridge
@@ -547,7 +548,7 @@ export const logger = winston.createLogger({
     new OpenTelemetryTransport({
       loggerName: 'my-service',
       defaultAttributes: {
-        'deployment.environment': process.env.NODE_ENV || 'development',
+        'deployment.environment.name': process.env.NODE_ENV || 'development',
       },
     }),
   ],
@@ -573,7 +574,7 @@ logger.error('Database query failed', {
 Pino is known for its high performance. Here is how to bridge Pino logs to OpenTelemetry.
 
 ```bash
-npm install pino pino-abstract-transport
+npm install pino pino-abstract-transport pino-pretty
 ```
 
 ### Pino Transport Bridge
@@ -645,7 +646,7 @@ export default async function pinoOtelTransport(opts: PinoOtelOptions = {}) {
         severityText: PINO_LEVEL_NAMES[level] || 'INFO',
         body: msg || '',
         attributes,
-        timestamp: time ? time * 1_000_000 : undefined, // Convert ms to ns
+        timestamp: time, // Pino time is epoch milliseconds, accepted by the JS API
       });
     }
   });
@@ -694,7 +695,7 @@ export const logger = pino({
         options: {
           loggerName: 'my-service',
           defaultAttributes: {
-            'deployment.environment': process.env.NODE_ENV || 'development',
+            'deployment.environment.name': process.env.NODE_ENV || 'development',
           },
         },
       },
@@ -745,7 +746,7 @@ The OpenTelemetry SDK automatically injects trace context when you emit logs wit
 
 ```typescript
 // trace-correlation-example.ts
-import { trace, context } from '@opentelemetry/api';
+import { trace } from '@opentelemetry/api';
 import { logger } from './winston-setup';
 
 const tracer = trace.getTracer('order-service');
@@ -879,8 +880,6 @@ import {
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
 import { ConsoleLogRecordExporter } from '@opentelemetry/sdk-logs';
 
-const loggerProvider = new LoggerProvider();
-
 // Simple processor - immediate export (good for development/debugging)
 const simpleProcessor = new SimpleLogRecordProcessor(
   new ConsoleLogRecordExporter()
@@ -907,9 +906,10 @@ const batchProcessor = new BatchLogRecordProcessor(
   }
 );
 
-// Add processors
-loggerProvider.addLogRecordProcessor(simpleProcessor);
-loggerProvider.addLogRecordProcessor(batchProcessor);
+// Register processors with the provider
+const loggerProvider = new LoggerProvider({
+  processors: [simpleProcessor, batchProcessor],
+});
 ```
 
 ### Custom Log Processor
@@ -918,7 +918,7 @@ You can create custom processors for filtering, enriching, or transforming logs:
 
 ```typescript
 // custom-processor.ts
-import { LogRecordProcessor, ReadableLogRecord } from '@opentelemetry/sdk-logs';
+import { type LogRecordProcessor, type SdkLogRecord } from '@opentelemetry/sdk-logs';
 
 export class FilteringLogProcessor implements LogRecordProcessor {
   private nextProcessor: LogRecordProcessor;
@@ -929,7 +929,7 @@ export class FilteringLogProcessor implements LogRecordProcessor {
     this.minSeverity = minSeverity;
   }
 
-  onEmit(logRecord: ReadableLogRecord): void {
+  onEmit(logRecord: SdkLogRecord): void {
     // Filter out logs below minimum severity
     if (logRecord.severityNumber && logRecord.severityNumber >= this.minSeverity) {
       this.nextProcessor.onEmit(logRecord);
@@ -955,9 +955,8 @@ export class EnrichingLogProcessor implements LogRecordProcessor {
     this.extraAttributes = extraAttributes;
   }
 
-  onEmit(logRecord: ReadableLogRecord): void {
-    // Note: In real implementation, you would need to modify attributes
-    // This is a simplified example showing the pattern
+  onEmit(logRecord: SdkLogRecord): void {
+    logRecord.setAttributes(this.extraAttributes);
     this.nextProcessor.onEmit(logRecord);
   }
 
@@ -1017,14 +1016,14 @@ const attributes = {
   'service.version': '1.2.3',
 
   // HTTP attributes (for HTTP-related logs)
-  'http.method': 'POST',
-  'http.url': '/api/orders',
-  'http.status_code': 201,
+  'http.request.method': 'POST',
+  'url.path': '/api/orders',
+  'http.response.status_code': 201,
 
   // Database attributes (for DB-related logs)
-  'db.system': 'postgresql',
-  'db.operation': 'INSERT',
-  'db.name': 'orders',
+  'db.system.name': 'postgresql',
+  'db.operation.name': 'INSERT',
+  'db.namespace': 'orders',
 
   // Error attributes
   'exception.type': 'ValidationError',
@@ -1110,16 +1109,18 @@ const processor = new BatchLogRecordProcessor(exporter, {
 ### 4. Not Handling Export Errors
 
 ```typescript
-// The exporter can fail silently - add error handling
+// The exporter reports failures through its result callback - add error handling
 class RobustLogExporter extends OTLPLogExporter {
-  async export(logs: any[], resultCallback: (result: any) => void): Promise<void> {
-    try {
-      await super.export(logs, resultCallback);
-    } catch (error) {
-      console.error('Failed to export logs:', error);
-      // Optionally: write to fallback destination
-      // Optionally: increment error metric
-    }
+  export(logs: any[], resultCallback: (result: any) => void): void {
+    super.export(logs, (result) => {
+      if (result.error) {
+        console.error('Failed to export logs:', result.error);
+        // Optionally: write to fallback destination
+        // Optionally: increment error metric
+      }
+
+      resultCallback(result);
+    });
   }
 }
 ```
@@ -1138,7 +1139,7 @@ import {
   BatchLogRecordProcessor,
 } from '@opentelemetry/sdk-logs';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
@@ -1152,14 +1153,14 @@ if (process.env.OTEL_DEBUG === 'true') {
 }
 
 // Service resource
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'my-service',
   [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
   [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'production',
   'service.instance.id': process.env.HOSTNAME || 'unknown',
 });
 
-// OTLP exporter with retry logic
+// OTLP exporter with timeout
 const exporter = new OTLPLogExporter({
   url: process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT || 'https://oneuptime.com/otlp/v1/logs',
   headers: {
@@ -1171,17 +1172,15 @@ const exporter = new OTLPLogExporter({
 // Logger provider
 const loggerProvider = new LoggerProvider({
   resource,
+  processors: [
+    new BatchLogRecordProcessor(exporter, {
+      maxQueueSize: 4096,
+      maxExportBatchSize: 1024,
+      scheduledDelayMillis: 3000,
+      exportTimeoutMillis: 30000,
+    }),
+  ],
 });
-
-// Batch processor optimized for production
-loggerProvider.addLogRecordProcessor(
-  new BatchLogRecordProcessor(exporter, {
-    maxQueueSize: 4096,
-    maxExportBatchSize: 1024,
-    scheduledDelayMillis: 3000,
-    exportTimeoutMillis: 30000,
-  })
-);
 
 // Register globally
 logs.setGlobalLoggerProvider(loggerProvider);
