@@ -12,11 +12,11 @@ Event-driven systems are powerful but fragile. When events are lost, downstream 
 
 ## Why Event Recovery Matters
 
-In event-driven architectures, events are the source of truth. A single lost event can cascade into widespread data inconsistencies. Consider an e-commerce system where an "OrderPlaced" event fails to reach the inventory service. The order proceeds, but inventory is never decremented. The customer receives confirmation, but the warehouse has no record.
+In event-sourced event-driven architectures, events are the source of truth. In other event-driven systems, they are still critical integration records. A single lost event can cascade into widespread data inconsistencies. Consider an e-commerce system where an "OrderPlaced" event fails to reach the inventory service. The order proceeds, but inventory is never decremented. The customer receives confirmation, but the warehouse has no record.
 
 | Failure Type | Impact | Recovery Need |
 |--------------|--------|---------------|
-| Broker crash | All in-flight events lost | Full stream replay |
+| Broker crash | Uncommitted or non-durable in-flight events lost | Replay from a durable event store or broker log |
 | Consumer failure | Events processed but not acknowledged | Partial replay with deduplication |
 | Network partition | Events published but never delivered | Gap detection and filling |
 | Poison message | Consumer crashes repeatedly | Dead letter queue processing |
@@ -91,6 +91,13 @@ interface EventStore {
 
   // Get the current position for a stream
   getVersion(streamId: string): Promise<number>;
+
+  // Read events from a time range for targeted replay
+  readByTimeRange(streamId: string, startTime: Date, endTime: Date): Promise<Event[]>;
+}
+
+interface EventPublisher {
+  publish(topic: string, event: Event): Promise<void>;
 }
 
 // Event structure with metadata for recovery
@@ -122,12 +129,17 @@ class PostgresEventStore implements EventStore {
       await client.query('BEGIN');
 
       // Check for optimistic concurrency
+      // Assumes a UNIQUE (stream_id, version) constraint so concurrent inserts fail safely
       const versionResult = await client.query(
-        'SELECT COALESCE(MAX(version), 0) as version FROM events WHERE stream_id = $1 FOR UPDATE',
+        `SELECT version FROM events
+         WHERE stream_id = $1
+         ORDER BY version DESC
+         LIMIT 1
+         FOR UPDATE`,
         [streamId]
       );
 
-      const currentVersion = versionResult.rows[0].version;
+      const currentVersion = Number(versionResult.rows[0]?.version ?? 0);
       if (currentVersion !== expectedVersion) {
         throw new ConcurrencyError(`Expected version ${expectedVersion}, got ${currentVersion}`);
       }
@@ -165,12 +177,53 @@ class PostgresEventStore implements EventStore {
 
     return result.rows.map(this.rowToEvent);
   }
+
+  async read(streamId: string, fromVersion: number): Promise<Event[]> {
+    const result = await this.pool.query(
+      `SELECT * FROM events
+       WHERE stream_id = $1 AND version >= $2
+       ORDER BY version ASC`,
+      [streamId, fromVersion]
+    );
+
+    return result.rows.map(this.rowToEvent);
+  }
+
+  async getVersion(streamId: string): Promise<number> {
+    const result = await this.pool.query(
+      'SELECT COALESCE(MAX(version), 0) as version FROM events WHERE stream_id = $1',
+      [streamId]
+    );
+
+    return Number(result.rows[0].version);
+  }
+
+  async readByTimeRange(streamId: string, startTime: Date, endTime: Date): Promise<Event[]> {
+    const result = await this.pool.query(
+      `SELECT * FROM events
+       WHERE stream_id = $1 AND created_at >= $2 AND created_at < $3
+       ORDER BY version ASC`,
+      [streamId, startTime, endTime]
+    );
+
+    return result.rows.map(this.rowToEvent);
+  }
+
+  private rowToEvent(row: any): Event {
+    return {
+      id: row.id,
+      streamId: row.stream_id,
+      type: row.type,
+      data: row.data,
+      metadata: row.metadata
+    };
+  }
 }
 ```
 
 ## Checkpoint Management
 
-Checkpoints track the last successfully processed event for each consumer. They enable resumption from the exact point of failure.
+Checkpoints track the last successfully processed event for each consumer. They enable resumption from the last saved success, with idempotent handlers covering cases where processing succeeds but checkpointing fails.
 
 ```mermaid
 sequenceDiagram
@@ -194,7 +247,7 @@ sequenceDiagram
     C->>CP: Get last checkpoint
     CP-->>C: Position: 1050
     C->>ES: Read events from 1051
-    Note over C: Resume without reprocessing
+    Note over C: Resume from the last saved checkpoint
 ```
 
 The checkpoint manager stores consumer progress and handles the complexity of tracking multiple consumers across multiple streams.
@@ -217,7 +270,7 @@ class CheckpointManager {
     await this.redis.set(key, position.toString());
   }
 
-  // Atomic checkpoint update with event processing
+  // Coordinated checkpoint update after event processing succeeds
   async processWithCheckpoint(
     consumerId: string,
     streamId: string,
@@ -226,7 +279,8 @@ class CheckpointManager {
   ): Promise<void> {
     // Use a distributed lock to prevent duplicate processing
     const lockKey = `lock:${consumerId}:${streamId}`;
-    const lock = await this.redis.set(lockKey, '1', 'NX', 'EX', 30);
+    const lockToken = crypto.randomUUID();
+    const lock = await this.redis.set(lockKey, lockToken, 'NX', 'EX', 30);
 
     if (!lock) {
       throw new Error('Could not acquire processing lock');
@@ -236,7 +290,16 @@ class CheckpointManager {
       await processor();
       await this.saveCheckpoint(consumerId, streamId, position);
     } finally {
-      await this.redis.del(lockKey);
+      await this.redis.eval(
+        `if redis.call("get", KEYS[1]) == ARGV[1] then
+           return redis.call("del", KEYS[1])
+         else
+           return 0
+         end`,
+        1,
+        lockKey,
+        lockToken
+      );
     }
   }
 }
@@ -251,7 +314,7 @@ When events cannot be processed after multiple retries, they go to a dead letter
 class DeadLetterProcessor {
   constructor(
     private dlqConsumer: Consumer,
-    private eventStore: EventStore,
+    private eventPublisher: EventPublisher,
     private alertService: AlertService
   ) {}
 
@@ -286,7 +349,7 @@ class DeadLetterProcessor {
     const failedEvent = await this.getFailedEvent(eventId);
 
     // Republish to the original topic
-    await this.eventStore.republish(
+    await this.eventPublisher.publish(
       failedEvent.originalTopic,
       failedEvent.originalEvent
     );
@@ -314,10 +377,7 @@ Recovery often means reprocessing events that may have been partially handled. I
 ```typescript
 // Idempotent event handler with deduplication
 class IdempotentEventHandler {
-  constructor(
-    private processedEvents: Set<string>,
-    private redis: Redis
-  ) {}
+  constructor(private redis: Redis) {}
 
   async handle(event: Event, processor: (event: Event) => Promise<void>): Promise<void> {
     const eventKey = `processed:${event.id}`;
@@ -330,8 +390,9 @@ class IdempotentEventHandler {
       return;
     }
 
-    // Use optimistic locking to prevent race conditions
-    const lockAcquired = await this.redis.set(eventKey, 'processing', 'NX', 'EX', 300);
+    // Use an atomic SET NX lock to prevent race conditions
+    const processingToken = crypto.randomUUID();
+    const lockAcquired = await this.redis.set(eventKey, processingToken, 'NX', 'EX', 300);
 
     if (!lockAcquired) {
       console.log(`Event ${event.id} is being processed by another instance`);
@@ -340,11 +401,30 @@ class IdempotentEventHandler {
 
     try {
       await processor(event);
-      // Mark as permanently processed with long TTL
-      await this.redis.set(eventKey, 'completed', 'EX', 86400 * 7);
+      // Mark as processed only if this worker still owns the processing lock
+      await this.redis.eval(
+        `if redis.call("get", KEYS[1]) == ARGV[1] then
+           return redis.call("set", KEYS[1], "completed", "EX", ARGV[2])
+         else
+           return 0
+         end`,
+        1,
+        eventKey,
+        processingToken,
+        86400 * 7
+      );
     } catch (error) {
-      // Remove lock on failure to allow retry
-      await this.redis.del(eventKey);
+      // Remove the processing lock on failure to allow retry
+      await this.redis.eval(
+        `if redis.call("get", KEYS[1]) == ARGV[1] then
+           return redis.call("del", KEYS[1])
+         else
+           return 0
+         end`,
+        1,
+        eventKey,
+        processingToken
+      );
       throw error;
     }
   }
@@ -410,13 +490,13 @@ class EventRecoveryService {
 
     const missedEvents = currentPosition - checkpoint;
 
-    console.log(`Recovering consumer ${consumerId} from position ${checkpoint}`);
+    console.log(`Recovering consumer ${consumerId} from position ${checkpoint + 1}`);
     console.log(`Missed events: ${missedEvents}`);
 
     return {
       consumerId,
       streamId,
-      fromPosition: checkpoint,
+      fromPosition: checkpoint + 1,
       toPosition: currentPosition,
       missedEvents,
       status: 'ready_for_replay'
