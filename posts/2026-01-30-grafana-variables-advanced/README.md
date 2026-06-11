@@ -37,8 +37,10 @@ graph TD
 
 Query variables fetch values directly from your data source. Here is a Prometheus example that retrieves all available job names:
 
-```promql
-label_values(up, job)
+```text
+Query type: Label values
+Label: job
+Metric: up
 ```
 
 For InfluxDB, you might use:
@@ -94,8 +96,10 @@ First, create a variable for regions:
 **Name:** `region`
 **Type:** Query
 **Query:**
-```promql
-label_values(node_info, region)
+```text
+Query type: Label values
+Label: region
+Metric: node_info
 ```
 
 ### Step 2: Create the Chained Variable
@@ -105,8 +109,10 @@ Create a cluster variable that depends on region:
 **Name:** `cluster`
 **Type:** Query
 **Query:**
-```promql
-label_values(node_info{region="$region"}, cluster)
+```text
+Query type: Label values
+Label: cluster
+Metric: node_info{region="$region"}
 ```
 
 ### Step 3: Create a Third-Level Variable
@@ -116,8 +122,10 @@ Create a node variable depending on both region and cluster:
 **Name:** `node`
 **Type:** Query
 **Query:**
-```promql
-label_values(node_info{region="$region", cluster="$cluster"}, instance)
+```text
+Query type: Label values
+Label: instance
+Metric: node_info{region="$region", cluster="$cluster"}
 ```
 
 ### Using Chained Variables in Panels
@@ -135,8 +143,10 @@ Regex extraction allows you to transform raw label values into cleaner, more rea
 If your Prometheus metrics have instances like `server-prod-web-01.example.com:9090`, extract just the server name:
 
 **Query:**
-```promql
-label_values(up, instance)
+```text
+Query type: Label values
+Label: instance
+Metric: up
 ```
 
 **Regex:**
@@ -196,7 +206,7 @@ For Prometheus, set Custom all value to:
 .*
 ```
 
-For SQL-based sources:
+For SQL `LIKE` filters:
 ```text
 %
 ```
@@ -213,7 +223,9 @@ Configure which value loads by default:
     "value": "production"
   },
   "options": [],
-  "query": "label_values(app_info, environment)",
+  "query": "app_info",
+  "label": "environment",
+  "queryType": "label_values",
   "refresh": 1,
   "includeAll": true,
   "multi": false
@@ -239,7 +251,7 @@ In variable settings:
 
 ### Query Syntax for Multi-Value
 
-When a user selects multiple values, Grafana joins them with a pipe by default:
+When a user selects multiple values in a Prometheus query, Grafana formats them as a regex group by default:
 
 ```promql
 node_cpu_seconds_total{instance=~"$node"}
@@ -247,7 +259,7 @@ node_cpu_seconds_total{instance=~"$node"}
 
 If `$node` contains `server1` and `server2`, this expands to:
 ```promql
-node_cpu_seconds_total{instance=~"server1|server2"}
+node_cpu_seconds_total{instance=~"(server1|server2)"}
 ```
 
 ### Custom Join Separators
@@ -256,7 +268,8 @@ Use advanced formatting options:
 
 | Format | Syntax | Example Output |
 |--------|--------|----------------|
-| Pipe | `${variable}` | `value1\|value2` |
+| Default Prometheus regex | `${variable}` | `(value1\|value2)` |
+| Pipe | `${variable:pipe}` | `value1\|value2` |
 | Comma | `${variable:csv}` | `value1,value2` |
 | SQL | `${variable:sqlstring}` | `'value1','value2'` |
 | Raw | `${variable:raw}` | `value1,value2` |
@@ -278,7 +291,7 @@ GROUP BY time, host
 ```mermaid
 flowchart TD
     A[User Selects Multiple Values] --> B{Format Type}
-    B -->|Default/Pipe| C["value1|value2|value3"]
+    B -->|Default Prometheus regex| C["(value1|value2|value3)"]
     B -->|CSV| D["value1,value2,value3"]
     B -->|SQL String| E["'value1','value2','value3'"]
     B -->|Raw| F["value1,value2,value3"]
@@ -324,8 +337,10 @@ graph TD
 **Type:** Query
 **Data source:** `$datasource`
 **Query:**
-```promql
-label_values(kube_namespace_labels, namespace)
+```text
+Query type: Label values
+Label: namespace
+Metric: kube_namespace_labels
 ```
 **Sort:** Alphabetical (asc)
 
@@ -335,8 +350,10 @@ label_values(kube_namespace_labels, namespace)
 **Type:** Query
 **Data source:** `$datasource`
 **Query:**
-```promql
-label_values(kube_deployment_labels{namespace="$namespace"}, deployment)
+```text
+Query type: Label values
+Label: deployment
+Metric: kube_deployment_labels{namespace="$namespace"}
 ```
 **Multi-value:** Enabled
 **Include All:** Enabled
@@ -347,8 +364,10 @@ label_values(kube_deployment_labels{namespace="$namespace"}, deployment)
 **Type:** Query
 **Data source:** `$datasource`
 **Query:**
-```promql
-label_values(kube_pod_info{namespace="$namespace", created_by_name=~"$deployment.*"}, pod)
+```text
+Query type: Label values
+Label: pod
+Metric: kube_pod_info{namespace="$namespace", created_by_name=~"$deployment.*"}
 ```
 **Regex:** `/(.+)/`
 **Multi-value:** Enabled
@@ -359,8 +378,10 @@ label_values(kube_pod_info{namespace="$namespace", created_by_name=~"$deployment
 **Type:** Query
 **Data source:** `$datasource`
 **Query:**
-```promql
-label_values(kube_pod_container_info{namespace="$namespace", pod=~"$pod"}, container)
+```text
+Query type: Label values
+Label: container
+Metric: kube_pod_container_info{namespace="$namespace", pod=~"$pod"}
 ```
 
 ### Variable 6: Interval
@@ -403,18 +424,18 @@ Grafana provides built-in global variables:
 | `$__to` | End time in epoch ms | 1609545600000 |
 | `$__interval` | Suggested interval | "1m" |
 | `$__interval_ms` | Interval in milliseconds | 60000 |
-| `$__range` | Range in seconds | 86400 |
+| `$__range` | Dashboard time range | "1d" |
 | `$__range_s` | Range in seconds (alias) | 86400 |
 | `$__range_ms` | Range in milliseconds | 86400000 |
 
 ### Conditional Display with Variables
 
-Use variable values to conditionally show panels:
+Use variable values to filter panel queries:
 
 ```promql
-# Only show data when specific environment is selected
+# Only query data for the selected environment
 
-up{environment="$environment"} * ($environment == "production")
+up{environment="$environment"}
 ```
 
 ### Variable in Panel Titles
@@ -435,8 +456,10 @@ node_,container_,kube_
 ```
 
 **Variable: metric_name (dependent)**
-```promql
-label_values({__name__=~"${metric_prefix}.*"}, __name__)
+```text
+Query type: Label values
+Label: __name__
+Metric: {__name__=~"${metric_prefix}.*"}
 ```
 
 ## Best Practices
@@ -456,8 +479,10 @@ graph LR
 2. **Set appropriate refresh intervals** - Use "On Dashboard Load" for slow-changing data, "On Time Range Change" for time-dependent values
 
 3. **Limit results** - Add regex filters to prevent loading thousands of options:
-   ```promql
-   label_values(up{job=~".*prod.*"}, instance)
+   ```text
+   Query type: Label values
+   Label: instance
+   Metric: up{job=~".*prod.*"}
    ```
 
 4. **Order variables logically** - Place parent variables before dependent ones in the variable list
