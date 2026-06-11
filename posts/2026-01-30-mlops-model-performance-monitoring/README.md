@@ -131,25 +131,24 @@ Evidently is an open-source library for ML monitoring. Here is a complete implem
 
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 
 # Evidently imports for monitoring
-from evidently import ColumnMapping
-from evidently.report import Report
-from evidently.metric_preset import (
+from evidently import Dataset, DataDefinition, BinaryClassification, Report
+from evidently.presets import (
     DataDriftPreset,
-    DataQualityPreset,
+    DataSummaryPreset,
     ClassificationPreset
 )
 from evidently.metrics import (
-    DataDriftTable,
-    DatasetDriftMetric,
-    ColumnDriftMetric,
-    ClassificationQualityMetric,
-    ClassificationClassBalance
+    DriftedColumnsCount,
+    Accuracy,
+    Precision,
+    Recall,
+    F1Score
 )
 ```
 
@@ -218,18 +217,30 @@ class ModelMonitor:
     - Feature quality and distribution changes
     """
 
-    def __init__(self, reference_data, column_mapping=None):
+    def __init__(self, reference_data, feature_columns=None):
         """
         Initialize the monitor with reference (training) data.
 
         Args:
             reference_data: DataFrame used for training the model
-            column_mapping: Evidently ColumnMapping object for feature specification
+            feature_columns: List of feature columns to monitor
         """
         self.reference_data = reference_data
-        self.column_mapping = column_mapping or ColumnMapping()
+        self.feature_columns = feature_columns or [
+            col for col in reference_data.columns if col != 'target'
+        ]
+        self.feature_schema = DataDefinition(
+            numerical_columns=self.feature_columns
+        )
         self.drift_history = []
         self.quality_history = []
+
+    def _to_feature_dataset(self, data):
+        """Create an Evidently Dataset containing only model input features."""
+        return Dataset.from_pandas(
+            data[self.feature_columns],
+            data_definition=self.feature_schema
+        )
 
     def detect_data_drift(self, current_data, threshold=0.1):
         """
@@ -245,24 +256,23 @@ class ModelMonitor:
         """
         # Create drift report using Evidently
         drift_report = Report(metrics=[
-            DatasetDriftMetric(),  # Overall dataset drift
-            DataDriftTable(),       # Per-feature drift details
+            DriftedColumnsCount(drift_share=threshold),
+            DataDriftPreset(drift_share=threshold),
         ])
 
         # Run the analysis comparing reference to current data
-        drift_report.run(
-            reference_data=self.reference_data,
-            current_data=current_data,
-            column_mapping=self.column_mapping
+        snapshot = drift_report.run(
+            current_data=self._to_feature_dataset(current_data),
+            reference_data=self._to_feature_dataset(self.reference_data)
         )
 
         # Extract drift metrics from the report
-        report_dict = drift_report.as_dict()
+        report_dict = snapshot.dict()
 
         # Get the dataset drift result
-        dataset_drift = report_dict['metrics'][0]['result']
-        drift_detected = dataset_drift['dataset_drift']
-        drift_share = dataset_drift['drift_share']
+        drift_metric = report_dict['metrics'][0]['value']
+        drift_share = drift_metric['share']
+        drift_detected = drift_share > threshold
 
         # Store in history for trend analysis
         result = {
@@ -274,7 +284,7 @@ class ModelMonitor:
         }
         self.drift_history.append(result)
 
-        return result, drift_report
+        return result, snapshot
 
     def evaluate_model_quality(self, data_with_predictions, target_col='target',
                                 prediction_col='prediction'):
@@ -289,39 +299,50 @@ class ModelMonitor:
         Returns:
             dict with quality metrics
         """
-        # Configure column mapping for classification
-        column_mapping = ColumnMapping(
-            target=target_col,
-            prediction=prediction_col
+        # Configure data definition for binary classification
+        data_definition = DataDefinition(
+            numerical_columns=self.feature_columns,
+            classification=[
+                BinaryClassification(
+                    target=target_col,
+                    prediction_labels=prediction_col,
+                    pos_label=1
+                )
+            ]
+        )
+        current_dataset = Dataset.from_pandas(
+            data_with_predictions,
+            data_definition=data_definition
         )
 
         # Create quality report
         quality_report = Report(metrics=[
-            ClassificationQualityMetric(),
-            ClassificationClassBalance()
+            Accuracy(),
+            Precision(),
+            Recall(),
+            F1Score()
         ])
 
         # Run quality analysis
-        quality_report.run(
-            reference_data=None,  # No reference needed for quality metrics
-            current_data=data_with_predictions,
-            column_mapping=column_mapping
-        )
+        snapshot = quality_report.run(current_data=current_dataset)
 
         # Extract metrics
-        report_dict = quality_report.as_dict()
-        quality_metrics = report_dict['metrics'][0]['result']['current']
+        report_dict = snapshot.dict()
+        quality_metrics = {
+            metric['metric_name'].split('(')[0]: metric['value']
+            for metric in report_dict['metrics']
+        }
 
         result = {
             'timestamp': datetime.now().isoformat(),
-            'accuracy': quality_metrics.get('accuracy'),
-            'precision': quality_metrics.get('precision'),
-            'recall': quality_metrics.get('recall'),
-            'f1_score': quality_metrics.get('f1')
+            'accuracy': quality_metrics.get('Accuracy'),
+            'precision': quality_metrics.get('Precision'),
+            'recall': quality_metrics.get('Recall'),
+            'f1_score': quality_metrics.get('F1Score')
         }
         self.quality_history.append(result)
 
-        return result, quality_report
+        return result, snapshot
 
     def generate_comprehensive_report(self, current_data, data_with_predictions=None):
         """
@@ -336,22 +357,45 @@ class ModelMonitor:
         """
         metrics = [
             DataDriftPreset(),
-            DataQualityPreset()
+            DataSummaryPreset()
         ]
 
         # Add classification metrics if predictions are available
         if data_with_predictions is not None:
+            data_definition = DataDefinition(
+                numerical_columns=self.feature_columns,
+                classification=[
+                    BinaryClassification(
+                        target='target',
+                        prediction_labels='prediction',
+                        pos_label=1
+                    )
+                ]
+            )
+            current_dataset = Dataset.from_pandas(
+                data_with_predictions,
+                data_definition=data_definition
+            )
+            reference_with_predictions = self.reference_data.copy()
+            if 'prediction' not in reference_with_predictions.columns:
+                reference_with_predictions['prediction'] = reference_with_predictions['target']
+            reference_dataset = Dataset.from_pandas(
+                reference_with_predictions,
+                data_definition=data_definition
+            )
             metrics.append(ClassificationPreset())
+        else:
+            current_dataset = self._to_feature_dataset(current_data)
+            reference_dataset = self._to_feature_dataset(self.reference_data)
 
         report = Report(metrics=metrics)
 
-        report.run(
-            reference_data=self.reference_data,
-            current_data=current_data,
-            column_mapping=self.column_mapping
+        snapshot = report.run(
+            current_data=current_dataset,
+            reference_data=reference_dataset
         )
 
-        return report
+        return snapshot
 
     def check_alerts(self, drift_threshold=0.15, accuracy_threshold=0.85):
         """
@@ -415,7 +459,11 @@ def main():
 
     # Step 3: Initialize the monitor with reference data
     print("Initializing model monitor...")
-    monitor = ModelMonitor(reference_data=reference_data)
+    feature_columns = [col for col in reference_data.columns if col != 'target']
+    monitor = ModelMonitor(
+        reference_data=reference_data,
+        feature_columns=feature_columns
+    )
 
     # Step 4: Simulate production data with drift
     print("Simulating production data with drift...")
@@ -423,8 +471,7 @@ def main():
 
     # Add predictions to production data
     production_data['prediction'] = model.predict(
-        production_data.drop(['target', 'prediction'] if 'prediction' in production_data.columns
-                            else ['target'], axis=1, errors='ignore')
+        production_data[feature_columns]
     )
 
     # Step 5: Run drift detection
@@ -473,7 +520,7 @@ WhyLabs provides a managed platform for ML monitoring. Here is how to integrate 
 
 ```python
 # Install whylogs
-# pip install whylogs whylogs[whylabs]
+# pip install whylogs
 
 import whylogs as why
 from whylogs.core.constraints import Constraints, ConstraintsBuilder
@@ -600,23 +647,27 @@ class WhyLabsMonitor:
         profile = result.profile()
 
         # Check constraints
-        validation_result = constraints.validate(profile.view())
+        passed = constraints.validate(profile.view())
+        validation_results = constraints.generate_constraints_report(
+            profile.view(),
+            with_summary=True
+        )
 
         # Build detailed report
         report = {
-            'passed': validation_result.passed,
+            'passed': passed,
             'failed_constraints': [],
             'summary': []
         }
 
-        for constraint_name, constraint_result in validation_result.report:
+        for constraint_result in validation_results:
             report['summary'].append({
-                'constraint': constraint_name,
-                'passed': constraint_result.passed,
-                'metric_value': constraint_result.metric_value
+                'constraint': constraint_result.name,
+                'passed': bool(constraint_result.passed),
+                'summary': constraint_result.summary
             })
-            if not constraint_result.passed:
-                report['failed_constraints'].append(constraint_name)
+            if not bool(constraint_result.passed):
+                report['failed_constraints'].append(constraint_result.name)
 
         return report
 
@@ -694,7 +745,9 @@ For complete control, build your own drift detector:
 
 ```python
 import numpy as np
+import pandas as pd
 from scipy import stats
+from datetime import datetime
 from typing import Dict, List, Tuple
 
 class CustomDriftDetector:
@@ -789,8 +842,10 @@ class CustomDriftDetector:
         ref_values = self.reference_stats[column]['values']
         curr_values = current_data[column].dropna().values
 
-        # Create bins based on reference distribution
+        # Create bins based on reference distribution and include out-of-range current values
         _, bin_edges = np.histogram(ref_values, bins=bins)
+        bin_edges[0] = -np.inf
+        bin_edges[-1] = np.inf
 
         # Calculate proportions in each bin
         ref_counts, _ = np.histogram(ref_values, bins=bin_edges)
@@ -811,7 +866,7 @@ class CustomDriftDetector:
         Calculate Jensen-Shannon divergence between distributions.
 
         JS divergence is a symmetric measure of distribution similarity.
-        Range is 0 (identical) to 1 (completely different).
+        With SciPy's natural-log entropy, the range is 0 (identical) to ln(2).
 
         Args:
             current_data: Production data
@@ -901,6 +956,7 @@ Integrate monitoring with your alerting system:
 import json
 import requests
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import Optional
 
@@ -1072,32 +1128,32 @@ class AlertManager:
         if not api_url or not api_key:
             return
 
-        # Map to OneUptime incident severity
-        severity_map = {
-            AlertSeverity.INFO: "Low",
-            AlertSeverity.WARNING: "Medium",
-            AlertSeverity.HIGH: "High",
-            AlertSeverity.CRITICAL: "Critical"
-        }
-
         payload = {
-            "title": f"[ML] {alert.alert_type} - {alert.model_id}",
-            "description": alert.message,
-            "severity": severity_map.get(alert.severity, "Medium"),
-            "customFields": {
-                "model_id": alert.model_id,
-                "metrics": json.dumps(alert.metrics)
+            "data": {
+                "title": f"[ML] {alert.alert_type} - {alert.model_id}",
+                "description": alert.message,
+                "projectId": self.config.get("oneuptime_project_id"),
+                "incidentSeverityId": self.config.get(
+                    f"oneuptime_{alert.severity.value}_severity_id"
+                ),
+                "currentIncidentStateId": self.config.get(
+                    "oneuptime_initial_incident_state_id"
+                ),
+                "customFields": {
+                    "model_id": alert.model_id,
+                    "metrics": json.dumps(alert.metrics)
+                }
             }
         }
 
         headers = {
-            "Authorization": f"Bearer {api_key}",
+            "ApiKey": api_key,
             "Content-Type": "application/json"
         }
 
         try:
             response = requests.post(
-                f"{api_url}/incidents",
+                f"{api_url}/api/incident",
                 json=payload,
                 headers=headers,
                 timeout=10
