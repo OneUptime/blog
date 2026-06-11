@@ -43,7 +43,10 @@ Kyverno tests are defined in YAML files. A test manifest specifies which policie
 ```yaml
 # kyverno-test.yaml
 
-name: require-labels-test          # Name of the test suite
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-labels-test        # Name of the test suite
 policies:                          # List of policy files to test
   - policies/require-labels.yaml
 resources:                         # List of resource files to test against
@@ -52,12 +55,14 @@ resources:                         # List of resource files to test against
 results:                           # Expected outcomes
   - policy: require-labels         # Policy name
     rule: check-for-labels         # Rule name within the policy
-    resource: good-pod             # Resource name
+    resources:                     # Resource names
+      - good-pod
     kind: Pod                      # Resource kind
-    result: pass                   # Expected result: pass, fail, skip
+    result: pass                   # Expected result: pass, fail, skip, warn
   - policy: require-labels
     rule: check-for-labels
-    resource: bad-pod
+    resources:
+      - bad-pod
     kind: Pod
     result: fail
 ```
@@ -122,32 +127,36 @@ The `results` section maps resources to their expected policy outcomes:
 
 ```yaml
 results:
-  # Validation: pass means the resource is allowed
+  # Pattern validation: pass means the resource matches the policy
   - policy: require-labels
     rule: check-for-labels
-    resource: good-pod
+    resources:
+      - good-pod
     kind: Pod
     result: pass
 
-  # Validation: fail means the resource is denied
+  # Pattern validation: fail means the resource does not match the policy
   - policy: require-labels
     rule: check-for-labels
-    resource: bad-pod
+    resources:
+      - bad-pod
     kind: Pod
     result: fail
 
   # Mutation: pass means the mutation was applied
   - policy: add-default-resources
     rule: add-resources
-    resource: deployment-no-limits
+    resources:
+      - deployment-no-limits
     kind: Deployment
-    patchedResource: resources/expected-deployment.yaml  # Compare against expected output
+    patchedResources: resources/expected-deployment.yaml # Compare against expected output
     result: pass
 
   # Generation: pass means the resource was generated
   - policy: generate-networkpolicy
     rule: create-default-netpol
-    resource: new-namespace
+    resources:
+      - new-namespace
     kind: Namespace
     generatedResource: resources/expected-netpol.yaml    # Compare against expected output
     result: pass
@@ -155,7 +164,8 @@ results:
   # Skip: the policy does not apply to this resource
   - policy: require-labels
     rule: check-for-labels
-    resource: configmap-test
+    resources:
+      - configmap-test
     kind: ConfigMap
     result: skip
 ```
@@ -177,7 +187,6 @@ metadata:
     policies.kyverno.io/description: >-
       All Pods must have app, env, and owner labels.
 spec:
-  validationFailureAction: Enforce   # Block non-compliant resources
   background: true
   rules:
     - name: check-for-labels
@@ -187,6 +196,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce     # Block non-compliant resources
         message: "Pods must have app, env, and owner labels."
         pattern:
           metadata:
@@ -200,7 +210,10 @@ spec:
 
 ```yaml
 # kyverno-test.yaml
-name: require-labels-tests
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-labels-tests
 policies:
   - policies/require-labels.yaml
 resources:
@@ -209,21 +222,24 @@ results:
   # Pod with all labels should pass
   - policy: require-labels
     rule: check-for-labels
-    resource: complete-pod
+    resources:
+      - complete-pod
     kind: Pod
     result: pass
 
   # Pod missing env label should fail
   - policy: require-labels
     rule: check-for-labels
-    resource: missing-env-pod
+    resources:
+      - missing-env-pod
     kind: Pod
     result: fail
 
   # Pod missing all labels should fail
   - policy: require-labels
     rule: check-for-labels
-    resource: no-labels-pod
+    resources:
+      - no-labels-pod
     kind: Pod
     result: fail
 ```
@@ -237,8 +253,8 @@ kyverno test policy-tests/
 # Run with verbose output
 kyverno test policy-tests/ --detailed-results
 
-# Run specific test file
-kyverno test policy-tests/kyverno-test.yaml
+# Run a directory using a specific test file name
+kyverno test policy-tests/ --file-name kyverno-test.yaml
 ```
 
 Expected output:
@@ -355,7 +371,10 @@ spec:
 
 ```yaml
 # kyverno-test.yaml
-name: mutation-tests
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: mutation-tests
 policies:
   - policies/add-default-resources.yaml
 resources:
@@ -363,9 +382,10 @@ resources:
 results:
   - policy: add-default-resources
     rule: add-resources
-    resource: deployment-no-limits
+    resources:
+      - deployment-no-limits
     kind: Deployment
-    patchedResource: resources/expected-deployment.yaml   # Compare output
+    patchedResources: resources/expected-deployment.yaml  # Compare output
     result: pass
 ```
 
@@ -389,12 +409,14 @@ spec:
           - resources:
               kinds:
                 - Namespace
-      exclude:
-        any:
-          - resources:
-              namespaces:
-                - kube-system
-                - kube-public
+      preconditions:
+        all:
+          - key: "{{request.object.metadata.name}}"
+            operator: NotEquals
+            value: kube-system
+          - key: "{{request.object.metadata.name}}"
+            operator: NotEquals
+            value: kube-public
       generate:
         apiVersion: networking.k8s.io/v1
         kind: NetworkPolicy
@@ -439,7 +461,10 @@ spec:
 
 ```yaml
 # kyverno-test.yaml
-name: generation-tests
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: generation-tests
 policies:
   - policies/generate-networkpolicy.yaml
 resources:
@@ -447,7 +472,8 @@ resources:
 results:
   - policy: generate-networkpolicy
     rule: create-default-netpol
-    resource: new-namespace
+    resources:
+      - new-namespace
     kind: Namespace
     generatedResource: resources/expected-netpol.yaml    # Compare generated output
     result: pass
@@ -469,7 +495,7 @@ flowchart TD
     G -->|No| I[Mark as Skip]
 
     E -->|Mutate| J[Apply Mutation Rules]
-    J --> K[Compare with patchedResource]
+    J --> K[Compare with patchedResources]
 
     E -->|Generate| L[Apply Generation Rules]
     L --> M[Compare with generatedResource]
@@ -496,7 +522,6 @@ kind: ClusterPolicy
 metadata:
   name: allowed-registries
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: validate-registries
       match:
@@ -505,6 +530,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Images must come from allowed registries: {{registries}}"
         deny:
           conditions:
@@ -518,7 +544,10 @@ spec:
 
 ```yaml
 # kyverno-test.yaml
-name: registry-tests
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: registry-tests
 policies:
   - policies/allowed-registries.yaml
 resources:
@@ -527,12 +556,15 @@ variables: values.yaml                    # Load variables from file
 results:
   - policy: allowed-registries
     rule: validate-registries
-    resource: allowed-registry-pod
+    resources:
+      - allowed-registry-pod
     kind: Pod
-    result: pass
+    # Deny-based validate rules report skip when the deny condition is not met.
+    result: skip
   - policy: allowed-registries
     rule: validate-registries
-    resource: blocked-registry-pod
+    resources:
+      - blocked-registry-pod
     kind: Pod
     result: fail
 ```
@@ -541,15 +573,16 @@ results:
 
 ```yaml
 # values.yaml
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Values
+metadata:
+  name: values
 policies:
   - name: allowed-registries
     rules:
       - name: validate-registries
         values:
-          registries:
-            - "gcr.io/*"
-            - "docker.io/library/*"
-            - "ghcr.io/myorg/*"
+          registries: '["gcr.io/*", "docker.io/library/*", "ghcr.io/myorg/*"]'
 ```
 
 ## Integrating Tests in CI Pipelines
@@ -579,23 +612,23 @@ jobs:
 
       - name: Install Kyverno CLI
         run: |
-          curl -LO https://github.com/kyverno/kyverno/releases/download/v1.11.0/kyverno-cli_v1.11.0_linux_x86_64.tar.gz
-          tar -xzf kyverno-cli_v1.11.0_linux_x86_64.tar.gz
+          curl -LO https://github.com/kyverno/kyverno/releases/download/v1.18.0/kyverno-cli_v1.18.0_linux_x86_64.tar.gz
+          tar -xzf kyverno-cli_v1.18.0_linux_x86_64.tar.gz
           sudo mv kyverno /usr/local/bin/
 
-      - name: Validate policies
+      - name: Check Kyverno CLI
         run: |
-          # Check policy syntax
-          kyverno validate policies/
+          kyverno version
 
       - name: Run policy tests
         run: |
           # Run all tests and fail on any failure
-          kyverno test tests/ --detailed-results
+          mkdir -p test-results
+          kyverno test tests/ --output-format junit > test-results/kyverno-test-results.xml
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kyverno-test-results
           path: test-results/
@@ -606,26 +639,11 @@ jobs:
 ```yaml
 # .gitlab-ci.yml
 stages:
-  - validate
   - test
   - deploy
 
 variables:
-  KYVERNO_VERSION: "v1.11.0"
-
-validate-policies:
-  stage: validate
-  image: alpine:latest
-  before_script:
-    - apk add --no-cache curl tar
-    - curl -LO https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/kyverno-cli_${KYVERNO_VERSION}_linux_x86_64.tar.gz
-    - tar -xzf kyverno-cli_${KYVERNO_VERSION}_linux_x86_64.tar.gz
-    - mv kyverno /usr/local/bin/
-  script:
-    - kyverno validate policies/
-  rules:
-    - changes:
-        - policies/**/*
+  KYVERNO_VERSION: "v1.18.0"
 
 test-policies:
   stage: test
@@ -660,13 +678,6 @@ deploy-policies:
 repos:
   - repo: local
     hooks:
-      - id: kyverno-validate
-        name: Validate Kyverno Policies
-        entry: kyverno validate policies/
-        language: system
-        files: ^policies/.*\.yaml$
-        pass_filenames: false
-
       - id: kyverno-test
         name: Test Kyverno Policies
         entry: kyverno test tests/
@@ -680,7 +691,10 @@ repos:
 ### Testing Multiple Rules in One Policy
 
 ```yaml
-name: multi-rule-tests
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: multi-rule-tests
 policies:
   - policies/pod-security.yaml
 resources:
@@ -689,22 +703,26 @@ results:
   # Test each rule separately
   - policy: pod-security
     rule: deny-privileged
-    resource: privileged-pod
+    resources:
+      - privileged-pod
     kind: Pod
     result: fail
   - policy: pod-security
     rule: deny-privileged
-    resource: unprivileged-pod
+    resources:
+      - unprivileged-pod
     kind: Pod
     result: pass
   - policy: pod-security
     rule: require-readonly-root
-    resource: writable-root-pod
+    resources:
+      - writable-root-pod
     kind: Pod
     result: fail
   - policy: pod-security
     rule: require-readonly-root
-    resource: readonly-root-pod
+    resources:
+      - readonly-root-pod
     kind: Pod
     result: pass
 ```
@@ -730,7 +748,10 @@ spec:
 
 ```yaml
 # kyverno-test.yaml
-name: context-tests
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: context-tests
 policies:
   - policies/check-image-signature.yaml
 resources:
@@ -740,18 +761,24 @@ variables: values.yaml
 results:
   - policy: check-image-signature
     rule: verify-signature
-    resource: signed-pod
+    resources:
+      - signed-pod
     kind: Pod
     result: pass
   - policy: check-image-signature
     rule: verify-signature
-    resource: unsigned-pod
+    resources:
+      - unsigned-pod
     kind: Pod
     result: fail
 ```
 
 ```yaml
 # values.yaml
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Values
+metadata:
+  name: values
 policies:
   - name: check-image-signature
     rules:
@@ -771,7 +798,7 @@ policies:
 kyverno apply policies/require-labels.yaml --resource resources/pod.yaml
 
 # Review the exact validation error
-kyverno apply policies/require-labels.yaml --resource resources/pod.yaml -o yaml
+kyverno apply policies/require-labels.yaml --resource resources/pod.yaml --detailed-results
 ```
 
 **Test expects fail but gets pass:**
@@ -784,7 +811,7 @@ kyverno apply policies/require-labels.yaml --resource resources/pod.yaml --detai
 **Mutation output does not match:**
 ```bash
 # Generate actual mutation output
-kyverno apply policies/add-resources.yaml --resource resources/deployment.yaml -o yaml > actual-output.yaml
+kyverno apply policies/add-resources.yaml --resource resources/deployment.yaml -o actual-output.yaml
 
 # Compare with expected
 diff actual-output.yaml resources/expected-deployment.yaml
