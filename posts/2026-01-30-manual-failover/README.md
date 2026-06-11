@@ -81,7 +81,7 @@ echo "Secondary is healthy"
 # Check replication lag
 echo "[3/5] Checking replication lag..."
 LAG_SECONDS=$(psql -h "$SECONDARY_HOST" -U replicator -d postgres -t -c \
-  "SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int;")
+  "SELECT COALESCE(EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int, 0);")
 
 if [ "$LAG_SECONDS" -gt 60 ]; then
   echo "WARNING: Replication lag is ${LAG_SECONDS}s"
@@ -184,6 +184,7 @@ set -e
 
 PRIMARY_HOST="pg-primary.example.com"
 SECONDARY_HOST="pg-secondary.example.com"
+APP_DB="myapp"
 APP_CONFIG_PATH="/etc/myapp/database.yml"
 
 echo "=== PostgreSQL Failover Procedure ==="
@@ -193,10 +194,8 @@ echo ""
 
 # Step 1: Stop accepting new connections on primary
 echo "[Step 1/7] Stopping new connections on primary..."
-psql -h "$PRIMARY_HOST" -U postgres -c \
-  "ALTER SYSTEM SET max_connections = 0;"
-psql -h "$PRIMARY_HOST" -U postgres -c \
-  "SELECT pg_reload_conf();"
+psql -h "$PRIMARY_HOST" -U postgres -d postgres -c \
+  "ALTER DATABASE \"$APP_DB\" WITH ALLOW_CONNECTIONS false;"
 
 # Step 2: Wait for active transactions to complete
 echo "[Step 2/7] Waiting for active transactions..."
@@ -206,7 +205,7 @@ ELAPSED=0
 
 while [ "$ACTIVE_CONNECTIONS" -gt 0 ] && [ "$ELAPSED" -lt "$TIMEOUT" ]; do
   ACTIVE_CONNECTIONS=$(psql -h "$PRIMARY_HOST" -U postgres -t -c \
-    "SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND pid <> pg_backend_pid();")
+    "SELECT count(*) FROM pg_stat_activity WHERE datname = '$APP_DB' AND state = 'active' AND pid <> pg_backend_pid();")
   echo "Active connections: $ACTIVE_CONNECTIONS"
   sleep 5
   ELAPSED=$((ELAPSED + 5))
@@ -217,7 +216,7 @@ if [ "$ACTIVE_CONNECTIONS" -gt 0 ]; then
   read -p "Force disconnect? (yes/no): " CONFIRM
   if [ "$CONFIRM" = "yes" ]; then
     psql -h "$PRIMARY_HOST" -U postgres -c \
-      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid();"
+      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$APP_DB' AND pid <> pg_backend_pid();"
   fi
 fi
 
@@ -312,6 +311,8 @@ spec:
               value: "cluster-west"
             - name: NAMESPACE
               value: "production"
+            - name: APP_LABEL
+              value: "app=myapp"
           command:
             - /bin/bash
             - -c
@@ -322,22 +323,22 @@ spec:
 
               # Scale down primary
               echo "Scaling down primary cluster..."
-              kubectl --context=$PRIMARY_CONTEXT -n $NAMESPACE \
-                scale deployment --all --replicas=0
+              kubectl --context="$PRIMARY_CONTEXT" -n "$NAMESPACE" \
+                scale deployment -l "$APP_LABEL" --replicas=0
 
               # Scale up secondary
               echo "Scaling up secondary cluster..."
-              kubectl --context=$SECONDARY_CONTEXT -n $NAMESPACE \
-                scale deployment --all --replicas=3
+              kubectl --context="$SECONDARY_CONTEXT" -n "$NAMESPACE" \
+                scale deployment -l "$APP_LABEL" --replicas=3
 
               # Wait for rollout
               echo "Waiting for secondary rollout..."
-              kubectl --context=$SECONDARY_CONTEXT -n $NAMESPACE \
-                rollout status deployment --timeout=300s
+              kubectl --context="$SECONDARY_CONTEXT" -n "$NAMESPACE" \
+                rollout status deployment -l "$APP_LABEL" --timeout=300s
 
               # Verify pods are running
               echo "Verifying pods..."
-              kubectl --context=$SECONDARY_CONTEXT -n $NAMESPACE \
+              kubectl --context="$SECONDARY_CONTEXT" -n "$NAMESPACE" \
                 get pods -o wide
 
               echo "Failover complete"
@@ -357,7 +358,7 @@ set -e
 CLOUDFLARE_TOKEN="${CLOUDFLARE_API_TOKEN}"
 ZONE_ID="your-zone-id"
 RECORD_NAME="app.example.com"
-NEW_IP="203.0.113.50"  # Secondary cluster IP
+NEW_IP="${NEW_IP:-203.0.113.50}"  # Secondary cluster IP
 
 echo "=== DNS Failover ==="
 
@@ -534,7 +535,9 @@ Sometimes failover makes things worse. Always have a rollback plan:
 set -e
 
 ORIGINAL_PRIMARY="pg-primary.example.com"
+ORIGINAL_PRIMARY_IP="203.0.113.10"
 CURRENT_PRIMARY="pg-secondary.example.com"  # Was secondary, now primary
+APP_DB="myapp"
 
 echo "=== Failover Rollback ==="
 echo "WARNING: This will revert traffic to the original primary"
@@ -573,19 +576,24 @@ read -p "Proceed with rollback? (yes/no): " CONFIRM
 
 # Execute rollback steps
 echo ""
-echo "[Step 1/4] Updating DNS to original primary..."
-./dns-failover.sh --target "$ORIGINAL_PRIMARY"
+echo "[Step 1/5] Allowing connections on original primary..."
+psql -h "$ORIGINAL_PRIMARY" -U postgres -d postgres -c \
+  "ALTER DATABASE \"$APP_DB\" WITH ALLOW_CONNECTIONS true;"
 
 echo ""
-echo "[Step 2/4] Updating application configuration..."
+echo "[Step 2/5] Updating DNS to original primary..."
+NEW_IP="$ORIGINAL_PRIMARY_IP" ./dns-failover.sh
+
+echo ""
+echo "[Step 3/5] Updating application configuration..."
 sed -i "s/host: $CURRENT_PRIMARY/host: $ORIGINAL_PRIMARY/g" /etc/myapp/database.yml
 
 echo ""
-echo "[Step 3/4] Restarting application..."
+echo "[Step 4/5] Restarting application..."
 systemctl restart myapp
 
 echo ""
-echo "[Step 4/4] Verifying rollback..."
+echo "[Step 5/5] Verifying rollback..."
 sleep 10
 ./verify-failover.sh
 
