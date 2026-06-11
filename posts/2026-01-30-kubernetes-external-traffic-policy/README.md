@@ -153,8 +153,8 @@ spec:
 | Load Distribution | Potentially uneven |
 | Client IP | Preserved |
 | Network Hops | Single hop to local pod |
-| Availability | Only nodes with pods receive traffic |
-| Node Health Checks | Nodes without pods fail health checks |
+| Availability | Only nodes with ready local endpoints receive traffic |
+| Node Health Checks | Nodes without ready pods fail health checks |
 
 ## Client IP Preservation in Detail
 
@@ -249,7 +249,7 @@ func getClientIP(r *http.Request) string {
 ### Dockerfile for the Test Application
 
 ```dockerfile
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY main.go .
 RUN go build -o server main.go
@@ -265,7 +265,7 @@ CMD ["./server"]
 
 ### Understanding Health Check Behavior
 
-With Local mode, the load balancer uses health checks to determine which nodes have pods running. Nodes without pods will fail health checks and stop receiving traffic.
+With Local mode, the load balancer uses health checks to determine which nodes have ready local endpoints. Nodes without ready pods will fail health checks and stop receiving traffic.
 
 ```mermaid
 flowchart TD
@@ -274,9 +274,9 @@ flowchart TD
         LB --> HC2{Health Check<br/>Node 2}
         LB --> HC3{Health Check<br/>Node 3}
 
-        HC1 -->|Pod exists| H1[Healthy - Receives Traffic]
-        HC2 -->|No pod| U2[Unhealthy - No Traffic]
-        HC3 -->|Pod exists| H3[Healthy - Receives Traffic]
+        HC1 -->|Ready pod exists| H1[Healthy - Receives Traffic]
+        HC2 -->|No ready pod| U2[Unhealthy - No Traffic]
+        HC3 -->|Ready pod exists| H3[Healthy - Receives Traffic]
     end
 ```
 
@@ -308,7 +308,7 @@ spec:
 
 ### Health Check Node Port
 
-When using Local mode, Kubernetes automatically allocates a health check node port. You can verify this:
+When using a LoadBalancer Service with Local mode, Kubernetes automatically allocates a health check node port. You can verify this:
 
 ```bash
 # Get the service details including health check node port
@@ -515,8 +515,8 @@ metadata:
     app: web-app
   annotations:
     # Cloud provider specific annotations (AWS example)
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
@@ -672,8 +672,8 @@ kind: Service
 metadata:
   name: my-app
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 spec:
   type: LoadBalancer
@@ -692,9 +692,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: my-app
-  annotations:
-    cloud.google.com/neg: '{"ingress": true}'
-    cloud.google.com/backend-config: '{"default": "my-backend-config"}'
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
