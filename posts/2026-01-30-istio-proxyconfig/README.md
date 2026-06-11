@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Kubernetes, ServiceMesh, Envoy
 
-Description: A practical guide to configuring Istio sidecar proxies using ProxyConfig for fine-grained control over concurrency, tracing, logging, and runtime behavior.
+Description: A practical guide to configuring Istio sidecar proxies using ProxyConfig and related Istio APIs for fine-grained control over concurrency, tracing, logging, and runtime behavior.
 
 ---
 
-Istio's sidecar proxy intercepts all traffic to and from your workloads. The default configuration works for most cases, but production environments often need fine-tuned proxy settings. ProxyConfig gives you that control without modifying your application code.
+Istio's sidecar proxy intercepts all traffic to and from your workloads. The default configuration works for most cases, but production environments often need fine-tuned proxy settings. ProxyConfig and related Istio APIs give you that control without modifying your application code.
 
 ## Understanding ProxyConfig
 
-ProxyConfig is an Istio resource that configures the Envoy sidecar proxy behavior. It controls how the proxy handles connections, reports telemetry, and manages resources.
+ProxyConfig is an Istio resource that configures selected Envoy sidecar proxy behavior. It controls settings such as proxy concurrency, proxy image options, and proxy environment variables. Telemetry and MeshConfig handle tracing and access logging settings.
 
 ```mermaid
 flowchart TB
@@ -23,10 +23,9 @@ flowchart TB
 
     subgraph ProxyConfig["ProxyConfig Settings"]
         Concurrency[Concurrency Settings]
-        Tracing[Tracing Configuration]
-        Logging[Access Logging]
-        Resources[Resource Limits]
-        Metadata[Proxy Metadata]
+        Image[Proxy Image]
+        EnvVars[Environment Variables]
+        Metadata[ISTIO_META Metadata]
     end
 
     ProxyConfig --> Proxy
@@ -38,15 +37,16 @@ flowchart TB
         Logs[Log Aggregator]
     end
 
+    TelemetryConfig[Telemetry/MeshConfig] --> Proxy
     Proxy --> Jaeger
     Proxy --> Logs
 ```
 
 ### ProxyConfig Scope Levels
 
-ProxyConfig can be applied at different scopes:
+ProxyConfig can be applied at different scopes. ProxyConfig changes are not applied dynamically; restart matching workloads for the new proxy bootstrap settings to take effect.
 
-1. **Mesh-wide**: Default for all sidecars via MeshConfig
+1. **Mesh-wide**: Default for all sidecars via a ProxyConfig in the root namespace or MeshConfig defaultConfig
 2. **Namespace**: Override for all workloads in a namespace
 3. **Workload**: Specific configuration for individual pods
 
@@ -109,7 +109,8 @@ spec:
   selector:
     matchLabels:
       app: api-gateway
-  # Concurrency 0 means auto-detect based on CPU limits
+  # If concurrency is unset, Istio auto-detects based on CPU requests/limits.
+  # If set to 0, Envoy uses all cores on the node.
   # Set explicitly for predictable behavior
   concurrency: 4
 ```
@@ -135,8 +136,13 @@ metadata:
   name: my-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
     metadata:
+      labels:
+        app: my-service
       annotations:
         # Override default proxy resource requests
         sidecar.istio.io/proxyCPU: "100m"
@@ -158,15 +164,15 @@ spec:
 
 ## Tracing Configuration
 
-ProxyConfig lets you customize distributed tracing without changing application code.
+Use the Telemetry API and MeshConfig to customize distributed tracing without changing application code.
 
 ### Configure Tracing Provider
 
 ```yaml
-# proxyconfig-tracing.yaml
+# telemetry-tracing.yaml
 # Enable and configure distributed tracing
-apiVersion: networking.istio.io/v1beta1
-kind: ProxyConfig
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
   name: tracing-config
   namespace: production
@@ -176,28 +182,41 @@ spec:
       app: order-service
   # Tracing configuration
   tracing:
-    # Sampling rate: 1.0 = 100%, 0.01 = 1%
-    sampling: 10.0
-    # Custom tags to add to all spans
-    customTags:
-      environment:
-        literal:
-          value: "production"
-      version:
+    # Sampling rate is a percentage: 100.0 = 100%, 1.0 = 1%
+    - randomSamplingPercentage: 10.0
+      # Custom tags to add to all spans
+      customTags:
         environment:
-          name: APP_VERSION
-          defaultValue: "unknown"
-      pod_name:
-        environment:
-          name: POD_NAME
+          literal:
+            value: "production"
+        version:
+          environment:
+            name: APP_VERSION
+            defaultValue: "unknown"
+        pod_name:
+          environment:
+            name: POD_NAME
 ```
 
 ### Tracing with Zipkin Backend
 
 ```yaml
-# proxyconfig-zipkin.yaml
-apiVersion: networking.istio.io/v1beta1
-kind: ProxyConfig
+# zipkin-provider.yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: istio-control-plane
+  namespace: istio-system
+spec:
+  meshConfig:
+    extensionProviders:
+      - name: zipkin
+        zipkin:
+          service: zipkin.observability.svc.cluster.local
+          port: 9411
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
   name: zipkin-tracing
   namespace: production
@@ -206,14 +225,13 @@ spec:
     matchLabels:
       app: payment-service
   tracing:
-    sampling: 100.0
-    # Use Zipkin collector
-    zipkin:
-      address: zipkin.observability.svc.cluster.local:9411
-    customTags:
-      service.name:
-        literal:
-          value: "payment-service"
+    - providers:
+        - name: zipkin
+      randomSamplingPercentage: 100.0
+      customTags:
+        service.name:
+          literal:
+            value: "payment-service"
 ```
 
 ### Configure Trace Context Propagation
@@ -225,16 +243,14 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
-    defaultConfig:
-      tracing:
-        sampling: 10.0
-        # Propagate multiple trace context formats
-        # Useful for multi-vendor environments
     extensionProviders:
-      - name: jaeger
-        opentelemetry:
-          service: jaeger-collector.observability.svc.cluster.local
-          port: 4317
+      - name: zipkin
+        zipkin:
+          service: zipkin.observability.svc.cluster.local
+          port: 9411
+          # Propagate both B3 and W3C trace context formats
+          # Useful for multi-vendor environments
+          traceContextOption: USE_B3_WITH_W3C_PROPAGATION
 ```
 
 ## Access Logging Configuration
@@ -244,9 +260,25 @@ Configure access logs to capture request and response details for debugging and 
 ### Enable Access Logging
 
 ```yaml
-# proxyconfig-access-logging.yaml
-apiVersion: networking.istio.io/v1beta1
-kind: ProxyConfig
+# access-logging-provider.yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: istio-control-plane
+  namespace: istio-system
+spec:
+  meshConfig:
+    extensionProviders:
+      - name: envoy
+        envoyFileAccessLog:
+          # /dev/stdout sends logs to container stdout
+          path: /dev/stdout
+          # labels produces structured JSON access logs
+          logFormat:
+            labels: {}
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
   name: access-logging-config
   namespace: production
@@ -254,11 +286,9 @@ spec:
   selector:
     matchLabels:
       app: frontend
-  # Access log file path
-  # /dev/stdout sends logs to container stdout
-  accessLogFile: "/dev/stdout"
-  # Access log encoding: TEXT or JSON
-  accessLogEncoding: JSON
+  accessLogging:
+    - providers:
+        - name: envoy
 ```
 
 ### Custom Access Log Format
@@ -266,7 +296,7 @@ spec:
 ```yaml
 # telemetry-access-log.yaml
 # Use Telemetry API for advanced access log configuration
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-access-log
@@ -331,7 +361,7 @@ spec:
 
 ## Runtime Assertions and Proxy Metadata
 
-Proxy metadata allows you to pass runtime configuration and feature flags to the Envoy proxy.
+Proxy environment variables allow you to pass runtime configuration and selected `ISTIO_META_*` metadata to the Envoy proxy bootstrap.
 
 ### Configure Proxy Metadata
 
@@ -346,16 +376,12 @@ spec:
   selector:
     matchLabels:
       app: backend-service
-  # Proxy metadata passed to Envoy bootstrap
-  proxyMetadata:
+  # ISTIO_META_* variables are included in the generated bootstrap metadata
+  environmentVariables:
     # Enable DNS capture for outbound traffic
     ISTIO_META_DNS_CAPTURE: "true"
     # Auto allocate service entry addresses
     ISTIO_META_DNS_AUTO_ALLOCATE: "true"
-    # Custom metadata for routing decisions
-    ISTIO_META_WORKLOAD_NAME: "backend-service"
-    # Feature flags
-    BOOTSTRAP_XDS_AGENT: "true"
 ```
 
 ### Environment Variables for Runtime Configuration
@@ -372,12 +398,9 @@ spec:
     matchLabels:
       app: my-service
   environmentVariables:
-    # Proxy log level: trace, debug, info, warning, error, critical
-    ISTIO_META_PROXY_LOG_LEVEL: "warning"
-    # Connection draining duration
-    ISTIO_META_DRAIN_DURATION: "45s"
-    # Enable Envoy admin endpoint (use with caution in production)
-    ISTIO_META_ENABLE_STATS_FILTER: "true"
+    # Add custom bootstrap metadata for integrations that read node metadata
+    ISTIO_META_ENVIRONMENT: "production"
+    ISTIO_META_SERVICE_TIER: "backend"
 ```
 
 ### Proxy Metadata Flow
@@ -389,13 +412,13 @@ sequenceDiagram
     participant Proxy as Envoy Proxy
     participant App as Application
 
-    PC->>Istiod: Define proxy metadata
-    Istiod->>Proxy: Push configuration via xDS
-    Note over Proxy: Bootstrap with metadata
-    Proxy->>Proxy: Apply runtime settings
+    PC->>Istiod: Define proxy environment variables
+    Istiod->>Proxy: Generate bootstrap for new proxy
+    Note over Proxy: Starts with bootstrap metadata
+    Proxy->>Proxy: Expose metadata to Istio control plane
 
     App->>Proxy: Outbound request
-    Proxy->>Proxy: Check metadata for routing
+    Proxy->>Proxy: Apply generated xDS configuration
     Proxy->>External: Forward with applied config
 ```
 
@@ -417,21 +440,23 @@ spec:
       app: istio-ingressgateway
   # High concurrency for gateway workloads
   concurrency: 8
-  # JSON logging for structured log aggregation
-  accessLogFile: "/dev/stdout"
-  accessLogEncoding: JSON
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: api-gateway-telemetry
+  namespace: istio-ingress
+spec:
+  selector:
+    matchLabels:
+      app: istio-ingressgateway
+  # JSON logging for structured log aggregation, using the MeshConfig provider
+  accessLogging:
+    - providers:
+        - name: envoy
   # Tracing at lower rate for high volume
   tracing:
-    sampling: 1.0
-  # Runtime optimizations
-  proxyMetadata:
-    # Increase connection pool size
-    ISTIO_META_UPSTREAM_CLUSTER_MAX_CONNECTIONS: "10000"
-    # Enable HTTP/2 for upstream connections
-    ISTIO_META_HTTP10: "false"
-  environmentVariables:
-    # Reduce drain time for faster rollouts
-    ISTIO_META_DRAIN_DURATION: "30s"
+    - randomSamplingPercentage: 1.0
 ```
 
 ### Debug Configuration for Troubleshooting
@@ -448,22 +473,29 @@ spec:
   selector:
     matchLabels:
       app: problematic-service
-  # Detailed text logging
-  accessLogFile: "/dev/stdout"
-  accessLogEncoding: TEXT
+  # Use a single worker to simplify debugging concurrency-sensitive issues
+  concurrency: 1
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: debug-telemetry
+  namespace: staging
+spec:
+  selector:
+    matchLabels:
+      app: problematic-service
+  # Enable access logging through the default logging provider
+  accessLogging:
+    - providers:
+        - name: envoy
   # Capture all traces
   tracing:
-    sampling: 100.0
-    customTags:
-      debug:
-        literal:
-          value: "true"
-  environmentVariables:
-    # Enable debug logging
-    ISTIO_META_PROXY_LOG_LEVEL: "debug"
-  proxyMetadata:
-    # Enable all stats
-    ISTIO_META_ENABLE_STATS_FILTER: "true"
+    - randomSamplingPercentage: 100.0
+      customTags:
+        debug:
+          literal:
+            value: "true"
 ```
 
 ### Secure Service with Minimal Logging
@@ -483,18 +515,27 @@ spec:
       security: pci
   # Minimal concurrency for security isolation
   concurrency: 2
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: secure-service-telemetry
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: payment-processor
+      security: pci
   # Disable access logs to avoid PII exposure
-  accessLogFile: ""
+  accessLogging:
+    - disabled: true
   # Low sampling to reduce trace data exposure
   tracing:
-    sampling: 1.0
-    customTags:
-      compliance:
-        literal:
-          value: "pci-dss"
-  proxyMetadata:
-    # Disable stats to reduce attack surface
-    ISTIO_META_ENABLE_STATS_FILTER: "false"
+    - randomSamplingPercentage: 1.0
+      customTags:
+        compliance:
+          literal:
+            value: "pci-dss"
 ```
 
 ### Multi-Cluster Configuration
@@ -511,23 +552,29 @@ spec:
   selector:
     matchLabels:
       app: cross-cluster-service
-  proxyMetadata:
-    # Cluster identification
-    ISTIO_META_CLUSTER_ID: "cluster-east"
-    # Network for cross-cluster routing
-    ISTIO_META_NETWORK: "network-east"
+  environmentVariables:
     # DNS capture for ServiceEntry resolution
     ISTIO_META_DNS_CAPTURE: "true"
     ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: multicluster-telemetry
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: cross-cluster-service
   tracing:
-    sampling: 10.0
-    customTags:
-      cluster:
-        literal:
-          value: "cluster-east"
-      region:
-        literal:
-          value: "us-east-1"
+    - randomSamplingPercentage: 10.0
+      customTags:
+        cluster:
+          literal:
+            value: "cluster-east"
+        region:
+          literal:
+            value: "us-east-1"
 ```
 
 ## Verifying ProxyConfig
@@ -570,8 +617,8 @@ kubectl logs -n istio-system deployment/istiod | grep -i error
 # Verify proxy receives configuration
 istioctl proxy-status
 
-# Get proxy configuration diff
-istioctl proxy-config diff <pod-name> -n production
+# Inspect the rendered Envoy configuration as JSON
+istioctl proxy-config all <pod-name> -n production -o json
 
 # Analyze configuration for issues
 istioctl analyze -n production
@@ -588,7 +635,7 @@ istioctl analyze -n production
 
 ### Performance Tuning
 
-1. **Set concurrency explicitly**: Do not rely on auto-detection in production
+1. **Leave concurrency unset unless you have measured a need**: Istio can auto-size based on CPU requests and limits
 2. **Match resources to workload**: API gateways need more resources than internal services
 3. **Tune tracing sampling**: High sampling rates impact performance at scale
 4. **Monitor proxy metrics**: Track envoy_server_memory_allocated and envoy_server_concurrency
@@ -602,4 +649,4 @@ istioctl analyze -n production
 
 ---
 
-ProxyConfig gives you fine-grained control over Istio sidecar behavior without touching application code. Start with sensible defaults, measure your workload characteristics, and tune configurations based on actual performance data. The key is matching proxy resources and features to your specific workload requirements.
+ProxyConfig gives you fine-grained control over selected Istio sidecar bootstrap settings without touching application code. Use Telemetry and MeshConfig for tracing and access logging, start with sensible defaults, measure your workload characteristics, and tune configurations based on actual performance data. The key is matching proxy resources and features to your specific workload requirements.
