@@ -12,7 +12,7 @@ Debugging stored procedures in MySQL can be challenging since MySQL does not pro
 
 ## Understanding the Debugging Challenge
 
-Unlike application code where you can set breakpoints and step through execution, MySQL stored procedures run atomically on the database server. To debug them effectively, you need to implement logging mechanisms that capture the execution flow, variable states, and any errors that occur.
+Unlike application code where you can set breakpoints and step through execution, MySQL stored procedures run on the database server and do not provide interactive stepping through the server itself. To debug them effectively, you need to implement logging mechanisms that capture the execution flow, variable states, and any errors that occur.
 
 ```mermaid
 flowchart TD
@@ -104,6 +104,7 @@ CREATE PROCEDURE sp_debug_log(
 BEGIN
     DECLARE v_debug_enabled VARCHAR(10);
     DECLARE v_min_log_level VARCHAR(10);
+    DECLARE v_log_variables VARCHAR(10);
     DECLARE v_execution_time_ms INT;
     DECLARE v_level_priority INT DEFAULT 0;
     DECLARE v_min_level_priority INT DEFAULT 0;
@@ -119,6 +120,11 @@ BEGIN
         SELECT config_value INTO v_min_log_level
         FROM debug_config
         WHERE config_key = 'log_level';
+
+        -- Check whether variable snapshots should be stored
+        SELECT config_value INTO v_log_variables
+        FROM debug_config
+        WHERE config_key = 'log_variables';
 
         -- Assign priority values to log levels
         SET v_level_priority = CASE p_log_level
@@ -144,7 +150,7 @@ BEGIN
                 MICROSECOND,
                 p_start_time,
                 CURRENT_TIMESTAMP(6)
-            ) / 1000;
+            ) DIV 1000;
 
             -- Insert the log entry
             INSERT INTO debug_log (
@@ -159,7 +165,7 @@ BEGIN
                 p_procedure_name,
                 p_log_level,
                 p_message,
-                p_variable_dump,
+                IF(v_log_variables = 'true', p_variable_dump, NULL),
                 v_execution_time_ms
             );
         END IF;
@@ -208,7 +214,7 @@ DELIMITER ;
 
 ## Implementing Conditional Logging
 
-Conditional logging allows you to control when and what gets logged without modifying your stored procedures. This is essential for production environments where you want minimal overhead during normal operation.
+Conditional logging allows you to control when and what gets logged without modifying your stored procedures after the helper calls are in place. This is essential for production environments where you want minimal overhead during normal operation.
 
 ```mermaid
 flowchart LR
@@ -225,6 +231,7 @@ flowchart LR
     subgraph Output
         E[Write to debug_log]
         F[Skip Logging]
+        G[Write without variable_dump]
     end
 
     A --> B
@@ -233,7 +240,7 @@ flowchart LR
     C -->|Yes| D
     C -->|No| F
     D -->|Yes| E
-    D -->|No| E
+    D -->|No| G
 ```
 
 ### Dynamic Debug Configuration
@@ -320,6 +327,10 @@ proc_label: BEGIN
             v_error_code = MYSQL_ERRNO,
             v_error_message = MESSAGE_TEXT;
 
+        -- Roll back any pending business changes before writing failure logs.
+        -- InnoDB debug rows written inside the transaction would be rolled back too.
+        ROLLBACK;
+
         -- Log the error
         CALL sp_debug_log(
             v_session_id,
@@ -343,9 +354,6 @@ proc_label: BEGIN
             v_error_message,
             0
         );
-
-        -- Rollback any pending changes
-        ROLLBACK;
 
         -- Set output parameter
         SET p_result = 'ERROR';
@@ -391,6 +399,8 @@ proc_label: BEGIN
 
     -- Check if customer was found
     IF v_customer_balance IS NULL THEN
+        ROLLBACK;
+
         CALL sp_debug_log(
             v_session_id,
             'sp_process_order',
@@ -402,7 +412,6 @@ proc_label: BEGIN
 
         CALL sp_debug_end_execution(v_session_id, 'FAILED', 1001, 'Customer not found', 0);
         SET p_result = 'CUSTOMER_NOT_FOUND';
-        ROLLBACK;
         LEAVE proc_label;
     END IF;
 
@@ -421,6 +430,8 @@ proc_label: BEGIN
 
     -- Step 2: Check sufficient balance
     IF v_customer_balance < p_amount THEN
+        ROLLBACK;
+
         CALL sp_debug_log(
             v_session_id,
             'sp_process_order',
@@ -435,7 +446,6 @@ proc_label: BEGIN
 
         CALL sp_debug_end_execution(v_session_id, 'FAILED', 1002, 'Insufficient balance', 0);
         SET p_result = 'INSUFFICIENT_BALANCE';
-        ROLLBACK;
         LEAVE proc_label;
     END IF;
 
@@ -533,7 +543,7 @@ SELECT
     dem.procedure_name,
     dem.start_time,
     dem.end_time,
-    TIMESTAMPDIFF(MILLISECOND, dem.start_time, dem.end_time) AS duration_ms,
+    TIMESTAMPDIFF(MICROSECOND, dem.start_time, dem.end_time) / 1000 AS duration_ms,
     dem.error_code,
     dem.error_message
 FROM debug_execution_metrics dem
@@ -547,8 +557,8 @@ SELECT
     COUNT(*) AS total_executions,
     SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) AS successful,
     SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed,
-    AVG(TIMESTAMPDIFF(MILLISECOND, start_time, end_time)) AS avg_duration_ms,
-    MAX(TIMESTAMPDIFF(MILLISECOND, start_time, end_time)) AS max_duration_ms
+    AVG(TIMESTAMPDIFF(MICROSECOND, start_time, end_time) / 1000) AS avg_duration_ms,
+    MAX(TIMESTAMPDIFF(MICROSECOND, start_time, end_time) / 1000) AS max_duration_ms
 FROM debug_execution_metrics
 WHERE start_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
 GROUP BY procedure_name
@@ -587,7 +597,7 @@ SELECT
     dem.status AS execution_status,
     dem.error_code,
     dem.error_message,
-    TIMESTAMPDIFF(MILLISECOND, dem.start_time, dem.end_time) AS total_duration_ms
+    TIMESTAMPDIFF(MICROSECOND, dem.start_time, dem.end_time) / 1000 AS total_duration_ms
 FROM debug_log dl
 LEFT JOIN debug_execution_metrics dem
     ON dl.session_id = dem.session_id
@@ -647,6 +657,8 @@ DO
     CALL sp_cleanup_debug_logs();
 ```
 
+Scheduled events run only when the MySQL Event Scheduler is enabled on the server.
+
 ## Best Practices Summary
 
 1. **Use session identifiers**: Generate a unique UUID for each procedure call to correlate all related log entries.
@@ -661,7 +673,7 @@ DO
 
 6. **Clean up regularly**: Implement automated cleanup to prevent debug tables from impacting performance.
 
-7. **Use transactions wisely**: Ensure debug logging does not interfere with business transaction boundaries.
+7. **Use transactions wisely**: InnoDB debug log rows are part of the current transaction, so log failure details after `ROLLBACK` if those rows must survive a rolled-back business transaction.
 
 ## Conclusion
 
