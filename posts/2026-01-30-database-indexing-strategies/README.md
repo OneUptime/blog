@@ -65,7 +65,7 @@ CREATE INDEX idx_orders_data ON orders USING GIN(metadata);
 
 ## Composite Indexes for Multi-Column Queries
 
-When queries filter on multiple columns, composite indexes outperform multiple single-column indexes. Column order matters because the database can only use the index efficiently from left to right.
+When queries filter on multiple columns, composite indexes can outperform multiple single-column indexes for the right query patterns. Column order matters because B-tree indexes are most efficient when queries constrain the leading columns.
 
 ```sql
 -- Create a composite index for queries that filter by status and created_at
@@ -106,17 +106,17 @@ CREATE INDEX idx_users_active_email
 ON users(email)
 WHERE status = 'active';
 
--- Index only recent orders
+-- Index orders after a fixed cutoff date
 CREATE INDEX idx_orders_recent
 ON orders(customer_id, total)
-WHERE created_at > CURRENT_DATE - INTERVAL '90 days';
+WHERE created_at >= DATE '2026-01-01';
 ```
 
-Partial indexes reduce storage requirements and speed up both queries and write operations.
+Partial indexes reduce storage requirements and can speed up both queries and write operations. For rolling time windows, use a fixed cutoff and recreate the index periodically, or use partitioning.
 
 ## Covering Indexes to Avoid Table Lookups
 
-A covering index includes all columns needed by a query, allowing the database to return results directly from the index without accessing the table.
+A covering index includes all columns needed by a query, allowing PostgreSQL to use an index-only scan when the visibility map shows the matching table pages are all-visible.
 
 ```sql
 -- Include columns needed in SELECT to avoid table lookup
@@ -124,7 +124,7 @@ CREATE INDEX idx_orders_covering
 ON orders(customer_id)
 INCLUDE (order_total, created_at);
 
--- This query can be satisfied entirely from the index
+-- This query can use an index-only scan when visibility checks allow it
 SELECT customer_id, order_total, created_at
 FROM orders
 WHERE customer_id = 12345;
@@ -143,13 +143,13 @@ WHERE customer_id = 12345 AND status = 'shipped';
 -- Check index usage statistics
 SELECT
     schemaname,
-    tablename,
-    indexname,
+    relname AS tablename,
+    indexrelname AS indexname,
     idx_scan,
     idx_tup_read,
     idx_tup_fetch
 FROM pg_stat_user_indexes
-WHERE tablename = 'orders'
+WHERE relname = 'orders'
 ORDER BY idx_scan DESC;
 ```
 
@@ -159,7 +159,7 @@ Look for these indicators in EXPLAIN output.
 |-----------|-----------|--------------|
 | Index Scan | Index is being used | - |
 | Seq Scan | Small table, acceptable | Large table, missing index |
-| Bitmap Index Scan | Multiple indexes combined | Possible over-indexing |
+| Bitmap Index Scan | Multiple indexes combined or many matching rows | Check row counts and heap fetches |
 | Index Only Scan | Covering index working | - |
 
 ## Index Maintenance Strategies
@@ -173,13 +173,13 @@ REINDEX INDEX idx_orders_status_created;
 -- Rebuild all indexes on a table
 REINDEX TABLE orders;
 
--- Concurrent reindex (doesn't block reads/writes)
+-- Concurrent reindex (rebuilds with reduced write blocking)
 REINDEX INDEX CONCURRENTLY idx_orders_status_created;
 
 -- Check index bloat
 SELECT
-    tablename,
-    indexname,
+    relname AS tablename,
+    indexrelname AS indexname,
     pg_size_pretty(pg_relation_size(indexrelid)) as index_size
 FROM pg_stat_user_indexes
 WHERE schemaname = 'public'
@@ -194,7 +194,7 @@ Several patterns lead to poor index performance or wasted resources.
 
 **Indexing low-cardinality columns:** A boolean column with only two values rarely benefits from an index. The database may choose a full scan anyway.
 
-**Wrong column order in composite indexes:** Place the most selective column first. A composite index on (country, user_id) is less useful than (user_id, country) if user_id is more selective.
+**Wrong column order in composite indexes:** Put columns used by your most important query patterns first, especially columns queried on their own. A composite index on (country, user_id) is less useful for `WHERE user_id = ...` than (user_id, country).
 
 **Ignoring index maintenance:** Bloated indexes perform poorly. Schedule regular REINDEX operations during low-traffic windows.
 
