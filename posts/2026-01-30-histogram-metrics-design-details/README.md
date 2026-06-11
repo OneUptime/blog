@@ -8,7 +8,7 @@ Description: Learn to create histogram metrics design for measuring distribution
 
 ---
 
-Averages lie. A service with 50ms average latency might have 1% of requests taking 2 seconds. Users hitting those slow requests have a terrible experience, but the average hides the problem. Histograms reveal what averages conceal by capturing the full distribution of values.
+Averages lie. A service with 50ms average latency might have 1% of requests taking 2 seconds. Users hitting those slow requests have a terrible experience, but the average hides the problem. Histograms reveal what averages conceal by capturing a bucketed distribution of values.
 
 When you need to answer questions like "What is the 99th percentile latency?" or "How many requests took between 100ms and 500ms?", histograms are the right tool. They let you compute percentiles, understand distribution shapes, and set meaningful SLOs based on user experience rather than misleading averages.
 
@@ -36,7 +36,7 @@ Histograms solve this by recording how many observations fall into predefined ra
 | Counter | Total count of events | No value information |
 | Gauge | Current value | No history or distribution |
 | Average | Central tendency | Hides outliers and skew |
-| Histogram | Full distribution | Higher cardinality and memory |
+| Histogram | Bucketed distribution | Higher cardinality and memory |
 
 ---
 
@@ -46,19 +46,15 @@ A histogram consists of buckets, each representing a range of values. When you r
 
 ```mermaid
 flowchart TB
-    Observation["Record: 150ms"] --> Check1{">= 50ms?"}
-    Check1 -->|Yes| Inc1["bucket_le_50: +1"]
-    Check1 --> Check2{">= 100ms?"}
-    Check2 -->|Yes| Inc2["bucket_le_100: +1"]
-    Check2 --> Check3{">= 250ms?"}
+    Observation["Record: 150ms"] --> Check1{"150ms <= 50ms?"}
+    Check1 -->|No| Check2{"150ms <= 100ms?"}
+    Check2 -->|No| Check3{"150ms <= 250ms?"}
     Check3 -->|Yes| Inc3["bucket_le_250: +1"]
-    Check3 --> Check4{">= 500ms?"}
+    Check3 -->|Continue| Check4{"150ms <= 500ms?"}
     Check4 -->|Yes| Inc4["bucket_le_500: +1"]
-    Check4 --> Check5{">= +Inf?"}
+    Check4 -->|Continue| Check5{"150ms <= +Inf?"}
     Check5 -->|Yes| Inc5["bucket_le_inf: +1"]
 
-    Inc1 --> Total["All buckets >= 150ms incremented"]
-    Inc2 --> Total
     Inc3 --> Total
     Inc4 --> Total
     Inc5 --> Total
@@ -136,20 +132,20 @@ const sloBuckets = [
 ];
 ```
 
-This design gives you precise percentile calculations at the boundaries that matter for alerting and reporting.
+This design gives you more accurate percentile estimates near the boundaries that matter for alerting and reporting.
 
 ---
 
 ## Memory and Cardinality Tradeoffs
 
-Each bucket is a separate time series. A histogram with 10 buckets and 3 labels (service, endpoint, status) creates 10 * (service_values * endpoint_values * status_values) time series. This multiplies quickly.
+Each bucket in a classic histogram is a separate time series, and each label combination also gets `_sum` and `_count` series. A histogram with 10 explicit buckets and 3 labels (service, endpoint, status) creates `(10 + 1 + 2) * (service_values * endpoint_values * status_values)` time series, because Prometheus histograms include a `+Inf` bucket. This multiplies quickly.
 
 ```mermaid
 flowchart TB
-    Histogram["Histogram: http_request_duration"] --> Buckets["10 buckets"]
+    Histogram["Histogram: http_request_duration"] --> Buckets["10 explicit buckets"]
     Buckets --> Labels["Labels: service, endpoint, status"]
-    Labels --> Series["10 * 5 * 20 * 3 = 3000 time series"]
-    Series --> Memory["~3000 * 16 bytes = 48KB per scrape"]
+    Labels --> Series["(10 + 1 + 2) * 5 * 20 * 3 = 3900 time series"]
+    Series --> Memory["3900 active series before TSDB overhead"]
 ```
 
 Strategies to manage cardinality:
@@ -158,7 +154,7 @@ Strategies to manage cardinality:
 |----------|----------------|----------|
 | Fewer buckets | Use 5-8 instead of 15-20 | Less precision |
 | Lower cardinality labels | Aggregate endpoints by pattern | Less granularity |
-| Summary for high-cardinality | Use summary metric type | No aggregation across instances |
+| Summary for per-instance quantiles | Use summary metric type when quantiles do not need aggregation | No aggregation across instances |
 | Separate histograms | Critical endpoints get detailed buckets | More configuration |
 
 ---
@@ -243,7 +239,7 @@ app.listen(3000);
 
 ## Percentile Calculation
 
-Prometheus uses linear interpolation within buckets to estimate percentiles. The histogram_quantile function finds the bucket containing the target percentile and interpolates within it.
+For classic histograms, Prometheus uses linear interpolation within buckets to estimate percentiles. The histogram_quantile function finds the bucket containing the target percentile and interpolates within it.
 
 ```mermaid
 flowchart LR
@@ -266,8 +262,7 @@ histogram_quantile(0.99,
 # Satisfied: < 100ms, Tolerating: < 500ms, Frustrated: >= 500ms
 (
   sum(rate(http_request_duration_seconds_bucket{le="0.1"}[5m])) +
-  sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m])) -
-  sum(rate(http_request_duration_seconds_bucket{le="0.1"}[5m]))
+  sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
 ) / 2 /
 sum(rate(http_request_duration_seconds_count[5m]))
 ```
@@ -276,23 +271,25 @@ sum(rate(http_request_duration_seconds_count[5m]))
 
 ## Native Histograms in Prometheus
 
-Prometheus 2.40+ introduced native histograms that automatically adjust bucket boundaries based on observed data. This reduces the configuration burden and improves accuracy.
+Prometheus 2.40 introduced native histograms as an experimental feature, and Prometheus 3.8 made them stable. Native histograms avoid explicit bucket-boundary configuration by using a sparse exponential bucket representation with configurable resolution. This reduces the configuration burden and can improve accuracy.
 
 ```yaml
 # prometheus.yml - Enable native histograms
 global:
   scrape_interval: 15s
+  scrape_native_histograms: true
 
 scrape_configs:
   - job_name: 'app'
     static_configs:
       - targets: ['localhost:3000']
     # Enable native histogram scraping
+    scrape_native_histograms: true
     scrape_protocols:
       - PrometheusProto
 ```
 
-Native histograms use exponential bucketing with a configurable resolution. They adapt to your data distribution automatically, but require newer Prometheus versions and compatible client libraries.
+For Prometheus 2.x, native histograms also require starting Prometheus with the `--enable-feature=native-histograms` flag. Native histograms require compatible client libraries and protobuf scraping.
 
 ---
 
@@ -306,7 +303,7 @@ Several mistakes can undermine your histogram design.
 
 **High cardinality labels**: Adding user_id or request_id as labels creates unbounded cardinality. Use these identifiers in traces and logs, not metrics.
 
-**Ignoring the +Inf bucket**: Every histogram needs a +Inf bucket to capture values above your highest explicit bucket. Without it, extreme outliers are lost.
+**Ignoring the +Inf bucket**: Every classic Prometheus histogram needs a +Inf bucket. Most client libraries add it automatically. Without it, `histogram_quantile()` returns `NaN` for that histogram, and bucket series do not represent observations above the highest explicit boundary.
 
 ```typescript
 // bad-histogram.ts - Common mistakes
@@ -337,7 +334,7 @@ const goodHistogram = new Histogram({
 Histograms are essential for understanding latency distributions and setting meaningful SLOs.
 
 - **Choose buckets strategically**: Align boundaries with SLO targets for accurate percentile calculation
-- **Watch cardinality**: Each bucket multiplies your time series count
+- **Watch cardinality**: Each bucket and label combination multiplies your time series count
 - **Use exponential spacing**: Matches how latency naturally distributes
 - **Start simple**: Begin with 8-10 buckets and refine based on actual needs
 - **Test your queries**: Verify that histogram_quantile returns sensible values at your SLO boundaries
