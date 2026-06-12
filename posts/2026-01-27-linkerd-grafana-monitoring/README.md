@@ -41,10 +41,10 @@ Linkerd exposes metrics in Prometheus format through its proxy sidecars:
 ```bash
 # Check if Linkerd is exposing metrics
 
-kubectl -n linkerd port-forward svc/linkerd-prometheus 9090:9090
+kubectl -n linkerd-viz port-forward svc/prometheus 9090:9090
 
 # Query available metrics
-curl -s localhost:9090/api/v1/label/__name__/values | jq '.data[]' | grep linkerd
+curl -s localhost:9090/api/v1/label/__name__/values | jq -r '.data[]' | grep -E 'request_total|response_total|response_latency_ms|tcp_open_connections'
 ```
 
 ### Key Linkerd Metrics
@@ -54,7 +54,7 @@ curl -s localhost:9090/api/v1/label/__name__/values | jq '.data[]' | grep linker
 #
 # 1. REQUEST RATE - requests per second
 #    Metric: request_total
-#    Labels: direction (inbound/outbound), authority, target_addr
+#    Labels: direction (inbound/outbound), authority, tls
 #
 # 2. SUCCESS RATE - percentage of successful requests
 #    Metric: response_total with classification label
@@ -62,7 +62,7 @@ curl -s localhost:9090/api/v1/label/__name__/values | jq '.data[]' | grep linker
 #
 # 3. LATENCY - response time distribution
 #    Metric: response_latency_ms_bucket (histogram)
-#    Labels: direction, authority, status_code
+#    Labels: direction, status_code, authority (outbound traffic only by default)
 #
 # 4. CONCURRENT CONNECTIONS - active TCP connections
 #    Metric: tcp_open_connections
@@ -89,7 +89,7 @@ curl -s localhost:9090/api/v1/label/__name__/values | jq '.data[]' | grep linker
 | `namespace` | Kubernetes namespace | `production`, `staging` |
 | `deployment` | Deployment name | `api-server`, `web-frontend` |
 | `direction` | Traffic direction | `inbound`, `outbound` |
-| `authority` | Target service authority | `api.default.svc.cluster.local:8080` |
+| `authority` | Target service authority (omitted for inbound metrics by default) | `api.default.svc.cluster.local:8080` |
 | `classification` | Response classification | `success`, `failure` |
 | `status_code` | HTTP status code | `200`, `500`, `503` |
 | `tls` | mTLS status | `true`, `false` |
@@ -133,14 +133,14 @@ data:
         kubernetes_sd_configs:
           - role: pod
             namespaces:
-              names: ['linkerd']
+              names: ['linkerd', 'linkerd-viz']
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_container_name]
-            action: keep
-            regex: linkerd-proxy
           - source_labels: [__meta_kubernetes_pod_container_port_name]
             action: keep
-            regex: linkerd-admin
+            regex: admin-http
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            action: replace
+            target_label: component
           - source_labels: [__meta_kubernetes_namespace]
             action: replace
             target_label: namespace
@@ -153,24 +153,29 @@ data:
         kubernetes_sd_configs:
           - role: pod
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_container_name]
+          - source_labels:
+              - __meta_kubernetes_pod_container_name
+              - __meta_kubernetes_pod_container_port_name
+              - __meta_kubernetes_pod_label_linkerd_io_control_plane_ns
             action: keep
-            regex: linkerd-proxy
-          - source_labels: [__meta_kubernetes_pod_container_port_name]
-            action: keep
-            regex: linkerd-admin
+            regex: linkerd-proxy;linkerd-admin;linkerd
           - source_labels: [__meta_kubernetes_namespace]
             action: replace
             target_label: namespace
           - source_labels: [__meta_kubernetes_pod_name]
             action: replace
             target_label: pod
-          - source_labels: [__meta_kubernetes_pod_label_app]
+          - source_labels: [__meta_kubernetes_pod_label_linkerd_io_proxy_job]
             action: replace
-            target_label: app
-          - source_labels: [__meta_kubernetes_pod_label_linkerd_io_proxy_deployment]
-            action: replace
-            target_label: deployment
+            target_label: k8s_job
+          - action: labeldrop
+            regex: __meta_kubernetes_pod_label_linkerd_io_proxy_job
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_linkerd_io_proxy_(.+)
+          - action: labeldrop
+            regex: __meta_kubernetes_pod_label_linkerd_io_proxy_(.+)
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
 ```
 
 ### Verify Metrics Collection
@@ -195,6 +200,7 @@ curl -s 'http://localhost:9090/api/v1/query?query=request_total' | jq '.data.res
 apiVersion: 1
 datasources:
   - name: Prometheus-Linkerd
+    uid: prometheus-linkerd
     type: prometheus
     access: proxy
     # URL depends on your Prometheus deployment
@@ -228,31 +234,25 @@ datasources:
 # 3. Select your Prometheus data source
 # 4. Click Import
 
-# Or import via API:
-curl -X POST \
+# Or download a dashboard from grafana.com and import it via API:
+DASHBOARD_JSON=$(curl -s https://grafana.com/api/dashboards/15474/revisions/latest/download)
+
+jq -n --argjson dashboard "$DASHBOARD_JSON" '{
+  "dashboard": $dashboard,
+  "folderId": 0,
+  "overwrite": true,
+  "inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "value": "Prometheus-Linkerd"
+    }
+  ]
+}' | curl -X POST \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $GRAFANA_API_KEY" \
-  -d '{
-    "dashboard": {
-      "id": null,
-      "uid": null,
-      "title": "Linkerd Top Line",
-      "tags": ["linkerd", "service-mesh"],
-      "timezone": "browser",
-      "schemaVersion": 16,
-      "version": 0
-    },
-    "folderId": 0,
-    "overwrite": false,
-    "inputs": [
-      {
-        "name": "DS_PROMETHEUS",
-        "type": "datasource",
-        "pluginId": "prometheus",
-        "value": "Prometheus-Linkerd"
-      }
-    ]
-  }' \
+  -d @- \
   http://localhost:3000/api/dashboards/import
 ```
 
@@ -598,34 +598,30 @@ groups:
 ### Notification Channels
 
 ```yaml
-# Configure notification channels for alerts
+# Configure contact points for alerts
 apiVersion: 1
 
-notifiers:
-  - name: slack-alerts
-    type: slack
-    uid: slack-linkerd
-    org_id: 1
-    is_default: true
-    settings:
-      url: "${SLACK_WEBHOOK_URL}"
-      recipient: "#service-mesh-alerts"
-      mentionUsers: ""
-      mentionGroups: ""
-      mentionChannel: "here"
-      token: ""
-      uploadImage: true
-    secureSettings:
-      url: "${SLACK_WEBHOOK_URL}"
+contactPoints:
+  - orgId: 1
+    name: slack-alerts
+    receivers:
+      - uid: slack-linkerd
+        type: slack
+        settings:
+          url: "$SLACK_WEBHOOK_URL"
+          recipient: "#service-mesh-alerts"
+          mentionChannel: "here"
 
-  - name: pagerduty-critical
-    type: pagerduty
-    uid: pagerduty-linkerd
-    settings:
-      integrationKey: "${PAGERDUTY_KEY}"
-      severity: critical
-      class: service-mesh
-      component: linkerd
+  - orgId: 1
+    name: pagerduty-critical
+    receivers:
+      - uid: pagerduty-linkerd
+        type: pagerduty
+        settings:
+          integrationKey: "$PAGERDUTY_KEY"
+          severity: critical
+          class: service-mesh
+          component: linkerd
 ```
 
 ## Custom Dashboard Creation
@@ -1056,6 +1052,11 @@ spec:
       sli:
         events:
           errorQuery: |
+            sum(rate(response_latency_ms_count{
+              deployment="api-server",
+              direction="inbound"
+            }[{{.window}}]))
+            -
             sum(rate(response_latency_ms_bucket{
               deployment="api-server",
               direction="inbound",
