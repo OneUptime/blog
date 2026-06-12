@@ -204,6 +204,8 @@ Infrastructure metrics alone miss the picture. Collect application-level data:
 # application_metrics.py
 # Collects application-level metrics for capacity correlation
 
+import prometheus_api_client
+
 class ApplicationMetrics:
     def __init__(self, prometheus_url):
         self.prom = prometheus_api_client.PrometheusConnect(url=prometheus_url)
@@ -237,6 +239,8 @@ Connect infrastructure to business outcomes:
 ```python
 # business_metrics.py
 # Pulls business metrics for capacity correlation
+
+from datetime import datetime
 
 class BusinessMetrics:
     def __init__(self, analytics_client):
@@ -491,6 +495,8 @@ Track how well your forecasts perform:
 ```python
 # forecast_accuracy.py
 # Track and improve forecast accuracy over time
+
+from datetime import datetime, timedelta
 
 class ForecastAccuracyTracker:
     def __init__(self, database):
