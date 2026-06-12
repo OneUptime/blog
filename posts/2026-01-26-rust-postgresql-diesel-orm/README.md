@@ -101,7 +101,7 @@ diesel setup
 
 This command creates:
 - A `diesel.toml` configuration file
-- A `migrations` directory for your database migrations
+- A `migrations` directory for your database migrations, including Diesel's initial setup migration
 - The database if it doesn't exist
 
 ## Creating Your First Migration
@@ -463,8 +463,8 @@ use diesel::prelude::*;
 use diesel::Connection;
 
 use crate::db::DbConnection;
-use crate::models::{NewUser, User};
-use crate::operations::{create_user, update_user, UpdateUser};
+use crate::models::{NewUser, UpdateUser, User};
+use crate::operations::{create_user, update_user};
 
 pub type DbResult<T> = Result<T, diesel::result::Error>;
 
