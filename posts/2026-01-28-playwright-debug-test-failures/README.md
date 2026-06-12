@@ -48,14 +48,7 @@ npx playwright test tests/login.spec.ts --headed
 npx playwright test -g "should login successfully" --headed
 ```
 
-Slow down execution to see what is happening:
-
-```bash
-# Add delay between actions (milliseconds)
-npx playwright test --headed --slowmo=500
-```
-
-Or configure slowMo in playwright.config.ts:
+Slow down execution to see what is happening by configuring slowMo in playwright.config.ts:
 
 ```typescript
 // playwright.config.ts
