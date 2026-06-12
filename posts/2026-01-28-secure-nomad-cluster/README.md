@@ -28,7 +28,7 @@ tls {
 }
 ```
 
-Use a proper CA and rotate certificates regularly.
+Use a proper CA, use the matching server or client certificate on each agent, and rotate certificates regularly.
 
 ## Step 2: Enable ACLs
 
@@ -37,8 +37,6 @@ ACLs control who can read or modify jobs and cluster resources.
 ```hcl
 acl {
   enabled = true
-  default_policy = "deny"
-  enable_token_persistence = true
 }
 ```
 
@@ -52,7 +50,7 @@ Store the management token securely and use policy-scoped tokens for CI and user
 
 ## Step 3: Secure Gossip with Serf Encryption
 
-Nomad uses Serf for cluster membership. Encrypt the gossip layer:
+Nomad servers use Serf for cluster membership. Encrypt the gossip layer:
 
 ```hcl
 encrypt = "<32-byte-base64-key>"
@@ -61,7 +59,7 @@ encrypt = "<32-byte-base64-key>"
 You can generate a key with:
 
 ```bash
-nomad operator keygen
+nomad operator gossip keyring generate
 ```
 
 ## Step 4: Restrict Network Access
