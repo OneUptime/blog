@@ -50,7 +50,7 @@ Start by defining what a saga step looks like. Each step has an action to execut
 // saga-types.ts
 // Core types for saga orchestration
 
-interface SagaStep<TContext> {
+export interface SagaStep<TContext> {
   name: string;
   // The forward action to execute
   execute: (context: TContext) => Promise<void>;
@@ -58,7 +58,7 @@ interface SagaStep<TContext> {
   compensate: (context: TContext) => Promise<void>;
 }
 
-interface SagaResult<TContext> {
+export interface SagaResult<TContext> {
   success: boolean;
   context: TContext;
   completedSteps: string[];
@@ -66,7 +66,7 @@ interface SagaResult<TContext> {
   error?: Error;
 }
 
-interface SagaOptions {
+export interface SagaOptions {
   // Maximum retries for each step
   maxRetries?: number;
   // Delay between retries in milliseconds
@@ -222,7 +222,7 @@ import { SagaOrchestrator } from './saga-orchestrator';
 import { SagaStep } from './saga-types';
 
 // Context passed through all saga steps
-interface OrderContext {
+export interface OrderContext {
   orderId: string;
   userId: string;
   items: Array<{ productId: string; quantity: number }>;
@@ -306,7 +306,7 @@ const shippingService = {
 };
 
 // Define saga steps
-const reserveInventoryStep: SagaStep<OrderContext> = {
+export const reserveInventoryStep: SagaStep<OrderContext> = {
   name: 'reserve-inventory',
 
   async execute(context) {
@@ -325,7 +325,7 @@ const reserveInventoryStep: SagaStep<OrderContext> = {
   },
 };
 
-const chargePaymentStep: SagaStep<OrderContext> = {
+export const chargePaymentStep: SagaStep<OrderContext> = {
   name: 'charge-payment',
 
   async execute(context) {
@@ -345,7 +345,7 @@ const chargePaymentStep: SagaStep<OrderContext> = {
   },
 };
 
-const createShipmentStep: SagaStep<OrderContext> = {
+export const createShipmentStep: SagaStep<OrderContext> = {
   name: 'create-shipment',
 
   async execute(context) {
@@ -407,6 +407,7 @@ For production systems, saga state should be persisted so recovery is possible a
 ```typescript
 // persistent-saga.ts
 import { Pool } from 'pg';
+import { SagaStep, SagaResult } from './saga-types';
 
 interface SagaState {
   id: string;
@@ -466,7 +467,18 @@ class PersistentSagaStore {
 
   async get(id: string): Promise<SagaState | null> {
     const result = await this.pool.query(
-      'SELECT * FROM sagas WHERE id = $1',
+      `SELECT
+         id,
+         name,
+         status,
+         context,
+         completed_steps AS "completedSteps",
+         failed_step AS "failedStep",
+         error,
+         created_at AS "createdAt",
+         updated_at AS "updatedAt"
+       FROM sagas
+       WHERE id = $1`,
       [id]
     );
     return result.rows[0] || null;
@@ -474,7 +486,18 @@ class PersistentSagaStore {
 
   async getIncomplete(): Promise<SagaState[]> {
     const result = await this.pool.query(
-      `SELECT * FROM sagas WHERE status IN ('running', 'compensating')
+      `SELECT
+         id,
+         name,
+         status,
+         context,
+         completed_steps AS "completedSteps",
+         failed_step AS "failedStep",
+         error,
+         created_at AS "createdAt",
+         updated_at AS "updatedAt"
+       FROM sagas
+       WHERE status IN ('running', 'compensating')
        ORDER BY created_at ASC`
     );
     return result.rows;
@@ -597,6 +620,11 @@ Some saga steps can run in parallel when they do not depend on each other.
 ```typescript
 // parallel-saga.ts
 // Support for parallel step execution within a saga
+import { SagaStep, SagaResult } from './saga-types';
+import { OrderContext, reserveInventoryStep, chargePaymentStep } from './order-saga';
+
+declare const notifyWarehouseStep: SagaStep<OrderContext>;
+declare const sendConfirmationEmailStep: SagaStep<OrderContext>;
 
 interface ParallelStepGroup<TContext> {
   type: 'parallel';
