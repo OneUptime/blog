@@ -91,7 +91,7 @@ spec:
 
 ### prune
 
-When `prune: true`, ArgoCD deletes resources that exist in the cluster but are no longer defined in Git. This keeps your cluster clean and ensures Git remains the single source of truth.
+When `prune: true`, ArgoCD deletes application resources that exist in the cluster but are no longer defined in Git. This keeps your cluster clean and ensures Git remains the single source of truth.
 
 ```mermaid
 flowchart TD
@@ -123,13 +123,13 @@ kubectl scale deployment myapp --replicas=10 -n production
 # Deployment replicas return to the value defined in Git
 ```
 
-Self-healing runs on a 5-second reconciliation loop by default. You can adjust this in ArgoCD settings.
+With self-healing enabled, ArgoCD retries the automated sync after the self-heal timeout, which is 5 seconds by default. You can adjust this with the `--self-heal-timeout-seconds` setting on the application controller.
 
 ### allowEmpty
 
 When `allowEmpty: false` (the default), ArgoCD refuses to sync if the source path contains zero resources. This prevents accidental deletion of all resources if your Git repo is misconfigured or the path is wrong.
 
-Set `allowEmpty: true` only if you intentionally want to delete everything in the destination namespace.
+Set `allowEmpty: true` only if you intentionally want automated pruning to be able to delete all application resources.
 
 ```yaml
 syncPolicy:
@@ -163,7 +163,7 @@ syncOptions:
 
 ### Validate
 
-Runs `kubectl --dry-run=server` validation before applying. Catches schema errors early.
+Keeps kubectl apply validation enabled, which is the default. Set `Validate=false` only when you need to disable kubectl schema validation for specific resources.
 
 ```yaml
 syncOptions:
@@ -383,10 +383,10 @@ Application sync status distribution.
 sum by (sync_status) (argocd_app_info)
 ```
 
-Sync operation duration.
+Average sync operation duration.
 
 ```promql
-histogram_quantile(0.95, sum(rate(argocd_app_sync_total[5m])) by (le))
+sum(rate(argocd_app_sync_duration_seconds_total[5m])) / sum(rate(argocd_app_sync_total[5m]))
 ```
 
 Failed sync operations.
@@ -450,7 +450,7 @@ argocd app set myapp --sync-policy automated
 Enable prune and self-heal.
 
 ```bash
-argocd app set myapp --auto-prune --self-heal
+argocd app set myapp --sync-policy automated --auto-prune --self-heal
 ```
 
 Disable automated sync.
