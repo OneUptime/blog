@@ -56,7 +56,7 @@ Continuous Delivery comes built into Rancher. Here's how to access and configure
 ```bash
 # Continuous Delivery is available in the Rancher UI
 
-# Navigate to: Cluster Management -> Continuous Delivery
+# Navigate to: ☰ -> Continuous Delivery
 
 # Or access Fleet directly via kubectl on the local cluster
 kubectl get gitrepos -n fleet-default
@@ -107,13 +107,13 @@ spec:
   # Paths within the repo to watch (optional)
   # If not specified, the entire repo is used
   paths:
-    - /manifests
-    - /overlays/production
+    - manifests
+    - overlays/production
 
   # How often to poll for changes (default: 15s)
   pollingInterval: 30s
 
-  # Target clusters - empty means all clusters
+  # Target all clusters in this workspace
   targets:
     - clusterSelector: {}
 ```
@@ -165,18 +165,19 @@ kind: Secret
 metadata:
   name: git-credentials
   namespace: fleet-default
-type: Opaque
+type: kubernetes.io/basic-auth
 stringData:
   # For HTTPS with personal access token
   username: git-user
   password: ghp_xxxxxxxxxxxxxxxxxxxx
 
   # For SSH (use this instead of username/password)
+  # Set type to kubernetes.io/ssh-auth when using this form
   # ssh-privatekey: |
   #   -----BEGIN OPENSSH PRIVATE KEY-----
   #   ...
   #   -----END OPENSSH PRIVATE KEY-----
-  # known-hosts: |
+  # known_hosts: |
   #   github.com ssh-rsa AAAA...
 ```
 
@@ -217,16 +218,9 @@ kustomize:
 
 # Raw YAML options
 yaml:
-  # Overlays to apply (similar to Kustomize patches)
+  # Overlay names to apply from files under overlays/<name>/
   overlays:
-    - name: production-patch
-      contents: |
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: myapp
-        spec:
-          replicas: 5
+    - production-patch
 
 # Target specific clusters
 targetCustomizations:
@@ -273,7 +267,7 @@ helm:
   atomic: true
 
   # Maximum time to wait for resources
-  timeout: 10m
+  timeoutSeconds: 600
 
   values:
     database:
@@ -492,13 +486,10 @@ paused: false
 
 # Rollout strategy
 rolloutStrategy:
-  # Maximum number of clusters to update simultaneously
-  maxConcurrent: 2
-
   # Maximum number of unavailable clusters during rollout
   maxUnavailable: 1
 
-  # Auto-pause on errors
+  # Automatically partition clusters into groups of this size
   autoPartitionSize: 5
 
 # Keep resources after GitRepo deletion
@@ -541,7 +532,8 @@ myapp-fleet/
 
 ```yaml
 # gitrepo-progressive.yaml
-# Implement staged rollouts across environments
+# Define target groups for staged rollouts across environments
+# Use rolloutStrategy partitions in fleet.yaml to enforce ordering.
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
@@ -551,7 +543,7 @@ spec:
   repo: https://github.com/myorg/myapp-manifests
   branch: main
   paths:
-    - /overlays
+    - overlays
 
   targets:
     # Stage 1: Deploy to canary cluster first
@@ -560,7 +552,7 @@ spec:
         matchLabels:
           role: canary
 
-    # Stage 2: Deploy to staging (depends on canary success)
+    # Stage 2: Deploy to staging when ordered by rolloutStrategy partitions
     - name: staging
       clusterSelector:
         matchLabels:
@@ -675,7 +667,7 @@ spec:
   repo: https://github.com/myorg/fleet-config
   branch: main
   paths:
-    - /helm-releases
+    - helm-releases
 
 ---
 # In your Git repo: helm-releases/nginx-ingress/fleet.yaml
@@ -809,7 +801,7 @@ helm:
   takeOwnership: true
 
   # Increase timeout for slow clusters
-  timeout: 15m
+  timeoutSeconds: 900
 
   # Force recreate on update
   force: true
@@ -888,8 +880,8 @@ spec:
 ### 4. Monitor Bundle Health
 
 ```yaml
-# Create alerts for bundle failures
-# This can integrate with your monitoring stack
+# Create alerts for Fleet reconciliation errors
+# This uses controller-runtime metrics exposed by Fleet's controllers.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -899,14 +891,14 @@ spec:
   groups:
     - name: fleet
       rules:
-        - alert: FleetBundleNotReady
-          expr: fleet_bundle_desired_ready - fleet_bundle_ready > 0
+        - alert: FleetReconcileErrors
+          expr: rate(controller_runtime_reconcile_errors_total[5m]) > 0
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Fleet bundle not fully deployed"
-            description: "Bundle {{ $labels.name }} has clusters not ready"
+            summary: "Fleet controller reconciliation errors"
+            description: "Fleet controller {{ $labels.controller }} is reporting reconcile errors"
 ```
 
 ---
