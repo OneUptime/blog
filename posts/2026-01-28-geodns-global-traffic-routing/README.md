@@ -51,7 +51,7 @@ flowchart TD
 
 The DNS server determines the client's location using:
 1. **Client IP geolocation** - Maps the resolver's IP to a geographic region
-2. **EDNS Client Subnet (ECS)** - Modern resolvers forward the client's subnet for more accurate routing
+2. **EDNS Client Subnet (ECS)** - Some resolvers forward the client's subnet for more accurate routing
 
 ---
 
@@ -94,6 +94,7 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/load_balancer
   -H "Content-Type: application/json" \
   --data '{
     "name": "app.example.com",
+    "steering_policy": "geo",
     "default_pools": ["pool_us_east"],
     "region_pools": {
       "WNAM": ["pool_us_west"],
@@ -140,45 +141,50 @@ domains:
   - domain: example.com
     ttl: 300
     records:
+      example.com:
+        - soa: ns1.example.com hostmaster.example.com 2026012801 7200 3600 1209600 300
+        - ns: ns1.example.com
+      ns1.example.com:
+        - a: 192.0.2.53
       app.example.com:
-        - svc: '%co.%cn.service.example.com'
-          # %co = continent code, %cn = country code
-          # Resolves to: na.us.service.example.com for US users
+        - a: 192.0.2.1
 
-        # Fallback for unmapped regions
-        - svc: 'default.service.example.com'
+      # North America
+      us.na.service.example.com:
+        - a: 192.0.2.1
+      ca.na.service.example.com:
+        - a: 192.0.2.1
 
-services:
-  # North America
-  na.us.service.example.com:
-    - 192.0.2.1
-  na.ca.service.example.com:
-    - 192.0.2.1
+      # Europe
+      de.eu.service.example.com:
+        - a: 192.0.2.2
+      gb.eu.service.example.com:
+        - a: 192.0.2.2
+      fr.eu.service.example.com:
+        - a: 192.0.2.2
 
-  # Europe
-  eu.de.service.example.com:
-    - 192.0.2.2
-  eu.gb.service.example.com:
-    - 192.0.2.2
-  eu.fr.service.example.com:
-    - 192.0.2.2
+      # Asia Pacific
+      jp.as.service.example.com:
+        - a: 192.0.2.3
+      sg.as.service.example.com:
+        - a: 192.0.2.3
+      au.oc.service.example.com:
+        - a: 192.0.2.3
 
-  # Asia Pacific
-  as.jp.service.example.com:
-    - 192.0.2.3
-  as.sg.service.example.com:
-    - 192.0.2.3
-  oc.au.service.example.com:
-    - 192.0.2.3
+      # Default fallback
+      default.service.example.com:
+        - a: 192.0.2.1
 
-  # Default fallback
-  default.service.example.com:
-    - 192.0.2.1
+    services:
+      app.example.com:
+        default: ['%co.%cn.service.example.com', 'default.service.example.com']
+        # %co = country code, %cn = continent code with MMDB databases
+        # Resolves to: us.na.service.example.com for US users
 ```
 
 ### Option 3: BIND with GeoIP
 
-BIND 9.10+ includes native GeoIP support:
+BIND can use GeoIP ACLs when it is built with GeoIP support. BIND 9.16+ uses the MaxMind DB API when built with `--with-maxminddb`; older 9.x releases used the legacy GeoIP API:
 
 ```text
 // /etc/bind/named.conf
@@ -287,9 +293,11 @@ class GeoDNSServer {
 
       if (!question) return;
 
+      const clientIp = this.getClientSubnet(query) || rinfo.address;
+
       // Determine client location
-      const location = this.getLocation(rinfo.address);
-      console.log(`Query from ${rinfo.address} (${location.continent}/${location.country}): ${question.name}`);
+      const location = this.getLocation(clientIp);
+      console.log(`Query from ${clientIp} (${location.continent}/${location.country}): ${question.name}`);
 
       // Get appropriate answer based on location
       const answer = this.resolveWithGeo(question.name, question.type, location);
@@ -298,7 +306,7 @@ class GeoDNSServer {
       const response = dnsPacket.encode({
         id: query.id,
         type: 'response',
-        flags: dnsPacket.RECURSION_DESIRED | dnsPacket.RECURSION_AVAILABLE,
+        flags: dnsPacket.AUTHORITATIVE_ANSWER | (query.flags & dnsPacket.RECURSION_DESIRED),
         questions: query.questions,
         answers: answer ? [answer] : []
       });
@@ -326,19 +334,29 @@ class GeoDNSServer {
     }
   }
 
+  getClientSubnet(query) {
+    const edns = query.additionals?.find(r => r.type === 'OPT');
+    const ecs = edns?.options?.find(o => o.code === 'CLIENT_SUBNET');
+    return ecs?.ip || null;
+  }
+
   resolveWithGeo(name, type, location) {
+    if (type !== 'A') {
+      return null;
+    }
+
     const recordConfig = this.records[name];
 
     if (!recordConfig) {
       return this.defaultRecords[name] || null;
     }
 
-    // Try continent-specific record
-    let ip = recordConfig[location.continent];
+    // Try country-specific record
+    let ip = recordConfig[location.country];
 
-    // Fall back to country-specific
+    // Fall back to continent-specific
     if (!ip) {
-      ip = recordConfig[location.country];
+      ip = recordConfig[location.continent];
     }
 
     // Fall back to default
@@ -543,9 +561,9 @@ async def main():
     asyncio.create_task(geodns.run_health_checks())
 
     # Resolve for different clients
-    print(geodns.resolve('8.8.8.8'))      # US client
-    print(geodns.resolve('185.86.151.1')) # EU client
-    print(geodns.resolve('1.1.1.1'))      # APAC client
+    print(geodns.resolve('8.8.8.8'))        # US resolver IP
+    print(geodns.resolve('185.86.151.1'))   # EU client IP
+    print(geodns.resolve('202.12.27.33'))   # APAC client IP
 
 asyncio.run(main())
 ```
@@ -609,7 +627,7 @@ function getClientSubnet(query) {
   const edns = query.additionals?.find(r => r.type === 'OPT');
 
   if (edns?.options) {
-    const ecs = edns.options.find(o => o.code === 8); // CLIENT_SUBNET
+    const ecs = edns.options.find(o => o.code === 'CLIENT_SUBNET');
     if (ecs) {
       return ecs.ip; // The client's actual subnet
     }
