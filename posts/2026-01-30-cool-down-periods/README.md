@@ -74,9 +74,9 @@ spec:
       policies:
         - type: Percent
           value: 100                   # Allow doubling replicas
-          periodSeconds: 60            # Evaluate every 60 seconds
+          periodSeconds: 60            # Limit applies over 60 seconds
         - type: Pods
-          value: 4                     # Add at least 4 pods per scale event
+          value: 4                     # Allow adding up to 4 pods
           periodSeconds: 60
       selectPolicy: Max                # Use whichever policy adds more pods
 ```
@@ -97,7 +97,7 @@ Scale-down removes capacity. This is inherently riskier because you cannot insta
       policies:
         - type: Pods
           value: 1                     # Remove only 1 pod at a time
-          periodSeconds: 60            # Evaluate every 60 seconds
+          periodSeconds: 60            # Limit applies over 60 seconds
         - type: Percent
           value: 10                    # Remove at most 10% of pods
           periodSeconds: 60
@@ -386,7 +386,7 @@ graph TD
     G --> H["Selected: 6 replicas<br/>(highest recommendation in window)"]
 ```
 
-For scale-down, the HPA selects the **highest** recommendation in the window (most conservative). For scale-up, it selects the **highest** as well (most aggressive response to load).
+For scale-down, the HPA selects the **highest** recommendation in the window (most conservative). For scale-up, it selects the **lowest** recommendation in the window, which avoids reacting to a short-lived spike when you configure a non-zero scale-up stabilization window.
 
 ### Configuring Stabilization Windows
 
@@ -445,7 +445,7 @@ graph LR
 
 ### Strategy 2: Hysteresis Thresholds
 
-Use different thresholds for scale-up and scale-down decisions. Kubernetes doesn't support this natively, but you can approximate it with KEDA.
+Use different thresholds for scale-up and scale-down decisions. Kubernetes HPA doesn't support separate scale-up and scale-down metric thresholds directly, so approximate the effect with stabilization windows and conservative scale-down policies. If you use KEDA for event-driven scaling, you can pass those HPA behavior settings through the ScaledObject.
 
 ```yaml
 apiVersion: keda.sh/v1alpha1
@@ -558,7 +558,7 @@ graph TD
 
 ### Strategy 5: Pod Disruption Budgets
 
-Combine PDBs with HPA to prevent aggressive scale-down from causing availability issues.
+Use PDBs alongside HPA to protect availability during voluntary evictions such as node drains. PDBs do not limit HPA scale-down decisions directly, so keep `minReplicas` aligned with your minimum safe serving capacity.
 
 ```yaml
 apiVersion: policy/v1
@@ -604,46 +604,46 @@ spec:
       rules:
         - alert: HPAScalingTooFrequent
           expr: |
-            increase(kube_hpa_status_current_replicas[10m]) > 5
+            changes(kube_horizontalpodautoscaler_status_current_replicas[10m]) > 5
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "HPA {{ $labels.hpa }} is scaling too frequently"
+            summary: "HPA {{ $labels.horizontalpodautoscaler }} is scaling too frequently"
 
         - alert: HPAAtMaxReplicas
           expr: |
-            kube_hpa_status_current_replicas == kube_hpa_spec_max_replicas
+            kube_horizontalpodautoscaler_status_current_replicas == kube_horizontalpodautoscaler_spec_max_replicas
           for: 15m
           labels:
             severity: warning
           annotations:
-            summary: "HPA {{ $labels.hpa }} is at max replicas for 15+ minutes"
+            summary: "HPA {{ $labels.horizontalpodautoscaler }} is at max replicas for 15+ minutes"
 
         - alert: HPAUnableToScale
           expr: |
-            kube_hpa_status_condition{condition="ScalingActive", status="false"} == 1
+            kube_horizontalpodautoscaler_status_condition{condition="ScalingActive", status="false"} == 1
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "HPA {{ $labels.hpa }} cannot scale"
+            summary: "HPA {{ $labels.horizontalpodautoscaler }} cannot scale"
 ```
 
 ### Dashboard Queries
 
 ```promql
 # Scaling events over time
-sum(changes(kube_hpa_status_current_replicas[1h])) by (hpa)
+sum(changes(kube_horizontalpodautoscaler_status_current_replicas[1h])) by (horizontalpodautoscaler)
 
 # Current vs desired replicas
-kube_hpa_status_current_replicas / kube_hpa_status_desired_replicas
+kube_horizontalpodautoscaler_status_current_replicas / kube_horizontalpodautoscaler_status_desired_replicas
 
-# Time spent at max replicas
-sum_over_time((kube_hpa_status_current_replicas == kube_hpa_spec_max_replicas)[24h:5m]) * 5
+# Time spent at max replicas, in minutes
+sum_over_time((kube_horizontalpodautoscaler_status_current_replicas == bool kube_horizontalpodautoscaler_spec_max_replicas)[24h:5m]) * 5
 
 # Scale-up/down frequency
-increase(kube_hpa_status_current_replicas[1h])
+changes(kube_horizontalpodautoscaler_status_current_replicas[1h])
 ```
 
 ### Tuning Based on Observations
@@ -704,7 +704,7 @@ spec:
           value: 100                     # Allow doubling
           periodSeconds: 60
         - type: Pods
-          value: 4                       # Add at least 4 pods
+          value: 4                       # Allow adding up to 4 pods
           periodSeconds: 60
       selectPolicy: Max                  # Aggressive scale-up
 
@@ -714,7 +714,7 @@ spec:
       policies:
         - type: Percent
           value: 10                      # Remove max 10% at a time
-          periodSeconds: 120             # Evaluate every 2 minutes
+          periodSeconds: 120             # Limit applies over 2 minutes
         - type: Pods
           value: 2                       # Remove max 2 pods at a time
           periodSeconds: 120
