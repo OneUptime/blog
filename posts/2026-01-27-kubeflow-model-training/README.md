@@ -78,7 +78,8 @@ metadata:
   namespace: kubeflow
 spec:
   # Clean up completed pods after 1 hour
-  ttlSecondsAfterFinished: 3600
+  runPolicy:
+    ttlSecondsAfterFinished: 3600
   tfReplicaSpecs:
     # Parameter Server configuration
     PS:
@@ -160,52 +161,10 @@ spec:
   elasticPolicy:
     minReplicas: 2
     maxReplicas: 8
-    rdzvBackend: etcd
-    rdzvHost: etcd-service
-    rdzvPort: 2379
+    maxRestarts: 3
+    rdzvBackend: c10d
   pytorchReplicaSpecs:
-    # Master node coordinates the training
-    Master:
-      replicas: 1
-      restartPolicy: OnFailure
-      template:
-        spec:
-          containers:
-            - name: pytorch
-              image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
-              command:
-                - python
-                - -m
-                - torch.distributed.launch
-                - --nproc_per_node=1
-                - --nnodes=$(WORLD_SIZE)
-                - --node_rank=$(RANK)
-                - --master_addr=$(MASTER_ADDR)
-                - --master_port=$(MASTER_PORT)
-                - /app/train_resnet.py
-              env:
-                - name: NCCL_DEBUG
-                  value: "INFO"
-              resources:
-                requests:
-                  nvidia.com/gpu: "1"
-                limits:
-                  nvidia.com/gpu: "1"
-              volumeMounts:
-                - name: dshm
-                  mountPath: /dev/shm
-                - name: training-data
-                  mountPath: /data
-          volumes:
-            # Shared memory for NCCL communication
-            - name: dshm
-              emptyDir:
-                medium: Memory
-                sizeLimit: "16Gi"
-            - name: training-data
-              persistentVolumeClaim:
-                claimName: imagenet-data
-    # Worker nodes participate in distributed training
+    # Worker nodes participate in elastic distributed training
     Worker:
       replicas: 3
       restartPolicy: OnFailure
@@ -217,13 +176,11 @@ spec:
               command:
                 - python
                 - -m
-                - torch.distributed.launch
-                - --nproc_per_node=1
-                - --nnodes=$(WORLD_SIZE)
-                - --node_rank=$(RANK)
-                - --master_addr=$(MASTER_ADDR)
-                - --master_port=$(MASTER_PORT)
+                - torch.distributed.run
                 - /app/train_resnet.py
+              env:
+                - name: NCCL_DEBUG
+                  value: "INFO"
               resources:
                 requests:
                   nvidia.com/gpu: "1"
@@ -263,34 +220,30 @@ import os
 
 def setup_distributed():
     """Initialize the distributed environment."""
-    # Kubeflow sets these environment variables automatically
+    # Kubeflow Training Operator and torchrun set these environment variables
     rank = int(os.environ.get("RANK", 0))
     world_size = int(os.environ.get("WORLD_SIZE", 1))
-    master_addr = os.environ.get("MASTER_ADDR", "localhost")
-    master_port = os.environ.get("MASTER_PORT", "29500")
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
 
     # Initialize process group for distributed training
     dist.init_process_group(
-        backend="nccl",  # Use NCCL for GPU communication
-        init_method=f"tcp://{master_addr}:{master_port}",
-        world_size=world_size,
-        rank=rank
+        backend="nccl"  # Use NCCL for GPU communication
     )
 
     # Set the GPU device for this process
-    torch.cuda.set_device(rank % torch.cuda.device_count())
+    torch.cuda.set_device(local_rank)
 
-    return rank, world_size
+    return rank, world_size, local_rank
 
 def train():
-    rank, world_size = setup_distributed()
+    rank, world_size, local_rank = setup_distributed()
 
     # Create model and move to GPU
-    model = YourModel().cuda()
+    model = YourModel().to(local_rank)
 
     # Wrap model with DistributedDataParallel
     # This handles gradient synchronization across workers
-    model = DDP(model, device_ids=[rank % torch.cuda.device_count()])
+    model = DDP(model, device_ids=[local_rank])
 
     # Use DistributedSampler to partition data across workers
     train_dataset = YourDataset()
@@ -317,7 +270,7 @@ def train():
         sampler.set_epoch(epoch)
 
         for batch_idx, (data, target) in enumerate(train_loader):
-            data, target = data.cuda(), target.cuda()
+            data, target = data.to(local_rank), target.to(local_rank)
 
             optimizer.zero_grad()
             output = model(data)
@@ -350,10 +303,9 @@ For models too large to fit on a single GPU, use model parallelism:
 
 ```python
 # model_parallel.py
-# Pipeline parallelism for large models using PyTorch
+# Model parallelism for large models using PyTorch
 import torch
 import torch.nn as nn
-from torch.distributed.pipeline.sync import Pipe
 
 class LargeModel(nn.Module):
     """A large model split across multiple GPUs."""
@@ -382,10 +334,8 @@ class LargeModel(nn.Module):
         x = self.layer2(x.to('cuda:1'))
         return x
 
-# Wrap with Pipe for pipeline parallelism
-# This overlaps computation across micro-batches
+# Train the model with inputs on the first stage and targets/loss on the final stage
 model = LargeModel()
-model = Pipe(model, chunks=8)  # Split batch into 8 micro-batches
 ```
 
 ## GPU Scheduling
@@ -414,12 +364,7 @@ spec:
           nvidia.com/gpu: "2"
           cpu: "16"
           memory: "64Gi"
-      # Set CUDA visible devices
-      env:
-        - name: NVIDIA_VISIBLE_DEVICES
-          value: "all"
-        - name: CUDA_VISIBLE_DEVICES
-          value: "0,1"
+      # The NVIDIA device plugin exposes only the allocated GPUs to the container
 ```
 
 ### GPU Node Affinity
@@ -544,7 +489,7 @@ spec:
       parameterType: int
       feasibleSpace:
         min: "2"
-        max: "10"
+        max: "3"
     - name: optimizer
       parameterType: categorical
       feasibleSpace:
@@ -769,7 +714,7 @@ def train():
             }, step=epoch)
 
         # Log the trained model
-        mlflow.pytorch.log_model(model, "model")
+        mlflow.pytorch.log_model(model, name="model")
 
         # Log artifacts like plots or config files
         mlflow.log_artifact("/app/training_config.yaml")
