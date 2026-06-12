@@ -204,8 +204,8 @@ Spring Batch is the de facto standard for batch processing in Java. Here is a co
         <artifactId>spring-boot-starter-data-jpa</artifactId>
     </dependency>
     <dependency>
-        <groupId>com.h2database</groupId>
-        <artifactId>h2</artifactId>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
         <scope>runtime</scope>
     </dependency>
 </dependencies>
@@ -410,7 +410,7 @@ public class ProcessedCustomerItemWriter implements ItemWriter<ProcessedCustomer
                 processed_at = EXCLUDED.processed_at
             """;
 
-        // Batch all inserts in a single database round trip
+        // Batch inserts for efficient database writes
         jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
             @Override
             public void setValues(PreparedStatement ps, int i) throws SQLException {
@@ -441,6 +441,8 @@ public class ProcessedCustomerItemWriter implements ItemWriter<ProcessedCustomer
 @Configuration
 @EnableBatchProcessing
 public class BatchConfiguration {
+
+    private static final Logger log = LoggerFactory.getLogger(BatchConfiguration.class);
 
     private final JobRepository jobRepository;
     private final PlatformTransactionManager transactionManager;
@@ -726,7 +728,7 @@ export class ChunkProcessor<In, O> {
   private async processItemWithRetry(item: In): Promise<O | null> {
     let lastError: Error | null = null;
 
-    for (let attempt = 1; attempt <= this.config.retryLimit!; attempt++) {
+    for (let attempt = 0; attempt <= this.config.retryLimit!; attempt++) {
       try {
         return await this.processor.process(item);
       } catch (error) {
@@ -780,7 +782,7 @@ export interface ChunkProcessorResult {
 ```typescript
 // example-batch-job.ts - Complete working example
 
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 import {
   ItemReader,
   ItemProcessor,
@@ -808,44 +810,36 @@ interface ProcessedOrder {
 }
 
 /**
- * Database cursor reader for efficient memory usage.
- * Uses a server-side cursor to stream results.
+ * Database pagination reader for efficient memory usage.
+ * Uses keyset pagination to fetch one page at a time.
  */
 class OrderReader implements ItemReader<RawOrder> {
   private pool: Pool;
-  private client: PoolClient | null = null;
-  private cursor: any = null;
   private buffer: RawOrder[] = [];
-  private fetchSize = 100; // Fetch 100 rows at a time from cursor
+  private fetchSize = 100; // Fetch 100 rows at a time
+  private lastSeenId = 0;
 
   constructor(pool: Pool) {
     this.pool = pool;
   }
 
   async open(): Promise<void> {
-    // Get a dedicated connection for the cursor
-    this.client = await this.pool.connect();
-
-    // Begin a transaction (required for cursors in PostgreSQL)
-    await this.client.query('BEGIN');
-
-    // Declare a server-side cursor
-    await this.client.query(`
-      DECLARE order_cursor CURSOR FOR
-      SELECT id, customer_id, amount, status, created_at
-      FROM orders
-      WHERE status = 'PENDING'
-      ORDER BY id
-    `);
-
-    console.log('OrderReader opened - cursor initialized');
+    console.log('OrderReader opened');
   }
 
   async read(): Promise<RawOrder | null> {
-    // If buffer is empty, fetch more rows from cursor
+    // If buffer is empty, fetch the next page
     if (this.buffer.length === 0) {
-      const result = await this.client!.query(
-        `FETCH ${this.fetchSize} FROM order_cursor`
+      const result = await this.pool.query(
+        `
+          SELECT id, customer_id, amount, status, created_at
+          FROM orders
+          WHERE status = 'PENDING'
+            AND id > $1
+          ORDER BY id
+          LIMIT $2
+        `,
+        [this.lastSeenId, this.fetchSize]
       );
 
       if (result.rows.length === 0) {
@@ -863,16 +857,15 @@ class OrderReader implements ItemReader<RawOrder> {
     }
 
     // Return the next item from the buffer
-    return this.buffer.shift() || null;
+    const item = this.buffer.shift() || null;
+    if (item) {
+      this.lastSeenId = item.id;
+    }
+    return item;
   }
 
   async close(): Promise<void> {
-    if (this.client) {
-      await this.client.query('CLOSE order_cursor');
-      await this.client.query('COMMIT');
-      this.client.release();
-      console.log('OrderReader closed - cursor released');
-    }
+    console.log('OrderReader closed');
   }
 }
 
@@ -1206,6 +1199,8 @@ Track these metrics for healthy batch jobs:
 // batch-telemetry.ts - Add observability to batch jobs
 
 import { trace, metrics, SpanStatusCode } from '@opentelemetry/api';
+import { ChunkListener } from './types';
+import { ChunkProcessor, ChunkProcessorResult } from './chunk-processor';
 
 const tracer = trace.getTracer('batch-processor');
 const meter = metrics.getMeter('batch-processor');
