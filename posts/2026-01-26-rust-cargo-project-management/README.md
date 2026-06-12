@@ -88,8 +88,8 @@ categories = ["command-line-utilities"]
 [dependencies]
 # Production dependencies
 serde = "1.0"                        # Latest compatible with 1.0.x
-serde_json = "1.0.108"               # Exact minor version
-tokio = { version = "1.35", features = ["full"] }  # With features enabled
+serde_json = { version = "1.0.108", optional = true }  # Optional JSON support
+tokio = { version = "1.35", features = ["full"], optional = true }  # Optional async runtime
 
 [dev-dependencies]
 # Dependencies only used for testing and examples
@@ -103,9 +103,9 @@ cc = "1.0"                           # C compiler integration
 [features]
 # Optional features that users can enable
 default = ["json"]                   # Features enabled by default
-json = ["serde_json"]                # Named feature that enables serde_json
+json = ["dep:serde_json"]            # Named feature that enables serde_json
 full = ["json", "async"]             # Feature that enables multiple other features
-async = ["tokio"]                    # Feature for async runtime
+async = ["dep:tokio"]                # Feature for async runtime
 ```
 
 ## Managing Dependencies
@@ -475,7 +475,7 @@ cargo package --list
 # Publish the crate
 cargo publish
 
-# Publish without running tests (not recommended)
+# Publish without verifying the package contents (not recommended)
 cargo publish --no-verify
 ```
 
@@ -498,7 +498,7 @@ Cargo can be extended with additional subcommands:
 
 ```bash
 # Install useful Cargo extensions
-cargo install cargo-edit       # Adds `cargo add`, `cargo rm` commands
+cargo install cargo-edit       # Adds commands such as `cargo upgrade` and `cargo set-version`
 cargo install cargo-watch      # Watch for changes and re-run commands
 cargo install cargo-outdated   # Check for outdated dependencies
 cargo install cargo-audit      # Check for security vulnerabilities
