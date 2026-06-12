@@ -18,7 +18,7 @@ Before diving into the installation, let's understand how Rancher fits into your
 graph TB
     subgraph "Rancher Management Plane"
         R[Rancher Server]
-        RDB[(etcd / PostgreSQL)]
+        RDB[(Local Kubernetes Cluster Datastore)]
         R --> RDB
     end
 
@@ -60,6 +60,7 @@ Before installing Rancher, ensure you have the following:
 - A Kubernetes cluster to host the Rancher server (can be a single-node cluster for testing)
 - kubectl configured to access the cluster
 - Helm 3.x installed
+- An Ingress controller in the cluster that will host Rancher
 - A valid domain name pointing to your cluster (for production setups)
 - At least 4GB of RAM and 2 CPU cores for the Rancher server
 
@@ -79,18 +80,12 @@ helm repo add jetstack https://charts.jetstack.io
 # Update your local Helm chart repository cache
 helm repo update
 
-# Install the cert-manager Custom Resource Definitions (CRDs)
-# These define the certificate-related resources cert-manager uses
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.crds.yaml
-
-# Create the cert-manager namespace
-kubectl create namespace cert-manager
-
 # Install cert-manager using Helm
 # This deploys the cert-manager controller, webhook, and cainjector components
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
-  --version v1.14.4
+  --create-namespace \
+  --set crds.enabled=true
 ```
 
 Verify cert-manager is running:
@@ -135,6 +130,8 @@ helm install rancher rancher-stable/rancher \
   --set letsEncrypt.email=admin@yourdomain.com \
   --set letsEncrypt.ingress.class=nginx
 ```
+
+For new Rancher installations where `agentTLSMode` is `strict`, also follow the Rancher TLS instructions to upload the Let's Encrypt CA and include `--set privateCA=true`; otherwise downstream cluster agents may fail TLS verification.
 
 For local testing without a domain, you can use a self-signed certificate:
 
@@ -377,46 +374,39 @@ Define custom roles for fine-grained access control:
 # custom-role.yaml
 # This creates a custom Rancher role with specific permissions
 apiVersion: management.cattle.io/v3
-kind: GlobalRole
+kind: RoleTemplate
 metadata:
-  # Name must be unique across all global roles
+  # Name must be unique across all role templates
   name: deployment-manager
   labels:
     cattle.io/creator: norman
-spec:
-  # Display name shown in the Rancher UI
-  displayName: Deployment Manager
-  # Description helps users understand the role's purpose
-  description: "Can manage deployments but not delete namespaces"
-  # Rules define the actual permissions granted
-  rules:
-    # Allow full access to deployments
-    - apiGroups:
-        - "apps"
-      resources:
-        - deployments
-        - replicasets
-      verbs:
-        - "*"
-    # Allow read access to pods and services
-    - apiGroups:
-        - ""
-      resources:
-        - pods
-        - services
-        - configmaps
-      verbs:
-        - get
-        - list
-        - watch
-    # Allow viewing namespaces but not modifying them
-    - apiGroups:
-        - ""
-      resources:
-        - namespaces
-      verbs:
-        - get
-        - list
+# Scope this role to projects, where namespaced workloads are managed
+context: project
+# Display name shown in the Rancher UI
+displayName: Deployment Manager
+# Description helps users understand the role's purpose
+description: "Can manage deployments but not delete namespaces"
+# Rules define the actual permissions granted
+rules:
+  # Allow full access to deployments
+  - apiGroups:
+      - "apps"
+    resources:
+      - deployments
+      - replicasets
+    verbs:
+      - "*"
+  # Allow read access to pods and services
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - services
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
 ```
 
 Apply the custom role:
@@ -468,6 +458,11 @@ helm repo add rancher-charts https://charts.rancher.io
 
 # Update the repository cache
 helm repo update
+
+# Install the CRDs used by the monitoring stack
+helm install rancher-monitoring-crd rancher-charts/rancher-monitoring-crd \
+  --namespace cattle-monitoring-system \
+  --create-namespace
 
 # Install the monitoring stack
 # This deploys Prometheus, Alertmanager, and Grafana
@@ -521,7 +516,7 @@ spec:
 
 ## Backup and Disaster Recovery
 
-Rancher provides backup capabilities for both the Rancher server and managed clusters.
+Rancher provides backup capabilities for the Rancher server configuration. Backups for downstream cluster workloads and cluster datastores should be handled separately with the appropriate Kubernetes backup or datastore snapshot tools.
 
 ### Installing the Backup Operator
 
@@ -557,8 +552,8 @@ spec:
       credentialSecretNamespace: cattle-resources-system
   # Encryption configuration for backup data
   encryptionConfigSecretName: backup-encryption
-  # Resource set to backup - use 'rancher-resource-set' for full backup
-  resourceSetName: rancher-resource-set
+  # Resource set to backup - use 'rancher-resource-set-full' for a full backup
+  resourceSetName: rancher-resource-set-full
 ```
 
 ### Creating a Scheduled Backup
@@ -583,7 +578,7 @@ spec:
       credentialSecretName: s3-credentials
       credentialSecretNamespace: cattle-resources-system
   encryptionConfigSecretName: backup-encryption
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
 ```
 
 Apply the backup configurations:
@@ -659,7 +654,7 @@ kubectl -n cattle-system get deployment rancher -o yaml
 When running Rancher in production, follow these guidelines:
 
 1. **High Availability**: Run Rancher on a 3-node cluster for high availability
-2. **External Database**: Use an external PostgreSQL or MySQL database instead of embedded etcd for better reliability
+2. **Reliable Datastore**: Use a highly available Kubernetes cluster with a reliable etcd or supported K3s/RKE2 datastore for the Rancher management plane
 3. **TLS Certificates**: Always use valid TLS certificates from a trusted CA
 4. **Regular Backups**: Configure scheduled backups to external storage
 5. **Network Segmentation**: Isolate the Rancher management network from downstream clusters
