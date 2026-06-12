@@ -120,6 +120,8 @@ inhibit_rules:
 
 The `equal` field is the most critical and often misunderstood part of inhibition rules. It defines which labels must have identical values on both source and target alerts for inhibition to occur.
 
+Alertmanager treats a missing label and a label with an empty value as equivalent. If every label listed in `equal` is missing from both alerts, the inhibition rule still applies.
+
 ### Why Equal Labels Matter
 
 Without equal labels, a single critical alert could suppress ALL matching target alerts across your entire infrastructure. Equal labels scope the inhibition to related alerts only.
@@ -362,7 +364,7 @@ receivers:
 
   - name: warning-slack
     slack_configs:
-      - api_url: '<your-slack-webhook>'
+      - api_url: 'https://hooks.slack.com/services/XXX/YYY/ZZZ'
         channel: '#alerts'
 
 # Inhibition rules to reduce alert noise
@@ -506,9 +508,9 @@ inhibit_rules:
 **Issue 3: Regex not matching**
 
 ```yaml
-# Problem: Regex syntax error or incorrect pattern
+# Problem: Regex pattern is valid, but it does not mean "Pod followed by anything"
 target_matchers:
-  - alertname =~ "Pod*"  # Wrong: * is not valid regex
+  - alertname =~ "Pod*"  # Wrong: * only repeats the previous character
 
 # Solution: Use proper regex syntax
 target_matchers:
@@ -541,7 +543,7 @@ Use `amtool` to validate your configuration:
 amtool check-config alertmanager.yml
 
 # Test alert routing (does not test inhibition directly but validates config)
-amtool config routes test --config.file=alertmanager.yml
+amtool config routes test --config.file=alertmanager.yml alertname=HighMemoryUsage severity=critical
 ```
 
 ---
@@ -554,7 +556,7 @@ amtool config routes test --config.file=alertmanager.yml
 
 3. **Start conservative, then expand** - Begin with obvious inhibitions (severity hierarchy, node-down suppression) and add more specific rules as you observe alert patterns in production.
 
-4. **Use consistent labels** - Inhibition relies on exact label matching. Ensure your Prometheus recording rules, alerting rules, and service discovery configurations produce consistent labels.
+4. **Use consistent labels** - Inhibition relies on exact label matching, and missing labels can match other missing labels in the `equal` list. Ensure your Prometheus recording rules, alerting rules, and service discovery configurations produce consistent labels.
 
 5. **Test inhibitions in staging** - Before deploying new inhibition rules to production, test them in a staging environment by simulating failure scenarios.
 
