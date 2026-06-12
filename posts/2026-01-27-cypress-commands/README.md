@@ -140,21 +140,18 @@ Cypress.Commands.add('createUser', (userData) => {
 // Useful for setting up complex test scenarios
 Cypress.Commands.add('seedDatabase', (fixtures) => {
   // Accept an array of fixture names to load
-  const fixturePromises = fixtures.map((fixture) => {
-    // cy.fixture loads JSON files from cypress/fixtures/
-    return cy.fixture(fixture);
-  });
-
-  // Use cy.wrap to work with the fixture data
   // This seeds multiple data sets in sequence
-  cy.wrap(fixturePromises).each((fixtureData, index) => {
-    cy.request({
-      method: 'POST',
-      url: '/api/seed',
-      body: {
-        collection: fixtures[index],
-        data: fixtureData,
-      },
+  return cy.wrap(fixtures).each((fixture) => {
+    // cy.fixture loads JSON files from cypress/fixtures/
+    return cy.fixture(fixture).then((fixtureData) => {
+      return cy.request({
+        method: 'POST',
+        url: '/api/seed',
+        body: {
+          collection: fixture,
+          data: fixtureData,
+        },
+      });
     });
   });
 });
@@ -320,15 +317,10 @@ Cypress.Commands.add(
     // Determine the search scope based on whether we have a subject
     const scope = subject ? cy.wrap(subject) : cy.get('body');
 
-    // Build the contains selector
-    // The :contains() pseudo-selector finds elements with matching text
-    const selector = options.exact
-      ? `:contains("${text}")`  // Exact match
-      : `*`;  // We'll filter manually for partial match
-
     if (options.exact) {
-      // For exact match, use contains with the full text
-      return scope.contains(text);
+      // For exact match, use a regular expression that matches the whole text
+      const escapedText = Cypress._.escapeRegExp(text);
+      return scope.contains(new RegExp(`^${escapedText}$`));
     } else {
       // For partial match, find all elements and filter
       return scope.find('*').filter((index, element) => {
@@ -443,44 +435,54 @@ Cypress allows you to overwrite built-in commands to extend or modify their beha
 // Use Cypress.Commands.overwrite() instead of .add()
 Cypress.Commands.overwrite('visit', (originalFn, url, options = {}) => {
   // Get auth token from environment or storage
-  const authToken = Cypress.env('AUTH_TOKEN') || localStorage.getItem('authToken');
+  return cy.env(['AUTH_TOKEN']).then(({ AUTH_TOKEN }) => {
+    const authToken = AUTH_TOKEN || localStorage.getItem('authToken');
 
-  // Merge custom headers with any existing options
-  const enhancedOptions = {
-    ...options,
-    headers: {
-      ...options.headers,
-      // Add authorization header if token exists
-      ...(authToken && { Authorization: `Bearer ${authToken}` }),
-    },
-    // Log the visit for debugging
-    onBeforeLoad: (win) => {
-      cy.log(`Visiting: ${url}`);
-      // Call original onBeforeLoad if provided
-      if (options.onBeforeLoad) {
-        options.onBeforeLoad(win);
-      }
-    },
-  };
+    // Merge custom headers with any existing options
+    const enhancedOptions = {
+      ...options,
+      headers: {
+        ...options.headers,
+        // Add authorization header if token exists
+        ...(authToken && { Authorization: `Bearer ${authToken}` }),
+      },
+      // Log the visit for debugging
+      onBeforeLoad: (win) => {
+        Cypress.log({ name: 'visit', message: `Visiting: ${url}` });
+        // Call original onBeforeLoad if provided
+        if (options.onBeforeLoad) {
+          options.onBeforeLoad(win);
+        }
+      },
+    };
 
-  // Call the original visit command with enhanced options
-  return originalFn(url, enhancedOptions);
+    // Call the original visit command with enhanced options
+    return originalFn(url, enhancedOptions);
+  });
 });
 
 // Overwrite cy.click() to add automatic scrolling and logging
-Cypress.Commands.overwrite('click', (originalFn, subject, options = {}) => {
+Cypress.Commands.overwrite('click', (originalFn, subject, positionOrX, y, options = {}) => {
   // Log which element is being clicked
   const elementInfo = subject.selector || subject.toString();
   cy.log(`Clicking: ${elementInfo}`);
 
   // Add scrollIntoView by default for more reliable clicks
+  if (typeof positionOrX === 'object') {
+    options = positionOrX;
+    positionOrX = undefined;
+  } else if (typeof y === 'object') {
+    options = y;
+    y = undefined;
+  }
+
   const enhancedOptions = {
     scrollBehavior: 'center',  // Scroll element to center before clicking
     ...options,  // Allow overriding with explicit options
   };
 
   // Call original click with enhanced options
-  return originalFn(subject, enhancedOptions);
+  return originalFn(subject, positionOrX, y, enhancedOptions);
 });
 
 // Overwrite cy.type() to mask sensitive data in logs
@@ -490,8 +492,13 @@ Cypress.Commands.overwrite('type', (originalFn, subject, text, options = {}) => 
   const isSensitive = subject.attr('data-sensitive') === 'true';
 
   if (isPassword || isSensitive) {
-    // Mask the input in Cypress logs for security
-    cy.log(`Typing: ${'*'.repeat(text.length)} (masked)`);
+    // Turn off the original log and create a masked log entry
+    options.log = false;
+    Cypress.log({
+      $el: subject,
+      name: 'type',
+      message: '*'.repeat(text.length),
+    });
   } else {
     cy.log(`Typing: ${text}`);
   }
@@ -508,8 +515,10 @@ Cypress.Commands.overwrite('request', (originalFn, ...args) => {
     // cy.request(url) or cy.request(method, url) or cy.request(method, url, body)
     if (typeof args[1] === 'string') {
       options = { method: args[0], url: args[1], body: args[2] };
+    } else if (args.length === 2) {
+      options = { url: args[0], body: args[1] };
     } else {
-      options = { url: args[0], ...args[1] };
+      options = { url: args[0] };
     }
   } else {
     options = args[0];
@@ -539,8 +548,7 @@ Usage:
 
 describe('Overwritten Commands', () => {
   it('should use enhanced visit with auth', () => {
-    // Set auth token before tests
-    Cypress.env('AUTH_TOKEN', 'test-jwt-token');
+    // Configure AUTH_TOKEN in cypress.config.js or cypress.env.json before tests
 
     // visit() now automatically includes auth headers
     cy.visit('/protected-page');
@@ -652,8 +660,7 @@ interface User {
 ```typescript
 // cypress/support/commands.ts
 
-// Import types for better type checking in implementation
-import type { CreateUserInput, User } from './index.d';
+// The CreateUserInput and User interfaces are declared in cypress/support/index.d.ts
 
 // Login command with TypeScript
 Cypress.Commands.add('login', (username: string, password: string): void => {
@@ -718,7 +725,8 @@ Cypress.Commands.add(
     const scope = subject ? cy.wrap(subject) : cy.get('body');
 
     if (options.exact) {
-      return scope.contains(text);
+      const escapedText = Cypress._.escapeRegExp(text);
+      return scope.contains(new RegExp(`^${escapedText}$`));
     }
 
     return scope.contains(text);
@@ -728,7 +736,7 @@ Cypress.Commands.add(
 
 ### Configure TypeScript for Cypress
 
-```json
+```jsonc
 // cypress/tsconfig.json
 {
   "compilerOptions": {
@@ -780,13 +788,13 @@ Cypress.Commands.add(
   { prevSubject: true },
   (subject) => {
     // subject is expected to be a table element
-    const tableData: string[][] = [];
+    const tableData = [];
 
     // Extract data from table rows
-    cy.wrap(subject)
+    return cy.wrap(subject)
       .find('tbody tr')
       .each(($row) => {
-        const rowData: string[] = [];
+        const rowData = [];
         $row.find('td').each((index, cell) => {
           rowData.push(cell.textContent?.trim() || '');
         });
@@ -794,7 +802,7 @@ Cypress.Commands.add(
       })
       .then(() => {
         // Return the extracted data, not the table element
-        return cy.wrap(tableData);
+        return tableData;
       });
   }
 );
@@ -807,10 +815,10 @@ Cypress.Commands.add('createOrderAndGetId', (orderData) => {
     body: orderData,
   }).then((response) => {
     // Store order ID for cleanup
-    Cypress.env('lastOrderId', response.body.id);
-
-    // Yield just the ID for convenient chaining
-    return response.body.id;
+    return cy.wrap(response.body.id).as('lastOrderId').then(() => {
+      // Yield just the ID for convenient chaining
+      return response.body.id;
+    });
   });
 });
 ```
@@ -838,8 +846,7 @@ Cypress.Commands.add('setupTestUser', () => {
     }).then(() => user);  // Pass through the user object
   }).then((user) => {
     // Store credentials for login
-    Cypress.env('testUser', user);
-    return user;
+    return cy.wrap(user).as('testUser').then(() => user);
   });
 });
 
@@ -908,8 +915,7 @@ Cypress.Commands.add('createAndAliasProduct', (productData, aliasName) => {
     body: productData,
   }).then((response) => {
     // Create an alias so the product can be referenced later
-    cy.wrap(response.body).as(aliasName);
-    return response.body;
+    return cy.wrap(response.body).as(aliasName).then(() => response.body);
   });
 });
 
@@ -1060,16 +1066,17 @@ Cypress.Commands.add('createAndLoginUser', (options) => {
 
 ```javascript
 Cypress.Commands.add('apiRequest', (method, endpoint, body) => {
-  const baseUrl = Cypress.env('API_BASE_URL') || 'http://localhost:3000';
-  const apiKey = Cypress.env('API_KEY');
+  return cy.env(['API_BASE_URL', 'API_KEY']).then(({ API_BASE_URL, API_KEY }) => {
+    const baseUrl = API_BASE_URL || 'http://localhost:3000';
 
-  return cy.request({
-    method,
-    url: `${baseUrl}${endpoint}`,
-    body,
-    headers: {
-      'X-API-Key': apiKey,
-    },
+    return cy.request({
+      method,
+      url: `${baseUrl}${endpoint}`,
+      body,
+      headers: {
+        'X-API-Key': API_KEY,
+      },
+    });
   });
 });
 ```
