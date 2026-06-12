@@ -45,12 +45,12 @@ flowchart LR
     subgraph Tracking Methods
         Label[Label Based]
         Annotation[Annotation Based]
-        UID[Annotation + Label UID]
+        Both[Annotation + Label]
     end
 
     Label -->|Simple| Use1[Single Cluster]
     Annotation -->|Flexible| Use2[Multi-App Resources]
-    UID -->|Recommended| Use3[Production Systems]
+    Both -->|Compatible| Use3[Label-Based Tools]
 ```
 
 ### 1. Label-Based Tracking (Legacy)
@@ -113,9 +113,9 @@ Benefits of annotation tracking:
 - Includes full resource identification
 - Supports longer Application names
 
-### 3. Annotation + Label UID (Recommended)
+### 3. Annotation + Label
 
-This method combines both approaches and adds a unique identifier.
+This method combines both approaches by using the annotation for tracking and adding the label for compatibility.
 
 ArgoCD adds both a label and an annotation:
 
@@ -124,10 +124,10 @@ metadata:
   labels:
     app.kubernetes.io/instance: myapp
   annotations:
-    argocd.argoproj.io/tracking-id: argocd/myapp:apps/Deployment:production/myapp
+    argocd.argoproj.io/tracking-id: myapp:apps/Deployment:production/myapp
 ```
 
-The annotation includes the ArgoCD namespace, making it unique across clusters.
+The label is informational in this mode. ArgoCD uses the annotation for resource tracking.
 
 Enable annotation+label tracking:
 
@@ -141,10 +141,10 @@ data:
   application.resourceTrackingMethod: annotation+label
 ```
 
-This is the recommended method because:
+Use this method when:
 - Backward compatible with label-based tools
 - Full tracking information in annotation
-- Includes ArgoCD namespace for multi-cluster setups
+- You still need `app.kubernetes.io/instance` on managed resources
 
 ## Configuring Resource Tracking
 
@@ -172,7 +172,7 @@ kubectl apply -f argocd-cm.yaml
 # Restart ArgoCD to pick up changes
 
 kubectl rollout restart deployment argocd-repo-server -n argocd
-kubectl rollout restart deployment argocd-application-controller -n argocd
+kubectl rollout restart statefulset argocd-application-controller -n argocd
 ```
 
 ### Verify Tracking Method
@@ -217,9 +217,9 @@ metadata:
 
 ### Preserve Existing Labels
 
-If your resources already have labels you want to keep, configure ArgoCD to not overwrite them.
+If your resources already have labels you want to keep, configure ArgoCD to ignore those fields.
 
-Add sync options to your Application:
+Add ignore differences and the matching sync option to your Application:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -228,12 +228,18 @@ metadata:
   name: myapp
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/myapp.git
     path: k8s
   destination:
     server: https://kubernetes.default.svc
     namespace: production
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /metadata/labels/mycompany.com~1existing-label
   syncPolicy:
     syncOptions:
       - RespectIgnoreDifferences=true
@@ -286,6 +292,7 @@ spec:
     metadata:
       name: 'myapp-{{name}}'  # Unique per cluster
     spec:
+      project: default
       source:
         repoURL: https://github.com/myorg/myapp.git
         path: k8s/production
@@ -296,7 +303,7 @@ spec:
 
 ### Include Cluster in Tracking
 
-The annotation+label method includes the ArgoCD namespace, but you can add cluster information as a label:
+The resource tracking method does not add cluster information to the tracking ID, but you can add cluster information as a label:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -305,6 +312,7 @@ metadata:
   name: myapp-prod-east
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/myapp.git
     path: k8s/production
@@ -320,9 +328,9 @@ spec:
 
 Sometimes multiple Applications need to reference the same resource. This requires special handling.
 
-### Option 1: Exclude from Tracking
+### Option 1: Avoid Managing Namespace Creation
 
-Tell ArgoCD to not track specific resources:
+Tell ArgoCD not to create the destination namespace automatically:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -330,15 +338,19 @@ kind: Application
 metadata:
   name: myapp
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/myapp.git
     path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
   syncPolicy:
     syncOptions:
-      - CreateNamespace=false  # Don't manage namespace
+      - CreateNamespace=false  # Don't create the destination namespace
 ```
 
-Use ignoreDifferences for shared ConfigMaps:
+Use ignoreDifferences for fields in shared ConfigMaps that other controllers update:
 
 ```yaml
 spec:
@@ -352,7 +364,7 @@ spec:
 
 ### Option 2: Use Resource Exclusions
 
-Configure global resource exclusions in ArgoCD:
+Configure global resource exclusions in ArgoCD for resource kinds that ArgoCD should not discover or sync:
 
 ```yaml
 apiVersion: v1
@@ -366,8 +378,6 @@ data:
         - ""
       kinds:
         - ConfigMap
-      names:
-        - shared-*
       clusters:
         - "*"
 ```
@@ -383,6 +393,7 @@ metadata:
   name: shared-resources
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/shared.git
     path: resources
@@ -457,7 +468,7 @@ Use the ArgoCD CLI to inspect tracked resources:
 argocd app resources myapp
 
 # Get detailed resource tree
-argocd app get myapp --show-tree
+argocd app get myapp --output tree
 
 # Check sync status with resource details
 argocd app get myapp --refresh
@@ -465,7 +476,7 @@ argocd app get myapp --refresh
 
 ### Detect Orphaned Resources
 
-Find resources that might be orphaned (have tracking labels but no matching Application):
+Find resources that might be orphaned (have tracking labels but no matching Application). This works for label and annotation+label tracking:
 
 ```bash
 # Find resources with ArgoCD labels
@@ -559,11 +570,11 @@ kubectl patch configmap argocd-cm -n argocd --type merge -p '{"data":{"applicati
 Restart ArgoCD components:
 
 ```bash
-kubectl rollout restart deployment argocd-application-controller -n argocd
+kubectl rollout restart statefulset argocd-application-controller -n argocd
 kubectl rollout restart deployment argocd-repo-server -n argocd
 
 # Wait for rollout
-kubectl rollout status deployment argocd-application-controller -n argocd
+kubectl rollout status statefulset argocd-application-controller -n argocd
 ```
 
 Hard refresh all Applications to update tracking metadata:
@@ -584,13 +595,13 @@ kubectl get deployment myapp -n production -o yaml | grep -A10 "metadata:"
 
 ## Best Practices
 
-### 1. Use annotation+label Tracking
+### 1. Use annotation Tracking
 
-This method provides the best compatibility and tracking precision:
+This method is the default in current ArgoCD versions and avoids label conflicts:
 
 ```yaml
 data:
-  application.resourceTrackingMethod: annotation+label
+  application.resourceTrackingMethod: annotation
 ```
 
 ### 2. Name Applications Uniquely
@@ -638,10 +649,10 @@ Set up dashboards and alerts for tracking issues. Use Prometheus metrics exposed
 # Applications with sync issues
 sum(argocd_app_info{sync_status!="Synced"}) by (name, sync_status)
 
-# Resource count per Application
-argocd_app_resource_count{project!=""}
+# Orphaned resource count per Application
+argocd_app_orphaned_resources_count{project!=""}
 ```
 
 ---
 
-Resource tracking is foundational to how ArgoCD manages your Kubernetes clusters. Start with annotation+label tracking for new installations, plan migrations carefully for existing setups, and monitor your Applications to catch tracking issues early. With proper resource tracking, ArgoCD becomes a reliable source of truth for your cluster state.
+Resource tracking is foundational to how ArgoCD manages your Kubernetes clusters. Start with annotation tracking for new installations, plan migrations carefully for existing setups, and monitor your Applications to catch tracking issues early. With proper resource tracking, ArgoCD becomes a reliable source of truth for your cluster state.
