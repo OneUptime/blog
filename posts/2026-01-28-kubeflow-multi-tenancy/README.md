@@ -51,7 +51,7 @@ flowchart TB
 
 ## Creating User Profiles
 
-Profiles are the primary unit of tenancy in Kubeflow. Each profile creates an isolated namespace with associated RBAC.
+Profiles are the primary unit of tenancy in Kubeflow. Each profile creates a namespace with associated RBAC and Istio authorization policies.
 
 ### Basic Profile Creation
 
@@ -88,30 +88,45 @@ kubectl get namespace team-data-science
 
 ### Profile with Multiple Contributors
 
-Add team members to a profile:
+Add team members to a profile by creating the RoleBinding and AuthorizationPolicy resources that Kubeflow uses for profile contributors:
 
 ```yaml
-apiVersion: kubeflow.org/v1
-kind: Profile
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
 metadata:
-  name: team-ml-platform
-spec:
-  owner:
+  name: user-carol-company-com-clusterrole-edit
+  namespace: team-ml-platform
+  annotations:
+    role: edit
+    user: carol@company.com
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubeflow-edit
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
     kind: User
-    name: bob@company.com
-  # Additional contributors get edit access
-  contributors:
-    - kind: User
-      name: carol@company.com
-    - kind: User
-      name: david@company.com
-    - kind: Group
-      name: ml-engineers@company.com
-  resourceQuotaSpec:
-    hard:
-      cpu: "50"
-      memory: "200Gi"
-      requests.nvidia.com/gpu: "8"
+    name: carol@company.com
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: user-carol-company-com-clusterrole-edit
+  namespace: team-ml-platform
+  annotations:
+    role: edit
+    user: carol@company.com
+spec:
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"
+              - "cluster.local/ns/kubeflow/sa/ml-pipeline-ui"
+      when:
+        - key: request.headers[kubeflow-userid]
+          values:
+            - carol@company.com
 ```
 
 ### Programmatic Profile Management
@@ -149,7 +164,7 @@ class ProfileManager:
             cpu_quota: CPU quota
             memory_quota: Memory quota
             gpu_quota: GPU quota
-            contributors: List of contributor emails
+            contributors: List of contributor emails to grant edit access
         """
         profile = {
             "apiVersion": "kubeflow.org/v1",
@@ -170,12 +185,6 @@ class ProfileManager:
             }
         }
 
-        if contributors:
-            profile["spec"]["contributors"] = [
-                {"kind": "User", "name": email}
-                for email in contributors
-            ]
-
         try:
             self.api.create_cluster_custom_object(
                 group="kubeflow.org",
@@ -184,35 +193,78 @@ class ProfileManager:
                 body=profile
             )
             print(f"Profile {name} created successfully")
+            for contributor in contributors or []:
+                self.add_contributor(name, contributor)
         except ApiException as e:
             print(f"Error creating profile: {e}")
 
     def add_contributor(self, profile_name: str, contributor_email: str):
         """Add a contributor to an existing profile."""
-        # Get current profile
-        profile = self.api.get_cluster_custom_object(
-            group="kubeflow.org",
-            version="v1",
-            plural="profiles",
-            name=profile_name
+        safe_email = contributor_email.replace("@", "-").replace(".", "-").lower()
+        resource_name = f"user-{safe_email}-clusterrole-edit"
+
+        rbac = client.RbacAuthorizationV1Api()
+        role_binding = client.V1RoleBinding(
+            metadata=client.V1ObjectMeta(
+                name=resource_name,
+                namespace=profile_name,
+                annotations={"role": "edit", "user": contributor_email},
+            ),
+            role_ref=client.V1RoleRef(
+                api_group="rbac.authorization.k8s.io",
+                kind="ClusterRole",
+                name="kubeflow-edit",
+            ),
+            subjects=[
+                client.V1Subject(
+                    api_group="rbac.authorization.k8s.io",
+                    kind="User",
+                    name=contributor_email,
+                )
+            ],
+        )
+        rbac.create_namespaced_role_binding(
+            namespace=profile_name,
+            body=role_binding
         )
 
-        # Add contributor
-        if "contributors" not in profile["spec"]:
-            profile["spec"]["contributors"] = []
-
-        profile["spec"]["contributors"].append({
-            "kind": "User",
-            "name": contributor_email
-        })
-
-        # Update profile
-        self.api.patch_cluster_custom_object(
-            group="kubeflow.org",
-            version="v1",
-            plural="profiles",
-            name=profile_name,
-            body=profile
+        authorization_policy = {
+            "apiVersion": "security.istio.io/v1beta1",
+            "kind": "AuthorizationPolicy",
+            "metadata": {
+                "name": resource_name,
+                "namespace": profile_name,
+                "annotations": {"role": "edit", "user": contributor_email},
+            },
+            "spec": {
+                "rules": [
+                    {
+                        "from": [
+                            {
+                                "source": {
+                                    "principals": [
+                                        "cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account",
+                                        "cluster.local/ns/kubeflow/sa/ml-pipeline-ui",
+                                    ]
+                                }
+                            }
+                        ],
+                        "when": [
+                            {
+                                "key": "request.headers[kubeflow-userid]",
+                                "values": [contributor_email],
+                            }
+                        ],
+                    }
+                ]
+            },
+        }
+        self.api.create_namespaced_custom_object(
+            group="security.istio.io",
+            version="v1beta1",
+            namespace=profile_name,
+            plural="authorizationpolicies",
+            body=authorization_policy,
         )
         print(f"Added {contributor_email} to {profile_name}")
 
@@ -409,7 +461,7 @@ kind: Kustomization
 resources:
   - network-policy.yaml
 
-namespace: ${NAMESPACE}
+namespace: team-research
 
 configurations:
   - kustomizeconfig.yaml
@@ -417,7 +469,7 @@ configurations:
 
 ## RBAC Configuration
 
-Fine-grained access control within each tenant.
+Fine-grained access control within each tenant. For Kubeflow Pipelines UI and REST API access, use profile contributor RoleBindings and AuthorizationPolicies; Kubernetes Roles control namespace resources such as notebooks, services, and workflow objects.
 
 ### Custom Roles for ML Workflows
 
@@ -434,10 +486,10 @@ rules:
     resources: ["notebooks"]
     verbs: ["get", "list", "create", "delete"]
 
-  # Pipeline access
-  - apiGroups: ["kubeflow.org"]
-    resources: ["pipelines", "pipelineruns"]
-    verbs: ["get", "list", "create", "delete"]
+  # Argo workflow access for Argo-backed Kubeflow Pipelines runs
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows"]
+    verbs: ["get", "list", "watch", "create", "delete"]
 
   # Pod logs for debugging
   - apiGroups: [""]
@@ -463,12 +515,17 @@ metadata:
 rules:
   # All data scientist permissions plus:
   - apiGroups: ["kubeflow.org"]
-    resources: ["notebooks", "pipelines", "pipelineruns"]
+    resources: ["notebooks"]
     verbs: ["*"]
 
   # Model serving
-  - apiGroups: ["serving.kubeflow.org"]
+  - apiGroups: ["serving.kserve.io"]
     resources: ["inferenceservices"]
+    verbs: ["*"]
+
+  # Argo workflow access for Argo-backed Kubeflow Pipelines runs
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows"]
     verbs: ["*"]
 
   # Deployments and services
@@ -617,11 +674,11 @@ rules:
         resources: ["notebooks"]
     verbs: ["get", "list"]
 
-  # Log pipeline runs
+  # Log Argo workflow creation used by Kubeflow Pipelines in Argo-backed deployments
   - level: RequestResponse
     resources:
-      - group: "kubeflow.org"
-        resources: ["pipelineruns"]
+      - group: "argoproj.io"
+        resources: ["workflows"]
     verbs: ["create"]
 
   # Log secret access (metadata only for security)
