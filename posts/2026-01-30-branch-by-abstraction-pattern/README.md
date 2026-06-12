@@ -409,7 +409,7 @@ Update consumers to use dependency injection with the factory. You can migrate f
 // The implementation is selected at runtime based on feature flags.
 // File: src/controllers/checkout.controller.ts
 
-import { PaymentGateway } from '../interfaces/payment-gateway.interface';
+import { PaymentResult } from '../interfaces/payment-gateway.interface';
 import { PaymentGatewayFactory } from '../services/payment-gateway.factory';
 
 export class CheckoutController {
@@ -439,10 +439,11 @@ export class CheckoutController {
 
 ## Verification Strategy with Parallel Runs
 
-Before fully trusting the new implementation, run both in parallel and compare results. This catches subtle differences without affecting users.
+Before fully trusting the new implementation, run safe operations in parallel and compare results. This catches subtle differences without affecting users. For operations that modify state, use read-only shadow checks, sandboxed replays, or provider-supported dry-run modes instead of submitting the same live operation twice.
 
 ```typescript
-// Verification decorator that runs both implementations and compares results.
+// Verification decorator that runs safe operations against both implementations
+// and compares results.
 // Logs discrepancies but returns the primary (legacy) result to users.
 // File: src/services/payment-verification.wrapper.ts
 
@@ -463,19 +464,28 @@ export class PaymentVerificationWrapper implements PaymentGateway {
     ) {}
 
     async charge(customerId: string, amount: number, currency: string): Promise<PaymentResult> {
-        // Run both implementations concurrently
+        // Charging modifies state, so do not submit the same live charge
+        // to both providers unless the shadow path is a true dry run.
+        return this.primary.charge(customerId, amount, currency);
+    }
+
+    async refund(transactionId: string, amount?: number): Promise<RefundResult> {
+        // For financial operations that modify state, only run primary
+        // Shadow verification should use read-only operations
+        return this.primary.refund(transactionId, amount);
+    }
+
+    async getTransaction(transactionId: string): Promise<PaymentResult | null> {
         const [primaryResult, shadowResult] = await Promise.allSettled([
-            this.primary.charge(customerId, amount, currency),
-            this.shadow.charge(customerId, amount, currency)
+            this.primary.getTransaction(transactionId),
+            this.shadow.getTransaction(transactionId)
         ]);
 
-        // Primary failed: throw the error (do not mask failures)
         if (primaryResult.status === 'rejected') {
             throw primaryResult.reason;
         }
 
-        // Compare results if shadow succeeded
-        if (shadowResult.status === 'fulfilled') {
+        if (primaryResult.value && shadowResult.status === 'fulfilled' && shadowResult.value) {
             const differences = this.compareResults(primaryResult.value, shadowResult.value);
 
             if (differences.length > 0) {
@@ -486,23 +496,11 @@ export class PaymentVerificationWrapper implements PaymentGateway {
                     differences
                 });
             }
-        } else {
-            // Shadow failed but primary succeeded: log for investigation
-            console.warn('Shadow payment failed:', shadowResult.reason);
+        } else if (shadowResult.status === 'rejected') {
+            console.warn('Shadow transaction lookup failed:', shadowResult.reason);
         }
 
-        // Always return primary result to maintain existing behavior
         return primaryResult.value;
-    }
-
-    async refund(transactionId: string, amount?: number): Promise<RefundResult> {
-        // For financial operations that modify state, only run primary
-        // Shadow verification should use read-only operations
-        return this.primary.refund(transactionId, amount);
-    }
-
-    async getTransaction(transactionId: string): Promise<PaymentResult | null> {
-        return this.primary.getTransaction(transactionId);
     }
 
     async healthCheck(): Promise<boolean> {
@@ -562,7 +560,7 @@ Track these metrics to catch problems early:
 // Tracks success rates, latency, and error patterns per implementation.
 // File: src/services/payment-metrics.collector.ts
 
-import { PaymentGateway, PaymentResult } from '../interfaces/payment-gateway.interface';
+import { PaymentGateway } from '../interfaces/payment-gateway.interface';
 
 interface PaymentMetrics {
     implementation: string;
