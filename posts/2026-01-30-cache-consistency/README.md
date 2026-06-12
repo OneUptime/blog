@@ -30,7 +30,7 @@ Four primary strategies exist for maintaining cache consistency. Each makes diff
 | Strategy | Consistency | Write Latency | Read Latency | Complexity |
 |----------|-------------|---------------|--------------|------------|
 | Cache-Aside | Eventual | Low | Variable | Low |
-| Write-Through | Strong | Higher | Low | Medium |
+| Write-Through | Strong if both writes succeed | Higher | Low | Medium |
 | Write-Behind | Eventual | Low | Low | High |
 | Read-Through | Eventual | Low | Variable | Medium |
 
@@ -57,7 +57,7 @@ sequenceDiagram
     App->>Cache: DELETE user:123
 ```
 
-Here is a Python implementation of the cache-aside pattern with proper error handling.
+Here is a Python implementation of the cache-aside pattern.
 
 ```python
 import json
@@ -131,15 +131,16 @@ sequenceDiagram
     DB-->>Cache: success
     Cache-->>App: success
 
-    Note over App,DB: Read always hits cache
+    Note over App,DB: Reads hit cache when warm
     App->>Cache: GET user:123
     Cache-->>App: user data
 ```
 
-This implementation wraps writes to ensure atomicity between cache and database operations.
+This implementation wraps the database write in a transaction and updates the cache only after the database commit succeeds.
 
 ```python
-from typing import Any
+import json
+from typing import Optional
 import redis
 import psycopg2
 from contextlib import contextmanager
@@ -170,21 +171,23 @@ class WriteThroughCache:
                 (data["name"], data["email"], user_id)
             )
 
-            # Update cache only after DB write succeeds
-            # If cache write fails, we catch and handle it
+        # Update cache after the DB commit succeeds. Redis and PostgreSQL do
+        # not share a transaction, so handle cache failures explicitly.
+        try:
+            self.cache.set(cache_key, json.dumps(data))
+        except redis.RedisError:
+            # Log the cache failure and remove any stale value.
             try:
-                self.cache.set(cache_key, json.dumps(data))
+                self.cache.delete(cache_key)
             except redis.RedisError:
-                # Log the cache failure but don't fail the write
-                # Next read will repopulate from database
                 pass
 
         return True
 
-    def read_user(self, user_id: int) -> dict:
+    def read_user(self, user_id: int) -> Optional[dict]:
         cache_key = f"user:{user_id}"
 
-        # Cache should always have fresh data
+        # Cache is expected to have fresh data when warm
         cached = self.cache.get(cache_key)
         if cached:
             return json.loads(cached)
@@ -207,7 +210,7 @@ class WriteThroughCache:
 
 ## Handling Race Conditions
 
-The most subtle bugs in cache consistency come from race conditions. Consider what happens when two processes update the same key simultaneously.
+The most subtle bugs in cache consistency come from race conditions. Consider what happens when a cache miss overlaps with a write to the same key.
 
 ```mermaid
 sequenceDiagram
@@ -216,11 +219,12 @@ sequenceDiagram
     participant Cache as Cache
     participant DB as Database
 
-    P1->>DB: UPDATE price = 100
+    P1->>Cache: GET price_key
+    Cache-->>P1: miss
+    P1->>DB: SELECT price
+    DB-->>P1: price = 100
     P2->>DB: UPDATE price = 200
     P2->>Cache: DELETE price_key
-    P1->>Cache: DELETE price_key
-    Note over Cache: Cache empty
     P1->>Cache: SET price = 100
     Note over Cache,DB: Cache has 100, DB has 200
 ```
@@ -230,6 +234,7 @@ This race condition leaves the cache with stale data. Two techniques help preven
 The first approach uses version numbers or timestamps to detect stale writes.
 
 ```python
+import json
 import time
 from typing import Optional, Tuple
 
@@ -264,7 +269,8 @@ class VersionedCache:
         return result == 1
 
     def update_with_version(self, key: str, value: dict) -> bool:
-        # Generate version from timestamp
+        # In production, prefer a database-generated or monotonic version.
+        # A timestamp keeps the example short.
         version = int(time.time() * 1000000)
 
         # Update database with version
@@ -280,6 +286,7 @@ class VersionedCache:
 The second approach uses distributed locks to serialize updates.
 
 ```python
+import json
 import uuid
 from contextlib import contextmanager
 
@@ -349,8 +356,9 @@ Time-to-live settings determine how long stale data can persist. Shorter TTLs im
 You cannot fix what you cannot measure. Track these metrics to detect consistency issues.
 
 ```python
+import json
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Optional
 import time
 
 @dataclass
@@ -384,6 +392,10 @@ class InstrumentedCache:
 
         self.metrics.cache_misses += 1
         return self._fetch_from_db(key)
+
+    def _fetch_from_db(self, key: str) -> Optional[dict]:
+        # Replace this with the application's database lookup.
+        return self.db.get(key)
 
     def invalidate(self, key: str):
         start = time.time()
