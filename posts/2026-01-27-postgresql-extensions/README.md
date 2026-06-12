@@ -83,7 +83,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS postgis SCHEMA public;
 
 -- Install a specific version
-CREATE EXTENSION IF NOT EXISTS uuid_ossp VERSION '1.1';
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" VERSION '1.1';
 ```
 
 ### Managing Extension Lifecycle
@@ -95,8 +95,8 @@ ALTER EXTENSION pg_trgm UPDATE;
 -- Upgrade to a specific version
 ALTER EXTENSION pg_trgm UPDATE TO '1.6';
 
--- Move extension to a different schema
-ALTER EXTENSION postgis SET SCHEMA gis;
+-- Move a relocatable extension to a different schema
+ALTER EXTENSION hstore SET SCHEMA addons;
 
 -- Remove an extension (CASCADE removes dependent objects)
 DROP EXTENSION IF EXISTS pg_trgm CASCADE;
@@ -147,7 +147,7 @@ CREATE TABLE locations (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     address TEXT,
-    -- GEOGRAPHY type stores lat/lng coordinates (SRID 4326 = WGS84)
+    -- GEOGRAPHY type stores longitude/latitude coordinates (SRID 4326 = WGS84)
     -- Calculations use spherical math (accurate for Earth distances)
     coordinates GEOGRAPHY(POINT, 4326),
     -- GEOMETRY type for planar calculations (faster, less accurate globally)
@@ -239,12 +239,12 @@ VALUES (
     ))')
 );
 
--- Check if a point is within a service area
+-- Check if a point is covered by a service area
 SELECT name
 FROM service_areas
-WHERE ST_Within(
-    ST_SetSRID(ST_MakePoint(-73.980, 40.740), 4326)::geography,
-    boundary
+WHERE ST_Covers(
+    boundary,
+    ST_SetSRID(ST_MakePoint(-73.980, 40.740), 4326)::geography
 ) AND active = true;
 
 -- Calculate area in square kilometers
@@ -527,9 +527,8 @@ VALUES ('550e8400-e29b-41d4-a716-446655440000', 'admin@example.com', 'Admin User
 ### UUID Performance Considerations
 
 ```sql
--- For better index performance with UUID v4, consider using
+-- For random UUID v4 generation without uuid-ossp, use
 -- the built-in gen_random_uuid() function (PostgreSQL 13+)
--- which is slightly faster and does not require an extension
 
 -- PostgreSQL 13+ native UUID generation
 CREATE TABLE events (
@@ -542,6 +541,9 @@ CREATE TABLE events (
 -- For time-series data where you need ordering,
 -- consider ULID-style UUIDs (time-prefixed)
 -- This improves B-tree index locality
+
+-- gen_random_bytes() is provided by pgcrypto
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Custom function for time-ordered UUIDs
 CREATE OR REPLACE FUNCTION uuid_time_ordered()
@@ -719,7 +721,8 @@ SELECT * FROM check_extensions();
 Track how your extensions are performing with query statistics:
 
 ```sql
--- Enable query statistics tracking
+-- pg_stat_statements must also be added to shared_preload_libraries
+-- and PostgreSQL must be restarted before it can track statements
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 -- Find slow queries using PostGIS functions
