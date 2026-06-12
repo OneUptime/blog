@@ -26,7 +26,7 @@ The critical detail is that your layer must follow a specific directory structur
 |---------|------------|---------------|
 | Python | `python/` or `python/lib/python3.x/site-packages/` | `/opt/python/` |
 | Node.js | `nodejs/node_modules/` | `/opt/nodejs/node_modules/` |
-| Ruby | `ruby/gems/2.7.0/` | `/opt/ruby/gems/2.7.0/` |
+| Ruby | `ruby/gems/3.4.0/` or `ruby/lib/` | `/opt/ruby/gems/3.4.0/` or `/opt/ruby/lib/` |
 | Java | `java/lib/` | `/opt/java/lib/` |
 | Custom | `bin/` | `/opt/bin/` (added to PATH) |
 
@@ -68,9 +68,6 @@ Let us create a practical layer step by step. We will build a Python layer conta
 # Create the layer directory with proper structure
 
 mkdir -p my-layer/python
-
-# Navigate to the python directory
-cd my-layer/python
 ```
 
 ### Step 2: Install Dependencies
@@ -78,10 +75,10 @@ cd my-layer/python
 ```bash
 # Install packages to the current directory
 # Use --target to install packages directly into the layer structure
-pip install requests -t .
+pip install requests -t my-layer/python
 
 # For specific Python versions, use the full path structure
-# pip install requests -t python/lib/python3.11/site-packages/
+# pip install requests -t my-layer/python/lib/python3.11/site-packages/
 ```
 
 ### Step 3: Add Custom Utility Code
@@ -340,7 +337,7 @@ Every time you publish a layer, AWS creates a new immutable version. This versio
 1. **Versions are immutable**: Once published, a layer version cannot be modified
 2. **Version numbers are sequential**: Each publish increments the version (1, 2, 3, ...)
 3. **Functions reference specific versions**: You must specify the exact version ARN
-4. **Old versions can be deleted**: But functions using them will fail
+4. **Old versions can be deleted**: Existing functions can keep using a deleted layer version, but you cannot attach that deleted version to new functions
 
 ### Managing Layer Versions
 
@@ -993,14 +990,16 @@ project/
     layers/
         shared-utils/
             requirements.txt      # pip dependencies
-            shared_utils/
-                __init__.py
-                helpers.py
+            python/
+                shared_utils/
+                    __init__.py
+                    helpers.py
         payment-utils/
             requirements.txt
-            payment/
-                __init__.py
-                processor.py
+            python/
+                payment/
+                    __init__.py
+                    processor.py
     functions/
         user-service/
             app.py
@@ -1117,29 +1116,28 @@ export class NodejsLayerStack extends cdk.Stack {
       description: 'Shared Node.js utilities and dependencies',
       code: lambda.Code.fromAsset(path.join(__dirname, '../layers/node-utils'), {
         bundling: {
-          image: lambda.Runtime.NODEJS_18_X.bundlingImage,
+          image: lambda.Runtime.NODEJS_24_X.bundlingImage,
           command: [
             'bash', '-c',
             // Create proper layer structure and install dependencies
             'mkdir -p /asset-output/nodejs && ' +
             'cp package.json /asset-output/nodejs/ && ' +
             'cd /asset-output/nodejs && ' +
-            'npm install --production && ' +
+            'npm install --omit=dev && ' +
             'cp -r /asset-input/lib/* /asset-output/nodejs/node_modules/'
           ],
         },
       }),
       compatibleRuntimes: [
-        lambda.Runtime.NODEJS_16_X,
-        lambda.Runtime.NODEJS_18_X,
-        lambda.Runtime.NODEJS_20_X,
+        lambda.Runtime.NODEJS_22_X,
+        lambda.Runtime.NODEJS_24_X,
       ],
     });
 
     // Function using the layer
     const apiFunction = new lambda.Function(this, 'ApiFunction', {
       functionName: 'api-handler',
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../functions/api')),
       layers: [this.utilsLayer],
@@ -1169,7 +1167,7 @@ Following these best practices will help you build maintainable, efficient serve
 |----------|----------------|
 | Keep total unzipped size under 250 MB | AWS Lambda hard limit |
 | Minimize layer size for faster cold starts | Layers are extracted on every cold start |
-| Use architecture-specific builds when needed | ARM64 layers will not work on x86_64 functions |
+| Use architecture-specific builds when needed | Native dependencies compiled only for ARM64 will not work on x86_64 functions |
 | Avoid including unnecessary files | Use .layerignore or exclude patterns |
 
 ### Version Management
@@ -1178,7 +1176,7 @@ Following these best practices will help you build maintainable, efficient serve
 |----------|----------------|
 | Never modify deployed layer versions | They are immutable by design |
 | Use Infrastructure as Code for layer deployment | Reproducible and auditable changes |
-| Implement automated cleanup of old versions | Avoid hitting the 75 version limit per layer |
+| Implement automated cleanup of old versions | Avoid exhausting the regional code storage quota for function and layer versions |
 | Pin function configurations to specific versions | Prevent unexpected changes from breaking functions |
 
 ### Security and Access
@@ -1227,7 +1225,7 @@ Remember these AWS Lambda limits when designing your layer strategy:
 
 - **5 layers maximum** per function
 - **250 MB** total unzipped size (function code + all layers)
-- **75 versions** maximum per layer
+- **75 GB** default regional storage quota for uploaded function and layer versions
 - Layers are **region-specific** (deploy to each region you need)
 
 ---
