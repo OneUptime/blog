@@ -4,37 +4,37 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Message Queue, Performance, Memory Management, DevOps, Microservice
 
-Description: Learn how to implement RabbitMQ lazy queues to handle large messages efficiently by storing them on disk instead of memory, reducing memory pressure and improving system stability.
+Description: Learn how RabbitMQ lazy queues worked in RabbitMQ 3.11 and earlier, and how modern RabbitMQ versions handle large messages with disk-backed classic and quorum queues.
 
 ---
 
 > "The key to performance is elegance, not battalions of special cases." - Jon Bentley
 
-RabbitMQ lazy queues are designed for scenarios where you need to handle very long queues or large messages without overwhelming your server's memory. Unlike classic queues that keep messages in RAM for fast delivery, lazy queues move messages to disk as soon as possible, trading some latency for significantly reduced memory usage.
+RabbitMQ lazy queues were designed for scenarios where you needed to handle very long queues or large messages without overwhelming your server's memory. In RabbitMQ 3.11 and earlier, lazy classic queues moved messages to disk as soon as possible, trading some latency for significantly reduced memory usage. In RabbitMQ 3.12 and later, the `lazy` mode setting is ignored because classic queues already use a low-memory storage implementation.
 
 ## Understanding Lazy Queues
 
-Lazy queues were introduced in RabbitMQ 3.6 to address memory pressure issues when dealing with millions of messages or large payloads. In RabbitMQ 3.12+, quorum queues with lazy mode have become the recommended approach for most production workloads.
+Lazy queues were introduced in RabbitMQ 3.6 to address memory pressure issues when dealing with millions of messages or large payloads. Lazy mode applied to classic queues in RabbitMQ 3.11 and earlier. In RabbitMQ 3.12 and later, use modern classic queues for non-replicated workloads or quorum queues when you need replication and stronger data safety.
 
 ### How Lazy Queues Work
 
-In classic mode, RabbitMQ keeps messages in memory for fast access. This works well for queues that are consumed quickly, but becomes problematic when:
+In older classic queue implementations, RabbitMQ could keep more message data in memory for fast access. This worked well for queues that were consumed quickly, but became problematic when:
 
 - Messages accumulate faster than they're consumed
 - Individual messages are very large (megabytes)
 - You're running many queues on limited hardware
 
-Lazy queues solve this by writing messages directly to disk and only loading them into memory when a consumer requests them.
+Lazy queues solved this by writing messages directly to disk and only loading them into memory when a consumer requested them. Modern classic queues and quorum queues already keep memory use low without enabling `x-queue-mode: lazy`.
 
 ```mermaid
 flowchart TD
-    subgraph Classic["Classic Queue (Default)"]
+    subgraph Classic["Classic Queue"]
         P1[Producer] --> RAM1[RAM Buffer]
         RAM1 --> D1[Disk Backup]
         RAM1 --> C1[Consumer]
     end
 
-    subgraph Lazy["Lazy Queue"]
+    subgraph Lazy["Lazy Queue (RabbitMQ <= 3.11)"]
         P2[Producer] --> D2[Disk Storage]
         D2 --> RAM2[RAM on Demand]
         RAM2 --> C2[Consumer]
@@ -47,12 +47,11 @@ Understanding the trade-offs helps you decide when lazy queues are appropriate.
 
 ### Memory Usage Comparison
 
-Classic queues can use significant memory, especially with large messages or backlogs.
+Older classic queues could use significant memory, especially with large messages or backlogs. Current RabbitMQ classic queues keep memory use much lower than older versions, and `x-queue-mode: lazy` is ignored in RabbitMQ 3.12 and later.
 
 ```javascript
-// This example demonstrates the memory impact of different queue modes
-// Classic queue: 100,000 messages x 10KB each = ~1GB RAM
-// Lazy queue: Same messages = ~100MB RAM (index only)
+// This example demonstrates the queue mode declaration used in RabbitMQ 3.11 and earlier.
+// In RabbitMQ 3.12 and later, x-queue-mode=lazy is ignored.
 
 const amqp = require('amqplib');
 
@@ -63,17 +62,17 @@ async function demonstrateMemoryDifference() {
   // Large message payload (10KB)
   const largePayload = Buffer.alloc(10 * 1024, 'x');
 
-  // Classic queue - messages stay in RAM
+  // Classic queue
   await channel.assertQueue('classic-queue', {
     durable: true,
-    // Default mode keeps messages in memory
+    // Current RabbitMQ versions keep memory usage low by default
   });
 
-  // Lazy queue - messages go directly to disk
+  // Lazy queue - RabbitMQ 3.11 and earlier only
   await channel.assertQueue('lazy-queue', {
     durable: true,
     arguments: {
-      // Enable lazy mode - messages written to disk immediately
+      // Enable lazy mode in RabbitMQ 3.11 and earlier
       'x-queue-mode': 'lazy'
     }
   });
@@ -84,10 +83,10 @@ async function demonstrateMemoryDifference() {
   console.log(`Publishing ${messageCount} messages (10KB each)...`);
 
   for (let i = 0; i < messageCount; i++) {
-    // Classic queue will accumulate ~1GB in RAM
+    // Classic queue publish
     channel.sendToQueue('classic-queue', largePayload, { persistent: true });
 
-    // Lazy queue keeps only ~100MB in RAM for indexes
+    // Lazy queue publish; ignored as a special mode in RabbitMQ 3.12+
     channel.sendToQueue('lazy-queue', largePayload, { persistent: true });
   }
 
@@ -98,22 +97,22 @@ async function demonstrateMemoryDifference() {
 
 ### Performance Characteristics
 
-| Characteristic | Classic Queue | Lazy Queue |
+| Characteristic | Older Classic Queue | Lazy Queue (RabbitMQ <= 3.11) |
 |----------------|---------------|------------|
 | **Publish latency** | Lower | Higher (disk write) |
 | **Consume latency** | Lower | Higher (disk read) |
-| **Memory usage** | High | Low |
-| **Message capacity** | Limited by RAM | Limited by disk |
+| **Memory usage** | Higher under backlog | Low |
+| **Message capacity** | More memory-sensitive | Limited primarily by disk |
 | **Best for** | Fast consumers | Large backlogs |
 
 ## When to Use Lazy Queues
 
-Lazy queues are ideal for specific scenarios. Here's a decision framework:
+Lazy queues were ideal for specific scenarios in RabbitMQ 3.11 and earlier. Here's a decision framework:
 
 ```mermaid
 flowchart TD
     A[Should I use lazy queues?] --> B{Messages > 100KB?}
-    B -->|Yes| C[Use Lazy Queue]
+    B -->|Yes| C[Use Lazy Queue on RabbitMQ <= 3.11<br/>or Quorum Queue on current RabbitMQ]
     B -->|No| D{Queue backlog > 100K messages?}
     D -->|Yes| C
     D -->|No| E{Memory constrained?}
@@ -132,7 +131,7 @@ async function setupQueuesForUseCases() {
   const connection = await amqp.connect('amqp://localhost');
   const channel = await connection.createChannel();
 
-  // Use Case 1: Large file processing
+  // Use Case 1: Large file processing on RabbitMQ 3.11 and earlier
   // When messages contain images, documents, or binary data
   await channel.assertQueue('file-processing-queue', {
     durable: true,
@@ -143,7 +142,7 @@ async function setupQueuesForUseCases() {
     }
   });
 
-  // Use Case 2: Batch job queues
+  // Use Case 2: Batch job queues on RabbitMQ 3.11 and earlier
   // Jobs that accumulate during the day, processed at night
   await channel.assertQueue('batch-job-queue', {
     durable: true,
@@ -155,7 +154,7 @@ async function setupQueuesForUseCases() {
     }
   });
 
-  // Use Case 3: Event sourcing / audit logs
+  // Use Case 3: Event sourcing / audit logs on RabbitMQ 3.11 and earlier
   // Messages retained for long periods, rarely consumed
   await channel.assertQueue('audit-log-queue', {
     durable: true,
@@ -165,7 +164,7 @@ async function setupQueuesForUseCases() {
     }
   });
 
-  // Use Case 4: Intermittent consumers
+  // Use Case 4: Intermittent consumers on RabbitMQ 3.11 and earlier
   // Consumer applications that go offline periodically
   await channel.assertQueue('mobile-sync-queue', {
     durable: true,
@@ -189,7 +188,7 @@ async function setupQueuesForUseCases() {
 // Low latency is critical, messages consumed within seconds
 await channel.assertQueue('realtime-notifications', {
   durable: true,
-  // Classic mode (default) - messages stay in RAM for fast delivery
+  // Classic queue - current RabbitMQ versions keep memory usage low by default
 });
 
 // 2. Short-lived queues
@@ -199,12 +198,12 @@ await channel.assertQueue('', {
   autoDelete: true, // No need for lazy mode - queue is temporary
 });
 
-// 3. High-throughput, small messages
+// 3. High-throughput, small messages on RabbitMQ 3.11 and earlier
 // When you need maximum throughput and have sufficient RAM
 await channel.assertQueue('metrics-pipeline', {
   durable: true,
   arguments: {
-    // Classic mode with memory limits
+    // Classic queue with length limits
     'x-max-length': 1000000,        // Cap at 1M messages
     'x-overflow': 'reject-publish', // Reject new messages when full
   }
@@ -223,7 +222,7 @@ async function createLazyQueue() {
   const channel = await connection.createChannel();
 
   // Method 1: Using x-queue-mode argument
-  // This is the classic lazy queue declaration
+  // This only affects classic queues in RabbitMQ 3.11 and earlier.
   await channel.assertQueue('lazy-queue-v1', {
     durable: true,
     arguments: {
@@ -231,22 +230,17 @@ async function createLazyQueue() {
     }
   });
 
-  // Method 2: Using policies (recommended for flexibility)
+  // Method 2: Using policies in RabbitMQ 3.11 and earlier
   // Policies can be applied/changed without redeclaring queues
   // Set via rabbitmqctl or HTTP API
   // rabbitmqctl set_policy lazy-queues "^lazy\." '{"queue-mode":"lazy"}' --apply-to queues
 
-  // Method 3: Quorum queues with lazy mode (RabbitMQ 3.12+)
-  // Combines replication with lazy storage - recommended for production
+  // Method 3: Quorum queues (RabbitMQ 3.10+)
+  // Quorum queues always store message content on disk and keep metadata in memory.
   await channel.assertQueue('lazy-quorum-queue', {
     durable: true,
     arguments: {
       'x-queue-type': 'quorum',
-      // Quorum queues are lazy by default in 3.12+
-      // But you can explicitly set memory limit
-      'x-max-in-memory-length': 0,    // Keep 0 messages in memory
-      // Or use bytes limit
-      'x-max-in-memory-bytes': 0,     // Keep 0 bytes in memory
     }
   });
 
@@ -260,7 +254,7 @@ async function createLazyQueue() {
 Policies allow you to change queue behavior without modifying application code.
 
 ```bash
-# Apply lazy mode to all queues matching pattern
+# Apply lazy mode to all queues matching pattern (RabbitMQ 3.11 and earlier)
 
 rabbitmqctl set_policy lazy-pattern \
   "^(batch|archive|backup)\." \
@@ -268,7 +262,7 @@ rabbitmqctl set_policy lazy-pattern \
   --priority 1 \
   --apply-to queues
 
-# Apply lazy mode with additional settings
+# Apply lazy mode with additional settings (RabbitMQ 3.11 and earlier)
 rabbitmqctl set_policy lazy-with-limits \
   "^lazy\." \
   '{"queue-mode":"lazy","max-length":10000000,"overflow":"reject-publish"}' \
@@ -297,8 +291,8 @@ def create_lazy_queue():
     )
     channel = connection.channel()
 
-    # Declare a lazy queue with custom arguments
-    # x-queue-mode: 'lazy' tells RabbitMQ to store messages on disk
+    # Declare a lazy queue with custom arguments.
+    # x-queue-mode: 'lazy' only affects RabbitMQ 3.11 and earlier.
     channel.queue_declare(
         queue='lazy-python-queue',
         durable=True,  # Survive broker restart
@@ -356,30 +350,24 @@ def consume_from_lazy_queue():
     channel.start_consuming()
 ```
 
-## Quorum Queues with Lazy Mode (Recommended)
+## Quorum Queues for Disk-Backed Storage (Recommended)
 
-For RabbitMQ 3.12+, quorum queues with memory limits provide the best of both worlds: replication for high availability and lazy storage for memory efficiency.
+For RabbitMQ 3.12+ and 4.x, quorum queues provide the best of both worlds for many production workloads: replication for high availability and disk-backed storage for memory efficiency.
 
 ```javascript
 const amqp = require('amqplib');
 
 async function createQuorumLazyQueue() {
   const connection = await amqp.connect('amqp://localhost');
-  const channel = await connection.createChannel();
+  const channel = await connection.createConfirmChannel();
 
-  // Quorum queue with lazy-like behavior
-  // Messages are replicated across nodes AND stored efficiently
+  // Quorum queue with disk-backed storage
+  // Messages are replicated across nodes and message bodies are stored on disk
   await channel.assertQueue('production-queue', {
     durable: true,
     arguments: {
       // Quorum queue type - replicated for HA
       'x-queue-type': 'quorum',
-
-      // Memory limits for lazy-like behavior
-      // Set to 0 for full lazy mode (all messages on disk)
-      'x-max-in-memory-length': 100,  // Keep only 100 messages in RAM
-      // OR use bytes limit (mutually exclusive with length)
-      // 'x-max-in-memory-bytes': 10485760,  // 10MB in memory max
 
       // Delivery limit before dead-lettering
       'x-delivery-limit': 3,
@@ -390,10 +378,7 @@ async function createQuorumLazyQueue() {
     }
   });
 
-  console.log('Created quorum queue with lazy storage');
-
-  // Publish with publisher confirms for reliability
-  await channel.confirmSelect();
+  console.log('Created quorum queue with disk-backed storage');
 
   const message = Buffer.from(JSON.stringify({
     orderId: '12345',
@@ -485,12 +470,13 @@ class FileProcessingPipeline {
     await this.channel.assertExchange('files', 'direct', { durable: true });
     await this.channel.assertExchange('dlx', 'direct', { durable: true });
 
-    // Create lazy queue for large file processing
+    // Create lazy queue for large file processing.
+    // x-queue-mode only affects RabbitMQ 3.11 and earlier.
     await this.channel.assertQueue('file-processing', {
       durable: true,
       arguments: {
         'x-queue-mode': 'lazy',
-        // Reject oldest messages when queue is full
+        // Reject and dead-letter new messages when the queue is full
         'x-max-length': 100000,
         'x-overflow': 'reject-publish-dlx',
         // Dead letter failed messages
@@ -504,7 +490,7 @@ class FileProcessingPipeline {
     // Bind queue to exchange
     await this.channel.bindQueue('file-processing', 'files', 'process');
 
-    // Create dead letter queue (also lazy for large failed files)
+    // Create dead letter queue (also lazy for large failed files on RabbitMQ 3.11 and earlier)
     await this.channel.assertQueue('file-processing-dlq', {
       durable: true,
       arguments: {
@@ -573,10 +559,7 @@ class FileProcessingPipeline {
         const retryCount = (msg.properties.headers?.['x-retry-count'] || 0);
 
         if (retryCount < 3) {
-          // Requeue with incremented retry count
-          this.channel.nack(msg, false, false);
-
-          // Republish with retry header
+          // Republish with retry header, then acknowledge the original message
           this.channel.publish(
             'files',
             'process',
@@ -590,6 +573,7 @@ class FileProcessingPipeline {
               }
             }
           );
+          this.channel.ack(msg);
         } else {
           // Max retries exceeded - send to DLQ
           this.channel.nack(msg, false, false);
@@ -646,7 +630,7 @@ class RabbitMQMonitor {
     return {
       // Queue identification
       name: metrics.name,
-      mode: metrics.arguments?.['x-queue-mode'] || 'default',
+      mode: metrics.arguments?.['x-queue-mode'] || metrics.arguments?.['x-queue-type'] || 'default',
 
       // Message counts
       messages: metrics.messages,
@@ -734,18 +718,18 @@ Set up a custom metric monitor to track your lazy queue health and receive alert
 
 ## Summary
 
-| Feature | Classic Queue | Lazy Queue | Quorum + Lazy |
+| Feature | Classic Queue | Lazy Queue (RabbitMQ <= 3.11) | Quorum Queue |
 |---------|---------------|------------|---------------|
-| **Memory usage** | High | Low | Low |
-| **Disk usage** | Backup only | Primary storage | Primary + replicated |
+| **Memory usage** | Low to moderate in current versions | Low | Low |
+| **Disk usage** | Primary storage for persistent data | Primary storage | Primary + replicated |
 | **Latency** | Lowest | Higher | Moderate |
 | **Replication** | No | No | Yes (HA) |
-| **Best for** | Fast consumers | Large backlogs | Production workloads |
+| **Best for** | Non-replicated workloads | Large backlogs on older RabbitMQ versions | Production workloads needing replication |
 
-Lazy queues are an essential tool for handling large messages and long backlogs in RabbitMQ. Key takeaways:
+Lazy queues were an essential tool for handling large messages and long backlogs in older RabbitMQ versions. Key takeaways:
 
-1. **Use lazy mode** when messages are large, backlogs are expected, or memory is constrained
-2. **Prefer quorum queues** with memory limits in RabbitMQ 3.12+ for production
+1. **Use lazy mode** only on RabbitMQ 3.11 and earlier when messages are large, backlogs are expected, or memory is constrained
+2. **Prefer quorum queues** in RabbitMQ 3.12+ and 4.x when you need replicated, disk-backed queues in production
 3. **Set appropriate prefetch** values to control consumer memory usage
 4. **Monitor queue depth** and memory usage to catch issues early
 5. **Configure dead letter queues** to handle processing failures gracefully
