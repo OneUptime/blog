@@ -416,7 +416,9 @@ interceptors:
 ### Bitbucket Interceptor
 
 ```yaml
-# Validates Bitbucket webhook events
+# Validates Bitbucket Server (Data Center) webhook events
+# Note: secretRef is only supported for Bitbucket Server, not Bitbucket Cloud.
+# For Bitbucket Cloud, omit secretRef and use eventTypes like ["repo:push"].
 interceptors:
   - ref:
       name: "bitbucket"
@@ -425,8 +427,9 @@ interceptors:
         value:
           secretName: bitbucket-webhook-secret
           secretKey: secret
+      # Bitbucket Server push event is "repo:refs_changed"
       - name: "eventTypes"
-        value: ["repo:push"]
+        value: ["repo:refs_changed"]
 ```
 
 ## CEL Filters
