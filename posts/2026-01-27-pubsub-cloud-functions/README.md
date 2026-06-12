@@ -8,14 +8,14 @@ Description: A comprehensive guide to building event-driven serverless applicati
 
 ---
 
-> **Key Insight:** Pub/Sub with Cloud Functions creates a powerful decoupled architecture where publishers and subscribers operate independently. The function scales automatically with message volume, and built-in retry mechanisms ensure reliable message processing even when downstream services fail.
+> **Key Insight:** Pub/Sub with Cloud Functions creates a powerful decoupled architecture where publishers and subscribers operate independently. The function scales automatically with message volume, and configurable retry mechanisms help reliable message processing when downstream services fail.
 
 ## Why Pub/Sub with Cloud Functions?
 
 Google Cloud Pub/Sub provides asynchronous messaging that decouples services. When combined with Cloud Functions, you get:
 
 - **Automatic scaling:** Functions spin up instances as message volume increases
-- **At-least-once delivery:** Messages are retried until acknowledged
+- **At-least-once delivery:** Pub/Sub can deliver messages more than once, so handlers must be idempotent
 - **Cost efficiency:** Pay only for execution time, not idle infrastructure
 - **Loose coupling:** Publishers do not need to know about subscribers
 
@@ -35,7 +35,7 @@ flowchart LR
     D --> H[Dead Letter Topic]
 ```
 
-The flow is straightforward: publishers send messages to a topic, subscriptions deliver them to Cloud Functions, and the function processes each event. Failed messages retry automatically, and persistent failures route to a dead letter topic for manual inspection.
+The flow is straightforward: publishers send messages to a topic, subscriptions deliver them to Cloud Functions, and the function processes each event. Failed messages retry when retries are enabled, and persistent failures can route to a dead letter topic when a dead-letter policy is configured on the subscription.
 
 ## Setting Up a Pub/Sub Triggered Function
 
@@ -115,6 +115,12 @@ async function handleOrderPlaced(data) {
   // Update inventory, notify warehouse, etc.
   console.log('Processing order:', data.orderId);
 }
+
+module.exports = {
+  processEvent,
+  handleUserCreated,
+  handleOrderPlaced
+};
 ```
 
 ### Python Implementation
@@ -227,6 +233,7 @@ gcloud functions deploy processPubSubMessage \
   --source=. \
   --entry-point=processPubSubMessage \
   --trigger-topic=my-events-topic \
+  --retry \
   --memory=256MB \
   --timeout=60s
 
@@ -238,6 +245,7 @@ gcloud functions deploy process_pubsub_message \
   --source=. \
   --entry-point=process_pubsub_message \
   --trigger-topic=my-events-topic \
+  --retry \
   --memory=256MB \
   --timeout=60s
 
@@ -249,14 +257,14 @@ gcloud pubsub topics publish my-events-topic \
 
 ## Error Handling and Retries
 
-Pub/Sub provides automatic retries for failed message processing. Understanding retry behavior is critical for building reliable systems.
+Pub/Sub-triggered Cloud Functions can retry failed message processing when retries are enabled with `--retry`. Understanding retry behavior is critical for building reliable systems.
 
 ```mermaid
 flowchart TD
     A[Message Received] --> B{Function Succeeds?}
     B -->|Yes| C[Acknowledge Message]
     B -->|No/Exception| D[Retry with Backoff]
-    D --> E{Max Retries?}
+    D --> E{Retry Window or Dead-Letter Limit Reached?}
     E -->|No| A
     E -->|Yes| F[Dead Letter Topic]
     F --> G[Manual Investigation]
@@ -280,8 +288,8 @@ functions.cloudEvent('robustHandler', async (cloudEvent) => {
   const messageId = pubsubMessage.messageId;
   const attributes = pubsubMessage.attributes || {};
 
-  // Track retry count via attributes
-  // Pub/Sub automatically includes delivery attempt count in 2nd gen functions
+  // Track delivery attempts when available
+  // Pub/Sub includes this when the underlying subscription has a dead-letter policy
   const deliveryAttempt = cloudEvent.data.deliveryAttempt || 1;
 
   console.log(`Processing message ${messageId}, attempt ${deliveryAttempt}`);
@@ -384,6 +392,11 @@ function isPermanentError(error) {
   );
 }
 
+module.exports = {
+  isTransientError,
+  isPermanentError
+};
+
 // Helper: Send failed messages to dead letter topic
 async function sendToDeadLetter(originalMessage, error) {
   const deadLetterPayload = {
@@ -435,8 +448,8 @@ flowchart TB
     end
 
     subgraph "Configuration Limits"
-        F[min-instances: 0-1000]
-        G[max-instances: 1-3000]
+        F[min-instances: 0 or more]
+        G[max-instances: quota-dependent]
         H[concurrency: 1-1000 per instance]
     end
 
@@ -460,6 +473,7 @@ gcloud functions deploy processPubSubMessage \
   --source=. \
   --entry-point=processPubSubMessage \
   --trigger-topic=my-events-topic \
+  --retry \
   --memory=512MB \
   --timeout=120s \
   --min-instances=1 \
@@ -637,12 +651,12 @@ runTests().catch(console.error);
 // test/unit.test.js
 // Unit tests for the message processing logic
 
-const { processEvent, handleUserCreated, handleOrderPlaced } = require('../handlers');
+const { processEvent } = require('../index');
 
 describe('Event Processing', () => {
-  beforeEach(() => {
+  afterEach(() => {
     // Clear mocks and reset state
-    jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   describe('processEvent', () => {
@@ -650,27 +664,26 @@ describe('Event Processing', () => {
       const mockData = { userId: '123', email: 'test@example.com' };
       const mockAttributes = { eventType: 'user.created' };
 
-      // Mock the handler
-      const spy = jest.spyOn(require('../handlers'), 'handleUserCreated');
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
       await processEvent(mockData, mockAttributes);
 
-      expect(spy).toHaveBeenCalledWith(mockData);
+      expect(consoleSpy).toHaveBeenCalledWith('Processing user creation:', '123');
     });
 
     it('should route order.placed events to handleOrderPlaced', async () => {
       const mockData = { orderId: 'ORD-456', amount: 150.00 };
       const mockAttributes = { eventType: 'order.placed' };
 
-      const spy = jest.spyOn(require('../handlers'), 'handleOrderPlaced');
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
       await processEvent(mockData, mockAttributes);
 
-      expect(spy).toHaveBeenCalledWith(mockData);
+      expect(consoleSpy).toHaveBeenCalledWith('Processing order:', 'ORD-456');
     });
 
     it('should handle unknown event types gracefully', async () => {
-      const consoleSpy = jest.spyOn(console, 'log');
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
       await processEvent({}, { eventType: 'unknown' });
 
@@ -851,9 +864,9 @@ flowchart LR
 
 1. **Design for idempotency:** Messages may be delivered more than once. Use message IDs to deduplicate and ensure processing the same message twice has no side effects.
 
-2. **Set appropriate timeouts:** Function timeout should exceed expected processing time plus buffer. Pub/Sub acknowledgment deadline should exceed function timeout.
+2. **Set appropriate timeouts:** Function timeout should exceed expected processing time plus buffer. For manually managed Pub/Sub push subscriptions, keep processing within the subscription acknowledgment deadline or acknowledge quickly and continue work asynchronously.
 
-3. **Implement dead letter topics:** Route persistently failing messages to a dead letter topic for manual investigation rather than infinite retries.
+3. **Implement dead letter topics:** Configure a dead-letter policy on the Pub/Sub subscription or publish failed messages to a separate topic for manual investigation rather than infinite retries.
 
 4. **Classify errors appropriately:** Transient errors (network, rate limits) should retry. Permanent errors (invalid data, authorization) should not.
 
