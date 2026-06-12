@@ -75,13 +75,13 @@ Grafana ships with many built-in data sources. For additional plugins, use the G
 ```bash
 # List available plugins
 
-grafana-cli plugins list-remote
+grafana cli plugins list-remote
 
-# Install a specific plugin
-grafana-cli plugins install grafana-piechart-panel
+# Install a specific data source plugin
+grafana cli plugins install yesoreyeram-infinity-datasource
 
 # Install a specific version
-grafana-cli plugins install grafana-clock-panel 1.3.0
+grafana cli plugins install grafana-opensearch-datasource 2.18.0
 
 # Restart Grafana after installation
 sudo systemctl restart grafana-server
@@ -97,7 +97,7 @@ services:
     image: grafana/grafana:latest
     environment:
       # Install plugins on container start
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel,yesoreyeram-infinity-datasource
+      - GF_PLUGINS_PREINSTALL=yesoreyeram-infinity-datasource,grafana-opensearch-datasource,grafana-clickhouse-datasource
     ports:
       - "3000:3000"
     volumes:
@@ -122,8 +122,8 @@ spec:
         - name: grafana
           image: grafana/grafana:latest
           env:
-            - name: GF_INSTALL_PLUGINS
-              value: "grafana-clock-panel,yesoreyeram-infinity-datasource"
+            - name: GF_PLUGINS_PREINSTALL
+              value: "yesoreyeram-infinity-datasource,grafana-opensearch-datasource"
 ```
 
 ---
@@ -134,13 +134,13 @@ Prometheus is the most common metrics backend used with Grafana. Here is a compl
 
 ### Basic Configuration via UI
 
-Navigate to Configuration > Data Sources > Add data source > Prometheus:
+Navigate to Connections > Data sources > Add new data source > Prometheus:
 
 ```yaml
 # Key settings to configure
 Name: prometheus-prod
 URL: http://prometheus-server:9090
-Access: Server (default)  # Grafana backend proxies requests
+Access: Server/proxy (default)  # Grafana backend proxies requests
 Scrape interval: 15s      # Match your Prometheus scrape interval
 Query timeout: 60s        # For slow queries
 HTTP Method: POST         # Better for large queries
@@ -229,9 +229,9 @@ datasources:
     uid: influxdb-legacy
     access: proxy
     url: http://influxdb:8086
-    database: telegraf
     user: grafana_reader
     jsonData:
+      dbName: telegraf
       httpMode: GET
     secureJsonData:
       password: ${INFLUXDB_PASSWORD}
@@ -267,14 +267,12 @@ datasources:
     uid: elasticsearch-logs
     access: proxy
     url: http://elasticsearch:9200
-    database: "logs-*"  # Index pattern
     jsonData:
-      esVersion: 8.0.0
+      index: "logs-*"  # Index pattern
       timeField: "@timestamp"
       logMessageField: message
       logLevelField: level
       maxConcurrentShardRequests: 5
-      includeFrozen: false
     secureJsonData:
       basicAuthPassword: ${ES_PASSWORD}
     basicAuth: true
@@ -295,7 +293,7 @@ datasources:
     jsonData:
       database: "application-logs-*"
       flavor: opensearch
-      version: 2.11.0
+      version: "2.11.0"
       timeField: "@timestamp"
       logMessageField: message
       logLevelField: severity
@@ -315,7 +313,7 @@ The Infinity data source plugin allows Grafana to query any REST API that return
 ### Installation
 
 ```bash
-grafana-cli plugins install yesoreyeram-infinity-datasource
+grafana cli plugins install yesoreyeram-infinity-datasource
 ```
 
 ### Configuration
@@ -330,8 +328,11 @@ datasources:
     uid: custom-api
     access: proxy
     jsonData:
+      auth_method: bearerToken
+      allowedHosts:
+        - https://api.example.com
       tlsSkipVerify: false
-      timeout: 30
+      timeoutInSeconds: 30
     secureJsonData:
       bearerToken: ${API_BEARER_TOKEN}
 ```
@@ -341,6 +342,8 @@ datasources:
 ```json
 {
   "type": "json",
+  "parser": "simple",
+  "format": "table",
   "source": "url",
   "url": "https://api.example.com/metrics",
   "url_options": {
@@ -573,9 +576,9 @@ jsonData:
   timeout: 120  # seconds
   queryTimeout: 120s
 
-# Enable query caching (Grafana Enterprise)
+# Set Prometheus browser cache level for editor queries
 jsonData:
-  cacheLevel: low  # low, medium, high
+  cacheLevel: Low  # Low, Medium, High, None
 ```
 
 ### SSL Certificate Issues
