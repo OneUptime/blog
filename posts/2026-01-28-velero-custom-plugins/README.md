@@ -56,12 +56,13 @@ Before building a plugin, you need to set up your Go development environment wit
 // go.mod - Plugin module configuration
 module github.com/yourorg/velero-plugin-example
 
-go 1.21
+go 1.26.0
 
 require (
-    github.com/vmware-tanzu/velero v1.12.0
     github.com/sirupsen/logrus v1.9.3
-    k8s.io/apimachinery v0.28.0
+    github.com/vmware-tanzu/velero v1.18.0
+    k8s.io/api v0.33.3
+    k8s.io/apimachinery v0.33.3
 )
 ```
 
@@ -75,6 +76,7 @@ mkdir -p velero-plugin-example/{objectstore,volumesnapshotter,backupitemaction}
 # Initialize the Go module
 cd velero-plugin-example
 go mod init github.com/yourorg/velero-plugin-example
+go get github.com/vmware-tanzu/velero@v1.18.0 github.com/sirupsen/logrus@v1.9.3 k8s.io/api@v0.33.3 k8s.io/apimachinery@v0.33.3
 go mod tidy
 ```
 
@@ -91,7 +93,6 @@ import (
     "time"
 
     "github.com/sirupsen/logrus"
-    veleroplugin "github.com/vmware-tanzu/velero/pkg/plugin/framework"
 )
 
 // CustomObjectStore implements the ObjectStore interface
@@ -101,6 +102,11 @@ type CustomObjectStore struct {
     config   map[string]string
     bucket   string
     endpoint string
+}
+
+// NewCustomObjectStore creates a CustomObjectStore with Velero's plugin logger.
+func NewCustomObjectStore(log logrus.FieldLogger) *CustomObjectStore {
+    return &CustomObjectStore{log: log}
 }
 
 // Init initializes the plugin with configuration from the BackupStorageLocation
@@ -211,6 +217,7 @@ import (
     "encoding/base64"
 
     "github.com/sirupsen/logrus"
+    velerov1api "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
     "github.com/vmware-tanzu/velero/pkg/plugin/velero"
     corev1api "k8s.io/api/core/v1"
     "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -224,6 +231,11 @@ type SecretEncryptorAction struct {
     encryptionKey []byte
 }
 
+// NewSecretEncryptorAction creates a SecretEncryptorAction with Velero's plugin logger.
+func NewSecretEncryptorAction(log logrus.FieldLogger) *SecretEncryptorAction {
+    return &SecretEncryptorAction{log: log}
+}
+
 // AppliesTo returns the resources this action should process
 func (s *SecretEncryptorAction) AppliesTo() (velero.ResourceSelector, error) {
     return velero.ResourceSelector{
@@ -234,7 +246,7 @@ func (s *SecretEncryptorAction) AppliesTo() (velero.ResourceSelector, error) {
 // Execute processes each secret during backup
 func (s *SecretEncryptorAction) Execute(
     item runtime.Unstructured,
-    backup *velero.Backup,
+    backup *velerov1api.Backup,
 ) (runtime.Unstructured, []velero.ResourceIdentifier, error) {
 
     s.log.Info("Processing secret for backup")
@@ -314,12 +326,12 @@ func main() {
 
 // Factory function for the object store plugin
 func newCustomObjectStore(logger logrus.FieldLogger) (interface{}, error) {
-    return &objectstore.CustomObjectStore{}, nil
+    return objectstore.NewCustomObjectStore(logger), nil
 }
 
 // Factory function for the backup item action plugin
 func newSecretEncryptorAction(logger logrus.FieldLogger) (interface{}, error) {
-    return &backupitemaction.SecretEncryptorAction{}, nil
+    return backupitemaction.NewSecretEncryptorAction(logger), nil
 }
 ```
 
@@ -329,10 +341,10 @@ Create a Dockerfile to build and package your plugin:
 
 ```dockerfile
 # Dockerfile for building the Velero plugin
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-trixie AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git make
+RUN apt-get update && apt-get install -y --no-install-recommends git make && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /go/src/github.com/yourorg/velero-plugin-example
 
@@ -344,14 +356,16 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /output/velero-plugin-example .
 
-# Final image - uses Velero's plugin base image
-FROM velero/velero-plugin-for-aws:v1.8.0 AS base
+# Final image - contains only the plugin binary and a copy entrypoint
+FROM busybox:1.37.0-musl AS busybox
+FROM scratch
 
 # Copy our plugin binary to the plugins directory
 COPY --from=builder /output/velero-plugin-example /plugins/
+COPY --from=busybox /bin/cp /bin/cp
 
-# The entrypoint is inherited from the base image
 USER 65532:65532
+ENTRYPOINT ["cp", "/plugins/velero-plugin-example", "/target/."]
 ```
 
 Build and push the image:
@@ -368,41 +382,8 @@ docker push yourregistry/velero-plugin-example:v1.0.0
 
 Configure Velero to use your custom plugin by adding it to the Velero deployment:
 
-```yaml
-# velero-deployment-patch.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: velero
-  namespace: velero
-spec:
-  template:
-    spec:
-      # Init container copies plugin binary to shared volume
-      initContainers:
-      - name: custom-plugin
-        image: yourregistry/velero-plugin-example:v1.0.0
-        imagePullPolicy: Always
-        volumeMounts:
-        - name: plugins
-          mountPath: /target
-        # Copy the plugin binary to the plugins directory
-        command:
-        - /bin/sh
-        - -c
-        - cp /plugins/* /target/
-      containers:
-      - name: velero
-        # Add the plugin directory to the args
-        args:
-        - server
-        - --features=EnableCSI
-        volumeMounts:
-        - name: plugins
-          mountPath: /plugins
-      volumes:
-      - name: plugins
-        emptyDir: {}
+```bash
+velero plugin add yourregistry/velero-plugin-example:v1.0.0
 ```
 
 Create a BackupStorageLocation that uses your custom object store:
@@ -468,7 +449,7 @@ sequenceDiagram
         end
     end
 
-    PM->>P: Cleanup
+    PM-->>P: Stop plugin process when no longer needed
     V->>PM: Backup Complete
 ```
 
@@ -480,13 +461,13 @@ When building Velero plugins, keep these recommendations in mind:
 
 **Make Plugins Idempotent**: Your plugin actions should produce the same result when executed multiple times. This is crucial for retry scenarios and partial failures.
 
-**Handle Large Resources**: When processing large ConfigMaps, Secrets, or other resources, stream data rather than loading everything into memory.
+**Handle Large Data Carefully**: When processing backup data in object store plugins, stream data rather than loading everything into memory. For item action plugins, avoid unnecessary copies of large resource fields.
 
 **Version Your Plugins**: Use semantic versioning and maintain compatibility with multiple Velero versions when possible.
 
 ```go
 // Example of robust error handling in a plugin
-func (p *MyPlugin) Execute(item runtime.Unstructured, backup *velero.Backup) (runtime.Unstructured, []velero.ResourceIdentifier, error) {
+func (p *MyPlugin) Execute(item runtime.Unstructured, backup *velerov1api.Backup) (runtime.Unstructured, []velero.ResourceIdentifier, error) {
     // Log the start of processing with context
     p.log.WithFields(logrus.Fields{
         "kind":      item.GetObjectKind().GroupVersionKind().Kind,
