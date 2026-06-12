@@ -63,17 +63,13 @@ Before configuring K3s with PostgreSQL, ensure your database is ready:
 # Replace with your PostgreSQL host and credentials
 psql -h postgres.example.com -U admin -d postgres
 
-# Inside psql, create a dedicated database for K3s
+# Inside psql, create a dedicated database owned by the K3s user
 # The database stores all Kubernetes objects (pods, services, secrets, etc.)
-CREATE DATABASE k3s;
-
-# Create a dedicated user with limited privileges
-# This follows the principle of least privilege
 CREATE USER k3s_user WITH ENCRYPTED PASSWORD 'your-secure-password';
 
-# Grant all privileges on the k3s database to the new user
-# K3s needs full control to create tables and manage data
-GRANT ALL PRIVILEGES ON DATABASE k3s TO k3s_user;
+CREATE DATABASE k3s OWNER k3s_user;
+
+# K3s needs ownership so it can create and manage its schema
 
 # Exit psql
 \q
@@ -142,9 +138,9 @@ postgres://user:password@host:5432/database?sslmode=require
 # With SSL verification (most secure)
 postgres://user:password@host:5432/database?sslmode=verify-full&sslrootcert=/path/to/ca.crt
 
-# With connection pooling parameters
-# These help manage database connections efficiently
-postgres://user:password@host:5432/database?sslmode=require&connect_timeout=10&pool_max_conns=10
+# With connection timeout parameters
+# These help avoid hanging startup when the database is unavailable
+postgres://user:password@host:5432/database?sslmode=require&connect_timeout=10
 ```
 
 ## MySQL/MariaDB Configuration
@@ -162,8 +158,8 @@ mysql -h mysql.example.com -u admin -p
 CREATE DATABASE k3s CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 # Create a dedicated user for K3s
-# Using mysql_native_password for broader compatibility
-CREATE USER 'k3s_user'@'%' IDENTIFIED WITH mysql_native_password BY 'your-secure-password';
+# MySQL 8.4 disables mysql_native_password by default, so use the server default authentication plugin
+CREATE USER 'k3s_user'@'%' IDENTIFIED BY 'your-secure-password';
 
 # Grant necessary privileges
 # K3s needs full access to manage its schema
@@ -195,9 +191,10 @@ sudo mkdir -p /etc/rancher/k3s
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null << 'EOF'
 # K3s Server Configuration for MySQL Backend
 
-# MySQL connection string with TLS enabled
-# The tls=true parameter enables encrypted connections
-datastore-endpoint: "mysql://k3s_user:your-secure-password@tcp(mysql.example.com:3306)/k3s?tls=true"
+# MySQL connection string
+# K3s supports TLS, but the MySQL datastore endpoint cannot set the tls DSN parameter directly
+datastore-endpoint: "mysql://k3s_user:your-secure-password@tcp(mysql.example.com:3306)/k3s"
+datastore-cafile: "/etc/rancher/k3s/mysql-ca.pem"
 
 # API server endpoint configuration
 tls-san:
@@ -228,14 +225,12 @@ curl -sfL https://get.k3s.io | sh -s - server
 # Basic MySQL connection
 mysql://user:password@tcp(host:3306)/database
 
-# With TLS enabled
-mysql://user:password@tcp(host:3306)/database?tls=true
-
-# With custom TLS configuration
-mysql://user:password@tcp(host:3306)/database?tls=custom&tls-ca=/path/to/ca.pem
+# With a custom CA, configure datastore-cafile alongside the endpoint
+datastore-endpoint: "mysql://user:password@tcp(host:3306)/database"
+datastore-cafile: "/path/to/ca.pem"
 
 # With additional parameters for production
-mysql://user:password@tcp(host:3306)/database?tls=true&parseTime=true&timeout=10s&readTimeout=30s&writeTimeout=30s
+mysql://user:password@tcp(host:3306)/database?parseTime=true&timeout=10s&readTimeout=30s&writeTimeout=30s
 ```
 
 ## External etcd Cluster
@@ -373,11 +368,6 @@ tls-san:
   - "k3s-api.example.com"
   - "k3s-vip.internal"
 
-# Disable embedded etcd since we're using external
-disable-etcd: true
-
-# Enable HA features
-cluster-init: false
 EOF
 
 # Copy etcd client certificates to K3s
@@ -490,9 +480,6 @@ tls-san:
 # Store this securely - it authenticates cluster membership
 token: "your-secure-cluster-token"
 
-# Cluster initialization flag
-cluster-init: true
-
 # Enable secrets encryption
 secrets-encryption: true
 
@@ -568,6 +555,7 @@ DB_HOST="postgres.example.com"
 DB_PORT="5432"
 DB_NAME="k3s"
 DB_USER="k3s_user"
+DB_PASSWORD="${DB_PASSWORD:?Set DB_PASSWORD before running this script}"
 BACKUP_DIR="/var/backups/k3s"
 RETENTION_DAYS=30
 
@@ -622,6 +610,7 @@ DB_HOST="mysql.example.com"
 DB_PORT="3306"
 DB_NAME="k3s"
 DB_USER="k3s_user"
+DB_PASSWORD="${DB_PASSWORD:?Set DB_PASSWORD before running this script}"
 BACKUP_DIR="/var/backups/k3s"
 RETENTION_DAYS=30
 
@@ -746,6 +735,10 @@ spec:
                 secretKeyRef:
                   name: k3s-db-credentials
                   key: password
+            - name: DB_HOST
+              value: postgres.example.com
+            - name: DB_USER
+              value: k3s_user
             command:
             - /bin/sh
             - -c
