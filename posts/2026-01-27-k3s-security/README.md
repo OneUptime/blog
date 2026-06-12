@@ -26,7 +26,7 @@ flowchart TB
     subgraph Cluster["K3s Cluster"]
         subgraph ControlPlane["Control Plane"]
             API[API Server]
-            ETCD[Embedded etcd]
+            DS[Datastore]
             CTRL[Controllers]
         end
 
@@ -43,7 +43,7 @@ flowchart TB
 
     FW --> LB
     LB --> API
-    API --> ETCD
+    API --> DS
     API --> CTRL
     API --> KL1
     API --> KL2
@@ -316,7 +316,7 @@ spec:
 
 ## Network Policies
 
-Network Policies control traffic flow between pods. K3s uses Flannel by default, which does not support Network Policies. Install a CNI that does.
+Network Policies control traffic flow between pods. K3s includes an embedded NetworkPolicy controller by default. If you replace Flannel with a CNI such as Calico, disable the built-in controller and let the new CNI enforce policies.
 
 ### Install Calico for Network Policy Support
 
@@ -491,7 +491,7 @@ flowchart LR
 
 ## Secret Encryption at Rest
 
-K3s stores secrets in its embedded etcd database. By default, secrets are only base64 encoded, not encrypted.
+K3s stores secrets in its configured datastore. Single-server clusters use SQLite by default, while HA clusters can use embedded etcd or an external datastore. By default, secrets are only base64 encoded, not encrypted.
 
 ### Enable Secret Encryption
 
@@ -509,8 +509,9 @@ sudo k3s secrets-encrypt status
 ### Configure Custom Encryption
 
 ```yaml
-# /var/lib/rancher/k3s/server/cred/encryption-config.yaml
-# Custom encryption configuration with multiple providers
+# Kubernetes EncryptionConfiguration example with multiple providers.
+# K3s generates /var/lib/rancher/k3s/server/cred/encryption-config.json
+# automatically when started with --secrets-encryption.
 apiVersion: apiserver.config.k8s.io/v1
 kind: EncryptionConfiguration
 resources:
@@ -518,7 +519,7 @@ resources:
       - secrets
       - configmaps  # Optionally encrypt ConfigMaps too
     providers:
-      # AES-GCM is recommended for performance
+      # AES-GCM requires careful key rotation because nonce reuse is unsafe
       - aesgcm:
           keys:
             - name: key1
@@ -546,14 +547,10 @@ head -c 32 /dev/urandom | base64
 ### Rotate Encryption Keys
 
 ```bash
-# Prepare new encryption key (updates config, does not re-encrypt)
-sudo k3s secrets-encrypt prepare
-
-# Rotate all secrets to use the new key
-sudo k3s secrets-encrypt rotate
-
-# Reencrypt all secrets with the new key
-sudo k3s secrets-encrypt reencrypt
+# Rotate encryption keys and re-encrypt secrets.
+# On HA clusters, run this from one server and restart all servers after
+# the rotation reaches the reencrypt_finished stage.
+sudo k3s secrets-encrypt rotate-keys
 
 # Verify rotation completed
 sudo k3s secrets-encrypt status
@@ -654,7 +651,7 @@ spec:
       containers:
         - name: kube-bench
           image: aquasec/kube-bench:latest
-          command: ["kube-bench", "--config-dir", "/etc/kube-bench/cfg", "--config", "/etc/kube-bench/cfg/config.yaml"]
+          command: ["kube-bench", "--benchmark", "k3s-cis-1.7"]
           volumeMounts:
             - name: var-lib-rancher
               mountPath: /var/lib/rancher
@@ -828,6 +825,9 @@ spec:
 # /etc/rancher/k3s/config.yaml
 # Kubelet security settings for CIS compliance
 
+# CIS 4.2.6 - Protect kernel defaults
+protect-kernel-defaults: true
+
 # CIS 4.2.1 - Disable anonymous authentication
 kubelet-arg:
   - "anonymous-auth=false"
@@ -837,9 +837,6 @@ kubelet-arg:
 
 # CIS 4.2.4 - Verify client CA
   - "client-ca-file=/var/lib/rancher/k3s/agent/client-ca.crt"
-
-# CIS 4.2.6 - Protect kernel defaults
-protect-kernel-defaults: true
 
 # CIS 4.2.10 - Rotate certificates automatically
   - "rotate-certificates=true"
