@@ -138,7 +138,7 @@ flowchart LR
 # rest_api_example.py
 
 from flask import Flask, request, jsonify
-from datetime import datetime
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -211,7 +211,7 @@ def create_user():
     """
     global user_counter
 
-    data = request.get_json()
+    data = request.get_json() or {}
 
     # Validate required fields
     if not data or 'name' not in data or 'email' not in data:
@@ -234,8 +234,8 @@ def create_user():
         'email': data['email'],
         'role': data.get('role', 'user'),
         'status': 'active',
-        'created_at': datetime.utcnow().isoformat(),
-        'updated_at': datetime.utcnow().isoformat()
+        'created_at': datetime.now(timezone.utc).isoformat(),
+        'updated_at': datetime.now(timezone.utc).isoformat()
     }
     users[user_counter] = user
 
@@ -262,7 +262,7 @@ def replace_user(user_id):
             }
         }), 404
 
-    data = request.get_json()
+    data = request.get_json() or {}
 
     # Validate all required fields for complete replacement
     required = ['name', 'email', 'role', 'status']
@@ -285,14 +285,15 @@ def replace_user(user_id):
         'role': data['role'],
         'status': data['status'],
         'created_at': users[user_id]['created_at'],  # Preserve creation time
-        'updated_at': datetime.utcnow().isoformat()
+        'updated_at': datetime.now(timezone.utc).isoformat()
     }
 
     return jsonify({'data': users[user_id]}), 200
 
 
 # PATCH - Partial update of a resource
-# Idempotent: same partial update produces same result
+# Not inherently idempotent; this field-replacement example is idempotent
+# when repeated with the same values
 @app.route('/users/<int:user_id>', methods=['PATCH'])
 def update_user(user_id):
     """
@@ -307,15 +308,18 @@ def update_user(user_id):
             }
         }), 404
 
-    data = request.get_json()
+    data = request.get_json() or {}
 
     # Only update provided fields
     allowed_fields = ['name', 'email', 'role', 'status']
+    changed = False
     for field in allowed_fields:
-        if field in data:
+        if field in data and users[user_id].get(field) != data[field]:
             users[user_id][field] = data[field]
+            changed = True
 
-    users[user_id]['updated_at'] = datetime.utcnow().isoformat()
+    if changed:
+        users[user_id]['updated_at'] = datetime.now(timezone.utc).isoformat()
 
     return jsonify({'data': users[user_id]}), 200
 
@@ -388,7 +392,7 @@ graph TD
 | 403 | Forbidden | Valid auth but insufficient permissions |
 | 404 | Not Found | Resource does not exist |
 | 409 | Conflict | Resource state conflict (duplicate, etc.) |
-| 422 | Unprocessable Entity | Valid syntax but semantic errors |
+| 422 | Unprocessable Content | Valid syntax but semantic errors |
 | 429 | Too Many Requests | Rate limit exceeded |
 | 500 | Internal Server Error | Unexpected server error |
 | 503 | Service Unavailable | Server temporarily unavailable |
@@ -401,7 +405,7 @@ Consistent error responses make debugging easier for API consumers.
 
 ```python
 # error_handling.py
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from functools import wraps
 
 app = Flask(__name__)
@@ -512,7 +516,7 @@ def get_user(user_id):
 
 @app.route('/users', methods=['POST'])
 def create_user():
-    data = request.get_json()
+    data = request.get_json() or {}
 
     errors = {}
     if not data.get('email'):
@@ -580,7 +584,7 @@ The most straightforward and widely adopted approach:
 
 ```python
 # versioning.py
-from flask import Flask, Blueprint
+from flask import Flask, Blueprint, jsonify
 
 app = Flask(__name__)
 
@@ -866,12 +870,21 @@ def get_products():
     # Apply sorting
     sort_param = request.args.get('sort', '-created_at')
     sort_fields = sort_param.split(',')
+    allowed_sort_fields = {'name', 'price', 'created_at'}
 
     for field in sort_fields:
-        if field.startswith('-'):
-            query = query.order_by(desc(getattr(Product, field[1:])))
+        direction = desc if field.startswith('-') else asc
+        field_name = field.lstrip('-')
+
+        if field_name in allowed_sort_fields:
+            query = query.order_by(direction(getattr(Product, field_name)))
         else:
-            query = query.order_by(asc(getattr(Product, field)))
+            return jsonify({
+                'error': {
+                    'code': 'INVALID_SORT_FIELD',
+                    'message': f'Sorting by {field_name} is not allowed'
+                }
+            }), 400
 
     # Execute query
     products = query.all()
@@ -907,10 +920,12 @@ def get_orders():
     query = db.query(Order)
 
     # Numeric range filters
-    if total_min := request.args.get('total_min', type=float):
+    total_min = request.args.get('total_min', type=float)
+    if total_min is not None:
         query = query.filter(Order.total >= total_min)
 
-    if total_max := request.args.get('total_max', type=float):
+    total_max = request.args.get('total_max', type=float)
+    if total_max is not None:
         query = query.filter(Order.total <= total_max)
 
     # Date range filters
@@ -942,7 +957,7 @@ X-Request-ID: uuid-for-tracing
 # response_headers.py
 from flask import Flask, jsonify, request, g
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -950,7 +965,7 @@ app = Flask(__name__)
 def before_request():
     """Add request ID for tracing."""
     g.request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
-    g.request_start = datetime.utcnow()
+    g.request_start = datetime.now(timezone.utc)
 
 
 @app.after_request
@@ -960,7 +975,7 @@ def after_request(response):
     response.headers['X-Request-ID'] = g.request_id
 
     # Response time
-    elapsed = (datetime.utcnow() - g.request_start).total_seconds()
+    elapsed = (datetime.now(timezone.utc) - g.request_start).total_seconds()
     response.headers['X-Response-Time'] = f'{elapsed:.3f}s'
 
     # Content type
@@ -984,8 +999,10 @@ def after_request(response):
 
 ```python
 # response_envelope.py
-from flask import Flask, jsonify
+from flask import Flask, jsonify, Response
 from functools import wraps
+
+app = Flask(__name__)
 
 def api_response(f):
     """Decorator to wrap responses in standard envelope."""
@@ -1104,7 +1121,7 @@ Here is a complete example putting all the best practices together:
 # complete_api.py
 from flask import Flask, request, jsonify, url_for, g
 from functools import wraps
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 app = Flask(__name__)
@@ -1196,7 +1213,7 @@ def handle_server_error(error):
 @app.before_request
 def before_request():
     g.request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
-    g.start_time = datetime.utcnow()
+    g.start_time = datetime.now(timezone.utc)
 
 
 @app.after_request
@@ -1204,7 +1221,7 @@ def after_request(response):
     # Add standard headers
     response.headers['X-Request-ID'] = g.request_id
 
-    elapsed = (datetime.utcnow() - g.start_time).total_seconds()
+    elapsed = (datetime.now(timezone.utc) - g.start_time).total_seconds()
     response.headers['X-Response-Time'] = f'{elapsed:.3f}s'
 
     # Security headers
@@ -1336,7 +1353,7 @@ def create_user():
 
     # Create user
     user_id_counter += 1
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
 
     user = {
         'id': user_id_counter,
@@ -1375,11 +1392,14 @@ def update_user(user_id):
 
     # Update allowed fields
     allowed_fields = ['name', 'email', 'role', 'status']
+    changed = False
     for field in allowed_fields:
-        if field in data:
+        if field in data and user.get(field) != data[field]:
             user[field] = data[field]
+            changed = True
 
-    user['updated_at'] = datetime.utcnow().isoformat()
+    if changed:
+        user['updated_at'] = datetime.now(timezone.utc).isoformat()
 
     return jsonify({
         'success': True,
