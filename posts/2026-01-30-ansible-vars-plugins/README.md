@@ -36,22 +36,20 @@ flowchart TD
 
 Vars plugins run at specific stages:
 
-- **Inventory stage**: When the inventory is parsed
-- **Task stage**: Just before tasks execute (if configured)
+- **Inventory stage**: After an inventory source is imported (with `run_vars_plugins = start` or a plugin `stage` setting of `inventory` or `all`)
+- **Task stage**: When variables are demanded by tasks (the default `run_vars_plugins = demand`, or a plugin `stage` setting of `task` or `all`)
 
 The built-in `host_group_vars` plugin is what loads variables from your `group_vars/` and `host_vars/` directories. Custom vars plugins follow the same pattern but can source data from anywhere.
 
 ## Vars Plugin Architecture
 
-Every vars plugin must inherit from `VarsModule` and implement specific methods:
+Every vars plugin must define a `VarsModule` class that inherits from `BaseVarsPlugin` and implements `get_vars()`:
 
 ```mermaid
 classDiagram
     class VarsModule {
-        +REQUIRES_WHITELIST: bool
+        +REQUIRES_ENABLED: bool
         +get_vars(loader, path, entities)
-        +get_host_vars(host_name)
-        +get_group_vars(group_name)
     }
     class BaseVarsPlugin {
         +_display: Display
@@ -68,7 +66,7 @@ classDiagram
 
 Key attributes:
 
-- `REQUIRES_WHITELIST`: If `True`, the plugin must be explicitly enabled in ansible.cfg
+- `REQUIRES_ENABLED`: If `True`, the plugin must be explicitly enabled in ansible.cfg
 - `get_vars()`: Main method that returns a dictionary of variables
 - `loader`: Ansible's data loader for reading files
 - `path`: The inventory path being processed
@@ -113,7 +111,7 @@ class VarsModule(BaseVarsPlugin):
     Custom vars plugin implementation
     """
 
-    REQUIRES_WHITELIST = True
+    REQUIRES_ENABLED = True
 
     def get_vars(self, loader, path, entities, cache=True):
         """
@@ -236,7 +234,7 @@ class VarsModule(BaseVarsPlugin):
     Loads variables from PostgreSQL database
     """
 
-    REQUIRES_WHITELIST = True
+    REQUIRES_ENABLED = True
 
     def __init__(self):
         super(VarsModule, self).__init__()
@@ -466,7 +464,7 @@ class VarsModule(BaseVarsPlugin):
     Fetches variables from a REST API
     """
 
-    REQUIRES_WHITELIST = True
+    REQUIRES_ENABLED = True
 
     def __init__(self):
         super(VarsModule, self).__init__()
@@ -641,7 +639,7 @@ class VarsModule(BaseVarsPlugin):
     Loads secrets from HashiCorp Vault
     """
 
-    REQUIRES_WHITELIST = True
+    REQUIRES_ENABLED = True
 
     def __init__(self):
         super(VarsModule, self).__init__()
@@ -754,10 +752,10 @@ vars_plugins = ./plugins/vars
 # Enable specific vars plugins (comma-separated)
 vars_plugins_enabled = host_group_vars, postgres_vars, vault_vars
 
-# Control when vars plugins run
-# 'inventory' = when inventory is loaded
-# 'task' = just before each task (slower but fresher data)
-run_vars_plugins = inventory
+# Control when enabled vars plugins run
+# 'demand' = when variables are demanded by tasks (default)
+# 'start' = after importing each inventory source
+run_vars_plugins = start
 
 [postgres_vars]
 host = db.example.com
@@ -840,7 +838,7 @@ class VarsModule(BaseVarsPlugin):
     Vars plugin with file-based caching
     """
 
-    REQUIRES_WHITELIST = True
+    REQUIRES_ENABLED = True
 
     def __init__(self):
         super(VarsModule, self).__init__()
@@ -948,7 +946,7 @@ class VarsModule(BaseVarsPlugin):
     Resilient vars plugin with retry logic
     """
 
-    REQUIRES_WHITELIST = True
+    REQUIRES_ENABLED = True
 
     def __init__(self):
         super(VarsModule, self).__init__()
@@ -1164,7 +1162,7 @@ class VarsModule(BaseVarsPlugin):
     Multi-source vars plugin
     """
 
-    REQUIRES_WHITELIST = True
+    REQUIRES_ENABLED = True
 
     def __init__(self):
         super(VarsModule, self).__init__()
@@ -1292,7 +1290,7 @@ Use Ansible's verbose mode to debug your vars plugins:
 ansible-playbook playbook.yml -vvv
 
 # Show all variables for a host
-ansible -m debug -a "var=hostvars[inventory_hostname]" hostname
+ansible hostname -m ansible.builtin.debug -a "var=hostvars[inventory_hostname]"
 
 # List all available vars plugins
 ansible-doc -t vars -l
@@ -1315,4 +1313,3 @@ def get_vars(self, loader, path, entities, cache=True):
 ---
 
 Vars plugins unlock dynamic configuration management in Ansible. Instead of maintaining static YAML files, you can centralize configuration in databases, pull secrets from vault systems, or fetch real-time data from APIs. Start with a simple implementation, add caching for performance, and build in proper error handling for production use. The examples in this guide provide templates you can adapt for your specific infrastructure needs.
-
