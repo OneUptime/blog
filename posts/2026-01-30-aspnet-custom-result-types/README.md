@@ -156,16 +156,16 @@ public IActionResult GetProducts([FromQuery] int page = 1, [FromQuery] int pageS
 }
 ```
 
-## Implementing Problem Details (RFC 7807)
+## Implementing Problem Details (RFC 9457)
 
-RFC 7807 defines a standard format for HTTP API error responses. ASP.NET Core has built-in support, but custom implementations offer more flexibility.
+RFC 9457 defines a standard format for HTTP API error responses and obsoletes RFC 7807. ASP.NET Core has built-in support, but custom implementations offer more flexibility.
 
 Here is a comparison of standard vs custom problem details:
 
 | Feature | Built-in ProblemDetails | Custom Implementation |
 |---------|------------------------|----------------------|
-| RFC 7807 compliance | Yes | Yes |
-| Custom extensions | Limited | Full control |
+| RFC 9457 compliance | Yes | Yes |
+| Custom extensions | Supported via `Extensions` | Full control |
 | Logging integration | Manual | Built-in |
 | Correlation IDs | Manual | Automatic |
 | Stack traces | Manual | Configurable |
@@ -174,7 +174,9 @@ This custom problem result adds logging and correlation tracking:
 
 ```csharp
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 public class ApiProblemResult : IActionResult
 {
@@ -234,27 +236,21 @@ public class ApiProblemResult : IActionResult
 
     private static string GetProblemTypeUri(int statusCode) => statusCode switch
     {
-        400 => "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-        401 => "https://tools.ietf.org/html/rfc7235#section-3.1",
-        403 => "https://tools.ietf.org/html/rfc7231#section-6.5.3",
-        404 => "https://tools.ietf.org/html/rfc7231#section-6.5.4",
-        409 => "https://tools.ietf.org/html/rfc7231#section-6.5.8",
-        422 => "https://tools.ietf.org/html/rfc4918#section-11.2",
-        500 => "https://tools.ietf.org/html/rfc7231#section-6.6.1",
-        _ => "https://tools.ietf.org/html/rfc7231#section-6"
+        400 => "https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.1",
+        401 => "https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.2",
+        403 => "https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.4",
+        404 => "https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.5",
+        409 => "https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.10",
+        422 => "https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.21",
+        500 => "https://www.rfc-editor.org/rfc/rfc9110.html#section-15.6.1",
+        _ => "https://www.rfc-editor.org/rfc/rfc9110.html#section-15"
     };
 }
 
-public class ApiProblemDetails
+public class ApiProblemDetails : ProblemDetails
 {
-    public string? Type { get; set; }
-    public string? Title { get; set; }
-    public int? Status { get; set; }
-    public string? Detail { get; set; }
-    public string? Instance { get; set; }
     public string? TraceId { get; set; }
     public DateTime Timestamp { get; set; }
-    public IDictionary<string, object> Extensions { get; set; } = new Dictionary<string, object>();
 }
 ```
 
@@ -338,20 +334,8 @@ public class CsvOutputFormatter : TextOutputFormatter
     {
         if (type == null) return false;
 
-        // Support IEnumerable<T> types
-        if (type.IsGenericType)
-        {
-            var genericType = type.GetGenericTypeDefinition();
-            if (genericType == typeof(IEnumerable<>) ||
-                genericType == typeof(List<>) ||
-                genericType == typeof(IList<>))
-            {
-                return true;
-            }
-        }
-
-        // Support arrays
-        return type.IsArray;
+        return typeof(System.Collections.IEnumerable).IsAssignableFrom(type)
+            && type != typeof(string);
     }
 
     public override async Task WriteResponseBodyAsync(
@@ -361,7 +345,9 @@ public class CsvOutputFormatter : TextOutputFormatter
         var response = context.HttpContext.Response;
         var buffer = new StringBuilder();
 
-        var items = (context.Object as IEnumerable<object>)?.ToList();
+        var items = (context.Object as System.Collections.IEnumerable)?
+            .Cast<object>()
+            .ToList();
         if (items == null || !items.Any())
         {
             await response.WriteAsync(string.Empty);
@@ -673,8 +659,12 @@ public class ApiResultFactory : IApiResultFactory
 
     public IActionResult Created<T>(T data, string location)
     {
-        var result = new ApiSuccessResult<T>(data, "Created", 201);
-        return result;
+        return new CreatedResult(location, new
+        {
+            success = true,
+            message = "Created",
+            data
+        });
     }
 
     public IActionResult NoContent()
