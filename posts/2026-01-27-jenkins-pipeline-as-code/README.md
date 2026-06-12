@@ -12,7 +12,7 @@ Pipeline as Code means your CI/CD configuration lives in version control alongsi
 
 ## What Is a Jenkinsfile?
 
-A Jenkinsfile is a text file that defines your Jenkins pipeline. It goes in the root of your repository and describes the entire build, test, and deploy process.
+A Jenkinsfile is a text file that defines your Jenkins pipeline. It typically goes in the root of your repository and describes the entire build, test, and deploy process.
 
 Benefits:
 1. **Version controlled** - Pipeline changes tracked with your code
@@ -116,7 +116,7 @@ pipeline {
             steps {
                 sh 'npm run lint'
                 // Publish HTML reports
-                publishHTML([
+                publishHTML(target: [
                     reportDir: 'coverage',
                     reportFiles: 'index.html',
                     reportName: 'Coverage Report'
@@ -182,7 +182,7 @@ pipeline {
     agent {
         docker {
             image 'node:18-alpine'
-            // Mount workspace and set working directory
+            // Mount npm cache into the container
             args '-v $HOME/.npm:/root/.npm'
         }
     }
@@ -284,7 +284,7 @@ pipeline {
 
 ### Built-in Environment Variables
 
-Jenkins provides many built-in variables:
+Jenkins provides many built-in variables, with some SCM and branch variables depending on the job type and plugins:
 
 ```groovy
 pipeline {
@@ -683,7 +683,7 @@ def call(String status, String channel = '#builds') {
 
 ### Configure Library in Jenkins
 
-In Jenkins, go to Manage Jenkins - Configure System - Global Pipeline Libraries:
+In Jenkins, go to Manage Jenkins - System - Global Trusted Pipeline Libraries:
 
 ```yaml
 Name: my-shared-library
@@ -869,7 +869,7 @@ pipeline {
 ## Best Practices Summary
 
 1. **Use declarative pipelines** - Easier to read, validate, and maintain
-2. **Keep Jenkinsfile in repo root** - Version control your pipeline with your code
+2. **Keep Jenkinsfile in repo root when possible** - Version control your pipeline with your code
 3. **Use shared libraries** - Avoid duplicating pipeline code across projects
 4. **Parallelize where possible** - Speed up builds by running independent stages concurrently
 5. **Use credentials helper** - Never hardcode secrets in your Jenkinsfile
