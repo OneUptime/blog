@@ -35,6 +35,10 @@ First, install LlamaIndex and its dependencies:
 
 ```bash
 pip install llama-index llama-index-embeddings-openai llama-index-llms-openai
+pip install llama-index-readers-file llama-index-readers-web llama-index-readers-database
+pip install llama-index-vector-stores-chroma chromadb
+pip install llama-index-storage-docstore-redis llama-index-storage-index-store-redis
+pip install s3fs
 ```
 
 Set up your environment with the necessary API keys:
@@ -53,7 +57,7 @@ Basic imports you will need throughout this guide:
 from llama_index.core import (
     Document,
     VectorStoreIndex,
-    ListIndex,
+    SummaryIndex,
     TreeIndex,
     KeywordTableIndex,
     SimpleDirectoryReader,
@@ -103,10 +107,11 @@ for doc in documents:
 
 ```python
 # Load a single PDF file
+from pathlib import Path
 from llama_index.readers.file import PDFReader
 
 pdf_reader = PDFReader()
-pdf_documents = pdf_reader.load_data(file_path="./report.pdf")
+pdf_documents = pdf_reader.load_data(file=Path("./report.pdf"))
 
 # Load from a web page
 from llama_index.readers.web import SimpleWebPageReader
@@ -167,7 +172,7 @@ Node parsers break documents into smaller chunks (nodes) that are more suitable 
 # Split documents by sentence boundaries with overlap
 # Good for general-purpose text processing
 sentence_parser = SentenceSplitter(
-    chunk_size=1024,      # Maximum characters per chunk
+    chunk_size=1024,      # Maximum tokens per chunk
     chunk_overlap=200,    # Overlap between chunks for context continuity
     separator=" ",        # Primary separator
     paragraph_separator="\n\n\n",  # Paragraph boundary marker
@@ -285,25 +290,25 @@ for node in retrieved_nodes:
     print(f"Text: {node.text[:200]}...")
 ```
 
-### ListIndex
+### SummaryIndex
 
 Stores nodes in a simple list. Best for scenarios where you want to process all nodes or use an LLM to filter.
 
 ```python
-# Create a list index - no embeddings, stores all nodes
-list_index = ListIndex.from_documents(documents)
+# Create a summary index - no embeddings, stores all nodes in sequence
+summary_index = SummaryIndex.from_documents(documents)
 
 # Query engine iterates through all nodes
 # Good for summarization or when you need comprehensive coverage
-query_engine = list_index.as_query_engine(
+query_engine = summary_index.as_query_engine(
     response_mode="tree_summarize",  # Hierarchically summarize all nodes
 )
 
 response = query_engine.query("Summarize all the key points.")
 print(response)
 
-# List index supports different response modes
-query_engine_compact = list_index.as_query_engine(
+# Summary index supports different response modes
+query_engine_compact = summary_index.as_query_engine(
     response_mode="compact",  # Combine nodes until context limit
 )
 ```
@@ -476,7 +481,8 @@ persist_dir = "./storage"
 index.storage_context.persist(persist_dir=persist_dir)
 
 print(f"Index persisted to {persist_dir}")
-# Creates: docstore.json, index_store.json, vector_store.json
+# Creates storage files such as: docstore.json, index_store.json,
+# vector_store.json, graph_store.json, and property_graph_store.json
 ```
 
 ### Loading a Persisted Index
@@ -517,43 +523,23 @@ storage_context.persist(
 
 ```python
 # Persist to S3 or other cloud storage
-import boto3
-import json
+import s3fs
 
 def persist_to_s3(index, bucket_name, prefix):
     """Save index components to S3."""
-    s3 = boto3.client('s3')
-
-    # Get the storage context data
-    storage_context = index.storage_context
-
-    # Persist locally first, then upload
-    local_dir = "/tmp/index_storage"
-    storage_context.persist(persist_dir=local_dir)
-
-    # Upload each file to S3
-    for filename in ["docstore.json", "index_store.json", "vector_store.json"]:
-        s3.upload_file(
-            f"{local_dir}/{filename}",
-            bucket_name,
-            f"{prefix}/{filename}",
-        )
+    fs = s3fs.S3FileSystem()
+    index.storage_context.persist(
+        persist_dir=f"{bucket_name}/{prefix}",
+        fs=fs,
+    )
 
 def load_from_s3(bucket_name, prefix):
     """Load index components from S3."""
-    s3 = boto3.client('s3')
-    local_dir = "/tmp/index_storage"
-
-    # Download files from S3
-    for filename in ["docstore.json", "index_store.json", "vector_store.json"]:
-        s3.download_file(
-            bucket_name,
-            f"{prefix}/{filename}",
-            f"{local_dir}/{filename}",
-        )
-
-    # Load from local files
-    storage_context = StorageContext.from_defaults(persist_dir=local_dir)
+    fs = s3fs.S3FileSystem()
+    storage_context = StorageContext.from_defaults(
+        persist_dir=f"{bucket_name}/{prefix}",
+        fs=fs,
+    )
     return load_index_from_storage(storage_context)
 ```
 
@@ -598,7 +584,7 @@ from llama_index.core.schema import Document
 # Create document with explicit ID
 doc = Document(
     text="Original content",
-    doc_id="doc_001",  # Explicit document ID
+    id_="doc_001",  # Explicit document ID
     metadata={"version": 1},
 )
 
@@ -608,7 +594,7 @@ index.insert(doc)
 # Later, update the document
 updated_doc = Document(
     text="Updated content with new information",
-    doc_id="doc_001",  # Same ID to replace
+    id_="doc_001",  # Same ID to replace
     metadata={"version": 2},
 )
 
@@ -637,8 +623,8 @@ index.storage_context.persist(persist_dir="./storage")
 ### Refresh Index with Changed Documents
 
 ```python
-# Refresh handles inserts, updates, and deletes automatically
-# Useful when syncing with an external data source
+# Refresh handles inserts and updates automatically.
+# Handle deleted source documents explicitly when syncing with an external data source.
 
 def refresh_index_from_source(index, data_source):
     """
@@ -649,57 +635,30 @@ def refresh_index_from_source(index, data_source):
     current_docs = data_source.get_all_documents()
 
     # Create a mapping of doc_id to document
-    current_doc_map = {doc.doc_id: doc for doc in current_docs}
+    current_doc_map = {doc.id_: doc for doc in current_docs}
 
     # Get existing doc IDs in index
     existing_doc_ids = set(index.ref_doc_info.keys())
     current_doc_ids = set(current_doc_map.keys())
 
-    # Find documents to add, update, or delete
-    to_add = current_doc_ids - existing_doc_ids
+    # Delete documents that were removed from the source
     to_delete = existing_doc_ids - current_doc_ids
-    to_check_update = current_doc_ids & existing_doc_ids
-
-    # Delete removed documents
     for doc_id in to_delete:
         index.delete_ref_doc(doc_id, delete_from_docstore=True)
         print(f"Deleted: {doc_id}")
 
-    # Add new documents
-    for doc_id in to_add:
-        index.insert(current_doc_map[doc_id])
-        print(f"Added: {doc_id}")
-
-    # Update modified documents (check hash or timestamp)
-    for doc_id in to_check_update:
-        current_doc = current_doc_map[doc_id]
-        if has_document_changed(index, doc_id, current_doc):
-            index.update_ref_doc(current_doc)
-            print(f"Updated: {doc_id}")
+    # Refresh inserts new documents and updates changed documents based on document hashes
+    refreshed = index.refresh_ref_docs(current_docs)
+    refreshed_count = sum(refreshed)
 
     # Persist all changes
     index.storage_context.persist(persist_dir="./storage")
 
     return {
-        "added": len(to_add),
+        "refreshed": refreshed_count,
         "deleted": len(to_delete),
-        "checked": len(to_check_update),
+        "checked": len(current_docs),
     }
-
-def has_document_changed(index, doc_id, new_doc):
-    """Check if document content has changed using hash comparison."""
-    import hashlib
-
-    # Get stored document info
-    doc_info = index.ref_doc_info.get(doc_id)
-    if not doc_info:
-        return True
-
-    # Compare content hashes
-    new_hash = hashlib.md5(new_doc.text.encode()).hexdigest()
-    stored_hash = doc_info.metadata.get("content_hash", "")
-
-    return new_hash != stored_hash
 ```
 
 ### Incremental Indexing for Large Datasets
@@ -785,7 +744,7 @@ def incremental_index_builder(document_source, batch_size=100):
 | Use Case | Recommended Index |
 |----------|-------------------|
 | Semantic search | VectorStoreIndex |
-| Summarization | ListIndex or TreeIndex |
+| Summarization | SummaryIndex or TreeIndex |
 | Technical documentation | KeywordTableIndex + VectorStoreIndex |
 | Hierarchical documents | TreeIndex |
 | Multi-modal queries | RouterQueryEngine with multiple indexes |
@@ -808,7 +767,7 @@ from llama_index.core import Settings
 
 # Configure global settings for production
 Settings.llm = OpenAI(
-    model="gpt-4",
+    model="gpt-4.1",
     temperature=0,           # Deterministic responses
     max_tokens=1024,
 )
