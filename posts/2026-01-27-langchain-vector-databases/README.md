@@ -28,7 +28,7 @@ import numpy as np
 
 # Initialize the embedding model - this converts text to vectors
 embeddings = OpenAIEmbeddings(
-    model="text-embedding-3-small",  # OpenAI's latest embedding model
+    model="text-embedding-3-small",  # OpenAI embedding model
     openai_api_key="your-api-key"    # Replace with your actual key
 )
 
@@ -84,7 +84,7 @@ hf_embeddings = HuggingFaceEmbeddings(
 from langchain_cohere import CohereEmbeddings
 
 cohere_embeddings = CohereEmbeddings(
-    model="embed-english-v3.0",  # Latest Cohere model
+    model="embed-english-v3.0",  # Cohere English embedding model
     cohere_api_key="your-cohere-key"
 )
 
@@ -111,7 +111,7 @@ Pinecone is a fully managed vector database optimized for production workloads. 
 
 from langchain_pinecone import PineconeVectorStore
 from langchain_openai import OpenAIEmbeddings
-from langchain.schema import Document
+from langchain_core.documents import Document
 from pinecone import Pinecone, ServerlessSpec
 import os
 
@@ -186,7 +186,7 @@ Weaviate is an open-source vector database with built-in machine learning capabi
 
 from langchain_weaviate import WeaviateVectorStore
 from langchain_openai import OpenAIEmbeddings
-from langchain.schema import Document
+from langchain_core.documents import Document
 import weaviate
 from weaviate.classes.init import Auth
 import os
@@ -259,7 +259,7 @@ Chroma is a lightweight, open-source vector database that runs embedded or as a 
 
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
-from langchain.schema import Document
+from langchain_core.documents import Document
 import chromadb
 from chromadb.config import Settings
 
@@ -351,9 +351,7 @@ FAISS (Facebook AI Similarity Search) is a library for efficient similarity sear
 
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
-from langchain.schema import Document
-import pickle
-import os
+from langchain_core.documents import Document
 
 # Initialize embeddings
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
@@ -447,7 +445,7 @@ Filtering allows you to narrow search results based on document metadata. This i
 from langchain_pinecone import PineconeVectorStore
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
@@ -533,16 +531,13 @@ results = pinecone_store.similarity_search(
 # Weaviate filtering example
 """
 from langchain_weaviate import WeaviateVectorStore
+from weaviate.classes.query import Filter
 
-# Weaviate uses GraphQL-style filters
+# Weaviate uses the v4 client Filter API
 results = weaviate_store.similarity_search(
     query="tutorials",
     k=5,
-    filters={
-        "path": ["language"],
-        "operator": "Equal",
-        "valueText": "python"
-    }
+    filters=Filter.by_property("language").equal("python")
 )
 """
 ```
@@ -559,8 +554,9 @@ Hybrid search combines semantic vector search with keyword-based search (BM25) f
 
 from langchain_weaviate import WeaviateVectorStore
 from langchain_openai import OpenAIEmbeddings
-from langchain.schema import Document
-from langchain.retrievers import BM25Retriever, EnsembleRetriever
+from langchain_core.documents import Document
+from langchain_community.retrievers import BM25Retriever
+from langchain_classic.retrievers import EnsembleRetriever
 import weaviate
 
 # Method 1: Native hybrid search in Weaviate
@@ -676,10 +672,9 @@ Retriever chains connect vector stores to LLMs for question-answering and conver
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_chroma import Chroma
-from langchain.schema import Document
-from langchain.chains import RetrievalQA
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains.retrieval import create_retrieval_chain
+from langchain_core.documents import Document
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain_classic.chains.retrieval import create_retrieval_chain
 from langchain_core.prompts import ChatPromptTemplate
 
 # Initialize components
@@ -708,23 +703,23 @@ documents = [
 
 vector_store = Chroma.from_documents(documents, embeddings)
 
-# Method 1: Simple RetrievalQA chain
+# Method 1: Simple retrieval chain
 retriever = vector_store.as_retriever(
     search_type="similarity",
     search_kwargs={"k": 3}
 )
 
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",  # Combines all docs into one prompt
-    retriever=retriever,
-    return_source_documents=True
-)
+simple_prompt = ChatPromptTemplate.from_messages([
+    ("system", "Answer the question using only this context:\n\n{context}"),
+    ("human", "{input}")
+])
+simple_qa_chain = create_stuff_documents_chain(llm, simple_prompt)
+qa_chain = create_retrieval_chain(retriever, simple_qa_chain)
 
 # Ask a question
-result = qa_chain.invoke({"query": "What monitoring features does OneUptime provide?"})
-print("Answer:", result["result"])
-print("Sources:", [doc.metadata for doc in result["source_documents"]])
+result = qa_chain.invoke({"input": "What monitoring features does OneUptime provide?"})
+print("Answer:", result["answer"])
+print("Sources:", [doc.metadata for doc in result["context"]])
 
 # Method 2: Custom retrieval chain with prompt template
 system_prompt = """You are a helpful assistant for OneUptime documentation.
@@ -788,10 +783,10 @@ Build chatbots that maintain context across multiple turns while retrieving rele
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_chroma import Chroma
-from langchain.schema import Document
-from langchain.chains import create_history_aware_retriever
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains.retrieval import create_retrieval_chain
+from langchain_core.documents import Document
+from langchain_classic.chains import create_history_aware_retriever
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain_classic.chains.retrieval import create_retrieval_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 
@@ -894,7 +889,7 @@ from langchain_community.document_loaders import (
     WebBaseLoader,
     DirectoryLoader
 )
-from langchain.text_splitter import (
+from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     CharacterTextSplitter,
     TokenTextSplitter
@@ -983,7 +978,7 @@ Optimize your vector database setup for production workloads.
 
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.schema import Document
+from langchain_core.documents import Document
 import asyncio
 import time
 
@@ -1023,8 +1018,8 @@ async def embed_documents_async(texts: list, batch_size: int = 100):
     return all_embeddings
 
 # Caching embeddings to reduce API calls
-from langchain.embeddings import CacheBackedEmbeddings
-from langchain.storage import LocalFileStore
+from langchain_classic.embeddings import CacheBackedEmbeddings
+from langchain_classic.storage import LocalFileStore
 
 # Create a cache store
 store = LocalFileStore("./embedding_cache")
@@ -1080,6 +1075,7 @@ pc = Pinecone(
 
 # Weaviate with connection pooling
 import weaviate
+from weaviate.classes.init import Auth, AdditionalConfig, ConnectionConfig
 
 client = weaviate.connect_to_weaviate_cloud(
     cluster_url="your-url",
