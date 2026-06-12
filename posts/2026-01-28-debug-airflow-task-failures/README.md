@@ -52,18 +52,20 @@ The fastest way to see logs:
 3. Click on the failed task instance (red square)
 4. Click "Log" button
 
-### CLI Log Access
+### Accessing Logs from the Filesystem or API
+
+Airflow does not ship a `tasks logs` CLI subcommand. The fastest non-UI options are reading the log files directly or hitting the REST API:
 
 ```bash
-# View logs for specific task instance
+# Read the log file directly (default file-based logging)
+cat $AIRFLOW_HOME/logs/dag_id=my_dag/run_id=<run_id>/task_id=my_task/attempt=1.log
 
-airflow tasks logs my_dag my_task 2024-01-15T00:00:00+00:00
+# Tail logs in real time
+tail -f $AIRFLOW_HOME/logs/dag_id=my_dag/run_id=<run_id>/task_id=my_task/attempt=1.log
 
-# Follow logs in real-time
-airflow tasks logs -f my_dag my_task 2024-01-15T00:00:00+00:00
-
-# Get logs from a specific try number
-airflow tasks logs my_dag my_task 2024-01-15T00:00:00+00:00 --try-number 2
+# Or fetch from the stable REST API
+curl -u user:pass \
+  "$AIRFLOW_URL/api/v1/dags/my_dag/dagRuns/<run_id>/taskInstances/my_task/logs/1"
 ```
 
 ### Log File Locations
@@ -487,17 +489,17 @@ task = PythonOperator(
 ### Clearing Failed Tasks
 
 ```bash
-# Clear single task instance
+# Clear single task instance (-t is the task-regex)
 airflow tasks clear my_dag -t my_task -s 2024-01-15 -e 2024-01-15
 
 # Clear and downstream
 airflow tasks clear my_dag -t my_task -s 2024-01-15 -e 2024-01-15 --downstream
 
-# Clear entire DAG run
-airflow dags clear my_dag -s 2024-01-15 -e 2024-01-15
+# Clear every task in the DAG run (omit -t to match all tasks)
+airflow tasks clear my_dag -s 2024-01-15 -e 2024-01-15
 
-# Dry run first
-airflow tasks clear my_dag -t my_task -s 2024-01-15 -e 2024-01-15 --dry-run
+# Auto-confirm (default behavior prompts you first, so the preview IS the dry run)
+airflow tasks clear my_dag -t my_task -s 2024-01-15 -e 2024-01-15 --yes
 ```
 
 ### Failure Callbacks
