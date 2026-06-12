@@ -41,11 +41,9 @@ Define the experiment configuration first. This captures everything needed to ru
 ```python
 # chaos_experiment.py - Framework for running hypothesis-driven experiments
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional
-from datetime import datetime
+from dataclasses import dataclass
+from typing import Dict, List
 import json
-import requests
 
 @dataclass
 class SteadyStateDefinition:
@@ -307,23 +305,13 @@ jobs:
           python scripts/evaluate_results.py \
             --fail-on-regression true
 
-      - name: Post results to PR
+      - name: Publish results summary
         if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            // Add chaos experiment results as PR comment
-            const results = require('./chaos-results.json');
-            const body = `## Chaos Experiment Results\n\n` +
-              `Hypothesis validated: ${results.validated}\n` +
-              `Services tested: ${results.services.join(', ')}\n` +
-              `Duration: ${results.duration}s`;
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body
-            });
+        run: |
+          # Add chaos experiment results to the workflow run summary
+          python scripts/write_summary.py \
+            --results chaos-results.json \
+            --output "$GITHUB_STEP_SUMMARY"
 ```
 
 ## Real-World Failure Injection
@@ -338,6 +326,7 @@ Network failures reveal how your services handle connectivity problems.
 import subprocess
 import time
 from contextlib import contextmanager
+from typing import Optional
 
 class NetworkChaos:
     """
@@ -355,26 +344,30 @@ class NetworkChaos:
         Optionally target a specific port (e.g., database connections).
         """
         try:
-            # Add queuing discipline for traffic shaping
-            subprocess.run([
-                "tc", "qdisc", "add", "dev", self.interface,
-                "root", "handle", "1:", "prio"
-            ], check=True)
-
-            # Add delay to traffic
-            subprocess.run([
-                "tc", "qdisc", "add", "dev", self.interface,
-                "parent", "1:3", "handle", "30:",
-                "netem", "delay", f"{latency_ms}ms"
-            ], check=True)
-
             if target_port:
-                # Filter to only affect specific port
+                # Use prio and a filter to affect only the selected port
+                subprocess.run([
+                    "tc", "qdisc", "add", "dev", self.interface,
+                    "root", "handle", "1:", "prio"
+                ], check=True)
+
+                subprocess.run([
+                    "tc", "qdisc", "add", "dev", self.interface,
+                    "parent", "1:3", "handle", "30:",
+                    "netem", "delay", f"{latency_ms}ms"
+                ], check=True)
+
                 subprocess.run([
                     "tc", "filter", "add", "dev", self.interface,
                     "protocol", "ip", "parent", "1:0", "prio", "3",
                     "u32", "match", "ip", "dport", str(target_port), "0xffff",
                     "flowid", "1:3"
+                ], check=True)
+            else:
+                # Apply netem directly at the root to affect all outgoing traffic
+                subprocess.run([
+                    "tc", "qdisc", "add", "dev", self.interface,
+                    "root", "netem", "delay", f"{latency_ms}ms"
                 ], check=True)
 
             print(f"Injected {latency_ms}ms latency on {self.interface}")
