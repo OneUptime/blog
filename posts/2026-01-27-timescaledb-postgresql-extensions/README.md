@@ -207,10 +207,10 @@ CREATE TABLE geofences (
 -- Spatial index for fast geofence lookups
 CREATE INDEX idx_geofences_boundary ON geofences USING GIST (boundary);
 
--- Create a continuous aggregate for geofence events
--- This materializes entry/exit events for fast querying
-CREATE MATERIALIZED VIEW geofence_events
-WITH (timescaledb.continuous) AS
+-- Create a materialized view for geofence events
+-- TimescaleDB continuous aggregates do not support CROSS JOIN or
+-- non-equality join conditions, so use a regular materialized view here.
+CREATE MATERIALIZED VIEW geofence_events AS
 SELECT
     time_bucket('5 minutes', vp.time) AS bucket,
     vp.vehicle_id,
@@ -225,12 +225,8 @@ WHERE ST_DWithin(vp.location, g.boundary, 0.01)  -- Only check nearby geofences
 GROUP BY bucket, vp.vehicle_id, g.id, g.name
 WITH NO DATA;
 
--- Add refresh policy to keep the aggregate updated
-SELECT add_continuous_aggregate_policy('geofence_events',
-    start_offset => INTERVAL '1 hour',
-    end_offset => INTERVAL '5 minutes',
-    schedule_interval => INTERVAL '5 minutes'
-);
+-- Schedule periodic refreshes (use pg_cron or an external scheduler)
+-- REFRESH MATERIALIZED VIEW CONCURRENTLY geofence_events;
 ```
 
 ## Using pg_partman with TimescaleDB
@@ -279,8 +275,8 @@ CREATE TABLE devices (
 SELECT partman.create_parent(
     p_parent_table => 'public.devices',
     p_control => 'registered_at',
-    p_type => 'native',
-    p_interval => 'monthly',
+    p_type => 'range',
+    p_interval => '1 month',
     p_premake => 3  -- Create 3 future partitions
 );
 
@@ -576,7 +572,7 @@ SELECT
         (1 - after_compression_total_bytes::numeric /
          before_compression_total_bytes) * 100, 2
     ) AS compression_ratio_pct
-FROM timescaledb_information.compressed_chunk_stats
+FROM timescaledb_information.chunk_compression_stats
 WHERE hypertable_name = 'vehicle_positions'
 ORDER BY chunk_name DESC
 LIMIT 10;
@@ -802,17 +798,19 @@ ORDER BY range_end DESC
 LIMIT 20;
 
 -- Background job status
+-- last_run_status and last_start live in the job_stats view, not jobs
 SELECT
-    job_id,
-    application_name,
-    schedule_interval,
-    last_run_status,
-    last_run_started_at,
-    next_start
-FROM timescaledb_information.jobs
-WHERE application_name LIKE '%compress%'
-   OR application_name LIKE '%retention%'
-   OR application_name LIKE '%refresh%';
+    j.job_id,
+    j.application_name,
+    j.schedule_interval,
+    js.last_run_status,
+    js.last_start AS last_run_started_at,
+    js.next_start
+FROM timescaledb_information.jobs j
+LEFT JOIN timescaledb_information.job_stats js USING (job_id)
+WHERE j.application_name LIKE '%compress%'
+   OR j.application_name LIKE '%retention%'
+   OR j.application_name LIKE '%refresh%';
 
 -- Extension-specific metrics
 SELECT
@@ -843,8 +841,8 @@ job_health AS (
     SELECT
         COUNT(*) AS total_jobs,
         COUNT(*) FILTER (WHERE last_run_status = 'Success') AS successful_jobs
-    FROM timescaledb_information.jobs
-    WHERE last_run_started_at > NOW() - INTERVAL '24 hours'
+    FROM timescaledb_information.job_stats
+    WHERE last_start > NOW() - INTERVAL '24 hours'
 ),
 extension_health AS (
     SELECT
