@@ -41,11 +41,11 @@ First, install Elasticsearch. On macOS with Homebrew:
 
 ```bash
 # Install Elasticsearch
-
-brew install elasticsearch
+brew tap elastic/tap
+brew install elastic/tap/elasticsearch-full
 
 # Start Elasticsearch service
-brew services start elasticsearch
+brew services start elastic/tap/elasticsearch-full
 
 # Verify it is running
 curl http://localhost:9200
@@ -57,9 +57,10 @@ For Docker users:
 docker run -d \
   --name elasticsearch \
   -p 9200:9200 \
+  -m 1GB \
   -e "discovery.type=single-node" \
   -e "xpack.security.enabled=false" \
-  elasticsearch:8.11.0
+  docker.elastic.co/elasticsearch/elasticsearch:9.4.2
 ```
 
 ### Installation
@@ -72,8 +73,17 @@ Add the gems to your Gemfile:
 # Searchkick provides a high-level interface to Elasticsearch
 gem 'searchkick'
 
+# Elasticsearch client used by Searchkick
+gem 'elasticsearch'
+
 # Optional: For background reindexing (recommended for production)
 gem 'sidekiq'
+
+# Optional: For tracking async reindex progress
+gem 'redis'
+
+# Optional: For persistent HTTP connections
+gem 'typhoeus'
 ```
 
 Run bundle install:
@@ -202,9 +212,9 @@ end
 @articles = Article.search(
   query,
   fields: [
-    { title: :word_start, boost: 10 },  # Highest priority
-    { tags: :exact, boost: 5 },         # Medium priority
-    { body: :word, boost: 1 }           # Base priority
+    "title^10",  # Highest priority
+    "tags^5",    # Medium priority
+    "body"       # Base priority
   ]
 )
 ```
@@ -227,7 +237,7 @@ end
 @products = Product.search(
   query,
   where: {
-    or: [
+    _or: [
       { category_name: "Electronics" },
       { price: { lt: 50 } }
     ]
@@ -332,12 +342,8 @@ class AutocompleteController < ApplicationController
     # Fast autocomplete query
     # match: :word_start finds "laptop" from "lap"
     results = Product.search(
-      params[:query],
-      match: :word_start,
-      limit: 10,
-      load: false,  # Skip loading from DB for speed
-      fields: [:name]
-    )
+      params[:query]
+    ).fields(:name).match(:word_start).limit(10).load(false)
 
     # Return just the names for the autocomplete dropdown
     render json: results.map { |r| { name: r.name, id: r.id } }
@@ -380,15 +386,19 @@ export default class extends Controller {
 Show users where their query matched:
 
 ```ruby
+# app/models/product.rb
+class Product < ApplicationRecord
+  searchkick highlight: [:name, :description]
+end
+
 # Search with highlighting enabled
 @products = Product.search(
-  params[:query],
-  highlight: {
-    tag: "<mark>",     # HTML tag to wrap matches
-    fields: {
-      name: {},
-      description: { fragment_size: 150 }  # Limit snippet length
-    }
+  params[:query]
+).highlight(
+  tag: "<mark>",     # HTML tag to wrap matches
+  fields: {
+    name: {},
+    description: { fragment_size: 150 }  # Limit snippet length
   }
 )
 
@@ -421,12 +431,9 @@ product.destroy
 For production, use background jobs to avoid blocking web requests:
 
 ```ruby
-# config/initializers/searchkick.rb
-Searchkick.redis = Redis.new  # For job queue coordination
-
 # app/models/product.rb
 class Product < ApplicationRecord
-  # Queue index updates in background
+  # Queue index updates in the Active Job backend
   searchkick callbacks: :async
 end
 ```
@@ -436,12 +443,16 @@ end
 For large datasets, use zero-downtime reindexing:
 
 ```ruby
-# This creates a new index, populates it, then swaps the alias
-# Users see no interruption
-Product.reindex(async: true)
+# This creates a new index and populates it in background jobs
+result = Product.reindex(mode: :async)
+index_name = result[:index_name]
 
 # Monitor progress
-Searchkick.reindex_status("products_production_20240126")
+Searchkick.redis = Redis.new
+Searchkick.reindex_status(index_name)
+
+# Promote the index after jobs complete
+Product.search_index.promote(index_name)
 ```
 
 ```mermaid
@@ -532,7 +543,7 @@ RSpec.configure do |config|
   config.before(:each, search: true) do
     # Reindex models needed for this test
     Product.reindex
-    Product.searchkick_index.refresh  # Make changes visible immediately
+    Product.search_index.refresh  # Make changes visible immediately
   end
 end
 ```
@@ -549,7 +560,7 @@ RSpec.describe Product, search: true do
 
     before do
       Product.reindex
-      Product.searchkick_index.refresh
+      Product.search_index.refresh
     end
 
     it "finds products by name" do
@@ -588,12 +599,9 @@ Before deploying to production, verify these configurations:
 # Set Elasticsearch URL from environment
 ENV["ELASTICSEARCH_URL"] ||= "http://localhost:9200"
 
-# Configure connection pooling for production
-Searchkick.client_options = {
-  retry_on_failure: 3,
-  request_timeout: 15,
-  adapter: :typhoeus  # Faster HTTP client (add typhoeus gem)
-}
+# Configure client retries and timeouts for production
+Searchkick.client_options[:retry_on_failure] = 3
+Searchkick.timeout = 15
 
 # Enable background jobs for index updates
 Searchkick.redis = Redis.new(url: ENV["REDIS_URL"])
@@ -629,11 +637,11 @@ end
 # Force reindex a single record
 product.reindex
 
-# Check if record is in index
-Product.searchkick_index.exists?(product)
+# Fetch the indexed source for a record
+Product.search_index.retrieve(product)
 
 # Refresh index to make changes visible immediately
-Product.searchkick_index.refresh
+Product.search_index.refresh
 ```
 
 ### Memory Issues During Bulk Reindex
@@ -643,7 +651,7 @@ Product.searchkick_index.refresh
 Product.reindex(batch_size: 500)
 
 # Use async reindexing with Sidekiq
-Product.reindex(async: true)
+Product.reindex(mode: :async)
 ```
 
 ### Search Returning No Results
@@ -652,10 +660,10 @@ Product.reindex(async: true)
 # Debug by checking what is actually indexed
 Product.search_index.refresh
 results = Product.search("*", load: false)
-puts results.map(&:search_data)
+puts results.response["hits"]["hits"].map { |hit| hit["_source"] }
 
 # Verify the query Searchkick generates
-Product.search("laptop", debug: true)
+Product.search("laptop").debug
 ```
 
 ---
