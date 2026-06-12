@@ -49,17 +49,18 @@ First, enable Funnel for your tailnet in the admin console.
 1. Go to your Tailscale admin console
 2. Navigate to DNS settings
 3. Enable MagicDNS if not already enabled
-4. Go to Access Controls (ACLs)
-5. Add Funnel permissions to your policy
+4. Enable HTTPS certificates for your tailnet
+5. Go to Access Controls (ACLs)
+6. Add Funnel permissions to your policy
 
-```json
+```jsonc
 {
   "acls": [
     // Your existing ACLs
   ],
   "nodeAttrs": [
     {
-      "target": ["autogroup:members"],
+      "target": ["autogroup:member"],
       "attr": ["funnel"]
     }
   ]
@@ -94,13 +95,13 @@ Start exposing a local service with Funnel.
 tailscale funnel 3000
 
 # The command outputs your public URL
-# Example: https://your-machine.tail-scale.ts.net/
+# Example: https://your-machine.tailnet-name.ts.net/
 
 # Expose on a specific port (443 is default)
-tailscale funnel --bg 3000
+tailscale funnel --https=8443 3000
 
-# Run in foreground with verbose output
-tailscale funnel --verbose 3000
+# Run persistently in the background
+tailscale funnel --bg 3000
 ```
 
 ## Configuring Funnel for Specific Services
@@ -117,6 +118,7 @@ npm run dev  # Runs on localhost:3000
 tailscale funnel 3000
 
 # Share the URL: https://your-machine.your-tailnet.ts.net/
+# Example: https://your-machine.tailnet-name.ts.net/
 ```
 
 ### Exposing Multiple Paths
@@ -125,13 +127,13 @@ Route different paths to different local services.
 
 ```bash
 # Expose main app on root path
-tailscale funnel --set-path / 3000
+tailscale funnel --set-path=/ 3000
 
 # Expose API on /api path
-tailscale funnel --set-path /api 8080
+tailscale funnel --set-path=/api 8080
 
 # Expose static files on /static path
-tailscale funnel --set-path /static 8000
+tailscale funnel --set-path=/static 8000
 ```
 
 ### Running Funnel as a Background Service
@@ -146,26 +148,22 @@ tailscale funnel --bg 3000
 tailscale funnel status
 
 # Stop Funnel
-tailscale funnel off
+tailscale funnel 3000 off
 
 # View current Funnel configuration
 tailscale funnel status --json
 ```
 
-## Funnel Configuration File
+## Funnel Configuration
 
-For complex setups, use a configuration file approach through the serve command.
+For complex setups, add multiple Funnel path mappings with the Funnel command.
 
 ```bash
-# Create a serve configuration
-tailscale serve --bg https / http://localhost:3000
-tailscale serve --bg https /api http://localhost:8080
-
-# Then enable Funnel for the serve endpoints
-tailscale funnel on
+# Create multiple Funnel routes
+tailscale funnel --bg 3000
+tailscale funnel --bg --set-path=/api 8080
 
 # View the full configuration
-tailscale serve status
 tailscale funnel status
 ```
 
@@ -213,9 +211,8 @@ Share demo environments with clients without deploying to staging.
 docker-compose up  # Frontend on 3000, backend on 8080
 
 # Expose both services
-tailscale serve --bg https / http://localhost:3000
-tailscale serve --bg https /api http://localhost:8080
-tailscale funnel on
+tailscale funnel --bg 3000
+tailscale funnel --bg --set-path=/api 8080
 
 # Share with clients:
 # https://demo.your-tailnet.ts.net/
@@ -269,14 +266,14 @@ flowchart TB
         HTTPS[HTTPS Encryption<br/>Automatic TLS]
         Auth[Application Auth<br/>Login Required]
         Rate[Rate Limiting<br/>Request Limits]
-        ACL[Tailscale ACLs<br/>Device Permissions]
+        Attr[Funnel nodeAttrs<br/>Who Can Publish]
     end
 
     Request[Incoming Request] --> HTTPS
     HTTPS --> Auth
     Auth --> Rate
-    Rate --> ACL
-    ACL --> Service[Your Service]
+    Rate --> Service[Your Service]
+    Attr --> Service
 ```
 
 ### Best Practices
@@ -296,11 +293,11 @@ location / {
     proxy_pass http://localhost:3000;
 }
 
-# Monitor access logs
-tailscale funnel status --json | jq '.connections'
+# Inspect Funnel configuration
+tailscale funnel status --json
 
 # Disable Funnel when not needed
-tailscale funnel off
+tailscale funnel 3000 off
 ```
 
 ### Configuring ACLs for Funnel
@@ -344,13 +341,16 @@ tailscale status
 tailscale funnel status
 
 # Check if MagicDNS is enabled
-tailscale debug prefs | grep -i magic
+tailscale dns status
+
+# Confirm HTTPS certificates are enabled in the admin console
+# DNS settings -> HTTPS Certificates
 
 # Verify the local service is running
 curl http://localhost:3000
 
-# Check for ACL issues
-tailscale debug funnel
+# Check the tailnet policy for a funnel nodeAttr
+# "attr": ["funnel"]
 ```
 
 ### Connection Timeouts
