@@ -8,7 +8,7 @@ Description: Learn how to use the App of Apps pattern in ArgoCD to manage multip
 
 ---
 
-Managing dozens of Kubernetes applications with ArgoCD can quickly become overwhelming. The App of Apps pattern solves this by letting you define a single parent application that manages all your child applications. One sync, everything deploys.
+Managing dozens of Kubernetes applications with ArgoCD can quickly become overwhelming. The App of Apps pattern solves this by letting you define a single parent application that manages all your child applications. One root application, everything is declared.
 
 ## What Is the App of Apps Pattern?
 
@@ -39,7 +39,7 @@ flowchart TB
 
 **Consistent structure** - All applications follow the same pattern and live in the same repository.
 
-**Atomic deployments** - Related applications sync together with proper ordering via sync waves.
+**Ordered deployments** - Related Application resources can be applied with proper ordering via sync waves.
 
 **Environment parity** - Replicate your entire stack across dev, staging, and production.
 
@@ -101,6 +101,7 @@ spec:
     directory:
       recurse: true
       include: '*.yaml'
+      exclude: 'root/*'
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -115,6 +116,7 @@ spec:
 Key configuration points:
 
 - `directory.recurse: true` scans all subdirectories for Application manifests
+- `directory.exclude: 'root/*'` prevents the root application from managing its own manifest
 - `finalizers` ensures child applications are cleaned up when the root is deleted
 - `automated.prune` removes applications that are deleted from Git
 
@@ -214,34 +216,34 @@ spec:
 
 ## Sync Waves for Ordering
 
-Sync waves control the order in which applications deploy. Lower numbers sync first.
+Sync waves control the order in which resources are applied during a sync. In an App of Apps setup, the parent application uses these waves to order the child `Application` resources; each child application then reconciles its own workloads according to its sync policy. Lower numbers sync first.
 
 ```mermaid
 flowchart LR
-    subgraph Wave -3
+    subgraph waveMinus3["Wave -3"]
         CRDs[CRDs]
         CertManager[cert-manager]
     end
 
-    subgraph Wave -2
+    subgraph waveMinus2["Wave -2"]
         Namespaces[Namespaces]
         RBAC[RBAC]
     end
 
-    subgraph Wave -1
+    subgraph waveMinus1["Wave -1"]
         Ingress[Ingress Controller]
         Monitoring[Monitoring Stack]
     end
 
-    subgraph Wave 0
+    subgraph wave0["Wave 0"]
         Platform[Platform Services]
     end
 
-    subgraph Wave 1
+    subgraph wave1["Wave 1"]
         Apps[Applications]
     end
 
-    Wave -3 --> Wave -2 --> Wave -1 --> Wave 0 --> Wave 1
+    waveMinus3 --> waveMinus2 --> waveMinus1 --> wave0 --> wave1
 ```
 
 Typical wave assignments:
@@ -273,7 +275,7 @@ kubectl apply -f apps/root/application.yaml
 argocd app list
 ```
 
-ArgoCD syncs the root application, discovers all child applications, and deploys them in sync wave order. A fresh cluster goes from empty to fully configured in minutes.
+ArgoCD syncs the root application and discovers all child applications. With automated sync enabled on the child applications, those child applications reconcile their workloads after they are created. A fresh cluster goes from empty to fully configured in minutes.
 
 ## Multi-Cluster Deployment
 
@@ -336,6 +338,7 @@ metadata:
   name: cluster-roots
   namespace: argocd
 spec:
+  goTemplate: true
   generators:
     - clusters:
         selector:
@@ -343,15 +346,15 @@ spec:
             argocd.argoproj.io/secret-type: cluster
   template:
     metadata:
-      name: 'root-{{name}}'
+      name: 'root-{{.nameNormalized}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/gitops-repo.git
         targetRevision: HEAD
-        path: 'apps/overlays/{{metadata.labels.env}}'
+        path: 'apps/overlays/{{.metadata.labels.env}}'
       destination:
-        server: '{{server}}'
+        server: '{{.server}}'
         namespace: argocd
       syncPolicy:
         automated:
@@ -400,6 +403,7 @@ resources:
 patches:
   - target:
       kind: Application
+      name: api-service
     patch: |
       - op: replace
         path: /spec/source/path
@@ -407,13 +411,6 @@ patches:
       - op: replace
         path: /spec/destination/namespace
         value: production
-      - op: add
-        path: /spec/source/helm/values
-        value: |
-          replicas: 5
-          resources:
-            limits:
-              memory: 2Gi
 ```
 
 ## Projects for Access Control
@@ -489,7 +486,7 @@ spec:
 
 ```yaml
 # manifests/api-service/base/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-credentials
@@ -514,12 +511,24 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: external-secrets
+  namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "-2"  # Before applications
 spec:
+  project: default
   source:
-    chart: external-secrets
     repoURL: https://charts.external-secrets.io
+    chart: external-secrets
+    targetRevision: 2.6.0
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-secrets
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
 ```
 
 ## Debugging Tips
@@ -569,7 +578,7 @@ argocd app sync api-service
 
 ## Common Pitfalls
 
-**Circular dependencies** - Never have the root application manage itself. This creates an infinite loop.
+**Circular dependencies** - Never have the root application manage itself. This creates self-referential ownership and confusing prune/delete behavior.
 
 **Missing sync waves** - Without proper wave ordering, applications may fail because their dependencies are not ready.
 
