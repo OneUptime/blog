@@ -107,7 +107,7 @@ alert = {
 key_fields = ["source", "alertname", "host"]
 fingerprint = generate_fingerprint(alert, key_fields)
 print(f"Fingerprint: {fingerprint}")
-# Output: Fingerprint: 8f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0c...
+# Output: Fingerprint: 1857a88b59a15bd7749c2638e3a8fb08e4e950edff6f8bf47e808f824ca0ca20
 ```
 
 ### Advanced Fingerprint Strategies
@@ -238,9 +238,8 @@ flowchart LR
 ### Time Window Implementation
 
 ```python
-import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import Dict, Optional
 from threading import Lock
 import logging
@@ -258,7 +257,7 @@ class AlertGroup:
 
     def is_expired(self, window_seconds: int) -> bool:
         """Check if this alert group has expired based on time window."""
-        return (datetime.utcnow() - self.last_seen).total_seconds() > window_seconds
+        return (datetime.now(timezone.utc) - self.last_seen).total_seconds() > window_seconds
 
 
 class DeduplicationStore:
@@ -286,26 +285,33 @@ class DeduplicationStore:
         self.alert_groups: Dict[str, AlertGroup] = {}
         self.lock = Lock()
 
-    def process_alert(self, fingerprint: str, alert: Dict) -> tuple[bool, AlertGroup]:
+    def process_alert(
+        self,
+        fingerprint: str,
+        alert: Dict,
+        window_seconds: Optional[int] = None
+    ) -> tuple[bool, AlertGroup]:
         """
         Process an incoming alert and determine if it should be deduplicated.
 
         Args:
             fingerprint: The alert fingerprint
             alert: The alert payload
+            window_seconds: Optional override for this alert's deduplication window
 
         Returns:
             Tuple of (is_new_alert, alert_group)
         """
         with self.lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
+            effective_window = window_seconds or self.window_seconds
 
             # Check if we have an existing group for this fingerprint
             if fingerprint in self.alert_groups:
                 group = self.alert_groups[fingerprint]
 
                 # Check if the group has expired
-                if group.is_expired(self.window_seconds):
+                if group.is_expired(effective_window):
                     # Create new group
                     logger.info(f"Alert group expired, creating new group: {fingerprint[:16]}...")
                     new_group = AlertGroup(
@@ -374,8 +380,8 @@ class RedisDeduplicationStore:
     """
     Redis-backed deduplication store for distributed environments.
 
-    Uses Redis sorted sets for efficient time-based expiration
-    and atomic operations for thread safety.
+    Uses Redis key expiration for cleanup and Lua scripting for
+    atomic check-and-update operations.
     """
 
     def __init__(
@@ -408,7 +414,7 @@ class RedisDeduplicationStore:
         """
         Process alert with atomic Redis operations.
 
-        Uses Redis transactions to ensure consistency
+        Uses a Redis Lua script to ensure consistency
         across multiple application instances.
         """
         key = self._get_key(fingerprint)
@@ -588,7 +594,11 @@ class AlertDeduplicator:
         fingerprint = self._generate_fingerprint(alert, key_fields, normalizers)
 
         # Check deduplication store
-        is_new, group = self.store.process_alert(fingerprint, alert)
+        is_new, group = self.store.process_alert(
+            fingerprint,
+            alert,
+            window_seconds=rule.window_seconds if rule else None
+        )
 
         # Enrich alert with deduplication metadata
         result = {
@@ -645,7 +655,7 @@ if __name__ == "__main__":
 
 ## Integration with PagerDuty
 
-PagerDuty uses a concept called `dedup_key` (also known as `incident_key`) to group related alerts:
+PagerDuty Events API v2 uses a `dedup_key` to group related alerts. Older PagerDuty integrations and API versions may refer to a similar concept as an `incident_key`:
 
 ```python
 import requests
@@ -723,7 +733,7 @@ class PagerDutyIntegration:
         """
         Resolve an existing PagerDuty incident.
 
-        Automatically resolves all incidents with the matching dedup_key.
+        Resolves the incident associated with the matching dedup_key.
         """
         return self.send_alert({}, dedup_key, action="resolve")
 
@@ -1005,7 +1015,7 @@ def process_resolution(
 
 ```python
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
 class TestAlertDeduplication(unittest.TestCase):
@@ -1064,7 +1074,7 @@ class TestAlertDeduplication(unittest.TestCase):
         # Simulate window expiration
         fingerprint = result1["dedup"]["fingerprint"]
         self.store.alert_groups[fingerprint].last_seen = (
-            datetime.utcnow() - timedelta(seconds=400)
+            datetime.now(timezone.utc) - timedelta(seconds=400)
         )
 
         result2 = self.deduplicator.process(alert)
