@@ -160,11 +160,15 @@ CREATE ROLE debezium WITH REPLICATION LOGIN PASSWORD 'dbz_password';
 
 -- Grant access to the database and schema
 GRANT CONNECT ON DATABASE myapp TO debezium;
+GRANT CREATE ON DATABASE myapp TO debezium;
 GRANT USAGE ON SCHEMA public TO debezium;
 
 -- Grant SELECT on tables you want to capture
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO debezium;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO debezium;
+
+-- If Debezium creates the publication, the user must also own
+-- the captured tables or be a member of the role that owns them.
 ```
 
 Create the connector:
@@ -233,7 +237,7 @@ binlog_format = ROW
 binlog_row_image = FULL
 
 # Expire logs after 7 days
-expire_logs_days = 7
+binlog_expire_logs_seconds = 604800
 
 # Enable GTIDs for better tracking (optional but recommended)
 gtid_mode = ON
@@ -249,7 +253,8 @@ CREATE USER 'debezium'@'%' IDENTIFIED BY 'dbz_password';
 -- Grant replication privileges
 GRANT SELECT, RELOAD, SHOW DATABASES, REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'debezium'@'%';
 
--- For MySQL 8.0+, also grant LOCK TABLES for consistent snapshots
+-- For hosted MySQL deployments that do not allow global read locks,
+-- also grant LOCK TABLES for consistent snapshots
 GRANT LOCK TABLES ON myapp.* TO 'debezium'@'%';
 
 FLUSH PRIVILEGES;
@@ -308,7 +313,7 @@ Debezium produces structured JSON messages with metadata. Here is an example cha
 
 ```json
 {
-  "schema": { ... },
+  "schema": {},
   "payload": {
     "before": {
       "id": 1001,
@@ -347,7 +352,7 @@ Message fields explained:
 | `after` | Row state after the change (null for DELETE) |
 | `op` | Operation type: `c` (create), `u` (update), `d` (delete), `r` (read/snapshot) |
 | `source.ts_ms` | Timestamp when change occurred in database |
-| `source.lsn` | Log sequence number (PostgreSQL) or binlog position (MySQL) |
+| `source.lsn` | Log sequence number (PostgreSQL). MySQL events use `source.file`, `source.pos`, and `source.row` for binlog coordinates |
 | `ts_ms` | Timestamp when Debezium processed the event |
 
 Operation types:
@@ -364,11 +369,11 @@ Operation types:
 
 Schema changes are inevitable. Debezium handles them differently per database:
 
-**PostgreSQL**: Schema changes are captured automatically. The connector reads the current schema on startup and tracks changes via the replication stream.
+**PostgreSQL**: Data change events include table schema metadata, but PostgreSQL logical decoding does not emit DDL change events to consumers. Plan schema changes carefully, especially during snapshots.
 
 **MySQL**: DDL statements are stored in the schema history topic. The connector replays this history on restart to reconstruct the schema at any point.
 
-Configure schema change handling:
+For MySQL schema history and optional schema change events, configure:
 
 ```json
 {
@@ -378,7 +383,7 @@ Configure schema change handling:
     "schema.history.internal.kafka.topic": "schema-changes.myapp",
     "schema.history.internal.kafka.bootstrap.servers": "kafka:29092",
 
-    "schema.history.internal.store.only.captured.tables.ddl": "true"
+    "schema.history.internal.store.only.captured.tables.ddl": "false"
   }
 }
 ```
@@ -604,7 +609,7 @@ for message in consumer:
 **Message Handling**
 
 - Design consumers to be idempotent (handle replays)
-- Use `source.lsn` or `source.txId` for deduplication
+- Use source coordinates such as PostgreSQL `source.lsn` or MySQL `source.file`, `source.pos`, and `source.row` for deduplication
 - Handle all operation types (`c`, `u`, `d`, `r`)
 - Process `before` and `after` for update detection
 
@@ -618,7 +623,7 @@ for message in consumer:
 
 **Scaling**
 
-- One connector task per table (PostgreSQL) or database (MySQL)
+- PostgreSQL and MySQL connectors run a single connector task; scale processing by partitioning Kafka topics and consumer groups
 - Partition Kafka topics for parallel consumption
 - Use separate connector instances for different databases
 - Consider Debezium Server for non-Kafka targets
