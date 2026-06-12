@@ -90,10 +90,10 @@ management:
 
   endpoint:
     health:
-      # Show full health details (never, when_authorized, always)
-      show-details: when_authorized
+      # Show full health details (never, when-authorized, always)
+      show-details: when-authorized
       # Show individual component status
-      show-components: when_authorized
+      show-components: when-authorized
 ```
 
 ### Understanding Show-Details Options
@@ -104,7 +104,7 @@ The `show-details` property controls how much information the health endpoint re
 flowchart LR
     Request["HTTP Request"] --> Endpoint["Health Endpoint"]
     Endpoint --> Never["never: Status only"]
-    Endpoint --> Auth["when_authorized: Details if authenticated"]
+    Endpoint --> Auth["when-authorized: Details if authenticated"]
     Endpoint --> Always["always: Full details"]
 
     Never --> StatusOnly["{'status': 'UP'}"]
@@ -115,7 +115,7 @@ flowchart LR
 | Option | Use Case |
 |--------|----------|
 | `never` | Public-facing health checks |
-| `when_authorized` | Internal health checks with authentication |
+| `when-authorized` | Internal health checks with authentication |
 | `always` | Development or trusted networks only |
 
 ---
@@ -180,6 +180,7 @@ package com.example.health;
 
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.RestClientException;
@@ -234,7 +235,6 @@ package com.example.health;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.actuate.health.Status;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -281,6 +281,16 @@ public class CacheHealthIndicator implements HealthIndicator {
 }
 ```
 
+When you use a custom status like `DEGRADED`, configure the health status order so aggregate health responses treat it predictably:
+
+```yaml
+management:
+  endpoint:
+    health:
+      status:
+        order: "down,out-of-service,degraded,unknown,up"
+```
+
 ---
 
 ## Health Groups
@@ -316,9 +326,9 @@ management:
 ```mermaid
 flowchart TB
     subgraph "Health Groups"
-        Liveness["/health/liveness<br/>Is app alive?"]
-        Readiness["/health/readiness<br/>Can app serve traffic?"]
-        Full["/health<br/>Full health status"]
+        Liveness["/actuator/health/liveness<br/>Is app alive?"]
+        Readiness["/actuator/health/readiness<br/>Can app serve traffic?"]
+        Full["/actuator/health<br/>Full health status"]
     end
 
     subgraph "Checks"
@@ -412,11 +422,13 @@ Enable Kubernetes-specific health indicators:
 ```yaml
 # application.yml
 management:
-  health:
-    # Enable Kubernetes probe support
-    probes:
-      enabled: true
+  endpoint:
+    health:
+      # Enable Kubernetes probe support outside Kubernetes, where it is not auto-enabled
+      probes:
+        enabled: true
 
+  health:
     # Configure liveness state
     livenessstate:
       enabled: true
@@ -444,6 +456,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 
+import static org.springframework.security.config.Customizer.withDefaults;
+
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -464,7 +478,7 @@ public class SecurityConfig {
                 // All other requests require authentication
                 .anyRequest().authenticated()
             )
-            .httpBasic();  // Use basic auth for simplicity
+            .httpBasic(withDefaults());  // Use basic auth for simplicity
 
         return http.build();
     }
@@ -480,7 +494,7 @@ Configure which roles can view health details:
 management:
   endpoint:
     health:
-      show-details: when_authorized
+      show-details: when-authorized
       # Roles that can view health details
       roles: ACTUATOR,ADMIN
 ```
@@ -503,8 +517,8 @@ management:
   server:
     # Actuator endpoints on internal-only port
     port: 8081
-    # Bind only to localhost for internal access
-    address: 127.0.0.1
+    # In containers, keep this reachable on the pod network and restrict access with NetworkPolicy/firewall rules
+    address: 0.0.0.0
   endpoints:
     web:
       exposure:
@@ -533,7 +547,7 @@ flowchart LR
 
     Client --> LB
     LB --> App
-    K8S -->|"localhost:8081"| Mgmt
+    K8S -->|"Pod IP:8081"| Mgmt
     Monitor -->|"Internal network"| Mgmt
 ```
 
@@ -727,7 +741,7 @@ management:
   endpoint:
     health:
       # Never expose details to anonymous users in production
-      show-details: when_authorized
+      show-details: when-authorized
 
       # Configure health groups for Kubernetes
       group:
@@ -761,6 +775,7 @@ package com.example.health;
 
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.*;
@@ -825,8 +840,8 @@ public class ExternalApiHealthIndicator implements HealthIndicator {
 package com.example.health;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.actuate.health.Health;
@@ -843,8 +858,14 @@ class PaymentApiHealthIndicatorTest {
     @Mock
     private RestTemplate restTemplate;
 
-    @InjectMocks
     private PaymentApiHealthIndicator healthIndicator;
+
+    @BeforeEach
+    void setUp() {
+        healthIndicator = new PaymentApiHealthIndicator(
+                restTemplate,
+                "http://payment-api/health");
+    }
 
     @Test
     void shouldReturnUpWhenApiResponds() {
