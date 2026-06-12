@@ -25,13 +25,17 @@ Caching is the single most impactful optimization for most pipelines. GitLab CI 
 
 # Define global cache settings that apply to all jobs
 
+variables:
+  # Direct pip's cache into the project directory so GitLab can cache it
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
 # Using cache:key ensures different branches get separate caches
 cache:
   # Use CI_COMMIT_REF_SLUG to create branch-specific caches
   key: ${CI_COMMIT_REF_SLUG}
   paths:
-    # Cache node_modules for JavaScript projects
-    - node_modules/
+    # Cache npm's package cache for JavaScript projects
+    - .npm/
     # Cache pip packages for Python projects
     - .pip-cache/
   # pull-push policy: download cache at start, upload at end
@@ -48,7 +52,7 @@ test:
         - package-lock.json
       prefix: ${CI_COMMIT_REF_SLUG}
     paths:
-      - node_modules/
+      - .npm/
     # Use pull policy for jobs that only read from cache
     policy: pull
   script:
@@ -58,22 +62,27 @@ test:
 
 ### Distributed Cache with S3
 
+```toml
+# /etc/gitlab-runner/config.toml
+
+# For larger teams, configure distributed caching on the GitLab Runner
+# This lets multiple runners share cache archives through S3 or GCS
+[[runners]]
+  [runners.cache]
+    Type = "s3"
+    Shared = true
+    [runners.cache.s3]
+      BucketName = "my-gitlab-cache-bucket"
+      BucketLocation = "us-east-1"
+```
+
 ```yaml
 # .gitlab-ci.yml
-
-# For larger teams, use distributed caching with S3 or GCS
-# This provides faster cache retrieval than GitLab's built-in storage
-variables:
-  # Enable S3 distributed cache
-  CACHE_TYPE: s3
-  # S3 bucket for storing cache artifacts
-  S3_CACHE_BUCKET: my-gitlab-cache-bucket
-  S3_CACHE_REGION: us-east-1
 
 cache:
   key: ${CI_COMMIT_REF_SLUG}-${CI_JOB_NAME}
   paths:
-    - node_modules/
+    - .npm/
     - .gradle/
     - .m2/repository/
 ```
@@ -91,7 +100,7 @@ build:
       files:
         - package-lock.json
     paths:
-      - node_modules/
+      - .npm/
     # Fallback keys if primary cache misses
     # GitLab tries each key in order until one hits
     fallback_keys:
@@ -100,7 +109,7 @@ build:
       # Last resort: any available cache
       - cache-
   script:
-    - npm ci
+    - npm ci --cache .npm --prefer-offline
     - npm run build
 ```
 
@@ -156,7 +165,7 @@ test:
 
       # Get this runner's slice of test files
       test_files=$(find tests -name "*.test.js" | sort | \
-        awk "NR % $CI_NODE_TOTAL == ($CI_NODE_INDEX - 1)")
+        awk "((NR - 1) % $CI_NODE_TOTAL) == ($CI_NODE_INDEX - 1)")
 
       # Run only this runner's tests
       npm test -- $test_files
@@ -304,34 +313,34 @@ Docker builds can be extremely slow without proper layer caching. GitLab CI supp
 variables:
   # Enable BuildKit for better caching and performance
   DOCKER_BUILDKIT: 1
-  # Use containerd image store for better layer management
-  DOCKER_DRIVER: overlay2
+  DOCKER_HOST: tcp://docker:2376
+  DOCKER_TLS_CERTDIR: "/certs"
 
 build-image:
   stage: build
-  image: docker:24
+  image: docker:27.4.1-cli
   services:
-    - docker:24-dind
+    - docker:27.4.1-dind
   variables:
     # Registry image path
     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-    CACHE_TAG: $CI_REGISTRY_IMAGE:cache
+    CACHE_IMAGE: $CI_REGISTRY_IMAGE/cache-image
   before_script:
     # Login to GitLab Container Registry
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
-    # Build with inline cache metadata
-    # --cache-from pulls layers from previous builds
+    # Build with the registry cache backend
+    # --cache-from reads layers from previous builds
     # --cache-to pushes cache layers for future builds
     - |
-      docker build \
-        --cache-from $CACHE_TAG \
-        --build-arg BUILDKIT_INLINE_CACHE=1 \
+      docker context create ci-builder
+      docker buildx create ci-builder --driver docker-container --use
+      docker buildx build \
+        --push \
+        --cache-from type=registry,ref=$CACHE_IMAGE \
+        --cache-to type=registry,ref=$CACHE_IMAGE,mode=max \
         -t $IMAGE_TAG \
-        -t $CACHE_TAG \
         .
-    - docker push $IMAGE_TAG
-    - docker push $CACHE_TAG
 ```
 
 ### Multi-Stage Build Caching
@@ -472,7 +481,7 @@ WORKDIR /app
 
 # Install only production dependencies
 COPY package*.json ./
-RUN npm ci --only=production && \
+RUN npm ci --omit=dev && \
     # Clean npm cache to reduce image size
     npm cache clean --force
 
@@ -718,7 +727,7 @@ publish-package:
 
 ### Caching
 
-5. **Cache package managers** - Always cache node_modules, pip packages, Maven/Gradle dependencies.
+5. **Cache package managers** - Cache package-manager download caches such as `.npm/`, pip cache directories, Maven repositories, and Gradle caches.
 
 6. **Use file-based cache keys** - Key caches on lock files (package-lock.json, Pipfile.lock) for automatic invalidation.
 
