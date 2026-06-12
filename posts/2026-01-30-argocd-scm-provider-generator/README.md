@@ -92,7 +92,7 @@ kubectl apply -f github-token-secret.yaml
 
 ### Step 3: Create the ApplicationSet
 
-This ApplicationSet discovers all repositories in the `myorg` organization that have a `k8s/` directory.
+This ApplicationSet discovers all repositories in the `myorg` organization that have a `k8s/deployment.yaml` file.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -150,6 +150,7 @@ The SCM Provider Generator exposes several variables for use in your templates:
 | `{{branch}}` | Default branch | `main` |
 | `{{sha}}` | Latest commit SHA | `abc123...` |
 | `{{labels}}` | Repository labels/topics | `backend,api` |
+| `{{branchNormalized}}` | Branch name normalized for Kubernetes resource names | `feature-login` |
 
 ## Filtering Repositories
 
@@ -342,10 +343,10 @@ generators:
         project: MYPROJECT
         api: https://bitbucket.mycompany.com
         basicAuth:
-          secretRef:
+          username: myuser
+          passwordRef:
             secretName: bitbucket-server-creds
-            usernameKey: username
-            passwordKey: password
+            key: password
 ```
 
 ## Multi-Environment Deployments
@@ -431,15 +432,15 @@ spec:
 
 ### Using Repository Metadata
 
-Add labels to your Applications based on repository topics.
+Add annotations to your Applications based on repository topics.
 
 ```yaml
 template:
   metadata:
     name: '{{repository}}'
-    labels:
-      team: '{{labels}}'
-      repository: '{{repository}}'
+    annotations:
+      scm.argocd.argoproj.io/repository-labels: '{{labels}}'
+      scm.argocd.argoproj.io/repository: '{{repository}}'
 ```
 
 ### Custom Path Per Repository
@@ -447,15 +448,17 @@ template:
 Use repository naming conventions to determine Kubernetes manifest paths.
 
 ```yaml
+goTemplate: true
+goTemplateOptions: ["missingkey=error"]
 template:
   spec:
     source:
-      path: 'deploy/{{repository | replace "service-" ""}}'
+      path: 'deploy/{{ .repository | replace "service-" "" }}'
 ```
 
-### Webhook Integration
+### Polling Interval
 
-Configure webhooks to trigger immediate Application generation when new repositories are created.
+Adjust the polling interval to control how often the generator checks for repository changes.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -466,31 +469,27 @@ metadata:
 spec:
   generators:
     - scmProvider:
+        requeueAfterSeconds: 300
         github:
           organization: myorg
           tokenRef:
             secretName: github-token
             key: token
-          webhookRef:
-            secret: webhook-secret
-            key: webhook.secret
 ```
 
-### Clone Options for Performance
+### Clone Protocol
 
-For organizations with many repositories, optimize clone operations.
+Choose the clone URL protocol generated for discovered repositories.
 
 ```yaml
 generators:
   - scmProvider:
+      cloneProtocol: https
       github:
         organization: myorg
         tokenRef:
           secretName: github-token
           key: token
-        cloneProtocol: https
-      cloneOptions:
-        shallow: true
 ```
 
 ## Handling Private Repositories
@@ -616,9 +615,9 @@ spec:
       kind: Namespace
 ```
 
-### 3. Use Progressive Sync
+### 3. Use Sync Retries
 
-For large organizations, avoid syncing all Applications simultaneously.
+For large organizations, retry transient sync failures with backoff.
 
 ```yaml
 template:
