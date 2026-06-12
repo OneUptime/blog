@@ -90,6 +90,9 @@ themes/
         messages_en.properties
     email/
       theme.properties
+      resources/
+        img/
+          logo.png
       html/
         email-verification.ftl
         password-reset.ftl
@@ -104,7 +107,7 @@ themes/
 
 ## Step 1: Create a basic login theme
 
-Start by creating a theme that extends the default Keycloak base theme. This approach lets you override only what you need while inheriting everything else.
+Start by creating a theme that extends the default Keycloak login theme. This approach lets you override only what you need while inheriting everything else.
 
 ### Create the directory structure
 
@@ -116,6 +119,7 @@ cd /opt/keycloak/themes
 # Create your theme directory
 mkdir -p my-company-theme/login/resources/css
 mkdir -p my-company-theme/login/resources/img
+mkdir -p my-company-theme/login/resources/js
 mkdir -p my-company-theme/login/messages
 ```
 
@@ -124,17 +128,14 @@ mkdir -p my-company-theme/login/messages
 Create `my-company-theme/login/theme.properties`:
 
 ```properties
-# Inherit from the keycloak base theme
-parent=keycloak
+# Inherit from the current default Keycloak login theme
+parent=keycloak.v2
 
-# Import styles from parent theme
-styles=css/login.css css/tile.css
-
-# Import custom styles after parent styles
-styles=css/login.css css/tile.css css/custom.css
+# Import custom styles after the parent theme's stylesheet
+styles=css/styles.css css/custom.css
 
 # Optionally import scripts
-scripts=js/custom.js
+# scripts=js/custom.js
 ```
 
 ### Add custom CSS
@@ -146,14 +147,14 @@ Create `my-company-theme/login/resources/css/custom.css`:
 
 /* Override primary brand color */
 :root {
-    --pf-global--primary-color--100: #0066cc;
-    --pf-global--primary-color--200: #004c99;
-    --pf-global--link--Color: #0066cc;
-    --pf-global--link--Color--hover: #004c99;
+    --pf-v5-global--primary-color--100: #0066cc;
+    --pf-v5-global--primary-color--200: #004c99;
+    --pf-v5-global--link--Color: #0066cc;
+    --pf-v5-global--link--Color--hover: #004c99;
 }
 
 /* Custom login card styling */
-#kc-login {
+.pf-v5-c-login__main {
     background-color: #ffffff;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -165,7 +166,7 @@ Create `my-company-theme/login/resources/css/custom.css`:
 }
 
 /* Replace or style the logo */
-.kc-logo-text {
+#kc-header-wrapper {
     background-image: url('../img/logo.png');
     background-size: contain;
     background-repeat: no-repeat;
@@ -175,26 +176,26 @@ Create `my-company-theme/login/resources/css/custom.css`:
 }
 
 /* Style form inputs */
-.pf-c-form-control {
+.pf-v5-c-form-control {
     border-radius: 4px;
     border: 1px solid #ccc;
     padding: 12px;
 }
 
-.pf-c-form-control:focus {
+.pf-v5-c-form-control:focus {
     border-color: #0066cc;
     box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
 }
 
 /* Primary button styling */
-.pf-c-button.pf-m-primary {
+.pf-v5-c-button.pf-m-primary {
     background-color: #0066cc;
     border-radius: 4px;
     font-weight: 600;
     padding: 12px 24px;
 }
 
-.pf-c-button.pf-m-primary:hover {
+.pf-v5-c-button.pf-m-primary:hover {
     background-color: #004c99;
 }
 
@@ -222,20 +223,20 @@ Create `my-company-theme/login/login.ftl`:
 
 ```html
 <#import "template.ftl" as layout>
+<#import "field.ftl" as field>
+<#import "buttons.ftl" as buttons>
+<#import "social-providers.ftl" as identityProviders>
+<#import "passkeys.ftl" as passkeys>
 <@layout.registrationLayout displayMessage=!messagesPerField.existsError('username','password') displayInfo=realm.password && realm.registrationAllowed && !registrationDisabled??; section>
     <#if section = "header">
-        <div class="custom-header">
-            <img src="${url.resourcesPath}/img/logo.png" alt="${realm.displayName}" class="brand-logo">
-            <h1>${msg("loginTitle",(realm.displayName!''))}</h1>
-        </div>
+        ${msg("loginTitle",(realm.displayName!''))}
     <#elseif section = "form">
         <div id="kc-form">
             <div id="kc-form-wrapper">
                 <#if realm.password>
-                    <form id="kc-form-login" onsubmit="login.disabled = true; return true;" action="${url.loginAction}" method="post">
-
-                        <div class="${properties.kcFormGroupClass!}">
-                            <label for="username" class="${properties.kcLabelClass!}">
+                    <form id="kc-form-login" class="${properties.kcFormClass!}" onsubmit="login.disabled = true; return true;" action="${url.loginAction}" method="post" novalidate="novalidate">
+                        <#if !usernameHidden??>
+                            <#assign label>
                                 <#if !realm.loginWithEmailAllowed>
                                     ${msg("username")}
                                 <#elseif !realm.registrationEmailAsUsername>
@@ -243,65 +244,29 @@ Create `my-company-theme/login/login.ftl`:
                                 <#else>
                                     ${msg("email")}
                                 </#if>
-                            </label>
-                            <input tabindex="1"
-                                   id="username"
-                                   class="${properties.kcInputClass!}"
-                                   name="username"
-                                   value="${(login.username!'')}"
-                                   type="text"
-                                   autofocus
-                                   autocomplete="username"
-                                   aria-invalid="<#if messagesPerField.existsError('username','password')>true</#if>" />
-
-                            <#if messagesPerField.existsError('username','password')>
-                                <span id="input-error" class="${properties.kcInputErrorMessageClass!}" aria-live="polite">
-                                    ${kcSanitize(messagesPerField.getFirstError('username','password'))?no_esc}
-                                </span>
-                            </#if>
-                        </div>
-
-                        <div class="${properties.kcFormGroupClass!}">
-                            <label for="password" class="${properties.kcLabelClass!}">${msg("password")}</label>
-                            <input tabindex="2"
-                                   id="password"
-                                   class="${properties.kcInputClass!}"
-                                   name="password"
-                                   type="password"
-                                   autocomplete="current-password"
-                                   aria-invalid="<#if messagesPerField.existsError('username','password')>true</#if>" />
-                        </div>
-
-                        <div class="${properties.kcFormGroupClass!} ${properties.kcFormSettingClass!}">
-                            <div id="kc-form-options">
-                                <#if realm.rememberMe && !usernameEditDisabled??>
-                                    <div class="checkbox">
-                                        <label>
-                                            <#if login.rememberMe??>
-                                                <input tabindex="3" id="rememberMe" name="rememberMe" type="checkbox" checked>
-                                            <#else>
-                                                <input tabindex="3" id="rememberMe" name="rememberMe" type="checkbox">
-                                            </#if>
-                                            ${msg("rememberMe")}
-                                        </label>
-                                    </div>
+                            </#assign>
+                            <@field.input name="username" label=label error=messagesPerField.getFirstError('username','password')
+                                autofocus=true autocomplete="${(enableWebAuthnConditionalUI?has_content)?then('username webauthn', 'username')}" value=login.username!'' />
+                            <@field.password name="password" label=msg("password") error="" forgotPassword=realm.resetPasswordAllowed autofocus=usernameHidden?? autocomplete="current-password">
+                                <#if realm.rememberMe && !usernameHidden??>
+                                    <@field.checkbox name="rememberMe" label=msg("rememberMe") value=login.rememberMe?? />
                                 </#if>
-                            </div>
-                            <div class="${properties.kcFormOptionsWrapperClass!}">
-                                <#if realm.resetPasswordAllowed>
-                                    <span><a tabindex="5" href="${url.loginResetCredentialsUrl}">${msg("doForgotPassword")}</a></span>
+                            </@field.password>
+                        <#else>
+                            <@field.password name="password" label=msg("password") forgotPassword=realm.resetPasswordAllowed autofocus=usernameHidden?? autocomplete="current-password">
+                                <#if realm.rememberMe && !usernameHidden??>
+                                    <@field.checkbox name="rememberMe" label=msg("rememberMe") value=login.rememberMe?? />
                                 </#if>
-                            </div>
-                        </div>
+                            </@field.password>
+                        </#if>
 
-                        <div id="kc-form-buttons" class="${properties.kcFormGroupClass!}">
-                            <input type="hidden" id="id-hidden-input" name="credentialId" <#if auth.selectedCredential?has_content>value="${auth.selectedCredential}"</#if>/>
-                            <input tabindex="4" class="${properties.kcButtonClass!} ${properties.kcButtonPrimaryClass!} ${properties.kcButtonBlockClass!} ${properties.kcButtonLargeClass!}" name="login" id="kc-login" type="submit" value="${msg("doLogIn")}"/>
-                        </div>
+                        <input type="hidden" id="id-hidden-input" name="credentialId" <#if auth.selectedCredential?has_content>value="${auth.selectedCredential}"</#if>/>
+                        <@buttons.loginButton />
                     </form>
                 </#if>
             </div>
         </div>
+        <@passkeys.conditionalUIData />
     <#elseif section = "info">
         <#if realm.password && realm.registrationAllowed && !registrationDisabled??>
             <div id="kc-registration-container">
@@ -311,24 +276,8 @@ Create `my-company-theme/login/login.ftl`:
             </div>
         </#if>
     <#elseif section = "socialProviders">
-        <#if realm.password && social.providers??>
-            <div id="kc-social-providers" class="${properties.kcFormSocialAccountSectionClass!}">
-                <hr/>
-                <h4>${msg("identity-provider-login-label")}</h4>
-                <ul class="${properties.kcFormSocialAccountListClass!} <#if social.providers?size gt 3>${properties.kcFormSocialAccountListGridClass!}</#if>">
-                    <#list social.providers as p>
-                        <a id="social-${p.alias}" class="${properties.kcFormSocialAccountListButtonClass!} <#if social.providers?size gt 3>${properties.kcFormSocialAccountGridItem!}</#if>"
-                                type="button" href="${p.loginUrl}">
-                            <#if p.iconClasses?has_content>
-                                <i class="${properties.kcCommonLogoIdP!} ${p.iconClasses!}" aria-hidden="true"></i>
-                                <span class="${properties.kcFormSocialAccountNameClass!} kc-social-icon-text">${p.displayName!}</span>
-                            <#else>
-                                <span class="${properties.kcFormSocialAccountNameClass!}">${p.displayName!}</span>
-                            </#if>
-                        </a>
-                    </#list>
-                </ul>
-            </div>
+        <#if realm.password && social.providers?? && social.providers?has_content>
+            <@identityProviders.show social=social/>
         </#if>
     </#if>
 </@layout.registrationLayout>
@@ -377,6 +326,12 @@ For additional languages, create files like `messages_es.properties`, `messages_
 
 Customize transactional emails to match your brand.
 
+Create `my-company-theme/email/theme.properties`:
+
+```properties
+parent=keycloak
+```
+
 Create `my-company-theme/email/html/email-verification.ftl`:
 
 ```html
@@ -385,7 +340,7 @@ Create `my-company-theme/email/html/email-verification.ftl`:
 <table width="100%" border="0" cellspacing="0" cellpadding="0">
     <tr>
         <td align="center" style="padding: 40px 0;">
-            <img src="${properties.logoUrl!''}" alt="Company Logo" style="max-width: 150px;">
+            <img src="${url.resourcesUrl}/img/logo.png" alt="Company Logo" style="max-width: 150px;">
         </td>
     </tr>
     <tr>
@@ -518,11 +473,11 @@ sequenceDiagram
 
 ## Development tips
 
-**Enable theme caching in development.** Disable caching while developing to see changes immediately:
+**Disable theme caching in development.** Disable caching while developing to see changes immediately:
 
 ```bash
 # Start Keycloak with theme caching disabled
-./kc.sh start-dev --spi-theme-static-max-age=-1 --spi-theme-cache-themes=false --spi-theme-cache-templates=false
+./kc.sh start-dev --spi-theme--static-max-age=-1 --spi-theme--cache-themes=false --spi-theme--cache-templates=false
 ```
 
 **Use browser developer tools.** Inspect elements to find the correct CSS selectors and understand the existing structure before overriding.
