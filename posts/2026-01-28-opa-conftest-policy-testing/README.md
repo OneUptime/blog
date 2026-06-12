@@ -155,7 +155,7 @@ FAIL - kubernetes/deployment.yaml - main - Container 'app' must set securityCont
 FAIL - kubernetes/deployment.yaml - main - Container 'app' must specify resource limits
 FAIL - kubernetes/deployment.yaml - main - Container 'app' must specify resource requests
 
-3 tests, 0 passed, 0 warnings, 3 failures
+4 tests, 1 passed, 0 warnings, 3 failures, 0 exceptions
 ```
 
 ## Warning Rules
@@ -206,59 +206,91 @@ package main
 import rego.v1
 
 # Deny public S3 buckets
-deny contains msg if {
-    resource := input.resource.aws_s3_bucket[name]
-    resource.acl == "public-read"
-    msg := sprintf("S3 bucket '%s' must not have public-read ACL", [name])
+terraform_resources contains resource if {
+    some type, name
+    config := input.resource[type][name][_]
+    resource := {"type": type, "name": name, "values": config}
+}
+
+terraform_resources contains resource if {
+    change := input.resource_changes[_]
+    change.mode == "managed"
+    not change.change.actions == ["delete"]
+    resource := {"type": change.type, "name": change.name, "values": change.change.after}
 }
 
 deny contains msg if {
-    resource := input.resource.aws_s3_bucket[name]
-    resource.acl == "public-read-write"
-    msg := sprintf("S3 bucket '%s' must not have public-read-write ACL", [name])
+    resource := terraform_resources[_]
+    resource.type == "aws_s3_bucket"
+    resource.values.acl == "public-read"
+    msg := sprintf("S3 bucket '%s' must not have public-read ACL", [resource.name])
+}
+
+deny contains msg if {
+    resource := terraform_resources[_]
+    resource.type == "aws_s3_bucket"
+    resource.values.acl == "public-read-write"
+    msg := sprintf("S3 bucket '%s' must not have public-read-write ACL", [resource.name])
 }
 
 # Deny unencrypted RDS instances
 deny contains msg if {
-    resource := input.resource.aws_db_instance[name]
-    not resource.storage_encrypted == true
-    msg := sprintf("RDS instance '%s' must have storage_encrypted enabled", [name])
+    resource := terraform_resources[_]
+    resource.type == "aws_db_instance"
+    not resource.values.storage_encrypted == true
+    msg := sprintf("RDS instance '%s' must have storage_encrypted enabled", [resource.name])
 }
 
 # Deny EC2 instances without IMDSv2
 deny contains msg if {
-    resource := input.resource.aws_instance[name]
-    not resource.metadata_options
-    msg := sprintf("EC2 instance '%s' must configure metadata_options for IMDSv2", [name])
+    resource := terraform_resources[_]
+    resource.type == "aws_instance"
+    not has_metadata_options(resource.values)
+    msg := sprintf("EC2 instance '%s' must configure metadata_options for IMDSv2", [resource.name])
 }
 
 deny contains msg if {
-    resource := input.resource.aws_instance[name]
-    resource.metadata_options.http_tokens != "required"
-    msg := sprintf("EC2 instance '%s' must require IMDSv2 (http_tokens = required)", [name])
+    resource := terraform_resources[_]
+    resource.type == "aws_instance"
+    has_metadata_options(resource.values)
+    not requires_imdsv2(resource.values)
+    msg := sprintf("EC2 instance '%s' must require IMDSv2 (http_tokens = required)", [resource.name])
+}
+
+has_metadata_options(values) if {
+    values.metadata_options
+}
+
+requires_imdsv2(values) if {
+    values.metadata_options.http_tokens == "required"
+}
+
+requires_imdsv2(values) if {
+    values.metadata_options[_].http_tokens == "required"
 }
 
 # Deny security groups with 0.0.0.0/0 ingress on SSH
 deny contains msg if {
-    resource := input.resource.aws_security_group[name]
-    ingress := resource.ingress[_]
+    resource := terraform_resources[_]
+    resource.type == "aws_security_group"
+    ingress := resource.values.ingress[_]
     ingress.from_port <= 22
     ingress.to_port >= 22
     ingress.cidr_blocks[_] == "0.0.0.0/0"
-    msg := sprintf("Security group '%s' allows SSH from 0.0.0.0/0", [name])
+    msg := sprintf("Security group '%s' allows SSH from 0.0.0.0/0", [resource.name])
 }
 ```
 
 ### Convert Terraform to JSON
 
-Conftest works with JSON, so convert your Terraform:
+Terraform plan files can be converted to JSON. Raw `.tf` files can also be parsed directly, but their native HCL shape differs from plan JSON unless your policy normalizes both, as shown above:
 
 ```bash
-# Convert HCL to JSON
+# Convert a saved plan to JSON
 terraform show -json plan.out > plan.json
 
 # Or for .tf files
-cat main.tf | conftest test --input hcl2 -
+cat main.tf | conftest test --parser hcl2 -
 ```
 
 ### Test Terraform Plan
@@ -463,10 +495,10 @@ conftest:
 
 ```bash
 # Package and push policies
-conftest push ghcr.io/myorg/policies:v1.0.0
+conftest push oci://ghcr.io/myorg/policies:v1.0.0
 
 # Pull policies in CI
-conftest pull ghcr.io/myorg/policies:v1.0.0
+conftest pull oci://ghcr.io/myorg/policies:v1.0.0
 conftest test deployment.yaml
 ```
 
