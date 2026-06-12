@@ -191,9 +191,9 @@ const signalToNoiseRatio = new Gauge({
 ```promql
 # Signal-to-noise ratio over the last 7 days
 
-sum(alert_outcome_total{outcome="actionable"}) by (service)
+sum(increase(alert_outcome_total{outcome="actionable"}[7d])) by (service)
 /
-sum(alert_outcome_total) by (service)
+sum(increase(alert_outcome_total[7d])) by (service)
 
 # Trend over time (weekly rolling)
 sum(increase(alert_outcome_total{outcome="actionable"}[7d])) by (service)
@@ -202,9 +202,9 @@ sum(increase(alert_outcome_total[7d])) by (service)
 
 # Worst performing alerts by SNR
 bottomk(10,
-  sum(alert_outcome_total{outcome="actionable"}) by (alert_name)
+  sum(increase(alert_outcome_total{outcome="actionable"}[7d])) by (alert_name)
   /
-  sum(alert_outcome_total) by (alert_name)
+  sum(increase(alert_outcome_total[7d])) by (alert_name)
 )
 ```
 
@@ -652,6 +652,15 @@ class CoverageTracker {
     }
 
     // Update gauges
+    if (totalServices === 0) {
+      alertCoverageTotal.set({ coverage_type: 'full' }, 0);
+      alertCoverageTotal.set({ coverage_type: 'availability' }, 0);
+      alertCoverageTotal.set({ coverage_type: 'latency' }, 0);
+      alertCoverageTotal.set({ coverage_type: 'error_rate' }, 0);
+      alertCoverageTotal.set({ coverage_type: 'saturation' }, 0);
+      return;
+    }
+
     alertCoverageTotal.set({ coverage_type: 'full' }, fullyMonitored / totalServices);
     alertCoverageTotal.set({ coverage_type: 'availability' }, hasAvailability / totalServices);
     alertCoverageTotal.set({ coverage_type: 'latency' }, hasLatency / totalServices);
@@ -818,7 +827,10 @@ async function generateWeeklyReport(
 
   const snr = tracker.calculateSNR(period);
   const fpRates = fpTracker.getFalsePositiveRate(period);
-  const avgFPRate = Object.values(fpRates).reduce((a, b) => a + b, 0) / Object.keys(fpRates).length;
+  const fpRateValues = Object.values(fpRates);
+  const avgFPRate = fpRateValues.length > 0
+    ? fpRateValues.reduce((a, b) => a + b, 0) / fpRateValues.length
+    : 0;
 
   // Query Prometheus for MTTA and resolution time
   const avgMTTA = await queryPrometheus(`
@@ -830,10 +842,10 @@ async function generateWeeklyReport(
   `);
 
   // Find noisiest alerts
-  const topNoisyAlerts = await queryPrometheus(`
+  const topNoisyAlerts = await queryPrometheusVector(`
     bottomk(5,
-      sum(alert_outcome_total{outcome="actionable"}) by (alert_name)
-      / sum(alert_outcome_total) by (alert_name)
+      sum(increase(alert_outcome_total{outcome="actionable"}[7d])) by (alert_name)
+      / sum(increase(alert_outcome_total[7d])) by (alert_name)
     )
   `);
 
@@ -889,6 +901,11 @@ async function queryPrometheus(query: string): Promise<number> {
   // Implementation depends on your Prometheus client
   return 0;
 }
+
+async function queryPrometheusVector(query: string): Promise<Array<{ name: string; count: number; snr: number }>> {
+  // Implementation depends on your Prometheus client
+  return [];
+}
 ```
 
 ---
@@ -911,11 +928,18 @@ const alertQualityDashboard = {
           / sum(increase(alert_outcome_total[7d]))
         `,
       }],
-      thresholds: [
-        { value: 0.5, color: 'red' },
-        { value: 0.7, color: 'yellow' },
-        { value: 0.8, color: 'green' },
-      ],
+      fieldConfig: {
+        defaults: {
+          thresholds: {
+            mode: 'absolute',
+            steps: [
+              { value: null, color: 'red' },
+              { value: 0.7, color: 'yellow' },
+              { value: 0.8, color: 'green' },
+            ],
+          },
+        },
+      },
     },
     {
       title: 'False Positive Rate (7d)',
@@ -926,11 +950,18 @@ const alertQualityDashboard = {
           / sum(increase(alert_outcome_total[7d]))
         `,
       }],
-      thresholds: [
-        { value: 0.1, color: 'green' },
-        { value: 0.2, color: 'yellow' },
-        { value: 0.3, color: 'red' },
-      ],
+      fieldConfig: {
+        defaults: {
+          thresholds: {
+            mode: 'absolute',
+            steps: [
+              { value: null, color: 'green' },
+              { value: 0.1, color: 'yellow' },
+              { value: 0.2, color: 'red' },
+            ],
+          },
+        },
+      },
     },
     {
       title: 'MTTA by Severity',
