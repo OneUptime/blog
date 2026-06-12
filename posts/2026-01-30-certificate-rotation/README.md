@@ -137,7 +137,13 @@ else
 fi
 ```
 
-Set up a systemd timer for regular renewal checks. Certbot only renews certificates within 30 days of expiration.
+Make the hook executable so Certbot can run it from the renewal hooks directory.
+
+```bash
+chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+```
+
+Set up a systemd timer for regular renewal checks. Certbot 4.0.0 and later renews certificates when less than one third of their lifetime remains. For certificates with a lifetime of 10 days or less, it renews when less than half of the lifetime remains.
 
 ```ini
 # /etc/systemd/system/certbot-renewal.timer
