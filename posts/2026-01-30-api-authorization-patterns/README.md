@@ -112,6 +112,12 @@ class RBAC {
     }
   }
 
+  // Clear role definitions and user assignments (useful for tests)
+  reset() {
+    this.roles.clear();
+    this.userRoles.clear();
+  }
+
   // Check if a user has a specific permission
   // permission format: 'resource:action' e.g., 'posts:delete'
   hasPermission(userId, permission) {
@@ -215,7 +221,7 @@ Create middleware that checks permissions on each route.
 
 ```javascript
 // middleware/authorize.js
-const rbac = require('./rbac');
+const rbac = require('../rbac');
 
 // Creates middleware that checks if user has required permission
 // Usage: app.delete('/posts/:id', authorize('posts:delete'), handler)
@@ -651,7 +657,7 @@ def setup_document_abac() -> ABACEngine:
 
 ```python
 # api/dependencies.py
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Path, Request
 from datetime import datetime
 from abac import ABACEngine, AccessRequest, Decision, setup_document_abac
 
@@ -679,7 +685,7 @@ def abac_authorize(resource_type: str, action: str):
     async def check_authorization(
         request: Request,
         user: dict = Depends(get_current_user),
-        resource_id: str = None,
+        document_id: str = Path(...),
         resource_owner: str = None,
         resource_classification: str = "internal"
     ):
@@ -690,7 +696,7 @@ def abac_authorize(resource_type: str, action: str):
             user_department=user["department"],
             user_clearance=user["clearance"],
             resource_type=resource_type,
-            resource_id=resource_id or "unknown",
+            resource_id=document_id,
             resource_owner=resource_owner or "unknown",
             resource_classification=resource_classification,
             action=action,
@@ -719,6 +725,7 @@ def abac_authorize(resource_type: str, action: str):
 # api/routes/documents.py
 from fastapi import APIRouter, Depends, Path
 from api.dependencies import abac_authorize
+from abac import AccessRequest
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -735,8 +742,8 @@ async def get_document(
 
 @router.put("/{document_id}")
 async def update_document(
-    document_id: str = Path(...),
     update: DocumentUpdate,
+    document_id: str = Path(...),
     auth: AccessRequest = Depends(abac_authorize("document", "update"))
 ):
     """Update a document - authorization handled by ABAC"""
@@ -903,6 +910,46 @@ class ReBAC {
     }
 
     return { allowed: false, via: null };
+  }
+
+  // Get all effective permissions a subject has on an object
+  getEffectivePermissions(subjectType, subjectId, objectType, objectId) {
+    const effectivePermissions = new Set();
+
+    const addPermissionsForRelations = (relations) => {
+      for (const relation of relations) {
+        const implications = this.permissionImplications[relation];
+        if (!implications) continue;
+
+        for (const [permission, allowed] of Object.entries(implications)) {
+          if (allowed) {
+            effectivePermissions.add(permission);
+          }
+        }
+      }
+    };
+
+    addPermissionsForRelations(
+      this.getDirectRelationships(subjectType, subjectId, objectType, objectId)
+    );
+
+    const objectKey = this.createKey(objectType, objectId);
+    let currentParent = this.parentRelations.get(objectKey);
+    let depth = 0;
+    const maxDepth = 10;
+
+    while (currentParent && depth < maxDepth) {
+      const [parentType, parentId] = currentParent.split(':');
+
+      addPermissionsForRelations(
+        this.getDirectRelationships(subjectType, subjectId, parentType, parentId)
+      );
+
+      currentParent = this.parentRelations.get(currentParent);
+      depth++;
+    }
+
+    return effectivePermissions;
   }
 
   // List all objects a subject has a specific permission on
@@ -1109,9 +1156,9 @@ flowchart TB
 
 ```javascript
 // services/authorization.js
-const rbac = require('./rbac');
-const { ABACEngine, AccessRequest, Decision } = require('./abac');
-const { ReBAC } = require('./rebac');
+const rbac = require('../rbac');
+const { ABACEngine, AccessRequest, Decision } = require('../abac');
+const { ReBAC } = require('../rebac');
 
 class AuthorizationService {
   constructor() {
