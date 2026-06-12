@@ -8,13 +8,13 @@ Description: Learn how to use Cloudflare Workers KV for globally distributed key
 
 ---
 
-> Workers KV gives you a global key-value store that lives at the edge - your data is replicated across 300+ locations worldwide, putting it milliseconds away from your users.
+> Workers KV gives you a global key-value store with edge caching - your data is stored centrally and cached across Cloudflare's global network, putting it milliseconds away from your users after it is accessed.
 
 ## What is Workers KV?
 
 Cloudflare Workers KV is a globally distributed, eventually consistent key-value storage system designed for read-heavy workloads. It integrates directly with Cloudflare Workers, allowing you to store and retrieve data at the edge without managing infrastructure.
 
-KV excels at storing configuration data, feature flags, user sessions, cached API responses, and any data that gets read far more often than it gets written. With sub-millisecond reads at the edge and automatic global replication, it handles use cases where low latency matters.
+KV excels at storing configuration data, feature flags, user sessions, cached API responses, and any data that gets read far more often than it gets written. With low-latency reads from Cloudflare's cache and automatic distribution through the network, it handles use cases where low latency matters.
 
 ## Creating and Binding Namespaces
 
@@ -29,11 +29,11 @@ npm install -g wrangler
 wrangler login
 
 # Create a new KV namespace
-wrangler kv:namespace create "MY_STORE"
+wrangler kv namespace create "MY_STORE"
 # Output: Created namespace "MY_STORE" with id "abc123..."
 
 # Create a preview namespace for development
-wrangler kv:namespace create "MY_STORE" --preview
+wrangler kv namespace create "MY_STORE" --preview
 # Output: Created namespace "MY_STORE_preview" with id "def456..."
 ```
 
@@ -44,9 +44,10 @@ name = "my-worker"
 main = "src/index.js"
 
 # Production KV binding
-kv_namespaces = [
-  { binding = "MY_STORE", id = "abc123...", preview_id = "def456..." }
-]
+[[kv_namespaces]]
+binding = "MY_STORE"
+id = "abc123..."
+preview_id = "def456..."
 ```
 
 The `binding` name is how you access the namespace in your Worker code.
@@ -137,7 +138,7 @@ export default {
 };
 ```
 
-The minimum TTL is 60 seconds. Keys with shorter TTLs will be rounded up.
+The minimum `expirationTtl` is 60 seconds. Expiration targets less than 60 seconds in the future are not supported.
 
 ## Metadata Storage
 
@@ -302,7 +303,7 @@ async function getFeatureFlags(env, userId) {
     { type: "json" }
   );
 
-  return { ...flags, ...userOverrides };
+  return { ...(flags ?? {}), ...(userOverrides ?? {}) };
 }
 
 // Pattern 2: URL Shortener
@@ -377,16 +378,16 @@ Understanding KV limits helps you design within constraints.
 | Resource | Limit |
 |----------|-------|
 | Key size | 512 bytes |
-| Value size | 25 MB |
+| Value size | 25 MiB |
 | Metadata size | 1024 bytes |
-| Namespace count | 100 per account |
+| Namespace count | 1,000 per account |
 | Keys per namespace | Unlimited |
-| Reads per second | 100,000+ |
-| Writes per second | 1,000 per key |
+| Operations per Worker invocation | 1,000 |
+| Writes to the same key | 1 per second |
 
-**Pricing (as of 2025):**
-- Free tier: 100,000 reads/day, 1,000 writes/day, 1 GB stored
-- Paid: $0.50 per million reads, $5.00 per million writes, $0.50 per GB stored
+**Pricing (as of June 2026):**
+- Free tier: 100,000 reads/day, 1,000 writes/day, 1,000 deletes/day, 1,000 list requests/day, 1 GB stored
+- Paid: includes 10 million reads/month, 1 million writes/month, 1 million deletes/month, 1 million list requests/month, and 1 GB stored; overages are $0.50 per million reads, $5.00 per million writes/deletes/list requests, and $0.50 per GB-month stored
 
 KV is optimized for read-heavy workloads. If you need high write throughput to the same keys, consider Durable Objects.
 
@@ -402,22 +403,22 @@ wrangler dev
 # that persists to .wrangler/state/
 
 # Seed data into your local KV for testing
-wrangler kv:key put "user:1" '{"name":"Test User"}' \
+wrangler kv key put "user:1" '{"name":"Test User"}' \
   --namespace-id YOUR_NAMESPACE_ID \
   --local
 
 # List keys in local development
-wrangler kv:key list --namespace-id YOUR_NAMESPACE_ID --local
+wrangler kv key list --namespace-id YOUR_NAMESPACE_ID --local
 
 # Get a specific key
-wrangler kv:key get "user:1" --namespace-id YOUR_NAMESPACE_ID --local
+wrangler kv key get "user:1" --namespace-id YOUR_NAMESPACE_ID --local --text
 
 # Delete a key
-wrangler kv:key delete "user:1" --namespace-id YOUR_NAMESPACE_ID --local
+wrangler kv key delete "user:1" --namespace-id YOUR_NAMESPACE_ID --local
 
 # Bulk upload from a JSON file
 # Format: [{"key": "k1", "value": "v1"}, {"key": "k2", "value": "v2"}]
-wrangler kv:bulk put data.json --namespace-id YOUR_NAMESPACE_ID --local
+wrangler kv bulk put data.json --namespace-id YOUR_NAMESPACE_ID --local
 ```
 
 Configure your `wrangler.toml` for seamless local development:
@@ -427,13 +428,10 @@ name = "my-worker"
 main = "src/index.js"
 
 # KV namespaces with preview IDs for local dev
-kv_namespaces = [
-  { binding = "MY_STORE", id = "prod-id", preview_id = "preview-id" }
-]
-
-# Local persistence directory
-[dev]
-persist = true
+[[kv_namespaces]]
+binding = "MY_STORE"
+id = "prod-id"
+preview_id = "preview-id"
 ```
 
 ## Best Practices Summary
@@ -448,7 +446,7 @@ persist = true
 
 5. **Batch operations when possible.** Use bulk uploads for initial data seeding instead of individual puts.
 
-6. **Keep values small.** While KV supports up to 25 MB, smaller values replicate faster and cost less.
+6. **Keep values small.** While KV supports up to 25 MiB, smaller values are faster to read and write and cost less to store.
 
 7. **Monitor your usage.** Track read/write patterns to stay within limits and optimize costs.
 
