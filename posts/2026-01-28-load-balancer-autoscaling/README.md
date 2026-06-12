@@ -283,7 +283,8 @@ spec:
     metadata:
       host: amqp://rabbitmq.default:5672
       queueName: tasks
-      queueLength: "50"
+      mode: QueueLength
+      value: "50"
   # Scale based on Redis list length
   - type: redis
     metadata:
@@ -310,9 +311,8 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-timeout: "5"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold: "2"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold: "2"
-    # Enable connection draining
-    service.beta.kubernetes.io/aws-load-balancer-connection-draining-enabled: "true"
-    service.beta.kubernetes.io/aws-load-balancer-connection-draining-timeout: "60"
+    # Configure target deregistration delay for draining
+    service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: deregistration_delay.timeout_seconds=60
 spec:
   type: LoadBalancer
   selector:
@@ -417,6 +417,7 @@ Run as a Kubernetes CronJob or standalone service.
 import boto3
 import requests
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import List
 import logging
 
@@ -457,7 +458,7 @@ def collect_signals() -> List[ScalingSignal]:
     # Request latency from application metrics
     try:
         metrics_response = requests.get('http://prometheus:9090/api/v1/query', params={
-            'query': 'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))'
+            'query': 'histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))'
         })
         p95_latency = float(metrics_response.json()['data']['result'][0]['value'][1])
         signals.append(ScalingSignal('p95_latency', p95_latency * 1000, 200.0, weight=0.3))  # ms
