@@ -84,7 +84,7 @@ export const options = {
     ],
 
     // GAUGE metrics - use value
-    vus: ['value>10'],     // Always have more than 10 VUs active
+    vus_max: ['value>=20'], // Max possible VUs must be at least 20
 
     // RATE metrics - use rate
     http_req_failed: [
@@ -238,24 +238,22 @@ export const options = {
   ],
 
   thresholds: {
-    // Standard threshold - evaluated at end
-    http_req_duration: ['p(95)<500'],
+    // Standard threshold plus an abort condition on the same metric
+    http_req_duration: [
+      'p(95)<500',
+      {
+        threshold: 'p(99)<5000',       // P99 under 5 seconds
+        abortOnFail: true,
+        delayAbortEval: '1m',          // Allow 1 minute warmup
+      },
+    ],
 
-    // Threshold with abortOnFail - stops test immediately
+    // Threshold with abortOnFail - can stop the test before completion
     http_req_failed: [
       {
         threshold: 'rate<0.10',        // 10% error rate limit
         abortOnFail: true,             // Stop test if breached
         delayAbortEval: '30s',         // Wait 30s before checking
-      },
-    ],
-
-    // Another abort condition for severe latency issues
-    http_req_duration: [
-      {
-        threshold: 'p(99)<5000',       // P99 under 5 seconds
-        abortOnFail: true,
-        delayAbortEval: '1m',          // Allow 1 minute warmup
       },
     ],
   },
@@ -503,9 +501,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install k6
-        run: |
-          curl -L https://github.com/grafana/k6/releases/download/v0.47.0/k6-v0.47.0-linux-amd64.tar.gz | tar xz
-          sudo mv k6-v0.47.0-linux-amd64/k6 /usr/local/bin/
+        uses: grafana/setup-k6-action@v1
 
       - name: Run load test
         run: |
