@@ -269,7 +269,7 @@ interface IdempotencyRecord {
   completedAt?: string;
 }
 
-class RedisIdempotencyStore {
+export class RedisIdempotencyStore {
   private client: RedisClientType;
   private ttlSeconds: number;
   private prefix: string;
@@ -323,6 +323,8 @@ export const redisIdempotencyStore = new RedisIdempotencyStore(
   process.env.REDIS_URL || 'redis://localhost:6379'
 );
 ```
+
+Call `await redisIdempotencyStore.connect()` during application startup before using the middleware.
 
 Update the middleware to use Redis with proper locking:
 
@@ -387,8 +389,8 @@ export function redisIdempotencyMiddleware() {
     // Intercept response
     const originalJson = res.json.bind(res);
 
-    res.json = async (body: any) => {
-      await redisIdempotencyStore.set(compositeKey, {
+    res.json = ((body: any) => {
+      redisIdempotencyStore.set(compositeKey, {
         status: res.statusCode < 400 ? 'completed' : 'failed',
         requestHash,
         createdAt: new Date().toISOString(),
@@ -398,10 +400,15 @@ export function redisIdempotencyMiddleware() {
           body,
           headers: {},
         },
+      }).then(() => {
+        originalJson(body);
+      }).catch((error) => {
+        console.error('Failed to cache idempotency response:', error);
+        originalJson(body);
       });
 
-      return originalJson(body);
-    };
+      return res;
+    }) as Response['json'];
 
     next();
   };
@@ -418,7 +425,7 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { idempotencyMiddleware } from './idempotency-middleware';
 
-const app = express();
+export const app = express();
 app.use(express.json());
 
 // Apply idempotency to all routes
@@ -499,9 +506,11 @@ app.get('/orders/:id', (req, res) => {
   res.json(order);
 });
 
-app.listen(3000, () => {
-  console.log('Server running on port 3000');
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(3000, () => {
+    console.log('Server running on port 3000');
+  });
+}
 ```
 
 ## Client Usage
@@ -587,6 +596,8 @@ Several edge cases need careful handling:
 
 ```typescript
 // edge-cases.ts
+import { Request } from 'express';
+import { RedisIdempotencyStore } from './redis-idempotency-store';
 
 // 1. Request timeout during processing
 // The client might retry before the server finishes
