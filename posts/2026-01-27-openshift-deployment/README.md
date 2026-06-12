@@ -10,7 +10,7 @@ Description: A practical guide to deploying applications on OpenShift, covering 
 
 > OpenShift adds developer-friendly abstractions on top of Kubernetes, but understanding what happens beneath those abstractions is the key to production-ready deployments.
 
-Red Hat OpenShift is an enterprise Kubernetes platform that streamlines application deployment with built-in CI/CD, enhanced security, and developer-friendly tooling. While it runs standard Kubernetes workloads, OpenShift provides additional resources like DeploymentConfigs, BuildConfigs, and Routes that simplify common patterns. This guide walks you through deploying applications on OpenShift from CLI basics to production-ready configurations.
+Red Hat OpenShift is an enterprise Kubernetes platform that streamlines application deployment with build automation, enhanced security, and developer-friendly tooling. While it runs standard Kubernetes workloads, OpenShift provides additional resources like DeploymentConfigs, BuildConfigs, and Routes that simplify common patterns. This guide walks you through deploying applications on OpenShift from CLI basics to production-ready configurations.
 
 ## The oc CLI Basics
 
@@ -129,7 +129,7 @@ spec:
 
 ### OpenShift DeploymentConfig
 
-DeploymentConfigs offer OpenShift-native features like automatic triggers from ImageStreams and lifecycle hooks:
+DeploymentConfigs offer OpenShift-native features like automatic triggers from ImageStreams and lifecycle hooks. As of OpenShift Container Platform 4.14, DeploymentConfigs are deprecated but still supported, so prefer Deployments for new workloads unless you need DeploymentConfig-specific behavior:
 
 ```yaml
 # deploymentconfig.yaml
@@ -174,9 +174,8 @@ spec:
     spec:
       containers:
         - name: my-app
-          # Reference ImageStream instead of direct image URL
-          image: ' '
-          # The actual image is injected by the ImageChange trigger
+          # Start with a valid image; the ImageChange trigger updates this to the resolved image pullspec
+          image: image-registry.openshift-image-registry.svc:5000/my-project/my-app:latest
           ports:
             - containerPort: 8080
               protocol: TCP
@@ -196,7 +195,7 @@ Use **Deployment** when:
 - You want to use newer features like proportional pod scaling
 - You are following GitOps practices with tools like ArgoCD
 
-Use **DeploymentConfig** when:
+Use **DeploymentConfig** only for existing workloads or specific OpenShift-native behavior when:
 - You want automatic redeployment when ImageStreams update
 - You need lifecycle hooks (pre/post deployment commands)
 - You are using OpenShift's built-in build system exclusively
@@ -399,7 +398,7 @@ spec:
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
-    # Inline certificate and key (or use secrets)
+    # Inline certificate and key stored in the Route spec
     certificate: |
       -----BEGIN CERTIFICATE-----
       your-certificate-here
@@ -553,7 +552,8 @@ spec:
                 secretKeyRef:
                   name: my-app-secrets
                   key: DATABASE_URL
-          # Method 2: All keys from ConfigMap/Secret as environment variables
+          # Method 2: All valid environment variable keys from ConfigMap/Secret
+          # File-style keys like app.properties are skipped by envFrom and should be mounted as files
           envFrom:
             - configMapRef:
                 name: my-app-config
@@ -710,7 +710,7 @@ spec:
         initialDelaySeconds: 5
         periodSeconds: 5
 
-      # gRPC probe - for gRPC services (Kubernetes 1.24+)
+      # gRPC probe - for gRPC services (stable in Kubernetes 1.27+)
       # livenessProbe:
       #   grpc:
       #     port: 50051
