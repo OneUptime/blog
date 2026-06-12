@@ -8,11 +8,11 @@ Description: A practical guide to implementing S3-compatible bucket policies in 
 
 ---
 
-Ceph RADOS Gateway (RGW) provides S3-compatible object storage with full support for bucket policies. These policies let you control who can access your buckets and what actions they can perform, all without modifying your application code. If you have used AWS S3 bucket policies, you already know the syntax.
+Ceph RADOS Gateway (RGW) provides S3-compatible object storage with support for a subset of Amazon S3 bucket policies. These policies let you control who can access your buckets and what actions they can perform, all without modifying your application code. If you have used AWS S3 bucket policies, the syntax will look familiar, but Ceph supports a smaller set of actions and condition keys.
 
 ## Understanding Bucket Policies
 
-Bucket policies are JSON documents that define access rules for a bucket and its objects. They follow the same structure as AWS IAM policies.
+Bucket policies are JSON documents that define access rules for a bucket and its objects. They follow the same basic structure as Amazon S3 resource-based policies.
 
 ```mermaid
 flowchart TD
@@ -23,7 +23,7 @@ flowchart TD
     subgraph Evaluation["Policy Evaluation"]
         R --> D1{Explicit Deny?}
         D1 -->|Yes| Deny[Access Denied]
-        D1 -->|No| D2{Explicit Allow?}
+        D1 -->|No| D2{Matching Allow?}
         D2 -->|No| Deny
         D2 -->|Yes| D3{Conditions Met?}
         D3 -->|No| Deny
@@ -38,7 +38,7 @@ flowchart TD
 
 ### Policy Structure
 
-Every bucket policy contains these elements:
+Bucket policies commonly use these elements:
 
 ```json
 {
@@ -72,14 +72,13 @@ ceph orch ps --daemon-type rgw
 curl -I http://your-rgw-endpoint:7480
 ```
 
-### Create Admin User with Full Permissions
+### Create or Identify the Bucket Owner User
 
 ```bash
-# Create an admin user for policy management
+# Create a user that will own and manage the bucket policy
 radosgw-admin user create \
-  --uid=admin \
-  --display-name="Admin User" \
-  --caps="buckets=*;users=*;usage=*;metadata=*"
+  --uid=bucket-owner \
+  --display-name="Bucket Owner"
 
 # Note the access_key and secret_key from the output
 ```
@@ -150,7 +149,7 @@ s3ceph put-bucket-policy \
 
 ### Restrict to Specific Users
 
-Grant specific users read and write access while denying everyone else.
+Grant specific users read and write access without granting access to others in this policy.
 
 ```json
 {
@@ -335,7 +334,7 @@ Allow users to upload but not download or list objects. Useful for log collectio
 }
 ```
 
-Resource Configuration
+## Resource Configuration
 
 Resources specify which buckets and objects the policy applies to.
 
@@ -538,7 +537,7 @@ Deny requests that do not use HTTPS.
 
 ### Time-Based Access
 
-Allow access only during business hours (requires client to send date header).
+Allow access only during a specific date range.
 
 ```json
 {
@@ -546,7 +545,7 @@ Allow access only during business hours (requires client to send date header).
   "Id": "TimeBasedAccess",
   "Statement": [
     {
-      "Sid": "AllowBusinessHours",
+      "Sid": "AllowTemporaryAccess",
       "Effect": "Allow",
       "Principal": {
         "AWS": "arn:aws:iam:::user/contractor"
@@ -560,10 +559,10 @@ Allow access only during business hours (requires client to send date header).
       ],
       "Condition": {
         "DateGreaterThan": {
-          "aws:CurrentTime": "2024-01-01T00:00:00Z"
+          "aws:CurrentTime": "2026-02-01T00:00:00Z"
         },
         "DateLessThan": {
-          "aws:CurrentTime": "2024-12-31T23:59:59Z"
+          "aws:CurrentTime": "2026-12-31T23:59:59Z"
         }
       }
     }
@@ -571,28 +570,28 @@ Allow access only during business hours (requires client to send date header).
 }
 ```
 
-### Object Size Restriction
+### Required Object Tag Restriction
 
-Limit the size of objects users can upload.
+Require uploaded objects to include a specific object tag.
 
 ```json
 {
   "Version": "2012-10-17",
-  "Id": "SizeRestriction",
+  "Id": "RequiredObjectTag",
   "Statement": [
     {
-      "Sid": "LimitUploadSize",
+      "Sid": "DenyMissingProjectTag",
       "Effect": "Deny",
       "Principal": "*",
       "Action": [
         "s3:PutObject"
       ],
       "Resource": [
-        "arn:aws:s3:::limited-bucket/*"
+        "arn:aws:s3:::tagged-bucket/*"
       ],
       "Condition": {
-        "NumericGreaterThan": {
-          "s3:content-length-range": "104857600"
+        "StringNotEquals": {
+          "s3:RequestObjectTag/project": "logs"
         }
       }
     }
