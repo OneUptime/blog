@@ -48,11 +48,13 @@ enum CircuitState {
 // Configuration options that control circuit breaker behavior
 interface CircuitBreakerConfig {
   // Number of failures before the circuit opens
-  failureThreshold: number;
+  failureThreshold?: number;
   // Number of successes needed in half-open state to close the circuit
-  successThreshold: number;
+  successThreshold?: number;
+  // Maximum number of concurrent probes allowed in half-open state
+  halfOpenMaxRequests?: number;
   // How long to wait before transitioning from open to half-open (ms)
-  timeout: number;
+  timeout?: number;
   // Optional callback when state changes
   onStateChange?: (from: CircuitState, to: CircuitState) => void;
 }
@@ -63,6 +65,7 @@ interface CircuitStats {
   successes: number;
   lastFailureTime: number | null;
   consecutiveSuccesses: number;
+  halfOpenInFlight: number;
 }
 ```
 
@@ -76,15 +79,18 @@ class CircuitBreaker {
     successes: 0,
     lastFailureTime: null,
     consecutiveSuccesses: 0,
+    halfOpenInFlight: 0,
   };
-  private config: CircuitBreakerConfig;
+  private config: Required<Omit<CircuitBreakerConfig, "onStateChange">> &
+    Pick<CircuitBreakerConfig, "onStateChange">;
 
-  constructor(config: CircuitBreakerConfig) {
+  constructor(config: CircuitBreakerConfig = {}) {
     // Store configuration with sensible defaults
     this.config = {
-      failureThreshold: config.failureThreshold || 5,
-      successThreshold: config.successThreshold || 2,
-      timeout: config.timeout || 30000,
+      failureThreshold: config.failureThreshold ?? 5,
+      successThreshold: config.successThreshold ?? 2,
+      halfOpenMaxRequests: config.halfOpenMaxRequests ?? 1,
+      timeout: config.timeout ?? 30000,
       onStateChange: config.onStateChange,
     };
   }
@@ -95,15 +101,24 @@ class CircuitBreaker {
   }
 
   // Transition to a new state and notify listeners
-  private transitionTo(newState: CircuitState): void {
+  protected transitionTo(newState: CircuitState): void {
     if (this.state !== newState) {
       const oldState = this.state;
       this.state = newState;
 
-      // Reset stats when transitioning to closed state
+      if (newState === CircuitState.HALF_OPEN) {
+        this.stats.consecutiveSuccesses = 0;
+        this.stats.halfOpenInFlight = 0;
+      }
+
       if (newState === CircuitState.CLOSED) {
         this.stats.failures = 0;
         this.stats.consecutiveSuccesses = 0;
+        this.stats.halfOpenInFlight = 0;
+      }
+
+      if (newState === CircuitState.OPEN) {
+        this.stats.halfOpenInFlight = 0;
       }
 
       // Notify callback if configured
@@ -130,6 +145,11 @@ class CircuitBreaker {
       throw new Error("Circuit breaker is OPEN - request rejected");
     }
 
+    const isHalfOpenProbe = this.state === CircuitState.HALF_OPEN;
+    if (isHalfOpenProbe) {
+      this.stats.halfOpenInFlight++;
+    }
+
     try {
       // Attempt to execute the wrapped function
       const result = await fn();
@@ -138,6 +158,10 @@ class CircuitBreaker {
     } catch (error) {
       this.recordFailure();
       throw error;
+    } finally {
+      if (isHalfOpenProbe) {
+        this.stats.halfOpenInFlight = Math.max(0, this.stats.halfOpenInFlight - 1);
+      }
     }
   }
 
@@ -158,7 +182,7 @@ class CircuitBreaker {
 
       case CircuitState.HALF_OPEN:
         // Allow limited requests to probe the service
-        return true;
+        return this.stats.halfOpenInFlight < this.config.halfOpenMaxRequests;
 
       default:
         return false;
@@ -232,7 +256,10 @@ interface CircuitBreakerEvents {
 }
 
 class MonitoredCircuitBreaker extends CircuitBreaker {
-  private listeners: Map<string, Function[]> = new Map();
+  private listeners: Map<
+    keyof CircuitBreakerEvents,
+    Array<(data: CircuitBreakerEvents[keyof CircuitBreakerEvents]) => void>
+  > = new Map();
   private metrics = {
     totalRequests: 0,
     successfulRequests: 0,
@@ -248,7 +275,9 @@ class MonitoredCircuitBreaker extends CircuitBreaker {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, []);
     }
-    this.listeners.get(event)!.push(callback);
+    this.listeners.get(event)!.push(
+      callback as (data: CircuitBreakerEvents[keyof CircuitBreakerEvents]) => void
+    );
   }
 
   // Emit an event to all subscribers
@@ -258,6 +287,50 @@ class MonitoredCircuitBreaker extends CircuitBreaker {
   ): void {
     const callbacks = this.listeners.get(event) || [];
     callbacks.forEach((cb) => cb(data));
+  }
+
+  protected transitionTo(newState: CircuitState): void {
+    const oldState = this.getState();
+    super.transitionTo(newState);
+
+    if (oldState !== this.getState()) {
+      this.emit("stateChange", {
+        from: oldState,
+        to: this.getState(),
+        timestamp: Date.now(),
+      });
+    }
+  }
+
+  async execute<T>(fn: () => Promise<T>): Promise<T> {
+    const start = Date.now();
+    this.metrics.totalRequests++;
+
+    try {
+      const result = await super.execute(fn);
+      this.metrics.successfulRequests++;
+      this.emit("success", {
+        duration: Date.now() - start,
+        timestamp: Date.now(),
+      });
+      return result;
+    } catch (error) {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+
+      if (normalizedError.message.includes("request rejected")) {
+        this.metrics.rejectedRequests++;
+        this.emit("rejected", { timestamp: Date.now() });
+      } else {
+        this.metrics.failedRequests++;
+        this.emit("failure", {
+          error: normalizedError,
+          timestamp: Date.now(),
+        });
+      }
+
+      throw error;
+    }
   }
 
   // Get current metrics for monitoring dashboards
@@ -307,7 +380,10 @@ async function processPayment(orderId: string, amount: number): Promise<void> {
       return response.data;
     });
   } catch (error) {
-    if (error.message.includes("Circuit breaker is OPEN")) {
+    if (
+      error instanceof Error &&
+      error.message.includes("Circuit breaker is OPEN")
+    ) {
       // Return cached response or queue for retry
       await queuePaymentForRetry(orderId, amount);
       return;
@@ -333,22 +409,20 @@ function alertOps(message: string): void {
 
 ## Advanced: Sliding Window for Failure Rate
 
-Instead of a simple counter, you can use a sliding window to calculate failure rates over a time period:
+Instead of a simple counter, you can use a sliding window to decide when the current failure rate should open the circuit:
 
 ```typescript
-class SlidingWindowCircuitBreaker extends CircuitBreaker {
+class SlidingFailureWindow {
   private window: { timestamp: number; success: boolean }[] = [];
-  private windowDuration: number;
 
   constructor(
-    config: CircuitBreakerConfig & { windowDuration: number; failureRate: number }
-  ) {
-    super(config);
-    this.windowDuration = config.windowDuration || 60000;
-  }
+    private readonly windowDuration: number = 60000,
+    private readonly failureRateThreshold: number = 0.5,
+    private readonly minimumRequests: number = 10
+  ) {}
 
   // Clean old entries and add new result to the sliding window
-  private addToWindow(success: boolean): void {
+  record(success: boolean): void {
     const now = Date.now();
     // Remove entries outside the window
     this.window = this.window.filter(
@@ -359,12 +433,20 @@ class SlidingWindowCircuitBreaker extends CircuitBreaker {
   }
 
   // Calculate current failure rate from the sliding window
-  private getFailureRate(): number {
+  getFailureRate(): number {
     if (this.window.length === 0) {
       return 0;
     }
     const failures = this.window.filter((entry) => !entry.success).length;
     return failures / this.window.length;
+  }
+
+  // Decide whether enough recent requests have failed to open the circuit
+  shouldOpen(): boolean {
+    return (
+      this.window.length >= this.minimumRequests &&
+      this.getFailureRate() >= this.failureRateThreshold
+    );
   }
 }
 ```
