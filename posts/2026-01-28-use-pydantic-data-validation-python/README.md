@@ -21,6 +21,7 @@ This guide covers Pydantic v2, showing you how to define models, create custom v
 ```bash
 pip install pydantic
 pip install pydantic[email]  # For email validation
+pip install pydantic-settings  # For settings management
 ```
 
 ### Basic Model
@@ -289,7 +290,7 @@ startup = Company.model_validate(data)
 ```python
 # serialization.py
 # Converting models to different formats
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 from typing import Optional
 
@@ -302,9 +303,8 @@ class Article(BaseModel):
     published_at: Optional[datetime] = None
     internal_notes: str = Field(default="", exclude=True)  # Excluded from serialization
 
-    class Config:
-        # Use field names when serializing (not aliases)
-        populate_by_name = True
+    # Serialize with field names by default; aliases are opt-in per dump call
+    model_config = ConfigDict(serialize_by_alias=False)
 
 article = Article(
     id=1,
@@ -342,20 +342,16 @@ print(article.model_dump(exclude={'content', 'internal_notes'}))
 # settings.py
 # Configuration management with Pydantic Settings
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import BaseModel, Field
 from typing import List, Optional
 
-class DatabaseSettings(BaseSettings):
+class DatabaseSettings(BaseModel):
     """Database configuration."""
     host: str = "localhost"
     port: int = 5432
-    name: str = Field(..., alias="db_name")
+    name: str
     user: str = "postgres"
     password: str = Field(..., repr=False)  # Hide in repr
-
-    model_config = SettingsConfigDict(
-        env_prefix="DB_"  # Environment variables: DB_HOST, DB_PORT, etc.
-    )
 
 class AppSettings(BaseSettings):
     """Application configuration from environment variables."""
@@ -366,9 +362,9 @@ class AppSettings(BaseSettings):
     secret_key: str
 
     # Nested settings
-    database: DatabaseSettings = None
+    database: DatabaseSettings
 
-    # List from comma-separated env var
+    # List from JSON env var
     allowed_hosts: List[str] = ["localhost"]
 
     # API keys
@@ -384,9 +380,10 @@ class AppSettings(BaseSettings):
 # APP_NAME=MyApp
 # DEBUG=true
 # SECRET_KEY=super-secret
-# ALLOWED_HOSTS=localhost,example.com
-# DB_HOST=postgres.example.com
-# DB_PASSWORD=secret123
+# ALLOWED_HOSTS=["localhost","example.com"]
+# DATABASE__HOST=postgres.example.com
+# DATABASE__NAME=myapp
+# DATABASE__PASSWORD=secret123
 
 # Load settings (automatically reads from environment)
 settings = AppSettings()
@@ -400,9 +397,9 @@ print(f"Running {settings.app_name} in {'debug' if settings.debug else 'producti
 ```python
 # generic_models.py
 # Creating reusable generic models
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import TypeVar, Generic, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 T = TypeVar('T')
 
@@ -423,7 +420,7 @@ class APIResponse(BaseModel, Generic[T]):
     success: bool
     data: Optional[T] = None
     error: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 # Usage with specific types
 class User(BaseModel):
@@ -524,7 +521,7 @@ print(order.model_dump())
 # discriminated_unions.py
 # Handle different types with discriminated unions
 from pydantic import BaseModel, Field
-from typing import Union, Literal
+from typing import Optional, Union, Literal
 from datetime import datetime
 
 class EmailNotification(BaseModel):
@@ -553,7 +550,7 @@ Notification = Union[EmailNotification, SMSNotification, PushNotification]
 class NotificationRequest(BaseModel):
     """Request with discriminated union."""
     notification: Notification = Field(..., discriminator='type')
-    scheduled_at: datetime = None
+    scheduled_at: Optional[datetime] = None
 
 # Pydantic picks the right type based on 'type' field
 email_req = NotificationRequest(
@@ -594,4 +591,3 @@ Pydantic makes your code more robust by catching data errors early and providing
 ---
 
 *Building applications with Pydantic? [OneUptime](https://oneuptime.com) helps you monitor your services, track validation errors, and maintain application reliability.*
-
