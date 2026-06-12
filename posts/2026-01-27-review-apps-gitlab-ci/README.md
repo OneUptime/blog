@@ -12,7 +12,7 @@ Review apps give every merge request its own deployment. Instead of reviewing co
 
 ## What Are Review Apps?
 
-A review app is a temporary environment created specifically for a branch or merge request. When you push code, GitLab deploys it to a unique URL. Reviewers test the changes in a real environment. When the merge request is closed, the environment is destroyed.
+A review app is a temporary environment created specifically for a branch or merge request. When you push code, GitLab deploys it to a unique URL. Reviewers test the changes in a real environment. When the merge request is merged, the source branch is deleted, or the auto-stop timer expires, the environment is destroyed.
 
 This pattern works for web applications, APIs, mobile backends, and any deployable system.
 
@@ -65,7 +65,7 @@ stop-review:
     GIT_STRATEGY: none
 ```
 
-The `on_stop` links deployment to cleanup. When the merge request is closed, GitLab can automatically trigger the stop job.
+The `on_stop` links deployment to cleanup. When the merge request is merged, the source branch is deleted, or the auto-stop timer expires, GitLab can automatically trigger the stop job.
 
 ## Review App Flow
 
@@ -81,7 +81,7 @@ graph TD
     F --> B
     E -->|No| G[Merge MR]
     G --> H[Stop Review App]
-    I[Close MR] --> H
+    I[Delete Source Branch] --> H
     J[Auto-stop Timer] --> H
 ```
 
@@ -99,9 +99,10 @@ deploy-review:
     name: bitnami/kubectl:latest
     entrypoint: [""]
   script:
-    - export REVIEW_NAME="review-${CI_COMMIT_REF_SLUG}"
+    - export REVIEW_NAME="$(printf 'review-%.56s' "$CI_COMMIT_REF_SLUG" | sed 's/-$//')"
     # Create namespace if it doesn't exist
     - kubectl create namespace ${REVIEW_NAME} --dry-run=client -o yaml | kubectl apply -f -
+    - kubectl label namespace ${REVIEW_NAME} type=review-app --overwrite
     # Apply manifests with variable substitution
     - |
       cat <<EOF | kubectl apply -f -
@@ -177,7 +178,8 @@ stop-review:
     name: bitnami/kubectl:latest
     entrypoint: [""]
   script:
-    - kubectl delete namespace review-${CI_COMMIT_REF_SLUG} --ignore-not-found
+    - export REVIEW_NAME="$(printf 'review-%.56s' "$CI_COMMIT_REF_SLUG" | sed 's/-$//')"
+    - kubectl delete namespace ${REVIEW_NAME} --ignore-not-found
   environment:
     name: review/${CI_COMMIT_REF_SLUG}
     action: stop
@@ -188,9 +190,9 @@ stop-review:
     GIT_STRATEGY: none
 ```
 
-## Docker Compose Review Apps
+## Docker Review Apps
 
-For simpler setups, use Docker Compose on a shared server.
+For simpler setups, use Docker on a shared server.
 
 ```yaml
 deploy-review:
@@ -198,7 +200,7 @@ deploy-review:
   tags:
     - review-server
   script:
-    - export REVIEW_NAME="review-${CI_COMMIT_REF_SLUG}"
+    - export REVIEW_NAME="$(printf 'review-%.56s' "$CI_COMMIT_REF_SLUG" | sed 's/-$//')"
     - export REVIEW_PORT=$((10000 + ${CI_MERGE_REQUEST_IID}))
     # Pull the built image
     - docker pull ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
@@ -241,7 +243,7 @@ stop-review:
   tags:
     - review-server
   script:
-    - export REVIEW_NAME="review-${CI_COMMIT_REF_SLUG}"
+    - export REVIEW_NAME="$(printf 'review-%.56s' "$CI_COMMIT_REF_SLUG" | sed 's/-$//')"
     - docker stop ${REVIEW_NAME} || true
     - docker rm ${REVIEW_NAME} || true
     - rm -f /etc/nginx/sites-enabled/${REVIEW_NAME}.conf
@@ -265,7 +267,7 @@ Provide isolated databases for each review app.
 deploy-review:
   stage: review
   script:
-    - export REVIEW_NAME="review-${CI_COMMIT_REF_SLUG}"
+    - export REVIEW_NAME="$(printf 'review-%.56s' "$CI_COMMIT_REF_SLUG" | sed 's/-$//')"
     # Create review database
     - |
       PGPASSWORD=${POSTGRES_ADMIN_PASSWORD} psql -h ${POSTGRES_HOST} -U admin -c \
@@ -282,7 +284,7 @@ deploy-review:
 stop-review:
   stage: cleanup
   script:
-    - export REVIEW_NAME="review-${CI_COMMIT_REF_SLUG}"
+    - export REVIEW_NAME="$(printf 'review-%.56s' "$CI_COMMIT_REF_SLUG" | sed 's/-$//')"
     # Destroy the application
     - ./destroy.sh ${REVIEW_NAME}
     # Drop the database
@@ -303,6 +305,7 @@ Pre-populate review apps with test data.
 ```yaml
 deploy-review:
   script:
+    - export REVIEW_NAME="$(printf 'review-%.56s' "$CI_COMMIT_REF_SLUG" | sed 's/-$//')"
     # Deploy infrastructure
     - ./deploy.sh ${REVIEW_NAME}
     # Seed with test data
@@ -428,4 +431,4 @@ Schedule this job to run daily for automatic cleanup.
 
 ---
 
-Review apps transform code review from guesswork to hands-on testing. Reviewers catch issues that would slip through static analysis. QA can verify fixes before they merge. Product managers can preview features early. Start simple with Docker Compose, then scale to Kubernetes as your team grows. The investment in review apps pays dividends in faster, more confident deployments.
+Review apps transform code review from guesswork to hands-on testing. Reviewers catch issues that would slip through static analysis. QA can verify fixes before they merge. Product managers can preview features early. Start simple with Docker, then scale to Kubernetes as your team grows. The investment in review apps pays dividends in faster, more confident deployments.
