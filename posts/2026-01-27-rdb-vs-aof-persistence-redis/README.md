@@ -14,7 +14,7 @@ Redis is an in-memory database, but that does not mean your data disappears when
 
 **RDB (Redis Database)**: Creates point-in-time snapshots of your dataset at specified intervals. Think of it like taking a photo of your data every few minutes.
 
-**AOF (Append Only File)**: Logs every write operation to a file. On restart, Redis replays these operations to rebuild the dataset. Think of it like a transaction log.
+**AOF (Append Only File)**: Logs every write operation to append-only files. On restart, Redis replays these operations to rebuild the dataset. Think of it like a transaction log.
 
 ```mermaid
 graph TB
@@ -27,7 +27,7 @@ graph TB
     subgraph "AOF Persistence"
         W2[Write Operations] --> M2[Memory]
         W2 --> |"Every write"| L2[AOF Log]
-        L2 --> D2[appendonly.aof]
+        L2 --> D2[AOF files]
     end
 ```
 
@@ -108,6 +108,9 @@ appendonly yes
 # AOF filename
 appendfilename "appendonly.aof"
 
+# Directory for multi-part AOF files (Redis 7.0+)
+appenddirname "appendonlydir"
+
 # Fsync policy - how often to sync to disk
 # Options:
 # - always: Sync after every write (slowest, safest)
@@ -135,8 +138,8 @@ aof-use-rdb-preamble yes
 
 | Advantages | Disadvantages |
 |------------|---------------|
-| Minimal data loss (1 second max) | Larger files than RDB |
-| Human-readable log | Slower restarts (replay operations) |
+| Minimal data loss (about 1 second with everysec) | Larger files than RDB |
+| Human-readable command log | Slower restarts (replay operations) |
 | Automatic rewriting | Higher disk I/O |
 | Recovery from partial writes | Can be slower than RDB for writes |
 
@@ -173,7 +176,7 @@ flowchart TD
     A --> D{Simple backups}
 
     B --> B1{How much loss acceptable?}
-    B1 --> |"Zero/minimal"| B2[AOF with appendfsync always]
+    B1 --> |"Minimal"| B2[AOF with appendfsync always]
     B1 --> |"~1 second"| B3[AOF with appendfsync everysec]
     B1 --> |"Minutes ok"| B4[RDB only]
 
@@ -222,7 +225,7 @@ appendonly no
 
 ## Hybrid Approach (Recommended)
 
-Since Redis 4.0, you can use both RDB and AOF together with the RDB preamble feature. The AOF file starts with an RDB snapshot, followed by AOF commands. This gives you fast restarts and good durability.
+Since Redis 4.0, you can use the RDB preamble feature for AOF rewrites. In Redis 7.0 and newer, AOF uses a multi-part format where the base AOF file can be an RDB snapshot, followed by incremental AOF command files. This gives you fast restarts and good durability.
 
 ```bash
 # Enable hybrid persistence
@@ -342,28 +345,38 @@ BACKUP_DIR="/backups/redis"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 # Trigger a fresh RDB snapshot
+LAST_SAVE=$(redis-cli LASTSAVE)
 redis-cli BGSAVE
 
 # Wait for save to complete
-while [ $(redis-cli LASTSAVE) == $(cat /tmp/last_save 2>/dev/null) ]; do
+while [ "$(redis-cli LASTSAVE)" = "$LAST_SAVE" ]; do
   sleep 1
 done
-redis-cli LASTSAVE > /tmp/last_save
 
 # Copy RDB file
-cp ${REDIS_DIR}/dump.rdb ${BACKUP_DIR}/dump_${DATE}.rdb
+cp "${REDIS_DIR}/dump.rdb" "${BACKUP_DIR}/dump_${DATE}.rdb"
 
-# Copy AOF file if enabled
-if [ -f "${REDIS_DIR}/appendonly.aof" ]; then
-  cp ${REDIS_DIR}/appendonly.aof ${BACKUP_DIR}/appendonly_${DATE}.aof
+# Copy AOF files if enabled (Redis 7.0+ multi-part AOF)
+if [ -d "${REDIS_DIR}/appendonlydir" ]; then
+  AUTO_AOF_REWRITE_PERCENTAGE=$(redis-cli CONFIG GET auto-aof-rewrite-percentage | tail -n 1)
+  redis-cli CONFIG SET auto-aof-rewrite-percentage 0 >/dev/null
+
+  while redis-cli INFO persistence | grep -q '^aof_rewrite_in_progress:1'; do
+    sleep 1
+  done
+
+  tar -C "${REDIS_DIR}" -czf "${BACKUP_DIR}/appendonly_${DATE}.tar.gz" appendonlydir
+  redis-cli CONFIG SET auto-aof-rewrite-percentage "$AUTO_AOF_REWRITE_PERCENTAGE" >/dev/null
+elif [ -f "${REDIS_DIR}/appendonly.aof" ]; then
+  cp "${REDIS_DIR}/appendonly.aof" "${BACKUP_DIR}/appendonly_${DATE}.aof"
+  gzip "${BACKUP_DIR}/appendonly_${DATE}.aof"
 fi
 
 # Compress backups
-gzip ${BACKUP_DIR}/dump_${DATE}.rdb
-gzip ${BACKUP_DIR}/appendonly_${DATE}.aof 2>/dev/null
+gzip "${BACKUP_DIR}/dump_${DATE}.rdb"
 
 # Cleanup old backups (keep 7 days)
-find ${BACKUP_DIR} -name "*.gz" -mtime +7 -delete
+find "${BACKUP_DIR}" -name "*.gz" -mtime +7 -delete
 
 echo "Backup completed: dump_${DATE}.rdb.gz"
 ```
@@ -386,12 +399,18 @@ sudo systemctl start redis
 # 1. Stop Redis
 sudo systemctl stop redis
 
-# 2. Replace AOF file
+# 2. Replace AOF file or appendonlydir
 cp /backups/redis/appendonly_20260125.aof /var/lib/redis/appendonly.aof
 chown redis:redis /var/lib/redis/appendonly.aof
 
 # 3. Verify AOF integrity
 redis-check-aof --fix /var/lib/redis/appendonly.aof
+
+# For Redis 7.0+ multi-part AOF backups, restore appendonlydir instead
+# and verify the manifest:
+# tar -C /var/lib/redis -xzf /backups/redis/appendonly_20260125.tar.gz
+# chown -R redis:redis /var/lib/redis/appendonlydir
+# redis-check-aof --fix /var/lib/redis/appendonlydir/appendonly.aof.manifest
 
 # 4. Start Redis
 sudo systemctl start redis
