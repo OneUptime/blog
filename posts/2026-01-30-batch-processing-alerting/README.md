@@ -76,7 +76,7 @@ The foundation of batch alerting is accurate job state tracking. Every batch job
 # and emitting metrics for alerting purposes.
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional, Dict, Any
 import json
@@ -174,7 +174,7 @@ class JobTracker:
             job_id=job_id,
             execution_id=execution_id,
             status=JobStatus.RUNNING,
-            start_time=datetime.utcnow(),
+            start_time=datetime.now(timezone.utc),
             metadata=metadata or {}
         )
 
@@ -207,7 +207,7 @@ class JobTracker:
             Updated JobExecution object
         """
         execution.status = status
-        execution.end_time = datetime.utcnow()
+        execution.end_time = datetime.now(timezone.utc)
         execution.error_message = error_message
         execution.records_processed = records_processed
 
@@ -237,7 +237,7 @@ class JobTracker:
             "status": execution.status.value,
             "duration_seconds": execution.duration_seconds,
             "records_processed": execution.records_processed,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         # Add to metrics stream for alert evaluation
@@ -258,7 +258,7 @@ Define what conditions should trigger alerts. A flexible configuration system al
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import List, Optional, Dict, Any
 import re
@@ -345,7 +345,7 @@ class JobFailureEvaluator(AlertConditionEvaluator):
                 error=execution.get("error_message", "Unknown error"),
                 execution_id=execution["execution_id"]
             ),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -386,7 +386,7 @@ class SLABreachEvaluator(AlertConditionEvaluator):
             ),
             "actual_duration": duration,
             "sla_threshold": condition.threshold,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -448,7 +448,7 @@ class DurationAnomalyEvaluator(AlertConditionEvaluator):
             ),
             "actual_duration": duration,
             "expected_duration": mean_duration,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -476,7 +476,7 @@ class NoDataEvaluator(AlertConditionEvaluator):
                 job_id=execution["job_id"],
                 execution_id=execution["execution_id"]
             ),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 ```
 
@@ -536,7 +536,7 @@ jobs:
 # Manages SLA definitions and evaluates job compliance.
 
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from typing import Optional, Dict, Any
 import yaml
 from zoneinfo import ZoneInfo
@@ -677,9 +677,9 @@ class SLAManager:
     def _determine_breach_severity(self, sla: SLADefinition,
                                     minutes_late: float) -> str:
         """Determine alert severity based on how late the job is."""
-        if minutes_late > sla.critical_minutes_before:
+        if minutes_late > sla.warning_minutes_before:
             return "critical"
-        elif minutes_late > sla.warning_minutes_before:
+        elif minutes_late > sla.critical_minutes_before:
             return "warning"
         return "info"
 
@@ -719,7 +719,7 @@ class SLAManager:
             minutes_until = (deadline_dt - local_time).total_seconds() / 60
 
             # Check if we should alert
-            if minutes_until <= sla.warning_minutes_before:
+            if 0 <= minutes_until <= sla.warning_minutes_before:
                 severity = "critical" if minutes_until <= sla.critical_minutes_before else "warning"
                 approaching.append({
                     "job_id": job_id,
@@ -775,7 +775,7 @@ flowchart LR
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 import json
 import httpx
@@ -843,18 +843,16 @@ class SlackChannel(NotificationChannel):
         "page": "#8b0000"        # Dark red
     }
 
-    def __init__(self, webhook_url: str, channel: str = "#alerts",
+    def __init__(self, webhook_url: str,
                  supported_severities: Optional[List[str]] = None):
         """
         Initialize Slack channel.
 
         Args:
             webhook_url: Slack incoming webhook URL
-            channel: Default channel to post to
             supported_severities: List of severities this channel handles
         """
         self.webhook_url = webhook_url
-        self.channel = channel
         self.supported = supported_severities or ["info", "warning", "critical"]
 
     def supports_severity(self, severity: str) -> bool:
@@ -865,9 +863,6 @@ class SlackChannel(NotificationChannel):
         """Send alert to Slack with rich formatting."""
         # Build the Slack message payload
         slack_message = {
-            "channel": self.channel,
-            "username": "Batch Alert Bot",
-            "icon_emoji": self._get_emoji(payload.severity),
             "attachments": [
                 {
                     "color": self.SEVERITY_COLORS.get(payload.severity, "#808080"),
@@ -922,17 +917,6 @@ class SlackChannel(NotificationChannel):
             except httpx.RequestError as e:
                 print(f"Failed to send Slack notification: {e}")
                 return False
-
-    def _get_emoji(self, severity: str) -> str:
-        """Get appropriate emoji for severity level."""
-        emojis = {
-            "info": ":information_source:",
-            "warning": ":warning:",
-            "critical": ":rotating_light:",
-            "page": ":fire:"
-        }
-        return emojis.get(severity, ":bell:")
-
 
 class PagerDutyChannel(NotificationChannel):
     """
@@ -1154,7 +1138,7 @@ sequenceDiagram
 # Implements escalation policies for unacknowledged alerts.
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import List, Dict, Any, Optional, Callable
 import asyncio
@@ -1224,7 +1208,7 @@ class EscalatingAlert:
     policy: EscalationPolicy
     current_level: int = 0
     status: EscalationStatus = EscalationStatus.PENDING
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     last_escalation: Optional[datetime] = None
     acknowledged_by: Optional[str] = None
     acknowledged_at: Optional[datetime] = None
@@ -1276,7 +1260,7 @@ class EscalationManager:
         escalating = EscalatingAlert(
             alert_id=alert_id,
             policy=policy,
-            last_escalation=datetime.utcnow()
+            last_escalation=datetime.now(timezone.utc)
         )
         self.active_alerts[alert_id] = escalating
 
@@ -1308,7 +1292,7 @@ class EscalationManager:
 
         alert.status = EscalationStatus.ACKNOWLEDGED
         alert.acknowledged_by = user_id
-        alert.acknowledged_at = datetime.utcnow()
+        alert.acknowledged_at = datetime.now(timezone.utc)
 
         return True
 
@@ -1346,7 +1330,7 @@ class EscalationManager:
         This should be called periodically (e.g., every minute)
         by the main alert processing loop.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for alert_id, alert in list(self.active_alerts.items()):
             # Skip non-pending alerts
@@ -1377,7 +1361,7 @@ class EscalationManager:
             if alert.policy.repeat_after_minutes:
                 # Reset to first level
                 alert.current_level = 0
-                alert.last_escalation = datetime.utcnow()
+                alert.last_escalation = datetime.now(timezone.utc)
                 await self.notify(
                     alert_id=alert.alert_id,
                     level=alert.policy.levels[0],
@@ -1387,8 +1371,7 @@ class EscalationManager:
 
         # Move to next level
         alert.current_level = next_level_idx
-        alert.last_escalation = datetime.utcnow()
-        alert.status = EscalationStatus.ESCALATED
+        alert.last_escalation = datetime.now(timezone.utc)
 
         next_level = alert.policy.levels[next_level_idx]
         await self.notify(
@@ -1460,7 +1443,7 @@ One of the biggest challenges with alerting systems is alert fatigue. Too many a
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set, Tuple
 import hashlib
 
@@ -1547,7 +1530,7 @@ class AlertDeduplicator:
             Tuple of (should_suppress, reason)
         """
         fingerprint = self._generate_fingerprint(alert)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Clean up old entries first
         self._cleanup_old_entries(fingerprint, now)
@@ -1567,7 +1550,7 @@ class AlertDeduplicator:
     def get_suppression_stats(self) -> Dict[str, int]:
         """Get statistics about currently suppressed alert types."""
         stats = {}
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for fingerprint, alerts in self.seen_alerts.items():
             # Count only recent alerts
@@ -1619,7 +1602,7 @@ class AlertThrottler:
         """
         job_id = alert.get("job_id", "unknown")
         severity = alert.get("severity", "info")
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Never throttle page-level alerts
         if severity == "page":
@@ -1694,7 +1677,7 @@ class AlertAggregator:
             Aggregated alert if threshold reached, None otherwise
         """
         key = self._get_aggregation_key(alert)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Check if we should flush the buffer
         if key in self.last_flush:
@@ -1724,7 +1707,7 @@ class AlertAggregator:
             Aggregated alert dict or None if buffer was empty
         """
         alerts = self.buffer.pop(key, [])
-        self.last_flush[key] = datetime.utcnow()
+        self.last_flush[key] = datetime.now(timezone.utc)
 
         if not alerts:
             return None
@@ -1738,7 +1721,7 @@ class AlertAggregator:
         job_ids = list(set(a.get("job_id", "unknown") for a in alerts))
 
         return {
-            "alert_id": f"agg_{datetime.utcnow().timestamp()}",
+            "alert_id": f"agg_{datetime.now(timezone.utc).timestamp()}",
             "condition_type": condition_type,
             "severity": severity,
             "title": f"Aggregated Alert: {len(alerts)} {condition_type} events",
@@ -1746,7 +1729,7 @@ class AlertAggregator:
             "aggregated_count": len(alerts),
             "affected_jobs": job_ids[:10],  # Limit to first 10
             "total_affected_jobs": len(job_ids),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     def _build_aggregated_message(self, alerts: List[Dict],
@@ -1846,7 +1829,7 @@ class SmartAlertFilter:
                          details: Optional[str]) -> None:
         """Log when an alert is suppressed for observability."""
         self.suppression_log.append({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "alert_id": alert.get("alert_id"),
             "job_id": alert.get("job_id"),
             "reason_type": reason_type,
@@ -1884,7 +1867,7 @@ Beyond job failures, data quality issues are equally important to catch. Here is
 # Monitors data quality metrics and generates alerts for anomalies.
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional, Callable
 from enum import Enum
 import statistics
@@ -2010,7 +1993,7 @@ class DataQualityMonitor:
                 passed=False,
                 actual_value=0,
                 message=f"Metric {metric_key} not found in job output",
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             )
 
         # Check against thresholds
@@ -2045,7 +2028,7 @@ class DataQualityMonitor:
             passed=passed,
             actual_value=value,
             message=message,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
 
     def _check_statistical_anomaly(self, check_id: str,
@@ -2161,7 +2144,7 @@ Here is how all the components fit together in a complete alert processing pipel
 # Complete alert processing pipeline that ties all components together.
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import redis.asyncio as redis
 
@@ -2260,7 +2243,7 @@ class BatchAlertPipeline:
                 "duration_seconds": execution_data.get("duration_seconds"),
                 "error_message": execution_data.get("error_message")
             },
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     async def _check_sla_compliance(self,
@@ -2285,7 +2268,7 @@ class BatchAlertPipeline:
                     "threshold": max_duration,
                     "breach_percentage": ((duration - max_duration) / max_duration) * 100
                 },
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         return None
 
@@ -2299,14 +2282,14 @@ class BatchAlertPipeline:
         row_count = metrics.get("row_count", 0)
         if row_count == 0:
             alerts.append({
-                "alert_id": f"dq_nodata_{job_id}_{datetime.utcnow().timestamp()}",
+                "alert_id": f"dq_nodata_{job_id}_{datetime.now(timezone.utc).timestamp()}",
                 "condition_type": "data_quality",
                 "job_id": job_id,
                 "severity": "warning",
                 "title": f"No Data: {job_id}",
                 "message": "Job completed successfully but processed zero records",
                 "metadata": {"row_count": row_count},
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
 
         return alerts
@@ -2402,7 +2385,7 @@ An alerting system needs its own monitoring to ensure it is working correctly.
 # Self-monitoring for the batch alerting system.
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 from collections import defaultdict
 
@@ -2496,15 +2479,15 @@ class AlertSystemMonitor:
         """Record a processing error."""
         self.metrics.processing_errors += 1
         self.metrics.last_error = error
-        self.metrics.last_error_time = datetime.utcnow()
+        self.metrics.last_error_time = datetime.now(timezone.utc)
 
     def _update_hourly_stat(self, stat_type: str) -> None:
         """Update hourly statistics."""
-        hour_key = datetime.utcnow().strftime("%Y-%m-%d-%H")
+        hour_key = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H")
         self.hourly_stats[hour_key][stat_type] += 1
 
         # Clean up old hourly stats (keep 48 hours)
-        cutoff = datetime.utcnow() - timedelta(hours=48)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
         cutoff_key = cutoff.strftime("%Y-%m-%d-%H")
         self.hourly_stats = defaultdict(
             lambda: {"received": 0, "sent": 0, "suppressed": 0},
@@ -2517,7 +2500,7 @@ class AlertSystemMonitor:
 
         Returns a dictionary suitable for health check endpoints.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Calculate success rate
         total_attempts = sum(self.metrics.channel_success.values()) + \
