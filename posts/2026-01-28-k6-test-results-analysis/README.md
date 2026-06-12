@@ -21,7 +21,7 @@ http_reqs......................: 15234   253.9/s
 http_req_blocked...............: avg=2.1ms    min=1µs      med=3µs      max=502ms    p(90)=5µs      p(95)=8µs
 http_req_connecting............: avg=1.8ms    min=0s       med=0s       max=498ms    p(90)=0s       p(95)=0s
 http_req_duration..............: avg=127ms    min=45ms     med=98ms     max=2.1s     p(90)=245ms    p(95)=389ms
-http_req_failed................: 0.52%   ✗ 79      ✓ 15155
+http_req_failed................: 0.52%   ✓ 79      ✗ 15155
 http_req_receiving.............: avg=1.2ms    min=15µs     med=89µs     max=156ms    p(90)=2.1ms    p(95)=4.5ms
 http_req_sending...............: avg=45µs     min=5µs      med=28µs     max=12ms     p(90)=78µs     p(95)=112µs
 http_req_tls_handshaking.......: avg=0s       min=0s       med=0s       max=0s       p(90)=0s       p(95)=0s
@@ -32,7 +32,7 @@ http_req_waiting...............: avg=125ms    min=44ms     med=97ms     max=2.1s
 |--------|------------------|------------------|
 | `http_req_duration` | Total request time (send + wait + receive) | Primary latency indicator |
 | `http_req_waiting` | Time waiting for server response (TTFB) | Server processing time |
-| `http_req_blocked` | Time waiting for TCP connection | Connection pool issues |
+| `http_req_blocked` | Time blocked before initiating the request, often waiting for a free TCP connection slot | Connection pool issues |
 | `http_req_connecting` | TCP connection establishment time | Network issues |
 | `http_req_failed` | Percentage of failed requests | Error rate |
 
@@ -40,10 +40,11 @@ http_req_waiting...............: avg=125ms    min=44ms     med=97ms     max=2.1s
 
 ```mermaid
 flowchart LR
+    A[blocked] --> B[connecting]
+    B --> C[tls_handshaking]
+    C --> D[sending]
+
     subgraph Duration["http_req_duration"]
-        A[blocked] --> B[connecting]
-        B --> C[tls_handshaking]
-        C --> D[sending]
         D --> E[waiting]
         E --> F[receiving]
     end
@@ -148,7 +149,7 @@ High `receiving` time with large responses indicates bandwidth limits.
 
 **Symptoms:**
 ```text
-http_req_failed: 15.2%  ✗ 2312  ✓ 12922
+http_req_failed: 15.2%  ✓ 2312  ✗ 12922
 ```
 
 Error rate increases as load increases.
