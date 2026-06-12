@@ -36,7 +36,7 @@ terraform {
     }
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
     google = {
       source  = "hashicorp/google"
@@ -218,6 +218,13 @@ resource "azurerm_subnet" "public" {
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = [cidrsubnet(var.cidr_block, 4, count.index + 4)]
 }
+
+resource "azurerm_subnet" "gateway" {
+  name                 = "GatewaySubnet"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = [cidrsubnet(var.cidr_block, 4, 15)]
+}
 ```
 
 ```hcl
@@ -318,6 +325,11 @@ resource "aws_vpn_connection" "to_azure" {
   }
 }
 
+resource "aws_vpn_connection_route" "azure" {
+  destination_cidr_block = "10.1.0.0/16"
+  vpn_connection_id      = aws_vpn_connection.to_azure.id
+}
+
 # Azure Side
 resource "azurerm_public_ip" "vpn" {
   name                = "vpn-gateway-ip"
@@ -375,8 +387,8 @@ resource "aws_route53_health_check" "aws_endpoint" {
   port              = 443
   type              = "HTTPS"
   resource_path     = "/health"
-  failure_threshold = "3"
-  request_interval  = "30"
+  failure_threshold = 3
+  request_interval  = 30
 
   tags = {
     Name = "aws-health-check"
@@ -388,8 +400,8 @@ resource "aws_route53_health_check" "azure_endpoint" {
   port              = 443
   type              = "HTTPS"
   resource_path     = "/health"
-  failure_threshold = "3"
-  request_interval  = "30"
+  failure_threshold = 3
+  request_interval  = 30
 
   tags = {
     Name = "azure-health-check"
@@ -400,13 +412,9 @@ resource "aws_route53_health_check" "azure_endpoint" {
 resource "aws_route53_record" "app_aws" {
   zone_id = var.route53_zone_id
   name    = "app.example.com"
-  type    = "A"
-
-  alias {
-    name                   = module.aws_app.load_balancer_dns
-    zone_id                = module.aws_app.load_balancer_zone_id
-    evaluate_target_health = true
-  }
+  type    = "CNAME"
+  ttl     = 60
+  records = [module.aws_app.load_balancer_dns]
 
   weighted_routing_policy {
     weight = 70  # 70% to AWS
