@@ -16,7 +16,7 @@ Manual playbook execution does not scale. Workflows bring order to automation ch
 
 ## What is AWX?
 
-AWX is the open-source upstream project for Red Hat Ansible Automation Platform (formerly Ansible Tower). It provides a web-based user interface, REST API, and task engine for managing Ansible automation at scale.
+AWX is one of the open-source upstream projects for Red Hat Ansible Automation Platform. It provides a web-based user interface, REST API, and task engine for managing Ansible automation at scale.
 
 Key capabilities include:
 
@@ -514,7 +514,7 @@ Pass data from one workflow node to subsequent nodes using artifacts.
 ---
 - name: Provision Infrastructure
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
   tasks:
     - name: Create EC2 Instance
       amazon.aws.ec2_instance:
@@ -736,11 +736,11 @@ Configure notifications to alert your team about workflow status.
         - "#deployments"
     messages:
       started:
-        message: "Workflow {{ job.name }} started"
+        message: "{{ '{{ job_friendly_name }} started' }}"
       success:
-        message: "Workflow {{ job.name }} completed successfully"
+        message: "{{ '{{ job_friendly_name }} completed successfully' }}"
       error:
-        message: "Workflow {{ job.name }} failed - {{ job.url }}"
+        message: "{{ '{{ job_friendly_name }} failed - {{ job.url }}' }}"
     state: present
 
 # Email notification
@@ -1006,7 +1006,6 @@ class WorkflowMetricsCollector:
         )
         response.raise_for_status()
 
-        # Reset all active workflow gauges
         running_jobs = response.json()['results']
         workflow_counts: Dict[str, int] = {}
 
@@ -1014,6 +1013,7 @@ class WorkflowMetricsCollector:
             name = job['name']
             workflow_counts[name] = workflow_counts.get(name, 0) + 1
 
+        active_workflows.clear()
         for name, count in workflow_counts.items():
             active_workflows.labels(workflow_name=name).set(count)
 
