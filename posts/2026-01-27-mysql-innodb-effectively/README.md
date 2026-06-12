@@ -49,10 +49,10 @@ SHOW STATUS LIKE 'Innodb_buffer_pool%';
 # Set buffer pool to 12GB for a server with 16GB RAM
 innodb_buffer_pool_size = 12G
 
-# Split into multiple instances for better concurrency (1 per GB, max 64)
+# Split into multiple instances for better concurrency (keep each instance at least 1GB, max 64)
 innodb_buffer_pool_instances = 12
 
-# Enable online resizing
+# Define the chunk size used for online buffer pool resizing
 innodb_buffer_pool_chunk_size = 128M
 ```
 
@@ -94,8 +94,7 @@ innodb_redo_log_capacity = 2G
 # Flush behavior: 1 = full ACID (safest), 2 = flush per second (faster)
 innodb_flush_log_at_trx_commit = 1
 
-# Undo log settings
-innodb_undo_tablespaces = 2
+# Undo log settings (innodb_undo_tablespaces defaults to 2 and is deprecated in MySQL 8.4)
 innodb_max_undo_log_size = 1G
 innodb_undo_log_truncate = ON
 ```
@@ -202,8 +201,8 @@ SELECT @@transaction_isolation;
 SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;
 
 -- Set isolation level for a specific transaction
-START TRANSACTION;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+START TRANSACTION;
 -- Your queries here
 COMMIT;
 ```
@@ -212,10 +211,10 @@ COMMIT;
 |-----------------|-------------|----------------------|---------------|----------|
 | READ UNCOMMITTED | Yes | Yes | Yes | Never use in production |
 | READ COMMITTED | No | Yes | Yes | High-concurrency OLTP |
-| REPEATABLE READ | No | No | Possible* | Default, good for most workloads |
+| REPEATABLE READ | No | No | No for consistent reads* | Default, good for most workloads |
 | SERIALIZABLE | No | No | No | Financial transactions requiring strict consistency |
 
-*InnoDB's gap locking prevents most phantom reads at REPEATABLE READ level.
+*For locking reads and range scans, InnoDB uses next-key locks at REPEATABLE READ to block inserts into scanned gaps.
 
 ## 7. Row Locking and Deadlock Prevention
 
@@ -302,10 +301,16 @@ WHERE VARIABLE_NAME IN (
     'Innodb_rows_inserted',
     'Innodb_rows_updated',
     'Innodb_rows_deleted',
-    'Innodb_deadlocks',
     'Innodb_row_lock_waits',
     'Innodb_row_lock_time_avg'
 );
+
+-- Monitor deadlock count
+SELECT
+    NAME,
+    COUNT
+FROM information_schema.INNODB_METRICS
+WHERE NAME = 'lock_deadlocks';
 
 -- Monitor table and index I/O
 SELECT
