@@ -57,7 +57,7 @@ The benefits are significant:
 | Metric | Without ETags | With ETags |
 |--------|---------------|------------|
 | Bandwidth per cached request | Full payload (1-100KB) | Headers only (~500 bytes) |
-| Server CPU (serialization) | Full JSON encoding | Hash comparison only |
+| Server CPU (serialization) | Full JSON encoding | ETag comparison; can avoid full response serialization when ETags are stored |
 | Client CPU (parsing) | Full JSON parsing | None for 304 |
 | Database load | Full query | Full query (but can optimize) |
 
@@ -103,7 +103,7 @@ Here is when to use each:
 
 ## 3. Generating ETags from Content
 
-The most reliable way to generate ETags is by hashing the response content. Here are production-ready implementations in multiple languages.
+The most reliable way to generate strong ETags is by hashing the exact response representation, or a canonical serialization that your API consistently uses for that representation. Here are production-ready implementations in multiple languages.
 
 ### Node.js Implementation
 
@@ -148,8 +148,8 @@ function generateWeakETag(content, version) {
 
 // Example usage
 const product = { id: 42, name: 'Widget', price: 29.99 };
-console.log(generateETag(product));      // "8f14e45fceea167a5a36dedd4bea2543"
-console.log(generateWeakETag(product, 'v1')); // W/"v1-a1b2c3d4e5f67890"
+console.log(generateETag(product));      // "94ef448bbed401e6bf73f40c00d866fe"
+console.log(generateWeakETag(product, 'v1')); // W/"v1-da88a150f4bef0fb"
 ```
 
 ### Python Implementation
@@ -159,7 +159,7 @@ Python's hashlib provides the same functionality with slightly different syntax.
 ```python
 import hashlib
 import json
-from typing import Any, Union
+from typing import Any
 
 def generate_etag(content: Any) -> str:
     """
@@ -202,8 +202,8 @@ def generate_weak_etag(content: Any, version: str) -> str:
 # Example usage
 
 product = {"id": 42, "name": "Widget", "price": 29.99}
-print(generate_etag(product))           # "8f14e45fceea167a5a36dedd4bea2543"
-print(generate_weak_etag(product, "v1")) # W/"v1-a1b2c3d4e5f67890"
+print(generate_etag(product))           # "94ef448bbed401e6bf73f40c00d866fe"
+print(generate_weak_etag(product, "v1")) # W/"v1-da88a150f4bef0fb"
 ```
 
 ### Go Implementation
@@ -304,9 +304,12 @@ function conditionalGet(fetchData) {
           .split(',')
           .map(tag => tag.trim());
 
-        // Check if any client ETag matches current
+        // Check if any client ETag matches current using weak comparison
         // Also handle wildcard * which matches any ETag
-        if (clientETags.includes('*') || clientETags.includes(currentETag)) {
+        if (
+          clientETags.includes('*') ||
+          clientETags.some(tag => weakETagMatches(tag, currentETag))
+        ) {
           // Content unchanged, return 304 with no body
           return res.status(304).end();
         }
@@ -344,6 +347,14 @@ function generateETag(content) {
   return `"${hash}"`;
 }
 
+function getOpaqueETag(etag) {
+  return etag.replace(/^W\//, '');
+}
+
+function weakETagMatches(clientETag, currentETag) {
+  return getOpaqueETag(clientETag) === getOpaqueETag(currentETag);
+}
+
 // Usage in Express routes
 const express = require('express');
 const app = express();
@@ -363,16 +374,17 @@ app.get('/api/users/:id/profile', conditionalGet(async (req) => {
 
 ### FastAPI Implementation
 
-Python's FastAPI handles this elegantly with dependency injection.
+Python's FastAPI handles this cleanly with a reusable helper function.
 
 ```python
-from fastapi import FastAPI, Request, Response, HTTPException, Depends
+from fastapi import FastAPI, Request, Response, HTTPException
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 import hashlib
 import json
-from datetime import datetime
-from typing import Any, Optional, Callable
-from functools import wraps
+from datetime import datetime, timezone
+from email.utils import format_datetime, parsedate_to_datetime
+from typing import Any, Optional
 
 app = FastAPI()
 
@@ -388,6 +400,22 @@ def parse_etag_header(header: Optional[str]) -> list[str]:
         return []
     # Handle multiple ETags: "abc", "def", "ghi"
     return [tag.strip() for tag in header.split(',')]
+
+def opaque_etag(etag: str) -> str:
+    """Return the quoted opaque tag, ignoring the weak validator prefix."""
+    return etag[2:] if etag.startswith('W/') else etag
+
+def weak_etag_matches(client_etag: str, current_etag: str) -> bool:
+    """Compare ETags using HTTP weak comparison rules."""
+    return opaque_etag(client_etag) == opaque_etag(current_etag)
+
+def http_date(value: datetime) -> str:
+    """Format a datetime as an HTTP-date."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return format_datetime(value, usegmt=True)
 
 async def check_conditional_get(
     request: Request,
@@ -407,7 +435,9 @@ async def check_conditional_get(
     client_etags = parse_etag_header(if_none_match)
 
     if client_etags:
-        if '*' in client_etags or current_etag in client_etags:
+        if '*' in client_etags or any(
+            weak_etag_matches(tag, current_etag) for tag in client_etags
+        ):
             # Return 304 with ETag header but no body
             return Response(
                 status_code=304,
@@ -423,19 +453,25 @@ async def check_conditional_get(
     if if_modified_since and not if_none_match and last_modified:
         try:
             # Parse HTTP date format
-            client_date = datetime.strptime(
-                if_modified_since,
-                '%a, %d %b %Y %H:%M:%S GMT'
-            )
-            if last_modified <= client_date:
+            client_date = parsedate_to_datetime(if_modified_since)
+            if client_date.tzinfo is None:
+                client_date = client_date.replace(tzinfo=timezone.utc)
+
+            last_modified_utc = last_modified
+            if last_modified_utc.tzinfo is None:
+                last_modified_utc = last_modified_utc.replace(tzinfo=timezone.utc)
+            else:
+                last_modified_utc = last_modified_utc.astimezone(timezone.utc)
+
+            if last_modified_utc <= client_date:
                 return Response(
                     status_code=304,
                     headers={
                         'ETag': current_etag,
-                        'Last-Modified': last_modified.strftime('%a, %d %b %Y %H:%M:%S GMT')
+                        'Last-Modified': http_date(last_modified)
                     }
                 )
-        except ValueError:
+        except (TypeError, ValueError):
             # Invalid date format, ignore header
             pass
 
@@ -449,10 +485,12 @@ async def get_product(product_id: int, request: Request):
     if not product:
         raise HTTPException(status_code=404, detail='Product not found')
 
+    product_data = jsonable_encoder(product.model_dump())
+
     # Check for conditional GET
     not_modified = await check_conditional_get(
         request,
-        product.dict(),
+        product_data,
         product.updated_at
     )
 
@@ -460,14 +498,14 @@ async def get_product(product_id: int, request: Request):
         return not_modified
 
     # Generate headers for full response
-    etag = generate_etag(product.dict())
+    etag = generate_etag(product_data)
     headers = {
         'ETag': etag,
-        'Last-Modified': product.updated_at.strftime('%a, %d %b %Y %H:%M:%S GMT'),
+        'Last-Modified': http_date(product.updated_at),
         'Cache-Control': 'private, must-revalidate'
     }
 
-    return JSONResponse(content=product.dict(), headers=headers)
+    return JSONResponse(content=product_data, headers=headers)
 ```
 
 ---
@@ -537,11 +575,17 @@ app.put('/api/documents/:id', async (req, res) => {
   // Calculate current ETag
   const currentETag = generateETag(currentDoc);
 
-  // Compare ETags
-  // Strip quotes if present for comparison
-  const normalizedClientETag = clientETag.replace(/^W\//, '');
+  // Compare ETags with strong comparison for If-Match.
+  // Multiple ETags are allowed; weak ETags never match for If-Match.
+  const clientETags = clientETag
+    .split(',')
+    .map(tag => tag.trim());
 
-  if (normalizedClientETag !== currentETag) {
+  const matchesCurrent =
+    clientETags.includes('*') ||
+    clientETags.some(tag => !tag.startsWith('W/') && tag === currentETag);
+
+  if (!matchesCurrent) {
     // Conflict detected: resource was modified since client fetched it
     return res.status(412).json({
       error: 'Precondition Failed',
@@ -586,7 +630,15 @@ app.patch('/api/documents/:id', async (req, res) => {
 
   const currentETag = generateETag(currentDoc);
 
-  if (clientETag !== currentETag) {
+  const clientETags = clientETag
+    .split(',')
+    .map(tag => tag.trim());
+
+  const matchesCurrent =
+    clientETags.includes('*') ||
+    clientETags.some(tag => !tag.startsWith('W/') && tag === currentETag);
+
+  if (!matchesCurrent) {
     return res.status(412).json({
       error: 'Precondition Failed',
       currentETag: currentETag
@@ -740,14 +792,14 @@ await api.updateWithRetry('/products/42', (product) => ({
 
 ### Django REST Framework
 
-Django REST Framework provides built-in ETag support through the `@etag` decorator.
+Django provides ETag support through the `@etag` and `@condition` decorators, which you can apply to Django REST Framework views.
 
 ```python
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.decorators import api_view
+from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
-from django.views.decorators.http import etag, condition
+from django.views.decorators.http import condition
 import hashlib
 import json
 
@@ -789,7 +841,7 @@ class ProductDetailView(APIView):
         GET with automatic ETag support.
         Django handles 304 responses automatically when decorated.
         """
-        product = Product.objects.get(id=product_id)
+        product = get_object_or_404(Product, id=product_id)
         serializer = ProductSerializer(product)
         return Response(serializer.data)
 
@@ -803,10 +855,16 @@ class ProductDetailView(APIView):
                 status=428
             )
 
-        product = Product.objects.get(id=product_id)
+        product = get_object_or_404(Product, id=product_id)
         current_etag = f'"{calculate_product_etag(request, product_id)}"'
 
-        if client_etag != current_etag:
+        client_etags = [tag.strip() for tag in client_etag.split(',')]
+        matches_current = (
+            '*' in client_etags or
+            any(tag == current_etag for tag in client_etags if not tag.startswith('W/'))
+        )
+
+        if not matches_current:
             return Response(
                 {
                     'error': 'Precondition Failed',
@@ -856,8 +914,8 @@ func generateETag(p *Product) string {
     return `"` + hex.EncodeToString(hash[:])[:32] + `"`
 }
 
-// parseIfNoneMatch extracts ETags from the If-None-Match header
-func parseIfNoneMatch(header string) []string {
+// parseETagHeader extracts ETags from a conditional request header
+func parseETagHeader(header string) []string {
     if header == "" {
         return nil
     }
@@ -867,6 +925,18 @@ func parseIfNoneMatch(header string) []string {
         result = append(result, strings.TrimSpace(tag))
     }
     return result
+}
+
+func opaqueETag(etag string) string {
+    return strings.TrimPrefix(etag, "W/")
+}
+
+func weakETagMatches(clientETag, currentETag string) bool {
+    return opaqueETag(clientETag) == opaqueETag(currentETag)
+}
+
+func strongETagMatches(clientETag, currentETag string) bool {
+    return !strings.HasPrefix(clientETag, "W/") && clientETag == currentETag
 }
 
 func GetProduct(w http.ResponseWriter, r *http.Request) {
@@ -887,9 +957,9 @@ func GetProduct(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Cache-Control", "private, must-revalidate")
 
     // Check If-None-Match header
-    clientETags := parseIfNoneMatch(r.Header.Get("If-None-Match"))
+    clientETags := parseETagHeader(r.Header.Get("If-None-Match"))
     for _, clientETag := range clientETags {
-        if clientETag == "*" || clientETag == currentETag {
+        if clientETag == "*" || weakETagMatches(clientETag, currentETag) {
             // Content unchanged, return 304
             w.WriteHeader(http.StatusNotModified)
             return
@@ -922,9 +992,17 @@ func UpdateProduct(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Compare ETags
+    // Compare ETags with strong comparison for If-Match
     currentETag := generateETag(product)
-    if clientETag != currentETag {
+    matchesCurrent := false
+    for _, tag := range parseETagHeader(clientETag) {
+        if tag == "*" || strongETagMatches(tag, currentETag) {
+            matchesCurrent = true
+            break
+        }
+    }
+
+    if !matchesCurrent {
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusPreconditionFailed)
         json.NewEncoder(w).Encode(map[string]string{
@@ -1197,12 +1275,15 @@ if (clientETag === currentETag) {
   return res.status(304).end();
 }
 
-// CORRECT: Parse and check all ETags
+// CORRECT: Parse and check all ETags using weak comparison
 const clientETags = req.get('If-None-Match')
   ?.split(',')
   .map(tag => tag.trim()) || [];
 
-if (clientETags.includes(currentETag) || clientETags.includes('*')) {
+if (
+  clientETags.includes('*') ||
+  clientETags.some(tag => weakETagMatches(tag, currentETag))
+) {
   return res.status(304).end();
 }
 ```
@@ -1238,7 +1319,14 @@ app.get('/api/products/:id', async (req, res) => {
   const product = await db.products.findById(req.params.id); // DB query
   const etag = generateETag(product);
 
-  if (req.get('If-None-Match') === etag) {
+  const clientETags = req.get('If-None-Match')
+    ?.split(',')
+    .map(tag => tag.trim()) || [];
+
+  if (
+    clientETags.includes('*') ||
+    clientETags.some(tag => weakETagMatches(tag, etag))
+  ) {
     return res.status(304).end();
   }
   res.set('ETag', etag);
@@ -1252,7 +1340,14 @@ app.get('/api/products/:id', async (req, res) => {
   if (clientETag) {
     // Quick check: just fetch ETag column
     const storedETag = await db.products.getETag(req.params.id);
-    if (clientETag === storedETag) {
+    const clientETags = clientETag
+      .split(',')
+      .map(tag => tag.trim());
+
+    if (
+      clientETags.includes('*') ||
+      clientETags.some(tag => weakETagMatches(tag, storedETag))
+    ) {
       res.set('ETag', storedETag);
       return res.status(304).end();
     }
