@@ -331,11 +331,11 @@ jobs:
       - name: Determine bump type
         id: bump-type
         run: |
-          # Analyze recent commits
-          COMMITS=$(git log --oneline HEAD~5..HEAD)
-          if echo "$COMMITS" | grep -q "BREAKING CHANGE\|feat!:"; then
+          # Analyze recent commits using full commit messages (subject + body)
+          COMMITS=$(git log --format=%B HEAD~5..HEAD)
+          if echo "$COMMITS" | grep -qE "BREAKING CHANGE|^feat!:"; then
             echo "type=major" >> $GITHUB_OUTPUT
-          elif echo "$COMMITS" | grep -q "^feat:"; then
+          elif echo "$COMMITS" | grep -qE "^feat:"; then
             echo "type=minor" >> $GITHUB_OUTPUT
           else
             echo "type=patch" >> $GITHUB_OUTPUT
@@ -379,22 +379,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Generate changelog
-        id: changelog
-        uses: conventional-changelog/standard-version@v9
-        with:
-          release-as: ${{ inputs.version }}
-
-      - name: Update CHANGELOG.md
-        run: |
-          npx conventional-changelog-cli -p angular -i CHANGELOG.md -s
+        run: npx conventional-changelog-cli -p angular -i CHANGELOG.md -s -r 0
 
       - name: Commit changelog
         run: |
           git add CHANGELOG.md
-          git commit --amend --no-edit
-          git push --force-with-lease
+          git diff --staged --quiet || git commit -m "docs: update CHANGELOG"
+          git push
 ```
 
 ## Pre-release Versions
