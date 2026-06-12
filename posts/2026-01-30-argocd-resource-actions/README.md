@@ -90,8 +90,11 @@ argocd app actions run myapp abort --kind Rollout --resource-name my-rollout
 # Retry a failed rollout
 argocd app actions run myapp retry --kind Rollout --resource-name my-rollout
 
-# Promote to next step (skip analysis)
-argocd app actions run myapp promote --kind Rollout --resource-name my-rollout
+# Fully promote the rollout
+argocd app actions run myapp promote-full --kind Rollout --resource-name my-rollout
+
+# Skip the current rollout step
+argocd app actions run myapp skip-current-step --kind Rollout --resource-name my-rollout
 ```
 
 ## Custom Resource Actions
@@ -110,6 +113,7 @@ metadata:
   namespace: argocd
 data:
   resource.customizations.actions.apps_Deployment: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       actions["restart"] = {
@@ -132,7 +136,7 @@ data:
 
 ### Custom Action: Scale Deployment
 
-Create an action that scales a deployment to a specific replica count. This shows how to handle action parameters:
+Create actions that scale a deployment up, down, or to zero:
 
 ```yaml
 apiVersion: v1
@@ -142,6 +146,7 @@ metadata:
   namespace: argocd
 data:
   resource.customizations.actions.apps_Deployment: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       actions["scale-up"] = {
@@ -185,6 +190,7 @@ metadata:
   namespace: argocd
 data:
   resource.customizations.actions.apps_StatefulSet: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       -- Only show action for Redis StatefulSets
@@ -197,7 +203,11 @@ data:
     definitions:
       - name: flush-cache
         action.lua: |
+          local os = require("os")
           -- Add annotation to trigger cache flush job
+          if obj.spec.template.metadata == nil then
+            obj.spec.template.metadata = {}
+          end
           if obj.spec.template.metadata.annotations == nil then
             obj.spec.template.metadata.annotations = {}
           end
@@ -211,7 +221,7 @@ You can define actions for any custom resource, including CRDs from operators.
 
 ### Argo Rollouts Custom Actions
 
-Define custom actions for Argo Rollouts beyond the built-in ones:
+Define custom actions for Argo Rollouts alongside the built-in ones:
 
 ```yaml
 apiVersion: v1
@@ -221,6 +231,7 @@ metadata:
   namespace: argocd
 data:
   resource.customizations.actions.argoproj.io_Rollout: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       actions["full-promote"] = {
@@ -240,9 +251,9 @@ data:
           return obj
       - name: set-weight-50
         action.lua: |
-          -- Set canary weight to 50%
-          if obj.spec.strategy.canary ~= nil then
-            obj.spec.strategy.canary.setWeight = 50
+          -- Set the first canary step weight to 50%
+          if obj.spec.strategy ~= nil and obj.spec.strategy.canary ~= nil and obj.spec.strategy.canary.steps ~= nil then
+            obj.spec.strategy.canary.steps[1].setWeight = 50
           end
           return obj
 ```
@@ -261,18 +272,19 @@ data:
   resource.customizations.actions.cert-manager.io_Certificate: |
     discovery.lua: |
       actions = {}
-      actions["renew"] = {
+      actions["mark-renewal-request"] = {
         ["disabled"] = false
       }
       return actions
     definitions:
-      - name: renew
+      - name: mark-renewal-request
         action.lua: |
-          -- Trigger certificate renewal by updating annotation
+          local os = require("os")
+          -- Mark the Certificate for external automation. Use cmctl renew for cert-manager's built-in manual renewal flow.
           if obj.metadata.annotations == nil then
             obj.metadata.annotations = {}
           end
-          obj.metadata.annotations["cert-manager.io/issuer-name"] = obj.spec.issuerRef.name
+          obj.metadata.annotations["example.com/renewal-requested-at"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
           return obj
 ```
 
@@ -475,12 +487,13 @@ TOKEN=$(curl -s -X POST "https://argocd.example.com/api/v1/session" \
   -d '{"username":"admin","password":"secret"}' | jq -r '.token')
 
 # Run action via API
-curl -X POST "https://argocd.example.com/api/v1/applications/myapp/resource/actions" \
+curl -X POST "https://argocd.example.com/api/v1/applications/myapp/resource/actions/v2" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "namespace": "production",
     "resourceName": "my-deployment",
+    "version": "v1",
     "group": "apps",
     "kind": "Deployment",
     "action": "restart"
@@ -491,7 +504,7 @@ curl -X POST "https://argocd.example.com/api/v1/applications/myapp/resource/acti
 
 ### 1. Document Your Actions
 
-Add descriptions to help users understand what each action does:
+Add display names and icons to help users understand what each action does:
 
 ```yaml
 discovery.lua: |
@@ -499,7 +512,7 @@ discovery.lua: |
   actions["restart"] = {
     ["disabled"] = false,
     ["displayName"] = "Rolling Restart",
-    ["description"] = "Triggers a rolling restart of all pods"
+    ["iconClass"] = "fa fa-fw fa-redo"
   }
   return actions
 ```
