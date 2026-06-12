@@ -144,6 +144,10 @@ linkerd install \
 # Verify installation
 linkerd check
 
+# Install Linkerd Viz for metrics and troubleshooting commands
+linkerd viz install | kubectl apply -f -
+linkerd viz check
+
 # Repeat for cluster-east with its own issuer credentials
 kubectl config use-context cluster-east
 
@@ -156,6 +160,9 @@ linkerd install \
   | kubectl apply -f -
 
 linkerd check
+
+linkerd viz install | kubectl apply -f -
+linkerd viz check
 ```
 
 ## Step 2: Install the Multi-Cluster Extension
@@ -222,7 +229,7 @@ kubectl config use-context cluster-west
 
 # Generate the link configuration
 # This creates a secret with credentials to access cluster-west's API
-linkerd multicluster link --cluster-name cluster-west | \
+linkerd multicluster link-gen --cluster-name cluster-west | \
   kubectl --context=cluster-east apply -f -
 
 # Verify the link from cluster-east
@@ -241,7 +248,7 @@ For bidirectional communication, create the reverse link:
 # From cluster-east, generate link credentials for cluster-west
 kubectl config use-context cluster-east
 
-linkerd multicluster link --cluster-name cluster-east | \
+linkerd multicluster link-gen --cluster-name cluster-east | \
   kubectl --context=cluster-west apply -f -
 
 # Verify from cluster-west
@@ -261,8 +268,8 @@ kind: Service
 metadata:
   name: payment-service
   namespace: payments
-  # This annotation tells Linkerd to mirror this service to linked clusters
-  annotations:
+  # This label tells Linkerd to mirror this service to linked clusters
+  labels:
     mirror.linkerd.io/exported: "true"
 spec:
   selector:
@@ -332,51 +339,13 @@ kubectl get svc -n payments payment-service-cluster-west
 
 The gateway is the entry point for cross-cluster traffic. Configure it for production use.
 
-```yaml
-# gateway-config.yaml
-# Custom gateway configuration for production workloads
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: linkerd-gateway-config
-  namespace: linkerd-multicluster
-data:
-  # Gateway probe configuration
-  probe-networks: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
----
-# Customize gateway resources for high traffic
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: linkerd-gateway
-  namespace: linkerd-multicluster
-spec:
-  replicas: 3  # High availability
-  template:
-    spec:
-      containers:
-        - name: linkerd-gateway
-          resources:
-            requests:
-              cpu: 500m
-              memory: 256Mi
-            limits:
-              cpu: 2000m
-              memory: 1Gi
-          # Gateway-specific environment variables
-          env:
-            - name: LINKERD2_PROXY_INBOUND_CONNECT_TIMEOUT
-              value: "10s"
-            - name: LINKERD2_PROXY_OUTBOUND_CONNECT_TIMEOUT
-              value: "10s"
-      # Spread across availability zones
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: DoNotSchedule
-          labelSelector:
-            matchLabels:
-              app: linkerd-gateway
+```bash
+# Install the gateway in high-availability mode
+linkerd multicluster install --ha \
+  --gateway-probe-seconds 5 \
+  --set gateway.serviceAnnotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
+  --set gateway.serviceAnnotations."service\.beta\.kubernetes\.io/aws-load-balancer-cross-zone-load-balancing-enabled"=true \
+  | kubectl apply -f -
 ```
 
 Expose the gateway with appropriate networking:
@@ -436,6 +405,14 @@ flowchart TB
 
 ### Strategy 1: Traffic Split for Gradual Failover
 
+If you use SMI `TrafficSplit` resources, install the Linkerd SMI extension first:
+
+```bash
+helm repo add linkerd-smi https://linkerd.github.io/linkerd-smi
+helm repo update
+helm install linkerd-smi -n linkerd-smi --create-namespace linkerd-smi/linkerd-smi
+```
+
 ```yaml
 # traffic-split-failover.yaml
 # Use TrafficSplit to distribute load between local and remote services
@@ -456,11 +433,11 @@ spec:
       weight: 100  # 10% to remote (warm standby)
 ```
 
-### Strategy 2: Automatic Failover with ServiceProfile
+### Strategy 2: Retries and Timeouts with ServiceProfile
 
 ```yaml
 # service-profile-failover.yaml
-# Configure retry and timeout behavior for failover
+# Configure retry and timeout behavior for versions still using ServiceProfile
 apiVersion: linkerd.io/v1alpha2
 kind: ServiceProfile
 metadata:
@@ -540,11 +517,11 @@ spec:
 #   sleep(HEALTH_CHECK_INTERVAL)
 ```
 
-### Strategy 4: Geographic Load Balancing
+### Strategy 4: Regional Traffic Weighting
 
 ```yaml
 # geo-traffic-split.yaml
-# Route traffic based on geographic proximity
+# Use static weights to prefer a regional service
 apiVersion: split.smi-spec.io/v1alpha2
 kind: TrafficSplit
 metadata:
@@ -588,9 +565,9 @@ data:
 
     remote_write:
       # Send metrics to OneUptime for unified multi-cluster visibility
-      - url: https://otlp.oneuptime.com/api/v1/metrics
+      - url: https://oneuptime.com/api/telemetry/metrics/v1/remote-write
         headers:
-          X-OneUptime-Token: "${ONEUPTIME_TOKEN}"
+          x-oneuptime-token: "${ONEUPTIME_TOKEN}"
         write_relabel_configs:
           - source_labels: [__name__]
             regex: 'linkerd.*|request.*|response.*'
@@ -636,38 +613,34 @@ spec:
         # Alert when gateway is unreachable
         - alert: LinkerdGatewayDown
           expr: |
-            sum(up{job="linkerd-gateway"}) by (cluster) == 0
+            gateway_alive == 0
           for: 2m
           labels:
             severity: critical
           annotations:
-            summary: "Linkerd gateway is down in {{ $labels.cluster }}"
+            summary: "Linkerd gateway is down for {{ $labels.target_cluster_name }}"
             description: "The multi-cluster gateway has been unreachable for 2 minutes"
 
         # Alert on high cross-cluster latency
         - alert: CrossClusterLatencyHigh
           expr: |
-            histogram_quantile(0.99,
-              sum(rate(response_latency_ms_bucket{
-                dst_service=~".*-cluster-.*"
-              }[5m])) by (le, dst_service)
-            ) > 500
+            gateway_latency > 500
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "High latency to {{ $labels.dst_service }}"
-            description: "P99 latency to remote service exceeds 500ms"
+            summary: "High latency to {{ $labels.target_cluster_name }}"
+            description: "The latest gateway probe latency exceeds 500ms"
 
-        # Alert when mirror service endpoints are unhealthy
-        - alert: MirrorServiceEndpointsDown
+        # Alert when mirror endpoints require repeated repair
+        - alert: MirrorEndpointRepairsHigh
           expr: |
-            sum(linkerd_mirror_endpoints_total{alive="false"}) by (service) > 0
+            increase(service_mirror_endpoint_repairs[5m]) > 0
           for: 3m
           labels:
             severity: warning
           annotations:
-            summary: "Mirror service {{ $labels.service }} has unhealthy endpoints"
+            summary: "Service mirror endpoint repairs for {{ $labels.target_cluster_name }}"
 ```
 
 ## Troubleshooting Multi-Cluster Issues
@@ -711,10 +684,10 @@ linkerd viz stat deploy -n payments --from deploy/frontend
 ```bash
 # Verify trust anchor is consistent across clusters
 kubectl config use-context cluster-west
-kubectl -n linkerd get secret linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' | base64 -d | openssl x509 -noout -text | head -20
+kubectl -n linkerd get configmap linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' | openssl x509 -noout -text | head -20
 
 kubectl config use-context cluster-east
-kubectl -n linkerd get secret linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' | base64 -d | openssl x509 -noout -text | head -20
+kubectl -n linkerd get configmap linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' | openssl x509 -noout -text | head -20
 
 # Both should show the same root certificate
 ```
