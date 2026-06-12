@@ -140,6 +140,9 @@ class Planner:
     def __init__(self, client: OpenAI, available_actions: list[dict]):
         self.client = client
         self.available_actions = available_actions
+        self.action_definitions = {
+            action["name"]: action for action in available_actions
+        }
 
     def create_plan(self, goal: Goal, world_state: dict) -> Plan:
         """Generate a plan to achieve the given goal."""
@@ -148,7 +151,7 @@ class Planner:
         prompt = self._build_planning_prompt(goal, world_state)
 
         response = self.client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-5.5",
             messages=[
                 {"role": "system", "content": self._system_prompt()},
                 {"role": "user", "content": prompt}
@@ -202,10 +205,13 @@ Create a plan to achieve this goal."""
         """Convert LLM output into Action objects."""
         actions = []
         for step in plan_data.get("steps", []):
+            action_definition = self.action_definitions.get(step["action"], {})
             action = Action(
                 name=step["action"],
                 description=step.get("purpose", ""),
-                parameters=step.get("parameters", {})
+                parameters=step.get("parameters", {}),
+                preconditions=action_definition.get("preconditions", []),
+                effects=action_definition.get("effects", [])
             )
             actions.append(action)
         return actions
@@ -239,6 +245,12 @@ class Executor:
         try:
             result = handler(**action.parameters)
             action.result = result
+            if isinstance(result, dict):
+                for key in ("success", "passed", "healthy"):
+                    if result.get(key) is False:
+                        action.status = ActionStatus.FAILED
+                        action.error = result.get("errors") or result.get("output") or f"{key} was false"
+                        return False
             action.status = ActionStatus.COMPLETED
             return True
         except Exception as e:
@@ -275,7 +287,7 @@ Has the goal been achieved? Respond with JSON:
 """
 
         response = self.client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-5.5",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
@@ -304,7 +316,8 @@ Has the goal been achieved? Respond with JSON:
         # Simple key-value check; could be extended with LLM evaluation
         if ":" in precondition:
             key, expected = precondition.split(":", 1)
-            return str(world_state.get(key.strip())) == expected.strip()
+            actual = world_state.get(key.strip())
+            return str(actual).strip().lower() == expected.strip().lower()
         return precondition in world_state
 ```
 
@@ -336,6 +349,14 @@ class PlanningAgent:
             action = plan.current_action()
             print(f"Executing: {action.name}")
 
+            # Check preconditions before executing the current action
+            needs_replan, reason = self.monitor.should_replan(plan, self.world_state)
+            if needs_replan:
+                print(f"Replanning due to: {reason}")
+                plan = self.planner.create_plan(goal, self.world_state)
+                replan_count += 1
+                continue
+
             # Execute the current action
             success = self.executor.execute(action)
 
@@ -365,7 +386,15 @@ class PlanningAgent:
         for effect in action.effects:
             if ":" in effect:
                 key, value = effect.split(":", 1)
-                self.world_state[key.strip()] = value.strip()
+                self.world_state[key.strip()] = self._parse_effect_value(value.strip())
+
+    def _parse_effect_value(self, value: str):
+        """Convert simple effect strings into useful Python values."""
+        if value.lower() == "true":
+            return True
+        if value.lower() == "false":
+            return False
+        return value
 ```
 
 ## Advanced Planning Strategies
@@ -414,7 +443,7 @@ class TreeOfThoughtsPlanner(Planner):
             prompt += f"\n\nGenerate approach #{i+1}, different from previous approaches."
 
             response = self.client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-5.5",
                 messages=[
                     {"role": "system", "content": self._system_prompt()},
                     {"role": "user", "content": prompt}
@@ -460,7 +489,7 @@ Respond with JSON: {{"score": 0.X, "reasoning": "explanation"}}
 """
 
         response = self.client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-5.5",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
@@ -539,7 +568,7 @@ Respond with JSON:
 """
 
         response = self.client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-5.5",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
@@ -559,7 +588,12 @@ Respond with JSON:
         for effect in action.effects:
             if ":" in effect:
                 key, value = effect.split(":", 1)
-                world_state[key.strip()] = value.strip()
+                if value.strip().lower() == "true":
+                    world_state[key.strip()] = True
+                elif value.strip().lower() == "false":
+                    world_state[key.strip()] = False
+                else:
+                    world_state[key.strip()] = value.strip()
 ```
 
 ## Practical Example: DevOps Automation Agent
@@ -806,6 +840,15 @@ class ObservableAgent(PlanningAgent):
             "replans": len([e for e in self.execution_log if e["event"] == "replan"]),
             "duration": self._calculate_duration()
         }
+
+    def _calculate_duration(self) -> float:
+        """Return elapsed execution time in seconds."""
+        if len(self.execution_log) < 2:
+            return 0.0
+
+        start = datetime.fromisoformat(self.execution_log[0]["timestamp"])
+        end = datetime.fromisoformat(self.execution_log[-1]["timestamp"])
+        return (end - start).total_seconds()
 ```
 
 ## Common Pitfalls to Avoid
