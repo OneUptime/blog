@@ -12,10 +12,10 @@ Entity Framework Core makes database access convenient, but that convenience can
 
 ## Understanding the N+1 Problem
 
-The most common EF Core performance issue is the N+1 query problem:
+The most common EF Core performance issue is the N+1 query problem. For example, if lazy loading is enabled:
 
 ```csharp
-// This looks innocent but causes N+1 queries
+// This looks innocent but causes N+1 queries when lazy loading is enabled
 var orders = await context.Orders.ToListAsync();
 
 foreach (var order in orders)
@@ -25,7 +25,7 @@ foreach (var order in orders)
 }
 ```
 
-If you have 100 orders, this code executes 101 queries: one for orders and one for each customer. The fix is eager loading:
+If you have 100 orders, this code can execute 101 queries: one for orders and one for each customer. The fix is eager loading:
 
 ```csharp
 // Include loads related data in a single query
@@ -185,7 +185,7 @@ var orders = await context.Orders
     .ToListAsync();
 ```
 
-Keyset pagination (also called cursor-based pagination) performs better on large tables because it does not require counting rows to skip.
+Keyset pagination (also called cursor-based pagination) performs better on large tables because it does not require the database to process all skipped rows before returning the next page.
 
 ## Batch Operations
 
