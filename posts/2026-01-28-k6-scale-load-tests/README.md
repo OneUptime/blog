@@ -98,13 +98,13 @@ const users = new SharedArray('users', function () {
 export const options = {
   vus: 1000,
   duration: '10m',
-  // Limit batch size to control memory
+  // If the script uses http.batch(), limit batch concurrency
   batch: 10,
   batchPerHost: 5,
 };
 
 export default function () {
-  // Access shared data without copying
+  // SharedArray avoids copying the full data set for every VU
   const user = users[__VU % users.length];
 
   http.post('https://api.example.com/login', JSON.stringify({
@@ -171,7 +171,7 @@ spec:
     configMap:
       name: k6-test-script
       file: script.js
-  arguments: --out json=/results/output.json
+  arguments: --out json=/tmp/output.json
   runner:
     image: grafana/k6:latest
     resources:
@@ -199,7 +199,7 @@ export const options = {
   scenarios: {
     distributed_load: {
       executor: 'constant-arrival-rate',
-      rate: 1000,            // 1000 req/s per pod
+      rate: 1000,            // 1000 req/s total, split by the operator
       timeUnit: '1s',
       duration: '10m',
       preAllocatedVUs: 100,
@@ -408,11 +408,11 @@ export default function () {
 Run on k6 Cloud:
 
 ```bash
-# Login to k6 Cloud
-k6 login cloud --token YOUR_API_TOKEN
+# Login to Grafana Cloud k6
+k6 cloud login --token YOUR_API_TOKEN --stack YOUR_STACK_SLUG
 
 # Run on cloud
-k6 cloud cloud-test.js
+k6 cloud run cloud-test.js
 ```
 
 ## Load Generation Architecture
@@ -587,7 +587,7 @@ spec:
       "title": "p95 Latency (aggregated)",
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds_bucket[1m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds[1m])))",
           "legendFormat": "p95"
         }
       ]
