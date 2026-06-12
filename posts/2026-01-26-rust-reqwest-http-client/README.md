@@ -54,8 +54,7 @@ edition = "2021"
 
 [dependencies]
 # The main HTTP client library
-
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "gzip"] }
 
 # Async runtime - reqwest uses tokio under the hood
 tokio = { version = "1", features = ["full"] }
@@ -78,7 +77,7 @@ use reqwest::Error;
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     // Create a simple GET request to a public API
-    let response = reqwest::get("https://api.github.com/users/rust-lang")
+    let response = reqwest::get("https://httpbin.org/get")
         .await?;
 
     // Check if the request was successful
@@ -262,15 +261,14 @@ Many APIs require authentication or custom headers:
 
 ```rust
 use reqwest::{Client, header};
-use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
 
     // Method 1: Add headers to a single request
-    let response = client
-        .get("https://api.example.com/data")
+    let _response = client
+        .get("https://httpbin.org/headers")
         .header("Authorization", "Bearer your-token-here")
         .header("Accept", "application/json")
         .header("X-Custom-Header", "custom-value")
@@ -310,7 +308,7 @@ Building URLs with query parameters is clean and safe:
 
 ```rust
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 struct SearchResult {
@@ -364,8 +362,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
-use serde::Serialize;
 ```
 
 ## Error Handling
@@ -546,12 +542,15 @@ pub struct Todo {
     pub id: Option<u64>,
     pub title: String,
     pub completed: bool,
+    #[serde(rename = "userId")]
     pub user_id: u64,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CreateTodo {
     pub title: String,
+    pub completed: bool,
+    #[serde(rename = "userId")]
     pub user_id: u64,
 }
 
@@ -697,6 +696,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a new todo
     let new_todo = CreateTodo {
         title: "Learn Rust HTTP clients".to_string(),
+        completed: false,
         user_id: 1,
     };
     let created = client.create_todo(new_todo).await?;
@@ -730,6 +730,7 @@ classDiagram
 
     class CreateTodo {
         +String title
+        +bool completed
         +u64 user_id
     }
 
