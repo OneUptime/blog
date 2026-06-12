@@ -86,7 +86,7 @@ Static URLs work for simple setups, but production systems need dynamic routing 
 
 alerts:
   - name: high_latency
-    expr: histogram_quantile(0.99, http_request_duration_seconds_bucket) > 0.5
+    expr: histogram_quantile(0.99, sum by (service, le) (rate(http_request_duration_seconds_bucket[5m]))) > 0.5
     labels:
       severity: warning
       service: "{{ $labels.service }}"
@@ -160,13 +160,15 @@ class RunbookUrlBuilder {
 
   categorizeAlert(labels) {
     // Categorize based on alert characteristics
-    if (labels.alertname?.includes('latency') || labels.alertname?.includes('slow')) {
+    const alertName = (labels.alertname || '').toLowerCase();
+
+    if (alertName.includes('latency') || alertName.includes('slow')) {
       return 'latency';
     }
-    if (labels.alertname?.includes('error') || labels.alertname?.includes('failure')) {
+    if (alertName.includes('error') || alertName.includes('failure')) {
       return 'errors';
     }
-    if (labels.alertname?.includes('memory') || labels.alertname?.includes('cpu') || labels.alertname?.includes('disk')) {
+    if (alertName.includes('memory') || alertName.includes('cpu') || alertName.includes('disk')) {
       return 'saturation';
     }
     return null;
@@ -181,7 +183,7 @@ class RunbookUrlBuilder {
 
   normalizeUrl(url) {
     // Ensure URL is absolute
-    if (url.startsWith('http')) {
+    if (/^https?:\/\//.test(url)) {
       return url;
     }
     return `${this.baseUrl}${url}`;
@@ -215,7 +217,6 @@ console.log(runbookUrl);
 ```python
 # runbook_url_builder.py
 import re
-from urllib.parse import urljoin
 from typing import Optional, Dict, Any
 
 class RunbookUrlBuilder:
@@ -265,7 +266,7 @@ class RunbookUrlBuilder:
         return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
     def _normalize_url(self, url: str) -> str:
-        if url.startswith("http"):
+        if re.match(r"^https?://", url):
             return url
         return f"{self.base_url}{url}"
 
@@ -440,7 +441,7 @@ runbooks/
 
 ### Runbook Template
 
-```markdown
+````markdown
 <!-- runbooks/_templates/runbook-template.md -->
 # {Alert Name} Runbook
 
@@ -473,7 +474,7 @@ Brief description of what this alert means and why it fires.
 2. **Verify the symptoms:**
    ```bash
    kubectl logs -l app=service-name --tail=100
-   ```bash
+   ```
 3. **Identify the root cause:**
    - Common cause 1: [Description and verification]
    - Common cause 2: [Description and verification]
@@ -485,7 +486,7 @@ Brief description of what this alert means and why it fires.
 1. Step one with command
    ```bash
    # Command to run
-   ```bash
+   ```
 2. Step two
 3. Verify resolution
 
@@ -516,7 +517,7 @@ Brief description of what this alert means and why it fires.
 **Changelog:**
 - YYYY-MM-DD: Initial version
 - YYYY-MM-DD: Updated diagnosis steps
-```text
+````
 
 ### Versioned URL Scheme
 
@@ -712,42 +713,93 @@ class RunbookPage {
 
     const banner = document.createElement('div');
     banner.className = 'alert-context-banner';
-    banner.innerHTML = `
-      <h3>Alert Context</h3>
-      <dl>
-        <dt>Alert</dt><dd>${this.context.alert}</dd>
-        <dt>Service</dt><dd>${this.context.service}</dd>
-        <dt>Severity</dt><dd><span class="severity-${this.context.severity}">${this.context.severity}</span></dd>
-        <dt>Instance</dt><dd>${this.context.instance}</dd>
-        <dt>Started</dt><dd>${new Date(this.context.started).toLocaleString()}</dd>
-        <dt>Region</dt><dd>${this.context.env} / ${this.context.region}</dd>
-        <dt>Value</dt><dd>${this.context.value}</dd>
-      </dl>
-      <div class="quick-links">
-        <a href="${this.buildDashboardUrl()}" target="_blank">Open Dashboard</a>
-        <a href="${this.buildLogsUrl()}" target="_blank">View Logs</a>
-        <a href="${this.buildTracesUrl()}" target="_blank">View Traces</a>
-      </div>
-    `;
+
+    const heading = document.createElement('h3');
+    heading.textContent = 'Alert Context';
+    banner.appendChild(heading);
+
+    const details = document.createElement('dl');
+    this.addDetail(details, 'Alert', this.context.alert);
+    this.addDetail(details, 'Service', this.context.service);
+    this.addDetail(details, 'Severity', this.context.severity, `severity-${this.context.severity || 'unknown'}`);
+    this.addDetail(details, 'Instance', this.context.instance);
+    this.addDetail(details, 'Started', this.formatStarted());
+    this.addDetail(details, 'Region', `${this.context.env || ''} / ${this.context.region || ''}`);
+    this.addDetail(details, 'Value', this.context.value);
+    banner.appendChild(details);
+
+    const quickLinks = document.createElement('div');
+    quickLinks.className = 'quick-links';
+    quickLinks.appendChild(this.createLink('Open Dashboard', this.buildDashboardUrl()));
+    quickLinks.appendChild(this.createLink('View Logs', this.buildLogsUrl()));
+    quickLinks.appendChild(this.createLink('View Traces', this.buildTracesUrl()));
+    banner.appendChild(quickLinks);
 
     document.body.prepend(banner);
   }
 
+  addDetail(list, label, value, valueClass = null) {
+    const term = document.createElement('dt');
+    term.textContent = label;
+
+    const description = document.createElement('dd');
+    if (valueClass) {
+      const span = document.createElement('span');
+      span.className = valueClass;
+      span.textContent = value || '';
+      description.appendChild(span);
+    } else {
+      description.textContent = value || '';
+    }
+
+    list.appendChild(term);
+    list.appendChild(description);
+  }
+
+  createLink(text, href) {
+    const link = document.createElement('a');
+    link.href = href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = text;
+    return link;
+  }
+
+  formatStarted() {
+    if (!this.context.started) return '';
+    const date = new Date(this.context.started);
+    return Number.isNaN(date.getTime()) ? this.context.started : date.toLocaleString();
+  }
+
   buildDashboardUrl() {
     const { service, started, env, region } = this.context;
-    const from = new Date(started).getTime() - 15 * 60 * 1000; // 15 min before
+    const startedMs = new Date(started).getTime();
+    const from = Number.isNaN(startedMs) ? Date.now() - 15 * 60 * 1000 : startedMs - 15 * 60 * 1000;
     const to = Date.now();
-    return `https://grafana.company.com/d/service-overview?var-service=${service}&var-env=${env}&var-region=${region}&from=${from}&to=${to}`;
+    const url = new URL('https://grafana.company.com/d/service-overview');
+    url.searchParams.set('var-service', service || '');
+    url.searchParams.set('var-env', env || '');
+    url.searchParams.set('var-region', region || '');
+    url.searchParams.set('from', from);
+    url.searchParams.set('to', to);
+    return url.toString();
   }
 
   buildLogsUrl() {
     const { service, instance, started } = this.context;
-    return `https://oneuptime.company.com/logs?service=${service}&pod=${instance}&from=${started}`;
+    const url = new URL('https://oneuptime.company.com/logs');
+    url.searchParams.set('service', service || '');
+    url.searchParams.set('pod', instance || '');
+    url.searchParams.set('from', started || '');
+    return url.toString();
   }
 
   buildTracesUrl() {
     const { service, started } = this.context;
-    return `https://oneuptime.company.com/traces?service=${service}&from=${started}`;
+    const url = new URL('https://oneuptime.company.com/traces');
+    url.searchParams.set('service', service || '');
+    url.searchParams.set('from', started || '');
+    return url.toString();
   }
 
   prefillDiagnostics() {
@@ -899,6 +951,7 @@ class RunbookValidator {
       const protocol = url.startsWith('https') ? https : http;
 
       const req = protocol.get(url, { timeout: this.timeout }, (res) => {
+        res.resume();
         resolve(res.statusCode);
       });
 
@@ -925,7 +978,7 @@ class RunbookValidator {
         valid: valid.length,
         invalid: invalid.length,
         errors: errors.length,
-        passRate: ((valid.length / this.results.length) * 100).toFixed(1) + '%',
+        passRate: this.results.length === 0 ? '0.0%' : ((valid.length / this.results.length) * 100).toFixed(1) + '%',
       },
       invalid: invalid.map(r => ({
         alert: r.alert,
@@ -947,6 +1000,8 @@ class RunbookValidator {
 async function main() {
   const validator = new RunbookValidator({ timeout: 5000, retries: 2 });
   const report = await validator.validateAlertConfig('./prometheus-rules.yaml');
+
+  fs.writeFileSync('validation-report.json', JSON.stringify(report, null, 2));
 
   console.log('\n=== Runbook Validation Report ===');
   console.log(`Total: ${report.summary.total}`);
@@ -1042,7 +1097,7 @@ jobs:
               });
             }
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
@@ -1186,7 +1241,7 @@ class AlertEnrichmentService {
   }
 
   normalizeUrl(url) {
-    if (url.startsWith('http')) return url;
+    if (/^https?:\/\//.test(url)) return url;
     return `${this.runbookBaseUrl}${url}`;
   }
 
