@@ -8,7 +8,7 @@ Description: A comprehensive guide to migrating from Apache Cassandra to ScyllaD
 
 ---
 
-> ScyllaDB is not just a drop-in replacement for Cassandra; it is a shard-per-core reimplementation in C++ that eliminates the JVM's garbage collection pauses. Migration is straightforward because ScyllaDB speaks CQL and accepts Cassandra SSTables directly, but the devil is in the details: schema nuances, driver tuning, and validation at scale.
+> ScyllaDB is not just a drop-in replacement for Cassandra; it is a shard-per-core reimplementation in C++ that eliminates the JVM's garbage collection pauses. Migration is straightforward because ScyllaDB speaks CQL and can load Cassandra SSTables through ScyllaDB's loader tools, but the devil is in the details: schema nuances, driver tuning, and validation at scale.
 
 ## Why Migrate to ScyllaDB?
 
@@ -117,7 +117,7 @@ schema_verification:
     - TTL and per-cell timestamps
 
   verify_before_migration:
-    - Counter tables (ensure proper anti-entropy)
+    - Counter tables (Apache Cassandra 2.0 local counter SSTables cannot be migrated with SSTableLoader)
     - Custom compaction strategies (ScyllaDB has its own optimized strategies)
     - Encryption at rest configuration differences
     - Authentication and authorization settings
@@ -130,7 +130,7 @@ schema_verification:
 
 ## Phase 2: Using sstableloader for Data Migration
 
-The `sstableloader` tool is the most reliable method for bulk data migration. It streams SSTable files directly to ScyllaDB nodes.
+ScyllaDB's `sstableloader` tool bulk loads SSTable files into ScyllaDB through the CQL API. It is still useful for many migrations, but ScyllaDB now marks SSTableLoader as deprecated and recommends `nodetool refresh --load-and-stream` for new workflows where possible.
 
 ### Prepare the Target Cluster
 
@@ -199,21 +199,22 @@ KEYSPACE="my_keyspace"
 TABLE="my_table"
 SSTABLE_DIR="/mnt/migration/sstables/${KEYSPACE}/${TABLE}"
 
-# Run sstableloader with optimized settings
+# Run the ScyllaDB sstableloader with optimized settings
 # -d: comma-separated list of ScyllaDB nodes
 # -t: throttle in Mbps (adjust based on network capacity)
-# --connections-per-host: parallel streams per node
+# -cph/--connections-per-host: concurrent connections per host
+# The SSTABLE_DIR path must end in /keyspace/table because the loader
+# derives the target keyspace and table from the directory path.
 sstableloader \
     -d ${SCYLLA_NODES} \
     -t 500 \
     --connections-per-host 4 \
-    --keyspace ${KEYSPACE} \
     ${SSTABLE_DIR}
 
 # For authenticated clusters, add credentials
 sstableloader \
     -d ${SCYLLA_NODES} \
-    -u cassandra \
+    --username cassandra \
     -pw ${CASSANDRA_PASSWORD} \
     -t 500 \
     ${SSTABLE_DIR}
@@ -257,7 +258,6 @@ ScyllaDB is wire-compatible with Cassandra, but optimizing driver configuration 
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
-import com.datastax.oss.driver.api.core.loadbalancing.LoadBalancingPolicy;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
@@ -287,6 +287,7 @@ public class ScyllaDbSessionConfig {
 
             // Speculative execution for tail latency reduction
             // ScyllaDB's consistent latency makes this less critical
+            // The driver only applies it to statements marked idempotent
             .withString(DefaultDriverOption.SPECULATIVE_EXECUTION_POLICY_CLASS,
                 "ConstantSpeculativeExecutionPolicy")
             .withInt(DefaultDriverOption.SPECULATIVE_EXECUTION_MAX, 2)
@@ -339,6 +340,7 @@ def create_scylla_session():
 
     # Speculative execution retries slow queries on another node
     # ScyllaDB's predictable latency means this rarely triggers
+    # The driver only applies it to statements marked idempotent
     speculative_policy = ConstantSpeculativeExecutionPolicy(
         delay=0.1,  # 100ms delay before speculative retry
         max_attempts=2
@@ -483,7 +485,7 @@ public class DualWriteService {
 
         try {
             cassandraSession.execute(bound);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             // Primary write failed - propagate error to caller
             logger.error("Primary write to Cassandra failed", e);
             throw e;
@@ -556,6 +558,19 @@ public class DualWriteService {
         return new ValidationResult(true, "Results match");
     }
 
+    public static class ValidationResult {
+        private final boolean valid;
+        private final String message;
+
+        public ValidationResult(boolean valid, String message) {
+            this.valid = valid;
+            this.message = message;
+        }
+
+        public boolean isValid() { return valid; }
+        public String getMessage() { return message; }
+    }
+
     // Migration phase control methods
     public void enableScyllaReads() { this.readFromScylla = true; }
     public void disableDualWrite() { this.dualWriteEnabled = false; }
@@ -569,17 +584,17 @@ public class DualWriteService {
 # Alternative dual-write using Cassandra CDC for guaranteed delivery
 
 from cassandra.cluster import Cluster
-from kafka import KafkaConsumer, KafkaProducer
+from kafka import KafkaConsumer
 import json
 
 class CDCMigrationPipeline:
     """
-    Uses Cassandra CDC (Change Data Capture) to stream changes to ScyllaDB.
+    Uses a CDC pipeline built on Cassandra commitlog CDC files to stream changes to ScyllaDB.
 
-    This approach guarantees no data loss because:
-    1. CDC logs are persisted before the write is acknowledged
-    2. A separate consumer processes CDC logs and applies to ScyllaDB
-    3. Failed writes can be retried from the CDC log
+    This approach can provide durable replay when:
+    1. Cassandra CDC is enabled on the source tables
+    2. A separate process reads the CDC log files and publishes normalized events
+    3. Failed writes can be retried from Kafka or a dead-letter queue
     """
 
     def __init__(self, kafka_brokers, scylla_nodes):
@@ -636,7 +651,7 @@ class CDCMigrationPipeline:
         """Apply INSERT operation to ScyllaDB."""
         columns = list(event['columns'].keys())
         placeholders = ', '.join(['?' for _ in columns])
-        cql = f"INSERT INTO {event['table']} ({', '.join(columns)}) VALUES ({placeholders})"
+        cql = f"INSERT INTO {event['table']} ({', '.join(columns)}) VALUES ({placeholders}) USING TIMESTAMP {event['timestamp']}"
 
         stmt = self.scylla_session.prepare(cql)
         self.scylla_session.execute(stmt, list(event['columns'].values()))
@@ -660,6 +675,15 @@ class CDCMigrationPipeline:
 
         stmt = self.scylla_session.prepare(cql)
         self.scylla_session.execute(stmt, self._get_key_values(event))
+
+    def _build_where_clause(self, event):
+        """Build a primary-key WHERE clause from partition and clustering keys."""
+        keys = list(event['partition_key'].keys()) + list(event.get('clustering_key', {}).keys())
+        return ' AND '.join([f"{key} = ?" for key in keys])
+
+    def _get_key_values(self, event):
+        """Return primary-key values in the same order as _build_where_clause."""
+        return list(event['partition_key'].values()) + list(event.get('clustering_key', {}).values())
 ```
 
 ## Phase 5: Validation and Testing
@@ -674,9 +698,7 @@ Thorough validation ensures data integrity and application compatibility before 
 
 from cassandra.cluster import Cluster
 from cassandra.query import SimpleStatement, ConsistencyLevel
-import hashlib
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class MigrationValidator:
     """
@@ -699,8 +721,8 @@ class MigrationValidator:
         Compare row counts between clusters.
 
         Note: COUNT(*) can be expensive on large tables.
-        For very large tables, use ALLOW FILTERING with LIMIT
-        or estimate from nodetool tablestats.
+        For very large tables, use estimates from nodetool tablestats
+        or compare token-range samples/checksums instead.
         """
         cql = f"SELECT COUNT(*) FROM {table}"
 
@@ -723,11 +745,13 @@ class MigrationValidator:
 
     def validate_partition_sample(self, table, partition_key_column, sample_size=1000):
         """
-        Sample random partitions and compare data.
+        Sample a bounded set of partitions and compare data.
 
         This catches data corruption without scanning the entire table.
         """
-        # Get sample of partition keys from Cassandra
+        # Get a bounded sample of partition keys from Cassandra.
+        # For statistically random sampling, select keys from an application-side
+        # sample set or split the table into token ranges.
         sample_cql = f"SELECT DISTINCT {partition_key_column} FROM {table} LIMIT {sample_size}"
         partition_keys = [row[0] for row in self.cassandra.execute(sample_cql)]
 
