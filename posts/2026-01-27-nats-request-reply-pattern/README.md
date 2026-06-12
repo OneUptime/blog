@@ -43,7 +43,6 @@ package main
 
 import (
     "log"
-    "time"
 
     "github.com/nats-io/nats.go"
 )
@@ -165,6 +164,17 @@ import (
     "github.com/nats-io/nats.go"
 )
 
+type CalculateRequest struct {
+    Operation string  `json:"operation"`
+    A         float64 `json:"a"`
+    B         float64 `json:"b"`
+}
+
+type CalculateResponse struct {
+    Result float64 `json:"result"`
+    Error  string  `json:"error,omitempty"`
+}
+
 func main() {
     nc, _ := nats.Connect(nats.DefaultURL)
     defer nc.Close()
@@ -263,7 +273,7 @@ main();
 
 ```javascript
 // requester.js
-const { connect } = require('nats');
+const { connect, ErrorCode } = require('nats');
 
 async function main() {
     const nc = await connect({ servers: 'localhost:4222' });
@@ -280,7 +290,9 @@ async function main() {
         const user = JSON.parse(new TextDecoder().decode(response.data));
         console.log('User found:', user);
     } catch (err) {
-        if (err.code === 'TIMEOUT') {
+        if (err.code === ErrorCode.NoResponders) {
+            console.error('No responders available');
+        } else if (err.code === ErrorCode.Timeout) {
             console.error('Request timed out');
         } else {
             console.error('Request failed:', err.message);
@@ -301,7 +313,7 @@ NATS generates unique inbox subjects using the format `_INBOX.<random>`. These s
 
 - **Ephemeral** - Only exist for the duration of the request
 - **Unique** - Generated with enough randomness to avoid collisions
-- **Private** - Only the requester subscribes to them
+- **Directed** - The requester subscribes to them for replies; use NATS authorization rules if you need to restrict who can subscribe or publish to inbox subjects
 
 ```go
 // Manual inbox creation (usually not needed)
@@ -349,10 +361,9 @@ func makeRequest(nc *nats.Conn, subject string, data []byte) ([]byte, error) {
 
 ### Detecting No Responders
 
-NATS 2.2+ can detect when no responders exist:
+With a server and client that support headers, NATS can detect when no responders exist:
 
 ```go
-// Enable no-responders detection
 nc, _ := nats.Connect(nats.DefaultURL)
 
 msg, err := nc.Request("nonexistent.service", data, time.Second)
@@ -366,7 +377,7 @@ if err == nats.ErrNoResponders {
 
 ## Multiple Responders and Scatter-Gather
 
-When multiple services subscribe to the same subject, only one receives each request by default. You can collect responses from all responders:
+When multiple services subscribe to the same subject, NATS publishes the request to all matching subscribers. The built-in `Request()` call returns one response, but you can collect responses from multiple responders manually:
 
 ```go
 // scatter_gather.go
@@ -431,7 +442,7 @@ func main() {
     defer nc.Close()
 
     // Subscribe with queue group
-    // NATS will load-balance requests across all workers in "workers" group
+    // NATS will distribute requests across workers in the "workers" group
     nc.QueueSubscribe("tasks.process", "workers", func(msg *nats.Msg) {
         log.Printf("Worker processing task")
 
@@ -446,9 +457,9 @@ func main() {
 
 With queue groups:
 - Only ONE subscriber in the group receives each message
-- Requests are distributed round-robin
+- Requests are distributed across available group members
 - Adding more workers increases throughput
-- Failed workers are automatically bypassed
+- Disconnected workers stop receiving new messages; design handlers to be idempotent because core NATS does not redeliver a request if a worker fails after receiving it
 
 ---
 
@@ -516,9 +527,9 @@ func sendSuccessResponse(nc *nats.Conn, reply string, data interface{}) {
 
 ---
 
-## JetStream Request-Reply
+## JetStream Request Processing
 
-JetStream adds persistence and exactly-once semantics to request-reply:
+JetStream can persist request messages and let responders acknowledge work explicitly. Exactly-once-style processing requires JetStream publish de-duplication and confirmed consumer acknowledgments; a basic pull consumer still needs idempotent processing:
 
 ```go
 // Using JetStream for reliable request-reply
@@ -555,7 +566,7 @@ func main() {
             }
 
             // Acknowledge message after successful processing
-            msg.Ack()
+            msg.AckSync()
         }
     }
 }
@@ -563,7 +574,7 @@ func main() {
 
 ### Request-Reply with Headers
 
-JetStream supports headers for metadata:
+NATS supports headers for metadata:
 
 ```go
 // Send request with headers
@@ -665,7 +676,7 @@ if len(responses) < minimumRequired {
 | Basic Request-Reply | Simple RPC calls |
 | Queue Groups | Load-balanced services |
 | Scatter-Gather | Aggregate from multiple sources |
-| JetStream | Persistent, exactly-once delivery |
+| JetStream | Persistent request processing |
 | Timeouts | Prevent hanging requests |
 | Headers | Pass metadata and tracing info |
 
@@ -679,7 +690,7 @@ The request-reply pattern in NATS provides a robust foundation for synchronous s
 - **Timeouts** prevent resource exhaustion
 - **Queue groups** enable horizontal scaling
 - **Structured errors** improve debugging
-- **JetStream** adds persistence when needed
+- **JetStream** adds persistence and explicit acknowledgments when needed
 
 The pattern works well for service-to-service RPC, aggregating data from multiple sources, and building scalable microservice architectures.
 
