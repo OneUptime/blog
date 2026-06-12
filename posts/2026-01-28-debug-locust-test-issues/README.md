@@ -516,12 +516,8 @@ def on_init(environment, **kwargs):
     print(f"PID: {os.getpid()}")
 
 @events.worker_connect.add_listener
-def on_worker_connect(client_id, message, **kwargs):
+def on_worker_connect(client_id, **kwargs):
     print(f"Worker connected: {client_id}")
-
-@events.worker_disconnect.add_listener
-def on_worker_disconnect(client_id, **kwargs):
-    print(f"Worker disconnected: {client_id}")
 
 @events.report_to_master.add_listener
 def on_report(client_id, data, **kwargs):
