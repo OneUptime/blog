@@ -234,17 +234,19 @@ import (
     "sync"
 
     "google.golang.org/grpc"
-    "google.golang.org/grpc/health"
+    "google.golang.org/grpc/codes"
     healthpb "google.golang.org/grpc/health/grpc_health_v1"
+    "google.golang.org/grpc/status"
 )
 
 // HealthServer manages service health status
 type HealthServer struct {
+    healthpb.UnimplementedHealthServer
     mu       sync.RWMutex
     statuses map[string]healthpb.HealthCheckResponse_ServingStatus
 }
 
-// NewHealthServer creates a health server with default healthy status
+// NewHealthServer creates a health server with an empty status registry
 func NewHealthServer() *HealthServer {
     return &HealthServer{
         statuses: make(map[string]healthpb.HealthCheckResponse_ServingStatus),
@@ -265,26 +267,15 @@ func (h *HealthServer) Check(ctx context.Context, req *healthpb.HealthCheckReque
 
     // Empty service name checks overall server health
     service := req.GetService()
-    if service == "" {
-        service = ""
-    }
 
-    status, ok := h.statuses[service]
+    servingStatus, ok := h.statuses[service]
     if !ok {
-        // Default to SERVING if not explicitly set
-        status = healthpb.HealthCheckResponse_SERVING
+        return nil, status.Error(codes.NotFound, "unknown service")
     }
 
     return &healthpb.HealthCheckResponse{
-        Status: status,
+        Status: servingStatus,
     }, nil
-}
-
-// Watch implements the streaming health check (optional)
-func (h *HealthServer) Watch(req *healthpb.HealthCheckRequest, stream healthpb.Health_WatchServer) error {
-    // Implementation for streaming health checks
-    // Useful for long-lived connections that need health updates
-    return nil
 }
 
 func main() {
@@ -659,9 +650,9 @@ static_resources:
                   max_concurrent_streams: 1000
                   initial_stream_window_size: 65536
                   initial_connection_window_size: 1048576
-                # Stream and request timeouts
+                # Stream timeout; disable HCM request_timeout for streaming gRPC
                 stream_idle_timeout: 300s
-                request_timeout: 60s
+                request_timeout: 0s
                 route_config:
                   name: grpc_routes
                   virtual_hosts:
@@ -893,7 +884,7 @@ spec:
     spec:
       containers:
         - name: envoy
-          image: envoyproxy/envoy:v1.28-latest
+          image: envoyproxy/envoy:v1.38-latest
           ports:
             - containerPort: 8080
               name: grpc
