@@ -35,7 +35,7 @@ The number of PGs affects:
 
 ## Enabling PG Autoscaling
 
-PG Autoscaler is a manager module that ships with Ceph. Starting with Ceph Nautilus (14.x), it's available but disabled by default. In Ceph Pacific (16.x) and later, it's enabled by default.
+PG Autoscaler is a manager module that ships with Ceph. Starting with Ceph Nautilus (14.x), it's available but disabled by default. In Ceph Octopus (15.x) and later, it's enabled by default for newly created pools.
 
 Check if the autoscaler is enabled:
 
@@ -78,11 +78,11 @@ For new deployments, I recommend starting with `warn` mode to observe what chang
 The autoscaler makes decisions based on the target ratio of PGs per OSD. The default target is 100 PGs per OSD, which works well for most clusters.
 
 ```bash
-# View current target ratio
-ceph config get mon osd_pool_default_pg_autoscale_mode
+# View the default autoscale mode for newly created pools
+ceph config get global osd_pool_default_pg_autoscale_mode
 
 # Set global target PGs per OSD (default is 100)
-ceph config set global osd_target_pg_per_osd 100
+ceph config set global mon_target_pg_per_osd 100
 
 # Set the bias for a specific pool (higher = more PGs)
 ceph osd pool set <pool-name> pg_autoscale_bias 1.0
@@ -217,14 +217,14 @@ ceph osd pool set <pool-name> pg_num <new-pg-num>
 For clusters with many OSDs (100+), consider these adjustments:
 
 ```bash
-# Increase the maximum PGs per OSD for better distribution
+# Increase the maximum PGs per OSD for better distribution (default: 250)
 ceph config set global mon_max_pg_per_osd 300
 
-# Allow more aggressive scaling
-ceph config set global osd_pg_autoscale_bias_factor 2.0
+# Lower the scaling threshold for more aggressive scaling (default: 3.0)
+ceph config set mgr mgr/pg_autoscaler/threshold 2.0
 
-# Set a longer evaluation interval to reduce overhead (default: 30s)
-ceph config set mgr mgr/pg_autoscaler/sleep_interval 60
+# Set a longer evaluation interval to reduce overhead (default: 60s)
+ceph config set mgr mgr/pg_autoscaler/sleep_interval 120
 ```
 
 ## Autoscaling Architecture in a Ceph Cluster
@@ -287,8 +287,8 @@ ceph health detail
 # Increase the sleep interval
 ceph config set mgr mgr/pg_autoscaler/sleep_interval 300
 
-# Set a larger threshold before scaling
-ceph config set global mon_pg_autoscale_bias_factor 1.5
+# Set a larger threshold before scaling (default: 3.0)
+ceph config set mgr mgr/pg_autoscaler/threshold 5.0
 ```
 
 ## Best Practices
