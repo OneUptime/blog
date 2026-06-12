@@ -294,7 +294,7 @@ echo "=== All checks passed ==="
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 logging.basicConfig(level=logging.INFO)
@@ -336,7 +336,7 @@ class GameDayController:
             return
 
         self.current_scenario = scenario.name
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         max_end_time = start_time + timedelta(minutes=scenario.max_duration_minutes)
 
         # Announce scenario start (without revealing details to responders)
@@ -350,7 +350,7 @@ class GameDayController:
 
         try:
             # Monitor for success criteria or timeout
-            while datetime.utcnow() < max_end_time:
+            while datetime.now(timezone.utc) < max_end_time:
                 if self.kill_switch_activated:
                     await self.chaos.halt_attack(attack_id)
                     break
@@ -380,7 +380,7 @@ class GameDayController:
 
     async def document_scenario_results(self, scenario, start_time, metrics):
         """Record scenario outcomes for post-game analysis."""
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
 
         result = {
             "scenario": scenario.name,
