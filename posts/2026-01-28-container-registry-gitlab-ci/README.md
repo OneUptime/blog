@@ -269,32 +269,19 @@ Configure via API or `.gitlab-ci.yml`:
 
 ```yaml
 cleanup-registry:
-  image: registry.gitlab.com/gitlab-org/cli:latest
+  image:
+    name: gitlab/glab:latest
+    entrypoint: [""]
   script:
-    # Keep last 10 tags matching pattern
+    # Look up the registry repository ID for this project
     - |
-      glab api -X DELETE "/projects/${CI_PROJECT_ID}/registry/repositories" \
+      REPOSITORY_ID=$(glab api "/projects/${CI_PROJECT_ID}/registry/repositories" | jq '.[0].id')
+    # Keep last 10 tags, delete tags older than 30 days
+    - |
+      glab api -X DELETE "/projects/${CI_PROJECT_ID}/registry/repositories/${REPOSITORY_ID}/tags" \
         --field name_regex_delete='.*' \
         --field keep_n=10 \
         --field older_than=30d
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-```
-
-Or use the container-registry-cli tool:
-
-```yaml
-cleanup:
-  image: registry.gitlab.com/gitlab-org/container-registry/cli:latest
-  script:
-    # Delete images older than 30 days, keep at least 5
-    - container-registry delete
-      --host $CI_REGISTRY
-      --token $CI_REGISTRY_PASSWORD
-      --repository $CI_REGISTRY_IMAGE
-      --dry-run=false
-      --keep-last 5
-      --older-than 30d
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
 ```
