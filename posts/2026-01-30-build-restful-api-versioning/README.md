@@ -98,8 +98,8 @@ This middleware checks URL path, headers, and query parameters in order of prior
 const versionConfig = require('../config/versions');
 
 // extractVersionFromPath pulls the version from URLs like /api/v1/users
-function extractVersionFromPath(path) {
-    const match = path.match(/\/api\/v(\d+)\//);
+function extractVersionFromPath(originalUrl) {
+    const match = originalUrl.match(/\/api\/v(\d+)(?:[/?#]|$)/);
     if (match) {
         return `v${match[1]}`;
     }
@@ -128,7 +128,7 @@ function extractVersionFromQuery(query) {
 // Main middleware function
 function versionMiddleware(req, res, next) {
     // Priority: URL path > Header > Query param > Default
-    let version = extractVersionFromPath(req.path);
+    let version = extractVersionFromPath(req.originalUrl);
 
     if (!version) {
         version = extractVersionFromHeader(req.headers);
@@ -183,8 +183,8 @@ const versions = {
     versionConfig: {
         v1: {
             deprecated: true,
-            deprecatedAt: '2025-06-01',
-            sunsetAt: '2026-06-01',
+            deprecatedAt: '@1748736000',
+            sunsetAt: 'Mon, 01 Jun 2026 00:00:00 GMT',
             successor: 'v3',
             migrationGuide: 'https://api.example.com/docs/migrate-v1-to-v3'
         },
@@ -210,7 +210,7 @@ module.exports = versions;
 
 ## Building the Deprecation Middleware
 
-When a version is deprecated, you should warn clients through response headers. This follows RFC 8594 (Sunset Header):
+When a version is deprecated, you should warn clients through response headers. This follows RFC 9745 for the Deprecation header and RFC 8594 for the Sunset header:
 
 ```javascript
 // src/middleware/deprecation.js
@@ -226,10 +226,10 @@ function deprecationMiddleware(req, res, next) {
 
     // Add deprecation headers if version is deprecated
     if (config.deprecated) {
-        // Standard Deprecation header
+        // Standard Deprecation header uses a Structured Field date
         res.set('Deprecation', config.deprecatedAt);
 
-        // Sunset header tells when version will stop working
+        // Sunset header tells when version will stop working and uses HTTP-date
         if (config.sunsetAt) {
             res.set('Sunset', config.sunsetAt);
         }
@@ -266,6 +266,11 @@ const v2Router = require('./routes/v2');
 const v3Router = require('./routes/v3');
 
 const app = express();
+const versionRouters = {
+    v1: v1Router,
+    v2: v2Router,
+    v3: v3Router
+};
 
 // Parse JSON request bodies
 app.use(express.json());
@@ -273,6 +278,30 @@ app.use(express.json());
 // Apply version detection to all API routes
 app.use('/api', versionMiddleware);
 app.use('/api', deprecationMiddleware);
+
+// Version info endpoint
+app.get('/api/versions', (req, res) => {
+    const versionConfig = require('./config/versions');
+    res.json({
+        default: versionConfig.defaultVersion,
+        supported: versionConfig.supportedVersions,
+        deprecated: versionConfig.deprecatedVersions
+    });
+});
+
+// Header/query/default versioning: /api/users uses the selected version router
+app.use('/api', (req, res, next) => {
+    if (/^\/v\d+(\/|$)/.test(req.path)) {
+        return next();
+    }
+
+    const router = versionRouters[req.apiVersion];
+    if (!router) {
+        return next();
+    }
+
+    return router(req, res, next);
+});
 
 // Mount version-specific routers
 // URL-based versioning: /api/v1/users, /api/v2/users, etc.
@@ -283,16 +312,6 @@ app.use('/api/v3', v3Router);
 // Health check endpoint (unversioned)
 app.get('/health', (req, res) => {
     res.json({ status: 'healthy', timestamp: new Date().toISOString() });
-});
-
-// Version info endpoint
-app.get('/api/versions', (req, res) => {
-    const versionConfig = require('./config/versions');
-    res.json({
-        default: versionConfig.defaultVersion,
-        supported: versionConfig.supportedVersions,
-        deprecated: versionConfig.deprecatedVersions
-    });
 });
 
 const PORT = process.env.PORT || 3000;
@@ -968,6 +987,7 @@ kind: Ingress
 metadata:
   name: api-ingress
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   ingressClassName: nginx
@@ -977,7 +997,7 @@ spec:
         paths:
           # V1 endpoints route to v1 service
           - path: /api/v1(/|$)(.*)
-            pathType: Prefix
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: api-v1-service
@@ -986,7 +1006,7 @@ spec:
 
           # V2 endpoints route to v2 service
           - path: /api/v2(/|$)(.*)
-            pathType: Prefix
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: api-v2-service
@@ -995,7 +1015,7 @@ spec:
 
           # V3 and default route to v3 service
           - path: /api/v3(/|$)(.*)
-            pathType: Prefix
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: api-v3-service
@@ -1003,7 +1023,7 @@ spec:
                   number: 80
 
           - path: /api(/|$)(.*)
-            pathType: Prefix
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: api-v3-service
