@@ -42,13 +42,13 @@ flowchart TB
     subgraph "Instance: Production API"
         V1["env=prod, service=api"]
         P1[Panels]
-        Q1["rate(requests{env='prod',service='api'})"]
+        Q1["rate(requests{env=\"prod\",service=\"api\"})"]
     end
 
     subgraph "Instance: Staging Worker"
         V2["env=staging, service=worker"]
         P2[Panels]
-        Q2["rate(requests{env='staging',service='worker'})"]
+        Q2["rate(requests{env=\"staging\",service=\"worker\"})"]
     end
 
     Template --> V1
@@ -81,7 +81,7 @@ Variables appear as dropdowns at the top of dashboards. They are referenced in q
 
 rate(http_requests_total{
   environment="$environment",
-  service="$service",
+  service=~"$service",
   instance=~"$instance"
 }[5m])
 ```
@@ -107,7 +107,7 @@ ${variable:json}    # Format as JSON array
       "title": "Request Rate - $service",
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{service=\"$service\", environment=\"$environment\"}[5m])) by (status_code)",
+          "expr": "sum(rate(http_requests_total{service=~\"$service\", environment=\"$environment\"}[5m])) by (status_code)",
           "legendFormat": "{{status_code}}"
         }
       ]
@@ -309,8 +309,6 @@ apiVersion: 1
 providers:
   - name: 'default'
     orgId: 1
-    folder: 'Provisioned'
-    folderUid: 'provisioned'
     type: file
     disableDeletion: false
     updateIntervalSeconds: 30
@@ -419,7 +417,6 @@ jsonnet -J vendor dashboard.jsonnet \
 local grafana = import 'grafonnet/grafana.libsonnet';
 local prometheus = grafana.prometheus;
 local graphPanel = grafana.graphPanel;
-local statPanel = grafana.statPanel;
 
 {
   // Request rate panel factory
@@ -488,17 +485,17 @@ local statPanel = grafana.statPanel;
 
 ## 7. Grafonnet Library
 
-Grafonnet is the official Jsonnet library for generating Grafana dashboards.
+Grafonnet is Grafana's Jsonnet library for generating dashboards. The examples below use the legacy `grafonnet-lib` builder API, which is deprecated but remains available for existing dashboards. For new projects, Grafana's generated `grafonnet` package is the successor.
 
 ### Installation
 
 ```bash
-# Using jsonnet-bundler (recommended)
+# Using jsonnet-bundler with the legacy grafonnet-lib API
 jb init
 jb install github.com/grafana/grafonnet-lib/grafonnet
 
 # Or clone directly
-git clone https://github.com/grafana/grafonnet-lib.git vendor/grafonnet-lib
+git clone https://github.com/grafana/grafonnet-lib.git vendor/grafonnet
 ```
 
 ### Complete Dashboard Example
@@ -510,9 +507,7 @@ local dashboard = grafana.dashboard;
 local row = grafana.row;
 local prometheus = grafana.prometheus;
 local template = grafana.template;
-local graphPanel = grafana.graphPanel;
 local statPanel = grafana.statPanel;
-local tablePanel = grafana.tablePanel;
 
 // Import custom panel library
 local panels = import 'panels.libsonnet';
@@ -640,11 +635,15 @@ dashboards/%-dashboard.json: service-dashboard.jsonnet panels.libsonnet
 .PHONY: deploy
 deploy: dashboards
 	@for f in dashboards/*.json; do \
+		payload=$$(mktemp); \
+		jq -n --argfile dashboard $$f \
+			'{dashboard: $$dashboard, overwrite: true}' > $$payload; \
 		curl -X POST \
 			-H "Authorization: Bearer $(GRAFANA_API_KEY)" \
 			-H "Content-Type: application/json" \
-			-d @$$f \
+			-d @$$payload \
 			$(GRAFANA_URL)/api/dashboards/db; \
+		rm -f $$payload; \
 	done
 ```
 
@@ -822,8 +821,9 @@ For SaaS platforms or managed services, templates can adapt to different tenants
 ```python
 # generate_tenant_dashboards.py
 import json
+from copy import deepcopy
 import requests
-from typing import Dict, List
+from typing import Dict
 
 GRAFANA_URL = "http://localhost:3000"
 API_KEY = "your-api-key"
@@ -835,7 +835,7 @@ def load_template(path: str) -> Dict:
 
 def customize_for_tenant(template: Dict, tenant: Dict) -> Dict:
     """Customize template for specific tenant."""
-    dashboard = template.copy()
+    dashboard = deepcopy(template)
 
     # Update title and UID
     dashboard['title'] = f"{tenant['name']} - Service Overview"
@@ -886,7 +886,7 @@ def main():
     template = load_template('templates/service-overview.json')
 
     for tenant in tenants:
-        # Create folder for tenant
+        # Use an existing folder for tenant dashboards
         folder_uid = f"tenant-{tenant['id']}"
 
         # Customize and deploy
@@ -922,6 +922,7 @@ status_code    # Not: statusCode, status-code
 // Limit variable query cardinality
 template.new(
   name='pod',
+  datasource='$datasource',
   query='label_values(up{namespace="$namespace"}, pod)',
   refresh='time',  // Only refresh on time range change
   sort=1,          // Sort alphabetically
@@ -967,14 +968,14 @@ jobs:
 
       - name: Install jsonnet
         run: |
-          wget https://github.com/google/go-jsonnet/releases/download/v0.20.0/jsonnet_0.20.0_linux_amd64.tar.gz
-          tar xzf jsonnet_0.20.0_linux_amd64.tar.gz
-          sudo mv jsonnet /usr/local/bin/
+          wget https://github.com/google/go-jsonnet/releases/download/v0.22.0/jsonnet-go_0.22.0_linux_amd64.deb
+          wget https://github.com/google/go-jsonnet/releases/download/v0.22.0/jsonnet-lint-go_0.22.0_linux_amd64.deb
+          sudo dpkg -i jsonnet-go_0.22.0_linux_amd64.deb jsonnet-lint-go_0.22.0_linux_amd64.deb
 
       - name: Validate jsonnet
         run: |
           for f in templates/*.jsonnet; do
-            jsonnet --lint $f
+            jsonnet-lint $f
           done
 
       - name: Generate dashboards
