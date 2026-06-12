@@ -42,46 +42,35 @@ Consumer tests define what your service expects from a provider. The Pact mock s
 
 ```javascript
 // tests/userServiceConsumer.pact.js
-const { Pact } = require('@pact-foundation/pact');
+const { PactV3 } = require('@pact-foundation/pact');
 const { UserClient } = require('../src/userClient');
 const path = require('path');
 
 // Initialize Pact with consumer and provider names
 // These names identify the contract relationship
-const provider = new Pact({
+const provider = new PactV3({
   consumer: 'OrderService',      // Name of this service
   provider: 'UserService',       // Name of the service we call
   port: 1234,                    // Port for the mock server
-  log: path.resolve(process.cwd(), 'logs', 'pact.log'),
   dir: path.resolve(process.cwd(), 'pacts'),  // Where contracts are saved
-  logLevel: 'warn',
 });
 
 describe('User Service Contract', () => {
-  // Start the mock server before all tests
-  beforeAll(() => provider.setup());
-
-  // Write the contract file after all tests complete
-  afterAll(() => provider.finalize());
-
-  // Clear interactions between tests
-  afterEach(() => provider.verify());
-
   describe('get user by ID', () => {
     it('returns a user when one exists', async () => {
       // Define the expected interaction
       // This becomes part of the contract
-      await provider.addInteraction({
-        state: 'a user with ID 123 exists',  // Provider state
-        uponReceiving: 'a request for user 123',
-        withRequest: {
+      provider
+        .given('a user with ID 123 exists')  // Provider state
+        .uponReceiving('a request for user 123')
+        .withRequest({
           method: 'GET',
           path: '/api/users/123',
           headers: {
             Accept: 'application/json',
           },
-        },
-        willRespondWith: {
+        })
+        .willRespondWith({
           status: 200,
           headers: {
             'Content-Type': 'application/json',
@@ -93,16 +82,17 @@ describe('User Service Contract', () => {
             // Only specify fields your consumer actually uses
             // This keeps contracts minimal and flexible
           },
-        },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        // Run the actual test against the mock server
+        const client = new UserClient(mockServer.url);
+        const user = await client.getUser(123);
+
+        // Assert your consumer code handles the response correctly
+        expect(user.id).toBe(123);
+        expect(user.name).toBe('Jane Doe');
       });
-
-      // Run the actual test against the mock server
-      const client = new UserClient(`http://localhost:1234`);
-      const user = await client.getUser(123);
-
-      // Assert your consumer code handles the response correctly
-      expect(user.id).toBe(123);
-      expect(user.name).toBe('Jane Doe');
     });
   });
 });
@@ -114,20 +104,17 @@ Hard-coded values make contracts brittle. Pact matchers let you specify the shap
 
 ```javascript
 const { Matchers } = require('@pact-foundation/pact');
-const { like, eachLike, term, integer, string, boolean } = Matchers;
+const { like, eachLike, regex, integer, string, boolean } = Matchers;
 
 await provider.addInteraction({
-  state: 'users exist in the system',
+  states: [{ description: 'users exist in the system' }],
   uponReceiving: 'a request for all users',
   withRequest: {
     method: 'GET',
     path: '/api/users',
     query: {
-      // term() matches by regex but uses example for mock
-      status: term({
-        matcher: '^(active|inactive)$',
-        generate: 'active',
-      }),
+      // regex() matches by pattern but uses the example for the mock
+      status: regex('^(active|inactive)$', 'active'),
     },
   },
   willRespondWith: {
@@ -168,6 +155,7 @@ Provider tests fetch contracts and replay the recorded interactions against the 
 // tests/userServiceProvider.pact.js
 const { Verifier } = require('@pact-foundation/pact');
 const { app } = require('../src/app');
+const { db } = require('../src/db');
 
 describe('User Service Provider Verification', () => {
   let server;
@@ -249,6 +237,12 @@ flowchart LR
 
 After consumer tests pass, publish the generated contracts to the broker.
 
+If you want to run the Pact Broker CLI from npm scripts or use the programmatic publishing API, install the Node CLI wrapper:
+
+```bash
+npm install @pact-foundation/pact-node --save-dev
+```
+
 ```bash
 # Using the Pact CLI
 
@@ -303,7 +297,7 @@ Computer says yes \o/
 
 CONSUMER       | C.VERSION | PROVIDER    | P.VERSION | SUCCESS?
 ---------------|-----------|-------------|-----------|----------
-OrderService   | a]23f8b   | UserService | 8d2e4f1   | true
+OrderService   | ab23f8b   | UserService | 8d2e4f1   | true
 OrderService   | ab23f8b   | PaymentSvc  | 12c9a3b   | true
 
 All required verification results are published and successful
