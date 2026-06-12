@@ -8,7 +8,7 @@ Description: Learn how to implement sliding TTL patterns in Redis for session ma
 
 ---
 
-> Standard Redis TTL is fixed at key creation time. Sliding TTL extends the expiration each time a key is accessed, keeping frequently used data alive while allowing inactive data to expire naturally. This pattern is essential for session management and intelligent caching.
+> Standard Redis TTL does not automatically change when a key is read. Sliding TTL extends the expiration each time a key is accessed, keeping frequently used data alive while allowing inactive data to expire naturally. This pattern is essential for session management and intelligent caching.
 
 Session tokens, user activity tracking, and cache warming all benefit from sliding expiration. Instead of a hard cutoff, the expiration window resets on each access, matching real-world usage patterns where active users should stay logged in and frequently accessed cache entries should persist.
 
@@ -51,7 +51,6 @@ The simplest approach extends TTL on every read:
 ```python
 import redis
 import json
-from datetime import datetime
 
 class SlidingTTLCache:
     """
@@ -71,8 +70,8 @@ class SlidingTTLCache:
         ttl = ttl or self.default_ttl
         serialized = json.dumps(value)
 
-        # SETEX sets value and expiration atomically
-        self.redis.setex(key, ttl, serialized)
+        # SET with EX sets value and expiration atomically
+        self.redis.set(key, serialized, ex=ttl)
 
     def get(self, key, extend_ttl=True):
         """
@@ -134,6 +133,9 @@ print(f"TTL remaining: {cache.remaining_ttl('session:abc123')}s")
 The basic pattern has a race condition between GET and EXPIRE. Use Lua for atomic operations:
 
 ```python
+import redis
+import json
+
 class AtomicSlidingTTL:
     """
     Sliding TTL implementation using Lua scripts for atomicity.
@@ -194,7 +196,7 @@ class AtomicSlidingTTL:
         end
     end
 
-    redis.call('SETEX', key, ttl, value)
+    redis.call('SET', key, value, 'EX', ttl)
     return 1
     """
 
@@ -288,8 +290,7 @@ data = cache.get('user:session:xyz')
 import redis
 import json
 import secrets
-import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 class SessionManager:
     """
@@ -323,10 +324,10 @@ class SessionManager:
         local absolute_ttl = tonumber(ARGV[4])
 
         -- Set session with sliding TTL
-        redis.call('SETEX', session_key, sliding_ttl, session_data)
+        redis.call('SET', session_key, session_data, 'EX', sliding_ttl)
 
         -- Store metadata with absolute expiration
-        redis.call('HMSET', metadata_key,
+        redis.call('HSET', metadata_key,
             'created_at', ARGV[5],
             'last_access', ARGV[5],
             'absolute_expiry', ARGV[6]
@@ -366,7 +367,7 @@ class SessionManager:
         # Generate secure session ID
         session_id = secrets.token_urlsafe(32)
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         absolute_expiry = now + timedelta(seconds=self.absolute_ttl)
 
         session_data = {
@@ -397,7 +398,7 @@ class SessionManager:
         Returns None if session expired or doesn't exist.
         Also checks absolute expiration.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # First check absolute expiration
         absolute_expiry = self.redis.evalsha(
@@ -484,6 +485,9 @@ sessions.destroy_session(session_id)
 Implement sliding window rate limiting:
 
 ```python
+import redis
+import uuid
+
 class SlidingWindowRateLimiter:
     """
     Rate limiter using sliding window with automatic cleanup.
@@ -497,6 +501,7 @@ class SlidingWindowRateLimiter:
     local now = tonumber(ARGV[1])
     local window = tonumber(ARGV[2])
     local max_requests = tonumber(ARGV[3])
+    local request_id = ARGV[4]
 
     -- Remove old entries outside the window
     local window_start = now - window
@@ -507,7 +512,7 @@ class SlidingWindowRateLimiter:
 
     if current_count < max_requests then
         -- Add this request
-        redis.call('ZADD', key, now, now .. ':' .. math.random())
+        redis.call('ZADD', key, now, request_id)
         -- Set TTL to window size for automatic cleanup
         redis.call('EXPIRE', key, window)
         return {1, max_requests - current_count - 1}  -- allowed, remaining
@@ -518,7 +523,7 @@ class SlidingWindowRateLimiter:
         if oldest and #oldest > 0 then
             retry_after = window - (now - oldest[2])
         end
-        return {0, retry_after}  -- denied, retry_after
+        return {0, tostring(retry_after)}  -- denied, retry_after
     end
     """
 
@@ -541,6 +546,7 @@ class SlidingWindowRateLimiter:
         import time
         key = f"ratelimit:{identifier}"
         now = time.time()
+        request_id = f"{now}:{uuid.uuid4().hex}"
 
         result = self.redis.evalsha(
             self.script_sha,
@@ -548,7 +554,8 @@ class SlidingWindowRateLimiter:
             key,
             now,
             self.window_seconds,
-            self.max_requests
+            self.max_requests,
+            request_id
         )
 
         if result[0] == 1:
@@ -559,7 +566,7 @@ class SlidingWindowRateLimiter:
         else:
             return {
                 'allowed': False,
-                'retry_after': result[1]
+                'retry_after': float(result[1])
             }
 
     def get_usage(self, identifier):
@@ -600,6 +607,8 @@ for i in range(15):
 ## Monitoring TTL Health
 
 ```python
+import redis
+
 class TTLMonitor:
     """
     Monitor TTL patterns across your Redis keys.
