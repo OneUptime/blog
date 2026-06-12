@@ -136,14 +136,11 @@ class PerformanceBasedDriftDetector:
         # Calculate absolute error for this sample
         error = abs(prediction - actual)
 
-        # Add to detection window first
-        self.detection_errors.append(error)
-
-        # Move oldest detection samples to reference when detection is full
-        if len(self.detection_errors) == self.detection_window_size:
-            if len(self.reference_errors) < self.reference_window_size:
-                # Still building reference window
-                self.reference_errors.append(error)
+        # Build a stable baseline first, then monitor recent errors
+        if len(self.reference_errors) < self.reference_window_size:
+            self.reference_errors.append(error)
+        else:
+            self.detection_errors.append(error)
 
     def detect(self) -> DriftDetectionResult:
         """
@@ -385,14 +382,13 @@ class ADWINDetector:
         Returns:
             Epsilon threshold based on Hoeffding bound
         """
-        n = n1 + n2
-        # Harmonic mean factor
-        m = 1.0 / n1 + 1.0 / n2
+        # Harmonic mean of the two subwindow sizes
+        m = 1.0 / (1.0 / n1 + 1.0 / n2)
 
-        # Hoeffding bound calculation
+        # Hoeffding-style bound calculation
         epsilon = np.sqrt(
-            (2.0 / m) * np.log(2.0 / self.delta) / n
-        ) + (2.0 / 3.0) * np.log(2.0 / self.delta) * m
+            (1.0 / (2.0 * m)) * np.log(4.0 / self.delta)
+        )
 
         return epsilon
 
@@ -609,22 +605,31 @@ class PSIDriftDetector:
             reference_data: Array of reference values (e.g., errors)
         """
         # Create bins based on reference distribution
-        self.reference_distribution, self.bin_edges = np.histogram(
+        _, self.bin_edges = np.histogram(
             reference_data,
             bins=self.n_bins,
-            density=True
+            density=False
+        )
+        self.bin_edges[0] = -np.inf
+        self.bin_edges[-1] = np.inf
+
+        reference_counts, _ = np.histogram(
+            reference_data,
+            bins=self.bin_edges,
+            density=False
         )
 
         # Normalize to get proportions
-        self.reference_distribution = (
-            self.reference_distribution / self.reference_distribution.sum()
-        )
+        self.reference_distribution = reference_counts / reference_counts.sum()
 
         # Add small constant to avoid division by zero
         self.reference_distribution = np.clip(
             self.reference_distribution,
             1e-10,
             None
+        )
+        self.reference_distribution = (
+            self.reference_distribution / self.reference_distribution.sum()
         )
 
     def calculate_psi(self, test_data: np.ndarray) -> DriftDetectionResult:
@@ -641,15 +646,16 @@ class PSIDriftDetector:
             raise ValueError("Must call fit_reference first")
 
         # Calculate test distribution using same bins
-        test_distribution, _ = np.histogram(
+        test_counts, _ = np.histogram(
             test_data,
             bins=self.bin_edges,
-            density=True
+            density=False
         )
 
         # Normalize
-        test_distribution = test_distribution / test_distribution.sum()
+        test_distribution = test_counts / test_counts.sum()
         test_distribution = np.clip(test_distribution, 1e-10, None)
+        test_distribution = test_distribution / test_distribution.sum()
 
         # Calculate PSI
         # PSI = sum((test - ref) * ln(test / ref))
@@ -743,8 +749,8 @@ flowchart TB
 ```python
 import json
 import logging
-from datetime import datetime
-from typing import Dict, Any, Callable
+from datetime import datetime, timezone
+from typing import Dict, Any, List
 from abc import ABC, abstractmethod
 
 
@@ -861,7 +867,7 @@ class ConceptDriftMonitor:
         Returns:
             Dictionary mapping detector names to their results
         """
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         error = abs(prediction - actual)
 
         # Update all detectors
@@ -1092,7 +1098,7 @@ graph TD
 
 ```python
 from dataclasses import dataclass, field
-from typing import List
+from typing import Dict, Any, List
 import time
 
 
@@ -1212,9 +1218,9 @@ def ensemble_drift_detection(results: Dict[str, DriftDetectionResult]) -> bool:
 ```python
 # Configuration recommendations by use case
 THRESHOLD_CONFIGS = {
-    # High-stakes applications: lower thresholds, faster detection
+    # High-stakes applications: more sensitive thresholds, faster detection
     "financial_fraud": {
-        "significance_level": 0.01,
+        "significance_level": 0.10,
         "ph_threshold": 30.0,
         "detection_window": 50
     },
@@ -1226,7 +1232,7 @@ THRESHOLD_CONFIGS = {
     },
     # Stable environments: higher thresholds, fewer false alarms
     "batch_processing": {
-        "significance_level": 0.10,
+        "significance_level": 0.01,
         "ph_threshold": 75.0,
         "detection_window": 200
     }
@@ -1238,6 +1244,10 @@ THRESHOLD_CONFIGS = {
 In many real-world scenarios, ground truth labels are not immediately available:
 
 ```python
+from datetime import datetime, timezone
+from typing import Dict, Optional, Tuple
+
+
 class DelayedLabelHandler:
     """
     Handles scenarios where labels arrive with a delay.
@@ -1258,7 +1268,7 @@ class DelayedLabelHandler:
         """Store a prediction awaiting its label."""
         self.prediction_buffer[prediction_id] = (
             prediction,
-            datetime.utcnow()
+            datetime.now(timezone.utc)
         )
 
         # Clean old predictions
