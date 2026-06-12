@@ -211,7 +211,7 @@ func (cb *CircuitBreaker) Allow() error {
 		// Check if timeout has elapsed
 		if time.Since(cb.lastFailureTime) > cb.timeout {
 			cb.state = StateHalfOpen
-			cb.halfOpenRequests = 0
+			cb.halfOpenRequests = 1
 			return nil
 		}
 		return ErrCircuitOpen
@@ -236,8 +236,8 @@ func (cb *CircuitBreaker) RecordSuccess() {
 	if cb.state == StateHalfOpen {
 		// Success in half-open state closes the circuit
 		cb.state = StateClosed
-		cb.failures = 0
 	}
+	cb.failures = 0
 }
 
 // RecordFailure records a failed request
@@ -286,6 +286,7 @@ package middleware
 import (
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -301,65 +302,87 @@ type Metrics struct {
 	circuitState     prometheus.Gauge
 }
 
+var (
+	defaultMetrics *Metrics
+	metricsOnce    sync.Once
+)
+
 // NewMetrics creates and registers all Prometheus metrics
 func NewMetrics() *Metrics {
-	return &Metrics{
-		// Counter for total requests by method, path, and status
-		requestsTotal: promauto.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "sidecar_requests_total",
-				Help: "Total number of requests processed by the sidecar",
-			},
-			[]string{"method", "path", "status"},
-		),
+	metricsOnce.Do(func() {
+		defaultMetrics = &Metrics{
+			// Counter for total requests by method, path, and status
+			requestsTotal: promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "sidecar_requests_total",
+					Help: "Total number of requests processed by the sidecar",
+				},
+				[]string{"method", "path", "status"},
+			),
 
-		// Histogram for request duration with predefined buckets
-		requestDuration: promauto.NewHistogramVec(
-			prometheus.HistogramOpts{
-				Name:    "sidecar_request_duration_seconds",
-				Help:    "Request duration in seconds",
-				Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
-			},
-			[]string{"method", "path"},
-		),
+			// Histogram for request duration with predefined buckets
+			requestDuration: promauto.NewHistogramVec(
+				prometheus.HistogramOpts{
+					Name:    "sidecar_request_duration_seconds",
+					Help:    "Request duration in seconds",
+					Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+				},
+				[]string{"method", "path"},
+			),
 
-		// Gauge for requests currently being processed
-		requestsInFlight: promauto.NewGauge(
-			prometheus.GaugeOpts{
-				Name: "sidecar_requests_in_flight",
-				Help: "Number of requests currently being processed",
-			},
-		),
+			// Gauge for requests currently being processed
+			requestsInFlight: promauto.NewGauge(
+				prometheus.GaugeOpts{
+					Name: "sidecar_requests_in_flight",
+					Help: "Number of requests currently being processed",
+				},
+			),
 
-		// Counter for upstream errors by type
-		upstreamErrors: promauto.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "sidecar_upstream_errors_total",
-				Help: "Total number of upstream errors",
-			},
-			[]string{"type"},
-		),
+			// Counter for upstream errors by type
+			upstreamErrors: promauto.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "sidecar_upstream_errors_total",
+					Help: "Total number of upstream errors",
+				},
+				[]string{"type"},
+			),
 
-		// Gauge for circuit breaker state (0=closed, 1=open, 2=half-open)
-		circuitState: promauto.NewGauge(
-			prometheus.GaugeOpts{
-				Name: "sidecar_circuit_breaker_state",
-				Help: "Circuit breaker state (0=closed, 1=open, 2=half-open)",
-			},
-		),
-	}
+			// Gauge for circuit breaker state (0=closed, 1=open, 2=half-open)
+			circuitState: promauto.NewGauge(
+				prometheus.GaugeOpts{
+					Name: "sidecar_circuit_breaker_state",
+					Help: "Circuit breaker state (0=closed, 1=open, 2=half-open)",
+				},
+			),
+		}
+	})
+
+	return defaultMetrics
 }
 
 // responseWriter wraps http.ResponseWriter to capture status code
 type responseWriter struct {
 	http.ResponseWriter
-	statusCode int
+	statusCode  int
+	wroteHeader bool
 }
 
 // WriteHeader captures the status code before writing
 func (rw *responseWriter) WriteHeader(code int) {
+	if rw.wroteHeader {
+		return
+	}
+	rw.wroteHeader = true
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Write captures implicit 200 responses before writing the body
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	if !rw.wroteHeader {
+		rw.WriteHeader(http.StatusOK)
+	}
+	return rw.ResponseWriter.Write(b)
 }
 
 // Middleware returns an HTTP middleware that records metrics
@@ -406,7 +429,7 @@ func (m *Metrics) SetCircuitState(state int) {
 
 // normalizePath removes dynamic segments from paths to prevent cardinality explosion
 func normalizePath(path string) string {
-	// Replace UUIDs and numeric IDs with placeholders
+	// Replace numeric IDs with placeholders
 	// Example: /users/123/orders/456 becomes /users/:id/orders/:id
 	segments := make([]byte, 0, len(path))
 	inSegment := false
@@ -565,23 +588,27 @@ func (rt *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		// Store last error/response for final return
 		lastErr = err
-		if resp != nil {
-			// Close body from failed attempt
-			if lastResp != nil {
-				lastResp.Body.Close()
-			}
-			lastResp = resp
+		lastResp = resp
+
+		// Close retryable response bodies before the next attempt so
+		// the underlying transport can reuse connections.
+		if resp != nil && attempt < rt.Config.MaxRetries {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			lastResp = nil
 		}
 
 		// Don't sleep after last attempt
 		if attempt < rt.Config.MaxRetries {
 			delay := rt.calculateDelay(attempt)
-			rt.Logger.Warn("retrying request",
-				slog.Int("attempt", attempt+1),
-				slog.Int("max_retries", rt.Config.MaxRetries),
-				slog.Duration("delay", delay),
-				slog.String("path", req.URL.Path),
-			)
+			if rt.Logger != nil {
+				rt.Logger.Warn("retrying request",
+					slog.Int("attempt", attempt+1),
+					slog.Int("max_retries", rt.Config.MaxRetries),
+					slog.Duration("delay", delay),
+					slog.String("path", req.URL.Path),
+				)
+			}
 			time.Sleep(delay)
 		}
 	}
@@ -593,7 +620,7 @@ func (rt *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return nil, lastErr
 }
 
-// calculateDelay computes exponential backoff with jitter
+// calculateDelay computes exponential backoff
 func (rt *RetryTransport) calculateDelay(attempt int) time.Duration {
 	delay := float64(rt.Config.InitialDelay) * math.Pow(rt.Config.Multiplier, float64(attempt))
 	if delay > float64(rt.Config.MaxDelay) {
@@ -667,9 +694,10 @@ func New(cfg *config.Config, logger *slog.Logger) *Proxy {
 	// Configure transport with retry logic
 	transport := &middleware.RetryTransport{
 		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 100,
-			IdleConnTimeout:     90 * time.Second,
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   100,
+			IdleConnTimeout:       90 * time.Second,
+			ResponseHeaderTimeout: cfg.RequestTimeout,
 		},
 		Config: middleware.RetryConfig{
 			MaxRetries:   cfg.MaxRetries,
@@ -952,7 +980,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o sidecar-proxy .
 # Production stage
 FROM alpine:3.19
 
-# Add ca-certificates for HTTPS upstream support
+# Add ca-certificates for future HTTPS upstream support
 RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
@@ -969,7 +997,7 @@ EXPOSE 8080 9090
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+    CMD wget -q --spider -T 3 http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["./sidecar-proxy"]
 ```
@@ -1084,9 +1112,9 @@ spec:
       targetPort: 9090
 ```
 
-## Using Native Sidecars (Kubernetes 1.28+)
+## Using Native Sidecars (Kubernetes 1.29+)
 
-Kubernetes 1.28 introduced native sidecar support with proper lifecycle management.
+Kubernetes 1.29 enabled native sidecar support by default with proper lifecycle management. Kubernetes 1.28 can use this feature only when the SidecarContainers feature gate is enabled.
 
 ```yaml
 # native-sidecar-deployment.yaml
@@ -1157,6 +1185,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -1171,13 +1201,20 @@ func TestProxyForwardsRequests(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	// Parse upstream URL to get host and port
-	// For simplicity, use localhost with a known port
+	upstreamURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatalf("failed to parse upstream URL: %v", err)
+	}
+
+	upstreamPort, err := strconv.Atoi(upstreamURL.Port())
+	if err != nil {
+		t.Fatalf("failed to parse upstream port: %v", err)
+	}
 
 	cfg := &config.Config{
 		ListenPort:              8080,
-		UpstreamHost:            "127.0.0.1",
-		UpstreamPort:            3000,
+		UpstreamHost:            upstreamURL.Hostname(),
+		UpstreamPort:            upstreamPort,
 		RequestTimeout:          30 * time.Second,
 		MaxRetries:              3,
 		RetryBackoff:            100 * time.Millisecond,
@@ -1195,10 +1232,13 @@ func TestProxyForwardsRequests(t *testing.T) {
 	// Execute
 	proxy.Handler().ServeHTTP(rec, req)
 
-	// Verify response (will fail because upstream is not at the configured address)
-	// In real tests, you would configure the upstream properly
-	if rec.Code != http.StatusOK && rec.Code != http.StatusServiceUnavailable {
-		t.Errorf("unexpected status code: %d", rec.Code)
+	// Verify response
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status code 200, got: %d", rec.Code)
+	}
+
+	if rec.Body.String() != "Hello from upstream" {
+		t.Errorf("unexpected response body: %q", rec.Body.String())
 	}
 }
 
