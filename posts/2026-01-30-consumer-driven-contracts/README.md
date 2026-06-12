@@ -167,8 +167,8 @@ Instead of exact values, matchers define patterns:
 | Matcher Type | Use Case | Example |
 |--------------|----------|---------|
 | Exact | Specific required value | `"status": "active"` |
-| Type | Any value of correct type | `like(123)` matches any integer |
-| Regex | Pattern matching | `term({generate: "2024-01-30", matcher: "\\d{4}-\\d{2}-\\d{2}"})` |
+| Type | Any value of correct type | `integer(123)` matches any integer |
+| Regex | Pattern matching | `regex("\\d{4}-\\d{2}-\\d{2}", "2024-01-30")` |
 | Array | Collection constraints | `eachLike({id: 1})` |
 
 ---
@@ -180,7 +180,7 @@ Pact is the most widely adopted CDC framework. Let us set it up for a Node.js pr
 Install the required dependencies for consumer and provider testing:
 
 ```bash
-npm install --save-dev @pact-foundation/pact @pact-foundation/pact-node
+npm install --save-dev @pact-foundation/pact @pact-foundation/pact-cli
 ```
 
 Create a directory structure that keeps contracts organized:
@@ -264,7 +264,7 @@ import { UserService } from '../../src/services/userService';
 import path from 'path';
 
 // Initialize matchers for flexible contract definitions
-const { like, regex, eachLike, integer, string, timestamp } = MatchersV3;
+const { regex, integer, string, timestamp } = MatchersV3;
 
 // Configure the Pact mock provider
 const provider = new PactV3({
@@ -295,7 +295,7 @@ describe('User Service Consumer Contract', () => {
             // Use matchers instead of exact values for flexibility
             id: integer(123),
             name: string('John Doe'),
-            email: regex('john@example.com', '^[\\w.-]+@[\\w.-]+\\.[a-z]{2,}$'),
+            email: regex('^[\\w.-]+@[\\w.-]+\\.[a-z]{2,}$', 'john@example.com'),
             createdAt: timestamp("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", '2024-01-15T10:30:00.000Z')
           }
         });
@@ -398,55 +398,13 @@ This generates a contract file at `pacts/OrdersService-UsersService.json`.
 
 A contract broker acts as the central source of truth. Pactflow is a managed option, or you can self-host Pact Broker.
 
-Create a script to publish contracts after consumer tests pass:
-
-```typescript
-// scripts/publish-pacts.ts
-
-import { Publisher } from '@pact-foundation/pact-node';
-import path from 'path';
-
-// Read configuration from environment variables
-const publishOptions = {
-  pactFilesOrDirs: [path.resolve(process.cwd(), 'pacts')],
-  pactBroker: process.env.PACT_BROKER_BASE_URL || 'https://your-broker.pactflow.io',
-  pactBrokerToken: process.env.PACT_BROKER_TOKEN,
-  consumerVersion: process.env.GIT_COMMIT || '1.0.0',
-
-  // Tags help track which environments have which versions
-  tags: [
-    process.env.GIT_BRANCH || 'main',
-    process.env.ENVIRONMENT || 'development'
-  ],
-
-  // Build URL helps trace contracts back to CI runs
-  buildUrl: process.env.CI_BUILD_URL
-};
-
-async function publishPacts() {
-  console.log('Publishing pacts to broker...');
-  console.log(`Consumer version: ${publishOptions.consumerVersion}`);
-  console.log(`Tags: ${publishOptions.tags.join(', ')}`);
-
-  try {
-    await new Publisher(publishOptions).publish();
-    console.log('Pacts published successfully!');
-  } catch (error) {
-    console.error('Failed to publish pacts:', error);
-    process.exit(1);
-  }
-}
-
-publishPacts();
-```
-
-Add a publish script to your package.json:
+Add a publish script to your package.json. The Pact Broker CLI can auto-detect the commit, branch, and build URL in common CI systems, including GitHub Actions:
 
 ```json
 {
   "scripts": {
     "test:consumer": "jest tests/consumer/",
-    "pact:publish": "ts-node scripts/publish-pacts.ts"
+    "pact:publish": "pact-broker publish ./pacts --auto-detect-version-properties --broker-base-url=$PACT_BROKER_BASE_URL --broker-token=$PACT_BROKER_TOKEN"
   }
 }
 ```
@@ -626,7 +584,7 @@ jobs:
           # Use Pact CLI to check deployment safety
           docker run --rm \
             pactfoundation/pact-cli:latest \
-            broker can-i-deploy \
+            pact-broker can-i-deploy \
             --pacticipant OrdersService \
             --version ${{ github.sha }} \
             --to-environment production \
