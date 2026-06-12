@@ -54,8 +54,7 @@ For development, start Keycloak with verbose logging:
 
 ```bash
 # Start with debug logging enabled
-
-./kc.sh start-dev --log-level=DEBUG
+./kc.sh start-dev --log-level=debug
 ```
 
 For production, enable logging for specific categories:
@@ -63,34 +62,31 @@ For production, enable logging for specific categories:
 ```bash
 # Enable debug for auth-related packages only
 ./kc.sh start \
-  --log-level=INFO \
-  --log-level=org.keycloak.authentication:DEBUG \
-  --log-level=org.keycloak.protocol:DEBUG \
-  --log-level=org.keycloak.services:DEBUG
+  --log-level="info,org.keycloak.authentication:debug,org.keycloak.protocol:debug,org.keycloak.services:debug"
 ```
 
 ### Key log categories
 
 Different packages reveal different information:
 
-```properties
+```text
 # Authentication flow processing
-org.keycloak.authentication=DEBUG
+org.keycloak.authentication:debug
 
 # OIDC/OAuth protocol handling
-org.keycloak.protocol.oidc=DEBUG
+org.keycloak.protocol.oidc:debug
 
 # SAML protocol handling
-org.keycloak.protocol.saml=DEBUG
+org.keycloak.protocol.saml:debug
 
 # Token creation and validation
-org.keycloak.services.managers=DEBUG
+org.keycloak.services.managers:debug
 
 # Identity provider brokering
-org.keycloak.broker=DEBUG
+org.keycloak.broker:debug
 
 # Event logging (login success/failure)
-org.keycloak.events=DEBUG
+org.keycloak.events:debug
 ```
 
 ### Reading log patterns
@@ -128,7 +124,7 @@ error_description=Invalid redirect uri
 
 1. Check the exact URI in the authorization request:
 
-```bash
+```text
 # Decode the authorization URL your app generates
 # Look for the redirect_uri parameter
 https://keycloak.example.com/realms/myrealm/protocol/openid-connect/auth?
@@ -196,13 +192,14 @@ Client authentication failures happen when the client ID or secret is wrong.
 
 ```bash
 # Get the current secret
-./kcadm.sh get clients -r myrealm -q clientId=my-app --fields secret
+CID=$(./kcadm.sh get clients -r myrealm -q clientId=my-app --fields id --format csv --noquotes)
+./kcadm.sh get clients/$CID/client-secret -r myrealm
 ```
 
 3. Test authentication directly:
 
 ```bash
-# Test client credentials grant
+# Test client credentials grant for a client with service accounts enabled
 curl -X POST \
   "https://keycloak.example.com/realms/myrealm/protocol/openid-connect/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
@@ -231,7 +228,8 @@ Your application receives a token but rejects it during validation.
 
 ```bash
 # Decode a JWT (base64 decode the middle section)
-echo "eyJhbGciOiJSUzI1NiIs..." | cut -d'.' -f2 | base64 -d | jq .
+payload=$(echo "eyJhbGciOiJSUzI1NiIs..." | cut -d'.' -f2 | tr '_-' '/+')
+printf '%s' "$payload" | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | base64 -d | jq .
 ```
 
 2. Check common claim issues:
@@ -358,11 +356,11 @@ Session issues often manifest as users being unexpectedly logged out or unable t
 
 ### Debugging steps
 
-1. Check browser cookies for Keycloak session:
+1. Check browser cookies for Keycloak session in browser developer tools. From JavaScript, you can only see non-HttpOnly cookies:
 
 ```javascript
 // In browser console
-document.cookie.split(';').filter(c => c.includes('KC_'))
+document.cookie.split(';').filter(c => c.includes('KEYCLOAK') || c.includes('KC_'))
 ```
 
 2. Verify cookie settings match your deployment:
@@ -385,12 +383,11 @@ Set-Cookie: KC_RESTART=...; SameSite=None; Secure
 For cross-origin scenarios, ensure:
 
 ```bash
-# Start Keycloak with proper cookie settings
+# Start Keycloak with a stable public HTTPS hostname
 ./kc.sh start \
-  --hostname=keycloak.example.com \
+  --hostname=https://keycloak.example.com \
   --https-certificate-file=/path/to/cert.pem \
-  --https-certificate-key-file=/path/to/key.pem \
-  --spi-cookie-default-same-site-attribute=None
+  --https-certificate-key-file=/path/to/key.pem
 ```
 
 ---
@@ -412,7 +409,7 @@ Unexpected SAML response status
 1. Enable SAML debug logging:
 
 ```bash
-./kc.sh start-dev --log-level=org.keycloak.protocol.saml:DEBUG
+./kc.sh start-dev --log-level="info,org.keycloak.protocol.saml:debug"
 ```
 
 2. Capture and decode the SAML response:
@@ -460,7 +457,7 @@ Query events via admin console or API:
 
 ```bash
 # Get recent login errors
-./kcadm.sh get events -r myrealm -q type=LOGIN_ERROR --first 0 --max 20
+./kcadm.sh get events -r myrealm -q type=LOGIN_ERROR --offset 0 --limit 20
 ```
 
 ### Sessions management
