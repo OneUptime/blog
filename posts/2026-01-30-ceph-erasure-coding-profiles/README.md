@@ -83,7 +83,7 @@ ceph osd erasure-code-profile get ec-4-2
 | `m` | Number of parity shards |
 | `crush-failure-domain` | Spread shards across this CRUSH bucket type (host, rack, datacenter) |
 | `crush-device-class` | Target specific device types (hdd, ssd, nvme) |
-| `plugin` | Algorithm to use; default is `jerasure` (good for most cases) |
+| `plugin` | Algorithm to use; defaults vary by Ceph release (commonly `jerasure` in current stable docs, `isa` in newer development docs) |
 
 ### Advanced Profile with Plugin Selection
 
@@ -107,7 +107,7 @@ Pools use profiles to determine how data is encoded. Create a pool that referenc
 # Syntax: ceph osd pool create <pool-name> <pg-num> erasure <profile-name>
 ceph osd pool create cold-archive 128 erasure ec-4-2
 
-# Enable the pool for application use (e.g., RGW, RBD via cache tier, CephFS data)
+# Enable the pool for application use (e.g., RGW, RBD data, CephFS data)
 ceph osd pool application enable cold-archive rgw
 ```
 
@@ -118,7 +118,7 @@ ceph osd pool application enable cold-archive rgw
 # For k=4 m=2, you need at least k shards (4) to read
 ceph osd pool set cold-archive min_size 5
 
-# Allow EC overwrites (required for RBD and CephFS workloads)
+# Allow EC overwrites (required for RBD and CephFS workloads; BlueStore OSDs only)
 ceph osd pool set cold-archive allow_ec_overwrites true
 ```
 
@@ -169,9 +169,9 @@ radosgw-admin zone placement modify \
     --data-pool=archive-data
 ```
 
-### RBD with EC (Cache Tiering Pattern)
+### RBD with EC (Separate Metadata Pool Pattern)
 
-RBD needs overwrite support. Use a replicated cache tier for hot data and an EC pool for cold data.
+RBD needs overwrite support. Use a replicated pool for metadata and an EC pool for image data.
 
 ```bash
 # Create the EC pool for bulk data
@@ -182,10 +182,12 @@ ceph osd erasure-code-profile set ec-rbd \
 
 ceph osd pool create rbd-ec-data 128 erasure ec-rbd
 ceph osd pool set rbd-ec-data allow_ec_overwrites true
+ceph osd pool application enable rbd-ec-data rbd
 
 # Create a replicated pool for metadata
 ceph osd pool create rbd-meta 64 replicated
 ceph osd pool application enable rbd-meta rbd
+rbd pool init rbd-meta
 
 # Create an RBD image using the EC pool for data
 rbd create --size 100G \
