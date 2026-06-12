@@ -89,8 +89,7 @@ my-project/
 
 [defaults]
 callback_plugins = ./callback_plugins
-stdout_callback = my_callback
-callback_whitelist = my_callback, timer
+callbacks_enabled = my_callback, ansible.posix.timer
 ```
 
 ---
@@ -123,7 +122,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'my_callback'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self, display=None):
         super().__init__(display)
@@ -446,11 +445,6 @@ DOCUMENTATION = '''
             env:
                 - name: SLACK_WEBHOOK_URL
             required: true
-        channel:
-            description: Slack channel to post to
-            env:
-                - name: SLACK_CHANNEL
-            default: '#ansible'
         notify_on_success:
             description: Send notification on successful runs
             env:
@@ -464,12 +458,11 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'slack_notify'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self, display=None):
         super().__init__(display)
         self.webhook_url = os.environ.get('SLACK_WEBHOOK_URL')
-        self.channel = os.environ.get('SLACK_CHANNEL', '#ansible')
         self.notify_success = os.environ.get('SLACK_NOTIFY_SUCCESS', 'false').lower() == 'true'
 
         self.playbook_name = None
@@ -484,9 +477,6 @@ class CallbackModule(CallbackBase):
             return
 
         payload = {
-            'channel': self.channel,
-            'username': 'Ansible',
-            'icon_emoji': ':robot_face:',
             'attachments': [{
                 'color': color,
                 'text': message,
@@ -622,7 +612,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'webhook_notify'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self, display=None):
         super().__init__(display)
@@ -738,7 +728,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'prometheus_metrics'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self, display=None):
         super().__init__(display)
@@ -895,7 +885,7 @@ class CallbackModule(CallbackBase):
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
     CALLBACK_NAME = 'otel_metrics'
-    CALLBACK_NEEDS_WHITELIST = True
+    CALLBACK_NEEDS_ENABLED = True
 
     def __init__(self, display=None):
         super().__init__(display)
@@ -904,6 +894,7 @@ class CallbackModule(CallbackBase):
 
         self.playbook_name = None
         self.start_time = None
+        self.start_timestamp = None
         self.task_metrics = []
 
     def _get_timestamp_nanos(self):
@@ -933,6 +924,7 @@ class CallbackModule(CallbackBase):
     def v2_playbook_on_start(self, playbook):
         self.playbook_name = os.path.basename(playbook._file_name)
         self.start_time = time.time()
+        self.start_timestamp = self._get_timestamp_nanos()
 
     def v2_runner_on_ok(self, result):
         self.task_metrics.append({
@@ -987,8 +979,10 @@ class CallbackModule(CallbackBase):
                             'sum': {
                                 'dataPoints': [{
                                     'asInt': len(self.task_metrics),
+                                    'startTimeUnixNano': self.start_timestamp,
                                     'timeUnixNano': timestamp
                                 }],
+                                'aggregationTemporality': 2,
                                 'isMonotonic': True
                             }
                         },
@@ -997,8 +991,10 @@ class CallbackModule(CallbackBase):
                             'sum': {
                                 'dataPoints': [{
                                     'asInt': ok_count,
+                                    'startTimeUnixNano': self.start_timestamp,
                                     'timeUnixNano': timestamp
                                 }],
+                                'aggregationTemporality': 2,
                                 'isMonotonic': True
                             }
                         },
@@ -1007,8 +1003,10 @@ class CallbackModule(CallbackBase):
                             'sum': {
                                 'dataPoints': [{
                                     'asInt': failed_count,
+                                    'startTimeUnixNano': self.start_timestamp,
                                     'timeUnixNano': timestamp
                                 }],
+                                'aggregationTemporality': 2,
                                 'isMonotonic': True
                             }
                         },
@@ -1017,8 +1015,10 @@ class CallbackModule(CallbackBase):
                             'sum': {
                                 'dataPoints': [{
                                     'asInt': changed_count,
+                                    'startTimeUnixNano': self.start_timestamp,
                                     'timeUnixNano': timestamp
                                 }],
+                                'aggregationTemporality': 2,
                                 'isMonotonic': True
                             }
                         }
@@ -1039,6 +1039,7 @@ class CallbackModule(CallbackBase):
 ```python
 # tests/test_callback.py
 import unittest
+from datetime import datetime
 from unittest.mock import Mock, MagicMock
 from callback_plugins.my_callback import CallbackModule
 
@@ -1078,7 +1079,7 @@ class TestCallbackModule(unittest.TestCase):
             'unreachable': 0
         }
 
-        self.callback.start_time = Mock()
+        self.callback.start_time = datetime.now()
         self.callback.v2_playbook_on_stats(stats)
 
         self.callback._display.banner.assert_called()
@@ -1122,7 +1123,7 @@ Run the test:
 
 ```bash
 ANSIBLE_CALLBACK_PLUGINS=./callback_plugins \
-ANSIBLE_STDOUT_CALLBACK=my_callback \
+ANSIBLE_CALLBACKS_ENABLED=my_callback \
 ansible-playbook test_playbook.yml
 ```
 
@@ -1181,7 +1182,7 @@ sequenceDiagram
 
 4. **Filter sensitive data** - Ansible results can contain passwords and secrets. Sanitize before logging or sending externally.
 
-5. **Use CALLBACK_NEEDS_WHITELIST** - Require explicit enabling to prevent accidental activation.
+5. **Use CALLBACK_NEEDS_ENABLED** - Require explicit enabling to prevent accidental activation.
 
 6. **Write idempotent handlers** - Callbacks may be called multiple times for retries. Handle duplicates gracefully.
 
