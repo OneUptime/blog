@@ -40,46 +40,42 @@ In the OpenShift web console:
 
 ## Step 2: Choose an Installation Mode
 
-Operators can be installed in two common modes:
+Operators commonly use these installation scopes:
 
 - **All namespaces**: One operator manages resources across the cluster.
 - **Single namespace**: The operator only watches one namespace.
 
-Single-namespace is safer for multi-tenant environments.
+Operators can also declare other OLM install modes, such as own-namespace or multi-namespace support. Single-namespace is safer for many multi-tenant environments.
 
 ## Step 3: Install the Operator
 
-You can install via the UI or with YAML. Example `Subscription` resource:
+You can install via the UI or with YAML. Replace the placeholders with the package, channel, and catalog source from `oc describe packagemanifests <operator-name> -n openshift-marketplace`.
 
 ```yaml
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
-  name: postgresql-operator
+  name: <subscription-name>
   namespace: openshift-operators
 spec:
-  channel: stable
-  name: postgresql
-  source: redhat-operators
+  channel: <channel-name>
+  name: <operator-package-name>
+  source: <catalog-source-name>
   sourceNamespace: openshift-marketplace
   installPlanApproval: Automatic
 ```
 
 ## Step 4: Create a Custom Resource
 
-Once installed, create the CR that the operator manages. Example:
+Once installed, create the CR that the operator manages. The exact `apiVersion`, `kind`, and `spec` fields come from the CRD installed by that operator. Example shape:
 
 ```yaml
-apiVersion: postgresql.example.com/v1
-kind: PostgresCluster
+apiVersion: <api-group>/<version>
+kind: <custom-resource-kind>
 metadata:
-  name: orders-db
+  name: <resource-name>
 spec:
-  instances: 3
-  storage:
-    size: 100Gi
-  backup:
-    enabled: true
+  <operator-specific-field>: <value>
 ```
 
 The operator will reconcile this resource and create the required pods, services, and storage.
