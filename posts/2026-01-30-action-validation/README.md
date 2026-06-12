@@ -133,7 +133,7 @@ class RequiredParametersRule(ValidationRule):
         return True, "All required parameters present"
 
 class PathTraversalRule(ValidationRule):
-    """Prevents path traversal attacks in file operations."""
+    """Blocks common path traversal patterns in file operations."""
 
     def validate(self, action: Action) -> Tuple[bool, str]:
         if action.resource_type != ResourceType.FILE:
@@ -141,7 +141,7 @@ class PathTraversalRule(ValidationRule):
 
         path = action.parameters.get("path", "")
 
-        # Check for path traversal patterns
+        # Check for common path traversal patterns
         dangerous_patterns = ["../", "..\\", "/etc/", "/root/", "C:\\Windows"]
 
         for pattern in dangerous_patterns:
@@ -368,7 +368,11 @@ class ResourceLimitCheck(SafetyCheck):
         # Check file size limits
         if action.resource_type == ResourceType.FILE:
             content = action.parameters.get("content", "")
-            if len(content) > self.MAX_FILE_SIZE:
+            content_size = len(
+                content if isinstance(content, (bytes, bytearray))
+                else str(content).encode("utf-8")
+            )
+            if content_size > self.MAX_FILE_SIZE:
                 return False, f"File content exceeds maximum size of {self.MAX_FILE_SIZE} bytes"
 
         # Check batch operation limits
@@ -523,7 +527,7 @@ class ImpactAssessor:
 
 ### 5. Approval Workflow
 
-The approval workflow handles human-in-the-loop validation for medium and high impact actions:
+The approval workflow handles human-in-the-loop validation for high-impact actions. Medium-impact actions are flagged for confirmation by the caller:
 
 ```python
 from datetime import datetime, timedelta
@@ -799,7 +803,7 @@ result = validator.validate(write_action)
 print(f"Write action valid: {result.is_valid}")
 print(f"Errors: {result.errors}")
 # Output: Write action valid: False
-# Errors: ['Validation failed: Missing required parameters: ['content']']
+# Errors: ["Validation failed: Missing required parameters: ['content']"]
 
 # Example 3: Path traversal attempt - should fail
 malicious_action = Action(
