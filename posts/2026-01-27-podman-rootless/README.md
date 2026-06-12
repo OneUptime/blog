@@ -50,15 +50,15 @@ flowchart LR
     end
 
     subgraph Host["Host System"]
-        HR[Mapped to UID 100000]
-        HU[Mapped to UID 101000]
+        HR[Mapped to your UID]
+        HU[Mapped to UID 100999]
     end
 
     CR --> HR
     CU --> HU
 ```
 
-Inside the container, processes think they're running as root (UID 0), but on the host, they're actually running as an unprivileged user (e.g., UID 100000).
+Inside the container, processes may think they're running as root (UID 0), but on the host, UID 0 maps to your unprivileged user. Additional container UIDs map into your subordinate UID range.
 
 ## Prerequisites
 
@@ -130,14 +130,14 @@ flowchart TB
 
     subgraph ContainerIDs["Container UID Space"]
         C0["UID 0 (root)"]
-        C1["UID 1-65535"]
+        C1["UID 1-65536"]
     end
 
-    C0 -->|"Maps to"| U2
+    C0 -->|"Maps to your login UID"| U1
     C1 -->|"Maps to"| U2
 ```
 
-The subordinate range gives your user 65,536 UIDs (100000-165535) that can be mapped inside containers. UID 0 in the container maps to UID 100000 on the host.
+The subordinate range gives your user 65,536 UIDs (100000-165535) that can be mapped inside containers. By default, your login UID maps to UID 0 in the rootless user namespace, and the subordinate range is mapped after that.
 
 ## Storage Configuration
 
@@ -163,12 +163,9 @@ driver = "overlay"
 runroot = "/run/user/1000/containers"
 
 [storage.options]
-# Use fuse-overlayfs for rootless overlay support
-mount_program = "/usr/bin/fuse-overlayfs"
-
 [storage.options.overlay]
-# Enable native overlay diff for better performance (if supported)
-# mount_program = "/usr/bin/fuse-overlayfs"
+# Use fuse-overlayfs for rootless overlay support on older kernels
+mount_program = "/usr/bin/fuse-overlayfs"
 EOF
 
 # Replace 1000 with your actual UID
@@ -341,9 +338,9 @@ Resource Limits with cgroups v2
 cat /sys/fs/cgroup/cgroup.controllers
 # Output should include: cpu memory io
 
-# Enable CPU delegation for your user (if not already enabled)
+# Enable CPU delegation for user services (if not already enabled)
 sudo mkdir -p /etc/systemd/system/user@.service.d/
-sudo cat > /etc/systemd/system/user@.service.d/delegate.conf << 'EOF'
+cat << 'EOF' | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
 [Service]
 Delegate=cpu cpuset io memory pids
 EOF
@@ -365,28 +362,28 @@ podman stats --no-stream limited-container
 ```mermaid
 flowchart TB
     subgraph NetworkModes["Rootless Network Modes"]
-        Slirp["slirp4netns<br/>(Default)"]
-        Pasta["pasta<br/>(Modern)"]
+        Pasta["pasta<br/>(Default in current Podman)"]
+        Slirp["slirp4netns<br/>(Alternative)"]
         Host["host<br/>(No isolation)"]
     end
 
+    Pasta --> |"User-mode networking"| Internet
     Slirp --> |"User-space NAT"| Internet
-    Pasta --> |"User-space NAT"| Internet
     Host --> |"Direct access"| Internet
 ```
 
 ```bash
-# Default: slirp4netns (user-space networking)
-podman run -d --name slirp-test -p 8080:80 nginx:alpine
+# Default in current Podman: pasta (user-mode networking)
+podman run -d --name pasta-test -p 8080:80 nginx:alpine
 
-# Use pasta (newer, better performance) if available
-podman run -d --name pasta-test --network pasta -p 8081:80 nginx:alpine
+# Use slirp4netns explicitly if needed
+podman run -d --name slirp-test --network slirp4netns -p 8081:80 nginx:alpine
 
 # Host networking (shares host network namespace)
 podman run -d --name host-test --network host nginx:alpine
 
 # Check which network mode is being used
-podman inspect slirp-test --format '{{.HostConfig.NetworkMode}}'
+podman inspect pasta-test --format '{{.HostConfig.NetworkMode}}'
 ```
 
 ## Common Issues and Solutions
@@ -433,11 +430,11 @@ podman info | grep -i native
 
 ```bash
 # Problem: DNS resolution fails in rootless containers
-# Solution: Check slirp4netns is installed and working
+# Solution: Check the rootless network helper is installed and working
 
-# Verify slirp4netns
-which slirp4netns
-slirp4netns --version
+# Verify pasta/passt or slirp4netns
+which pasta || which slirp4netns
+pasta --version || slirp4netns --version
 
 # Test DNS inside container
 podman run --rm alpine nslookup google.com
@@ -458,7 +455,7 @@ source ~/.bashrc
 # Docker Compose alternative: podman-compose
 pip install podman-compose
 
-# Or use Podman's built-in compose support
+# Or use Podman's compose wrapper, which calls an external compose provider
 podman compose up -d
 
 # Import Docker images
@@ -500,19 +497,28 @@ podman healthcheck run monitored-app
 ### Systemd Integration
 
 ```bash
-# Generate systemd unit file for a container
-podman generate systemd --name my-nginx --files --new
+# Create a Quadlet unit for a container
+mkdir -p ~/.config/containers/systemd
 
-# Move to user systemd directory
-mkdir -p ~/.config/systemd/user
-mv container-my-nginx.service ~/.config/systemd/user/
+cat > ~/.config/containers/systemd/my-nginx.container << 'EOF'
+[Container]
+Image=docker.io/library/nginx:alpine
+ContainerName=my-nginx
+PublishPort=8080:80
 
-# Enable and start the service
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+EOF
+
+# Reload user units and start the service
 systemctl --user daemon-reload
-systemctl --user enable --now container-my-nginx
+systemctl --user start my-nginx.service
 
 # Check status
-systemctl --user status container-my-nginx
+systemctl --user status my-nginx.service
 
 # Enable lingering so services start at boot (before login)
 loginctl enable-linger $USER
@@ -543,8 +549,8 @@ podman run -d --pod my-app-pod --name web nginx:alpine
 podman run -d --pod my-app-pod --name cache redis:alpine
 
 # Containers in the same pod share network namespace
-# They can communicate via localhost
-podman exec web curl localhost:6379
+# Services are reachable on localhost inside the pod
+podman exec cache redis-cli -h localhost ping
 
 # List pods
 podman pod ls
