@@ -12,7 +12,7 @@ Description: A comprehensive guide to implementing ArgoCD sync waves for control
 
 ## What Are Sync Waves?
 
-Sync waves in ArgoCD provide fine-grained control over the order in which Kubernetes resources are deployed. Without sync waves, ArgoCD applies all resources in parallel, which can cause failures when resources depend on each other. Sync waves solve this by allowing you to specify a deployment sequence.
+Sync waves in ArgoCD provide fine-grained control over the order in which Kubernetes resources are deployed. Without explicit sync waves, resources use the default wave and ArgoCD relies on its built-in ordering by phase, kind, and name, which may not match application-specific dependencies. Sync waves solve this by allowing you to specify a deployment sequence.
 
 ```mermaid
 flowchart LR
@@ -44,7 +44,7 @@ flowchart LR
     Wave -2 --> Wave -1 --> Wave 0 --> Wave 1 --> Wave 2 --> Wave 3 --> Wave 4
 ```
 
-ArgoCD processes waves sequentially from lowest to highest number. Resources within the same wave deploy in parallel. ArgoCD waits for all resources in a wave to become healthy before proceeding to the next wave.
+ArgoCD processes waves from lowest to highest number. Resources within the same wave may be applied together, still following ArgoCD's built-in kind and name ordering. ArgoCD then continues through phases and waves until all resources are in sync and healthy.
 
 ## Sync Wave Annotations
 
@@ -75,8 +75,8 @@ Key characteristics of sync waves:
 
 - Default wave is 0 when no annotation is present
 - Negative numbers are valid and deploy before wave 0
-- Resources in the same wave deploy in parallel
-- ArgoCD waits for all resources in a wave to be healthy before proceeding
+- Resources in the same wave may be applied together, with ArgoCD still ordering by resource kind and name
+- ArgoCD repeats wave processing until all resources are in sync and healthy
 - Health is determined by Kubernetes readiness probes and ArgoCD health checks
 
 Resource Ordering Patterns
@@ -396,9 +396,9 @@ metadata:
   annotations:
     # Ingress is the final wave - all backends must be ready
     argocd.argoproj.io/sync-wave: "3"
-    kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - api.myapp.example.com
@@ -458,7 +458,7 @@ sequenceDiagram
 | Sync | During the sync (with wave ordering) | Resources needing special handling |
 | PostSync | After all waves complete successfully | Smoke tests, notifications, cache warming |
 | SyncFail | Only when sync fails | Alerting, cleanup, rollback triggers |
-| Skip | Never runs automatically | Manual operations, debugging |
+| Skip | Skips applying the annotated manifest | Keeping a manifest in Git without applying it |
 
 ### PreSync Hook - Database Migration
 
@@ -466,6 +466,8 @@ sequenceDiagram
 # PreSync hooks run BEFORE any application resources are deployed
 # This is the ideal place for database migrations that must complete
 # before new application code starts
+# The hook namespace, database Service, and referenced Secrets must already
+# exist, usually from a previous release or a separate bootstrap application.
 
 apiVersion: batch/v1
 kind: Job
@@ -869,6 +871,8 @@ flowchart TB
 
 # ============================================================
 # PRESYNC HOOKS - Run before any sync waves
+# These hooks assume the namespace, database Secret, backup PVC, and database
+# Service already exist from a previous release or a separate bootstrap app.
 # ============================================================
 
 apiVersion: batch/v1
@@ -938,7 +942,7 @@ spec:
             - /bin/sh
             - -c
             - |
-              until nc -z postgres 5432; do
+              until nc -z postgres-primary 5432; do
                 echo "Waiting for database..."
                 sleep 2
               done
@@ -1306,9 +1310,9 @@ metadata:
   namespace: myapp-production
   annotations:
     argocd.argoproj.io/sync-wave: "3"
-    kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - myapp.example.com
@@ -1594,11 +1598,11 @@ spec:
 When deploying complex applications with multiple sync waves and hooks, observability is critical. Use [OneUptime](https://oneuptime.com) to monitor your ArgoCD deployments, track sync wave progress, and alert on failures.
 
 ```yaml
-# PostSync hook to report deployment metrics to OneUptime
+# PostSync hook to report deployment status to OneUptime
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: report-deployment-metrics
+  name: report-deployment-status
   namespace: myapp-production
   annotations:
     argocd.argoproj.io/hook: PostSync
@@ -1613,39 +1617,14 @@ spec:
             - /bin/sh
             - -c
             - |
-              # Report successful deployment metric
-              curl -X POST "https://oneuptime.com/api/telemetry/metrics" \
+              # Report successful deployment as a structured Syslog event
+              curl -X POST "https://oneuptime.com/syslog/v1/logs" \
                 -H "Content-Type: application/json" \
                 -H "x-oneuptime-token: ${ONEUPTIME_TOKEN}" \
                 -d '{
-                  "projectId": "'${PROJECT_ID}'",
-                  "metrics": [{
-                    "name": "deployment.success",
-                    "value": 1,
-                    "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
-                    "attributes": {
-                      "application": "myapp",
-                      "environment": "production",
-                      "version": "v2.1.0"
-                    }
-                  }]
-                }'
-
-              # Report deployment duration
-              curl -X POST "https://oneuptime.com/api/telemetry/metrics" \
-                -H "Content-Type: application/json" \
-                -H "x-oneuptime-token: ${ONEUPTIME_TOKEN}" \
-                -d '{
-                  "projectId": "'${PROJECT_ID}'",
-                  "metrics": [{
-                    "name": "deployment.duration_seconds",
-                    "value": '${DEPLOYMENT_DURATION:-60}',
-                    "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
-                    "attributes": {
-                      "application": "myapp",
-                      "environment": "production"
-                    }
-                  }]
+                  "messages": [
+                    "<14>1 '"$(date -u +%Y-%m-%dT%H:%M:%SZ)"' argocd myapp - deployment [deployment@32473 application=\"myapp\" environment=\"production\" version=\"v2.1.0\" duration_seconds=\"'${DEPLOYMENT_DURATION:-60}'\"] Deployment completed successfully"
+                  ]
                 }'
           env:
             - name: ONEUPTIME_TOKEN
@@ -1653,11 +1632,6 @@ spec:
                 secretKeyRef:
                   name: oneuptime-credentials
                   key: token
-            - name: PROJECT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: oneuptime-credentials
-                  key: project-id
       restartPolicy: Never
 
 ---
@@ -1681,32 +1655,40 @@ spec:
             - -c
             - |
               # Create incident in OneUptime
-              curl -X POST "https://oneuptime.com/api/incidents" \
+              curl -X POST "https://oneuptime.com/api/incident" \
                 -H "Content-Type: application/json" \
-                -H "x-oneuptime-token: ${ONEUPTIME_TOKEN}" \
+                -H "ApiKey: ${ONEUPTIME_API_KEY}" \
                 -d '{
-                  "projectId": "'${PROJECT_ID}'",
-                  "title": "Deployment Failed: myapp production",
-                  "description": "ArgoCD sync operation failed for myapp in production environment. Manual investigation required.",
-                  "severity": "Critical",
-                  "monitors": ["'${MONITOR_ID}'"]
+                  "data": {
+                    "projectId": "'${PROJECT_ID}'",
+                    "title": "Deployment Failed: myapp production",
+                    "description": "ArgoCD sync operation failed for myapp in production environment. Manual investigation required.",
+                    "incidentSeverityId": "'${INCIDENT_SEVERITY_ID}'",
+                    "currentIncidentStateId": "'${INCIDENT_STATE_ID}'",
+                    "declaredAt": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+                  }
                 }'
           env:
-            - name: ONEUPTIME_TOKEN
+            - name: ONEUPTIME_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: oneuptime-credentials
-                  key: token
+                  key: api-key
             - name: PROJECT_ID
               valueFrom:
                 secretKeyRef:
                   name: oneuptime-credentials
                   key: project-id
-            - name: MONITOR_ID
+            - name: INCIDENT_SEVERITY_ID
               valueFrom:
                 secretKeyRef:
                   name: oneuptime-credentials
-                  key: monitor-id
+                  key: incident-severity-id
+            - name: INCIDENT_STATE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oneuptime-credentials
+                  key: incident-state-id
       restartPolicy: Never
 ```
 
@@ -1718,8 +1700,8 @@ spec:
 # Check sync status and current operation
 argocd app get myapp --show-operation
 
-# View resources with their sync status and health
-argocd app resources myapp --output wide
+# View resources with hierarchy, health, age, and reason columns
+argocd app resources myapp --output tree=detailed
 
 # Force hard refresh to clear caches
 argocd app get myapp --hard-refresh
@@ -1737,9 +1719,8 @@ argocd app manifests myapp | grep -B5 "sync-wave"
 ### Debugging Hook Failures
 
 ```bash
-# List all hooks and their status
-kubectl get jobs -n myapp-production \
-  -l argocd.argoproj.io/hook
+# List hook jobs and inspect their hook annotations
+kubectl get jobs -n myapp-production -o wide
 
 # Check hook job logs
 kubectl logs job/db-migration -n myapp-production
@@ -1780,7 +1761,7 @@ metadata:
 
 5. **Set appropriate backoff limits**: Configure `backoffLimit` on jobs to control retry behavior.
 
-6. **Use TTL for job cleanup**: Set `ttlSecondsAfterFinished` to automatically clean up completed jobs.
+6. **Use TTL carefully for job cleanup**: Set `ttlSecondsAfterFinished` for non-hook Jobs when you want Kubernetes to clean them up. For ArgoCD hooks, prefer hook delete policies because TTL cleanup can make hook resources appear out of sync.
 
 7. **Monitor your deployments**: Use [OneUptime](https://oneuptime.com) to track deployment health and receive alerts on failures.
 
