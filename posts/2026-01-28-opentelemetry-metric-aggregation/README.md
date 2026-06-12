@@ -14,7 +14,7 @@ This guide covers aggregation strategies at both the SDK level and in the Collec
 
 ## Understanding Metric Aggregation
 
-Aggregation transforms individual measurements into statistical summaries. Instead of storing every single HTTP request latency value, you store aggregated views like histograms, averages, or percentiles.
+Aggregation transforms individual measurements into statistical summaries. Instead of storing every single HTTP request latency value, you store aggregated views like histograms, sums, counts, or last values.
 
 ```mermaid
 flowchart LR
@@ -54,35 +54,46 @@ The OpenTelemetry SDK performs aggregation before exporting metrics. You can con
 
 ```javascript
 // metrics-setup.js
-const { MeterProvider, View, Aggregation } = require('@opentelemetry/sdk-metrics');
+const {
+  MeterProvider,
+  PeriodicExportingMetricReader,
+  AggregationType,
+  InstrumentType,
+  createAllowListAttributesProcessor
+} = require('@opentelemetry/sdk-metrics');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Define custom histogram bucket boundaries for latency metrics
-const latencyView = new View({
+const latencyView = {
   instrumentName: 'http.server.duration',
-  instrumentType: 'Histogram',
-  aggregation: Aggregation.ExplicitBucketHistogram({
-    boundaries: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
-  })
-});
+  instrumentType: InstrumentType.HISTOGRAM,
+  aggregation: {
+    type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+    options: {
+      boundaries: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
+    }
+  }
+};
 
 // Aggregate request counts with specific attributes only
-const requestCountView = new View({
+const requestCountView = {
   instrumentName: 'http.server.request.count',
   // Only keep these attributes, drop all others
-  attributeKeys: ['http.method', 'http.status_code', 'http.route']
-});
+  attributesProcessors: [
+    createAllowListAttributesProcessor(['http.method', 'http.status_code', 'http.route'])
+  ]
+};
 
 // Create custom aggregation for memory metrics
-const memoryView = new View({
+const memoryView = {
   instrumentName: 'process.memory.*',
-  instrumentType: 'Gauge',
-  aggregation: Aggregation.LastValue()
-});
+  instrumentType: InstrumentType.OBSERVABLE_GAUGE,
+  aggregation: { type: AggregationType.LAST_VALUE }
+};
 
 const meterProvider = new MeterProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'order-service',
     'deployment.environment': process.env.NODE_ENV
   }),
@@ -122,7 +133,7 @@ db_latency_view = View(
 # Drop high-cardinality attributes from cache metrics
 cache_view = View(
     instrument_name="cache.*",
-    attribute_keys=["cache.type", "cache.hit"]  # Keep only these
+    attribute_keys={"cache.type", "cache.hit"}  # Keep only these
 )
 
 # Configure the meter provider with views
@@ -161,9 +172,10 @@ import (
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initMetrics() (*metric.MeterProvider, error) {
@@ -180,7 +192,7 @@ func initMetrics() (*metric.MeterProvider, error) {
     res, _ := resource.New(ctx,
         resource.WithAttributes(
             semconv.ServiceName("payment-service"),
-            semconv.DeploymentEnvironment("production"),
+            semconv.DeploymentEnvironmentName("production"),
         ),
     )
 
@@ -256,30 +268,25 @@ processors:
       - include: http.server.duration
         action: update
         operations:
-          # Remove user_id and session_id labels
-          - action: delete_label_value
-            label: user_id
-          - action: delete_label_value
-            label: session_id
+          # Keep only bounded labels and aggregate away user_id/session_id
+          - action: aggregate_labels
+            label_set: [http.method, http.status_code, http.route]
+            aggregation_type: sum
 
       # Combine multiple metrics into one
-      - include: ^(http_requests_total|grpc_requests_total)$
+      - include: ^(?P<protocol>http|grpc)_requests_total$
         match_type: regexp
         action: combine
         new_name: requests_total
         submatch_case: lower
-        operations:
-          - action: add_label
-            new_label: protocol
-            new_value: "{{.OriginalName}}"
 
       # Create aggregated service-level metrics
       - include: http.server.request.count
         action: insert
-        new_name: service.request.rate
+        new_name: service.request.count
         operations:
           - action: aggregate_labels
-            label_set: [service.name, deployment.environment]
+            label_set: []
             aggregation_type: sum
 
   # Group metrics by attributes for efficient storage
@@ -308,14 +315,13 @@ service:
       exporters: [otlphttp, prometheus]
 ```
 
-### Advanced Aggregation with the Aggregate Processor
+### Advanced Aggregation with the Metrics Generation Processor
 
-For more complex aggregation scenarios, use a custom processor or the aggregate processor:
+For more complex aggregation scenarios, use a custom processor or the metrics generation processor:
 
 ```yaml
 processors:
-  # Experimental aggregate processor
-  experimental_metricsgeneration:
+  metricsgeneration:
     rules:
       # Calculate error rate from request and error counts
       - name: http.error.rate
@@ -327,7 +333,7 @@ processors:
       # Calculate average latency
       - name: http.latency.avg
         type: calculate
-        metric1: http.server.duration.sum
+        metric1: http.server.duration.total
         metric2: http.server.duration.count
         operation: divide
 ```
@@ -355,26 +361,20 @@ flowchart TD
 ### Configuring Temporality
 
 ```javascript
-// Node.js: Configure delta temporality for specific metrics
-const { AggregationTemporality } = require('@opentelemetry/sdk-metrics');
+const {
+  OTLPMetricExporter,
+  AggregationTemporalityPreference
+} = require('@opentelemetry/exporter-metrics-otlp-http');
 
 const exporter = new OTLPMetricExporter({
   url: 'http://localhost:4318/v1/metrics',
-  temporalityPreference: AggregationTemporality.DELTA
+  temporalityPreference: AggregationTemporalityPreference.DELTA
 });
 
-// Or configure per-instrument-type
-const customExporter = new OTLPMetricExporter({
+// Or use LOWMEMORY: delta for counters and histograms, cumulative for async instruments
+const lowMemoryExporter = new OTLPMetricExporter({
   url: 'http://localhost:4318/v1/metrics',
-  temporalitySelector: (instrumentType) => {
-    switch (instrumentType) {
-      case InstrumentType.COUNTER:
-      case InstrumentType.HISTOGRAM:
-        return AggregationTemporality.DELTA;
-      default:
-        return AggregationTemporality.CUMULATIVE;
-    }
-  }
+  temporalityPreference: AggregationTemporalityPreference.LOWMEMORY
 });
 ```
 
@@ -424,7 +424,7 @@ from opentelemetry.sdk.metrics.view import View
 # Only allow specific attribute values
 allowed_status_view = View(
     instrument_name="http.server.request.count",
-    attribute_keys=["http.method", "http.status_code"],
+    attribute_keys={"http.method", "http.status_code"},
     # Further limit by only keeping certain status codes
 )
 
@@ -436,24 +436,22 @@ allowed_status_view = View(
 ```yaml
 processors:
   filter:
+    error_mode: ignore
     metrics:
-      # Drop metrics with too many unique label combinations
-      exclude:
-        match_type: expr
-        expressions:
-          - 'Label("user_id") != ""'
-          - 'Label("session_id") != ""'
-          - 'Label("request_id") != ""'
+      datapoint:
+        # Drop data points with high-cardinality attributes
+        - 'attributes["user_id"] != nil'
+        - 'attributes["session_id"] != nil'
+        - 'attributes["request_id"] != nil'
 
   attributes:
     actions:
       # Hash high-cardinality values to reduce uniqueness
       - key: client.ip
         action: hash
-      # Truncate long values
+      # Remove raw URLs; prefer normalized route attributes instead
       - key: http.url
-        action: truncate
-        max_length: 100
+        action: delete
 ```
 
 ## Creating Derived Metrics
@@ -467,7 +465,6 @@ package metrics
 import (
     "context"
     "sync"
-    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/metric"
@@ -569,7 +566,7 @@ receivers:
 processors:
   batch:
 
-  # Convert temporality for Prometheus
+  # Convert temporality for backends that prefer delta metrics
   cumulativetodelta:
     include:
       match_type: strict
@@ -663,7 +660,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ---
