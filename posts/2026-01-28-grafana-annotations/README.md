@@ -136,10 +136,10 @@ Query-based annotations pull events directly from your data sources. This is use
         "enable": true,
         "hide": false,
         "iconColor": "green",
-        "expr": "changes(deployment_timestamp{environment=\"production\"}[1m]) > 0",
-        "titleFormat": "Deployment: {{service}}",
-        "textFormat": "Version: {{version}}, Replicas: {{replicas}}",
-        "tagKeys": "service,environment",
+        "expr": "changes(kube_deployment_metadata_generation{namespace=\"production\"}[5m]) > 0",
+        "titleFormat": "Deployment: {{deployment}}",
+        "textFormat": "Namespace: {{namespace}}",
+        "tagKeys": "deployment,namespace",
         "useValueForTime": false
       }
     ]
@@ -154,12 +154,9 @@ Query-based annotations pull events directly from your data sources. This is use
 groups:
   - name: deployment-events
     rules:
-      - record: deployment_timestamp
+      - record: deployment_generation_changes
         expr: |
-          timestamp(
-            kube_deployment_status_observed_generation{namespace="production"}
-          ) * on(deployment) group_left(image)
-          kube_deployment_spec_template_spec_containers_image
+          changes(kube_deployment_metadata_generation{namespace="production"}[5m])
 ```
 
 ### Loki Annotations (Log-Based)
@@ -189,7 +186,7 @@ groups:
 
 ## 4. Annotations from Prometheus Alertmanager
 
-Alertmanager alerts can automatically appear as annotations when alerts fire.
+Prometheus alert state metrics and Alertmanager webhooks can be used to create annotations when alerts fire.
 
 ### Configure Alert State Annotations
 
@@ -216,25 +213,21 @@ Alertmanager alerts can automatically appear as annotations when alerts fire.
 }
 ```
 
-### Webhook to Grafana from Alertmanager
+### Webhook to an Annotation Handler from Alertmanager
 
 ```yaml
 # alertmanager.yml
 receivers:
   - name: 'grafana-annotations'
     webhook_configs:
-      - url: 'http://grafana:3000/api/annotations'
-        http_config:
-          authorization:
-            type: Bearer
-            credentials: ${GRAFANA_API_KEY}
+      - url: 'http://annotation-webhook:5000/webhook'
         send_resolved: true
 
 route:
   receiver: 'grafana-annotations'
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'grafana-annotations'
       continue: true  # Continue to other receivers
 ```
@@ -334,19 +327,37 @@ jobs:
 
       - name: Create Grafana Annotation
         if: success()
+        env:
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           # Get current timestamp in milliseconds
           TIMESTAMP=$(date +%s)000
 
           # Create annotation
+          payload=$(jq -n \
+            --argjson time "$TIMESTAMP" \
+            --arg repo "$REPOSITORY" \
+            --arg sha "$SHA" \
+            --arg ref "$REF_NAME" \
+            --arg actor "$ACTOR" \
+            --arg message "$COMMIT_MESSAGE" \
+            '{
+              time: $time,
+              tags: ["deployment", "github-actions", $repo],
+              text: ("Deployed commit " + $sha + "\nBranch: " + $ref + "\nAuthor: " + $actor + "\nMessage: " + $message)
+            }')
+
           curl -X POST \
-            -H "Authorization: Bearer ${{ secrets.GRAFANA_API_KEY }}" \
+            -H "Authorization: Bearer ${GRAFANA_API_KEY}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"tags\": [\"deployment\", \"github-actions\", \"${{ github.repository }}\"],
-              \"text\": \"Deployed commit ${{ github.sha }}\nBranch: ${{ github.ref_name }}\nAuthor: ${{ github.actor }}\nMessage: ${{ github.event.head_commit.message }}\"
-            }" \
-            ${{ secrets.GRAFANA_URL }}/api/annotations
+            -d "$payload" \
+            "${GRAFANA_URL}/api/annotations"
 ```
 
 ### GitLab CI Integration
@@ -360,14 +371,24 @@ deploy:
   after_script:
     - |
       if [ "$CI_JOB_STATUS" == "success" ]; then
+        TIMESTAMP=$(date +%s)000
+        payload=$(jq -n \
+          --argjson time "$TIMESTAMP" \
+          --arg project "$CI_PROJECT_NAME" \
+          --arg pipeline "$CI_PIPELINE_URL" \
+          --arg commit "$CI_COMMIT_SHA" \
+          --arg author "$GITLAB_USER_NAME" \
+          '{
+            time: $time,
+            tags: ["deployment", "gitlab-ci", $project],
+            text: ("Pipeline: " + $pipeline + "\nCommit: " + $commit + "\nAuthor: " + $author)
+          }')
+
         curl -X POST \
           -H "Authorization: Bearer ${GRAFANA_API_KEY}" \
           -H "Content-Type: application/json" \
-          -d "{
-            \"tags\": [\"deployment\", \"gitlab-ci\", \"${CI_PROJECT_NAME}\"],
-            \"text\": \"Pipeline: ${CI_PIPELINE_URL}\nCommit: ${CI_COMMIT_SHA}\nAuthor: ${GITLAB_USER_NAME}\"
-          }" \
-          ${GRAFANA_URL}/api/annotations
+          -d "$payload" \
+          "${GRAFANA_URL}/api/annotations"
       fi
 ```
 
@@ -378,7 +399,7 @@ deploy:
 from kubernetes import client, config, watch
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 GRAFANA_URL = os.environ['GRAFANA_URL']
 GRAFANA_API_KEY = os.environ['GRAFANA_API_KEY']
@@ -389,7 +410,7 @@ def create_annotation(deployment, event_type):
     spec = deployment.spec
 
     annotation_data = {
-        'time': int(datetime.utcnow().timestamp() * 1000),
+        'time': int(datetime.now(timezone.utc).timestamp() * 1000),
         'tags': [
             'kubernetes',
             'deployment',
@@ -477,12 +498,12 @@ flowchart LR
 
 ```python
 # annotation_service.py
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Optional
 import httpx
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from redis import Redis
 
 app = FastAPI()
@@ -499,7 +520,7 @@ class AnnotationEvent(BaseModel):
     tags: List[str]
     title: str
     description: str
-    metadata: Optional[dict] = {}
+    metadata: Optional[dict] = None
 
 def generate_event_hash(event: AnnotationEvent) -> str:
     """Generate hash for deduplication."""
@@ -532,7 +553,7 @@ async def enrich_event(event: AnnotationEvent) -> AnnotationEvent:
 async def create_grafana_annotation(event: AnnotationEvent):
     """Create annotation in Grafana."""
     payload = {
-        'time': event.timestamp or int(datetime.utcnow().timestamp() * 1000),
+        'time': event.timestamp or int(datetime.now(timezone.utc).timestamp() * 1000),
         'tags': event.tags,
         'text': f"**{event.title}**\n\n{event.description}"
     }
@@ -659,11 +680,14 @@ tags:
         "name": "Events",
         "datasource": "-- Grafana --",
         "enable": true,
-        "filter": {
-          "exclude": false,
-          "ids": [],
-          "tags": ["$annotation_tags"]
-        }
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "target": {
+          "limit": 100,
+          "matchAny": true,
+          "tags": ["$annotation_tags"],
+          "type": "tags"
+        },
+        "type": "tags"
       }
     ]
   }
@@ -734,20 +758,14 @@ curl -X DELETE \
 
 ## 9. Dashboard Configuration
 
-### Enabling Annotations on Panels
+### Enabling Annotations on Dashboards
 
 ```json
 {
   "panels": [
     {
       "title": "Request Rate",
-      "type": "timeseries",
-      "options": {
-        "annotations": {
-          "enable": true,
-          "showAnnotations": true
-        }
-      }
+      "type": "timeseries"
     }
   ],
   "annotations": {
@@ -770,9 +788,9 @@ curl -X DELETE \
         "hide": false,
         "iconColor": "green",
         "name": "Deployments",
-        "expr": "changes(deployment_info[5m]) > 0",
-        "titleFormat": "Deploy: {{service}}",
-        "tagKeys": "service,version"
+        "expr": "changes(kube_deployment_metadata_generation{namespace=\"production\"}[5m]) > 0",
+        "titleFormat": "Deploy: {{deployment}}",
+        "tagKeys": "deployment,namespace"
       }
     ]
   }
@@ -787,19 +805,19 @@ curl -X DELETE \
     "list": [
       {
         "name": "Deployments",
-        "iconColor": "#73BF69"  // Green
+        "iconColor": "#73BF69"
       },
       {
         "name": "Incidents",
-        "iconColor": "#F2495C"  // Red
+        "iconColor": "#F2495C"
       },
       {
         "name": "Maintenance",
-        "iconColor": "#FF9830"  // Orange
+        "iconColor": "#FF9830"
       },
       {
         "name": "Config Changes",
-        "iconColor": "#5794F2"  // Blue
+        "iconColor": "#5794F2"
       }
     ]
   }
@@ -854,8 +872,6 @@ annotations:
   list:
     - name: High-Cardinality Query
       expr: "up == 0"
-      # Add step to reduce query load
-      step: "1m"
       # Limit maximum annotations returned
       limit: 100
 ```
