@@ -47,17 +47,17 @@ Samples flow through the write path (distributor, ingester) while queries flow t
 
 ## Deployment Modes
 
-Mimir supports three deployment modes based on your scale and operational requirements.
+Mimir supports two deployment modes based on your scale and operational requirements.
 
 ### Monolithic Mode
 
-All components run in a single process. Ideal for development, testing, or small-scale deployments handling up to 1 million active series.
+All components run in a single process. Ideal for development, testing, or smaller deployments.
 
 ```yaml
 # mimir-monolithic.yaml
 
-# Single binary deployment for small-scale environments
-# Suitable for development and testing (up to 1M active series)
+# Single binary deployment for smaller environments
+# Suitable for development and testing
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -75,7 +75,7 @@ spec:
     spec:
       containers:
         - name: mimir
-          image: grafana/mimir:2.11.0
+          image: grafana/mimir:3.1.0
           args:
             # Run all components in single process
             - -target=all
@@ -109,94 +109,15 @@ spec:
             claimName: mimir-data
 ```
 
-### Read-Write Mode
-
-Separates read and write paths for independent scaling. Write path handles ingestion while read path handles queries.
-
-```yaml
-# mimir-read-write.yaml
-# Separated read and write paths for independent scaling
-# Write path: distributor + ingester
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mimir-write
-  namespace: monitoring
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: mimir-write
-  template:
-    metadata:
-      labels:
-        app: mimir-write
-    spec:
-      containers:
-        - name: mimir
-          image: grafana/mimir:2.11.0
-          args:
-            # Write path components only
-            - -target=write
-            - -config.file=/etc/mimir/mimir.yaml
-          ports:
-            - containerPort: 8080
-              name: http
-            - containerPort: 9095
-              name: grpc
-          resources:
-            requests:
-              cpu: "1"
-              memory: "2Gi"
-            limits:
-              cpu: "4"
-              memory: "8Gi"
----
-# Read path: query-frontend + querier + store-gateway
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mimir-read
-  namespace: monitoring
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: mimir-read
-  template:
-    metadata:
-      labels:
-        app: mimir-read
-    spec:
-      containers:
-        - name: mimir
-          image: grafana/mimir:2.11.0
-          args:
-            # Read path components only
-            - -target=read
-            - -config.file=/etc/mimir/mimir.yaml
-          ports:
-            - containerPort: 8080
-              name: http
-            - containerPort: 9095
-              name: grpc
-          resources:
-            requests:
-              cpu: "500m"
-              memory: "1Gi"
-            limits:
-              cpu: "2"
-              memory: "4Gi"
-```
-
 ### Microservices Mode
 
-Each component runs as a separate deployment for maximum scalability and fine-grained resource control. Recommended for large-scale production (10M+ active series).
+Each component runs as a separate deployment for maximum scalability and fine-grained resource control. Recommended for large-scale production.
 
 ```yaml
 # mimir-microservices.yaml
-# Full microservices deployment for large-scale production
-# Each component scales independently
+# Partial microservices deployment example for large-scale production
+# In production, deploy every required component, including query-frontend,
+# query-scheduler, store-gateway, compactor, and optional ruler/alertmanager.
 
 # Distributor - receives remote write requests
 apiVersion: apps/v1
@@ -216,7 +137,7 @@ spec:
     spec:
       containers:
         - name: mimir
-          image: grafana/mimir:2.11.0
+          image: grafana/mimir:3.1.0
           args:
             - -target=distributor
             - -config.file=/etc/mimir/mimir.yaml
@@ -244,7 +165,7 @@ spec:
     spec:
       containers:
         - name: mimir
-          image: grafana/mimir:2.11.0
+          image: grafana/mimir:3.1.0
           args:
             - -target=ingester
             - -config.file=/etc/mimir/mimir.yaml
@@ -285,7 +206,7 @@ spec:
     spec:
       containers:
         - name: mimir
-          image: grafana/mimir:2.11.0
+          image: grafana/mimir:3.1.0
           args:
             - -target=querier
             - -config.file=/etc/mimir/mimir.yaml
@@ -337,7 +258,7 @@ remote_write:
       # Capacity of each shard
       capacity: 2500
 
-    # Retry on temporary failures
+    # Relabel samples before remote write
     write_relabel_configs:
       # Drop high-cardinality metrics that cause issues
       - source_labels: [__name__]
@@ -416,8 +337,6 @@ ingester:
     replication_factor: 3
     kvstore:
       store: memberlist
-  # How long to retain samples in memory before flushing
-  max_chunk_age: 2h
 
 # Long-term storage backend (S3 example)
 blocks_storage:
@@ -435,10 +354,9 @@ blocks_storage:
     # Directory for local block storage before upload
     dir: /data/tsdb
 
-# Query configuration
-querier:
-  # Query recent data from ingesters
-  query_ingesters_within: 13h
+# Enable cross-tenant query federation with pipe-separated tenant IDs
+tenant_federation:
+  enabled: true
 
 # Store gateway configuration
 store_gateway:
@@ -462,6 +380,8 @@ limits:
   max_label_names_per_series: 30
   # Maximum query lookback
   max_query_lookback: 31d
+  # Query recent data from ingesters
+  query_ingesters_within: 13h
   # Retention period
   compactor_blocks_retention_period: 365d
 
@@ -531,6 +451,8 @@ Every request to Mimir must include a tenant identifier:
 curl -X POST \
   -H "X-Scope-OrgID: team-platform" \
   -H "Content-Type: application/x-protobuf" \
+  -H "Content-Encoding: snappy" \
+  -H "X-Prometheus-Remote-Write-Version: 0.1.0" \
   --data-binary @samples.pb \
   http://mimir-distributor:8080/api/v1/push
 
@@ -574,14 +496,13 @@ data:
 
 ## Query Federation
 
-Query federation allows you to query metrics across multiple Mimir clusters or combine data from different sources.
+Query federation allows you to query metrics across multiple tenants in a Mimir cluster. Cross-cluster views are typically handled in Grafana or at the proxy/application layer.
 
-### Cross-Cluster Federation
+### Query Frontend Configuration
 
 ```yaml
 # mimir-federation.yaml
-# Query frontend configuration for federation
-# Useful when running multiple Mimir clusters across regions
+# Query frontend configuration for efficient federated tenant queries
 
 # Primary cluster configuration
 server:
@@ -598,43 +519,12 @@ frontend:
   # Split queries by time interval for parallelism
   split_queries_by_interval: 24h
 
+limits:
   # Align queries to time boundaries
   align_queries_with_step: true
 
-# Federation targets (other Mimir clusters)
-# This is typically handled at the application/proxy level
-```
-
-### Prometheus Federation from Mimir
-
-```yaml
-# prometheus-federate.yaml
-# Pull aggregated metrics from Mimir into another Prometheus
-# Useful for global views or edge-to-central architectures
-
-scrape_configs:
-  # Federate from Mimir
-  - job_name: mimir-federation
-    honor_labels: true
-    metrics_path: /prometheus/federate
-    params:
-      # Select specific metrics to federate
-      match[]:
-        - '{job=~".+"}'
-        - 'up'
-        - 'node_cpu_seconds_total'
-        - 'http_requests_total'
-    static_configs:
-      - targets:
-          - mimir-query-frontend.monitoring.svc:8080
-    # Include tenant header
-    authorization:
-      type: Bearer
-      credentials_file: /etc/prometheus/mimir-token
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_tenant
-        replacement: team-platform
+# Cross-cluster federation targets are typically handled at the
+# application/proxy layer, not in this Mimir configuration block.
 ```
 
 ### Recording Rules for Cross-Tenant Aggregation
@@ -689,12 +579,6 @@ ruler:
   # Storage for rule files
   rule_path: /data/rules
 
-  # How to store rule configurations
-  storage:
-    type: local
-    local:
-      directory: /etc/mimir/rules
-
   # Evaluation configuration
   evaluation_interval: 1m
 
@@ -704,6 +588,12 @@ ruler:
   ring:
     kvstore:
       store: memberlist
+
+# How to store rule configurations
+ruler_storage:
+  backend: local
+  local:
+    directory: /etc/mimir/rules
 ```
 
 ---
@@ -716,7 +606,7 @@ Mimir scales horizontally by adding more instances of each component. Understand
 
 | Metric | Small (< 1M series) | Medium (1-10M series) | Large (> 10M series) |
 |--------|--------------------|-----------------------|---------------------|
-| Deployment mode | Monolithic | Read-Write | Microservices |
+| Deployment mode | Monolithic | Horizontally scaled monolithic or microservices | Microservices |
 | Distributors | 1 | 3 | 5+ |
 | Ingesters | 1 | 3 | 6+ |
 | Queriers | 1 | 2 | 4+ |
@@ -750,14 +640,6 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
-    # Scale based on incoming request rate
-    - type: Pods
-      pods:
-        metric:
-          name: cortex_distributor_received_samples_total
-        target:
-          type: AverageValue
-          averageValue: "100000"
 ---
 # Querier HPA - scale based on query load
 apiVersion: autoscaling/v2
@@ -828,17 +710,10 @@ spec:
 
       containers:
         - name: mimir
-          image: grafana/mimir:2.11.0
+          image: grafana/mimir:3.1.0
           args:
             - -target=ingester
             - -config.file=/etc/mimir/mimir.yaml
-
-          # Lifecycle hooks for graceful shutdown
-          lifecycle:
-            preStop:
-              httpGet:
-                path: /ingester/shutdown
-                port: 8080
 
           # Probes for health checking
           readinessProbe:
@@ -927,7 +802,7 @@ ingester:
 
 - Use lifecycle policies on object storage to tier old data
 - Configure appropriate retention periods per tenant
-- Use downsampling for long-term historical data
+- Use recording rules for lower-cardinality long-term views
 - Monitor and optimize query patterns to reduce resource usage
 
 ---
