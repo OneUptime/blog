@@ -183,6 +183,14 @@ sequenceDiagram
 ### Adding a Lambda Target
 
 ```bash
+# Allow EventBridge to invoke the Lambda function
+aws lambda add-permission \
+  --statement-id "AllowEventBridgeInvokeOrderProcessor" \
+  --action "lambda:InvokeFunction" \
+  --principal "events.amazonaws.com" \
+  --function-name "arn:aws:lambda:us-east-1:123456789012:function:ProcessOrder" \
+  --source-arn "arn:aws:events:us-east-1:123456789012:rule/order-processing-rule"
+
 # Add a Lambda function as target for the rule
 aws events put-targets \
   --rule "order-processing-rule" \
@@ -215,7 +223,7 @@ aws events put-targets \
           "amount": "$.detail.amount",
           "customer": "$.detail.customer-email"
         },
-        "InputTemplate": "{\"orderId\": <orderId>, \"amount\": <amount>, \"customerEmail\": <customer>}"
+        "InputTemplate": "{\"orderId\": \"<orderId>\", \"amount\": <amount>, \"customerEmail\": \"<customer>\"}"
       }
     }
   ]'
@@ -245,7 +253,7 @@ aws events put-targets \
 
 ## Scheduled Rules with Cron Expressions
 
-EventBridge supports both rate expressions and cron expressions for scheduled rules.
+EventBridge supports both rate expressions and cron expressions for scheduled rules. Scheduled rules are now the legacy scheduling feature; for new scheduled workloads, AWS recommends EventBridge Scheduler.
 
 ### Rate Expression Examples
 
@@ -341,6 +349,14 @@ resource "aws_cloudwatch_event_target" "order_processor" {
   }
 }
 
+resource "aws_lambda_permission" "allow_eventbridge_order_processor" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.order_processor.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.order_events.arn
+}
+
 # Scheduled rule for daily reports
 resource "aws_cloudwatch_event_rule" "daily_report" {
   name                = "daily-sales-report"
@@ -352,6 +368,14 @@ resource "aws_cloudwatch_event_target" "report_lambda" {
   rule      = aws_cloudwatch_event_rule.daily_report.name
   target_id = "DailySalesReport"
   arn       = aws_lambda_function.report_generator.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_report_lambda" {
+  statement_id  = "AllowDailyReportFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.report_generator.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.daily_report.arn
 }
 ```
 
@@ -370,7 +394,7 @@ export class EventBridgeStack extends cdk.Stack {
 
     // Create a Lambda function for processing orders
     const orderProcessor = new lambda.Function(this, 'OrderProcessor', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset('lambda/order-processor'),
     });
@@ -431,6 +455,7 @@ import json
 
 # Initialize the EventBridge client
 eventbridge = boto3.client('events')
+lambda_client = boto3.client('lambda')
 
 def create_event_pattern_rule():
     """Create an event pattern rule for order processing."""
@@ -458,6 +483,20 @@ def create_event_pattern_rule():
 
 def add_lambda_target(rule_name: str, lambda_arn: str):
     """Add a Lambda function as a target for the rule."""
+
+    rule = eventbridge.describe_rule(Name=rule_name)
+
+    try:
+        lambda_client.add_permission(
+            FunctionName=lambda_arn,
+            StatementId='AllowEventBridgeInvokeOrderProcessor',
+            Action='lambda:InvokeFunction',
+            Principal='events.amazonaws.com',
+            SourceArn=rule['Arn']
+        )
+    except lambda_client.exceptions.ResourceConflictException:
+        # Permission already exists.
+        pass
 
     response = eventbridge.put_targets(
         Rule=rule_name,
