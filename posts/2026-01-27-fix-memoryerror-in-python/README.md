@@ -215,6 +215,9 @@ def count_words_in_large_file(filepath):
 
             word_count += len(words)
 
+    if buffer:
+        word_count += 1
+
     return word_count
 ```
 
@@ -231,13 +234,13 @@ from collections import deque
 
 # For numeric data, use array instead of list
 # List stores Python objects - inefficient for numbers
-numbers_list = [1.0] * 1000000  # ~80 MB
+numbers_list = [float(i) for i in range(1000000)]  # ~32 MB on many 64-bit CPython builds
 
 # Array stores raw values - much smaller
-numbers_array = array.array('d', [1.0] * 1000000)  # ~8 MB
+numbers_array = array.array('d', (float(i) for i in range(1000000)))  # ~8 MB
 
 # NumPy arrays are even more efficient
-numbers_numpy = np.ones(1000000)  # ~8 MB, plus fast operations
+numbers_numpy = np.arange(1000000, dtype=np.float64)  # ~8 MB, plus fast operations
 
 
 # Use __slots__ to reduce memory for many objects
@@ -286,7 +289,7 @@ def process_batch(batch_data):
     return results
 
 
-# Circular references can prevent garbage collection
+# Circular references can delay collection until the cyclic garbage collector runs
 class Node:
     def __init__(self, value):
         self.value = value
@@ -328,14 +331,16 @@ For truly large datasets, process data externally.
 ```python
 # external_storage.py
 # Use external storage for large datasets
+import os
 import sqlite3
 import tempfile
 
 def process_with_sqlite(data_generator):
     """Use SQLite as temporary storage for large datasets."""
     # Create temporary database
-    with tempfile.NamedTemporaryFile(suffix='.db', delete=True) as tmp:
-        conn = sqlite3.connect(tmp.name)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, 'data.db')
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
         # Create table
@@ -412,8 +417,8 @@ def process_large_array(filepath, shape, dtype='float64'):
     # Create or open a memory-mapped array
     arr = np.memmap(filepath, dtype=dtype, mode='r+', shape=shape)
 
-    # Operations work on disk, not memory
-    # Only accessed portions are loaded
+    # Operations access the file through the memory map
+    # The OS loads pages as they are accessed
     mean = arr.mean()
     arr[arr < 0] = 0  # Modify on disk
 
@@ -497,4 +502,3 @@ The key principle is to avoid loading more data into memory than necessary. Proc
 ---
 
 *Building data-intensive Python applications? [OneUptime](https://oneuptime.com) helps you monitor memory usage, track resource consumption, and get alerted before issues affect users.*
-
