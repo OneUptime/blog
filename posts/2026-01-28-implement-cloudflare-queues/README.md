@@ -30,7 +30,7 @@ flowchart LR
 
 Before you begin, make sure you have:
 
-- A Cloudflare account with Workers paid plan
+- A Cloudflare account with Workers Free or Paid plan
 - Wrangler CLI installed (`npm install -g wrangler`)
 - Node.js 18 or later
 
@@ -40,7 +40,13 @@ Before you begin, make sure you have:
 
 ### Step 1: Configure wrangler.toml
 
-Set up your project configuration to define a queue:
+Create the queue first:
+
+```bash
+npx wrangler queues create my-task-queue
+```
+
+Set up your project configuration to bind the queue to your Worker:
 
 ```toml
 # wrangler.toml
@@ -416,23 +422,14 @@ function getQueueForPriority(priority: Priority, env: Env): Queue {
 
 ## Delayed Message Processing
 
-### Implement Delay with Scheduled Workers
+### Implement Delay with Queue Options
 
-Combine Queues with Cron Triggers for delayed processing:
+Use the built-in `delaySeconds` option for delayed processing:
 
 ```typescript
 // src/delayed-queue.ts
 export interface Env {
   TASK_QUEUE: Queue;
-  DELAYED_TASKS: KVNamespace;
-}
-
-interface DelayedTask {
-  executeAt: number;
-  task: {
-    type: string;
-    payload: Record<string, unknown>;
-  };
 }
 
 export default {
@@ -440,43 +437,19 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const body = await request.json() as { delaySeconds: number; task: unknown };
     const taskId = crypto.randomUUID();
+    const requestedDelaySeconds = Number.isFinite(body.delaySeconds) ? body.delaySeconds : 0;
+    const delaySeconds = Math.min(Math.max(0, Math.trunc(requestedDelaySeconds)), 86400);
 
-    const delayedTask: DelayedTask = {
-      executeAt: Date.now() + (body.delaySeconds * 1000),
-      task: body.task as DelayedTask["task"]
-    };
-
-    // Store in KV for later processing
-    await env.DELAYED_TASKS.put(
-      `delayed:${taskId}`,
-      JSON.stringify(delayedTask)
+    // Send to the queue with a delivery delay of up to 24 hours
+    await env.TASK_QUEUE.send(
+      { taskId, task: body.task },
+      { delaySeconds }
     );
 
-    return Response.json({ taskId, scheduledFor: delayedTask.executeAt });
-  },
-
-  // Cron handler runs every minute to check for due tasks
-  async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
-    const now = Date.now();
-
-    // List all delayed tasks
-    const list = await env.DELAYED_TASKS.list({ prefix: "delayed:" });
-
-    for (const key of list.keys) {
-      const data = await env.DELAYED_TASKS.get(key.name);
-      if (!data) continue;
-
-      const delayedTask = JSON.parse(data) as DelayedTask;
-
-      // Check if task is due
-      if (delayedTask.executeAt <= now) {
-        // Move to main queue for processing
-        await env.TASK_QUEUE.send(delayedTask.task);
-
-        // Remove from delayed storage
-        await env.DELAYED_TASKS.delete(key.name);
-      }
-    }
+    return Response.json({
+      taskId,
+      scheduledFor: Date.now() + (delaySeconds * 1000)
+    });
   }
 };
 ```
@@ -498,6 +471,8 @@ interface QueueMetrics {
   processed: number;
   failed: number;
   avgProcessingTime: number;
+  backlogCount: number;
+  backlogBytes: number;
   lastProcessed: number;
 }
 
@@ -520,35 +495,57 @@ export default {
 
     const processingTime = Date.now() - startTime;
 
+    const queueMetrics = await env.TASK_QUEUE.metrics();
+
     // Update metrics
     await updateMetrics(env, {
       processed: processedCount,
       failed: failedCount,
-      batchProcessingTime: processingTime
+      batchProcessingTime: processingTime,
+      backlogCount: queueMetrics.backlogCount,
+      backlogBytes: queueMetrics.backlogBytes
     });
   }
 };
 
 async function updateMetrics(
   env: Env,
-  stats: { processed: number; failed: number; batchProcessingTime: number }
+  stats: {
+    processed: number;
+    failed: number;
+    batchProcessingTime: number;
+    backlogCount: number;
+    backlogBytes: number;
+  }
 ): Promise<void> {
   const metricsKey = `metrics:${new Date().toISOString().split("T")[0]}`;
   const existing = await env.METRICS_KV.get(metricsKey);
 
   let metrics: QueueMetrics = existing
     ? JSON.parse(existing)
-    : { processed: 0, failed: 0, avgProcessingTime: 0, lastProcessed: 0 };
+    : {
+        processed: 0,
+        failed: 0,
+        avgProcessingTime: 0,
+        backlogCount: 0,
+        backlogBytes: 0,
+        lastProcessed: 0
+      };
 
   // Update running totals
   const totalProcessed = metrics.processed + stats.processed;
-  metrics.avgProcessingTime = (
-    (metrics.avgProcessingTime * metrics.processed) +
-    (stats.batchProcessingTime * stats.processed)
-  ) / totalProcessed;
+
+  if (totalProcessed > 0) {
+    metrics.avgProcessingTime = (
+      (metrics.avgProcessingTime * metrics.processed) +
+      (stats.batchProcessingTime * stats.processed)
+    ) / totalProcessed;
+  }
 
   metrics.processed = totalProcessed;
   metrics.failed += stats.failed;
+  metrics.backlogCount = stats.backlogCount;
+  metrics.backlogBytes = stats.backlogBytes;
   metrics.lastProcessed = Date.now();
 
   await env.METRICS_KV.put(metricsKey, JSON.stringify(metrics));
