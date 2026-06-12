@@ -449,8 +449,8 @@ Maintain an up-to-date list of escalation contacts for different types of issues
 
 | Vendor | Support Type | Contact | SLA |
 |--------|--------------|---------|-----|
-| AWS | Premium Support | AWS Console Case | 15 min response |
-| CloudFlare | Enterprise | support@cloudflare.com | 1 hour response |
+| AWS | Enterprise Support | AWS Console Case | 15 min response for critical cases |
+| Cloudflare | Enterprise | support@cloudflare.com | Per contract |
 | Database Vendor | 24/7 Critical | +1-800-XXX-XXXX | 30 min response |
 | Payment Provider | Technical | api-support@provider.com | 4 hour response |
 
