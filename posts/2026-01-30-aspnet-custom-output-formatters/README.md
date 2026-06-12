@@ -8,7 +8,7 @@ Description: Learn how to build production-ready custom output formatters in ASP
 
 ---
 
-ASP.NET Core APIs typically return JSON, but many real-world scenarios demand different formats. Your finance team wants Excel exports. A legacy system needs XML. Mobile apps prefer Protocol Buffers for bandwidth efficiency. RSS readers expect Atom feeds. Instead of creating separate endpoints for each format, custom output formatters let you serve the same data in whatever format the client requests.
+ASP.NET Core APIs typically return JSON, but many real-world scenarios demand different formats. Your finance team wants Excel exports. A legacy system needs XML. Mobile apps prefer Protocol Buffers for bandwidth efficiency. RSS readers expect syndication feeds. Instead of creating separate endpoints for each format, custom output formatters let you serve the same data in whatever format the client requests.
 
 This guide focuses on building output formatters that handle these production scenarios. You will learn to stream large datasets without running out of memory, generate Excel files on the fly, and create RSS feeds from your content APIs.
 
@@ -23,7 +23,7 @@ flowchart LR
     C -->|application/json| D[JSON Formatter]
     C -->|application/xml| E[XML Formatter]
     C -->|text/csv| F[CSV Formatter]
-    C -->|application/vnd.ms-excel| G[Excel Formatter]
+    C -->|application/vnd.openxmlformats-officedocument.spreadsheetml.sheet| G[Excel Formatter]
     D --> H[Serialize to Response]
     E --> H
     F --> H
@@ -227,8 +227,10 @@ For Excel exports, you need a binary output formatter. This example uses the Clo
 First, install the required package:
 
 ```bash
-dotnet add package ClosedXML
+dotnet package add ClosedXML
 ```
+
+If you are using the .NET 9 SDK or earlier, use `dotnet add package ClosedXML`.
 
 Then implement the formatter:
 
@@ -247,11 +249,9 @@ public class ExcelOutputFormatter : OutputFormatter
 {
     public ExcelOutputFormatter()
     {
-        // Standard Excel media types
+        // Standard XLSX media type
         SupportedMediaTypes.Add(MediaTypeHeaderValue.Parse(
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
-        SupportedMediaTypes.Add(MediaTypeHeaderValue.Parse(
-            "application/vnd.ms-excel"));
     }
 
     protected override bool CanWriteType(Type? type)
@@ -399,9 +399,9 @@ public class ExcelOutputFormatter : OutputFormatter
 }
 ```
 
-## RSS/Atom Feed Output Formatter
+## RSS Feed Output Formatter
 
-Content APIs often need to provide RSS or Atom feeds. This formatter converts collections into valid RSS 2.0 feeds.
+Content APIs often need to provide RSS feeds. This formatter converts collections into valid RSS 2.0 feeds.
 
 ```csharp
 // Formatters/RssFeedOutputFormatter.cs
@@ -440,7 +440,6 @@ public class RssFeedOutputFormatter : TextOutputFormatter
         _feedLink = feedLink;
 
         SupportedMediaTypes.Add(MediaTypeHeaderValue.Parse("application/rss+xml"));
-        SupportedMediaTypes.Add(MediaTypeHeaderValue.Parse("application/xml"));
 
         SupportedEncodings.Add(Encoding.UTF8);
     }
@@ -518,7 +517,7 @@ public class RssFeedOutputFormatter : TextOutputFormatter
             if (feedItem.PublishedDate.HasValue)
             {
                 await WriteElementAsync(writer, "pubDate",
-                    feedItem.PublishedDate.Value.ToString("R"));
+                    feedItem.PublishedDate.Value.ToUniversalTime().ToString("R"));
             }
 
             if (!string.IsNullOrEmpty(feedItem.Author))
@@ -586,8 +585,8 @@ public class RssFeedOutputFormatter : TextOutputFormatter
             if (property != null)
             {
                 var value = property.GetValue(obj);
-                if (value is DateTime dt) return dt;
-                if (value is DateTimeOffset dto) return dto.DateTime;
+                if (value is DateTime dt) return dt.ToUniversalTime();
+                if (value is DateTimeOffset dto) return dto.UtcDateTime;
             }
         }
         return null;
@@ -600,8 +599,10 @@ public class RssFeedOutputFormatter : TextOutputFormatter
 For PDF generation, we use QuestPDF, a modern library with a fluent API.
 
 ```bash
-dotnet add package QuestPDF
+dotnet package add QuestPDF
 ```
+
+If you are using the .NET 9 SDK or earlier, use `dotnet add package QuestPDF`.
 
 ```csharp
 // Formatters/PdfOutputFormatter.cs
@@ -814,6 +815,7 @@ Create a controller that serves data in multiple formats:
 // Controllers/OrdersController.cs
 [ApiController]
 [Route("api/[controller]")]
+[FormatFilter]
 public class OrdersController : ControllerBase
 {
     private readonly IOrderService _orderService;
@@ -943,10 +945,27 @@ public class OrderService : IOrderService
 }
 ```
 
-Update the formatter to handle `IAsyncEnumerable`:
+Update the formatter's type checks and response writer to handle `IAsyncEnumerable`:
 
 ```csharp
-// Formatters/StreamingCsvOutputFormatter.cs (updated WriteResponseBodyAsync)
+// Formatters/StreamingCsvOutputFormatter.cs (IAsyncEnumerable additions)
+protected override bool CanWriteType(Type? type)
+{
+    if (type == null) return false;
+
+    if (GetAsyncEnumerableElementType(type) != null)
+    {
+        return true;
+    }
+
+    if (typeof(IEnumerable).IsAssignableFrom(type) && type != typeof(string))
+    {
+        return true;
+    }
+
+    return type.IsClass && type != typeof(string);
+}
+
 public override async Task WriteResponseBodyAsync(
     OutputFormatterWriteContext context,
     Encoding selectedEncoding)
@@ -966,67 +985,97 @@ public override async Task WriteResponseBodyAsync(
         leaveOpen: true);
 
     // Handle IAsyncEnumerable for streaming scenarios
-    if (value.GetType().IsGenericType &&
-        value.GetType().GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
+    if (GetAsyncEnumerableElementType(value.GetType()) != null)
     {
-        await WriteAsyncEnumerableAsync(writer, value);
+        await WriteAsyncEnumerableAsync(writer, value, context.HttpContext.RequestAborted);
     }
     else if (value is IEnumerable enumerable)
     {
         await WriteEnumerableAsync(writer, enumerable, context.ObjectType);
     }
+    else
+    {
+        await WriteSingleObjectAsync(writer, value);
+    }
 
     await writer.FlushAsync();
 }
 
-private async Task WriteAsyncEnumerableAsync(StreamWriter writer, object asyncEnumerable)
+private static Type? GetAsyncEnumerableElementType(Type type)
+{
+    if (type.IsGenericType &&
+        type.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
+    {
+        return type.GetGenericArguments()[0];
+    }
+
+    return type.GetInterfaces()
+        .FirstOrDefault(i => i.IsGenericType &&
+            i.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
+        ?.GetGenericArguments()[0];
+}
+
+private async Task WriteAsyncEnumerableAsync(
+    StreamWriter writer,
+    object asyncEnumerable,
+    CancellationToken cancellationToken)
 {
     PropertyInfo[]? properties = null;
     var isFirstRow = true;
 
     // Use reflection to iterate the IAsyncEnumerable
-    var elementType = asyncEnumerable.GetType().GetGenericArguments()[0];
+    var elementType = GetAsyncEnumerableElementType(asyncEnumerable.GetType())!;
     var enumeratorMethod = typeof(IAsyncEnumerable<>)
         .MakeGenericType(elementType)
         .GetMethod("GetAsyncEnumerator");
 
     dynamic enumerator = enumeratorMethod!.Invoke(asyncEnumerable,
-        new object[] { CancellationToken.None })!;
+        new object[] { cancellationToken })!;
 
-    while (await enumerator.MoveNextAsync())
+    try
     {
-        var item = enumerator.Current;
-        if (item == null) continue;
-
-        if (properties == null)
+        while (await enumerator.MoveNextAsync())
         {
-            properties = item.GetType()
-                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanRead && IsSimpleType(p.PropertyType))
-                .ToArray();
+            var item = enumerator.Current;
+            if (item == null) continue;
+
+            if (properties == null)
+            {
+                properties = item.GetType()
+                    .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                    .Where(p => p.CanRead && IsSimpleType(p.PropertyType))
+                    .ToArray();
+            }
+
+            if (isFirstRow)
+            {
+                var headers = properties.Select(p => EscapeCsvValue(p.Name));
+                await writer.WriteLineAsync(string.Join(",", headers));
+                isFirstRow = false;
+            }
+
+            var values = properties.Select(p =>
+            {
+                var propValue = p.GetValue(item);
+                return EscapeCsvValue(FormatValue(propValue));
+            });
+
+            await writer.WriteLineAsync(string.Join(",", values));
         }
-
-        if (isFirstRow)
+    }
+    finally
+    {
+        if (enumerator is IAsyncDisposable asyncDisposable)
         {
-            var headers = properties.Select(p => EscapeCsvValue(p.Name));
-            await writer.WriteLineAsync(string.Join(",", headers));
-            isFirstRow = false;
+            await asyncDisposable.DisposeAsync();
         }
-
-        var values = properties.Select(p =>
-        {
-            var propValue = p.GetValue(item);
-            return EscapeCsvValue(FormatValue(propValue));
-        });
-
-        await writer.WriteLineAsync(string.Join(",", values));
     }
 }
 ```
 
 ## Custom Content Negotiation
 
-Sometimes you need more control over which formatter gets selected. Create a custom `IContentTypeProvider` or use action filters:
+Sometimes you need more control over which formatter gets selected. Use `FormatFilter` with formatter mappings, or use action filters:
 
 ```csharp
 // Filters/FormatQueryStringAttribute.cs
@@ -1147,7 +1196,7 @@ public class OutputFormatterTests : IClassFixture<WebApplicationFactory<Program>
 
 When building output formatters for production, keep these points in mind:
 
-1. **Stream large data**: Never load entire datasets into memory. Use streaming writes and `IAsyncEnumerable` for large exports.
+1. **Stream large data when the format allows it**: Avoid loading entire datasets into memory for streamable formats like CSV. Use streaming writes and `IAsyncEnumerable` for large exports. Formats such as XLSX and PDF often require buffering or pagination.
 
 2. **Set appropriate buffer sizes**: The default 4KB buffer works well for most cases, but larger exports may benefit from 16KB or 32KB buffers.
 
@@ -1160,6 +1209,9 @@ builder.Services.AddResponseCompression(options =>
     options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
         new[] { "text/csv", "application/rss+xml" });
 });
+
+var app = builder.Build();
+app.UseResponseCompression();
 ```
 
 4. **Cache generated files**: For expensive formats like PDF, consider caching the generated output if the same data is requested frequently.
