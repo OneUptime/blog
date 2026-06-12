@@ -223,6 +223,7 @@ class MemoryStore:
             for m in data["short_term"]
         ]
 
+        self.long_term = {}
         for key, m in data["long_term"].items():
             self.long_term[key] = Memory(
                 content=m["content"],
@@ -448,6 +449,14 @@ Only include categories with actual content. Be concise."""
             )
             stored.append(mem)
 
+        # Store tasks as episodes
+        for task in extracted.get("tasks", []):
+            mem = memory_store.add_episode(
+                f"Task: {task}",
+                metadata={"type": "task"}
+            )
+            stored.append(mem)
+
         # Store problem-solution pairs with high importance
         for ps in extracted.get("problems_solutions", []):
             mem = memory_store.add_episode(
@@ -466,7 +475,7 @@ Now let us put everything together into a complete agent with memory capabilitie
 
 ```python
 from openai import OpenAI
-from typing import Generator
+from pathlib import Path
 
 
 class MemoryAgent:
@@ -488,9 +497,11 @@ Be proactive about referencing past interactions when helpful.
 Current memories:
 {memories}"""
 
-    def __init__(self, api_key: str, user_id: str):
+    def __init__(self, api_key: str, user_id: str, memory_dir: str = "memories"):
         self.client = OpenAI(api_key=api_key)
         self.user_id = user_id
+        self.memory_dir = Path(memory_dir)
+        self.interaction_count = 0
 
         # Initialize memory components
         self.memory_store = MemoryStore(max_short_term=20)
@@ -504,16 +515,14 @@ Current memories:
 
     def _load_user_memories(self) -> None:
         """Load persisted memories for this user."""
-        import os
-        filepath = f"memories/{self.user_id}.json"
-        if os.path.exists(filepath):
-            self.memory_store.load(filepath)
+        filepath = self.memory_dir / f"{self.user_id}.json"
+        if filepath.exists():
+            self.memory_store.load(str(filepath))
 
     def _save_user_memories(self) -> None:
         """Persist memories to disk."""
-        import os
-        os.makedirs("memories", exist_ok=True)
-        self.memory_store.save(f"memories/{self.user_id}.json")
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
+        self.memory_store.save(str(self.memory_dir / f"{self.user_id}.json"))
 
     def _get_relevant_memories(self, user_message: str) -> str:
         """Retrieve memories relevant to the current message."""
@@ -575,7 +584,8 @@ Current memories:
         self.memory_store.add_conversation("assistant", assistant_message)
 
         # Periodically extract and store important information
-        if len(self.memory_store.short_term) % 10 == 0:
+        self.interaction_count += 1
+        if self.interaction_count % 5 == 0:
             self._extract_memories()
 
         # Save memories after each interaction
@@ -857,6 +867,7 @@ class SecureMemoryStore:
 Verify that your agent correctly stores and retrieves memories.
 
 ```python
+import tempfile
 import unittest
 
 
@@ -865,10 +876,16 @@ class TestMemoryAgent(unittest.TestCase):
 
     def setUp(self):
         """Create a fresh agent for each test."""
+        self.temp_dir = tempfile.TemporaryDirectory()
         self.agent = MemoryAgent(
             api_key="test-key",
-            user_id="test-user"
+            user_id="test-user",
+            memory_dir=self.temp_dir.name
         )
+
+    def tearDown(self):
+        """Clean up persisted test memories."""
+        self.temp_dir.cleanup()
 
     def test_conversation_memory(self):
         """Verify conversation history is maintained."""
@@ -897,7 +914,8 @@ class TestMemoryAgent(unittest.TestCase):
         # Create new agent instance
         new_agent = MemoryAgent(
             api_key="test-key",
-            user_id="test-user"
+            user_id="test-user",
+            memory_dir=self.temp_dir.name
         )
 
         results = new_agent.memory_store.search_long_term("persistence")
