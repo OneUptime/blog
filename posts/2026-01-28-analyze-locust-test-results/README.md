@@ -92,8 +92,7 @@ def analyze_results(environment, **kwargs):
 
     # Per-endpoint statistics
     print("\n=== Per-Endpoint Statistics ===")
-    for name, stats in environment.stats.entries.items():
-        method = stats.method
+    for (name, method), stats in environment.stats.entries.items():
         print(f"\n{method} {name}:")
         print(f"  Requests: {stats.num_requests}")
         print(f"  Failures: {stats.num_failures}")
@@ -221,7 +220,7 @@ def plot_results(csv_prefix, output_file="analysis.png"):
     ax1.plot(history['Timestamp'], history['Total Average Response Time'], label='Average', alpha=0.7)
     ax1.plot(history['Timestamp'], history['Total Median Response Time'], label='Median', alpha=0.7)
     if '95%' in history.columns:
-        ax1.plot(history['Timestamp'], history['Total 95%'], label='P95', alpha=0.7)
+        ax1.plot(history['Timestamp'], history['95%'], label='P95', alpha=0.7)
     ax1.set_ylabel('Response Time (ms)')
     ax1.set_title('Response Times Over Time')
     ax1.legend()
