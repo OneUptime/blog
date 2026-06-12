@@ -107,9 +107,11 @@ kind: Kustomization
 
 # Common labels applied to all resources
 # These help with resource identification and selection
-commonLabels:
-  app.kubernetes.io/name: myapp
-  app.kubernetes.io/managed-by: kustomize
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/name: myapp
+      app.kubernetes.io/managed-by: kustomize
 
 # Common annotations for tracking
 commonAnnotations:
@@ -404,7 +406,7 @@ spec:
         - name: myapp
           resources:
             requests:
-              # Guaranteed resources for consistent performance
+              # Requested resources for consistent performance
               cpu: 500m
               memory: 512Mi
             limits:
@@ -663,7 +665,7 @@ resources:
 namespace: myapp-prod
 
 # Include reusable components
-# Components are applied after resources but before patches
+# Kustomize includes the component resources and patches in this overlay
 components:
   - ../../components/monitoring
   - ../../components/istio
@@ -716,7 +718,7 @@ spec:
       prune: true
       # Automatically fix manual changes
       selfHeal: true
-      # Allow empty diffs during initial sync
+      # Keep empty applications protected from pruning all resources
       allowEmpty: false
     syncOptions:
       # Create namespace if it doesn't exist
@@ -746,6 +748,8 @@ metadata:
   name: myapp-environments
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     # List generator creates one Application per environment
     - list:
@@ -765,27 +769,32 @@ spec:
 
   template:
     metadata:
-      name: 'myapp-{{env}}'
+      name: 'myapp-{{ .env }}'
       namespace: argocd
       labels:
         app: myapp
-        environment: '{{env}}'
+        environment: '{{ .env }}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/myapp-config.git
-        targetRevision: '{{revision}}'
-        path: 'overlays/{{env}}'
+        targetRevision: '{{ .revision }}'
+        path: 'overlays/{{ .env }}'
       destination:
-        server: '{{cluster}}'
-        namespace: 'myapp-{{env}}'
+        server: '{{ .cluster }}'
+        namespace: 'myapp-{{ .env }}'
       syncPolicy:
-        automated:
-          prune: '{{autoSync}}'
-          selfHeal: '{{autoSync}}'
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+  templatePatch: |
+    {{- if .autoSync }}
+    spec:
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+    {{- end }}
 ```
 
 ## Advanced Kustomize Patterns
@@ -817,8 +826,8 @@ patches:
           image: prom/statsd-exporter:latest
           ports:
             - containerPort: 9102
-      # Replace the first container's image pull policy
-      - op: replace
+      # Add the first container's image pull policy
+      - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Always
 ```
@@ -838,7 +847,7 @@ resources:
   - external-secret.yaml
 
 replacements:
-  # Copy the secret name from ExternalSecret to Deployment
+  # Copy the secret name from ExternalSecret to a Deployment annotation
   - source:
       kind: ExternalSecret
       name: myapp-secrets
@@ -848,7 +857,9 @@ replacements:
           kind: Deployment
           name: myapp
         fieldPaths:
-          - spec.template.spec.containers.[name=myapp].envFrom.[configMapRef].name
+          - spec.template.metadata.annotations.[myapp.example.com/secret-name]
+        options:
+          create: true
 ```
 
 ### Generators for Dynamic Resources
