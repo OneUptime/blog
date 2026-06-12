@@ -60,23 +60,23 @@ kubectl create namespace falco
 # falco-values.yaml
 # Helm values for production Falco deployment
 
-# Use eBPF driver instead of kernel module (recommended for modern kernels)
+# Use the modern eBPF driver instead of the kernel module
 driver:
-  kind: ebpf
-  # Enable the modern eBPF probe (requires kernel 5.8+)
-  ebpf:
-    hostNetwork: true
+  kind: modern_ebpf
+  modernEbpf:
+    # Set to true to run with capabilities instead of a privileged container
+    leastPrivileged: false
 
 # Configure Falco engine settings
 falco:
   # Set to true for more verbose logging during troubleshooting
-  logLevel: info
+  log_level: info
   # Priority threshold for alerts (emergency, alert, critical, error, warning, notice, info, debug)
   priority: warning
   # Enable JSON output for easier parsing by log aggregators
-  jsonOutput: true
+  json_output: true
   # Include output fields in JSON format
-  jsonIncludeOutputProperty: true
+  json_include_output_property: true
 
 # Resource limits for the Falco pods
 resources:
@@ -120,13 +120,9 @@ docker pull falcosecurity/falco:latest
 docker run -d \
   --name falco \
   --privileged \
-  --pid=host \
+  -v /sys/kernel/tracing:/sys/kernel/tracing:ro \
   -v /var/run/docker.sock:/host/var/run/docker.sock \
-  -v /dev:/host/dev \
   -v /proc:/host/proc:ro \
-  -v /boot:/host/boot:ro \
-  -v /lib/modules:/host/lib/modules:ro \
-  -v /usr:/host/usr:ro \
   -v /etc:/host/etc:ro \
   falcosecurity/falco:latest
 ```
@@ -142,20 +138,13 @@ services:
     image: falcosecurity/falco:latest
     container_name: falco
     privileged: true
-    pid: host
     volumes:
+      # Tracefs access for the modern eBPF driver
+      - /sys/kernel/tracing:/sys/kernel/tracing:ro
       # Docker socket for container metadata
       - /var/run/docker.sock:/host/var/run/docker.sock
-      # Device access for driver
-      - /dev:/host/dev
       # Proc filesystem for process information
       - /proc:/host/proc:ro
-      # Boot directory for kernel headers
-      - /boot:/host/boot:ro
-      # Kernel modules
-      - /lib/modules:/host/lib/modules:ro
-      # System binaries for detection context
-      - /usr:/host/usr:ro
       # System configuration
       - /etc:/host/etc:ro
       # Custom rules (optional)
@@ -211,7 +200,7 @@ Understanding Falco's architecture helps you troubleshoot issues and optimize pe
 
 3. **Rules Engine**: YAML-based detection rules with conditions and outputs
 
-4. **Output Channels**: Where alerts are sent (stdout, files, syslog, HTTP, gRPC)
+4. **Output Channels**: Where alerts are sent (stdout, files, syslog, HTTP, or a spawned program)
 
 ### How Detection Works
 
@@ -234,7 +223,7 @@ sequenceDiagram
 
 ## Understanding Default Rules
 
-Falco ships with a comprehensive default ruleset covering common attack patterns.
+Falco ships with maintained rulesets covering common attack patterns. By default, Falco loads the stable rules; incubating and sandbox rules can be enabled when you want broader coverage.
 
 ### Rule Categories
 
@@ -246,19 +235,22 @@ Falco ships with a comprehensive default ruleset covering common attack patterns
     A shell was used as the entrypoint/exec point into a container
     with an attached terminal.
   condition: >
-    spawned_process and container
-    and shell_procs and proc.tty != 0
+    spawned_process
+    and container
+    and shell_procs
+    and proc.tty != 0
     and container_entrypoint
+    and not user_expected_terminal_shell_in_container_conditions
   output: >
-    A shell was spawned in a container with an attached terminal
-    (user=%user.name user_loginuid=%user.loginuid %container.info
-    shell=%proc.name parent=%proc.pname cmdline=%proc.cmdline
-    terminal=%proc.tty container_id=%container.id image=%container.image.repository)
+    A shell was spawned in a container with an attached terminal |
+    evt_type=%evt.type user=%user.name user_uid=%user.uid
+    user_loginuid=%user.loginuid process=%proc.name proc_exepath=%proc.exepath
+    parent=%proc.pname command=%proc.cmdline terminal=%proc.tty exe_flags=%evt.arg.flags
   priority: NOTICE
-  tags: [container, shell, mitre_execution]
+  tags: [maturity_stable, container, shell, mitre_execution, T1059]
 ```
 
-### Key Default Rules
+### Key Available Rules
 
 | Rule | Description | Priority |
 |------|-------------|----------|
@@ -266,20 +258,20 @@ Falco ships with a comprehensive default ruleset covering common attack patterns
 | Write below etc | File created in /etc | ERROR |
 | Read sensitive file untrusted | Reading /etc/shadow, /etc/passwd | WARNING |
 | Launch Privileged Container | Container with --privileged | INFO |
-| Unexpected outbound connection | Process connecting to unusual port | WARNING |
+| Redirect STDOUT/STDIN to Network Connection in Container | Standard streams redirected to a network connection | NOTICE |
 | Modify binary dirs | Writing to /bin, /sbin, /usr/bin | ERROR |
 
 ### Viewing Active Rules
 
 ```bash
 # List all loaded rules in Kubernetes
-kubectl exec -n falco -it $(kubectl get pods -n falco -l app.kubernetes.io/name=falco -o jsonpath='{.items[0].metadata.name}') -- falco --list
+kubectl exec -n falco -it $(kubectl get pods -n falco -l app.kubernetes.io/name=falco -o jsonpath='{.items[0].metadata.name}') -- falco -L
 
 # On bare metal
-falco --list
+falco -L
 
-# Test a specific rule
-falco -r /etc/falco/falco_rules.yaml --validate
+# Validate a rules file
+falco -V /etc/falco/falco_rules.yaml
 ```
 
 ## Output Channels
@@ -315,11 +307,7 @@ syslog_output:
 http_output:
   enabled: true
   url: http://falcosidekick:2801/
-  user_agent: "falco/0.37.0"
-
-# gRPC output for streaming to external services
-grpc_output:
-  enabled: false
+  user_agent: "falcosecurity/falco"
 
 # Program output - pipe to external command
 program_output:
@@ -342,7 +330,7 @@ program_output:
   "output_fields": {
     "container.id": "abc123",
     "container.image.repository": "nginx",
-    "evt.time": 1737974400000000000,
+    "evt.time": 1769509800000000000,
     "k8s.ns.name": "production",
     "k8s.pod.name": "nginx-7d8f675b-xyz",
     "proc.cmdline": "bash",
@@ -412,7 +400,7 @@ config:
   webhook:
     address: "https://your-webhook-endpoint.com/falco"
     minimumpriority: "warning"
-    customheaders: "Authorization: Bearer your-token"
+    customHeaders: "Authorization: Bearer your-token"
 
 # Enable web UI for debugging
 webui:
@@ -451,20 +439,24 @@ Default rules generate noise. Tuning is essential for production use.
 
 # Override the default Terminal shell rule to exclude specific namespaces
 - rule: Terminal shell in container
-  append: true
   condition: and not (k8s.ns.name in (kube-system, monitoring, logging))
+  override:
+    condition: append
 
 # Exclude specific containers from sensitive file reads
-- macro: user_sensitive_mount_containers
-  condition: (container.image.repository in (vault, consul, etcd))
+- macro: user_known_read_sensitive_files_activities
+  condition: or (container.image.repository in (vault, consul, etcd))
+  override:
+    condition: append
 
 # Create a list of allowed images for shell access
 - list: shell_allowed_images
   items: [debug-tools, troubleshooting-pod]
 
 - rule: Terminal shell in container
-  append: true
   condition: and not (container.image.repository in (shell_allowed_images))
+  override:
+    condition: append
 ```
 
 ### Writing Custom Rules
@@ -517,9 +509,9 @@ Default rules generate noise. Tuning is essential for production use.
   priority: NOTICE
   tags: [kubectl, exec, access]
 
-# Detect secrets being read from environment
-- rule: Environment variable secret access
-  desc: Process accessing potential secrets from environment
+# Detect potential secrets in command lines
+- rule: Potential secret in command line
+  desc: Process command line contains a string that looks like a secret name
   condition: >
     spawned_process and container and
     (proc.cmdline contains "AWS_SECRET" or
@@ -561,13 +553,13 @@ Default rules generate noise. Tuning is essential for production use.
 
 ```bash
 # Validate rule syntax
-falco -r /etc/falco/rules.d/custom-rules.yaml --validate
+falco -V /etc/falco/falco_rules.yaml -V /etc/falco/rules.d/custom-rules.yaml
 
 # Test rules with dry run
-falco -r /etc/falco/rules.d/custom-rules.yaml --dry-run
+falco --dry-run
 
-# Check for rule conflicts
-falco --list --list-detail
+# List loaded rules with descriptions
+falco -L
 
 # In Kubernetes, apply and check logs
 kubectl apply -f - <<EOF
@@ -589,7 +581,7 @@ kubectl logs -n falco -l app.kubernetes.io/name=falco -f
 
 ### Deployment
 
-- Use eBPF driver on kernel 5.8+ for better performance and stability
+- Use the modern eBPF driver on kernels with BPF ring buffer and BTF support for better performance and stability
 - Deploy as DaemonSet in Kubernetes to cover all nodes
 - Set appropriate resource limits to prevent Falco from impacting workloads
 - Use tolerations to ensure Falco runs on all nodes including control plane
