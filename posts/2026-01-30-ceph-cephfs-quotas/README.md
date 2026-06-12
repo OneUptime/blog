@@ -30,10 +30,10 @@ flowchart TD
 
 Before setting quotas, ensure your environment meets these requirements:
 
-- A running Ceph cluster with CephFS deployed (Luminous or later recommended)
+- A running Ceph cluster with CephFS deployed (Mimic or later recommended for kernel clients)
 - A mounted CephFS filesystem on your client
 - Root or sudo access on the client machine
-- The `ceph` CLI tools installed
+- The `ceph` CLI tools and `attr` utilities (`setfattr`/`getfattr`) installed
 
 Verify your CephFS mount:
 
@@ -111,7 +111,8 @@ setfattr -n ceph.quota.max_bytes -v 5497558138880 /mnt/cephfs/projects/ml-traini
 setfattr -n ceph.quota.max_files -v 10000000 /mnt/cephfs/projects/ml-training       # 10 million files
 
 # Verify both
-getfattr -d -m ceph.quota /mnt/cephfs/projects/ml-training
+getfattr -n ceph.quota.max_bytes /mnt/cephfs/projects/ml-training
+getfattr -n ceph.quota.max_files /mnt/cephfs/projects/ml-training
 ```
 
 ## Removing Quotas
@@ -136,26 +137,26 @@ sequenceDiagram
     participant MDS as Metadata Server
     participant OSD as Object Storage Daemons
 
-    Client->>MDS: Write request (create file)
-    MDS->>MDS: Check quota xattrs on path
+    Client->>MDS: Fetch quota metadata and recursive stats
+    Client->>Client: Check quota xattrs on path
     alt Quota not exceeded
-        MDS->>Client: Allow operation
+        Client->>MDS: Write request (create file)
         Client->>OSD: Write data
     else Quota exceeded
-        MDS->>Client: Return EDQUOT error
+        Client->>Client: Return EDQUOT error
         Client->>Client: Write fails with "Disk quota exceeded"
     end
 ```
 
 Key behaviors to understand:
 
-1. **Soft enforcement**: Quotas are checked periodically, not on every byte written. A fast writer can briefly exceed the limit before enforcement kicks in.
+1. **Cooperative, imprecise enforcement**: CephFS clients enforce quotas and stop writers shortly after a limit is reached. A fast writer can briefly exceed the limit before enforcement kicks in.
 
 2. **Inheritance**: Quotas apply to the entire directory tree beneath the quota point. Subdirectories do not need their own quotas unless you want tighter limits.
 
 3. **No user/group mapping**: Quotas are purely path-based. If you need per-user limits, create per-user directories with individual quotas.
 
-4. **Client caching**: Quota statistics are cached on the client. The `ceph.quota.max_bytes` check uses cached recursive directory stats, which may lag slightly behind reality.
+4. **Client requirements and caching**: Quota statistics are cached on the client, and the client must be new enough to enforce quotas. Linux kernel clients need version 4.17 or later against Mimic or newer clusters; `ceph-fuse` and `libcephfs` clients also support quotas.
 
 ## Monitoring Quota Usage
 
@@ -297,7 +298,7 @@ if __name__ == '__main__':
 
 ## Quotas in Kubernetes with Rook-Ceph
 
-If you manage CephFS through Rook, you can set quotas using a combination of CephFilesystemSubVolumeGroup CRDs and manual xattr configuration.
+If you manage CephFS through Rook, you can set quotas using CephFilesystemSubVolumeGroup CRDs or manual xattr configuration.
 
 ### Option 1: Set Quotas on PVC Mount Points
 
@@ -322,25 +323,39 @@ spec:
         - |
           # Mount the CephFS admin filesystem
           mkdir -p /mnt/cephfs
-          mount -t ceph mon1:6789:/ /mnt/cephfs -o name=admin,secret=$(cat /etc/ceph/admin.secret)
+          mon_endpoints=$(grep mon_host /etc/ceph/ceph.conf | awk '{print $3}')
+          admin_secret=$(grep key /etc/ceph/keyring | awk '{print $3}')
+          mount -t ceph -o mds_namespace=myfs,name=admin,secret=$admin_secret $mon_endpoints:/ /mnt/cephfs
 
           # Set quota on the target subvolume
           setfattr -n ceph.quota.max_bytes -v 107374182400 /mnt/cephfs/volumes/csi/pvc-xxxxx
 
           echo "Quota set successfully"
         volumeMounts:
-        - name: ceph-admin-secret
+        - name: ceph-config
           mountPath: /etc/ceph
+        securityContext:
+          privileged: true
       volumes:
-      - name: ceph-admin-secret
-        secret:
-          secretName: rook-ceph-admin-keyring
+      - name: ceph-config
+        projected:
+          sources:
+          - configMap:
+              name: rook-ceph-config
+              items:
+              - key: ceph.conf
+                path: ceph.conf
+          - secret:
+              name: rook-ceph-admin-keyring
+              items:
+              - key: keyring
+                path: keyring
       restartPolicy: Never
 ```
 
 ### Option 2: Use CephFS SubVolumeGroups with Quotas
 
-Rook supports SubVolumeGroups that can have quotas applied:
+Rook supports SubVolumeGroups with a `spec.quota` field:
 
 ```yaml
 # cephfs-subvolumegroup.yaml
@@ -352,18 +367,17 @@ metadata:
 spec:
   filesystemName: myfs
   name: team-alpha
-  # Quotas are set via the data pool quota, not directly here
-  # You will need to set xattrs after creation
+  quota: 1Ti
 ```
 
-After the SubVolumeGroup is created, apply quotas:
+After the SubVolumeGroup is created, verify the quota from the toolbox:
 
 ```bash
 # From a Rook toolbox pod
 kubectl exec -it deploy/rook-ceph-tools -n rook-ceph -- bash
 
-# Set quota on the subvolume group path
-setfattr -n ceph.quota.max_bytes -v 1099511627776 /mnt/myfs/volumes/team-alpha  # 1 TB
+# Check the quota on the subvolume group
+getfattr -n ceph.quota.max_bytes /mnt/myfs/volumes/team-alpha
 ```
 
 ## Best Practices
@@ -403,7 +417,7 @@ flowchart TD
     B --> F["/data/prod/media<br/>max_bytes: 10TB"]
 ```
 
-Parent quotas act as hard ceilings. Even if child directories have higher individual limits, the parent quota prevents the sum from exceeding the top-level allocation.
+Parent quotas provide an overall ceiling for the subtree. Even if child directories have higher individual limits, the parent quota constrains the sum to the top-level allocation, subject to CephFS quota enforcement lag.
 
 ### 4. Alert Before Limits Are Hit
 
@@ -458,13 +472,13 @@ cephfs_quotas:
 
 ### Quota Not Being Enforced
 
-1. **Check client mount options**: Ensure the client is mounting with quota support enabled (default in modern kernels).
+1. **Check client support and mount options**: Ensure the client supports quota enforcement. Linux kernel clients need version 4.17 or later with a Mimic or newer cluster, and `client quota` is enabled by default in Ceph clients.
 
-2. **Verify MDS has quota enabled**: The MDS must have quotas enabled in the filesystem configuration.
+2. **Verify the quota xattr directly**: CephFS virtual xattrs are hidden from `listxattr(2)`, so read each quota attribute by name.
 
 ```bash
-ceph fs get myfs | grep -i quota
-# Should show: allow_standby_replay: false, ...
+getfattr -n ceph.quota.max_bytes /mnt/cephfs/projects/ml-training
+getfattr -n ceph.quota.max_files /mnt/cephfs/projects/ml-training
 ```
 
 3. **Force quota recalculation**: If stats seem stale, touch a file in the directory to trigger a stat refresh.
