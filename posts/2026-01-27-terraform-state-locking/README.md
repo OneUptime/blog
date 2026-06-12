@@ -172,7 +172,7 @@ terraform {
     key                  = "prod/infrastructure/terraform.tfstate"
 
     # Lease-based locking is automatic
-    # Azure acquires a 60-second lease, renewed during operations
+    # Azure acquires an infinite blob lease that is released when the operation completes
   }
 }
 ```
