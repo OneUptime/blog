@@ -78,7 +78,7 @@ flowchart TB
 
 Before installing Tekton, you need:
 
-- A Kubernetes cluster (version 1.25 or later recommended)
+- A Kubernetes cluster (version 1.28 or later recommended)
 - kubectl configured to access your cluster
 - Cluster admin permissions
 
@@ -93,7 +93,7 @@ Tekton Pipelines is the core component that provides the pipeline execution engi
 ```bash
 # Install the latest release of Tekton Pipelines
 
-kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+kubectl apply --filename https://infra.tekton.dev/tekton-releases/pipeline/latest/release.yaml
 
 # Wait for the installation to complete
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/part-of=tekton-pipelines -n tekton-pipelines --timeout=120s
@@ -123,8 +123,8 @@ The Tekton CLI makes it easier to interact with Tekton resources.
 brew install tektoncd-cli
 
 # Linux (x86_64)
-curl -LO https://github.com/tektoncd/cli/releases/download/v0.35.0/tkn_0.35.0_Linux_x86_64.tar.gz
-tar xvzf tkn_0.35.0_Linux_x86_64.tar.gz -C /usr/local/bin tkn
+curl -LO https://github.com/tektoncd/cli/releases/download/v0.45.0/tkn_0.45.0_Linux_x86_64.tar.gz
+tar xvzf tkn_0.45.0_Linux_x86_64.tar.gz -C /usr/local/bin tkn
 
 # Verify installation
 tkn version
@@ -133,10 +133,11 @@ tkn version
 ### Install Tekton Dashboard (Optional)
 
 The Tekton Dashboard provides a web interface for viewing and managing pipelines.
+The latest Dashboard release requires Kubernetes 1.31 or later.
 
 ```bash
 # Install Tekton Dashboard
-kubectl apply --filename https://storage.googleapis.com/tekton-releases/dashboard/latest/release.yaml
+kubectl apply --filename https://infra.tekton.dev/tekton-releases/dashboard/latest/release.yaml
 
 # Access the dashboard via port-forward
 kubectl port-forward -n tekton-pipelines svc/tekton-dashboard 9097:9097
@@ -462,7 +463,7 @@ spec:
   steps:
     - name: build
       # Kaniko builds container images without requiring Docker daemon
-      image: gcr.io/kaniko-project/executor:v1.19.0
+      image: gcr.io/kaniko-project/executor:v1.24.0
       args:
         - "--dockerfile=$(workspaces.source.path)/Dockerfile"
         - "--context=$(workspaces.source.path)"
@@ -553,6 +554,18 @@ metadata:
   name: parallel-checks
   namespace: default
 spec:
+  params:
+    - name: repo-url
+      description: Git repository URL
+      type: string
+    - name: branch
+      description: Git branch to build
+      type: string
+      default: "main"
+    - name: image-name
+      description: Name for the container image
+      type: string
+
   workspaces:
     - name: source
 
@@ -560,6 +573,11 @@ spec:
     - name: fetch-source
       taskRef:
         name: git-clone
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.branch)
       workspaces:
         - name: output
           workspace: source
@@ -594,27 +612,30 @@ spec:
       taskRef:
         name: build-image
       runAfter: [lint, unit-test, security-scan]
+      params:
+        - name: image
+          value: $(params.image-name)
       workspaces:
         - name: source
           workspace: source
 ```
 
-## Using the Tekton Hub
+## Using the Tekton Catalog and Artifact Hub
 
-Tekton Hub (hub.tekton.dev) provides a catalog of reusable Tasks and Pipelines. You can install community Tasks instead of writing your own.
+The Tekton catalog and Artifact Hub provide reusable Tasks and Pipelines. You can install community Tasks instead of writing your own.
 
 ```bash
-# Install git-clone task from Tekton Hub
-kubectl apply -f https://api.hub.tekton.dev/v1/resource/tekton/task/git-clone/0.9/raw
+# Install the official git-clone task
+kubectl apply -f https://raw.githubusercontent.com/tektoncd-catalog/git-clone/main/task/git-clone/git-clone.yaml
 
 # Install kaniko task for building images
-kubectl apply -f https://api.hub.tekton.dev/v1/resource/tekton/task/kaniko/0.6/raw
+kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/kaniko/0.7/kaniko.yaml
 
-# List available tasks
-tkn hub search git
+# List available tasks in Artifact Hub
+tkn hub search git --type artifact
 
 # Get info about a specific task
-tkn hub info task git-clone
+tkn hub info task kaniko --type artifact --from tekton-catalog-tasks
 ```
 
 ## Debugging Pipeline Failures
