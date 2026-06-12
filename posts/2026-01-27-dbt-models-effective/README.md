@@ -161,10 +161,11 @@ sources:
     tables:
       - name: orders
         description: Raw orders from production database
-        freshness:
-          warn_after: {count: 12, period: hour}
-          error_after: {count: 24, period: hour}
-        loaded_at_field: _loaded_at
+        config:
+          freshness:
+            warn_after: {count: 12, period: hour}
+            error_after: {count: 24, period: hour}
+          loaded_at_field: _loaded_at
       - name: users
         description: Raw user records
       - name: products
@@ -380,9 +381,9 @@ left join customer_metrics m on c.customer_id = m.customer_id
 
 ## Testing Models
 
-dbt supports schema tests (declarative) and data tests (SQL queries).
+dbt supports generic data tests (declarative) and singular data tests (SQL queries).
 
-### Schema Tests
+### Generic Data Tests
 
 ```yaml
 # models/marts/core/_core_models.yml
@@ -394,42 +395,45 @@ models:
     columns:
       - name: customer_id
         description: Primary key
-        tests:
+        data_tests:
           - unique
           - not_null
       - name: email
         description: Customer email address
-        tests:
+        data_tests:
           - unique
           - not_null
       - name: customer_segment
         description: Behavioral segmentation
-        tests:
+        data_tests:
           - accepted_values:
-              values: ['never_ordered', 'one_time', 'repeat', 'loyal']
+              arguments:
+                values: ['never_ordered', 'one_time', 'repeat', 'loyal']
       - name: lifetime_value
         description: Total revenue from customer
-        tests:
+        data_tests:
           - not_null
           - dbt_utils.expression_is_true:
-              expression: ">= 0"
+              arguments:
+                expression: ">= 0"
 
   - name: fct_orders
     description: Order fact table
     columns:
       - name: order_id
-        tests:
+        data_tests:
           - unique
           - not_null
       - name: customer_id
-        tests:
+        data_tests:
           - not_null
           - relationships:
-              to: ref('dim_customers')
-              field: customer_id
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
 ```
 
-### Custom Data Tests
+### Singular Data Tests
 
 ```sql
 -- tests/assert_order_total_positive.sql
@@ -456,7 +460,7 @@ having count(*) = 0
 
 ```yaml
 # dbt_project.yml
-tests:
+data_tests:
   +severity: warn  # Default to warn, not error
   my_project:
     marts:
@@ -754,13 +758,14 @@ jobs:
   dbt-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - name: Install dbt
         run: pip install dbt-bigquery
       - name: dbt deps
         run: dbt deps
       - name: dbt build
-        run: dbt build --select state:modified+
+        # Requires manifest.json from a prior production run in ./state
+        run: dbt build --select state:modified+ --state ./state
         env:
           DBT_PROFILES_DIR: ./
 ```
