@@ -115,7 +115,7 @@ kube-controller-manager-arg:
   - "node-monitor-grace-period=60s" # More tolerance for slow responses
 
 # Write kubeconfig with restricted permissions
-write-kubeconfig-mode: "0644"
+write-kubeconfig-mode: "0600"
 
 # Use wireguard for encrypted node communication (optional)
 # flannel-backend: wireguard-native
@@ -150,8 +150,9 @@ Many edge locations have limited or no internet connectivity. K3s supports fully
 # Run this script in an environment with internet access
 # It downloads all components needed for offline K3s installation
 
-K3S_VERSION="v1.29.1+k3s2"
+K3S_VERSION="v1.36.1+k3s1"
 ARCH="amd64"  # Change to arm64 or arm for ARM devices
+K3S_BINARY="k3s"  # Use k3s-arm64 or k3s-armhf for ARM devices
 
 # Create directory structure for air-gapped package
 mkdir -p airgap-bundle/{bin,images}
@@ -159,7 +160,7 @@ cd airgap-bundle
 
 # Download K3s binary
 echo "Downloading K3s binary..."
-curl -Lo bin/k3s https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-${ARCH}
+curl -Lo bin/k3s https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/${K3S_BINARY}
 chmod +x bin/k3s
 
 # Download the K3s install script
@@ -169,8 +170,8 @@ chmod +x bin/install.sh
 # Download the air-gapped images tarball
 # This contains all system images K3s needs to function
 echo "Downloading K3s images..."
-curl -Lo images/k3s-airgap-images-${ARCH}.tar.gz \
-  https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-${ARCH}.tar.gz
+curl -Lo images/k3s-airgap-images-${ARCH}.tar.zst \
+  https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-${ARCH}.tar.zst
 
 # Download your application images and save them
 echo "Saving application images..."
@@ -220,11 +221,10 @@ sudo mkdir -p /var/lib/rancher/k3s/agent/images/
 # Load air-gapped images
 # K3s will automatically load images from this directory on startup
 echo "Installing air-gapped images..."
-sudo cp images/k3s-airgap-images-*.tar.gz /var/lib/rancher/k3s/agent/images/
-sudo gunzip /var/lib/rancher/k3s/agent/images/k3s-airgap-images-*.tar.gz
+sudo cp images/k3s-airgap-images-*.tar.zst /var/lib/rancher/k3s/agent/images/
 
-# Load application images
-sudo ctr -n k8s.io images import images/app-images.tar
+# Load application images on K3s startup
+sudo cp images/app-images.tar /var/lib/rancher/k3s/agent/images/
 
 # Install K3s using the offline script
 echo "Installing K3s..."
@@ -259,14 +259,13 @@ mirrors:
 
 configs:
   "local-registry.edge.local:5000":
-    # For insecure registries (HTTP)
-    tls:
-      insecure_skip_verify: true
     # If registry requires authentication
     auth:
       username: edge-user
       password: edge-password
 ```
+
+For a strictly air-gapped cluster, start K3s with `--disable-default-registry-endpoint` so containerd does not fall back to upstream registry endpoints when a mirror is unavailable.
 
 Resource Constraints Management
 
@@ -589,7 +588,6 @@ spec:
 # Script to register a new edge K3s cluster with the central fleet manager
 
 # Configuration - set these for your environment
-FLEET_MANAGER_URL="https://rancher.central.example.com"
 CLUSTER_NAME="${1:-edge-$(hostname)}"
 REGION="${2:-unknown}"
 CLUSTER_TYPE="${3:-retail}"  # retail, manufacturing, warehouse, etc.
@@ -600,46 +598,40 @@ LABELS="environment=edge,region=${REGION},type=${CLUSTER_TYPE}"
 echo "Registering cluster: ${CLUSTER_NAME}"
 echo "Labels: ${LABELS}"
 
-# Generate cluster registration token from Fleet manager
-# This would typically come from your central management system
-REGISTRATION_TOKEN=$(curl -s -X POST \
-  -H "Authorization: Bearer ${FLEET_API_TOKEN}" \
-  "${FLEET_MANAGER_URL}/v1/management.cattle.io.clusterregistrationtokens" \
-  -d "{\"metadata\":{\"namespace\":\"fleet-default\"},\"spec\":{\"ttl\":\"24h\"}}" \
-  | jq -r '.status.token')
-
-# Create the fleet-agent namespace
-kubectl create namespace cattle-fleet-system --dry-run=client -o yaml | kubectl apply -f -
-
-# Apply cluster labels
-kubectl label namespace cattle-fleet-system \
-  fleet.cattle.io/cluster-name=${CLUSTER_NAME} \
-  ${LABELS//,/ } \
-  --overwrite
-
-# Install the fleet agent
-# This connects the edge cluster to the central fleet manager
+# Create a ClusterRegistrationToken on the Fleet manager.
+# Run this part with kubectl pointed at the Fleet manager cluster.
 cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Secret
+apiVersion: fleet.cattle.io/v1alpha1
+kind: ClusterRegistrationToken
 metadata:
-  name: fleet-agent-bootstrap-secret
-  namespace: cattle-fleet-system
-type: Opaque
-stringData:
-  token: "${REGISTRATION_TOKEN}"
-  apiServerURL: "${FLEET_MANAGER_URL}"
-  systemRegistrationNamespace: "fleet-default"
-  clusterNamespace: "fleet-default"
-  clientID: "${CLUSTER_NAME}"
-  labels: "${LABELS}"
+  name: ${CLUSTER_NAME}-registration
+  namespace: fleet-default
+spec:
+  ttl: 24h
 EOF
 
-# Deploy fleet agent
-kubectl apply -f https://github.com/rancher/fleet/releases/latest/download/fleet-agent-deployment.yaml
+while ! kubectl -n fleet-default get secret ${CLUSTER_NAME}-registration; do
+  sleep 5
+done
+
+kubectl -n fleet-default get secret ${CLUSTER_NAME}-registration \
+  -o 'jsonpath={.data.values}' | base64 --decode > values.yaml
+
+# Install the fleet agent on the edge cluster.
+# Run this part with kubectl and helm pointed at the edge cluster.
+helm repo add fleet https://rancher.github.io/fleet-helm-charts/
+helm repo update fleet
+
+helm -n cattle-fleet-system install --create-namespace --wait \
+  --set-string labels.environment=edge \
+  --set-string labels.region="${REGION}" \
+  --set-string labels.type="${CLUSTER_TYPE}" \
+  --set-string clientID="${CLUSTER_NAME}" \
+  --values values.yaml \
+  fleet-agent fleet/fleet-agent
 
 echo "Edge cluster registered successfully!"
-echo "Check status: kubectl get clusters.fleet.cattle.io -n fleet-default"
+echo "Check status from the Fleet manager: kubectl get clusters.fleet.cattle.io -n fleet-default"
 ```
 
 ### Bundle for Edge-Specific Configurations
@@ -772,21 +764,20 @@ data:
             value: edge
             action: insert
           - key: k8s.cluster.name
-            from_attribute: CLUSTER_NAME
+            value: "${env:CLUSTER_NAME}"
             action: insert
 
       # Filter out verbose data to save bandwidth
       filter:
-        metrics:
-          exclude:
-            match_type: regexp
-            metric_names:
-              - ".*_bucket"  # Exclude histogram buckets
+        error_mode: ignore
+        metric_conditions:
+          - 'IsMatch(name, ".*_bucket")'  # Exclude histogram buckets
 
     exporters:
       # Send to OneUptime
-      otlphttp:
+      otlp_http:
         endpoint: https://oneuptime.com/otlp
+        encoding: json
         headers:
           x-oneuptime-token: "${ONEUPTIME_TOKEN}"
         retry_on_failure:
@@ -804,15 +795,15 @@ data:
         metrics:
           receivers: [otlp, hostmetrics, k8s_cluster]
           processors: [resource, filter, batch]
-          exporters: [otlphttp]
+          exporters: [otlp_http]
         traces:
           receivers: [otlp]
           processors: [resource, batch]
-          exporters: [otlphttp]
+          exporters: [otlp_http]
         logs:
           receivers: [otlp]
           processors: [resource, batch]
-          exporters: [otlphttp]
+          exporters: [otlp_http]
 
 ---
 apiVersion: apps/v1
@@ -891,7 +882,7 @@ metadata:
 data:
   config.yaml: |
     # File-based queue for metrics during network outages
-    storage:
+    extensions:
       file_storage:
         directory: /var/lib/otel/buffer
         timeout: 10s
@@ -899,16 +890,18 @@ data:
           on_start: true
           directory: /var/lib/otel/buffer
 
-    extensions:
-      file_storage:
-        directory: /var/lib/otel/buffer
-
     exporters:
-      otlphttp:
+      otlp_http:
         endpoint: https://oneuptime.com/otlp
+        encoding: json
+        headers:
+          x-oneuptime-token: "${ONEUPTIME_TOKEN}"
         sending_queue:
           enabled: true
           storage: file_storage  # Persist queue to disk
+
+    service:
+      extensions: [file_storage]
 
 ---
 # PersistentVolume for buffering during outages
@@ -925,6 +918,8 @@ spec:
       storage: 1Gi  # Buffer up to 1GB of telemetry during outages
   storageClassName: local-path
 ```
+
+Mount this PVC at `/var/lib/otel/buffer` in the collector pod so the `file_storage` extension can persist queued telemetry across restarts.
 
 ## Summary
 
