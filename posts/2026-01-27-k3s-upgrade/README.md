@@ -113,138 +113,19 @@ echo "=== Pre-upgrade checks complete ==="
 
 ## Method 1: System Upgrade Controller (Recommended)
 
-The System Upgrade Controller (SUC) is the recommended way to upgrade K3s clusters. It provides automated, controlled upgrades with proper draining and health checks.
+The System Upgrade Controller (SUC) is the recommended way to upgrade self-managed K3s clusters. If your K3s cluster is managed by Rancher, use the Rancher UI for upgrades instead. SUC provides automated, controlled upgrades with proper draining and health checks.
 
 ### Installing the System Upgrade Controller
 
-```yaml
-# system-upgrade-controller.yaml
-# Installs the Rancher System Upgrade Controller for automated K3s upgrades
-
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: system-upgrade
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: system-upgrade
-  namespace: system-upgrade
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: system-upgrade
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: cluster-admin
-subjects:
-  - kind: ServiceAccount
-    name: system-upgrade
-    namespace: system-upgrade
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: default-controller-env
-  namespace: system-upgrade
-data:
-  # Controller configuration
-  SYSTEM_UPGRADE_CONTROLLER_DEBUG: "false"
-  SYSTEM_UPGRADE_CONTROLLER_THREADS: "2"
-  SYSTEM_UPGRADE_JOB_ACTIVE_DEADLINE_SECONDS: "900"
-  SYSTEM_UPGRADE_JOB_BACKOFF_LIMIT: "99"
-  SYSTEM_UPGRADE_JOB_IMAGE_PULL_POLICY: "Always"
-  SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE: "rancher/kubectl:v1.28.0"
-  SYSTEM_UPGRADE_JOB_PRIVILEGED: "true"
-  SYSTEM_UPGRADE_JOB_TTL_SECONDS_AFTER_FINISH: "900"
-  SYSTEM_UPGRADE_PLAN_POLLING_INTERVAL: "15m"
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: system-upgrade-controller
-  namespace: system-upgrade
-spec:
-  selector:
-    matchLabels:
-      upgrade.cattle.io/controller: system-upgrade-controller
-  template:
-    metadata:
-      labels:
-        upgrade.cattle.io/controller: system-upgrade-controller
-    spec:
-      affinity:
-        nodeAffinity:
-          # Prefer running on control plane nodes
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
-                  - key: node-role.kubernetes.io/control-plane
-                    operator: Exists
-      serviceAccountName: system-upgrade
-      tolerations:
-        - key: "CriticalAddonsOnly"
-          operator: "Exists"
-        - key: "node-role.kubernetes.io/master"
-          operator: "Exists"
-          effect: "NoSchedule"
-        - key: "node-role.kubernetes.io/control-plane"
-          operator: "Exists"
-          effect: "NoSchedule"
-      containers:
-        - name: system-upgrade-controller
-          image: rancher/system-upgrade-controller:v0.13.4
-          imagePullPolicy: IfNotPresent
-          envFrom:
-            - configMapRef:
-                name: default-controller-env
-          env:
-            - name: SYSTEM_UPGRADE_CONTROLLER_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.labels['upgrade.cattle.io/controller']
-            - name: SYSTEM_UPGRADE_CONTROLLER_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-          volumeMounts:
-            - name: etc-ssl
-              mountPath: /etc/ssl
-              readOnly: true
-            - name: etc-pki
-              mountPath: /etc/pki
-              readOnly: true
-            - name: etc-ca-certificates
-              mountPath: /etc/ca-certificates
-              readOnly: true
-            - name: tmp
-              mountPath: /tmp
-      volumes:
-        - name: etc-ssl
-          hostPath:
-            path: /etc/ssl
-            type: DirectoryOrCreate
-        - name: etc-pki
-          hostPath:
-            path: /etc/pki
-            type: DirectoryOrCreate
-        - name: etc-ca-certificates
-          hostPath:
-            path: /etc/ca-certificates
-            type: DirectoryOrCreate
-        - name: tmp
-          emptyDir: {}
-```
+Use the upstream manifests so the controller, RBAC, ConfigMap, and `Plan` CRD are installed together:
 
 Apply the controller:
 
 ```bash
 # Install the System Upgrade Controller
-kubectl apply -f system-upgrade-controller.yaml
+kubectl apply \
+    -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/crd.yaml \
+    -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
 
 # Verify the controller is running
 kubectl -n system-upgrade get pods -w
@@ -411,11 +292,13 @@ For more control or when the System Upgrade Controller is not suitable, use manu
 # manual-server-upgrade.sh
 # Manually upgrade a K3s server node
 # Usage: ./manual-server-upgrade.sh [version]
+# Export any original K3S_* environment variables before running.
 
 set -e
 
 TARGET_VERSION=${1:-"stable"}
 NODE_NAME=$(hostname)
+EXISTING_K3S_ARGS=${EXISTING_K3S_ARGS:-"server"}
 
 echo "=== K3s Server Manual Upgrade ==="
 echo "Node: $NODE_NAME"
@@ -453,9 +336,9 @@ systemctl stop k3s
 echo ""
 echo "Step 5: Installing K3s $TARGET_VERSION..."
 if [ "$TARGET_VERSION" = "stable" ] || [ "$TARGET_VERSION" = "latest" ]; then
-    curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL="$TARGET_VERSION" sh -s - server
+    curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL="$TARGET_VERSION" sh -s - $EXISTING_K3S_ARGS
 else
-    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$TARGET_VERSION" sh -s - server
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$TARGET_VERSION" sh -s - $EXISTING_K3S_ARGS
 fi
 
 # Step 6: Wait for K3s to be ready
@@ -501,6 +384,7 @@ K3S_URL=${1:?"Usage: $0 <server-url> <token> [version]"}
 K3S_TOKEN=${2:?"Usage: $0 <server-url> <token> [version]"}
 TARGET_VERSION=${3:-"stable"}
 NODE_NAME=$(hostname)
+EXISTING_K3S_ARGS=${EXISTING_K3S_ARGS:-"agent"}
 
 echo "=== K3s Agent Manual Upgrade ==="
 echo "Node: $NODE_NAME"
@@ -535,13 +419,13 @@ if [ "$TARGET_VERSION" = "stable" ] || [ "$TARGET_VERSION" = "latest" ]; then
         INSTALL_K3S_CHANNEL="$TARGET_VERSION" \
         K3S_URL="$K3S_URL" \
         K3S_TOKEN="$K3S_TOKEN" \
-        sh -s - agent
+        sh -s - $EXISTING_K3S_ARGS
 else
     curl -sfL https://get.k3s.io | \
         INSTALL_K3S_VERSION="$TARGET_VERSION" \
         K3S_URL="$K3S_URL" \
         K3S_TOKEN="$K3S_TOKEN" \
-        sh -s - agent
+        sh -s - $EXISTING_K3S_ARGS
 fi
 
 # Step 5: Wait for agent to join
@@ -701,8 +585,8 @@ for server in $SERVERS; do
         --timeout=300s
 
     # SSH to server and upgrade (adjust for your environment)
-    echo "SSH to $server and run the upgrade command:"
-    echo "  curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=$TARGET_VERSION sh -s - server"
+    echo "SSH to $server and re-run the install command with the same K3S_* environment and server arguments used for the original install:"
+    echo "  curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=$TARGET_VERSION <EXISTING_K3S_ENV> sh -s - <EXISTING_K3S_ARGS>"
     echo ""
     echo "Press Enter when upgrade is complete on $server..."
     read -r
@@ -745,8 +629,8 @@ for ((i=0; i<TOTAL_AGENTS; i+=BATCH_SIZE)); do
     done
     wait
 
-    echo "SSH to agents and run the upgrade command:"
-    echo "  curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=$TARGET_VERSION K3S_URL=<server-url> K3S_TOKEN=<token> sh -s - agent"
+    echo "SSH to agents and re-run the install command with the same K3S_* environment and agent arguments used for the original install:"
+    echo "  curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=$TARGET_VERSION K3S_URL=<server-url> K3S_TOKEN=<token> sh -s - <EXISTING_K3S_ARGS>"
     echo ""
     echo "Press Enter when upgrades are complete on: $BATCH..."
     read -r
@@ -812,15 +696,16 @@ flowchart TB
     Document --> PostMortem
 ```
 
-### Version Rollback (No Data Loss)
+### Version Rollback (Binary Only)
 
-If the cluster is functional but the new version has issues:
+If the cluster is functional but the new patch version has issues, you can roll the binary back within the same Kubernetes minor version. Rolling back to a previous Kubernetes minor version requires a datastore snapshot taken before the upgrade.
 
 ```bash
 #!/bin/bash
 # version-rollback.sh
 # Roll back K3s to a previous version
 # Usage: ./version-rollback.sh <previous-version>
+# Export any original K3S_* environment variables before running.
 
 set -e
 
@@ -868,11 +753,13 @@ systemctl stop "$SERVICE_NAME"
 echo ""
 echo "Step 4: Installing K3s $ROLLBACK_VERSION..."
 if [ "$NODE_TYPE" = "server" ]; then
-    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$ROLLBACK_VERSION" sh -s - server
+    EXISTING_K3S_ARGS=${EXISTING_K3S_ARGS:-"server"}
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$ROLLBACK_VERSION" sh -s - $EXISTING_K3S_ARGS
 else
-    # For agents, you need to preserve the token and URL
-    # These should be in the systemd unit file or environment
-    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$ROLLBACK_VERSION" sh -s - agent
+    K3S_URL=${K3S_URL:?"Set K3S_URL to the server URL before rolling back an agent"}
+    K3S_TOKEN=${K3S_TOKEN:?"Set K3S_TOKEN to the agent token before rolling back an agent"}
+    EXISTING_K3S_ARGS=${EXISTING_K3S_ARGS:-"agent"}
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$ROLLBACK_VERSION" K3S_URL="$K3S_URL" K3S_TOKEN="$K3S_TOKEN" sh -s - $EXISTING_K3S_ARGS
 fi
 
 # Step 5: Wait for service to start
@@ -937,15 +824,19 @@ k3s server \
     --cluster-reset \
     --cluster-reset-restore-path="/var/lib/rancher/k3s/server/db/snapshots/$SNAPSHOT_NAME"
 
-# The above command will start K3s in a restored state
-# Wait for it to stabilize
+# The above command restores the snapshot and resets cluster membership.
+# Start K3s normally after it exits.
 echo ""
-echo "Step 3: Waiting for restore to complete..."
+echo "Step 3: Starting K3s after restore..."
+systemctl start k3s
+
+echo ""
+echo "Step 4: Waiting for K3s to stabilize..."
 sleep 60
 
 # Step 4: Verify
 echo ""
-echo "Step 4: Verification..."
+echo "Step 5: Verification..."
 kubectl get nodes
 kubectl get pods -A
 
@@ -956,81 +847,9 @@ echo "IMPORTANT: Other server nodes need to rejoin the cluster."
 echo "On other servers, delete /var/lib/rancher/k3s/server/db and restart K3s"
 ```
 
-### Automated Rollback with System Upgrade Controller
+### System Upgrade Controller Rollback Limitation
 
-You can also use SUC to roll back by creating a plan with the previous version:
-
-```yaml
-# k3s-rollback-plans.yaml
-# Emergency rollback plans for K3s
-# Apply these when you need to roll back to a specific version
-
-apiVersion: upgrade.cattle.io/v1
-kind: Plan
-metadata:
-  name: k3s-server-rollback
-  namespace: system-upgrade
-spec:
-  # Specify the exact version to roll back to
-  version: v1.28.5+k3s1  # <-- Change this to your target version
-
-  concurrency: 1
-
-  nodeSelector:
-    matchExpressions:
-      - key: node-role.kubernetes.io/control-plane
-        operator: Exists
-
-  tolerations:
-    - key: "node-role.kubernetes.io/control-plane"
-      operator: "Exists"
-      effect: "NoSchedule"
-
-  serviceAccountName: system-upgrade
-  cordon: true
-
-  drain:
-    force: true
-    skipWaitForDeleteTimeout: 60
-    ignoreDaemonSets: true
-    deleteEmptyDirData: true
-
-  upgrade:
-    image: rancher/k3s-upgrade
----
-apiVersion: upgrade.cattle.io/v1
-kind: Plan
-metadata:
-  name: k3s-agent-rollback
-  namespace: system-upgrade
-spec:
-  version: v1.28.5+k3s1  # <-- Same version as server
-
-  concurrency: 2
-
-  nodeSelector:
-    matchExpressions:
-      - key: node-role.kubernetes.io/control-plane
-        operator: DoesNotExist
-
-  serviceAccountName: system-upgrade
-  cordon: true
-
-  drain:
-    force: true
-    skipWaitForDeleteTimeout: 60
-    ignoreDaemonSets: true
-    deleteEmptyDirData: true
-
-  prepare:
-    image: rancher/k3s-upgrade
-    args:
-      - prepare
-      - k3s-server-rollback
-
-  upgrade:
-    image: rancher/k3s-upgrade
-```
+The System Upgrade Controller should not be used to roll K3s back to an earlier Kubernetes version. Kubernetes does not support control plane downgrades, and the `rancher/k3s-upgrade` image refuses to downgrade K3s. If a downgrade plan is applied, the plan will fail and nodes may remain cordoned until you delete or correct the plan and manually uncordon them.
 
 ## Monitoring Upgrades with OneUptime
 
@@ -1056,11 +875,11 @@ data:
     # Check critical pods
     FAILING_PODS=$(kubectl get pods -n kube-system --no-headers 2>/dev/null | grep -v "Running\|Completed" | wc -l)
 
-    # Check K3s API latency
-    API_LATENCY=$(kubectl get --raw /healthz 2>/dev/null && echo "OK" || echo "FAIL")
+    # Check K3s API readiness
+    API_HEALTH=$(kubectl get --raw /readyz 2>/dev/null && echo "OK" || echo "FAIL")
 
-    if [ "$NOT_READY" -gt 0 ] || [ "$FAILING_PODS" -gt 2 ] || [ "$API_LATENCY" = "FAIL" ]; then
-        echo "UNHEALTHY: nodes_not_ready=$NOT_READY, failing_pods=$FAILING_PODS, api=$API_LATENCY"
+    if [ "$NOT_READY" -gt 0 ] || [ "$FAILING_PODS" -gt 2 ] || [ "$API_HEALTH" = "FAIL" ]; then
+        echo "UNHEALTHY: nodes_not_ready=$NOT_READY, failing_pods=$FAILING_PODS, api=$API_HEALTH"
         exit 1
     fi
 
@@ -1084,7 +903,7 @@ Set up the following monitors in OneUptime:
 5. **Have a rollback plan** - Know the exact commands before you start
 6. **Document the process** - Record what version you upgraded from and to
 7. **Schedule upgrades during low traffic** - Minimize impact on users
-8. **Keep version skew minimal** - Don't skip more than one minor version
+8. **Keep version skew minimal** - Don't skip intermediate minor versions
 
 ## Troubleshooting Common Issues
 
@@ -1123,10 +942,10 @@ kubectl describe node <node-name> | grep -A10 Conditions
 ### etcd Cluster Health Issues
 
 ```bash
-# Check etcd member list
+# Check available etcd snapshots
 k3s etcd-snapshot list
 
-# Check cluster health
+# Check Kubernetes service endpoint availability
 kubectl get endpoints kubernetes -n default
 
 # Force etcd leader election (last resort)
