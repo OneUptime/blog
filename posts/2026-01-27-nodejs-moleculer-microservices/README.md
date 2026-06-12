@@ -20,9 +20,9 @@ Moleculer is a progressive microservices framework for Node.js. It provides:
 - **Multiple transporters** - Built-in support for NATS, Redis, MQTT, TCP, and more
 - **Built-in load balancing** - Round-robin, random, and CPU-based strategies
 - **Fault tolerance** - Circuit breakers, retries, timeouts, and bulkheads
-- **Caching** - Multi-level caching with memory, Redis, and custom adapters
-- **Serialization** - JSON, MessagePack, Avro, and Protocol Buffers
-- **API Gateway** - Expose services via REST, GraphQL, or WebSocket
+- **Caching** - Action caching with Memory, MemoryLRU, Redis, and custom cachers
+- **Serialization** - JSON, JSONExt, MessagePack, Notepack, CBOR, and custom serializers
+- **API Gateway** - Expose services as RESTful APIs with `moleculer-web`
 
 Unlike frameworks that require external service meshes or container orchestration for basic functionality, Moleculer handles service discovery and communication natively.
 
@@ -38,9 +38,9 @@ mkdir moleculer-demo && cd moleculer-demo
 # Initialize project
 npm init -y
 
-# Install Moleculer and CLI
-npm install moleculer moleculer-web moleculer-db
-npm install -D moleculer-repl
+# Install Moleculer and companion modules
+npm install moleculer moleculer-web moleculer-db bcrypt
+npm install -D moleculer-repl jest supertest
 ```
 
 ### Project Structure
@@ -81,7 +81,7 @@ module.exports = {
   // Transporter for inter-service communication
   transporter: process.env.TRANSPORTER || "TCP",
 
-  // Serializer for message encoding
+  // Serializer for packet encoding
   serializer: "JSON",
 
   // Request timeout in milliseconds
@@ -113,7 +113,7 @@ module.exports = {
   },
 
   // Caching configuration
-  cacher: {
+  cacher: process.env.CACHER || {
     type: "Memory",
     options: {
       maxParamsLength: 100,
@@ -147,8 +147,14 @@ const config = require("./moleculer.config");
 // Create service broker with configuration
 const broker = new ServiceBroker(config);
 
-// Load all services from the services directory
-broker.loadServices("./services", "**/*.service.js");
+// Load one service in containerized deployments, or all services locally
+if (process.env.SERVICES) {
+  process.env.SERVICES.split(",").forEach((servicePath) => {
+    broker.loadService(servicePath.trim());
+  });
+} else {
+  broker.loadServices("./services", "**/*.service.js");
+}
 
 // Start broker and log available services
 broker.start().then(() => {
@@ -168,9 +174,19 @@ broker.start().then(() => {
 
 ```javascript
 // services/users.service.js
+const { Errors } = require("moleculer");
+const DbMixin = require("moleculer-db");
+const { MoleculerClientError } = Errors;
+
 module.exports = {
   // Service name - used for calling actions
   name: "users",
+
+  // Mix in database functionality
+  mixins: [DbMixin],
+
+  // Collection/table name
+  collection: "users",
 
   // Service version (optional)
   version: 1,
@@ -179,6 +195,9 @@ module.exports = {
   settings: {
     // Custom settings accessible via this.settings
     defaultPageSize: 10,
+
+    // Fields returned by moleculer-db actions
+    fields: ["_id", "email", "name", "createdAt"],
   },
 
   // Service dependencies - broker waits for these before starting
@@ -271,7 +290,7 @@ module.exports = {
         });
 
         // Emit event for other services
-        ctx.emit("user.created", { id: user.id, email: user.email });
+        ctx.emit("user.created", { id: user._id, email: user.email });
 
         // Clear list cache since data changed
         await this.broker.cacher.clean("users.list**");
@@ -329,16 +348,15 @@ module.exports = {
 
 ```javascript
 // services/orders.service.js
+const { Errors } = require("moleculer");
 const DbMixin = require("moleculer-db");
+const { MoleculerClientError } = Errors;
 
 module.exports = {
   name: "orders",
 
   // Mix in database functionality
   mixins: [DbMixin],
-
-  // Database adapter configuration
-  adapter: new DbMixin.MemoryAdapter(),
 
   // Collection/table name
   collection: "orders",
@@ -439,6 +457,9 @@ module.exports = {
 
 ```javascript
 // Calling actions from other services
+const { Errors } = require("moleculer");
+const { MoleculerClientError } = Errors;
+
 async function processOrder(ctx) {
   // Call user service to validate user exists
   const user = await ctx.call("users.get", { id: ctx.params.userId });
@@ -454,13 +475,13 @@ async function processOrder(ctx) {
 
   // Call payment service
   const payment = await ctx.call("payments.charge", {
-    userId: user.id,
+    userId: user._id,
     amount: ctx.params.total,
   });
 
   // Create order
   const order = await ctx.call("orders.create", {
-    userId: user.id,
+    userId: user._id,
     items: ctx.params.items,
     paymentId: payment.id,
   });
@@ -477,10 +498,9 @@ const result = await ctx.call("slow-service.action", params, {
   timeout: 30000,
 });
 
-// Call with retry override
+// Call with retry count override
 const result = await ctx.call("flaky-service.action", params, {
   retries: 5,
-  retryDelay: 500,
 });
 
 // Call specific node (bypass load balancing)
@@ -509,8 +529,8 @@ ctx.broadcast("cache.clear", { pattern: "users.*" });
 // Emit with groups (only services in specified groups receive)
 ctx.emit("order.created", { orderId: "123" }, ["notification", "analytics"]);
 
-// Emit event to local services only
-ctx.emit("order.created", { orderId: "123" }, { broadcast: false });
+// Broadcast event to local services only
+ctx.broker.broadcastLocal("order.created", { orderId: "123" });
 ```
 
 ### Event Listener Patterns
@@ -550,7 +570,7 @@ module.exports = {
 
 Moleculer supports multiple transporters for service-to-service communication.
 
-### TCP Transporter (Default)
+### TCP Transporter
 
 ```javascript
 // moleculer.config.js
@@ -678,6 +698,14 @@ module.exports = {
 
     routes: [
       {
+        path: "/",
+        whitelist: ["$health.*"],
+        aliases: {
+          "GET /health": "$health.live",
+          "GET /ready": "$health.ready",
+        },
+      },
+      {
         // API path prefix
         path: "/api",
 
@@ -700,7 +728,7 @@ module.exports = {
           "REST /orders": "orders",
 
           // Custom action mapping
-          "POST /orders/:id/confirm": "orders.confirm",
+          "PUT /orders/:id/status": "orders.updateStatus",
           "GET /users/:userId/orders": "orders.getByUser",
         },
 
@@ -713,7 +741,7 @@ module.exports = {
 
         onAfterCall(ctx, route, req, res, data) {
           // Modify response
-          res.setHeader("X-Request-ID", ctx.meta.requestID);
+          res.setHeader("X-Request-ID", ctx.requestID);
           return data;
         },
 
@@ -774,6 +802,8 @@ module.exports = {
 
 ```javascript
 // services/api.service.js
+const ApiGateway = require("moleculer-web");
+
 module.exports = {
   name: "api",
   mixins: [ApiGateway],
@@ -832,6 +862,9 @@ module.exports = {
 
 ```javascript
 // moleculer.config.js
+const { Errors } = require("moleculer");
+const { MoleculerClientError } = Errors;
+
 module.exports = {
   middlewares: [
     // Logging middleware
@@ -878,6 +911,9 @@ module.exports = {
 ### Action Hooks
 
 ```javascript
+const { Errors } = require("moleculer");
+const { MoleculerClientError } = Errors;
+
 module.exports = {
   name: "users",
 
@@ -944,7 +980,7 @@ module.exports = {
 
 ## Caching and Circuit Breakers
 
-### Multi-Level Caching
+### Memory and Redis Caching
 
 ```javascript
 // moleculer.config.js
@@ -999,13 +1035,10 @@ module.exports = {
       },
     },
 
-    // Cache with custom key generation
+    // Cache with selected params and metadata in the key
     search: {
       cache: {
         keys: ["query", "category", "#user.id"],
-        keygen(name, params, meta) {
-          return `${name}:${params.query}:${params.category}:${meta.user?.id || "anon"}`;
-        },
         ttl: 300,
       },
       handler(ctx) {
@@ -1138,7 +1171,7 @@ describe("Users Service", () => {
         password: "securepassword123",
       });
 
-      expect(result).toHaveProperty("id");
+      expect(result).toHaveProperty("_id");
       expect(result.email).toBe("test@example.com");
       expect(result.name).toBe("Test User");
       expect(result).not.toHaveProperty("password");
@@ -1173,9 +1206,9 @@ describe("Users Service", () => {
         password: "password123",
       });
 
-      const result = await broker.call("users.get", { id: created.id });
+      const result = await broker.call("users.get", { id: created._id });
 
-      expect(result.id).toBe(created.id);
+      expect(result._id).toBe(created._id);
       expect(result.email).toBe("gettest@example.com");
     });
 
@@ -1302,7 +1335,7 @@ describe("API Gateway", () => {
         })
         .expect(200);
 
-      expect(response.body).toHaveProperty("id");
+      expect(response.body).toHaveProperty("_id");
       expect(response.body.email).toBe("api-test@example.com");
     });
 
@@ -1334,7 +1367,7 @@ WORKDIR /app
 
 # Install dependencies first for better caching
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -1379,7 +1412,7 @@ services:
     environment:
       - TRANSPORTER=nats://nats:4222
       - CACHER=redis://redis:6379
-      - SERVICES=services/api.service.js
+      - SERVICES=services/api.service.js,services/health.service.js
     depends_on:
       - nats
       - redis
@@ -1416,20 +1449,20 @@ services:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: users-service
+  name: api-service
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: users-service
+      app: api-service
   template:
     metadata:
       labels:
-        app: users-service
+        app: api-service
     spec:
       containers:
-        - name: users-service
-          image: myregistry/users-service:latest
+        - name: api-service
+          image: myregistry/api-service:latest
           ports:
             - containerPort: 3000
           env:
@@ -1440,7 +1473,7 @@ spec:
             - name: CACHER
               value: "redis://redis:6379"
             - name: SERVICES
-              value: "services/users.service.js"
+              value: "services/api.service.js,services/health.service.js"
           resources:
             requests:
               memory: "256Mi"
@@ -1489,8 +1522,8 @@ module.exports = {
         // Check if all services are available
         const services = ["users", "orders"];
         for (const svc of services) {
-          const endpoint = this.broker.registry.getEndpointList(svc + ".list");
-          checks[svc] = endpoint.length > 0;
+          const endpoints = this.broker.registry.getActionEndpoints(svc + ".list");
+          checks[svc] = !!endpoints && endpoints.endpoints.length > 0;
         }
 
         const ready = Object.values(checks).every(Boolean);
@@ -1516,7 +1549,7 @@ module.exports = {
 |---------|----------------|
 | **Service creation** | Define name, actions, events, methods in service schema |
 | **Communication** | ctx.call() for request-response, ctx.emit()/broadcast() for events |
-| **Transporters** | TCP (default), NATS, Redis, MQTT for distributed deployments |
+| **Transporters** | TCP, NATS, Redis, MQTT for distributed deployments |
 | **API Gateway** | moleculer-web with routes, aliases, auth, rate limiting |
 | **Middleware** | Global middleware in config, hooks in services |
 | **Caching** | Memory/Redis cachers, action-level cache config |
