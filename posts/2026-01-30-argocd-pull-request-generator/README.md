@@ -41,9 +41,16 @@ Before setting up the Pull Request Generator, ensure you have:
 
 ## Configuring GitHub Integration
 
-The Pull Request Generator needs access to your GitHub repository to detect open pull requests. Create a GitHub token and configure it in ArgoCD.
+The Pull Request Generator needs access to the GitHub API to detect open pull requests. Create a GitHub token and store it in a Kubernetes Secret that the ApplicationSet can reference.
 
-First, create a GitHub personal access token with `repo` scope. Then add the repository to ArgoCD with the token.
+For a private repository, use a GitHub personal access token with repository read access. With a classic token, the `repo` scope is sufficient.
+
+```bash
+kubectl -n argocd create secret generic github-token \
+  --from-literal=token=ghp_your_github_token
+```
+
+You also need ArgoCD repository credentials so the generated Applications can fetch manifests from the repository.
 
 ```bash
 argocd repo add https://github.com/myorg/myapp.git \
@@ -116,8 +123,9 @@ The generator provides several template variables you can use.
 | `{{branch}}` | Source branch name |
 | `{{branch_slug}}` | URL-safe branch name |
 | `{{head_sha}}` | Commit SHA of the PR head |
-| `{{head_short_sha}}` | Short commit SHA (7 characters) |
-| `{{labels}}` | PR labels as comma-separated string |
+| `{{head_short_sha}}` | Short commit SHA (8 characters) |
+| `{{head_short_sha_7}}` | Short commit SHA (7 characters) |
+| `{{labels}}` | PR labels array when using Go Template ApplicationSets |
 
 ## Filtering Pull Requests by Labels
 
@@ -198,7 +206,7 @@ kind: Kustomization
 resources:
   - ../../base
 patches:
-  - patch-resources.yaml
+  - path: patch-resources.yaml
 ```
 
 ```yaml
@@ -224,7 +232,7 @@ spec:
 
 ## Dynamic Ingress for PR Environments
 
-Each preview environment needs a unique URL. Use Kustomize replacements or Helm values to dynamically set the hostname.
+Each preview environment needs a unique URL. Use Kustomize patches or Helm values to dynamically set the hostname.
 
 Create an ingress template that uses the PR number in the hostname.
 
@@ -264,7 +272,7 @@ kind: Kustomization
 resources:
   - ../../base
 patches:
-  - patch-resources.yaml
+  - path: patch-resources.yaml
   - target:
       kind: Ingress
       name: myapp
@@ -358,7 +366,11 @@ name: Build Preview Image
 
 on:
   pull_request:
-    types: [labeled, synchronize]
+    types: [opened, reopened, labeled, synchronize]
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build:
@@ -457,16 +469,21 @@ data:
     privateKey: $github-privateKey
 
   template.pr-deployed: |
-    message: |
-      ## Preview Environment Ready
+    github:
+      repoURLPath: "{{.app.spec.source.repoURL}}"
+      revisionPath: "{{.app.status.operationState.syncResult.revision}}"
+      pullRequestComment:
+        content: |
+          ## Preview Environment Ready
 
-      Your preview environment has been deployed and is available at:
+          Your preview environment has been deployed and is available at:
 
-      **URL:** https://pr-{{.app.metadata.labels.prNumber}}.preview.example.com
+          **URL:** https://pr-{{.app.metadata.labels.prNumber}}.preview.example.com
 
-      **Commit:** {{.app.status.sync.revision}}
+          **Commit:** {{.app.status.sync.revision}}
 
-      The environment will be automatically deleted when this PR is closed.
+          The environment will be automatically deleted when this PR is closed.
+        commentTag: "preview-environment/{{.app.metadata.name}}"
 
   trigger.on-deployed: |
     - description: Application is synced and healthy
@@ -501,7 +518,7 @@ spec:
   generators:
     - pullRequest:
         gitlab:
-          project: mygroup/myapp
+          project: "12341234"
           api: https://gitlab.com
           tokenRef:
             secretName: gitlab-token
@@ -572,7 +589,7 @@ spec:
           - CreateNamespace=true
 ```
 
-Resource Cleanup and Limits
+## Resource Cleanup and Limits
 
 Preview environments can consume significant cluster resources. Implement safeguards to prevent runaway costs.
 
@@ -598,7 +615,7 @@ Include this quota in your preview overlay so it is created with each environmen
 
 ### Automatic Stale PR Cleanup
 
-Configure ArgoCD to delete applications for PRs that have been inactive for too long using the `requeueAfterSeconds` setting and checking PR activity.
+ArgoCD removes generated Applications when a PR is closed or no longer matches the generator filters. The `requeueAfterSeconds` setting only controls how often the ApplicationSet controller polls the provider API. For inactivity-based cleanup, use an external policy such as a CronJob that checks stale preview namespaces.
 
 For additional cleanup, use a CronJob that checks for stale preview namespaces.
 
@@ -622,7 +639,7 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  for ns in $(kubectl get ns -l type=preview -o name); do
+                  for ns in $(kubectl get ns -o name | grep '^namespace/preview-' || true); do
                     age=$(kubectl get $ns -o jsonpath='{.metadata.creationTimestamp}')
                     # Delete namespaces older than 7 days
                     if [ $(date -d "$age" +%s) -lt $(date -d "7 days ago" +%s) ]; then
