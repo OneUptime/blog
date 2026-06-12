@@ -98,7 +98,7 @@ availability = calculator.calculate_availability(
 )
 
 print(f"Monthly availability: {availability:.4f}%")
-# Output: Monthly availability: 99.9331%
+# Output: Monthly availability: 99.9328%
 ```
 
 ### Probe-Based Availability
@@ -109,7 +109,7 @@ For systems without continuous traffic, synthetic monitoring provides availabili
 import asyncio
 import aiohttp
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from collections import deque
 
@@ -137,13 +137,14 @@ class AvailabilityProbe:
 
     async def probe(self) -> ProbeResult:
         """Execute a single availability probe."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         try:
             async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                probe_start = asyncio.get_event_loop().time()
+                loop = asyncio.get_running_loop()
+                probe_start = loop.time()
                 async with session.get(self.endpoint) as response:
-                    latency = (asyncio.get_event_loop().time() - probe_start) * 1000
+                    latency = (loop.time() - probe_start) * 1000
 
                     result = ProbeResult(
                         timestamp=start_time,
@@ -174,7 +175,7 @@ class AvailabilityProbe:
 
     def calculate_availability(self, window_minutes: int = 60) -> float:
         """Calculate availability over a rolling window."""
-        cutoff = datetime.utcnow() - timedelta(minutes=window_minutes)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
 
         relevant_probes = [r for r in self.results if r.timestamp >= cutoff]
 
@@ -290,14 +291,14 @@ def track_availability(endpoint: str):
 AVAILABILITY_QUERIES = {
     # Request success rate (excluding client errors)
     'success_rate': '''
-        sum(rate(http_requests_total{status_class="success"}[5m]))
+        sum(rate(http_requests_total{status_class=~"success|redirect"}[5m]))
         /
         sum(rate(http_requests_total{status_class!="client_error"}[5m]))
     ''',
 
     # Availability over 30-day window
     'monthly_availability': '''
-        sum(increase(http_requests_total{status_class="success"}[30d]))
+        sum(increase(http_requests_total{status_class=~"success|redirect"}[30d]))
         /
         sum(increase(http_requests_total{status_class!="client_error"}[30d]))
     ''',
@@ -326,7 +327,7 @@ gantt
 ```
 
 ```python
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Generator, Tuple
 from dataclasses import dataclass
 from enum import Enum
@@ -357,7 +358,7 @@ class WindowCalculator:
         reference_time: datetime = None
     ) -> AvailabilityWindow:
         """Create a rolling window ending at reference time."""
-        end = reference_time or datetime.utcnow()
+        end = reference_time or datetime.now(timezone.utc)
         start = end - timedelta(days=duration_days)
 
         return AvailabilityWindow(
@@ -372,12 +373,12 @@ class WindowCalculator:
         month: int
     ) -> AvailabilityWindow:
         """Create a calendar month window."""
-        start = datetime(year, month, 1)
+        start = datetime(year, month, 1, tzinfo=timezone.utc)
 
         if month == 12:
-            end = datetime(year + 1, 1, 1)
+            end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
         else:
-            end = datetime(year, month + 1, 1)
+            end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
 
         return AvailabilityWindow(
             start=start,
@@ -418,8 +419,8 @@ def compare_windows():
 
     # Generate daily sliding windows for trend analysis
     windows = list(calculator.sliding_windows(
-        period_start=datetime(2026, 1, 1),
-        period_end=datetime(2026, 1, 31),
+        period_start=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        period_end=datetime(2026, 1, 31, tzinfo=timezone.utc),
         window_size=timedelta(days=7),
         step=timedelta(days=1)
     ))
@@ -458,7 +459,7 @@ flowchart TD
 ```python
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Tuple
 from enum import Enum
 import json
 
@@ -631,8 +632,8 @@ graph TD
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional, Tuple
 import math
 
 @dataclass
@@ -647,7 +648,7 @@ class BurnEvent:
 class BurnRate:
     """Current error budget burn rate."""
     rate: float  # Multiplier (1.0 = normal, 2.0 = 2x burn)
-    window_hours: int
+    window_hours: float
     projected_exhaustion: Optional[datetime]
 
 class ErrorBudgetTracker:
@@ -670,7 +671,7 @@ class ErrorBudgetTracker:
     ):
         """Record an error budget burn event."""
         self.burn_events.append(BurnEvent(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             duration_minutes=duration_minutes,
             description=description,
             incident_id=incident_id
@@ -696,14 +697,14 @@ class ErrorBudgetTracker:
         """Calculate remaining budget as percentage."""
         return (self.remaining_budget() / self.total_budget_minutes) * 100
 
-    def calculate_burn_rate(self, window_hours: int = 1) -> BurnRate:
+    def calculate_burn_rate(self, window_hours: float = 1) -> BurnRate:
         """
         Calculate current burn rate.
 
         A burn rate of 1.0 means burning at exactly the sustainable rate.
         A burn rate of 2.0 means burning at 2x the sustainable rate.
         """
-        window_end = datetime.utcnow()
+        window_end = datetime.now(timezone.utc)
         window_start = window_end - timedelta(hours=window_hours)
 
         window = AvailabilityWindow(
@@ -727,7 +728,7 @@ class ErrorBudgetTracker:
         remaining = self.remaining_budget()
         if current_rate > 0:
             minutes_to_exhaustion = remaining / current_rate
-            projected_exhaustion = datetime.utcnow() + timedelta(minutes=minutes_to_exhaustion)
+            projected_exhaustion = datetime.now(timezone.utc) + timedelta(minutes=minutes_to_exhaustion)
         else:
             projected_exhaustion = None
 
@@ -741,19 +742,29 @@ class ErrorBudgetTracker:
         """Determine if alerting is needed based on burn rate."""
         # Multi-window burn rate alerting (Google SRE approach)
 
-        # Fast burn: 14.4x over 1 hour AND 6x over 6 hours
+        # Page-level fast burn: long windows paired with short reset windows
         fast_1h = self.calculate_burn_rate(window_hours=1)
+        fast_5m = self.calculate_burn_rate(window_hours=5 / 60)
         fast_6h = self.calculate_burn_rate(window_hours=6)
+        fast_30m = self.calculate_burn_rate(window_hours=0.5)
 
-        if fast_1h.rate >= 14.4 and fast_6h.rate >= 6:
+        if fast_1h.rate >= 14.4 and fast_5m.rate >= 14.4:
             return True, f"Critical: Fast burn detected ({fast_1h.rate:.1f}x in 1h)"
 
-        # Slow burn: 3x over 6 hours AND 1x over 3 days
-        slow_6h = self.calculate_burn_rate(window_hours=6)
-        slow_3d = self.calculate_burn_rate(window_hours=72)
+        if fast_6h.rate >= 6 and fast_30m.rate >= 6:
+            return True, f"Critical: Fast burn detected ({fast_6h.rate:.1f}x in 6h)"
 
-        if slow_6h.rate >= 3 and slow_3d.rate >= 1:
-            return True, f"Warning: Slow burn detected ({slow_6h.rate:.1f}x in 6h)"
+        # Ticket-level slow burn: sustained lower-rate budget consumption
+        slow_24h = self.calculate_burn_rate(window_hours=24)
+        slow_2h = self.calculate_burn_rate(window_hours=2)
+        slow_3d = self.calculate_burn_rate(window_hours=72)
+        slow_6h = self.calculate_burn_rate(window_hours=6)
+
+        if slow_24h.rate >= 3 and slow_2h.rate >= 3:
+            return True, f"Warning: Slow burn detected ({slow_24h.rate:.1f}x in 24h)"
+
+        if slow_3d.rate >= 1 and slow_6h.rate >= 1:
+            return True, f"Warning: Slow burn detected ({slow_3d.rate:.1f}x in 3d)"
 
         return False, "Normal burn rate"
 
@@ -1020,11 +1031,11 @@ print(f"  Improvement: {impact['improvement']*100:.4f}%")
 
 ## Putting It All Together
 
-Here is a complete example that combines all the concepts into a production-ready availability monitoring system:
+Here is an example that builds on the classes above to combine the concepts into an availability monitoring dashboard:
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 import json
 
@@ -1043,7 +1054,7 @@ class AvailabilityDashboard:
     def generate_report(self) -> Dict:
         """Generate comprehensive availability report."""
         report = {
-            'generated_at': datetime.utcnow().isoformat(),
+            'generated_at': datetime.now(timezone.utc).isoformat(),
             'slos': [],
             'alerts': [],
             'recommendations': []
@@ -1089,8 +1100,8 @@ dashboard = AvailabilityDashboard([
         sli=SLI(
             name="api_success_rate",
             description="API request success rate",
-            good_events_query='sum(http_requests_total{status="2xx"})',
-            valid_events_query='sum(http_requests_total)'
+            good_events_query='sum(http_requests_total{status_class=~"success|redirect"})',
+            valid_events_query='sum(http_requests_total{status_class!="client_error"})'
         ),
         target=0.999,
         window_days=30
