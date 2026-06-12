@@ -10,7 +10,7 @@ Description: Learn how to build an HTTP proxy server in Node.js with request and
 
 HTTP proxies sit between clients and servers, intercepting and modifying traffic. They enable API gateways, load balancers, caching layers, and security filters. Building your own proxy gives you complete control over how requests are transformed and routed.
 
-This guide covers building a production-ready HTTP proxy in Node.js: forwarding requests, rewriting URLs and headers, modifying response bodies, and handling WebSocket upgrades.
+This guide covers building a practical HTTP proxy in Node.js: forwarding requests, rewriting URLs and headers, modifying response bodies, and handling WebSocket upgrades.
 
 ## Basic Proxy Server
 
@@ -41,6 +41,9 @@ function createProxy(options: ProxyOptions) {
     delete headers['keep-alive'];
     delete headers['proxy-authenticate'];
     delete headers['proxy-authorization'];
+    delete headers['proxy-connection'];
+    delete headers['te'];
+    delete headers['trailer'];
     delete headers['transfer-encoding'];
     delete headers['upgrade'];
 
@@ -155,6 +158,15 @@ class RewritingProxy {
     // Build headers
     const headers = { ...clientReq.headers };
     delete headers['host'];
+    delete headers['connection'];
+    delete headers['keep-alive'];
+    delete headers['proxy-authenticate'];
+    delete headers['proxy-authorization'];
+    delete headers['proxy-connection'];
+    delete headers['te'];
+    delete headers['trailer'];
+    delete headers['transfer-encoding'];
+    delete headers['upgrade'];
     headers['host'] = targetUrl.host;
 
     // Add custom headers from the rule
@@ -163,7 +175,11 @@ class RewritingProxy {
     }
 
     // Add proxy headers
-    headers['x-forwarded-for'] = clientReq.socket.remoteAddress || '';
+    const forwardedFor = clientReq.headers['x-forwarded-for'];
+    headers['x-forwarded-for'] = [
+      ...(Array.isArray(forwardedFor) ? forwardedFor : forwardedFor ? [forwardedFor] : []),
+      clientReq.socket.remoteAddress || '',
+    ].join(', ');
     headers['x-forwarded-proto'] = 'http';
     headers['x-forwarded-host'] = clientReq.headers.host || '';
 
@@ -286,6 +302,15 @@ class ResponseRewritingProxy {
 
     const headers = { ...clientReq.headers };
     delete headers['host'];
+    delete headers['connection'];
+    delete headers['keep-alive'];
+    delete headers['proxy-authenticate'];
+    delete headers['proxy-authorization'];
+    delete headers['proxy-connection'];
+    delete headers['te'];
+    delete headers['trailer'];
+    delete headers['transfer-encoding'];
+    delete headers['upgrade'];
     headers['host'] = targetUrl.host;
     // Remove accept-encoding to get uncompressed response
     delete headers['accept-encoding'];
@@ -368,7 +393,7 @@ const transforms: ResponseTransform[] = [
   {
     // Add metadata to JSON responses
     match: (res) => {
-      const contentType = res.headers['content-type'] || '';
+      const contentType = String(res.headers['content-type'] || '');
       return contentType.includes('application/json');
     },
     transform: (body, res) => {
@@ -403,7 +428,7 @@ const transforms: ResponseTransform[] = [
   {
     // Rewrite URLs in HTML responses
     match: (res) => {
-      const contentType = res.headers['content-type'] || '';
+      const contentType = String(res.headers['content-type'] || '');
       return contentType.includes('text/html');
     },
     transform: (body) => {
@@ -474,7 +499,8 @@ class MiddlewareProxy {
 // API Key authentication middleware
 function apiKeyAuth(validKeys: Set<string>): Middleware {
   return (req, res, next) => {
-    const apiKey = req.headers['x-api-key'] as string;
+    const apiKeyHeader = req.headers['x-api-key'];
+    const apiKey = Array.isArray(apiKeyHeader) ? apiKeyHeader[0] : apiKeyHeader;
 
     if (!apiKey || !validKeys.has(apiKey)) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -608,6 +634,7 @@ Handle WebSocket upgrades for real-time applications:
 // proxy/websocketProxy.ts
 import http, { IncomingMessage } from 'http';
 import net from 'net';
+import tls from 'tls';
 import { URL } from 'url';
 
 class WebSocketProxy {
@@ -623,40 +650,45 @@ class WebSocketProxy {
     head: Buffer
   ): void {
     const targetUrl = new URL(this.target);
+    const isSecure = targetUrl.protocol === 'wss:';
 
     // Connect to upstream WebSocket server
-    const proxySocket = net.connect(
-      {
-        host: targetUrl.hostname,
-        port: parseInt(targetUrl.port) || 80,
-      },
-      () => {
-        // Build the upgrade request
-        const headers = Object.entries(clientReq.headers)
-          .filter(([key]) => !['host', 'connection'].includes(key.toLowerCase()))
-          .map(([key, value]) => `${key}: ${value}`)
-          .join('\r\n');
+    const connectOptions = {
+      host: targetUrl.hostname,
+      port: parseInt(targetUrl.port) || (isSecure ? 443 : 80),
+      servername: targetUrl.hostname,
+    };
 
-        const request = [
-          `${clientReq.method} ${clientReq.url} HTTP/1.1`,
-          `Host: ${targetUrl.host}`,
-          'Connection: Upgrade',
-          headers,
-          '',
-          '',
-        ].join('\r\n');
+    const onConnect = () => {
+      // Build the upgrade request
+      const headers = Object.entries(clientReq.headers)
+        .filter(([key]) => !['host', 'connection'].includes(key.toLowerCase()))
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\r\n');
 
-        proxySocket.write(request);
+      const request = [
+        `${clientReq.method} ${clientReq.url} HTTP/1.1`,
+        `Host: ${targetUrl.host}`,
+        'Connection: Upgrade',
+        headers,
+        '',
+        '',
+      ].join('\r\n');
 
-        if (head.length > 0) {
-          proxySocket.write(head);
-        }
+      proxySocket.write(request);
 
-        // Pipe data between client and upstream
-        proxySocket.pipe(clientSocket);
-        clientSocket.pipe(proxySocket);
+      if (head.length > 0) {
+        proxySocket.write(head);
       }
-    );
+
+      // Pipe data between client and upstream
+      proxySocket.pipe(clientSocket);
+      clientSocket.pipe(proxySocket);
+    };
+
+    const proxySocket = isSecure
+      ? tls.connect(connectOptions, onConnect)
+      : net.connect(connectOptions, onConnect);
 
     proxySocket.on('error', (err) => {
       console.error('WebSocket proxy error:', err);
@@ -685,7 +717,7 @@ class WebSocketProxy {
 }
 
 // Usage
-const wsProxy = new WebSocketProxy('ws://websocket.example.com');
+const wsProxy = new WebSocketProxy('wss://websocket.example.com');
 wsProxy.createServer().listen(8080);
 ```
 
@@ -722,14 +754,18 @@ class LoadBalancer {
     this.checkHealth();
   }
 
-  // Round-robin with weights
+  // Weighted round-robin
   private selectBackend(): Backend | null {
     const healthyBackends = this.backends.filter((b) => b.healthy);
     if (healthyBackends.length === 0) return null;
 
-    // Simple round-robin for now
-    this.currentIndex = (this.currentIndex + 1) % healthyBackends.length;
-    return healthyBackends[this.currentIndex];
+    const weightedBackends = healthyBackends.flatMap((backend) =>
+      Array.from({ length: backend.weight }, () => backend)
+    );
+
+    const backend = weightedBackends[this.currentIndex % weightedBackends.length];
+    this.currentIndex = (this.currentIndex + 1) % weightedBackends.length;
+    return backend;
   }
 
   // Health check all backends
@@ -777,13 +813,22 @@ class LoadBalancer {
     const isHttps = targetUrl.protocol === 'https:';
 
     const headers = { ...clientReq.headers };
+    delete headers['connection'];
+    delete headers['keep-alive'];
+    delete headers['proxy-authenticate'];
+    delete headers['proxy-authorization'];
+    delete headers['proxy-connection'];
+    delete headers['te'];
+    delete headers['trailer'];
+    delete headers['transfer-encoding'];
+    delete headers['upgrade'];
     headers['host'] = targetUrl.host;
 
     const proxyReq = (isHttps ? https : http).request(
       {
         hostname: targetUrl.hostname,
         port: targetUrl.port || (isHttps ? 443 : 80),
-        path: clientReq.url,
+        path: clientReq.url || '/',
         method: clientReq.method,
         headers,
       },
