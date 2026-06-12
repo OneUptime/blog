@@ -8,7 +8,7 @@ Description: Learn how to build stateful, long-running workflows in Azure using 
 
 ---
 
-Azure Functions provide a serverless compute platform that lets you run event-driven code without managing infrastructure. However, standard Azure Functions are stateless and short-lived, which limits their usefulness for complex workflows. Azure Durable Functions extend the standard Functions model to support stateful, long-running operations with orchestration patterns that would otherwise require significant custom code.
+Azure Functions provide a serverless compute platform that lets you run event-driven code without managing infrastructure. However, standard Azure Functions are stateless and bounded by hosting-plan timeout limits, which limits their usefulness for complex workflows. Azure Durable Functions extend the standard Functions model to support stateful, long-running operations with orchestration patterns that would otherwise require significant custom code.
 
 ## What Are Durable Functions?
 
@@ -41,7 +41,7 @@ Durable Functions consist of three main function types:
 |-----------|---------|-----------------|
 | **Starter Function** | Entry point that starts orchestrations | HTTP triggered, short-lived |
 | **Orchestrator Function** | Defines the workflow logic | Deterministic, replayable |
-| **Activity Function** | Performs actual work | Can be long-running, stateless |
+| **Activity Function** | Performs actual work | Stateless; subject to function timeout limits |
 
 ## Setting Up Your Project
 
@@ -50,7 +50,7 @@ Durable Functions consist of three main function types:
 Before you begin, ensure you have the following installed:
 
 - Azure Functions Core Tools v4+
-- .NET 6 SDK or later (for C#) or Node.js 18+ (for JavaScript/TypeScript)
+- .NET 8 SDK or later (for C#) or Node.js 20+ (for JavaScript/TypeScript)
 - Azure subscription
 - Visual Studio Code with Azure Functions extension
 
@@ -72,7 +72,7 @@ npm install durable-functions
 npm install @azure/functions
 ```
 
-For C# projects, you would use:
+For in-process C# projects, you would use:
 
 ```bash
 # Initialize a C# Functions project
@@ -478,7 +478,7 @@ const approvalOrchestrator: OrchestrationHandler = function* (context: Orchestra
     const timeoutTask = context.df.createTimer(expiration);
 
     // Wait for either approval event or timeout
-    const approvalTask = context.df.waitForExternalEvent<ApprovalEvent>('ApprovalResponse');
+    const approvalTask = context.df.waitForExternalEvent('ApprovalResponse');
 
     // Race between approval and timeout
     const winner = yield context.df.Task.any([approvalTask, timeoutTask]);
@@ -496,7 +496,7 @@ const approvalOrchestrator: OrchestrationHandler = function* (context: Orchestra
     timeoutTask.cancel();
 
     // Get the approval result
-    const approvalResult = approvalTask.result;
+    const approvalResult = approvalTask.result as ApprovalEvent;
 
     if (approvalResult.approved) {
         // Process the approved request
@@ -584,10 +584,10 @@ const retryOptions: RetryOptions = new df.RetryOptions(
 );
 
 // Configure exponential backoff
-// Each retry waits longer: 5s, 10s, 20s, 40s, 80s (capped at maxRetryInterval)
+// Each retry waits longer: 5s, 10s, 20s, 40s, 80s (capped at maxRetryIntervalInMilliseconds)
 retryOptions.backoffCoefficient = 2;
-retryOptions.maxRetryInterval = 60000; // Cap at 60 seconds
-retryOptions.retryTimeout = 300000;    // Total timeout: 5 minutes
+retryOptions.maxRetryIntervalInMilliseconds = 60000; // Cap at 60 seconds
+retryOptions.retryTimeoutInMilliseconds = 300000;    // Total timeout: 5 minutes
 
 const resilientOrchestrator: OrchestrationHandler = function* (context: OrchestrationContext) {
     const input = context.df.getInput() as ApiCallInput;
@@ -758,7 +758,7 @@ app.http('purgeHistory', {
         cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
         // Purge completed and terminated instances
-        const purgeResult = await client.purgeInstancesBy({
+        const purgeResult = await client.purgeInstanceHistoryBy({
             createdTimeFrom: new Date(0), // Beginning of time
             createdTimeTo: cutoffDate,
             runtimeStatus: [
@@ -802,6 +802,10 @@ Configure Durable Functions behavior in your `host.json` file.
             "extendedSessionsEnabled": true,
             "extendedSessionIdleTimeoutInSeconds": 30
         }
+    },
+    "extensionBundle": {
+        "id": "Microsoft.Azure.Functions.ExtensionBundle",
+        "version": "[4.0.0, 5.0.0)"
     },
     "logging": {
         "logLevel": {
@@ -848,7 +852,7 @@ az functionapp create \
     --storage-account durablefuncsstorage \
     --consumption-plan-location eastus \
     --runtime node \
-    --runtime-version 18 \
+    --runtime-version 22 \
     --functions-version 4
 
 # Deploy your code
@@ -903,6 +907,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         {
           name: 'FUNCTIONS_WORKER_RUNTIME'
           value: 'node'
+        }
+        {
+          name: 'WEBSITE_NODE_DEFAULT_VERSION'
+          value: '~22'
         }
       ]
     }
