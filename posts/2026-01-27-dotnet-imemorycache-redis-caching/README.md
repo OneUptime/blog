@@ -139,10 +139,10 @@ public async Task<Product?> GetProductWithCombinedExpirationAsync(int id)
 
 ### Cache Priority
 
-When memory pressure occurs, .NET evicts items based on priority. Set priority based on how expensive the data is to recreate.
+When you configure a size limit or manually compact the cache, .NET uses priority as one factor when choosing entries to evict. Set priority based on how expensive the data is to recreate.
 
 ```csharp
-entry.Priority = CacheItemPriority.High; // Keep longer under memory pressure
+entry.Priority = CacheItemPriority.High; // Prefer keeping this entry during compaction
 // Options: Low, Normal, High, NeverRemove
 ```
 
@@ -167,7 +167,6 @@ var app = builder.Build();
 ```
 
 ```json
-// appsettings.json
 {
   "ConnectionStrings": {
     "Redis": "localhost:6379,abortConnect=false,connectTimeout=5000"
@@ -463,7 +462,7 @@ public class ProductService
 
 ### Pattern-Based Invalidation with Redis
 
-Redis supports pattern-based key deletion. Useful for invalidating groups of related items.
+Redis supports scanning keys by pattern, which you can combine with deletion to invalidate groups of related items.
 
 ```csharp
 using StackExchange.Redis;
@@ -484,7 +483,7 @@ public class RedisCacheInvalidator
         var server = _redis.GetServer(_redis.GetEndPoints().First());
         var db = _redis.GetDatabase();
 
-        // Use SCAN for production - it does not block Redis
+        // Use SCAN-style iteration for production instead of running KEYS directly
         await foreach (var key in server.KeysAsync(pattern: pattern))
         {
             await db.KeyDeleteAsync(key);
@@ -613,7 +612,7 @@ public static class CacheKeys
 | Factor | IMemoryCache | Redis |
 |--------|-------------|-------|
 | **Deployment** | Single instance | Multiple instances |
-| **Latency** | Nanoseconds | Milliseconds |
+| **Latency** | In-process, typically microseconds | Network round trip, typically milliseconds |
 | **Capacity** | Limited by RAM | Separate server |
 | **Persistence** | None (restarts clear) | Optional |
 | **Sharing** | Same process only | Across processes/servers |
@@ -630,7 +629,7 @@ public static class CacheKeys
 ### Use Redis When
 
 - Multiple application instances
-- Cache must survive restarts
+- Cache should survive application restarts or deployments
 - Sharing cache across services
 - Large datasets
 - Need cache analytics/monitoring
