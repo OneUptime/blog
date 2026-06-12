@@ -116,7 +116,7 @@ metrics.send('api.response.time', 45.2, { endpoint: '/users' });
 
 ## At-Most-Once with Message Queues
 
-Message queues like RabbitMQ and Kafka can implement at-most-once by disabling acknowledgments. This configuration prioritizes speed over delivery guarantees.
+Message queues like RabbitMQ and Kafka can implement at-most-once by disabling publisher acknowledgments and avoiding redelivery after consumer failures. This configuration prioritizes speed over delivery guarantees.
 
 ```mermaid
 sequenceDiagram
@@ -209,8 +209,9 @@ const kafka = new Kafka({
 
 const producer = kafka.producer({
   // At-most-once producer settings
-  acks: 0,              // Do not wait for broker acknowledgment
-  retries: 0,           // Never retry failed sends
+  retry: {
+    retries: 0,         // Never retry failed sends
+  },
   idempotent: false,    // Disable idempotent producer
 });
 
@@ -218,6 +219,7 @@ async function sendTelemetry(events) {
   // Fire and forget - returns after message queued locally
   await producer.send({
     topic: 'telemetry',
+    acks: 0,            // Do not wait for broker acknowledgment
     messages: events.map(e => ({
       key: e.deviceId,
       value: JSON.stringify(e),
@@ -233,12 +235,17 @@ async function consumeAtMostOnce() {
   await consumer.subscribe({ topic: 'telemetry' });
 
   await consumer.run({
-    // Enable auto-commit before processing
-    autoCommit: true,
-    autoCommitInterval: 1000,
+    // Commit manually before processing
+    autoCommit: false,
 
     eachMessage: async ({ topic, partition, message }) => {
-      // Offset already committed - if this crashes, message is lost
+      await consumer.commitOffsets([{
+        topic,
+        partition,
+        offset: (BigInt(message.offset) + 1n).toString(),
+      }]);
+
+      // Offset is already committed - if this crashes, message is lost
       const data = JSON.parse(message.value.toString());
       processMetric(data);
     },
@@ -273,8 +280,10 @@ class FireAndForgetClient {
         signal: controller.signal,
       }).catch(() => {
         // Silently ignore all errors
+      }).finally(() => {
+        clearTimeout(timeoutId);
       });
-    } finally {
+    } catch (err) {
       clearTimeout(timeoutId);
     }
   }
