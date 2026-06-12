@@ -17,7 +17,7 @@ You can install tasks directly from the catalog repo or using the Tekton CLI.
 Example:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/git-clone/0.9/git-clone.yaml
+kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/git-clone/0.10/git-clone.yaml
 ```
 
 ## Step 2: Use a Catalog Task in a Pipeline
@@ -28,12 +28,18 @@ kind: Pipeline
 metadata:
   name: build-and-test
 spec:
+  params:
+    - name: repo-url
+      type: string
   workspaces:
     - name: shared
   tasks:
     - name: clone
       taskRef:
         name: git-clone
+      params:
+        - name: url
+          value: $(params.repo-url)
       workspaces:
         - name: output
           workspace: shared
