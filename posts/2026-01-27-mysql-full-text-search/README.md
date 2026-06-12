@@ -40,11 +40,11 @@ ALTER TABLE articles ADD FULLTEXT INDEX ft_title (title);
 ALTER TABLE articles ADD FULLTEXT INDEX ft_title_body (title, body);
 ```
 
-Building a FULLTEXT index on a large table takes time and locks writes. Schedule this during low-traffic windows.
+Building a FULLTEXT index on a large table takes time and may rebuild or copy the table, especially when adding the first InnoDB FULLTEXT index to an existing table. Schedule this during low-traffic windows.
 
 ## Natural Language Mode
 
-Natural language mode is the default. MySQL parses the query as a phrase, removes stopwords, and ranks results by relevance.
+Natural language mode is the default. MySQL parses the query as free text, removes stopwords, and ranks results by relevance.
 
 ```sql
 -- Basic natural language search
@@ -78,7 +78,7 @@ WHERE MATCH(title, body) AGAINST('+mysql -oracle' IN BOOLEAN MODE);
 SELECT * FROM articles
 WHERE MATCH(title, body) AGAINST('+database performance' IN BOOLEAN MODE);
 
--- Phrase search - must contain exact phrase
+-- Phrase search - must contain the words in order
 SELECT * FROM articles
 WHERE MATCH(title, body) AGAINST('"query optimization"' IN BOOLEAN MODE);
 
@@ -134,6 +134,9 @@ ORDER BY score DESC
 LIMIT 20;
 
 -- Weight title matches higher than body matches
+-- Requires separate FULLTEXT indexes on title and body
+ALTER TABLE articles ADD FULLTEXT INDEX ft_body (body);
+
 SELECT id, title,
        (MATCH(title) AGAINST('mysql') * 2.0 +
         MATCH(body) AGAINST('mysql')) AS weighted_score
@@ -184,14 +187,15 @@ INSERT INTO my_stopwords VALUES ('the'), ('and'), ('for');
 -- [mysqld]
 -- innodb_ft_server_stopword_table = 'mydb/my_stopwords'
 
--- Or set per-table stopwords
+-- Or set per-table stopwords before creating the FULLTEXT index
+SET SESSION innodb_ft_user_stopword_table = 'mydb/my_stopwords';
+
 CREATE TABLE articles (
     id INT AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(255),
     body TEXT,
     FULLTEXT (title, body)
-) ENGINE=InnoDB
-  COMMENT='innodb_ft_user_stopword_table=mydb/my_stopwords';
+) ENGINE=InnoDB;
 
 -- Disable stopwords entirely for technical content
 -- innodb_ft_enable_stopword = OFF
@@ -219,8 +223,8 @@ Use InnoDB unless you have a specific reason not to. The transactional guarantee
 Full-text search performs well but has limits.
 
 ```sql
--- Use covering indexes when possible
--- Bad: fetches all columns, then filters
+-- Fetch only the columns you need
+-- Bad: fetches unnecessary columns for every matching row
 SELECT * FROM articles
 WHERE MATCH(title, body) AGAINST('mysql');
 
@@ -229,13 +233,14 @@ SELECT id, title FROM articles
 WHERE MATCH(title, body) AGAINST('mysql')
 LIMIT 20;
 
--- Avoid combining FULLTEXT with other slow conditions
--- Bad: full table scan on date, then fulltext filter
+-- Be careful when combining FULLTEXT with other selective conditions
+-- This can be inefficient if many full-text matches are discarded by the date filter
 SELECT * FROM articles
 WHERE created_at > '2024-01-01'
   AND MATCH(title, body) AGAINST('mysql');
 
--- Better: let fulltext drive the query, filter after
+-- Alternative: let fulltext drive the query first, then filter a ranked candidate set
+-- Use this only when limiting to the top full-text matches before applying the date filter is acceptable
 SELECT * FROM (
     SELECT id, title, created_at,
            MATCH(title, body) AGAINST('mysql') AS score
