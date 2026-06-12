@@ -15,7 +15,7 @@ Composite actions let you bundle multiple workflow steps into a single reusable 
 Composite actions are custom GitHub Actions written entirely in YAML. Unlike JavaScript or Docker actions, they run steps directly in the workflow runner. This makes them lightweight, fast to execute, and simple to maintain.
 
 Key benefits:
-- No runtime dependencies (no Node.js or Docker required)
+- No packaged JavaScript runtime or Docker image required for the action itself
 - Share common CI/CD patterns across repositories
 - Version and release like any other code
 - Test locally with act or similar tools
@@ -56,6 +56,12 @@ runs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
+
+    # Enable package managers managed by Corepack
+    - name: Enable Corepack
+      if: inputs.package-manager != 'npm'
+      shell: bash
+      run: corepack enable
 
     # Cache node_modules based on lockfile hash
     - name: Cache dependencies
@@ -192,6 +198,9 @@ inputs:
   node-version:
     required: false
     default: '20'
+  snyk-token:
+    description: 'Snyk API token'
+    required: true
 
 runs:
   using: 'composite'
@@ -295,8 +304,8 @@ steps:
   # Pin to major version for automatic minor/patch updates
   - uses: your-org/action@v1
 
-  # Pin to commit SHA for maximum security
-  - uses: your-org/action@a1b2c3d4e5f6
+  # Pin to full commit SHA for maximum security
+  - uses: your-org/action@a1b2c3d4e5f6789012345678901234567890abcd
 ```
 
 ## Testing Composite Actions
@@ -357,7 +366,7 @@ jobs:
 
 To publish your action to the GitHub Marketplace:
 
-1. Ensure `action.yml` has required metadata:
+1. Ensure `action.yml` has the required metadata, plus optional author and branding fields for the listing:
 
 ```yaml
 name: 'Your Action Name'
