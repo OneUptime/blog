@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Message Queue, List, BRPOP, LPUSH, Background Job, Task Processing
 
-Description: Learn how to build reliable message queues using Redis Lists. This guide covers producer-consumer patterns, blocking operations, reliable delivery with RPOPLPUSH, and implementing priority queues.
+Description: Learn how to build reliable message queues using Redis Lists. This guide covers producer-consumer patterns, blocking operations, reliable delivery with BLMOVE, and implementing priority queues.
 
 ---
 
@@ -46,7 +46,7 @@ Key commands:
 import redis
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 class SimpleQueue:
     """
@@ -66,7 +66,7 @@ class SimpleQueue:
         # Wrap message with metadata
         envelope = {
             'id': f"{time.time_ns()}",
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'payload': message
         }
 
@@ -98,7 +98,7 @@ class SimpleQueue:
         Look at messages without removing them.
         Useful for monitoring and debugging.
         """
-        # LRANGE returns elements from right to left (oldest first)
+        # LRANGE returns the last count items near the pop end
         messages = self.redis.lrange(self.queue_name, -count, -1)
         return [json.loads(m) for m in messages]
 
@@ -219,15 +219,15 @@ if __name__ == '__main__':
 
 ---
 
-## Reliable Queue with RPOPLPUSH
+## Reliable Queue with BLMOVE
 
-The basic pattern has a problem: if a worker crashes while processing, the message is lost. RPOPLPUSH provides at-least-once delivery:
+The basic pattern has a problem: if a worker crashes while processing, the message is lost. BLMOVE provides at-least-once delivery:
 
 ```mermaid
 graph LR
     subgraph "Reliable Queue Pattern"
         P[Producer] -->|LPUSH| MQ[Main Queue]
-        MQ -->|BRPOPLPUSH| PQ[Processing Queue]
+        MQ -->|BLMOVE| PQ[Processing Queue]
         PQ -->|On Success| DEL[Delete from Processing]
         PQ -->|On Failure| MQ
     end
@@ -239,11 +239,11 @@ graph LR
 import redis
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ReliableQueue:
     """
-    Reliable queue that guarantees message delivery.
+    Reliable queue that supports at-least-once delivery.
 
     Uses two lists:
     - Main queue: holds pending messages
@@ -262,7 +262,7 @@ class ReliableQueue:
         """Add a message to the queue"""
         envelope = {
             'id': f"{time.time_ns()}",
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'attempts': 0,
             'payload': message
         }
@@ -273,27 +273,45 @@ class ReliableQueue:
         """
         Atomically move a message from main queue to processing queue.
 
-        BRPOPLPUSH is atomic - the message either stays in main queue
+        BLMOVE is atomic - the message either stays in main queue
         or moves to processing queue, never lost.
         """
-        # BRPOPLPUSH: blocking pop from source, push to destination
-        raw_message = self.redis.brpoplpush(
+        # BLMOVE RIGHT LEFT: blocking pop from source tail, push to destination head
+        raw_message = self.redis.blmove(
             self.queue_name,
             self.processing_queue,
-            timeout=timeout
+            timeout=timeout,
+            src='RIGHT',
+            dest='LEFT'
         )
 
         if raw_message is None:
             return None
 
         envelope = json.loads(raw_message)
-        envelope['started_at'] = datetime.utcnow().isoformat()
+        envelope['started_at'] = datetime.now(timezone.utc).isoformat()
         envelope['attempts'] += 1
 
-        # Update the message in processing queue with new metadata
-        # Remove old version and add updated one
-        self.redis.lrem(self.processing_queue, 1, raw_message)
-        self.redis.lpush(self.processing_queue, json.dumps(envelope))
+        updated_message = json.dumps(envelope)
+
+        # Update the message in processing queue with new metadata atomically
+        script = """
+        local removed = redis.call('LREM', KEYS[1], 1, ARGV[1])
+        if removed == 1 then
+            redis.call('LPUSH', KEYS[1], ARGV[2])
+        end
+        return removed
+        """
+        updated = self.redis.eval(
+            script,
+            1,
+            self.processing_queue,
+            raw_message,
+            updated_message
+        )
+
+        if updated == 0:
+            return None
 
         return envelope
 
@@ -314,12 +332,28 @@ class ReliableQueue:
         If requeue=False, message is dropped (or you could move to dead-letter).
         """
         raw_message = json.dumps(envelope)
-        self.redis.lrem(self.processing_queue, 1, raw_message)
 
         if requeue:
-            # Reset started_at and push back to main queue
+            # Reset started_at and push back to main queue atomically
             envelope.pop('started_at', None)
-            self.redis.rpush(self.queue_name, json.dumps(envelope))
+            retry_message = json.dumps(envelope)
+            script = """
+            local removed = redis.call('LREM', KEYS[1], 1, ARGV[1])
+            if removed == 1 then
+                redis.call('RPUSH', KEYS[2], ARGV[2])
+            end
+            return removed
+            """
+            return self.redis.eval(
+                script,
+                2,
+                self.processing_queue,
+                self.queue_name,
+                raw_message,
+                retry_message
+            ) > 0
+
+        return self.redis.lrem(self.processing_queue, 1, raw_message) > 0
 
     def recover_stale(self):
         """
@@ -337,7 +371,7 @@ class ReliableQueue:
             # Check if processing time exceeded timeout
             if 'started_at' in envelope:
                 started = datetime.fromisoformat(envelope['started_at'])
-                elapsed = (datetime.utcnow() - started).total_seconds()
+                elapsed = (datetime.now(timezone.utc) - started).total_seconds()
 
                 if elapsed > self.processing_timeout:
                     print(f"Recovering stale message: {envelope['id']}")
@@ -385,11 +419,16 @@ if message:
 Implement priority levels using multiple lists:
 
 ```python
+import redis
+import json
+import time
+from datetime import datetime, timezone
+
 class PriorityQueue:
     """
     Priority queue using multiple Redis lists.
 
-    Higher priority messages are processed first.
+    Higher priority messages are processed first when multiple queues have messages ready.
     Within same priority, FIFO order is maintained.
     """
 
@@ -414,7 +453,7 @@ class PriorityQueue:
         envelope = {
             'id': f"{time.time_ns()}",
             'priority': priority,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'payload': message
         }
 
@@ -425,7 +464,7 @@ class PriorityQueue:
 
     def dequeue(self, timeout=0):
         """
-        Get the highest priority message available.
+        Get the highest priority message currently available.
 
         Uses BRPOP with multiple keys - Redis checks them in order
         and returns from the first non-empty queue.
@@ -478,6 +517,10 @@ while True:
 Schedule messages for future processing:
 
 ```python
+import redis
+import json
+import time
+
 class DelayedQueue:
     """
     Delayed queue using a sorted set for scheduling
@@ -529,7 +572,7 @@ class DelayedQueue:
         local now = tonumber(ARGV[1])
 
         -- Get messages ready to process
-        local messages = redis.call('ZRANGEBYSCORE', scheduled, '-inf', now)
+        local messages = redis.call('ZRANGE', scheduled, '-inf', now, 'BYSCORE')
 
         local promoted = 0
         for _, msg in ipairs(messages) do
@@ -602,6 +645,10 @@ for _ in range(10):
 ## Monitoring Queue Health
 
 ```python
+import redis
+import json
+from datetime import datetime, timezone
+
 class QueueMonitor:
     """
     Monitor Redis queue metrics for alerting and dashboards.
@@ -628,7 +675,7 @@ class QueueMonitor:
                 try:
                     envelope = json.loads(oldest)
                     created = datetime.fromisoformat(envelope['timestamp'])
-                    age_seconds = (datetime.utcnow() - created).total_seconds()
+                    age_seconds = (datetime.now(timezone.utc) - created).total_seconds()
                 except (json.JSONDecodeError, KeyError):
                     pass
 
@@ -687,7 +734,7 @@ if issues:
 Redis Lists provide a solid foundation for building message queues. Key patterns covered:
 
 - **Basic queue**: LPUSH/BRPOP for simple producer-consumer
-- **Reliable queue**: BRPOPLPUSH for at-least-once delivery
+- **Reliable queue**: BLMOVE for at-least-once delivery
 - **Priority queue**: Multiple lists with ordered BRPOP
 - **Delayed queue**: Sorted sets for scheduling
 
