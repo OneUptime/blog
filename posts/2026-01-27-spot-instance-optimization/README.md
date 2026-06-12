@@ -16,7 +16,7 @@ Spot instances are spare cloud capacity sold at steep discounts. Understanding h
 
 ## Understanding Spot Pricing
 
-Spot pricing fluctuates based on supply and demand in each availability zone. Understanding these dynamics helps you make better decisions about when and where to use spot capacity.
+Spot pricing and availability vary by provider, region, zone, and capacity pool. AWS exposes Spot price history by instance type and Availability Zone, while GCP and Azure publish spot prices through their pricing data. Understanding these dynamics helps you make better decisions about when and where to use spot capacity.
 
 ### Spot Pricing Comparison by Provider
 
@@ -29,32 +29,34 @@ Spot pricing fluctuates based on supply and demand in each availability zone. Un
 
 ### Check Current Spot Prices
 
-Use cloud provider CLIs to check current spot prices before provisioning. This helps identify the best instance types and regions for your workloads.
+Use cloud provider CLIs and pricing APIs to check current spot prices before provisioning. This helps identify the best instance types and regions for your workloads.
 
 ```bash
 # AWS: Check spot price history for m5.large in us-east-1
 
 # The --start-time flag limits results to recent data
 aws ec2 describe-spot-price-history \
+  --region us-east-1 \
   --instance-types m5.large m5a.large m5d.large \
   --product-descriptions "Linux/UNIX" \
   --start-time $(date -u +"%Y-%m-%dT%H:%M:%SZ" -d "1 hour ago") \
   --query 'SpotPriceHistory[*].[InstanceType,AvailabilityZone,SpotPrice]' \
   --output table
 
-# GCP: List spot VM pricing for n1-standard-4
-# Spot prices are shown alongside on-demand for comparison
-gcloud compute machine-types describe n1-standard-4 \
-  --zone us-central1-a \
-  --format="table(name,guestCpus,memoryMb,zone)"
+# GCP: Query public Compute Engine SKUs for spot/preemptible pricing
+# Requires the Cloud Billing Catalog API and an API key
+curl -s "https://cloudbilling.googleapis.com/v1/services/6F81-5844-456A/skus?key=${GOOGLE_API_KEY}" \
+  | jq -r '.skus[]
+      | select((.description | test("N1 Predefined Instance Core|N1 Predefined Instance Ram"))
+          and (.description | test("Spot|Preemptible"))
+          and (.serviceRegions[]? == "us-central1"))
+      | [.description, .pricingInfo[0].pricingExpression.tieredRates[0].unitPrice.units,
+         .pricingInfo[0].pricingExpression.tieredRates[0].unitPrice.nanos]
+      | @tsv'
 
-# Azure: Check spot prices for Standard_D4s_v3
-# The eviction policy affects pricing
-az vm list-skus \
-  --location eastus \
-  --size Standard_D4s_v3 \
-  --query "[].{Name:name,Tier:tier,Size:size}" \
-  --output table
+# Azure: Query the Retail Prices API for Standard_D4s_v3 spot pricing
+curl -s "https://prices.azure.com/api/retail/prices?api-version=2023-01-01-preview&currencyCode='USD'&\$filter=serviceName eq 'Virtual Machines' and armRegionName eq 'eastus' and armSkuName eq 'Standard_D4s_v3' and priceType eq 'Consumption' and contains(meterName, 'Spot')" \
+  | jq -r '.Items[] | [.productName, .skuName, .meterName, .retailPrice, .unitOfMeasure] | @tsv'
 ```
 
 ### Monitor Spot Price Trends
@@ -148,19 +150,40 @@ class SpotInterruptionHandler:
     """Monitor for spot interruption and handle graceful shutdown."""
 
     # AWS instance metadata endpoint for spot interruption
+    TOKEN_URL = "http://169.254.169.254/latest/api/token"
     METADATA_URL = "http://169.254.169.254/latest/meta-data/spot/instance-action"
 
     def __init__(self, shutdown_callback):
         # Callback function to execute on interruption
         self.shutdown_callback = shutdown_callback
         self.running = True
+        self.session = requests.Session()
+
+    def get_imds_token(self):
+        """Fetch an IMDSv2 token for metadata requests."""
+        try:
+            response = self.session.put(
+                self.TOKEN_URL,
+                headers={"X-aws-ec2-metadata-token-ttl-seconds": "21600"},
+                timeout=1
+            )
+            if response.status_code == 200:
+                return response.text
+        except requests.exceptions.RequestException:
+            pass
+        return None
 
     def check_interruption(self):
         """Check if an interruption notice has been issued."""
         try:
+            token = self.get_imds_token()
+            headers = {}
+            if token:
+                headers["X-aws-ec2-metadata-token"] = token
+
             # This endpoint returns 404 when no interruption is pending
             # and returns JSON when interruption is scheduled
-            response = requests.get(self.METADATA_URL, timeout=1)
+            response = self.session.get(self.METADATA_URL, headers=headers, timeout=1)
             if response.status_code == 200:
                 return response.json()
         except requests.exceptions.RequestException:
@@ -585,75 +608,90 @@ Configure Kubernetes node groups specifically optimized for spot instances with 
 Karpenter provides faster, more flexible node provisioning than Cluster Autoscaler.
 
 ```yaml
-# karpenter/provisioner.yaml
-# Karpenter provisioner for spot instances
-apiVersion: karpenter.sh/v1alpha5
-kind: Provisioner
+# karpenter/nodepool.yaml
+# Karpenter NodePool for spot instances
+apiVersion: karpenter.sh/v1
+kind: NodePool
 metadata:
-  name: spot-provisioner
+  name: spot
 spec:
-  # Workloads must have matching tolerations and node selectors
-  requirements:
-    # Only provision spot instances
-    - key: karpenter.sh/capacity-type
-      operator: In
-      values: ["spot"]
-    # Target x86_64 architecture
-    - key: kubernetes.io/arch
-      operator: In
-      values: ["amd64"]
-    # Allow multiple instance families for diversification
-    - key: karpenter.k8s.aws/instance-family
-      operator: In
-      values: ["m5", "m5a", "m5d", "m4", "c5", "c5a", "r5", "r5a"]
-    # Limit to specific sizes to control costs
-    - key: karpenter.k8s.aws/instance-size
-      operator: In
-      values: ["large", "xlarge", "2xlarge"]
-    # Exclude older generations
-    - key: karpenter.k8s.aws/instance-generation
-      operator: Gt
-      values: ["2"]
+  template:
+    spec:
+      # Workloads must have matching tolerations and node selectors
+      requirements:
+        # Only provision spot instances
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        # Target x86_64 architecture
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        # Target Linux nodes
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        # Allow multiple instance families for diversification
+        - key: karpenter.k8s.aws/instance-family
+          operator: In
+          values: ["m5", "m5a", "m5d", "m4", "c5", "c5a", "r5", "r5a"]
+        # Limit to specific sizes to control costs
+        - key: karpenter.k8s.aws/instance-size
+          operator: In
+          values: ["large", "xlarge", "2xlarge"]
+        # Exclude older generations
+        - key: karpenter.k8s.aws/instance-generation
+          operator: Gt
+          values: ["2"]
 
-  # Resource limits for this provisioner
+      # Provider-specific configuration
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: default
+
+      # Taint spot nodes so only explicitly tolerant workloads are scheduled
+      taints:
+        - key: karpenter.sh/capacity-type
+          value: spot
+          effect: NoSchedule
+
+      # Expire nodes after 7 days for updates
+      expireAfter: 168h
+
+  # Resource limits for this node pool
   limits:
-    resources:
-      cpu: 1000     # Max 1000 vCPUs total
-      memory: 4000Gi
-
-  # Provider-specific configuration
-  providerRef:
-    name: default
+    cpu: "1000"     # Max 1000 vCPUs total
+    memory: 4000Gi
 
   # Consolidation settings
-  consolidation:
-    enabled: true  # Consolidate underutilized nodes
-
-  # Remove empty nodes after 30 seconds
-  ttlSecondsAfterEmpty: 30
-
-  # Expire nodes after 7 days for updates
-  ttlSecondsUntilExpired: 604800
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 30s
 
 ---
-apiVersion: karpenter.k8s.aws/v1alpha1
-kind: AWSNodeTemplate
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
 metadata:
   name: default
 spec:
   # Subnet discovery by tags
-  subnetSelector:
-    karpenter.sh/discovery: ${CLUSTER_NAME}
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: ${CLUSTER_NAME}
 
   # Security group discovery by tags
-  securityGroupSelector:
-    karpenter.sh/discovery: ${CLUSTER_NAME}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: ${CLUSTER_NAME}
 
   # AMI selection
-  amiFamily: AL2
+  amiSelectorTerms:
+    - alias: al2023@latest
+  amiFamily: AL2023
 
-  # Instance profile for node IAM role
-  instanceProfile: KarpenterNodeInstanceProfile-${CLUSTER_NAME}
+  # IAM role for node identity
+  role: KarpenterNodeRole-${CLUSTER_NAME}
 
   # Block device configuration
   blockDeviceMappings:
@@ -882,13 +920,11 @@ resource "aws_autoscaling_group" "github_runners" {
 }
 ```
 
-### GitLab Runners with Spot Fleet
+### GitLab Runners with Spot Auto Scaling Groups
 
 ```yaml
 # docker-compose.yml
 # GitLab Runner manager that provisions spot instances
-version: '3.8'
-
 services:
   gitlab-runner-manager:
     image: gitlab/gitlab-runner:latest
@@ -911,7 +947,8 @@ check_interval = 0
   name = "spot-runner"
   url = "https://gitlab.example.com"
   token = "YOUR_RUNNER_TOKEN"
-  executor = "docker+machine"
+  shell = "sh"
+  executor = "docker-autoscaler"
 
   [runners.docker]
     image = "alpine:latest"
@@ -919,32 +956,30 @@ check_interval = 0
     disable_cache = false
     volumes = ["/cache"]
 
-  [runners.machine]
-    IdleCount = 2
-    IdleTime = 600
-    MaxBuilds = 100
-    MachineDriver = "amazonec2"
-    MachineName = "gitlab-runner-%s"
+  [runners.autoscaler]
+    plugin = "aws:latest"
+    capacity_per_instance = 1
+    max_use_count = 1
+    max_instances = 50
 
-    # AWS configuration for spot instances
-    MachineOptions = [
-      "amazonec2-region=us-east-1",
-      "amazonec2-vpc-id=vpc-xxxxx",
-      "amazonec2-subnet-id=subnet-xxxxx",
-      "amazonec2-zone=a",
-      "amazonec2-instance-type=c5.xlarge",
-      "amazonec2-request-spot-instance=true",
-      "amazonec2-spot-price=0.10",
-      "amazonec2-security-group=gitlab-runner-sg",
-      "amazonec2-iam-instance-profile=GitLabRunnerProfile"
-    ]
+    [runners.autoscaler.plugin_config]
+      name = "gitlab-runner-spot-asg"  # Dedicated AWS Auto Scaling Group using spot instances
+
+    [runners.autoscaler.connector_config]
+      username = "ubuntu"
+      use_external_addr = false
 
     # Off-peak settings for cost optimization
-    [[runners.machine.autoscaling]]
-      Periods = ["* * 0-7,19-23 * * mon-fri *", "* * * * * sat,sun *"]
-      IdleCount = 0
-      IdleTime = 300
-      Timezone = "UTC"
+    [[runners.autoscaler.policy]]
+      periods = ["* * 0-7,19-23 * * mon-fri *", "* * * * * sat,sun *"]
+      idle_count = 0
+      idle_time = "300s"
+      timezone = "UTC"
+
+    [[runners.autoscaler.policy]]
+      idle_count = 2
+      idle_time = "600s"
+      timezone = "UTC"
 
   [runners.cache]
     Type = "s3"
@@ -968,7 +1003,7 @@ def spotConfig = new SpotConfiguration(
     true,           // useBidPrice
     "0.10",        // spotMaxBidPrice
     false,          // fallbackToOndemand
-    "900"          // spotBlockReservationDuration (15 minutes)
+    0               // spotBlockReservationDuration; spot blocks are no longer available
 )
 
 def ami = new SlaveTemplate(
@@ -1055,9 +1090,9 @@ spec:
         - alert: HighSpotInterruptionRate
           expr: |
             (
-              sum(rate(kube_pod_container_status_terminated_reason{reason="NodeShutdown"}[1h]))
+              sum(increase(kube_pod_container_status_terminated_reason{reason="NodeShutdown"}[1h]))
               /
-              sum(kube_pod_status_phase{phase="Running"})
+              clamp_min(avg_over_time(sum(kube_pod_status_phase{phase="Running"})[1h:5m]), 1)
             ) > 0.05
           for: 30m
           labels:
@@ -1069,9 +1104,9 @@ spec:
         # Alert on spot capacity shortage
         - alert: SpotCapacityShortage
           expr: |
-            kube_node_status_condition{condition="Ready",status="true"}
-            <
-            kube_deployment_spec_replicas * 0.8
+            sum(kube_pod_status_phase{phase="Pending"}) > 10
+            and
+            sum(kube_deployment_status_replicas_unavailable) > 0
           for: 15m
           labels:
             severity: critical
