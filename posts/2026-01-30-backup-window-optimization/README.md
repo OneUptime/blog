@@ -104,9 +104,30 @@ START_TIMESTAMP=$(date -Iseconds)
 echo "[$START_TIMESTAMP] Backup $BACKUP_NAME started" >> "$LOG_FILE"
 
 # Capture initial system state
-INITIAL_CPU=$(top -l 1 | grep "CPU usage" | awk '{print $3}' | tr -d '%')
-INITIAL_IO=$(iostat -d 1 1 | tail -1 | awk '{print $3}')
-INITIAL_NET=$(netstat -ib | grep en0 | head -1 | awk '{print $7}')
+read_cpu_percent() {
+    read -r _ user nice system idle iowait irq softirq steal _ < /proc/stat
+    idle_before=$((idle + iowait))
+    total_before=$((user + nice + system + idle + iowait + irq + softirq + steal))
+    sleep 1
+    read -r _ user nice system idle iowait irq softirq steal _ < /proc/stat
+    idle_after=$((idle + iowait))
+    total_after=$((user + nice + system + idle + iowait + irq + softirq + steal))
+
+    awk -v idle_delta=$((idle_after - idle_before)) \
+        -v total_delta=$((total_after - total_before)) \
+        'BEGIN { if (total_delta > 0) printf "%.2f", (1 - idle_delta / total_delta) * 100; else print "0.00" }'
+}
+
+read_io_sample() {
+    if command -v iostat >/dev/null 2>&1; then
+        iostat -dx 1 2 | awk 'NF && $1 !~ /Device|Linux/ {line=$0} END {print line}'
+    else
+        echo "iostat unavailable"
+    fi
+}
+
+INITIAL_CPU=$(read_cpu_percent)
+INITIAL_IO=$(read_io_sample)
 
 # Run your backup command here
 # pg_dump, rsync, etc.
@@ -116,9 +137,8 @@ END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 
 # Capture final state
-FINAL_CPU=$(top -l 1 | grep "CPU usage" | awk '{print $3}' | tr -d '%')
-FINAL_IO=$(iostat -d 1 1 | tail -1 | awk '{print $3}')
-FINAL_NET=$(netstat -ib | grep en0 | head -1 | awk '{print $7}')
+FINAL_CPU=$(read_cpu_percent)
+FINAL_IO=$(read_io_sample)
 
 # Log metrics
 echo "[$START_TIMESTAMP] Backup $BACKUP_NAME completed in ${DURATION}s" >> "$LOG_FILE"
@@ -150,14 +170,17 @@ def analyze_traffic_patterns(metrics_file: str) -> dict:
         'response_time_ms': 'mean',
         'cpu_percent': 'mean',
         'io_wait': 'mean'
-    }).round(2)
+    }).reindex(range(24)).interpolate(limit_direction='both').fillna(0).round(2)
 
     # Calculate a "busyness score" combining all metrics
     # Lower score = better backup window
+    request_max = hourly_traffic['requests'].max() or 1
+    io_wait_max = hourly_traffic['io_wait'].max() or 1
+
     hourly_traffic['busyness_score'] = (
-        hourly_traffic['requests'] / hourly_traffic['requests'].max() * 0.4 +
+        hourly_traffic['requests'] / request_max * 0.4 +
         hourly_traffic['cpu_percent'] / 100 * 0.3 +
-        hourly_traffic['io_wait'] / hourly_traffic['io_wait'].max() * 0.3
+        hourly_traffic['io_wait'] / io_wait_max * 0.3
     )
 
     # Find the best 4-hour window
@@ -203,6 +226,9 @@ def analyze_backup_trends(backup_history: list) -> dict:
     sizes = [b['size_gb'] for b in backup_history]
     durations = [b['duration_minutes'] for b in backup_history]
 
+    if not sizes or not durations:
+        return {'error': 'No backup history available for analysis'}
+
     # Week-over-week growth rate
     if len(sizes) >= 2:
         growth_rates = []
@@ -221,7 +247,10 @@ def analyze_backup_trends(backup_history: list) -> dict:
 
     # Project 30 days ahead
     projected_size = current_avg_size * (1 + avg_growth_rate) ** 4  # 4 weeks
-    projected_duration = current_avg_duration * (projected_size / current_avg_size)
+    projected_duration = (
+        current_avg_duration * (projected_size / current_avg_size)
+        if current_avg_size > 0 else current_avg_duration
+    )
 
     return {
         'current_avg_size_gb': round(current_avg_size, 2),
@@ -242,10 +271,8 @@ def analyze_backup_trends(backup_history: list) -> dict:
 Create a scheduler that automatically picks optimal backup times:
 
 ```python
-import schedule
-import time
-from datetime import datetime, timedelta
-from typing import Callable, Optional
+from datetime import datetime
+from typing import Callable
 
 class AdaptiveBackupScheduler:
     """
@@ -330,7 +357,7 @@ BACKUP_SCHEDULES = """
 For global systems, optimize across time zones:
 
 ```python
-from datetime import datetime, timezone
+from datetime import datetime
 import pytz
 
 def find_global_backup_window(regional_traffic: dict) -> dict:
@@ -367,20 +394,20 @@ def find_global_backup_window(regional_traffic: dict) -> dict:
     all_hours = set(range(24))
     off_peak_hours = sorted(all_hours - utc_peak_hours)
 
-    # Find longest consecutive window
+    # Find longest consecutive window, including windows that wrap past midnight.
     best_window = []
-    current_window = []
+    off_peak_set = set(off_peak_hours)
 
-    for hour in off_peak_hours:
-        if not current_window or hour == current_window[-1] + 1:
-            current_window.append(hour)
-        else:
-            if len(current_window) > len(best_window):
-                best_window = current_window
-            current_window = [hour]
+    for start_hour in off_peak_hours:
+        current_window = []
+        hour = start_hour
 
-    if len(current_window) > len(best_window):
-        best_window = current_window
+        while hour % 24 in off_peak_set and len(current_window) < 24:
+            current_window.append(hour % 24)
+            hour += 1
+
+        if len(current_window) > len(best_window):
+            best_window = current_window
 
     return {
         'optimal_window_utc': best_window,
@@ -395,58 +422,31 @@ def find_global_backup_window(regional_traffic: dict) -> dict:
 
 ## Parallel Backup Strategies
 
-### Parallel Database Backups
+### Parallel PostgreSQL Backups
 
-Split large databases into parallel backup streams:
+Use PostgreSQL's directory-format dump with parallel jobs:
 
 ```bash
 #!/bin/bash
-# parallel-pg-backup.sh - Parallel PostgreSQL backup
+# parallel-pg-backup.sh - Parallel PostgreSQL backup with pg_dump
 
 DB_NAME="production"
 BACKUP_DIR="/backup/postgres"
 PARALLEL_JOBS=4
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_PATH="$BACKUP_DIR/$TIMESTAMP"
 
 # Create backup directory
-mkdir -p "$BACKUP_DIR/$TIMESTAMP"
-
-# Get list of tables grouped by size for balanced parallelization
-psql -d "$DB_NAME" -t -c "
-    SELECT schemaname || '.' || tablename
-    FROM pg_tables
-    WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
-    ORDER BY pg_total_relation_size(schemaname || '.' || tablename) DESC
-" | tr -d ' ' > /tmp/tables.txt
-
-# Split tables into parallel groups
-split -n l/$PARALLEL_JOBS /tmp/tables.txt /tmp/table_group_
-
-# Function to backup a group of tables
-backup_table_group() {
-    local group_file=$1
-    local group_id=$2
-
-    while read -r table; do
-        if [ -n "$table" ]; then
-            echo "Backing up $table in group $group_id"
-            pg_dump -d "$DB_NAME" -t "$table" -Fc \
-                -f "$BACKUP_DIR/$TIMESTAMP/${table//\./_}.dump"
-        fi
-    done < "$group_file"
-}
+mkdir -p "$BACKUP_PATH"
 
 # Run parallel backups
 echo "Starting parallel backup with $PARALLEL_JOBS jobs"
 START_TIME=$(date +%s)
 
-for group_file in /tmp/table_group_*; do
-    group_id=$(basename "$group_file" | sed 's/table_group_//')
-    backup_table_group "$group_file" "$group_id" &
-done
-
-# Wait for all parallel jobs to complete
-wait
+pg_dump -d "$DB_NAME" \
+    --format=directory \
+    --jobs="$PARALLEL_JOBS" \
+    --file="$BACKUP_PATH"
 
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
@@ -454,8 +454,8 @@ DURATION=$((END_TIME - START_TIME))
 echo "Parallel backup completed in ${DURATION}s"
 
 # Create manifest file
-ls -la "$BACKUP_DIR/$TIMESTAMP/" > "$BACKUP_DIR/$TIMESTAMP/manifest.txt"
-echo "Total duration: ${DURATION}s" >> "$BACKUP_DIR/$TIMESTAMP/manifest.txt"
+find "$BACKUP_PATH" -maxdepth 1 -type f -printf "%f\n" > "$BACKUP_PATH/manifest.txt"
+echo "Total duration: ${DURATION}s" >> "$BACKUP_PATH/manifest.txt"
 ```
 
 ### Parallel File System Backups
@@ -633,7 +633,7 @@ flowchart TB
 
 ---
 
-Resource Throttling
+## Resource Throttling
 
 ### I/O Throttling with ionice and cgroups
 
@@ -652,21 +652,30 @@ renice 19 $$ > /dev/null
 
 # Create cgroup for backup process with I/O limits
 CGROUP_NAME="backup_throttle"
+DEVICE_ID="8:0"  # Adjust for your device; check with: cat /sys/block/sda/dev
 
-# Setup cgroup (requires root)
-if [ -d /sys/fs/cgroup/blkio ]; then
-    mkdir -p /sys/fs/cgroup/blkio/$CGROUP_NAME
+# Setup cgroup (requires root). Prefer cgroup v2, with a cgroup v1 fallback.
+if [ -f /sys/fs/cgroup/cgroup.controllers ]; then
+    CGROUP_PATH="/sys/fs/cgroup/$CGROUP_NAME"
+    mkdir -p "$CGROUP_PATH"
 
     # Limit to 50MB/s read and 30MB/s write
-    # Format: major:minor bytes_per_second
-    # Get device major:minor with: cat /sys/block/sda/dev
-    DEVICE_ID="8:0"  # Adjust for your device
-
-    echo "$DEVICE_ID 52428800" > /sys/fs/cgroup/blkio/$CGROUP_NAME/blkio.throttle.read_bps_device
-    echo "$DEVICE_ID 31457280" > /sys/fs/cgroup/blkio/$CGROUP_NAME/blkio.throttle.write_bps_device
+    # Format: major:minor rbps=bytes_per_second wbps=bytes_per_second
+    echo "+io" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
+    echo "$DEVICE_ID rbps=52428800 wbps=31457280" > "$CGROUP_PATH/io.max"
 
     # Add current process to cgroup
-    echo $$ > /sys/fs/cgroup/blkio/$CGROUP_NAME/cgroup.procs
+    echo $$ > "$CGROUP_PATH/cgroup.procs"
+elif [ -d /sys/fs/cgroup/blkio ]; then
+    CGROUP_PATH="/sys/fs/cgroup/blkio/$CGROUP_NAME"
+    mkdir -p "$CGROUP_PATH"
+
+    # cgroup v1 format: major:minor bytes_per_second
+    echo "$DEVICE_ID 52428800" > "$CGROUP_PATH/blkio.throttle.read_bps_device"
+    echo "$DEVICE_ID 31457280" > "$CGROUP_PATH/blkio.throttle.write_bps_device"
+
+    # Add current process to cgroup
+    echo $$ > "$CGROUP_PATH/cgroup.procs"
 fi
 
 # Now run the actual backup with resource limits applied
@@ -818,20 +827,20 @@ Throttle database backup queries to avoid locking:
 -- PostgreSQL: Configure backup-friendly settings
 -- Run these before starting a backup session
 
--- Reduce checkpoint frequency impact
-SET maintenance_work_mem = '256MB';
+-- Avoid waiting indefinitely behind application DDL or long transactions
+SET lock_timeout = '5s';
+SET statement_timeout = '0';
 
--- Use a dedicated backup connection with lower priority
--- Create a backup role with resource limits
-CREATE ROLE backup_user WITH LOGIN PASSWORD 'secure_password';
+-- Use a dedicated backup role with only the privileges it needs
+CREATE ROLE backup_user WITH LOGIN PASSWORD 'secure_password' CONNECTION LIMIT 2;
+GRANT CONNECT ON DATABASE production TO backup_user;
+GRANT USAGE ON SCHEMA public TO backup_user;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO backup_user;
 
--- In postgresql.conf, configure resource queues (if using pgBouncer)
--- Or use pg_hint_plan for query-level throttling
-
--- For large table dumps, use COPY with throttling
--- This function adds artificial delays to reduce I/O burst
+-- For large exports, batching can add artificial delays to reduce I/O bursts.
+-- COPY to a server-side file requires superuser or pg_write_server_files.
 CREATE OR REPLACE FUNCTION throttled_export(
-    table_name TEXT,
+    table_name REGCLASS,
     output_file TEXT,
     rows_per_batch INT DEFAULT 10000,
     delay_ms INT DEFAULT 100
@@ -840,13 +849,13 @@ DECLARE
     total_rows INT;
     offset_val INT := 0;
 BEGIN
-    EXECUTE format('SELECT COUNT(*) FROM %I', table_name) INTO total_rows;
+    EXECUTE format('SELECT COUNT(*) FROM %s', table_name) INTO total_rows;
 
     WHILE offset_val < total_rows LOOP
         -- Export batch
         EXECUTE format(
-            'COPY (SELECT * FROM %I OFFSET %s LIMIT %s) TO %L',
-            table_name, offset_val, rows_per_batch,
+            'COPY (SELECT * FROM %s LIMIT %s OFFSET %s) TO %L',
+            table_name, rows_per_batch, offset_val,
             output_file || '.' || offset_val
         );
 
@@ -878,13 +887,13 @@ YESTERDAY=$(date -d "yesterday" +%Y%m%d 2>/dev/null || date -v-1d +%Y%m%d)
 
 # Check for previous backup to use as reference
 if [ -d "$BACKUP_BASE/$YESTERDAY" ]; then
-    LINK_DEST="--link-dest=$BACKUP_BASE/$YESTERDAY"
+    LINK_DEST="$BACKUP_BASE/$YESTERDAY"
     echo "Using yesterday's backup as reference for incremental"
 else
     # Find most recent backup
     LATEST=$(ls -td "$BACKUP_BASE"/20* 2>/dev/null | head -1)
     if [ -n "$LATEST" ]; then
-        LINK_DEST="--link-dest=$LATEST"
+        LINK_DEST="$LATEST"
         echo "Using $LATEST as reference for incremental"
     else
         LINK_DEST=""
@@ -897,10 +906,12 @@ mkdir -p "$BACKUP_BASE/$TODAY"
 
 # Run incremental backup
 # --link-dest creates hard links to unchanged files, saving space and time
-rsync -avz --delete \
-    $LINK_DEST \
-    "$SOURCE/" \
-    "$BACKUP_BASE/$TODAY/"
+RSYNC_ARGS=(-avz --delete)
+if [ -n "$LINK_DEST" ]; then
+    RSYNC_ARGS+=(--link-dest="$LINK_DEST")
+fi
+
+rsync "${RSYNC_ARGS[@]}" "$SOURCE/" "$BACKUP_BASE/$TODAY/"
 
 # Report space savings
 FULL_SIZE=$(du -sh "$SOURCE" | cut -f1)
@@ -1022,7 +1033,7 @@ class BlockLevelBackup:
 
 ### Snapshot-Based Backups
 
-Use filesystem snapshots for instant consistent backups:
+Use filesystem snapshots for fast point-in-time backups. Quiesce or flush applications before taking the snapshot if you need application-level consistency:
 
 ```bash
 #!/bin/bash
@@ -1038,7 +1049,7 @@ BACKUP_DEST="/backup/database"
 echo "Creating LVM snapshot..."
 START_TIME=$(date +%s)
 
-# Create snapshot (instant operation)
+# Create snapshot (fast point-in-time operation)
 lvcreate -L "$SNAPSHOT_SIZE" -s -n "$SNAPSHOT_NAME" "/dev/$VOLUME_GROUP/$LOGICAL_VOLUME"
 
 SNAPSHOT_TIME=$(date +%s)
@@ -1048,7 +1059,7 @@ echo "Snapshot created in $((SNAPSHOT_TIME - START_TIME))s"
 mkdir -p "$MOUNT_POINT"
 mount -o ro "/dev/$VOLUME_GROUP/$SNAPSHOT_NAME" "$MOUNT_POINT"
 
-# Now backup from snapshot (production continues unaffected)
+# Now backup from snapshot (production continues with copy-on-write overhead)
 echo "Starting backup from snapshot..."
 rsync -avz "$MOUNT_POINT/" "$BACKUP_DEST/"
 
@@ -1190,8 +1201,12 @@ class BackupWindowMonitor:
         completion_hours = [m.end_time.hour + m.end_time.minute/60
                           for m in self.metrics_history if m.success]
 
+        if not completion_hours:
+            return {'error': 'No successful backups available for recommendations'}
+
         # Calculate needed window
-        p95_completion = sorted(completion_hours)[int(len(completion_hours) * 0.95)]
+        p95_index = int((len(completion_hours) - 1) * 0.95)
+        p95_completion = sorted(completion_hours)[p95_index]
 
         # Add 20% buffer
         recommended_end = int(p95_completion * 1.2)
@@ -1278,6 +1293,7 @@ class AdaptiveWindowManager:
             # Check if window is too tight
             if max_duration > window_duration * 0.9:
                 # Extend window by 1 hour
+                old_end = window['end']
                 new_end = min(window['end'] + 1, 8)  # Cap at 8 AM
 
                 if new_end != window['end']:
@@ -1285,7 +1301,7 @@ class AdaptiveWindowManager:
                     adjustments_made.append({
                         'type': backup_type,
                         'change': 'extended',
-                        'old_end': window['end'],
+                        'old_end': old_end,
                         'new_end': new_end,
                         'reason': f'Max duration ({max_duration:.2f}h) approached window limit'
                     })
@@ -1295,6 +1311,7 @@ class AdaptiveWindowManager:
                 # Consider shrinking, but be conservative
                 headroom_hours = window_duration - max_duration
                 if headroom_hours > 2:  # Only shrink if >2 hours headroom
+                    old_end = window['end']
                     new_end = window['start'] + int(max_duration * 1.5)  # 50% buffer
 
                     if new_end < window['end']:
@@ -1302,7 +1319,7 @@ class AdaptiveWindowManager:
                         adjustments_made.append({
                             'type': backup_type,
                             'change': 'shrunk',
-                            'old_end': window['end'],
+                            'old_end': old_end,
                             'new_end': new_end,
                             'reason': f'Backups consistently finishing early'
                         })
