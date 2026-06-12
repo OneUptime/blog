@@ -49,7 +49,7 @@ sequenceDiagram
 
 ## Understanding Ordering Keys
 
-Ordering keys are the primary mechanism for achieving message ordering in Pub/Sub. When you publish messages with the same ordering key, Pub/Sub guarantees they will be delivered to subscribers in the order they were published.
+Ordering keys are the primary mechanism for achieving message ordering in Pub/Sub. When you publish messages with the same ordering key to the same publish region, Pub/Sub guarantees they will be delivered to ordered subscriptions in the order Pub/Sub receives them.
 
 ### How Ordering Keys Work
 
@@ -87,9 +87,9 @@ flowchart LR
 
 Key principles:
 
-1. **Same ordering key = same order**: Messages with identical ordering keys are delivered in publish order
+1. **Same ordering key = same order**: Messages with identical ordering keys are delivered in the order Pub/Sub receives them
 2. **Different ordering keys = no ordering relationship**: Messages with different keys can be delivered in any order relative to each other
-3. **One subscriber per key**: At any moment, only one subscriber processes messages for a given ordering key
+3. **Serialized callbacks per key**: Client libraries run callbacks for a given ordering key to completion in order
 
 ---
 
@@ -99,15 +99,15 @@ Key principles:
 
 When using ordering keys with ordered delivery enabled:
 
-1. **Per-key ordering**: Messages with the same ordering key are delivered in the order published
+1. **Per-key ordering**: Messages with the same ordering key are delivered in the order Pub/Sub receives them
 2. **At-least-once delivery**: Messages may be delivered more than once (your code must be idempotent)
-3. **Regional ordering**: Ordering is guaranteed within a single region
+3. **Regional publishing requirement**: Messages for the same ordering key must be published to the same region; subscribers can connect from any region
 
 ### What Pub/Sub Does NOT Guarantee
 
 1. **Global ordering across keys**: No ordering relationship between different ordering keys
-2. **Cross-region ordering**: Ordering guarantees don't extend across regions
-3. **Exactly-once processing**: You must handle duplicates yourself
+2. **Ordering across publish regions**: Ordering guarantees don't apply if messages for the same key are published to different regions
+3. **Exactly-once processing**: Ordered delivery alone does not make your application side effects exactly-once
 
 ### Ordering Flow Diagram
 
@@ -147,7 +147,7 @@ This is where it gets interesting. Ordering and parallelism are fundamentally at
 
 | Aspect | Without Ordering Keys | With Ordering Keys |
 |--------|----------------------|-------------------|
-| Throughput | High (unlimited parallelism) | Limited (one message per key at a time) |
+| Throughput | High (unlimited parallelism) | Limited by processing speed per key |
 | Latency | Low (immediate delivery) | Higher (must wait for acks) |
 | Scaling | Horizontal (add subscribers) | Vertical (limited by key cardinality) |
 | Complexity | Simple | More complex error handling |
@@ -209,7 +209,6 @@ to ensure ordered delivery for related messages.
 
 from google.cloud import pubsub_v1
 from google.cloud.pubsub_v1 import types
-from concurrent import futures
 import json
 import logging
 
@@ -290,7 +289,7 @@ def publish_ordered_messages(
         data = json.dumps(message).encode("utf-8")
 
         # Publish with ordering key
-        # Messages with same ordering_key delivered in publish order
+        # Messages with same ordering_key delivered in Pub/Sub receive order
         future = publisher.publish(
             topic_path,
             data=data,
@@ -432,7 +431,7 @@ class OrderedMessageProcessor:
         )
 
     def _compute_checksum(self, data: bytes) -> str:
-        """Compute message checksum for deduplication."""
+        """Compute message checksum for diagnostics."""
         return hashlib.sha256(data).hexdigest()[:16]
 
     def _is_duplicate(self, message) -> bool:
@@ -442,18 +441,10 @@ class OrderedMessageProcessor:
         Pub/Sub guarantees at-least-once delivery, so duplicates
         are possible and expected. Your processing must be idempotent.
         """
-        checksum = self._compute_checksum(message.data)
-
         # Check by message ID (exact duplicate)
         if message.message_id in self.processed_messages:
             logger.info(f"Duplicate detected by message_id: {message.message_id}")
             return True
-
-        # Check by content checksum (same content, different delivery)
-        for processed in self.processed_messages.values():
-            if processed.checksum == checksum:
-                logger.info(f"Duplicate detected by checksum: {checksum}")
-                return True
 
         return False
 
@@ -623,7 +614,7 @@ if __name__ == "__main__":
  * with proper error handling and retry logic.
  */
 
-import { PubSub, Topic, PublishOptions } from '@google-cloud/pubsub';
+import { PubSub, Topic } from '@google-cloud/pubsub';
 
 // Type definitions for our message structure
 interface OrderedMessage {
@@ -644,7 +635,7 @@ interface PublishResult {
  * Publisher configured for ordered message delivery.
  *
  * Key configuration:
- * - enableMessageOrdering: MUST be true for ordering keys to work
+ * - messageOrdering: MUST be true for ordering keys to work
  * - batching: Tune based on latency vs throughput requirements
  */
 class OrderedPublisher {
@@ -657,7 +648,7 @@ class OrderedPublisher {
     // Configure topic with ordering enabled
     this.topic = this.pubsub.topic(topicId, {
       // Critical: Enable message ordering
-      enableMessageOrdering: true,
+      messageOrdering: true,
 
       // Batching configuration for ordered publishing
       batching: {
@@ -671,7 +662,7 @@ class OrderedPublisher {
    * Publish a sequence of messages that must be processed in order.
    *
    * All messages are published with the same ordering key, ensuring
-   * they are delivered to subscribers in the exact order published.
+   * they are delivered to subscribers in Pub/Sub receive order.
    */
   async publishOrderedSequence(
     entityId: string,
@@ -893,7 +884,7 @@ class OrderedSubscriber {
   }
 
   /**
-   * Compute content checksum for deduplication.
+   * Compute content checksum for diagnostics.
    */
   private computeChecksum(data: Buffer): string {
     return createHash('sha256').update(data).digest('hex').slice(0, 16);
@@ -910,15 +901,6 @@ class OrderedSubscriber {
     if (this.processedMessages.has(message.id)) {
       console.log(`Duplicate detected by ID: ${message.id}`);
       return true;
-    }
-
-    // Check by content checksum (same content, different delivery)
-    const checksum = this.computeChecksum(message.data);
-    for (const record of this.processedMessages.values()) {
-      if (record.checksum === checksum) {
-        console.log(`Duplicate detected by checksum: ${checksum}`);
-        return true;
-      }
     }
 
     return false;
