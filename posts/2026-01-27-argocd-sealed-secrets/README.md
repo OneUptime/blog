@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ArgoCD, Sealed Secrets, GitOps, Security, DevOps, Secrets Management
 
-Description: A comprehensive guide to managing secrets in ArgoCD using Bitnami Sealed Secrets, covering controller installation, secret encryption, key rotation.
+Description: A comprehensive guide to managing secrets in ArgoCD using Bitnami Sealed Secrets, covering controller installation, secret encryption, and key renewal.
 
 ---
 
@@ -22,7 +22,7 @@ flowchart LR
     SS -->|git push| Git[Git Repository]
     Git -->|sync| ArgoCD[ArgoCD]
     ArgoCD -->|apply| K8s[Kubernetes Cluster]
-    K8s -->|decrypt| Controller[Sealed Secrets Controller]
+    K8s -->|watch| Controller[Sealed Secrets Controller]
     Controller -->|create| Secret[Kubernetes Secret]
 ```
 
@@ -58,8 +58,8 @@ helm install sealed-secrets sealed-secrets/sealed-secrets \
 
 ```bash
 # Apply the controller manifest directly from GitHub releases
-# Replace v0.24.0 with the latest version
-kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.24.0/controller.yaml
+# Replace v0.37.0 with the latest version
+kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.37.0/controller.yaml
 ```
 
 ### Verify Installation
@@ -85,7 +85,7 @@ The `kubeseal` CLI encrypts secrets using the controller's public key.
 brew install kubeseal
 
 # Linux - download binary directly
-KUBESEAL_VERSION='0.24.0'
+KUBESEAL_VERSION='0.37.0'
 wget "https://github.com/bitnami-labs/sealed-secrets/releases/download/v${KUBESEAL_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz"
 tar -xvzf kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz kubeseal
 sudo install -m 755 kubeseal /usr/local/bin/kubeseal
@@ -336,9 +336,9 @@ spec:
                 name: db-credentials
 ```
 
-## Key Rotation
+## Key Renewal and Rotation
 
-Regularly rotating encryption keys is a security best practice. Sealed Secrets supports key rotation without disrupting existing secrets.
+Regularly renewing sealing keys is a security best practice. Sealed Secrets supports key renewal without disrupting existing secrets, but you still need to rotate the actual secret values separately.
 
 ### Understanding Key Management
 
@@ -361,20 +361,16 @@ flowchart LR
 
 The controller keeps old keys to decrypt existing SealedSecrets while new secrets use the latest key.
 
-### Automatic Key Rotation
+### Automatic Key Renewal
 
-Configure automatic key rotation in the Helm values:
+Configure automatic key renewal in the Helm values:
 
 ```yaml
 # sealed-secrets-values.yaml
-# Key rotation interval - generates new key every 30 days
+# Key renewal interval - generates a new active sealing key every 30 days
 keyrenewperiod: "720h"
 
-# Enable automatic key generation
-secretName: "sealed-secrets-key"
-
-# Number of old keys to retain for decrypting existing secrets
-# Retain enough keys to cover your secret refresh cycle
+# Controller resource requests and limits
 resources:
   requests:
     memory: "64Mi"
@@ -385,25 +381,31 @@ resources:
 ```
 
 ```bash
-# Install or upgrade with rotation enabled
-helm upgrade sealed-secrets sealed-secrets/sealed-secrets \
+# Install or upgrade with renewal enabled
+helm upgrade --install sealed-secrets sealed-secrets/sealed-secrets \
   --namespace kube-system \
   --values sealed-secrets-values.yaml
 ```
 
-### Manual Key Rotation
+Sealed Secrets does not automatically delete old sealing keys. Old keys stay available so existing SealedSecrets can still be decrypted.
 
-Force immediate key rotation when required (e.g., after a security incident):
+### Early Key Renewal
+
+Force immediate key renewal when required (e.g., after a security incident):
 
 ```bash
-# Generate a new sealing key
-# The controller automatically detects and uses the new key
-kubectl -n kube-system label secret \
-  -l sealedsecrets.bitnami.com/sealed-secrets-key \
-  sealedsecrets.bitnami.com/sealed-secrets-key=compromised
+# Generate a cutoff timestamp in the RFC1123 format expected by the controller
+KEY_CUTOFF_TIME="$(date -R)"
 
-# Restart the controller to pick up the new label
-kubectl rollout restart deployment sealed-secrets-controller -n kube-system
+# Put this value in a Helm values file
+cat > sealed-secrets-renewal-values.yaml <<EOF
+keycutofftime: "$KEY_CUTOFF_TIME"
+EOF
+
+# Upgrade the controller so it generates a new sealing key
+helm upgrade --install sealed-secrets sealed-secrets/sealed-secrets \
+  --namespace kube-system \
+  --values sealed-secrets-renewal-values.yaml
 
 # Verify new key is active
 kubectl get secret -n kube-system \
@@ -411,9 +413,9 @@ kubectl get secret -n kube-system \
   --show-labels
 ```
 
-### Re-encrypting Secrets After Rotation
+### Re-encrypting Secrets After Renewal
 
-After rotation, re-encrypt all SealedSecrets with the new key:
+After renewal, re-encrypt all SealedSecrets with the new key:
 
 ```bash
 #!/bin/bash
@@ -430,19 +432,11 @@ find "$SEALED_SECRETS_DIR" -name "*.yaml" -type f | while read -r file; do
   if grep -q "kind: SealedSecret" "$file"; then
     echo "Re-encrypting: $file"
 
-    # Extract the original secret (requires cluster access)
-    SECRET_NAME=$(yq e '.metadata.name' "$file")
-    SECRET_NS=$(yq e '.metadata.namespace' "$file")
-
-    # Get the decrypted secret from the cluster
-    kubectl get secret "$SECRET_NAME" -n "$SECRET_NS" -o yaml | \
-      # Remove cluster-specific metadata
-      yq e 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.annotations)' - | \
-      # Re-encrypt with the new key
-      kubeseal --format yaml \
-        --controller-name="$CONTROLLER_NAME" \
-        --controller-namespace="$CONTROLLER_NAMESPACE" \
-        > "$file.new"
+    # Re-encrypt with the latest sealing key without exposing plaintext locally
+    kubeseal --re-encrypt \
+      --controller-name="$CONTROLLER_NAME" \
+      --controller-namespace="$CONTROLLER_NAMESPACE" \
+      < "$file" > "$file.new"
 
     # Replace the old file
     mv "$file.new" "$file"
@@ -574,14 +568,14 @@ kubeseal --fetch-cert \
   > current-cert.pem
 
 # Re-encrypt all secrets with the fresh cert
-# Use the re-encrypt script from the Key Rotation section
+# Use the re-encrypt script from the Key Renewal and Rotation section
 ```
 
 ## Best Practices Summary
 
 1. **Never commit plaintext secrets** - Always use SealedSecrets for GitOps
 2. **Use strict scope** - Default to strict namespace+name binding for maximum security
-3. **Rotate keys regularly** - Configure automatic rotation (e.g., every 30 days)
+3. **Renew sealing keys and rotate secret values regularly** - Configure automatic key renewal and periodically change the actual secret values
 4. **Backup sealing keys** - Store encrypted backups in secure, separate locations
 5. **Use sync waves** - Ensure secrets deploy before dependent applications
 6. **Audit secret changes** - Git history provides a complete audit trail
@@ -590,4 +584,4 @@ kubeseal --fetch-cert \
 
 ---
 
-Sealed Secrets makes GitOps possible for secret management. Your secrets live encrypted in Git, reviewed like code, and deployed automatically by ArgoCD. The workflow is straightforward: encrypt locally, commit to Git, let ArgoCD sync, and the controller handles decryption. Combined with regular key rotation and proper monitoring with [OneUptime](https://oneuptime.com), you have a secure, auditable, and fully automated secret management pipeline.
+Sealed Secrets makes GitOps possible for secret management. Your secrets live encrypted in Git, reviewed like code, and deployed automatically by ArgoCD. The workflow is straightforward: encrypt locally, commit to Git, let ArgoCD sync, and the controller handles decryption. Combined with regular key renewal, secret value rotation, and proper monitoring with [OneUptime](https://oneuptime.com), you have a secure, auditable, and fully automated secret management pipeline.
