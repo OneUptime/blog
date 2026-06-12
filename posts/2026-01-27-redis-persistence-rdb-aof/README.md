@@ -131,6 +131,9 @@ appendonly yes
 # AOF filename
 appendfilename "appendonly.aof"
 
+# Directory for multi-part AOF files in Redis 7+
+appenddirname "appendonlydir"
+
 # Directory for AOF file (same as RDB)
 dir /var/lib/redis
 
@@ -156,7 +159,7 @@ auto-aof-rewrite-min-size 64mb
 ┌─────────────────────────────────────────────────────────────────┐
 │ Policy      │ Durability       │ Performance    │ Use Case      │
 ├─────────────────────────────────────────────────────────────────┤
-│ always      │ No data loss     │ Slowest        │ Critical data │
+│ always      │ Lowest loss risk │ Slowest        │ Critical data │
 │ everysec    │ ~1 sec loss max  │ Good balance   │ Most cases    │
 │ no          │ OS dependent     │ Fastest        │ Caching only  │
 └─────────────────────────────────────────────────────────────────┘
@@ -171,8 +174,11 @@ redis-cli BGREWRITEAOF
 # Check AOF status
 redis-cli INFO persistence | grep aof
 
-# Verify AOF file integrity
+# Verify AOF file integrity (Redis 6 and earlier)
 redis-check-aof --fix /var/lib/redis/appendonly.aof
+
+# Verify multi-part AOF integrity (Redis 7+)
+redis-check-aof --fix /var/lib/redis/appendonlydir/appendonly.aof.manifest
 ```
 
 ### AOF Pros and Cons
@@ -228,7 +234,7 @@ redis-cli INFO persistence | grep aof_rewrite
 
 ## Hybrid Persistence (RDB + AOF)
 
-Redis 4.0+ supports hybrid persistence, combining the best of both approaches. The AOF file contains an RDB preamble followed by AOF commands.
+Redis 4.0+ supports hybrid persistence, combining the best of both approaches. In Redis 4-6, the AOF file can contain an RDB preamble followed by AOF commands. In Redis 7+, the multi-part AOF base file can use RDB format, with incremental AOF files capturing later writes.
 
 ### Configuring Hybrid Mode
 
@@ -251,7 +257,7 @@ auto-aof-rewrite-min-size 64mb
 
 ```text
 ┌──────────────────────────────────────────────┐
-│              AOF File (Hybrid)               │
+│        AOF Base File / Increment Files       │
 ├──────────────────────────────────────────────┤
 │  ┌────────────────────────────────────────┐  │
 │  │        RDB Preamble (Binary)           │  │
@@ -281,7 +287,7 @@ auto-aof-rewrite-min-size 64mb
 │ Pure cache               │ No persistence        │ All data            │
 │ Session store            │ RDB only              │ Minutes             │
 │ Job queue                │ AOF everysec          │ ~1 second           │
-│ Financial data           │ AOF always            │ None                │
+│ Financial data           │ AOF always            │ Lowest              │
 │ General purpose          │ Hybrid (recommended)  │ ~1 second           │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -327,6 +333,7 @@ aof-use-rdb-preamble yes
 # redis-backup.sh - Automated Redis backup
 
 REDIS_DIR="/var/lib/redis"
+AOF_DIR="$REDIS_DIR/appendonlydir"
 BACKUP_DIR="/backups/redis"
 DATE=$(date +%Y%m%d-%H%M%S)
 RETENTION_DAYS=7
@@ -334,11 +341,14 @@ RETENTION_DAYS=7
 # Create backup directory
 mkdir -p "$BACKUP_DIR"
 
+# Record the current last-save timestamp
+LASTSAVE_BEFORE=$(redis-cli LASTSAVE)
+
 # Trigger a fresh RDB snapshot
 redis-cli BGSAVE
 
 # Wait for background save to complete
-while [ "$(redis-cli LASTSAVE)" == "$(redis-cli LASTSAVE)" ]; do
+while [ "$(redis-cli LASTSAVE)" -le "$LASTSAVE_BEFORE" ]; do
     sleep 1
 done
 sleep 2
@@ -346,7 +356,18 @@ sleep 2
 # Copy the RDB file
 cp "$REDIS_DIR/dump.rdb" "$BACKUP_DIR/dump-$DATE.rdb"
 
-# Copy AOF if enabled
+# Copy AOF if enabled (Redis 7+ multi-part AOF)
+if [ -d "$AOF_DIR" ]; then
+    PREV_REWRITE_PERCENT=$(redis-cli CONFIG GET auto-aof-rewrite-percentage | tail -1)
+    redis-cli CONFIG SET auto-aof-rewrite-percentage 0
+    while [ "$(redis-cli INFO persistence | grep aof_rewrite_in_progress | cut -d: -f2 | tr -d '\r')" != "0" ]; do
+        sleep 1
+    done
+    tar -czf "$BACKUP_DIR/appendonlydir-$DATE.tar.gz" -C "$REDIS_DIR" appendonlydir
+    redis-cli CONFIG SET auto-aof-rewrite-percentage "$PREV_REWRITE_PERCENT"
+fi
+
+# Copy AOF if enabled (Redis 6 and earlier single-file AOF)
 if [ -f "$REDIS_DIR/appendonly.aof" ]; then
     cp "$REDIS_DIR/appendonly.aof" "$BACKUP_DIR/appendonly-$DATE.aof"
 fi
@@ -400,7 +421,7 @@ systemctl start redis
 redis-cli DBSIZE
 ```
 
-### Restoring from AOF
+### Restoring from AOF (Redis 6 and Earlier)
 
 ```bash
 # Stop Redis
@@ -420,6 +441,27 @@ systemctl start redis
 redis-cli DBSIZE
 ```
 
+### Restoring from Multi-Part AOF (Redis 7+)
+
+```bash
+# Stop Redis
+systemctl stop redis
+
+# Replace the AOF directory
+rm -rf /var/lib/redis/appendonlydir
+tar -xzf /backups/redis/appendonlydir-20260127.tar.gz -C /var/lib/redis/
+chown -R redis:redis /var/lib/redis/appendonlydir
+
+# Verify and fix AOF if needed
+redis-check-aof --fix /var/lib/redis/appendonlydir/appendonly.aof.manifest
+
+# Start Redis
+systemctl start redis
+
+# Verify data
+redis-cli DBSIZE
+```
+
 ### Recovery Priority
 
 When both RDB and AOF exist, Redis uses AOF by default since it is typically more complete. To force RDB:
@@ -427,6 +469,7 @@ When both RDB and AOF exist, Redis uses AOF by default since it is typically mor
 ```bash
 # Temporarily disable AOF to use RDB
 mv /var/lib/redis/appendonly.aof /var/lib/redis/appendonly.aof.bak
+mv /var/lib/redis/appendonlydir /var/lib/redis/appendonlydir.bak 2>/dev/null || true
 systemctl restart redis
 
 # Re-enable AOF after verification
