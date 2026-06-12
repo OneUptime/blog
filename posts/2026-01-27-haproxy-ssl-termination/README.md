@@ -54,8 +54,8 @@ HAProxy requires certificates in PEM format with the private key included. Combi
 ```bash
 # Combine certificate chain and private key into a single PEM file
 
-# Order matters: certificate -> intermediate -> root -> private key
-cat domain.crt intermediate.crt ca.crt domain.key > /etc/haproxy/certs/domain.pem
+# Order matters: certificate -> intermediate(s) -> private key
+cat domain.crt intermediate.crt domain.key > /etc/haproxy/certs/domain.pem
 
 # Set proper permissions - HAProxy runs as haproxy user
 # Private key must be protected from unauthorized access
@@ -210,7 +210,7 @@ defaults
 frontend https_frontend
     # Load all certificates from a directory
     # HAProxy automatically matches certificates based on SNI
-    # Certificate files should be named to match their domains
+    # Certificate CN/SAN values should match their domains
     bind *:443 ssl crt /etc/haproxy/certs/
 
     # Define ACLs for routing based on the Host header
@@ -252,10 +252,10 @@ backend admin_servers
 
 ### Certificate Naming Convention
 
-For automatic SNI matching, name your certificate files to match the domain they serve.
+For automatic SNI matching, store certificates whose Common Name (CN) or Subject Alternative Name (SAN) fields match the domains they serve. Descriptive filenames make operations easier, but HAProxy matches SNI against the certificate contents, not the filename.
 
 ```bash
-# Certificate file naming for automatic SNI matching
+# Certificate file organization for automatic SNI matching
 # HAProxy uses the Common Name (CN) or Subject Alternative Names (SAN)
 # to match incoming SNI hostnames
 
@@ -272,7 +272,7 @@ openssl s_client -connect localhost:443 -servername api.example.com < /dev/null 
 
 ## OCSP Stapling Configuration
 
-Online Certificate Status Protocol (OCSP) stapling improves SSL handshake performance and user privacy. Instead of clients checking certificate revocation status with the CA, HAProxy fetches and caches this information, including it in the TLS handshake.
+Online Certificate Status Protocol (OCSP) stapling improves SSL handshake performance and user privacy. Instead of clients checking certificate revocation status with the CA, HAProxy 2.8 and later can fetch and cache this information automatically, including it in the TLS handshake.
 
 ```mermaid
 sequenceDiagram
@@ -295,6 +295,8 @@ sequenceDiagram
 
 ### Enabling OCSP Stapling in HAProxy
 
+The following example uses the HAProxy 3.0+ global OCSP update directives. In HAProxy 2.8 and 2.9, automatic OCSP updates are available, but the global delay directives used the older `tune.ssl.ocsp-update.*` names and per-certificate settings should be configured with a `crt-list`.
+
 ```haproxy
 # /etc/haproxy/haproxy.cfg
 # OCSP stapling configuration
@@ -310,11 +312,14 @@ global
     ssl-default-bind-ciphers ECDHE+AESGCM:DHE+AESGCM:ECDHE+CHACHA20
     ssl-default-bind-options ssl-min-ver TLSv1.2
 
+    # Enable automatic OCSP updates for all configured certificates
+    ocsp-update.mode on
+
     # OCSP update timing configuration
     # maxdelay: maximum time between OCSP updates (default 3600s)
     # mindelay: minimum time between OCSP updates (prevents hammering)
-    tune.ssl.ocsp-update.maxdelay 3600
-    tune.ssl.ocsp-update.mindelay 300
+    ocsp-update.maxdelay 3600
+    ocsp-update.mindelay 300
 
 defaults
     log global
@@ -325,10 +330,10 @@ defaults
     timeout server 30s
 
 frontend https_frontend
-    # Enable OCSP stapling with 'ocsp-update on'
+    # OCSP stapling is enabled globally with 'ocsp-update.mode on'
     # The certificate file must include the issuer certificate for OCSP to work
     # HAProxy will automatically fetch OCSP responses in the background
-    bind *:443 ssl crt /etc/haproxy/certs/domain.pem ocsp-update on
+    bind *:443 ssl crt /etc/haproxy/certs/domain.pem
 
     default_backend web_servers
 
@@ -413,7 +418,7 @@ global
     daemon
 
     # TLS 1.3 cipher suites (highest priority)
-    # These are the only ciphers available in TLS 1.3
+    # These are the widely supported AEAD cipher suites used by modern TLS 1.3 deployments
     ssl-default-bind-ciphersuites TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256
 
     # TLS 1.2 cipher suites (fallback for older clients)
@@ -434,6 +439,9 @@ global
     # Generate strong parameters: openssl dhparam -out /etc/haproxy/dhparam.pem 4096
     ssl-dh-param-file /etc/haproxy/dhparam.pem
 
+    # Enable automatic OCSP updates for all configured certificates
+    ocsp-update.mode on
+
     # Performance tuning
     tune.ssl.default-dh-param 4096
     tune.ssl.cachesize 100000
@@ -453,7 +461,7 @@ defaults
 frontend https_frontend
     # Enable HTTP/2 with ALPN negotiation
     # alpn h2,http/1.1 advertises HTTP/2 support to clients
-    bind *:443 ssl crt /etc/haproxy/certs/ alpn h2,http/1.1 ocsp-update on
+    bind *:443 ssl crt /etc/haproxy/certs/ alpn h2,http/1.1
 
     # Security response headers
     # HSTS: Force HTTPS for 2 years, include subdomains, allow preloading
@@ -462,8 +470,8 @@ frontend https_frontend
     http-response set-header X-Content-Type-Options "nosniff"
     # Prevent clickjacking
     http-response set-header X-Frame-Options "DENY"
-    # Enable XSS filter in browsers
-    http-response set-header X-XSS-Protection "1; mode=block"
+    # Disable legacy browser XSS filters
+    http-response set-header X-XSS-Protection "0"
     # Control referrer information
     http-response set-header Referrer-Policy "strict-origin-when-cross-origin"
 
