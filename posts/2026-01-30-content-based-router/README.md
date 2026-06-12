@@ -42,7 +42,7 @@ A content-based router is a message processing component that:
 1. Receives an incoming message
 2. Examines the message content (headers, body, metadata)
 3. Evaluates routing rules against the content
-4. Forwards the message to one or more destinations
+4. Forwards the message to the selected destination
 
 | Concept | Description |
 |---------|-------------|
@@ -155,7 +155,7 @@ sequenceDiagram
     R->>RE: Evaluate Rules
     RE-->>R: Match: "high-priority-orders"
     R->>Q1: Route to Priority Queue
-    Q1-->>P: Acknowledgment
+    R-->>P: Acknowledgment
 ```
 
 And here is a more complex routing decision tree:
@@ -623,7 +623,7 @@ export function createOrderRouter(): ContentBasedRouter {
       rule()
         .withName('international-order')
         .withPriority(4)
-        .whereCustom((msg) => msg.body.shipping?.country !== 'US')
+        .whereCustom((msg) => !!msg.body.shipping?.country && msg.body.shipping.country !== 'US')
         .toDestination('queue://orders.international')
         .build(),
 
@@ -673,7 +673,7 @@ function processIncomingOrder(orderData: any): void {
 
 import { ContentBasedRouter } from './content-based-router';
 import { rule } from './rule-engine';
-import { RouterConfig } from './types';
+import { RouterConfig, RoutingRule } from './types';
 
 // Tenant configuration loaded from database or config service
 interface TenantConfig {
@@ -684,7 +684,7 @@ interface TenantConfig {
 }
 
 export function createTenantRouter(tenants: TenantConfig[]): ContentBasedRouter {
-  const rules = [];
+  const rules: RoutingRule[] = [];
 
   // Generate rules for each tenant based on their configuration
   for (const tenant of tenants) {
@@ -810,13 +810,13 @@ export function createEventRouter(): ContentBasedRouter {
 
 ### Multi-Destination Routing
 
-Sometimes a message needs to go to multiple destinations:
+Sometimes a related Recipient List-style router needs to send a message to multiple destinations:
 
 ```typescript
 // multi-destination-router.ts
 // Router that can send messages to multiple destinations
 
-import { Message, RoutingRule } from './types';
+import { Message } from './types';
 
 interface MultiDestinationRule {
   name: string;
@@ -901,7 +901,7 @@ export function createOrderEventRouter(): MultiDestinationRouter {
   // International orders notify compliance
   router.addRule(
     'international-orders',
-    (msg) => msg.body.shipping?.country !== 'US',
+    (msg) => !!msg.body.shipping?.country && msg.body.shipping.country !== 'US',
     ['queue://compliance.international'],
     50
   );
@@ -1150,7 +1150,7 @@ Content-based routing adds processing overhead. Here are strategies to optimize:
 
 ```typescript
 // optimized-router.ts
-// Performance-optimized router with caching and indexing
+// Performance-optimized router with caching
 
 import { Message, RoutingRule, RoutingResult } from './types';
 
@@ -1167,9 +1167,6 @@ export class OptimizedRouter {
   private cache: Map<string, CacheEntry> = new Map();
   private cacheTtlMs: number;
   private maxCacheSize: number;
-
-  // Index rules by common header patterns for faster lookup
-  private headerIndex: Map<string, RoutingRule[]> = new Map();
 
   constructor(
     rules: RoutingRule[],
@@ -1479,12 +1476,12 @@ describe('ContentBasedRouter', () => {
 const godRouter = new ContentBasedRouter({
   rules: [
     // User rules
-    rule().whereBodyFieldEquals('type', 'user.created').toDestination('queue://users'),
-    rule().whereBodyFieldEquals('type', 'user.updated').toDestination('queue://users'),
+    rule().withName('user-created').whereBodyFieldEquals('type', 'user.created').toDestination('queue://users').build(),
+    rule().withName('user-updated').whereBodyFieldEquals('type', 'user.updated').toDestination('queue://users').build(),
     // Order rules
-    rule().whereBodyFieldEquals('type', 'order.created').toDestination('queue://orders'),
+    rule().withName('order-created').whereBodyFieldEquals('type', 'order.created').toDestination('queue://orders').build(),
     // Payment rules
-    rule().whereBodyFieldEquals('type', 'payment.completed').toDestination('queue://payments'),
+    rule().withName('payment-completed').whereBodyFieldEquals('type', 'payment.completed').toDestination('queue://payments').build(),
     // ... 50 more rules
   ],
   fallbackDestination: 'queue://dlq',
@@ -1581,4 +1578,3 @@ Content-based routing enables you to evolve your message consumers independently
 
 - [Enterprise Integration Patterns](https://www.enterpriseintegrationpatterns.com/patterns/messaging/ContentBasedRouter.html) - The original pattern definition
 - [Circuit Breaker Pattern](https://oneuptime.com/blog/post/2026-01-30-go-retry-circuit-breaker-pattern/view) - Protecting against cascading failures
-
