@@ -68,13 +68,13 @@ sudo apt-get install -y curl gnupg apt-transport-https
 
 # Add RabbitMQ signing keys
 curl -1sLf "https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA" | sudo gpg --dearmor | sudo tee /usr/share/keyrings/com.rabbitmq.team.gpg > /dev/null
-curl -1sLf "https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-erlang.E495BB49CC4BBE5B.key" | sudo gpg --dearmor | sudo tee /usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg > /dev/null
-curl -1sLf "https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-server.9F4587F226208342.key" | sudo gpg --dearmor | sudo tee /usr/share/keyrings/rabbitmq.9F4587F226208342.gpg > /dev/null
 
 # Add repository
 sudo tee /etc/apt/sources.list.d/rabbitmq.list <<EOF
-deb [signed-by=/usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg] https://ppa1.novemberain.com/rabbitmq/rabbitmq-erlang/deb/ubuntu jammy main
-deb [signed-by=/usr/share/keyrings/rabbitmq.9F4587F226208342.gpg] https://ppa1.novemberain.com/rabbitmq/rabbitmq-server/deb/ubuntu jammy main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-erlang/ubuntu/jammy jammy main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-erlang/ubuntu/jammy jammy main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-server/ubuntu/jammy jammy main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-server/ubuntu/jammy jammy main
 EOF
 
 # Install Erlang and RabbitMQ
@@ -94,7 +94,7 @@ Verify the installation:
 # Check RabbitMQ status
 sudo rabbitmqctl status
 
-# Check Erlang version (should be 25.x or higher)
+# Check Erlang version (RabbitMQ 4.x requires Erlang/OTP 26.2 or later)
 erl -eval 'erlang:display(erlang:system_info(otp_release)), halt().' -noshell
 ```
 
@@ -328,14 +328,14 @@ sudo rabbitmqctl cluster_status
 
 ### Configure Quorum Queues
 
-Classic mirrored queues are deprecated. Use quorum queues for high availability:
+Classic queue mirroring was removed in RabbitMQ 4.x. Use quorum queues for high availability:
 
 ```bash
-# Set a policy to use quorum queues for all queues
-sudo rabbitmqctl set_policy ha-all "^" \
-    '{"queue-mode":"lazy","ha-mode":"all"}' \
-    --priority 0 \
-    --apply-to queues
+# Set the default queue type for a virtual host so new queues are quorum queues
+sudo rabbitmqctl update_vhost_metadata production --default-queue-type quorum
+
+# Or create a new virtual host with quorum queues as the default
+sudo rabbitmqctl add_vhost orders --default-queue-type quorum
 ```
 
 Or declare quorum queues in your application code:
@@ -595,8 +595,8 @@ When memory usage hits the watermark, publishers are blocked:
 # Check current memory usage
 sudo rabbitmqctl status | grep -A 5 "Memory"
 
-# List queues sorted by memory usage
-sudo rabbitmqctl list_queues name messages memory --sort memory
+# List queues and sort by memory usage
+sudo rabbitmqctl list_queues name messages memory | sort -k3 -nr
 ```
 
 ### Cluster Partition
