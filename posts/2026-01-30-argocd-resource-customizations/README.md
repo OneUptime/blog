@@ -21,27 +21,27 @@ flowchart LR
 
     subgraph With Customization
         A2[ArgoCD] -->|Custom Health Check| B2[Healthy/Degraded]
-        B2 --> C2[Accurate Sync Status]
+        B2 --> C2[Accurate Health Status]
     end
 ```
 
 When ArgoCD encounters an unknown resource type, it cannot determine:
 - Is the resource healthy or degraded?
-- Has the sync completed successfully?
+- Which controller-managed fields should be ignored during comparison?
 - What actions can users take on this resource?
 
-Resource customizations solve these problems by defining custom logic for health assessment, sync status, and available actions.
+Resource customizations solve these problems by defining custom logic for health assessment, diff comparison, and available actions.
 
 ## Types of Resource Customizations
 
-ArgoCD supports four types of customizations:
+This guide covers four common types of customizations:
 
 | Type | Purpose |
 |------|---------|
 | Health | Define when a resource is healthy, progressing, or degraded |
 | Actions | Add custom buttons in the UI to perform operations |
 | Ignore Differences | Tell ArgoCD to ignore specific fields during comparison |
-| Known Type | Mark a resource as a known Kubernetes type |
+| Known Type Fields | Tell ArgoCD when fields in a CRD use built-in Kubernetes types |
 
 ## Configuring Resource Customizations
 
@@ -56,14 +56,14 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  resource.customizations: |
-    <group>/<kind>:
-      health.lua: |
-        -- Lua script for health check
-      actions: |
-        -- Action definitions
-      ignoreDifferences: |
-        -- Fields to ignore
+  resource.customizations.health.<group>_<kind>: |
+    -- Lua script for health check
+  resource.customizations.actions.<group>_<kind>: |
+    # Action definitions
+  resource.customizations.ignoreDifferences.<group>_<kind>: |
+    # Fields to ignore
+  resource.customizations.knownTypeFields.<group>_<kind>: |
+    # Built-in Kubernetes types used in CRD fields
 ```
 
 ## Custom Health Checks
@@ -78,8 +78,6 @@ Your Lua script must return one of these status values:
 - `Progressing` - Resource is still being created or updated
 - `Degraded` - Resource has a problem
 - `Suspended` - Resource is paused intentionally
-- `Missing` - Resource does not exist
-- `Unknown` - Cannot determine health
 
 ### Example: Custom Health Check for Certificates
 
@@ -92,29 +90,27 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  resource.customizations: |
-    cert-manager.io/Certificate:
-      health.lua: |
-        hs = {}
-        if obj.status ~= nil then
-          if obj.status.conditions ~= nil then
-            for i, condition in ipairs(obj.status.conditions) do
-              if condition.type == "Ready" and condition.status == "False" then
-                hs.status = "Degraded"
-                hs.message = condition.message
-                return hs
-              end
-              if condition.type == "Ready" and condition.status == "True" then
-                hs.status = "Healthy"
-                hs.message = "Certificate is valid"
-                return hs
-              end
-            end
+  resource.customizations.health.cert-manager.io_Certificate: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Ready" and condition.status == "False" then
+            hs.status = "Degraded"
+            hs.message = condition.message
+            return hs
+          end
+          if condition.type == "Ready" and condition.status == "True" then
+            hs.status = "Healthy"
+            hs.message = "Certificate is valid"
+            return hs
           end
         end
-        hs.status = "Progressing"
-        hs.message = "Waiting for certificate to be issued"
-        return hs
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "Waiting for certificate to be issued"
+    return hs
 ```
 
 ### Example: Health Check for External Secrets
@@ -128,40 +124,38 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  resource.customizations: |
-    external-secrets.io/ExternalSecret:
-      health.lua: |
-        hs = {}
-        if obj.status ~= nil then
-          if obj.status.conditions ~= nil then
-            for i, condition in ipairs(obj.status.conditions) do
-              if condition.type == "Ready" then
-                if condition.status == "True" then
-                  hs.status = "Healthy"
-                  hs.message = "Secret synced successfully"
-                  return hs
-                else
-                  hs.status = "Degraded"
-                  hs.message = condition.message
-                  return hs
-                end
-              end
+  resource.customizations.health.external-secrets.io_ExternalSecret: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Ready" then
+            if condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "Secret synced successfully"
+              return hs
+            else
+              hs.status = "Degraded"
+              hs.message = condition.message
+              return hs
             end
           end
-          if obj.status.refreshTime ~= nil then
-            hs.status = "Healthy"
-            hs.message = "Last refresh: " .. obj.status.refreshTime
-            return hs
-          end
         end
-        hs.status = "Progressing"
-        hs.message = "Waiting for secret sync"
+      end
+      if obj.status.refreshTime ~= nil then
+        hs.status = "Healthy"
+        hs.message = "Last refresh: " .. obj.status.refreshTime
         return hs
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "Waiting for secret sync"
+    return hs
 ```
 
 ### Example: Health Check for Argo Rollouts
 
-Argo Rollouts have complex status conditions. This health check handles all rollout phases.
+Argo Rollouts have complex status conditions. This health check handles common rollout phases.
 
 ```yaml
 apiVersion: v1
@@ -170,49 +164,50 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  resource.customizations: |
-    argoproj.io/Rollout:
-      health.lua: |
-        function checkReplicasStatus(obj)
-          hs = {}
-          replicasAvailable = obj.status.availableReplicas or 0
-          replicasDesired = obj.spec.replicas or 0
+  resource.customizations.health.argoproj.io_Rollout: |
+    function checkReplicasStatus(obj)
+      hs = {}
+      replicasAvailable = 0
+      if obj.status ~= nil then
+        replicasAvailable = obj.status.availableReplicas or 0
+      end
+      replicasDesired = obj.spec.replicas or 1
 
-          if replicasAvailable == replicasDesired then
-            hs.status = "Healthy"
-            hs.message = "All replicas available"
-            return hs
-          end
+      if replicasAvailable == replicasDesired then
+        hs.status = "Healthy"
+        hs.message = "All replicas available"
+        return hs
+      end
 
+      hs.status = "Progressing"
+      hs.message = "Waiting for replicas: " .. replicasAvailable .. "/" .. replicasDesired
+      return hs
+    end
+
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.phase == "Healthy" then
+        hs.status = "Healthy"
+        hs.message = "Rollout is healthy"
+        return hs
+      end
+      if obj.status.phase == "Paused" then
+        hs.status = "Suspended"
+        hs.message = obj.status.message or "Rollout is paused"
+        return hs
+      end
+      if obj.status.phase == "Degraded" then
+        hs.status = "Degraded"
+        hs.message = obj.status.message or "Rollout is degraded"
+        return hs
+      end
+      if obj.status.phase == "Progressing" then
           hs.status = "Progressing"
-          hs.message = "Waiting for replicas: " .. replicasAvailable .. "/" .. replicasDesired
+          hs.message = obj.status.message or "Rollout in progress"
           return hs
-        end
-
-        hs = {}
-        if obj.status ~= nil then
-          if obj.status.phase == "Healthy" then
-            hs.status = "Healthy"
-            hs.message = "Rollout is healthy"
-            return hs
-          end
-          if obj.status.phase == "Paused" then
-            hs.status = "Suspended"
-            hs.message = obj.status.message or "Rollout is paused"
-            return hs
-          end
-          if obj.status.phase == "Degraded" then
-            hs.status = "Degraded"
-            hs.message = obj.status.message or "Rollout is degraded"
-            return hs
-          end
-          if obj.status.phase == "Progressing" then
-            hs.status = "Progressing"
-            hs.message = obj.status.message or "Rollout in progress"
-            return hs
-          end
-        end
-        return checkReplicasStatus(obj)
+      end
+    end
+    return checkReplicasStatus(obj)
 ```
 
 ## Custom Actions
@@ -224,14 +219,14 @@ Actions let users perform operations on resources directly from the ArgoCD UI. E
 ```mermaid
 flowchart TB
     User[User Clicks Action] --> ArgoCD[ArgoCD Executes Lua]
-    ArgoCD --> Patch[Generate JSON Patch]
-    Patch --> API[Kubernetes API]
+    ArgoCD --> Result[Return Modified Object]
+    Result --> API[Kubernetes API]
     API --> Resource[Resource Updated]
 ```
 
 Actions require two components:
 1. A discovery script that determines which actions are available
-2. An action script that generates the patch to apply
+2. An action script that returns the modified resource
 
 ### Example: Restart Deployment Action
 
@@ -244,41 +239,24 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  resource.customizations.actions.argoproj.io_Rollout: |
+  resource.customizations.actions.apps_Deployment: |
     discovery.lua: |
       actions = {}
       actions["restart"] = {
         ["disabled"] = false
-      }
-      actions["promote"] = {
-        ["disabled"] = obj.status.phase ~= "Paused"
-      }
-      actions["abort"] = {
-        ["disabled"] = obj.status.phase ~= "Progressing"
       }
       return actions
     definitions:
       - name: restart
         action.lua: |
           local os = require("os")
-          if obj.spec.restartAt == nil then
-            obj.spec.restartAt = os.date("!%Y-%m-%dT%H:%M:%SZ")
-          else
-            obj.spec.restartAt = os.date("!%Y-%m-%dT%H:%M:%SZ")
+          if obj.spec.template.metadata == nil then
+            obj.spec.template.metadata = {}
           end
-          return obj
-      - name: promote
-        action.lua: |
-          if obj.status.pauseConditions ~= nil then
-            obj.status.pauseConditions = nil
+          if obj.spec.template.metadata.annotations == nil then
+            obj.spec.template.metadata.annotations = {}
           end
-          if obj.spec.paused ~= nil then
-            obj.spec.paused = nil
-          end
-          return obj
-      - name: abort
-        action.lua: |
-          obj.status.abort = true
+          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
           return obj
 ```
 
@@ -295,23 +273,25 @@ metadata:
 data:
   resource.customizations.actions.apps_StatefulSet: |
     discovery.lua: |
+      replicas = obj.spec.replicas or 1
       actions = {}
       actions["scale-up"] = {
         ["disabled"] = false
       }
       actions["scale-down"] = {
-        ["disabled"] = obj.spec.replicas <= 1
+        ["disabled"] = replicas <= 1
       }
       return actions
     definitions:
       - name: scale-up
         action.lua: |
-          obj.spec.replicas = obj.spec.replicas + 1
+          obj.spec.replicas = (obj.spec.replicas or 1) + 1
           return obj
       - name: scale-down
         action.lua: |
-          if obj.spec.replicas > 1 then
-            obj.spec.replicas = obj.spec.replicas - 1
+          replicas = obj.spec.replicas or 1
+          if replicas > 1 then
+            obj.spec.replicas = replicas - 1
           end
           return obj
 ```
@@ -373,7 +353,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  resource.customizations.ignoreDifferences.certmanager.io_Certificate: |
+  resource.customizations.ignoreDifferences.cert-manager.io_Certificate: |
     jqPathExpressions:
       - .spec.secretName
     jsonPointers:
@@ -397,7 +377,7 @@ JQ expressions are more powerful and support pattern matching.
 ```yaml
 jqPathExpressions:
   - .spec.template.spec.containers[].resources
-  - .metadata.annotations | keys | map(select(startswith("cloud.google.com")))
+  - .spec.template.spec.initContainers[] | select(.name == "injected-init-container")
 ```
 
 ## Application-Level Customizations
@@ -411,6 +391,7 @@ metadata:
   name: my-app
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/myapp.git
     path: k8s
@@ -440,83 +421,78 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  resource.customizations: |
-    # Cert-Manager Certificates
-    cert-manager.io/Certificate:
-      health.lua: |
-        hs = {}
-        if obj.status ~= nil then
-          if obj.status.conditions ~= nil then
-            for i, condition in ipairs(obj.status.conditions) do
-              if condition.type == "Ready" then
-                if condition.status == "True" then
-                  hs.status = "Healthy"
-                  hs.message = "Certificate is valid"
-                  return hs
-                else
-                  hs.status = "Degraded"
-                  hs.message = condition.message
-                  return hs
-                end
-              end
+  # Cert-Manager Certificates
+  resource.customizations.health.cert-manager.io_Certificate: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Ready" then
+            if condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "Certificate is valid"
+              return hs
+            else
+              hs.status = "Degraded"
+              hs.message = condition.message
+              return hs
             end
           end
         end
-        hs.status = "Progressing"
-        hs.message = "Waiting for certificate"
-        return hs
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "Waiting for certificate"
+    return hs
 
-    # Sealed Secrets
-    bitnami.com/SealedSecret:
-      health.lua: |
-        hs = {}
-        if obj.status ~= nil then
-          if obj.status.conditions ~= nil then
-            for i, condition in ipairs(obj.status.conditions) do
-              if condition.type == "Synced" and condition.status == "True" then
-                hs.status = "Healthy"
-                hs.message = "Secret decrypted successfully"
-                return hs
-              end
+  # Sealed Secrets
+  resource.customizations.health.bitnami.com_SealedSecret: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Synced" and condition.status == "True" then
+            hs.status = "Healthy"
+            hs.message = "Secret decrypted successfully"
+            return hs
+          end
+        end
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "Waiting for secret decryption"
+    return hs
+
+  # Istio VirtualService
+  resource.customizations.health.networking.istio.io_VirtualService: |
+    hs = {}
+    hs.status = "Healthy"
+    hs.message = "VirtualService applied"
+    return hs
+
+  # Kafka Topics
+  resource.customizations.health.kafka.strimzi.io_KafkaTopic: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Ready" then
+            if condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = "Topic ready"
+              return hs
+            else
+              hs.status = "Degraded"
+              hs.message = condition.message
+              return hs
             end
           end
         end
-        hs.status = "Progressing"
-        hs.message = "Waiting for secret decryption"
-        return hs
-
-    # Istio VirtualService
-    networking.istio.io/VirtualService:
-      health.lua: |
-        hs = {}
-        hs.status = "Healthy"
-        hs.message = "VirtualService applied"
-        return hs
-
-    # Kafka Topics
-    kafka.strimzi.io/KafkaTopic:
-      health.lua: |
-        hs = {}
-        if obj.status ~= nil then
-          if obj.status.conditions ~= nil then
-            for i, condition in ipairs(obj.status.conditions) do
-              if condition.type == "Ready" then
-                if condition.status == "True" then
-                  hs.status = "Healthy"
-                  hs.message = "Topic ready"
-                  return hs
-                else
-                  hs.status = "Degraded"
-                  hs.message = condition.message
-                  return hs
-                end
-              end
-            end
-          end
-        end
-        hs.status = "Progressing"
-        hs.message = "Creating topic"
-        return hs
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "Creating topic"
+    return hs
 
   # Global ignore differences
   resource.customizations.ignoreDifferences.all: |
@@ -558,13 +534,11 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  resource.customizations: |
-    example.com/MyResource:
-      health.lua: |
-        hs = {}
-        hs.status = "Healthy"
-        hs.message = "Test passed"
-        return hs
+  resource.customizations.health.example.com_MyResource: |
+    hs = {}
+    hs.status = "Healthy"
+    hs.message = "Test passed"
+    return hs
 EOF
 ```
 
