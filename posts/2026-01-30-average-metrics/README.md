@@ -239,7 +239,7 @@ for latency in latencies:
 
 ### 4. Histogram-Based Averages
 
-For high-volume metrics, storing every data point is impractical. Histogram-based averages use buckets to approximate the distribution and calculate averages efficiently.
+For high-volume metrics, storing every data point is impractical. Histogram-based approaches use buckets to approximate the distribution and, when a running sum and count are retained, calculate averages efficiently.
 
 ```mermaid
 graph TD
@@ -257,7 +257,7 @@ graph TD
     B4 --> CALC
     B5 --> CALC
 
-    CALC --> AVG["Estimated Average: 42ms"]
+    CALC --> AVG["Average: Sum/Count or Midpoint Estimate"]
 ```
 
 ```python
@@ -265,11 +265,11 @@ from typing import List, Tuple, Optional
 
 class HistogramAverage:
     """
-    Calculate average from histogram buckets.
+    Calculate averages from histogram observations and buckets.
 
     This approach is memory-efficient for high-volume metrics
     where storing individual values is not feasible.
-    Used by Prometheus and other monitoring systems.
+    Similar bucketed distributions are used by Prometheus and other monitoring systems.
     """
 
     def __init__(self, bucket_boundaries: List[float]) -> None:
@@ -313,8 +313,9 @@ class HistogramAverage:
         """
         Estimate average from bucket midpoints.
 
-        This is useful when you only have histogram data
-        without the original sum (common in Prometheus queries).
+        This is useful when you only have non-cumulative bucket counts
+        without the original sum. In Prometheus, prefer _sum/_count
+        for classic histograms or histogram_avg for native histograms.
         """
 
         if self.total_count == 0:
@@ -359,7 +360,7 @@ class HistogramAverage:
 
 
 # Example: HTTP response time monitoring
-# Using Prometheus-style buckets
+# Using explicit bucket boundaries similar to classic histogram instrumentation
 
 buckets = [5, 10, 25, 50, 100, 250, 500, 1000]  # milliseconds
 
@@ -458,7 +459,7 @@ def demonstrate_average_problem():
 
     print("Cache Performance Analysis")
     print("=" * 40)
-    print(f"Average latency:     {average:.0f}ms")
+    print(f"Average latency:     {average:.1f}ms")
     print(f"Median (p50):        {p50}ms")
     print(f"p90:                 {p90}ms")
     print(f"p99:                 {p99}ms")
