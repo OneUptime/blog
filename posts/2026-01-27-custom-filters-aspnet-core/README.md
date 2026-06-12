@@ -33,7 +33,7 @@ flowchart TD
 | Filter Type | Purpose |
 |-------------|---------|
 | **Authorization** | Check if user can access the resource |
-| **Resource** | Run before/after everything else (caching) |
+| **Resource** | Run before/after the rest of the MVC filter pipeline (caching) |
 | **Action** | Run before/after action method |
 | **Exception** | Handle unhandled exceptions |
 | **Result** | Run before/after action result execution |
@@ -60,7 +60,7 @@ public class ApiKeyAuthorizationFilter : IAuthorizationFilter
         _logger = logger;
     }
 
-    public void Authorize(AuthorizationFilterContext context)
+    public void OnAuthorization(AuthorizationFilterContext context)
     {
         // Check for API key header
         if (!context.HttpContext.Request.Headers.TryGetValue("X-Api-Key", out var providedKey))
@@ -167,8 +167,8 @@ public class ResponseCacheFilter : IAsyncResourceFilter
 
         // Cache successful responses
         if (executedContext.Result is ObjectResult objectResult &&
-            objectResult.StatusCode >= 200 &&
-            objectResult.StatusCode < 300)
+            (objectResult.StatusCode ?? 200) >= 200 &&
+            (objectResult.StatusCode ?? 200) < 300)
         {
             var content = System.Text.Json.JsonSerializer.Serialize(objectResult.Value);
 
@@ -503,7 +503,7 @@ public class ProductsController : ControllerBase
 When filters need injected services, use `TypeFilterAttribute` or `ServiceFilterAttribute`:
 
 ```csharp
-// TypeFilterAttribute - Creates new instance each time
+// TypeFilterAttribute - accepts constructor arguments
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
 public class RateLimitAttribute : TypeFilterAttribute
 {
