@@ -110,6 +110,16 @@ CREATE TABLE batch_job_execution (
     FOREIGN KEY (job_instance_id) REFERENCES batch_job_instance(job_instance_id)
 );
 
+-- Job execution parameters: parameters that identify or configure a job instance
+CREATE TABLE batch_job_execution_params (
+    job_execution_id BIGINT NOT NULL,
+    parameter_name VARCHAR(100) NOT NULL,
+    parameter_type VARCHAR(100) NOT NULL,
+    parameter_value VARCHAR(2500),
+    identifying CHAR(1) NOT NULL,
+    FOREIGN KEY (job_execution_id) REFERENCES batch_job_execution(job_execution_id)
+);
+
 -- Step execution: each step within a job execution
 CREATE TABLE batch_step_execution (
     step_execution_id BIGINT PRIMARY KEY,
@@ -391,13 +401,14 @@ public class DataExportJob {
 
 ```java
 // RestartableStepConfiguration.java
-// Configures steps with restart behavior including limits and save intervals.
+// Configures steps with restart behavior including limits and chunk checkpoints.
 
 package com.example.batch.config;
 
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemReader;
 import org.springframework.batch.item.ItemWriter;
@@ -428,9 +439,8 @@ public class RestartableStepConfiguration {
             // Set to Integer.MAX_VALUE for unlimited restarts
             .startLimit(3)
 
-            // Save execution context every N items for finer checkpoints
-            // Lower values = more frequent saves = more overhead but safer
-            .saveState(true)
+            // The chunk size controls transaction and checkpoint frequency.
+            // Stateful readers and writers save restart data in the ExecutionContext.
 
             .build();
     }
@@ -442,8 +452,8 @@ public class RestartableStepConfiguration {
         return new StepBuilder("nonRestartableStep", jobRepository)
             .tasklet(oneTimeTasklet, transactionManager)
 
-            // Prevent restart for steps that should run once per job instance
-            .allowStartIfComplete(true)
+            // Skip this step on restart if it already completed
+            .allowStartIfComplete(false)
 
             // Only allow one execution attempt
             .startLimit(1)
@@ -481,8 +491,8 @@ public class JobRestartConfiguration {
             .next(step2)
             .next(step3)
 
-            // Allow job to be restarted after failure
-            // Set to false for one-time jobs that should never restart
+            // Prevent this job from being restarted after failure.
+            // Remove this line to enable restart.
             .preventRestart()  // Remove this line to enable restart
 
             .build();
@@ -624,6 +634,7 @@ import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.transaction.PlatformTransactionManager;
 
 @Configuration
@@ -639,9 +650,6 @@ public class ChunkRestartableStep {
             .reader(fileReader())
             .processor(recordProcessor())
             .writer(recordWriter())
-
-            // Enable state saving (critical for restart)
-            .saveState(true)
 
             // Configure retry for transient failures
             .faultTolerant()
@@ -809,8 +817,7 @@ public class PartitionedJobConfiguration {
             .<Record, Record>chunk(100, transactionManager)
             .reader(reader)
             .writer(writer)
-            // Each partition maintains its own execution context
-            .saveState(true)
+            // Each partition maintains its own execution context at chunk checkpoints
             .build();
     }
 
@@ -832,7 +839,10 @@ Restart safety requires idempotent operations. Processing the same record twice 
 package com.example.batch.processor;
 
 import org.springframework.batch.item.ItemProcessor;
-import org.springframework.dao.DuplicateKeyException;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Instant;
 
 public class IdempotentOrderProcessor implements ItemProcessor<Order, ProcessedOrder> {
 
@@ -930,7 +940,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.Date;
 import java.util.List;
-import java.util.Set;
 
 @Service
 public class BatchJobLauncher {
@@ -1178,7 +1187,11 @@ import org.springframework.batch.item.ItemWriter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.transaction.PlatformTransactionManager;
+
+import com.example.batch.listener.BatchJobListener;
 
 @Configuration
 public class ErrorHandlingConfiguration {
@@ -1215,9 +1228,6 @@ public class ErrorHandlingConfiguration {
             // Listener for logging and metrics
             .listener(listener)
 
-            // Save state for restart
-            .saveState(true)
-
             .build();
     }
 
@@ -1243,6 +1253,9 @@ public class ErrorHandlingConfiguration {
 
 package com.example.batch.listener;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobExecutionListener;
 import org.springframework.batch.core.StepExecution;
@@ -1251,6 +1264,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class BatchJobListener implements JobExecutionListener, StepExecutionListener {
+
+    private static final Logger log = LoggerFactory.getLogger(BatchJobListener.class);
 
     private final MetricsService metricsService;
     private final AlertService alertService;
@@ -1331,11 +1346,10 @@ package com.example.batch.test;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.core.BatchStatus;
-import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
-import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.batch.core.explore.JobExplorer;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.test.JobLauncherTestUtils;
 import org.springframework.batch.test.context.SpringBatchTest;
@@ -1344,6 +1358,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBatchTest
 @SpringBootTest
@@ -1355,6 +1370,9 @@ public class BatchRestartTest {
 
     @Autowired
     private JobOperator jobOperator;
+
+    @Autowired
+    private JobExplorer jobExplorer;
 
     @Autowired
     private FailureSimulator failureSimulator;
