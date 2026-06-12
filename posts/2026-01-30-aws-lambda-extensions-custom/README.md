@@ -8,7 +8,7 @@ Description: A practical guide to building custom Lambda extensions for telemetr
 
 ---
 
-Lambda extensions let you plug custom logic into the Lambda execution environment without modifying your function code. They run as separate processes alongside your handler, giving you hooks into the init, invoke, and shutdown phases. This is useful for shipping telemetry to external backends, caching secrets and configuration, or integrating with third-party security and monitoring tools.
+Lambda extensions let you plug custom logic into the Lambda execution environment without modifying your function code. External extensions run as separate processes alongside your handler, while internal extensions run as part of the runtime process. This gives you hooks into the init, invoke, and shutdown phases. It is useful for shipping telemetry to external backends, caching secrets and configuration, or integrating with third-party security and monitoring tools.
 
 This guide walks through the extension lifecycle, compares internal vs external extensions, and shows you how to build both types from scratch.
 
@@ -41,7 +41,7 @@ Extensions have their own lifecycle and can:
 - Continue running after your handler returns
 - Clean up during shutdown
 
-They are packaged as Lambda layers and can be shared across functions.
+They are commonly packaged as Lambda layers, or included under `/opt/extensions` in a container image, and can be shared across functions.
 
 ---
 
@@ -55,7 +55,7 @@ Lambda supports two extension types. The choice depends on whether you need a se
 | Language | Must match the runtime (e.g., Python for Python functions) | Any language (Go, Rust, etc.) |
 | Use case | Lightweight wrappers, in-process hooks | Heavy lifting, long-running agents, telemetry collection |
 | Startup | Loaded via runtime hooks (wrapper scripts) | Registered with Extensions API |
-| Lifecycle control | Limited | Full access to INIT, INVOKE, SHUTDOWN events |
+| Lifecycle control | Limited | Registers during INIT and receives INVOKE and SHUTDOWN events |
 | Isolation | Shares memory with handler | Separate memory space |
 
 **Internal extensions** are simpler. You drop a wrapper script that modifies how the runtime starts your handler. They are good for injecting middleware or patching libraries.
@@ -116,7 +116,7 @@ External extensions are standalone binaries. Go is a popular choice because it c
 ```text
 my-telemetry-extension/
   extensions/
-    my-telemetry-extension    # The executable (must match folder name)
+    my-telemetry-extension    # The executable (must match Lambda-Extension-Name)
   go.mod
   main.go
 ```
@@ -305,14 +305,13 @@ zip -r extension.zip extensions/
 
 Internal extensions use wrapper scripts to intercept the runtime initialization. They are simpler but limited to the runtime's language.
 
-### Python Wrapper Example
+### Python Handler Wrapper Example
 
 Create a file `python_wrapper.py` in your layer:
 
 ```python
 # python_wrapper.py
 import os
-import sys
 import time
 import importlib
 
@@ -325,7 +324,7 @@ def wrap_handler():
 
     # Get the original handler
     handler_module, handler_func = os.environ.get(
-        '_HANDLER', 'lambda_function.handler'
+        'ORIGINAL_HANDLER', 'lambda_function.handler'
     ).rsplit('.', 1)
 
     # Import the handler module
@@ -381,16 +380,17 @@ my-internal-extension/
 
 ### Activating the Wrapper
 
-Set the `AWS_LAMBDA_EXEC_WRAPPER` environment variable on your function:
+For this handler-wrapper pattern, set your function handler to `python_wrapper.handler` and keep the original handler in an environment variable:
 
 ```yaml
 # SAM template
+Handler: python_wrapper.handler
 Environment:
   Variables:
-    AWS_LAMBDA_EXEC_WRAPPER: /opt/python/python_wrapper.py
+    ORIGINAL_HANDLER: lambda_function.handler
 ```
 
-Or for a full wrapper script approach, create an executable:
+If you want to use Lambda's `AWS_LAMBDA_EXEC_WRAPPER` mechanism instead, create an executable wrapper script that starts the runtime:
 
 ```bash
 #!/bin/bash
@@ -401,6 +401,14 @@ echo "Extension: Wrapper starting"
 
 # Execute the runtime with the original handler
 exec "$@"
+```
+
+Then package it in the layer, make it executable, and point `AWS_LAMBDA_EXEC_WRAPPER` at that script:
+
+```yaml
+Environment:
+  Variables:
+    AWS_LAMBDA_EXEC_WRAPPER: /opt/bin/wrapper.sh
 ```
 
 ---
@@ -471,7 +479,7 @@ func subscribeTelemetry(extensionID string, listenerPort int) error {
     }
     defer resp.Body.Close()
 
-    if resp.StatusCode != http.StatusOK {
+    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
         return fmt.Errorf("telemetry subscribe failed: %d", resp.StatusCode)
     }
 
@@ -579,6 +587,7 @@ import (
     "fmt"
     "net/http"
     "os"
+    "strings"
     "sync"
     "time"
 
@@ -624,12 +633,28 @@ func initSecretsCache() error {
             fmt.Printf("Warning: failed to fetch secret %s: %v\n", name, err)
             continue
         }
+        if result.SecretString == nil {
+            fmt.Printf("Warning: secret %s has no string value\n", name)
+            continue
+        }
         cache.secrets[name] = *result.SecretString
     }
 
     cache.expiry = time.Now().Add(cache.ttl)
     fmt.Printf("Cached %d secrets\n", len(cache.secrets))
     return nil
+}
+
+func splitAndTrim(value string) []string {
+    parts := strings.Split(value, ",")
+    names := make([]string, 0, len(parts))
+    for _, part := range parts {
+        name := strings.TrimSpace(part)
+        if name != "" {
+            names = append(names, name)
+        }
+    }
+    return names
 }
 
 // HTTP endpoint for the function to query cached secrets
@@ -767,18 +792,15 @@ aws lambda update-function-configuration \
 ### Lambda Runtime Interface Emulator (RIE)
 
 ```bash
-# Install RIE
+# Optional: install RIE if you are not using an AWS Lambda base image
 mkdir -p ~/.aws-lambda-rie
 curl -Lo ~/.aws-lambda-rie/aws-lambda-rie \
     https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie
 chmod +x ~/.aws-lambda-rie/aws-lambda-rie
 
-# Run locally with extension
+# Run locally with extension when using an AWS Lambda base image
 docker build -t my-function .
-docker run -p 9000:8080 \
-    -v ~/.aws-lambda-rie:/aws-lambda \
-    -e AWS_LAMBDA_RUNTIME_API=127.0.0.1:9001 \
-    my-function
+docker run -p 9000:8080 my-function
 
 # Invoke
 curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" \
@@ -1012,14 +1034,17 @@ if port == "" {
 
 ### 5. Missing ARM64 Builds
 
-If your functions run on Graviton (arm64), build your extension for both architectures:
+If your functions run on Graviton (arm64), publish separate layer artifacts for each architecture, keeping the same executable name inside `/extensions`:
 
 ```bash
-GOOS=linux GOARCH=amd64 go build -o extensions/my-extension-amd64
-GOOS=linux GOARCH=arm64 go build -o extensions/my-extension-arm64
+mkdir -p build/amd64/extensions build/arm64/extensions
+GOOS=linux GOARCH=amd64 go build -o build/amd64/extensions/my-extension
+GOOS=linux GOARCH=arm64 go build -o build/arm64/extensions/my-extension
+(cd build/amd64 && zip -r ../../my-extension-amd64.zip extensions/)
+(cd build/arm64 && zip -r ../../my-extension-arm64.zip extensions/)
 ```
 
-Or use a multi-arch layer with separate builds.
+Attach the layer version that matches the function architecture.
 
 ---
 
