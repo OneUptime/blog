@@ -19,14 +19,14 @@ In OpenShift, pod security is enforced at the API level. If your pod spec violat
 - **SCC**: Defines the allowed security settings for a pod.
 - **Service Account**: SCCs are assigned to service accounts, not directly to pods.
 - **RBAC**: SCC access is controlled via RBAC rules and group membership.
-- **Admission**: The API server selects the first SCC that the service account can use which satisfies the pod spec.
+- **Admission**: The API server evaluates the SCCs that the service account can use, ordered by SCC priority, restrictiveness, and name, and admits the pod if one satisfies the pod spec.
 
 ## Common SCCs
 
 OpenShift ships with defaults like:
 
-- `restricted`: The safest default. No privileged access, no host networking, random UID.
-- `anyuid`: Allows containers to run with a fixed user ID.
+- `restricted-v2`: The default restrictive SCC for new OpenShift 4 clusters. No privileged access, no host networking, UID from the namespace range.
+- `anyuid`: Allows containers to run as any user ID, including a fixed UID or root.
 - `privileged`: Full access. Avoid unless required.
 
 ## Step 1: Inspect Available SCCs
