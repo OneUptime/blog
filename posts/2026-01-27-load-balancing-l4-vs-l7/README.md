@@ -35,7 +35,7 @@ L4 load balancers route traffic based on:
 - **Protocol agnostic:** Works with any TCP/UDP protocol - HTTP, MQTT, PostgreSQL, custom protocols.
 - **Connection persistence:** Can hash on client IP or port for sticky sessions.
 - **No content inspection:** Cannot route based on URL paths, headers, or cookies.
-- **Lower resource usage:** No SSL termination, no buffer management for HTTP parsing.
+- **Lower resource usage:** No application parsing or HTTP buffer management; TLS is often passed through unless you explicitly configure TLS termination.
 
 **How it works:**
 
@@ -87,7 +87,7 @@ Client --> L7 LB --> Backend Server
 | Maximum throughput with minimal latency | L4 | No payload parsing overhead |
 | URL-based routing | L7 | Must inspect HTTP path |
 | A/B testing, canary deployments | L7 | Route by header or cookie |
-| SSL termination at load balancer | L7 | Must decrypt to inspect |
+| SSL termination plus HTTP inspection | L7 | Must decrypt before inspecting HTTP content |
 | WebSocket with HTTP upgrade | L7 | Initial handshake is HTTP |
 | gRPC with per-method routing | L7 | Needs HTTP/2 parsing |
 | Simple TCP failover | L4 | No content awareness needed |
@@ -187,7 +187,7 @@ stream {
         # consistent: use ketama consistent hashing
         hash $remote_addr consistent;
 
-        # Backend servers with health checks
+        # Backend servers with passive failure handling
         server 10.0.1.20:6379 max_fails=3 fail_timeout=30s;
         server 10.0.1.21:6379 max_fails=3 fail_timeout=30s;
         server 10.0.1.22:6379 max_fails=3 fail_timeout=30s;
@@ -234,6 +234,9 @@ stream {
 # Layer 7 HTTP load balancing
 
 http {
+    # Cache zone for static content
+    proxy_cache_path /var/cache/nginx/static levels=1:2 keys_zone=static_cache:10m inactive=1d max_size=1g;
+
     # Logging with upstream info
     log_format upstream_log '$remote_addr - $remote_user [$time_local] '
                             '"$request" $status $body_bytes_sent '
@@ -248,7 +251,7 @@ http {
         # Least connections algorithm - good for varying request times
         least_conn;
 
-        # Backend servers with weights and health parameters
+        # Backend servers with weights and passive failure parameters
         server 10.0.2.10:8080 weight=3 max_fails=3 fail_timeout=30s;
         server 10.0.2.11:8080 weight=2 max_fails=3 fail_timeout=30s;
         server 10.0.2.12:8080 weight=1 max_fails=3 fail_timeout=30s;  # Lower capacity server
@@ -264,7 +267,8 @@ http {
     }
 
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name api.example.com;
 
         # SSL termination at load balancer
@@ -296,6 +300,7 @@ http {
             proxy_pass http://static_servers;
 
             # Cache static content
+            proxy_cache static_cache;
             proxy_cache_valid 200 1d;
             add_header X-Cache-Status $upstream_cache_status;
         }
@@ -356,10 +361,13 @@ frontend https_front
     acl is_admin path_beg /admin/
     acl is_internal src 10.0.0.0/8 192.168.0.0/16
 
+    # Deny admin routes from non-internal IPs
+    http-request deny if is_admin !is_internal
+
     # Route based on ACLs
     use_backend api_servers if is_api
     use_backend websocket_servers if is_websocket
-    use_backend admin_servers if is_admin is_internal  # Admin only from internal IPs
+    use_backend admin_servers if is_admin
 
     # Default backend for everything else
     default_backend web_servers
@@ -368,7 +376,8 @@ backend api_servers
     balance roundrobin
 
     # HTTP health check
-    option httpchk GET /health HTTP/1.1\r\nHost:\ localhost
+    option httpchk
+    http-check send meth GET uri /health ver HTTP/1.1 hdr Host localhost
     http-check expect status 200
 
     # Rate limiting: 100 requests per second per client IP
@@ -410,13 +419,13 @@ AWS provides two primary load balancers that map to L4 and L7:
 | Feature | NLB (Network Load Balancer) | ALB (Application Load Balancer) |
 | --- | --- | --- |
 | OSI Layer | Layer 4 | Layer 7 |
-| Protocols | TCP, UDP, TLS | HTTP, HTTPS, gRPC, WebSocket |
+| Protocols | TCP, UDP, TCP_UDP, TLS, QUIC, TCP_QUIC | HTTP, HTTPS, gRPC, WebSocket |
 | Latency | Ultra-low (100s of microseconds) | Low (milliseconds) |
 | Static IP | Yes, Elastic IP supported | No (use Global Accelerator) |
 | SSL termination | Optional (TLS listener) | Yes |
 | Path-based routing | No | Yes |
 | Host-based routing | No | Yes |
-| Health checks | TCP, HTTP, HTTPS | HTTP, HTTPS with body matching |
+| Health checks | TCP, HTTP, HTTPS | HTTP, HTTPS with status-code matching |
 | Pricing | Per LCU (connection based) | Per LCU (request based) |
 | WebSocket | Pass-through | Native support with routing |
 | Cross-zone | Disabled by default | Enabled by default |
@@ -486,6 +495,18 @@ resource "aws_lb_target_group" "http_tg" {
   }
 }
 
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.http_alb.arn
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = var.certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.http_tg.arn
+  }
+}
+
 # Path-based routing (L7 only)
 resource "aws_lb_listener_rule" "api_routing" {
   listener_arn = aws_lb_listener.https.arn
@@ -493,7 +514,7 @@ resource "aws_lb_listener_rule" "api_routing" {
 
   action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.api_tg.arn
+    target_group_arn = aws_lb_target_group.http_tg.arn
   }
 
   condition {
@@ -527,7 +548,8 @@ backend redis_backend
 ```haproxy
 # HTTP health check with response validation
 backend api_backend
-    option httpchk GET /health HTTP/1.1\r\nHost:\ localhost
+    option httpchk
+    http-check send meth GET uri /health ver HTTP/1.1 hdr Host localhost
 
     # Expect 200-299 status
     http-check expect status 200-299
@@ -571,7 +593,7 @@ Is the protocol HTTP/HTTPS/gRPC?
         - URL/path-based routing
         - Header inspection/modification
         - Cookie-based sessions
-        - SSL termination at LB
+        - HTTP inspection after SSL termination
         - Rate limiting per endpoint
         - Request/response transformation
         |
