@@ -52,7 +52,7 @@ flowchart TB
 
 ```python
 import pika
-from queue import Queue, Empty
+from queue import Queue, Empty, Full
 from threading import Lock
 import time
 
@@ -105,7 +105,11 @@ class RabbitMQConnectionPool:
         with self._lock:
             if self._created < self.pool_size:
                 self._created += 1
-                return self._create_connection()
+                try:
+                    return self._create_connection()
+                except Exception:
+                    self._created -= 1
+                    raise
 
         # Pool at capacity, wait for available connection
         try:
@@ -115,7 +119,13 @@ class RabbitMQConnectionPool:
             else:
                 with self._lock:
                     self._created -= 1
-                return self._create_connection()
+                    self._created += 1
+                try:
+                    return self._create_connection()
+                except Exception:
+                    with self._lock:
+                        self._created -= 1
+                    raise
         except Empty:
             raise Exception("Connection pool timeout")
 
@@ -124,7 +134,7 @@ class RabbitMQConnectionPool:
         if connection.is_open:
             try:
                 self._pool.put_nowait(connection)
-            except:
+            except Full:
                 # Pool full, close connection
                 connection.close()
                 with self._lock:
@@ -182,14 +192,16 @@ for i in range(1000):
 pool.close_all()
 ```
 
-### Thread-Safe Channel Pool
+Pika's `BlockingConnection` is not safe to share across threads. If you use threads, create each connection in the thread that uses it, or delegate work to the connection thread with `add_callback_threadsafe`.
 
-For higher performance, pool channels instead of connections:
+### Reusable Channel Pool
+
+For higher performance in a single worker thread, pool channels instead of creating a new channel per operation:
 
 ```python
 import pika
-from queue import Queue, Empty
-from threading import Lock, Thread
+from queue import Queue, Empty, Full
+from threading import Lock
 import time
 
 class RabbitMQChannelPool:
@@ -261,8 +273,8 @@ class RabbitMQChannelPool:
         if connection.is_open and channel.is_open:
             try:
                 self._channel_pool.put_nowait((connection, channel))
-            except:
-                pass  # Pool full, let it be garbage collected
+            except Full:
+                channel.close()
 
     def close_all(self):
         """Close all connections"""
@@ -297,15 +309,9 @@ def publish(message):
     with PooledChannel(pool) as channel:
         channel.basic_publish(exchange='', routing_key='tasks', body=message)
 
-# Thread-safe publishing
-threads = []
+# Reuse channels for many publish operations
 for i in range(100):
-    t = Thread(target=publish, args=(f"Message {i}",))
-    threads.append(t)
-    t.start()
-
-for t in threads:
-    t.join()
+    publish(f"Message {i}")
 
 pool.close_all()
 ```
@@ -324,7 +330,7 @@ const connection = amqp.connect(['amqp://localhost'], {
 });
 
 connection.on('connect', () => console.log('Connected to RabbitMQ'));
-connection.on('disconnect', (err) => console.log('Disconnected:', err.message));
+connection.on('disconnect', ({ err }) => console.log('Disconnected:', err.message));
 
 // Create channel wrapper (pooled automatically)
 const channelWrapper = connection.createChannel({
@@ -572,9 +578,11 @@ Optimize RabbitMQ for pooled connections:
 ```ini
 # /etc/rabbitmq/rabbitmq.conf
 
-# Increase connection limit
-# Default is 65535, adjust based on expected pool size * instances
+# AMQP listener port
 listeners.tcp.default = 5672
+
+# Maximum channels negotiated with clients; default is 2047
+channel_max = 2047
 
 # Tune TCP settings
 tcp_listen_options.backlog = 128
@@ -582,7 +590,7 @@ tcp_listen_options.nodelay = true
 tcp_listen_options.linger.on = true
 tcp_listen_options.linger.timeout = 0
 
-# Heartbeat interval (match client setting)
+# Heartbeat timeout suggested by the server during negotiation
 heartbeat = 60
 ```
 
