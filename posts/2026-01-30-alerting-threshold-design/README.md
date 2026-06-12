@@ -549,7 +549,7 @@ The following code builds hourly baselines from historical data and compares cur
 
 ```python
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 import statistics
 
@@ -749,7 +749,7 @@ for week in range(8):
                 base *= 1.5
 
             value = base + random.gauss(0, base * 0.15)
-            ts = datetime(2024, 1, week * 7 + day + 1, hour, 0)
+            ts = datetime(2024, 1, 1, hour, 0) + timedelta(weeks=week, days=day)
             weekly.add_value(value, ts)
 
 # Check: Monday 10am with unusually low traffic
