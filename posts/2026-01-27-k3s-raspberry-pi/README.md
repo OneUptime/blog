@@ -139,15 +139,17 @@ ssh k3s-admin@pi-master.local
 sudo apt update && sudo apt upgrade -y
 
 # Set a static IP address for cluster stability
-# Edit the dhcpcd configuration file
-sudo nano /etc/dhcpcd.conf
-
-# Add these lines at the end (adjust for your network):
-# =====================================================
-# interface eth0
-# static ip_address=192.168.1.100/24    # Master node
-# static routers=192.168.1.1            # Your router IP
-# static domain_name_servers=192.168.1.1 8.8.8.8
+# Prefer a DHCP reservation on your router. On Raspberry Pi OS
+# Bookworm and newer, use NetworkManager if you need a static IP
+# on the Pi itself.
+nmcli connection show
+sudo nmcli connection modify "Wired connection 1" \
+  ipv4.addresses 192.168.1.100/24 \
+  ipv4.gateway 192.168.1.1 \
+  ipv4.dns "192.168.1.1 8.8.8.8" \
+  ipv4.method manual
+sudo nmcli connection down "Wired connection 1"
+sudo nmcli connection up "Wired connection 1"
 
 # For worker nodes, use different IPs:
 # Worker 1: 192.168.1.101/24
@@ -180,9 +182,9 @@ cat /proc/cgroups | grep memory
 # Should show: memory  0  XX  1 (last column should be 1)
 ```
 
-### Step 4: Disable Swap (Kubernetes Requirement)
+### Step 4: Disable Swap
 
-Kubernetes does not play well with swap. Disable it permanently:
+By default, the kubelet will not start on Linux nodes that have swap enabled. Disable it permanently unless you are intentionally configuring Kubernetes swap support:
 
 ```bash
 # Turn off swap immediately
@@ -192,12 +194,12 @@ sudo swapoff -a
 sudo nano /etc/fstab
 # Comment out any line containing 'swap' by adding # at the start
 
-# Alternatively, disable the swap service entirely
+# On Raspberry Pi OS, disable the swap service entirely
 sudo systemctl disable dphys-swapfile.service
 sudo systemctl stop dphys-swapfile.service
 
 # Remove the swap file to reclaim space
-sudo rm /var/swap
+sudo rm -f /var/swap
 
 # Verify swap is disabled
 free -h
@@ -260,9 +262,9 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.28.5+k3s1" sh -
 # Example: Bind to a specific network interface
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--bind-address 192.168.1.100 --advertise-address 192.168.1.100" sh -
 
-# Example: Use external database instead of embedded etcd
+# Example: Use an external database instead of the default SQLite datastore
 # (Useful for HA setups with external PostgreSQL/MySQL)
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--datastore-endpoint='postgres://user:pass@host:5432/k3s'" sh -
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--datastore-endpoint postgres://user:pass@host:5432/k3s" sh -
 
 # Common flags for resource-constrained Pi:
 # --disable servicelb     # Disable built-in load balancer
@@ -370,16 +372,15 @@ free -h
 # K3s server typically uses 500-800MB RAM
 # K3s agent uses 200-400MB RAM
 
-# Reduce kubelet memory if needed
-# Edit the K3s service configuration
-sudo nano /etc/systemd/system/k3s.service
+# Reserve memory for the OS and Kubernetes components if needed
+sudo nano /etc/rancher/k3s/config.yaml
 
-# Add memory limits to ExecStart:
-# --kubelet-arg="system-reserved=memory=200Mi"
-# --kubelet-arg="kube-reserved=memory=200Mi"
+# Add these kubelet arguments:
+# kubelet-arg:
+#   - "system-reserved=memory=200Mi"
+#   - "kube-reserved=memory=200Mi"
 
-# Reload and restart K3s
-sudo systemctl daemon-reload
+# Restart K3s
 sudo systemctl restart k3s
 ```
 
@@ -426,7 +427,7 @@ sudo hdparm -Tt /dev/sda      # USB SSD (if connected)
 # USB SSD: ~300 MB/s sequential, ~30000 IOPS random
 
 # To boot from SSD:
-# 1. Update firmware: sudo rpi-update
+# 1. Update Raspberry Pi OS packages: sudo apt update && sudo apt full-upgrade -y
 # 2. Enable USB boot: sudo raspi-config -> Advanced -> Boot Order
 # 3. Clone SD to SSD: Use rpi-imager or dd
 # 4. Remove SD card and boot from SSD
@@ -558,7 +559,8 @@ nano ~/.kube/config
 # Test the connection
 kubectl get nodes
 
-# Alternative: Use the KUBECONFIG environment variable
+# Alternative: save the edited kubeconfig to a separate file
+cp ~/.kube/config ~/.kube/pi-cluster-config
 export KUBECONFIG=~/.kube/pi-cluster-config
 kubectl get nodes
 ```
@@ -589,10 +591,14 @@ For monitoring your K3s cluster, deploy the OpenTelemetry Collector to gather me
 ```bash
 # Deploy a lightweight monitoring stack
 # Use the OneUptime Helm chart for easy setup
-helm repo add oneuptime https://helm.oneuptime.com
-helm install oneuptime-agent oneuptime/oneuptime-agent \
-  --set apiKey=YOUR_API_KEY \
-  --set endpoint=https://oneuptime.com
+helm repo add oneuptime https://helm-chart.oneuptime.com
+helm repo update
+helm install kubernetes-agent oneuptime/kubernetes-agent \
+  --namespace oneuptime-agent \
+  --create-namespace \
+  --set oneuptime.url=https://oneuptime.com \
+  --set oneuptime.apiKey=YOUR_API_KEY \
+  --set clusterName=pi-cluster
 ```
 
 ## Best Practices Summary
@@ -628,7 +634,7 @@ Running K3s on Raspberry Pi is rewarding but requires attention to the platform'
 - Back up `/var/lib/rancher/k3s/server/` directory regularly
 - Monitor node resources with lightweight tools like htop or k9s
 - Use node affinity to spread workloads across the cluster
-- Keep K3s updated with `curl -sfL https://get.k3s.io | sh -`
+- Keep K3s updated with `curl -sfL https://get.k3s.io | <EXISTING_K3S_ENV> sh -s - <EXISTING_K3S_ARGS>`
 - Label nodes for easier workload scheduling
 
 **Networking Best Practices**
