@@ -170,6 +170,8 @@ channel.queue_bind(
 )
 
 # Publish with headers
+pdf_content = b'...'
+
 channel.basic_publish(
     exchange='documents',
     routing_key='',  # Ignored for headers exchange
@@ -190,7 +192,7 @@ Use headers exchanges when routing logic depends on multiple attributes that don
 
 ### Classic Queues
 
-The original queue type. Single leader, optional mirrors.
+The original queue type. Non-replicated in RabbitMQ 4.x.
 
 ```python
 # Declare a classic queue
@@ -203,11 +205,11 @@ channel.queue_declare(
 )
 ```
 
-Classic queues work well for simple use cases but have limitations under high load.
+Classic queues work well for simple use cases where data safety is not the priority.
 
 ### Quorum Queues
 
-Replicated queues using Raft consensus. The recommended choice for production.
+Replicated queues using Raft consensus. The recommended choice for replicated, highly available queues.
 
 ```python
 # Declare a quorum queue
@@ -265,12 +267,12 @@ channel.queue_declare(
     arguments={
         'x-dead-letter-exchange': 'dlx',
         'x-dead-letter-routing-key': 'failed',
-        'x-message-ttl': 60000  # Messages expire after 60 seconds if not consumed
+        'x-message-ttl': 60000  # Messages expire after 60 seconds in the queue
     }
 )
 ```
 
-Messages end up in the DLX when they are rejected with requeue=False, expire due to TTL, or the queue exceeds its length limit.
+Messages end up in the DLX when they are rejected with requeue=False, expire due to TTL, the queue exceeds its length limit, or a quorum queue exceeds its delivery limit.
 
 ## Priority Queues
 
@@ -282,7 +284,7 @@ channel.queue_declare(
     queue='tasks.priority',
     durable=True,
     arguments={
-        'x-max-priority': 10  # Priority levels 0-10
+        'x-max-priority': 4  # Priority levels 0-4
     }
 )
 
@@ -293,7 +295,7 @@ channel.basic_publish(
     body='{"task": "urgent"}',
     properties=pika.BasicProperties(
         delivery_mode=2,
-        priority=9  # High priority
+        priority=4  # High priority
     )
 )
 
@@ -308,7 +310,7 @@ channel.basic_publish(
 )
 ```
 
-Keep priority levels low (under 10). Higher values create more internal queues and increase memory usage.
+Keep priority levels low (2-4 is recommended). Higher values create more internal queues and increase memory usage.
 
 ## Virtual Hosts for Multi-Tenancy
 
@@ -372,7 +374,7 @@ Consistent naming makes operations and debugging easier.
 
 ### Quorum Queues vs Classic Mirrored Queues
 
-Quorum queues are the modern replacement for classic mirrored queues.
+Quorum queues are the modern replacement for classic mirrored queues, which were removed in RabbitMQ 4.0.
 
 ```python
 # Modern approach - Quorum queues (recommended)
@@ -386,12 +388,12 @@ channel.queue_declare(
     }
 )
 
-# Legacy approach - Classic mirrored queues (deprecated)
-# Configure via policy instead of arguments
+# Legacy approach - Classic mirrored queues (RabbitMQ 3.13 and earlier only)
+# Configure via policy instead of arguments. This has no effect in RabbitMQ 4.x.
 # rabbitmqctl set_policy ha-all "^ha\." '{"ha-mode":"all"}' --apply-to queues
 ```
 
-Quorum queues handle network partitions better, have predictable failover, and consume less bandwidth during replication.
+Quorum queues provide stronger data safety, predictable leader election, and higher throughput with more stable latency than mirrored classic queues.
 
 ### Cluster Configuration
 
