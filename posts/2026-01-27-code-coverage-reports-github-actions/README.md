@@ -107,7 +107,7 @@ jobs:
       - run: npm test -- --coverage
 
       - name: Upload to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
@@ -178,7 +178,7 @@ jobs:
             --cov-fail-under=80
 
       - name: Upload to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
@@ -199,6 +199,7 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
@@ -225,7 +226,7 @@ jobs:
 
 ## Multi-Project Coverage
 
-Aggregate coverage from multiple packages in a monorepo:
+Upload coverage from multiple packages in a monorepo with separate Codecov flags:
 
 ```yaml
 jobs:
@@ -248,21 +249,11 @@ jobs:
         run: npm test --workspace=${{ matrix.package }} -- --coverage
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: ${{ matrix.package }}
           directory: packages/${{ matrix.package }}/coverage
-
-  aggregate:
-    needs: coverage
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check overall coverage
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: true
 ```
 
 ## Coverage Badges
@@ -273,6 +264,8 @@ Generate and display coverage badges:
 jobs:
   coverage-badge:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -340,6 +333,9 @@ Show coverage changes between base and head:
 jobs:
   coverage-diff:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -384,14 +380,15 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `## Coverage Report
-
-              | Metric | Base | Head | Diff |
-              |--------|------|------|------|
-              | Lines | ${base.total.lines.pct}% | ${head.total.lines.pct}% | ${emoji} ${diff.toFixed(2)}% |
-              | Branches | ${base.total.branches.pct}% | ${head.total.branches.pct}% | ${(head.total.branches.pct - base.total.branches.pct).toFixed(2)}% |
-              | Functions | ${base.total.functions.pct}% | ${head.total.functions.pct}% | ${(head.total.functions.pct - base.total.functions.pct).toFixed(2)}% |
-              `
+              body: [
+                '## Coverage Report',
+                '',
+                '| Metric | Base | Head | Diff |',
+                '|--------|------|------|------|',
+                `| Lines | ${base.total.lines.pct}% | ${head.total.lines.pct}% | ${emoji} ${diff.toFixed(2)}% |`,
+                `| Branches | ${base.total.branches.pct}% | ${head.total.branches.pct}% | ${(head.total.branches.pct - base.total.branches.pct).toFixed(2)}% |`,
+                `| Functions | ${base.total.functions.pct}% | ${head.total.functions.pct}% | ${(head.total.functions.pct - base.total.functions.pct).toFixed(2)}% |`
+              ].join('\n')
             });
 ```
 
@@ -435,7 +432,7 @@ jobs:
           # Coverage is written on process exit
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: integration
