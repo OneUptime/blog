@@ -78,7 +78,7 @@ Source connectors pull data from external systems into Kafka. They are responsib
 
 - Polling or subscribing to external data sources
 - Converting external data formats to Kafka Connect records
-- Tracking offsets to enable exactly-once delivery
+- Tracking offsets so processing can resume after failures
 
 ### Sink Connectors
 
@@ -96,9 +96,15 @@ Sink connectors push data from Kafka to external systems. They handle:
 # Create Maven project structure
 
 mkdir -p kafka-custom-connector/src/main/java/com/example/connect
-mkdir -p kafka-custom-connector/src/main/resources
+mkdir -p kafka-custom-connector/src/main/resources/META-INF/services
 mkdir -p kafka-custom-connector/src/test/java/com/example/connect
 cd kafka-custom-connector
+
+# Register connector classes for Kafka Connect plugin discovery
+echo "com.example.connect.RestApiSourceConnector" \
+  > src/main/resources/META-INF/services/org.apache.kafka.connect.source.SourceConnector
+echo "com.example.connect.RestApiSinkConnector" \
+  > src/main/resources/META-INF/services/org.apache.kafka.connect.sink.SinkConnector
 ```
 
 ### Maven Dependencies
@@ -226,8 +232,6 @@ public class RestApiSourceConnector extends SourceConnector {
     public static final String API_KEY_CONFIG = "api.key";
     public static final String TOPIC_CONFIG = "topic";
     public static final String POLL_INTERVAL_MS_CONFIG = "poll.interval.ms";
-    public static final String TASKS_MAX_CONFIG = "tasks.max";
-
     // Default values for optional configuration
     private static final long DEFAULT_POLL_INTERVAL_MS = 60000L;
 
@@ -303,13 +307,13 @@ public class RestApiSourceConnector extends SourceConnector {
     public List<Map<String, String>> taskConfigs(int maxTasks) {
         List<Map<String, String>> taskConfigs = new ArrayList<>();
 
-        // For a simple single-endpoint API, all tasks get the same config
-        // For partitioned APIs, you would divide work here
-        for (int i = 0; i < maxTasks; i++) {
-            Map<String, String> taskConfig = new HashMap<>(configProps);
-            taskConfig.put("task.id", String.valueOf(i));
-            taskConfigs.add(taskConfig);
-        }
+        // For a simple single-endpoint API, use one task. Creating multiple
+        // identical tasks would duplicate ingestion.
+        Map<String, String> taskConfig = new HashMap<>(configProps);
+        taskConfig.put("task.id", "0");
+        taskConfigs.add(taskConfig);
+
+        // For partitioned APIs, you would divide work across up to maxTasks here.
 
         return taskConfigs;
     }
@@ -380,7 +384,7 @@ public class RestApiSourceTask extends SourceTask {
     private OkHttpClient httpClient;
     private ObjectMapper objectMapper;
 
-    // Offset tracking - enables exactly-once delivery
+    // Offset tracking - enables resumable processing
     private Long lastProcessedTimestamp;
 
     // Define the schema for our records
@@ -441,8 +445,8 @@ public class RestApiSourceTask extends SourceTask {
      * Poll for new data from the external system.
      *
      * This method is called repeatedly by the framework.
-     * Return null or empty list when there is no new data.
-     * The framework handles backoff automatically.
+     * Return null or an empty list when there is no new data.
+     * This task controls pacing with its configured sleep interval.
      */
     @Override
     public List<SourceRecord> poll() throws InterruptedException {
@@ -514,7 +518,7 @@ public class RestApiSourceTask extends SourceTask {
             // - sourcePartition: identifies this data source
             // - sourceOffset: tracks progress for resumability
             // - topic: destination Kafka topic
-            // - key: used for partitioning (null = round-robin)
+            // - key: used by the producer partitioner when partition is null
             // - valueSchema + value: the actual data
             SourceRecord record = new SourceRecord(
                 Collections.singletonMap("api", apiUrl),      // sourcePartition
@@ -1181,7 +1185,7 @@ SMTs modify records in-flight without changing connector code. They are composab
 Common built-in transforms:
 
 ```properties
-# Add a field with the current timestamp
+# Add a field with the record timestamp
 transforms=AddTimestamp
 transforms.AddTimestamp.type=org.apache.kafka.connect.transforms.InsertField$Value
 transforms.AddTimestamp.timestamp.field=processed_at
@@ -1191,11 +1195,11 @@ transforms=RenameField
 transforms.RenameField.type=org.apache.kafka.connect.transforms.ReplaceField$Value
 transforms.RenameField.renames=old_name:new_name
 
-# Route to different topics based on a field
-transforms=RouteByField
-transforms.RouteByField.type=org.apache.kafka.connect.transforms.RegexRouter
-transforms.RouteByField.regex=.*
-transforms.RouteByField.replacement=prefix-$0
+# Route to different topics based on topic name
+transforms=RouteTopic
+transforms.RouteTopic.type=org.apache.kafka.connect.transforms.RegexRouter
+transforms.RouteTopic.regex=.*
+transforms.RouteTopic.replacement=prefix-$0
 
 # Mask sensitive fields
 transforms=MaskSensitive
@@ -1203,7 +1207,7 @@ transforms.MaskSensitive.type=org.apache.kafka.connect.transforms.MaskField$Valu
 transforms.MaskSensitive.fields=credit_card,ssn
 transforms.MaskSensitive.replacement=***MASKED***
 
-# Filter records (drop nulls)
+# Filter tombstone records (records with null values)
 transforms=DropNull
 transforms.DropNull.type=org.apache.kafka.connect.transforms.Filter
 transforms.DropNull.predicate=isNull
@@ -1224,11 +1228,13 @@ import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.transforms.Transformation;
 import org.apache.kafka.connect.transforms.util.SimpleConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -1287,6 +1293,10 @@ public abstract class HashFields<R extends ConnectRecord<R>> implements Transfor
 
     @Override
     public R apply(R record) {
+        if (operatingValue(record) == null) {
+            return record;
+        }
+
         if (operatingSchema(record) == null) {
             // Schemaless - handle as Map
             return applySchemaless(record);
@@ -1317,6 +1327,9 @@ public abstract class HashFields<R extends ConnectRecord<R>> implements Transfor
             Object fieldValue = value.get(field);
 
             if (fieldsToHash.contains(field.name()) && fieldValue != null) {
+                if (field.schema().type() != Schema.Type.STRING) {
+                    throw new DataException("HashFields only supports string fields with schemas");
+                }
                 // Hash this field
                 String hashed = hashValue(fieldValue.toString());
                 newValue.put(field.name(), hashed);
@@ -1344,7 +1357,7 @@ public abstract class HashFields<R extends ConnectRecord<R>> implements Transfor
     }
 
     private String hashValue(String input) {
-        byte[] hashBytes = digest.digest(input.getBytes());
+        byte[] hashBytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
         return HexFormat.of().formatHex(hashBytes);
     }
 
@@ -1450,7 +1463,7 @@ curl -X POST http://localhost:8083/connectors \
     "name": "rest-api-source",
     "config": {
       "connector.class": "com.example.connect.RestApiSourceConnector",
-      "tasks.max": "2",
+      "tasks.max": "1",
       "api.url": "https://api.example.com/events",
       "api.key": "${secrets:api-key}",
       "topic": "api-events",
@@ -1472,7 +1485,7 @@ curl -X PUT http://localhost:8083/connectors/rest-api-source/config \
   -H "Content-Type: application/json" \
   -d '{
     "connector.class": "com.example.connect.RestApiSourceConnector",
-    "tasks.max": "4",
+    "tasks.max": "1",
     ...
   }'
 
@@ -1485,7 +1498,7 @@ curl -X POST http://localhost:8083/connectors/rest-api-source/tasks/0/restart
 Deploy Kafka Connect on Kubernetes with Strimzi:
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaConnect
 metadata:
   name: kafka-connect-cluster
@@ -1525,7 +1538,7 @@ spec:
     initialDelaySeconds: 60
     timeoutSeconds: 5
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaConnector
 metadata:
   name: rest-api-source
@@ -1533,7 +1546,7 @@ metadata:
     strimzi.io/cluster: kafka-connect-cluster
 spec:
   class: com.example.connect.RestApiSourceConnector
-  tasksMax: 2
+  tasksMax: 1
   config:
     api.url: "https://api.example.com/events"
     topic: "api-events"
@@ -1615,7 +1628,7 @@ For comprehensive monitoring of your Kafka Connect deployment, including alertin
 ## Best Practices Summary
 
 1. **Use schemas** - They enable evolution and type safety across your pipeline
-2. **Implement idempotency** - Track offsets properly for exactly-once semantics
+2. **Implement idempotency** - Track offsets properly for reliable resume and duplicate-safe processing
 3. **Handle errors gracefully** - Log, retry with backoff, and fail loud when unrecoverable
 4. **Batch when possible** - Reduce network overhead in sink connectors
 5. **Validate configuration** - Use custom validators to catch errors early
