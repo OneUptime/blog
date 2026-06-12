@@ -23,7 +23,7 @@ Before diving into implementation, let's clarify what AWS actually measures. SQS
 ```mermaid
 graph LR
     A[Producer] -->|SendMessage| B[SQS Queue]
-    B -->|ApproximateNumberOfMessages| C[Visible Messages]
+    B -->|ApproximateNumberOfMessagesVisible| C[Visible Messages]
     B -->|ApproximateNumberOfMessagesNotVisible| D[In-Flight Messages]
     B -->|ApproximateNumberOfMessagesDelayed| E[Delayed Messages]
     C --> F[Consumer]
@@ -32,7 +32,7 @@ graph LR
 
 | Metric | What It Measures | Why It Matters |
 |--------|------------------|----------------|
-| `ApproximateNumberOfMessages` | Messages visible and available for retrieval | Primary indicator of backlog |
+| `ApproximateNumberOfMessagesVisible` | Messages visible and available for retrieval | Primary indicator of backlog |
 | `ApproximateNumberOfMessagesNotVisible` | Messages being processed but not yet deleted | Shows consumer concurrency |
 | `ApproximateNumberOfMessagesDelayed` | Messages in delay period | Important for scheduled workloads |
 
@@ -42,7 +42,7 @@ The word "Approximate" is intentional. SQS is distributed, and counts are eventu
 
 ## CloudWatch Metrics for SQS
 
-AWS automatically publishes SQS metrics to CloudWatch every five minutes (or one minute for detailed monitoring). Here's how to query them programmatically.
+AWS automatically publishes SQS metrics to CloudWatch every minute for active queues, at no additional cost. Here's how to query them programmatically.
 
 ### Fetching Queue Depth with AWS CLI
 
@@ -53,7 +53,7 @@ AWS automatically publishes SQS metrics to CloudWatch every five minutes (or one
 
 aws cloudwatch get-metric-statistics \
   --namespace AWS/SQS \
-  --metric-name ApproximateNumberOfMessages \
+  --metric-name ApproximateNumberOfMessagesVisible \
   --dimensions Name=QueueName,Value=my-order-processing-queue \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
@@ -67,7 +67,7 @@ aws cloudwatch get-metric-statistics \
 """
 Retrieve SQS queue depth metrics from CloudWatch.
 
-This script fetches the ApproximateNumberOfMessages metric
+This script fetches the ApproximateNumberOfMessagesVisible metric
 for a specified queue and calculates statistics over a time window.
 """
 
@@ -93,7 +93,7 @@ def get_queue_depth_metrics(queue_name: str, hours: int = 1) -> dict:
     # Query the primary queue depth metric
     response = cloudwatch.get_metric_statistics(
         Namespace='AWS/SQS',
-        MetricName='ApproximateNumberOfMessages',
+        MetricName='ApproximateNumberOfMessagesVisible',
         Dimensions=[
             {
                 'Name': 'QueueName',
@@ -127,7 +127,7 @@ def get_all_queue_metrics(queue_name: str) -> dict:
     cloudwatch = boto3.client('cloudwatch')
 
     metrics = [
-        'ApproximateNumberOfMessages',
+        'ApproximateNumberOfMessagesVisible',
         'ApproximateNumberOfMessagesNotVisible',
         'ApproximateNumberOfMessagesDelayed'
     ]
@@ -175,7 +175,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-name "OrderQueue-HighDepth" \
   --alarm-description "Order processing queue backlog is growing" \
   --namespace AWS/SQS \
-  --metric-name ApproximateNumberOfMessages \
+  --metric-name ApproximateNumberOfMessagesVisible \
   --dimensions Name=QueueName,Value=order-processing-queue \
   --statistic Average \
   --period 300 \
@@ -200,7 +200,7 @@ resource "aws_cloudwatch_metric_alarm" "queue_depth_warning" {
   alarm_description   = "Queue depth exceeds warning threshold"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "ApproximateNumberOfMessages"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
   namespace           = "AWS/SQS"
   period              = 300
   statistic           = "Average"
@@ -227,7 +227,7 @@ resource "aws_cloudwatch_metric_alarm" "queue_depth_critical" {
   alarm_description   = "Queue depth exceeds critical threshold - immediate action required"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "ApproximateNumberOfMessages"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
   namespace           = "AWS/SQS"
   period              = 60  # Check every minute for critical alerts
   statistic           = "Maximum"
@@ -323,7 +323,7 @@ Resources:
       AlarmName: !Sub "${QueueName}-depth-warning"
       AlarmDescription: Queue depth exceeds warning threshold
       Namespace: AWS/SQS
-      MetricName: ApproximateNumberOfMessages
+      MetricName: ApproximateNumberOfMessagesVisible
       Dimensions:
         - Name: QueueName
           Value: !Ref QueueName
@@ -345,7 +345,7 @@ Resources:
       AlarmName: !Sub "${QueueName}-depth-critical"
       AlarmDescription: Queue depth critical - immediate action required
       Namespace: AWS/SQS
-      MetricName: ApproximateNumberOfMessages
+      MetricName: ApproximateNumberOfMessagesVisible
       Dimensions:
         - Name: QueueName
           Value: !Ref QueueName
@@ -579,7 +579,7 @@ class SQSMetricsPublisher:
         "view": "timeSeries",
         "stacked": false,
         "metrics": [
-          ["AWS/SQS", "ApproximateNumberOfMessages", "QueueName", "order-processing-queue", {"label": "Visible Messages", "color": "#2ca02c"}],
+          ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "order-processing-queue", {"label": "Visible Messages", "color": "#2ca02c"}],
           ["AWS/SQS", "ApproximateNumberOfMessagesNotVisible", "QueueName", "order-processing-queue", {"label": "In-Flight", "color": "#ff7f0e"}],
           ["AWS/SQS", "ApproximateNumberOfMessagesDelayed", "QueueName", "order-processing-queue", {"label": "Delayed", "color": "#1f77b4"}]
         ],
@@ -726,7 +726,7 @@ resource "aws_cloudwatch_dashboard" "sqs_monitoring" {
           metrics = [
             for queue in var.queue_names : [
               "AWS/SQS",
-              "ApproximateNumberOfMessages",
+              "ApproximateNumberOfMessagesVisible",
               "QueueName",
               queue
             ]
@@ -859,7 +859,7 @@ resource "aws_cloudwatch_metric_alarm" "queue_depth_high" {
   alarm_name          = "${var.queue_name}-depth-high-autoscale"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "ApproximateNumberOfMessages"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
   namespace           = "AWS/SQS"
   period              = 60
   statistic           = "Average"
@@ -877,7 +877,7 @@ resource "aws_cloudwatch_metric_alarm" "queue_depth_low" {
   alarm_name          = "${var.queue_name}-depth-low-autoscale"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 5  # Must be low for 5 minutes to scale in
-  metric_name         = "ApproximateNumberOfMessages"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
   namespace           = "AWS/SQS"
   period              = 60
   statistic           = "Average"
@@ -910,7 +910,7 @@ resource "aws_appautoscaling_policy" "target_tracking" {
     # Custom metric: messages per consumer
     # Target: 100 messages per consumer instance
     customized_metric_specification {
-      metric_name = "ApproximateNumberOfMessages"
+      metric_name = "ApproximateNumberOfMessagesVisible"
       namespace   = "AWS/SQS"
       statistic   = "Average"
 
@@ -1116,7 +1116,7 @@ STANDARD_ALERTS: List[AlertThreshold] = [
     AlertThreshold(
         name="queue-has-messages",
         severity=AlertSeverity.INFO,
-        metric="ApproximateNumberOfMessages",
+        metric="ApproximateNumberOfMessagesVisible",
         threshold=1,
         duration_minutes=1
     ),
@@ -1125,7 +1125,7 @@ STANDARD_ALERTS: List[AlertThreshold] = [
     AlertThreshold(
         name="queue-depth-elevated",
         severity=AlertSeverity.WARNING,
-        metric="ApproximateNumberOfMessages",
+        metric="ApproximateNumberOfMessagesVisible",
         threshold=500,
         duration_minutes=10
     ),
@@ -1143,7 +1143,7 @@ STANDARD_ALERTS: List[AlertThreshold] = [
     AlertThreshold(
         name="queue-depth-critical",
         severity=AlertSeverity.CRITICAL,
-        metric="ApproximateNumberOfMessages",
+        metric="ApproximateNumberOfMessagesVisible",
         threshold=2000,
         duration_minutes=5
     ),
@@ -1161,7 +1161,7 @@ STANDARD_ALERTS: List[AlertThreshold] = [
     AlertThreshold(
         name="queue-depth-emergency",
         severity=AlertSeverity.EMERGENCY,
-        metric="ApproximateNumberOfMessages",
+        metric="ApproximateNumberOfMessagesVisible",
         threshold=10000,
         duration_minutes=2
     ),
@@ -1201,10 +1201,10 @@ resource "aws_cloudwatch_metric_alarm" "dlq_not_empty" {
   alarm_description   = "CRITICAL: Dead letter queue has messages - processing failures detected"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "ApproximateNumberOfMessages"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
   namespace           = "AWS/SQS"
   period              = 60
-  statistic           = "Sum"
+  statistic           = "Maximum"
   threshold           = 0  # Alert on ANY message in DLQ
 
   dimensions = {
@@ -1223,17 +1223,19 @@ resource "aws_cloudwatch_metric_alarm" "dlq_not_empty" {
   }
 }
 
-# Also alert if DLQ is growing (multiple failures)
+# Also alert if DLQ has accumulated many messages (sustained failure mode).
+# Note: messages moved to a DLQ via SQS automatic redrive are NOT counted by
+# NumberOfMessagesSent, so we monitor the visible backlog instead.
 resource "aws_cloudwatch_metric_alarm" "dlq_growing" {
   alarm_name          = "${var.dlq_name}-growing"
-  alarm_description   = "EMERGENCY: Dead letter queue is growing rapidly"
+  alarm_description   = "EMERGENCY: Dead letter queue backlog is large"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "NumberOfMessagesReceived"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
   namespace           = "AWS/SQS"
   period              = 60
-  statistic           = "Sum"
-  threshold           = 10  # More than 10 failures per minute
+  statistic           = "Maximum"
+  threshold           = 10  # More than 10 messages accumulated in the DLQ
 
   dimensions = {
     QueueName = var.dlq_name
@@ -1291,7 +1293,7 @@ def send_queue_metrics_to_oneuptime(
         "metrics": [
             {
                 "name": "sqs.queue.depth",
-                "value": metrics.get("ApproximateNumberOfMessages", 0),
+                "value": metrics.get("ApproximateNumberOfMessagesVisible", 0),
                 "unit": "count",
                 "tags": {"queue": queue_name}
             },
@@ -1343,10 +1345,11 @@ Set thresholds relative to your baseline, not arbitrary round numbers.
 
 ### 2. Alert on Rate of Change, Not Just Absolute Values
 
-A queue with 1000 messages that's draining is healthy. A queue with 100 messages that's growing is a problem. Use CloudWatch Math expressions to alert on rate of change:
+A queue with 1000 messages that's draining is healthy. A queue with 100 messages that's growing is a problem. Use CloudWatch Math expressions to alert on rate of change. `RATE(m1)` returns the change in `m1` per second, so multiply by 60 to express it per minute:
 
 ```text
-RATE(METRICS("ApproximateNumberOfMessages")) > 10  # Growing by 10 msg/min
+m1: ApproximateNumberOfMessagesVisible (the source metric)
+RATE(m1) * 60 > 10   # Growing by more than 10 messages per minute
 ```
 
 ### 3. Monitor the Full Pipeline
