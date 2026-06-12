@@ -8,7 +8,7 @@ Description: Learn how to use GitHub Actions OIDC to securely access AWS, GCP, a
 
 ---
 
-> Stop storing cloud credentials in your repository secrets. OIDC lets GitHub Actions authenticate directly with cloud providers using short-lived tokens that cannot be leaked or stolen.
+> Stop storing cloud credentials in your repository secrets. OIDC lets GitHub Actions authenticate directly with cloud providers using short-lived tokens that reduce the impact of leaks.
 
 ## Why OIDC is Better Than Static Credentials
 
@@ -53,8 +53,7 @@ sequenceDiagram
 
 aws iam create-open-id-connect-provider \
   --url https://token.actions.githubusercontent.com \
-  --client-id-list sts.amazonaws.com \
-  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+  --client-id-list sts.amazonaws.com
 ```
 
 Or using Terraform:
@@ -65,10 +64,6 @@ resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 
   client_id_list = ["sts.amazonaws.com"]
-
-  # GitHub's thumbprint - verify current value at:
-  # https://github.blog/changelog/2022-01-13-github-actions-update-on-oidc-based-deployments-to-aws/
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 ```
 
@@ -146,7 +141,7 @@ jobs:
       - name: Deploy to ECR
         run: |
           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
-          docker build -t my-app .
+          docker build -t 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:${{ github.sha }} .
           docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:${{ github.sha }}
 ```
 
@@ -171,6 +166,7 @@ gcloud iam workload-identity-pools providers create-oidc "github-provider" \
   --workload-identity-pool="github-pool" \
   --display-name="GitHub Provider" \
   --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" \
+  --attribute-condition="assertion.repository_owner == 'your-org'" \
   --issuer-uri="https://token.actions.githubusercontent.com"
 ```
 
@@ -189,6 +185,7 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
   workload_identity_pool_provider_id = "github-provider"
   display_name                       = "GitHub Provider"
+  attribute_condition                = "assertion.repository_owner == 'your-org'"
 
   attribute_mapping = {
     "google.subject"             = "assertion.sub"
@@ -255,14 +252,14 @@ jobs:
 
       # Authenticate to GCP using Workload Identity
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: 'projects/123456789/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
           service_account: 'github-actions-deploy@your-project-id.iam.gserviceaccount.com'
 
       # Set up gcloud CLI
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       # Deploy to GKE
       - name: Deploy to GKE
@@ -308,27 +305,27 @@ resource "azuread_application" "github_actions" {
 
 # Service principal
 resource "azuread_service_principal" "github_actions" {
-  application_id = azuread_application.github_actions.application_id
+  client_id = azuread_application.github_actions.client_id
 }
 
 # Federated credential for main branch
 resource "azuread_application_federated_identity_credential" "github_main" {
-  application_object_id = azuread_application.github_actions.object_id
-  display_name          = "github-main-branch"
-  description           = "GitHub Actions from main branch"
-  audiences             = ["api://AzureADTokenExchange"]
-  issuer                = "https://token.actions.githubusercontent.com"
-  subject               = "repo:your-org/your-repo:ref:refs/heads/main"
+  application_id = azuread_application.github_actions.id
+  display_name   = "github-main-branch"
+  description    = "GitHub Actions from main branch"
+  audiences      = ["api://AzureADTokenExchange"]
+  issuer         = "https://token.actions.githubusercontent.com"
+  subject        = "repo:your-org/your-repo:ref:refs/heads/main"
 }
 
 # Federated credential for pull requests (separate if needed)
 resource "azuread_application_federated_identity_credential" "github_pr" {
-  application_object_id = azuread_application.github_actions.object_id
-  display_name          = "github-pull-requests"
-  description           = "GitHub Actions from pull requests"
-  audiences             = ["api://AzureADTokenExchange"]
-  issuer                = "https://token.actions.githubusercontent.com"
-  subject               = "repo:your-org/your-repo:pull_request"
+  application_id = azuread_application.github_actions.id
+  display_name   = "github-pull-requests"
+  description    = "GitHub Actions from pull requests"
+  audiences      = ["api://AzureADTokenExchange"]
+  issuer         = "https://token.actions.githubusercontent.com"
+  subject        = "repo:your-org/your-repo:pull_request"
 }
 
 # Assign role to the service principal
@@ -535,7 +532,7 @@ permissions:
   contents: read
 ```
 
-3. **Wrong audience** - AWS uses `sts.amazonaws.com`, GCP uses the workload identity pool URL
+3. **Wrong audience** - AWS uses `sts.amazonaws.com`, GCP defaults to the workload identity provider resource name
 
 ### Error: "OIDC provider not found"
 
