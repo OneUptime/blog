@@ -25,7 +25,7 @@ Before diving into solutions, let's understand what happens when Terraform proje
 resource "aws_vpc" "main" { ... }
 resource "aws_subnet" "public" { ... }
 resource "aws_instance" "web" { ... }
-resource "aws_rds_instance" "db" { ... }
+resource "aws_db_instance" "db" { ... }
 resource "aws_s3_bucket" "logs" { ... }
 # ... hundreds more resources
 
@@ -826,7 +826,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `### Terraform Plan - ${{ matrix.environment }}\n\n```hcl\n${truncatedPlan}\n````
+              body: `### Terraform Plan - ${{ matrix.environment }}\n\n\`\`\`hcl\n${truncatedPlan}\n\`\`\``
             });
 
   # Apply to dev automatically on merge
