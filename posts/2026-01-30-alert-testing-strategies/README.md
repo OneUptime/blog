@@ -86,6 +86,8 @@ groups:
           severity: warning
         annotations:
           summary: "P99 latency exceeds 500ms"
+          description: "P99 latency is above 500ms"
+          dashboard_url: "https://dashboards.example.com/api-latency"
 ```
 
 ```yaml
@@ -112,6 +114,8 @@ tests:
               severity: critical
             exp_annotations:
               summary: "Error rate exceeds 1%"
+              description: "Current error rate is 2%"
+              runbook_url: "https://runbooks.example.com/high-error-rate"
 
   - interval: 1m
     input_series:
@@ -144,6 +148,10 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: warning
+            exp_annotations:
+              summary: "P99 latency exceeds 500ms"
+              description: "P99 latency is above 500ms"
+              dashboard_url: "https://dashboards.example.com/api-latency"
 ```
 
 Run the tests with:
@@ -178,7 +186,7 @@ jobs:
 
       - name: Install promtool
         run: |
-          wget https://github.com/prometheus/prometheus/releases/download/v2.48.0/prometheus-2.48.0.linux-amd64.tar.gz
+          wget https://github.com/prometheus/prometheus/releases/download/v3.12.0/prometheus-3.12.0.linux-amd64.tar.gz
           tar xvfz prometheus-*.tar.gz
           sudo mv prometheus-*/promtool /usr/local/bin/
 
@@ -302,8 +310,8 @@ class AlertTestScenario:
         end_time = time.time() + duration_seconds
         while time.time() < end_time:
             for _ in range(100):
-                # 99% of requests are fast, 1% are slow
-                if random.random() < 0.01:
+                # Keep enough requests slow so the p99 estimate crosses the alert threshold.
+                if random.random() < 0.05:
                     latency = p99_target + random.uniform(0, 0.5)
                 else:
                     latency = random.uniform(0.01, 0.1)
@@ -758,7 +766,7 @@ Injects synthetic alerts and measures response times.
 """
 import requests
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from dataclasses import dataclass
 from typing import Optional
 import json
@@ -797,7 +805,7 @@ class FireDrillRunner:
                 "description": "This is a fire drill. Please respond as if this were a real alert.",
                 "runbook_url": f"https://runbooks.example.com/{alert_name.lower()}"
             },
-            "startsAt": datetime.utcnow().isoformat() + "Z",
+            "startsAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "generatorURL": "http://fire-drill-system/drills"
         }]
 
@@ -826,15 +834,19 @@ class FireDrillRunner:
         ack_time = None
         resolve_time = None
         responder = None
+        seen_alert = False
 
         deadline = time.time() + (timeout_minutes * 60)
 
         while time.time() < deadline:
             # Check Alertmanager for alert status
             response = requests.get(f"{self.alertmanager_url}/api/v2/alerts")
+            found = False
 
             for alert in response.json():
                 if alert.get("fingerprint") == fingerprint:
+                    found = True
+                    seen_alert = True
                     status = alert.get("status", {})
 
                     # Check for silences (indicates acknowledgment)
@@ -845,10 +857,9 @@ class FireDrillRunner:
                         silence = self._get_silence(silence_id)
                         responder = silence.get("createdBy", "unknown")
 
-                    # Check if resolved
-                    if alert.get("status", {}).get("state") == "resolved":
-                        resolve_time = datetime.now()
-                        break
+            # Alertmanager's active-alert API drops alerts after they resolve.
+            if seen_alert and not found:
+                resolve_time = datetime.now()
 
             if resolve_time:
                 break
@@ -867,11 +878,11 @@ class FireDrillRunner:
 
     def _get_silence(self, silence_id: str) -> dict:
         """Get silence details."""
-        response = requests.get(f"{self.alertmanager_url}/api/v2/silences")
-        for silence in response.json():
-            if silence["id"] == silence_id:
-                return silence
-        return {}
+        response = requests.get(f"{self.alertmanager_url}/api/v2/silence/{silence_id}")
+        if response.status_code == 404:
+            return {}
+        response.raise_for_status()
+        return response.json()
 
     def _get_alert_name(self, fingerprint: str) -> str:
         """Get alert name from fingerprint."""
@@ -1015,6 +1026,8 @@ Verify Alertmanager routing configuration delivers alerts correctly.
 import pytest
 import requests
 import time
+import os
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 ALERTMANAGER_URL = "http://alertmanager:9093"
@@ -1048,17 +1061,46 @@ ROUTING_TESTS = [
 
 
 def get_alert_route(labels: dict) -> list[str]:
-    """Query Alertmanager's route matching API to determine receivers."""
-    # Alertmanager provides a route test endpoint
-    response = requests.post(
-        f"{ALERTMANAGER_URL}/api/v2/alerts/groups",
-        json=[{"labels": labels}]
-    )
+    """Send a marked synthetic alert and inspect the resulting alert groups."""
+    test_labels = {**labels, "route_test": "true"}
+    now = datetime.now(UTC)
 
-    # Parse response to extract matched receivers
-    # Note: Actual implementation depends on your Alertmanager version
-    # This is a simplified example
-    return response.json().get("receivers", [])
+    response = requests.post(
+        f"{ALERTMANAGER_URL}/api/v2/alerts",
+        json=[{
+            "labels": test_labels,
+            "annotations": {
+                "summary": "[TEST] Alertmanager routing verification"
+            },
+            "startsAt": now.isoformat().replace("+00:00", "Z"),
+            "endsAt": (now + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+        }]
+    )
+    response.raise_for_status()
+
+    deadline = time.time() + 30
+    filters = [
+        'route_test="true"',
+        f'alertname="{labels["alertname"]}"'
+    ]
+
+    while time.time() < deadline:
+        response = requests.get(
+            f"{ALERTMANAGER_URL}/api/v2/alerts/groups",
+            params=[("filter", matcher) for matcher in filters]
+        )
+        response.raise_for_status()
+        receivers = {
+            group["receiver"]["name"]
+            for group in response.json()
+            if group.get("receiver", {}).get("name")
+        }
+        if receivers:
+            return sorted(receivers)
+
+        time.sleep(2)
+
+    return []
 
 
 class TestAlertRouting:
@@ -1122,7 +1164,7 @@ def test_webhook_endpoints_reachable():
 def test_slack_integration():
     """Verify Slack webhook is functional."""
     # Get Slack webhook URL from config or environment
-    slack_webhook = "https://hooks.slack.com/services/xxx/yyy/zzz"
+    slack_webhook = os.environ["SLACK_WEBHOOK"]
 
     test_payload = {
         "text": "[TEST] Alert routing verification - please ignore",
@@ -1438,24 +1480,19 @@ class TestE2EAlertPipeline:
     def test_alert_resolution_e2e(self, tester):
         """E2E test: Alert resolves when condition clears."""
 
-        def trigger_then_resolve():
-            """Trigger alert then return to healthy state."""
-            # Trigger
+        def trigger_errors():
+            """Generate errors to trigger the alert."""
             for _ in range(100):
                 requests.get(f"{tester.config.app_endpoint}/error")
 
-            # Wait for firing
-            time.sleep(180)
-
-            # Return to healthy (make successful requests)
-            for _ in range(200):
-                requests.get(f"{tester.config.app_endpoint}/healthy")
-
         result = tester.run_scenario(
             scenario_name="alert_resolution",
-            trigger_func=trigger_then_resolve,
+            trigger_func=trigger_errors,
             expected_alert="HighErrorRate"
         )
+
+        for _ in range(200):
+            requests.get(f"{tester.config.app_endpoint}/healthy")
 
         # Also verify resolution was delivered
         time.sleep(120)  # Wait for resolution
