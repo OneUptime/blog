@@ -18,7 +18,7 @@ Elasticsearch powers search and analytics for applications ranging from log aggr
 
 - **Data loss** from unallocated primary shards
 - **Search degradation** from overloaded nodes
-- **Complete unavailability** during split-brain scenarios
+- **Cluster unavailability** during quorum loss or master instability
 - **Slow indexing** when the cluster is under resource pressure
 
 Proactive monitoring transforms reactive firefighting into predictable operations. Let us explore how to monitor effectively.
@@ -266,9 +266,9 @@ curl -X GET "localhost:9200/_cat/thread_pool?v&h=node_name,name,active,queue,rej
 # Shows queue size, completed tasks, and rejections
 curl -X GET "localhost:9200/_nodes/stats/thread_pool?pretty" | jq '.nodes | to_entries[] | {
   name: .value.name,
-  search_rejected: .value.thread_pool.search.rejected,
-  write_rejected: .value.thread_pool.write.rejected,
-  bulk_rejected: .value.thread_pool.bulk.rejected
+  search_rejected: (.value.thread_pool.search.rejected // 0),
+  write_rejected: (.value.thread_pool.write.rejected // 0),
+  write_coordination_rejected: (.value.thread_pool.write_coordination.rejected // 0)
 }'
 ```
 
@@ -327,7 +327,7 @@ Too many segments hurt search performance:
 
 ```bash
 # Check segment count per index
-# High segment counts indicate need for force merge
+# High segment counts on read-only indices may indicate a force merge candidate
 curl -X GET "localhost:9200/_cat/segments?v&h=index,shard,segment,size,docs.count&s=index"
 
 # Index-level segment summary
@@ -428,8 +428,9 @@ while read -r line; do
 done
 
 # Thread pool rejections
+# Rejection counters are cumulative since node start; compare against prior samples for alerting
 TOTAL_REJECTIONS=$(curl -s "$ES_HOST/_nodes/stats/thread_pool" | \
-    jq '[.nodes[].thread_pool | .search.rejected, .write.rejected, .bulk.rejected] | add')
+    jq '[.nodes[].thread_pool | (.search.rejected // 0), (.write.rejected // 0), (.write_coordination.rejected // 0)] | add')
 
 if [ "$TOTAL_REJECTIONS" -gt 100 ]; then
     curl -X POST "$ALERT_WEBHOOK" \
@@ -502,7 +503,7 @@ class ElasticsearchHealthMonitor:
     Thresholds are configurable but defaults are:
     - Heap warning: 75%, critical: 85%
     - Disk warning: 80%, critical: 90%
-    - Unassigned shard timeout: 30 minutes for warnings
+    - Non-delayed unassigned replica shards: warning
     """
 
     def __init__(self, es_host: str, webhook_url: str = None):
@@ -530,7 +531,7 @@ class ElasticsearchHealthMonitor:
 
         Returns cluster health data and records issues for:
         - Red status (critical)
-        - Yellow status lasting > 30 minutes (warning)
+        - Yellow status with non-delayed unassigned shards (warning)
         - High pending tasks (warning)
         """
         health = self._get('/_cluster/health')
@@ -639,7 +640,7 @@ class ElasticsearchHealthMonitor:
         Check thread pool rejections.
 
         Rejections indicate the cluster cannot keep up with load.
-        Any rejections warrant investigation.
+        New or increasing rejections warrant investigation.
         """
         stats = self._get('/_nodes/stats/thread_pool')
         if not stats:
@@ -649,7 +650,7 @@ class ElasticsearchHealthMonitor:
             node_name = node_data.get('name', node_id)
             thread_pools = node_data.get('thread_pool', {})
 
-            for pool_name in ['search', 'write', 'bulk', 'get']:
+            for pool_name in ['search', 'write', 'write_coordination', 'get']:
                 pool = thread_pools.get(pool_name, {})
                 rejected = pool.get('rejected', 0)
 
@@ -670,8 +671,7 @@ class ElasticsearchHealthMonitor:
         """
         Detailed check of unassigned shards.
 
-        Gets allocation explanation for each unassigned shard
-        to help with troubleshooting.
+        Lists unassigned shards to help with troubleshooting.
         """
         shards = self._get('/_cat/shards?format=json')
         if not shards:
@@ -796,7 +796,7 @@ if __name__ == '__main__':
 1. **Keep heap usage below 75%** for stable garbage collection
 2. **Maintain at least 15% free disk space** per node
 3. **Plan for N+1 capacity** - you should survive losing one node
-4. **Monitor shard counts** - aim for 20-40 shards per GB of heap
+4. **Monitor shard counts** - size shards for your workload, target roughly 10-50GB per shard where practical, and stay below cluster shard limits
 
 ### Operational Hygiene
 
@@ -812,7 +812,7 @@ if __name__ == '__main__':
 | Cluster Status | Yellow > 30min | Red |
 | Heap Usage | > 75% | > 85% |
 | Disk Usage | > 80% | > 90% |
-| Thread Pool Rejections | Any | Sustained |
+| Thread Pool Rejections | New or increasing | Sustained increase |
 | Unassigned Primaries | - | Any |
 | Pending Tasks | > 10 | > 50 |
 
