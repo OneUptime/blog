@@ -8,7 +8,7 @@ Description: Learn how to write Redis Lua scripts for complex atomic operations 
 
 ---
 
-Redis commands are atomic individually, but what happens when you need multiple commands to execute as a single unit? Traditional transactions with MULTI/EXEC do not allow you to read and write in the same transaction. Lua scripts solve this by running on the Redis server, guaranteeing atomicity for complex operations.
+Redis commands are atomic individually, but what happens when you need multiple commands to execute as a single unit? Traditional transactions with MULTI/EXEC can queue reads and writes together, but you cannot use a read result to decide later writes until EXEC returns. Lua scripts solve this by running on the Redis server, guaranteeing atomicity for complex conditional operations.
 
 ## Why Lua Scripts?
 
@@ -33,7 +33,7 @@ sequenceDiagram
     Client->>Redis: INCRBY balance:user2 50
 
     Note over Client,Lua: With Lua Script
-    Client->>Redis: EVALSHA script [keys] [args]
+    Client->>Redis: EVALSHA sha numkeys [keys] [args]
     Redis->>Lua: Execute atomically
     Lua->>Lua: Check balance
     Lua->>Lua: Deduct from source
@@ -111,11 +111,13 @@ const RATE_LIMIT_SCRIPT = `
 -- ARGV[1] = window size in milliseconds
 -- ARGV[2] = max requests allowed
 -- ARGV[3] = current timestamp in milliseconds
+-- ARGV[4] = unique request ID
 
 local key = KEYS[1]
 local window = tonumber(ARGV[1])
 local maxRequests = tonumber(ARGV[2])
 local now = tonumber(ARGV[3])
+local requestId = ARGV[4]
 local windowStart = now - window
 
 -- Remove old entries outside the window
@@ -126,7 +128,7 @@ local currentRequests = redis.call('ZCARD', key)
 
 if currentRequests < maxRequests then
   -- Add this request
-  redis.call('ZADD', key, now, now .. '-' .. math.random(1000000))
+  redis.call('ZADD', key, now, requestId)
   -- Set expiry on the key
   redis.call('PEXPIRE', key, window)
 
@@ -162,6 +164,7 @@ class RateLimiter {
 
     const key = this.keyPrefix + identifier;
     const now = Date.now();
+    const requestId = `${now}-${process.hrtime.bigint()}-${Math.random()}`;
 
     try {
       const result = await redis.evalsha(
@@ -170,7 +173,8 @@ class RateLimiter {
         key,
         this.windowMs,
         this.maxRequests,
-        now
+        now,
+        requestId
       );
 
       return {
@@ -234,8 +238,8 @@ local destKey = KEYS[2]
 local amount = tonumber(ARGV[1])
 
 -- Validate amount
-if amount <= 0 then
-  return {err = 'Invalid amount'}
+if not amount or amount <= 0 then
+  return {0, 'Invalid amount', 0, 0}
 end
 
 -- Get source balance
@@ -243,7 +247,7 @@ local sourceBalance = tonumber(redis.call('GET', sourceKey) or '0')
 
 -- Check sufficient funds
 if sourceBalance < amount then
-  return {err = 'Insufficient funds', balance = sourceBalance}
+  return {0, 'Insufficient funds', sourceBalance, 0}
 end
 
 -- Perform transfer
@@ -254,11 +258,7 @@ local newDestBalance = destBalance + amount
 redis.call('SET', sourceKey, newSourceBalance)
 redis.call('SET', destKey, newDestBalance)
 
-return {
-  ok = true,
-  sourceBalance = newSourceBalance,
-  destBalance = newDestBalance
-}
+return {1, 'OK', newSourceBalance, newDestBalance}
 `;
 
 class AccountService {
@@ -287,11 +287,11 @@ class AccountService {
       amount
     );
 
-    // Lua returns arrays, parse the result
+    // Lua returns an array: [success, message, sourceBalance, destBalance]
     const parsed = this.parseResult(result);
 
-    if (parsed.err) {
-      throw new Error(parsed.err);
+    if (!parsed.success) {
+      throw new Error(parsed.message);
     }
 
     return {
@@ -302,15 +302,16 @@ class AccountService {
   }
 
   parseResult(result) {
-    // Redis returns Lua tables as alternating key-value arrays
-    if (Array.isArray(result)) {
-      const obj = {};
-      for (let i = 0; i < result.length; i += 2) {
-        obj[result[i]] = result[i + 1];
-      }
-      return obj;
+    if (!Array.isArray(result)) {
+      throw new Error('Unexpected script response');
     }
-    return result;
+
+    return {
+      success: result[0] === 1,
+      message: result[1],
+      sourceBalance: result[2],
+      destBalance: result[3],
+    };
   }
 
   async getBalance(account) {
@@ -340,10 +341,12 @@ const redis = new Redis();
 // Acquire lock script
 const ACQUIRE_SCRIPT = `
 -- KEYS[1] = lock key
+-- KEYS[2] = fencing counter key
 -- ARGV[1] = token (unique identifier)
 -- ARGV[2] = TTL in milliseconds
 
 local key = KEYS[1]
+local fenceKey = KEYS[2]
 local token = ARGV[1]
 local ttl = tonumber(ARGV[2])
 
@@ -352,9 +355,7 @@ local acquired = redis.call('SET', key, token, 'NX', 'PX', ttl)
 
 if acquired then
   -- Get fencing token (incrementing counter)
-  local fenceKey = key .. ':fence'
   local fenceToken = redis.call('INCR', fenceKey)
-  redis.call('PEXPIRE', fenceKey, ttl * 2)
   return {1, fenceToken}
 end
 
@@ -425,14 +426,16 @@ class DistributedLock {
       await this.loadScripts();
     }
 
-    const key = this.lockPrefix + resource;
+    const key = `${this.lockPrefix}{${resource}}`;
+    const fenceKey = `${key}:fence`;
     const token = this.generateToken();
 
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       const result = await redis.evalsha(
         this.acquireSha,
-        1,
+        2,
         key,
+        fenceKey,
         token,
         ttl
       );
@@ -512,7 +515,6 @@ Best practices for managing Lua scripts in production.
 // script-manager.js
 // Manage and cache Lua scripts
 const Redis = require('ioredis');
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -526,9 +528,8 @@ class ScriptManager {
 
   // Register a script by name
   register(name, script) {
-    // Normalize whitespace for consistent hashing
-    const normalized = script.trim().replace(/\s+/g, ' ');
-    this.scripts.set(name, normalized);
+    // Preserve script text exactly; whitespace can be significant inside Lua strings and comments.
+    this.scripts.set(name, script.trim());
   }
 
   // Load scripts from a directory
@@ -684,7 +685,7 @@ const validatedScript = `
 | Use EVALSHA in production | Avoids transferring script text |
 | Handle NOSCRIPT errors | Scripts can be flushed |
 | Validate inputs in script | Fail fast with clear errors |
-| Use key arguments properly | Enables cluster mode compatibility |
+| Use key arguments properly | Required for cluster mode, where all accessed keys must be declared and multi-key scripts must use one hash slot |
 | Test scripts in isolation | Easier debugging |
 
 Lua scripts are powerful tools for complex atomic operations in Redis. They eliminate race conditions and reduce network round trips while keeping all logic on the server. Start with simple scripts and build up complexity as you become comfortable with the patterns.
