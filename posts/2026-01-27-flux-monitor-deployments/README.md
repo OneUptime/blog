@@ -64,7 +64,7 @@ brew install fluxcd/tap/flux
 curl -s https://fluxcd.io/install.sh | sudo bash
 
 # Verify installation
-flux --version
+flux version --client
 ```
 
 ### Checking Overall Flux Health
@@ -76,7 +76,7 @@ flux check
 
 # Example output:
 # ► checking prerequisites
-# ✔ Kubernetes 1.28.0 >=1.25.0-0
+# ✔ Kubernetes 1.34.1 >=1.34.1
 # ► checking controllers
 # ✔ helm-controller: healthy
 # ✔ kustomize-controller: healthy
@@ -93,7 +93,7 @@ flux check
 flux get sources git --all-namespaces
 
 # Get detailed status of a specific GitRepository
-flux get source git my-app -n flux-system
+flux get sources git my-app -n flux-system
 
 # Watch for changes in real-time
 # Useful for monitoring during deployments
@@ -175,43 +175,61 @@ Flux controllers expose Prometheus metrics that provide deep insights into recon
 ### Enabling Metrics Collection
 
 ```yaml
-# flux-system/kustomization.yaml
-# Patch to enable metrics for all controllers
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - gotk-components.yaml
-  - gotk-sync.yaml
-patches:
-  # Enable metrics on all controllers
-  - patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/args/-
-        value: --metrics-addr=:8080
-    target:
-      kind: Deployment
-      name: "(source-controller|kustomize-controller|helm-controller|notification-controller)"
-```
-
-### ServiceMonitor Configuration
-
-```yaml
-# servicemonitor.yaml
-# Configure Prometheus to scrape Flux controller metrics
+# Flux controllers expose metrics on port 8080 by default.
+# Use a PodMonitor with Prometheus Operator to scrape the controller pods.
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: flux-system
   namespace: flux-system
   labels:
     app.kubernetes.io/part-of: flux
 spec:
-  # Match all Flux controller services
+  namespaceSelector:
+    matchNames:
+      - flux-system
   selector:
-    matchLabels:
-      app.kubernetes.io/part-of: flux
-  # Define endpoint to scrape
-  endpoints:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - source-controller
+          - kustomize-controller
+          - helm-controller
+          - notification-controller
+          - image-reflector-controller
+          - image-automation-controller
+  podMetricsEndpoints:
+    - port: http-prom
+```
+
+### PodMonitor Configuration
+
+```yaml
+# podmonitor.yaml
+# Configure Prometheus to scrape Flux controller metrics
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: flux-system
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/part-of: flux
+spec:
+  # Match Flux controller pods
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - source-controller
+          - kustomize-controller
+          - helm-controller
+          - notification-controller
+          - image-reflector-controller
+          - image-automation-controller
+  # Define pod endpoint to scrape
+  podMetricsEndpoints:
     - port: http-prom
       path: /metrics
       interval: 30s
@@ -247,27 +265,27 @@ spec:
         # Critical metric for deployment health
         - record: flux:reconcile_success_rate
           expr: |
-            sum(rate(gotk_reconcile_condition{status="True",type="Ready"}[5m])) by (kind, name, namespace)
+            sum(gotk_resource_info{ready="True"}) by (customresource_kind, name, exported_namespace)
             /
-            sum(rate(gotk_reconcile_condition{type="Ready"}[5m])) by (kind, name, namespace)
+            sum(gotk_resource_info) by (customresource_kind, name, exported_namespace)
 ```
 
 ### Important Flux Metrics Reference
 
 ```promql
-# gotk_reconcile_condition
-# Shows the current condition of each Flux resource
-# Labels: kind, name, namespace, type, status
-# Example: gotk_reconcile_condition{kind="Kustomization",name="my-app",type="Ready",status="True"}
+# gotk_resource_info
+# Shows the current state of each Flux resource when kube-state-metrics is configured for Flux CRDs
+# Labels include: customresource_kind, name, exported_namespace, ready, suspended
+# Example: gotk_resource_info{customresource_kind="Kustomization",name="my-app",ready="True"}
 
 # gotk_reconcile_duration_seconds
 # Histogram of reconciliation duration
-# Labels: kind, name, namespace, success
+# Labels: kind, name, namespace, le
 # Use for performance monitoring and SLO tracking
 
-# gotk_suspend_status
-# Shows if a resource is suspended (1) or active (0)
-# Labels: kind, name, namespace
+# gotk_resource_info{suspended="true"}
+# Shows Flux resources with reconciliation suspended
+# Labels include: customresource_kind, name, exported_namespace
 # Important for alerting on accidentally suspended resources
 
 # controller_runtime_reconcile_total
@@ -285,8 +303,8 @@ spec:
 
 ```promql
 # Count of failed reconciliations in the last hour
-# Use this to detect persistent failures
-sum(increase(gotk_reconcile_condition{status="False",type="Ready"}[1h])) by (kind, name, namespace)
+# Use this to detect resources currently not ready
+sum(gotk_resource_info{ready="False"}) by (customresource_kind, name, exported_namespace)
 
 # Average reconciliation duration by resource type
 # Helps identify slow reconciliations
@@ -294,15 +312,15 @@ avg(rate(gotk_reconcile_duration_seconds_sum[5m]) / rate(gotk_reconcile_duration
 
 # Resources stuck in non-ready state
 # Critical for identifying deployment issues
-gotk_reconcile_condition{status="False",type="Ready"} == 1
+gotk_resource_info{ready="False"} == 1
 
 # Suspended resources count
 # Ensure nothing is accidentally suspended
-count(gotk_suspend_status == 1) by (kind)
+count(gotk_resource_info{suspended="true"}) by (customresource_kind)
 
 # Source fetch failures
 # Detect Git/Helm repository connectivity issues
-increase(gotk_reconcile_condition{kind="GitRepository",type="Ready",status="False"}[5m]) > 0
+gotk_resource_info{customresource_kind="GitRepository",ready="False"} == 1
 ```
 
 ## Grafana Dashboards
@@ -322,11 +340,11 @@ Visualizing Flux metrics helps teams quickly identify and respond to deployment 
         "type": "stat",
         "targets": [
           {
-            "expr": "count(gotk_reconcile_condition{type=\"Ready\",status=\"True\"})",
+            "expr": "count(gotk_resource_info{ready=\"True\"})",
             "legendFormat": "Healthy"
           },
           {
-            "expr": "count(gotk_reconcile_condition{type=\"Ready\",status=\"False\"})",
+            "expr": "count(gotk_resource_info{ready=\"False\"})",
             "legendFormat": "Unhealthy"
           }
         ]
@@ -371,9 +389,9 @@ panels:
     description: "Shows ready vs not-ready resources"
     type: gauge
     query: |
-      sum(gotk_reconcile_condition{type="Ready",status="True"})
+      sum(gotk_resource_info{ready="True"})
       /
-      count(gotk_reconcile_condition{type="Ready"})
+      count(gotk_resource_info)
       * 100
     thresholds:
       - value: 0
@@ -395,7 +413,7 @@ panels:
     description: "List of resources that failed to reconcile"
     type: table
     query: |
-      gotk_reconcile_condition{type="Ready",status="False"} == 1
+      gotk_resource_info{ready="False"} == 1
 
   # Panel 4: Reconciliation Duration Heatmap
   - title: "Reconciliation Duration"
@@ -409,11 +427,10 @@ panels:
 
 ```bash
 # Import the official Flux dashboard from Grafana
-# Dashboard ID: 16714 - Flux Cluster Stats
-# Dashboard ID: 16715 - Flux Control Plane
+# Dashboard ID: 21150 - Flux / Cluster Stats
+# Dashboard ID: 21149 - Flux / Control Plane
 
-# Using Grafana CLI
-grafana-cli dashboards install 16714
+# Import dashboard IDs through the Grafana UI or dashboard provisioning
 
 # Or configure via Grafana Operator
 cat <<EOF | kubectl apply -f -
@@ -427,7 +444,7 @@ spec:
     matchLabels:
       app: grafana
   grafanaCom:
-    id: 16714
+    id: 21150
     revision: 1
 EOF
 ```
@@ -455,14 +472,14 @@ spec:
         # Alert when any resource fails to reconcile
         - alert: FluxReconciliationFailure
           expr: |
-            gotk_reconcile_condition{type="Ready",status="False"} == 1
+            gotk_resource_info{ready="False"} == 1
           for: 10m
           labels:
             severity: critical
           annotations:
-            summary: "Flux reconciliation failed for {{ $labels.kind }}/{{ $labels.name }}"
+            summary: "Flux reconciliation failed for {{ $labels.customresource_kind }}/{{ $labels.name }}"
             description: |
-              The {{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.namespace }}
+              The {{ $labels.customresource_kind }} {{ $labels.name }} in namespace {{ $labels.exported_namespace }}
               has been failing to reconcile for more than 10 minutes.
             runbook_url: https://fluxcd.io/flux/components/
 
@@ -484,14 +501,14 @@ spec:
         # Alert when resources are accidentally suspended
         - alert: FluxResourceSuspended
           expr: |
-            gotk_suspend_status == 1
+            gotk_resource_info{suspended="true"} == 1
           for: 1h
           labels:
             severity: warning
           annotations:
-            summary: "Flux resource suspended: {{ $labels.kind }}/{{ $labels.name }}"
+            summary: "Flux resource suspended: {{ $labels.customresource_kind }}/{{ $labels.name }}"
             description: |
-              The {{ $labels.kind }} {{ $labels.name }} has been suspended for over 1 hour.
+              The {{ $labels.customresource_kind }} {{ $labels.name }} has been suspended for over 1 hour.
               This may be intentional, but verify it's not blocking deployments.
 
     - name: flux-sources
@@ -499,7 +516,7 @@ spec:
         # Alert when Git repository fetch fails
         - alert: FluxSourceFetchFailure
           expr: |
-            gotk_reconcile_condition{kind="GitRepository",type="Ready",status="False"} == 1
+            gotk_resource_info{customresource_kind="GitRepository",ready="False"} == 1
           for: 5m
           labels:
             severity: critical
@@ -512,7 +529,7 @@ spec:
         # Alert when Helm repository is unavailable
         - alert: FluxHelmRepoUnavailable
           expr: |
-            gotk_reconcile_condition{kind="HelmRepository",type="Ready",status="False"} == 1
+            gotk_resource_info{customresource_kind="HelmRepository",ready="False"} == 1
           for: 5m
           labels:
             severity: critical
@@ -573,15 +590,15 @@ stringData:
       receiver: 'default'
       routes:
         # Critical Flux alerts go to PagerDuty and Slack
-        - match:
-            severity: critical
-            alertname: =~"Flux.*"
+        - matchers:
+            - severity="critical"
+            - alertname=~"Flux.*"
           receiver: 'flux-critical'
           continue: true
         # Warning Flux alerts go to Slack only
-        - match:
-            severity: warning
-            alertname: =~"Flux.*"
+        - matchers:
+            - severity="warning"
+            - alertname=~"Flux.*"
           receiver: 'flux-warnings'
 
     receivers:
@@ -597,7 +614,7 @@ stringData:
             title: 'Flux Deployment Failure'
             text: '{{ .CommonAnnotations.description }}'
         pagerduty_configs:
-          - service_key: 'your-pagerduty-key'
+          - routing_key: 'your-pagerduty-routing-key'
             severity: critical
 
       - name: 'flux-warnings'
@@ -654,7 +671,7 @@ flowchart LR
 ```yaml
 # slack-provider.yaml
 # Configure Slack as a notification provider
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -662,21 +679,22 @@ metadata:
 spec:
   # Slack provider type
   type: slack
+  address: https://slack.com/api/chat.postMessage
   # Channel to post notifications
   channel: deployments
-  # Reference to secret containing webhook URL
+  # Reference to secret containing Slack bot token
   secretRef:
-    name: slack-webhook
+    name: slack-bot-token
 ---
-# Secret containing Slack webhook URL
+# Secret containing Slack bot token
 apiVersion: v1
 kind: Secret
 metadata:
-  name: slack-webhook
+  name: slack-bot-token
   namespace: flux-system
 stringData:
-  # Obtain this URL from Slack Incoming Webhooks
-  address: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+  # Obtain this token from your Slack app
+  token: xoxb-YOUR-SLACK-BOT-TOKEN
 ```
 
 ### Microsoft Teams Provider
@@ -684,15 +702,13 @@ stringData:
 ```yaml
 # teams-provider.yaml
 # Configure Microsoft Teams notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: teams
   namespace: flux-system
 spec:
   type: msteams
-  # Optional: customize the message card title
-  address: https://outlook.office.com/webhook/YOUR/TEAMS/WEBHOOK
   secretRef:
     name: teams-webhook
 ---
@@ -710,7 +726,7 @@ stringData:
 ```yaml
 # discord-provider.yaml
 # Configure Discord notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: discord
@@ -735,7 +751,7 @@ stringData:
 ```yaml
 # github-provider.yaml
 # Post deployment status to GitHub commits
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-status
@@ -762,7 +778,7 @@ stringData:
 ```yaml
 # alerts.yaml
 # Define what events trigger notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-alerts
@@ -791,11 +807,11 @@ spec:
   eventMetadata:
     # Only alert on specific clusters
     cluster: production
-  # Summary template (optional)
-  summary: "Flux deployment alert in production cluster"
+    # Summary text included in notifications
+    summary: "Flux deployment alert in production cluster"
 ---
 # Separate alert for successful deployments (info level)
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-success
@@ -819,7 +835,7 @@ spec:
 ```yaml
 # webhook-provider.yaml
 # Send events to any HTTP endpoint (like OneUptime)
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: oneuptime-webhook
@@ -848,20 +864,21 @@ stringData:
 # Production-ready notification configuration
 ---
 # Slack provider for all notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack-deployments
   namespace: flux-system
 spec:
   type: slack
+  address: https://slack.com/api/chat.postMessage
   channel: deployments
   username: Flux Bot
   secretRef:
-    name: slack-webhook
+    name: slack-bot-token
 ---
 # GitHub status provider for commit status
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: github-status
@@ -873,16 +890,17 @@ spec:
     name: github-token
 ---
 # Alert for deployment failures
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-failures
   namespace: flux-system
 spec:
-  summary: "Deployment failed in {{ .metadata.namespace }}"
   providerRef:
     name: slack-deployments
   eventSeverity: error
+  eventMetadata:
+    summary: "Deployment failed"
   eventSources:
     - kind: Kustomization
       name: '*'
@@ -894,16 +912,17 @@ spec:
       name: '*'
 ---
 # Alert for deployment successes
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-success
   namespace: flux-system
 spec:
-  summary: "Deployment succeeded"
   providerRef:
     name: slack-deployments
   eventSeverity: info
+  eventMetadata:
+    summary: "Deployment succeeded"
   eventSources:
     - kind: Kustomization
       name: '*'
@@ -913,7 +932,7 @@ spec:
     - ".*Reconciliation finished.*"
 ---
 # GitHub commit status updates
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: github-commit-status
@@ -936,7 +955,7 @@ Monitor your Flux deployments alongside your application metrics in [OneUptime](
 ```yaml
 # oneuptime-provider.yaml
 # Send Flux events to OneUptime
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: oneuptime
@@ -953,9 +972,10 @@ metadata:
   name: oneuptime-secret
   namespace: flux-system
 stringData:
-  token: your-oneuptime-api-key
+  headers: |
+    Authorization: Bearer your-oneuptime-api-key
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: oneuptime-alerts
