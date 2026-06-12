@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenShift, BuildConfigs, CI/CD, Container, DevOps
 
-Description: Learn how OpenShift BuildConfigs work, how to configure source-to-image and Docker builds, trigger pipelines, and manage build history reliably.
+Description: Learn how OpenShift BuildConfigs work, how to configure source-to-image and Docker builds, trigger builds, and manage build history reliably.
 
 ---
 
@@ -15,7 +15,7 @@ OpenShift BuildConfigs turn source code into container images using the platform
 A BuildConfig defines:
 
 - The build strategy (Source-to-Image, Docker, or Custom)
-- The source location (Git, binary input, or an image stream)
+- The source location (Git, binary input, Dockerfile input, or additional image inputs)
 - Output image destination
 - Triggers to run builds automatically
 - History and retention settings
