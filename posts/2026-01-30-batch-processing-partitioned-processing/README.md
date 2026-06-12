@@ -128,7 +128,7 @@ public class RangePartitioner implements Partitioner {
 
 ### Hash-Based Partitioning
 
-Distribute records evenly using a hash function. Guarantees balanced partitions regardless of data distribution.
+Distribute records using a hash function. This often balances partitions better than simple ranges when IDs are sparse or unevenly distributed.
 
 ```java
 /**
@@ -136,7 +136,7 @@ Distribute records evenly using a hash function. Guarantees balanced partitions 
  * Records with ID % gridSize = N go to partition N.
  *
  * Best for: Datasets with non-sequential or unevenly distributed IDs.
- * Advantage: Guarantees even distribution across partitions.
+ * Advantage: Reduces skew when IDs are sparse or unevenly distributed.
  */
 public class HashPartitioner implements Partitioner {
 
@@ -145,7 +145,7 @@ public class HashPartitioner implements Partitioner {
         Map<String, ExecutionContext> partitions = new HashMap<>();
 
         // Each partition will process records where: record_id % gridSize = partitionIndex
-        // This ensures perfect distribution regardless of ID patterns
+        // This tends to spread records across partitions when IDs are not clustered by modulo value
         for (int i = 0; i < gridSize; i++) {
             ExecutionContext context = new ExecutionContext();
 
@@ -278,13 +278,14 @@ Spring Batch provides built-in support for partitioned processing with the `Part
  */
 @Configuration
 @EnableBatchProcessing
+@EnableJdbcJobRepository
 public class PartitionedJobConfig {
 
     @Autowired
-    private JobBuilderFactory jobBuilderFactory;
+    private JobRepository jobRepository;
 
     @Autowired
-    private StepBuilderFactory stepBuilderFactory;
+    private PlatformTransactionManager transactionManager;
 
     @Autowired
     private DataSource dataSource;
@@ -294,7 +295,7 @@ public class PartitionedJobConfig {
      */
     @Bean
     public Job partitionedJob() {
-        return jobBuilderFactory.get("partitionedOrderProcessingJob")
+        return new JobBuilder("partitionedOrderProcessingJob", jobRepository)
             .start(partitionedStep())
             .build();
     }
@@ -305,7 +306,7 @@ public class PartitionedJobConfig {
      */
     @Bean
     public Step partitionedStep() {
-        return stepBuilderFactory.get("partitionedStep")
+        return new StepBuilder("partitionedStep", jobRepository)
             .partitioner("workerStep", partitioner())  // Define how to split work
             .partitionHandler(partitionHandler())       // Define how to execute partitions
             .build();
@@ -360,8 +361,9 @@ public class PartitionedJobConfig {
      */
     @Bean
     public Step workerStep() {
-        return stepBuilderFactory.get("workerStep")
+        return new StepBuilder("workerStep", jobRepository)
             .<Order, ProcessedOrder>chunk(100)  // Process 100 records per transaction
+            .transactionManager(transactionManager)
             .reader(partitionedReader(null, null))
             .processor(orderProcessor())
             .writer(orderWriter())
@@ -490,13 +492,16 @@ For processing that exceeds a single machine's capacity, Spring Batch supports r
 @Configuration
 public class RemotePartitioningConfig {
 
+    @Autowired
+    private JobRepository jobRepository;
+
     /**
      * Manager step sends partition execution contexts to remote workers.
      * Uses MessageChannelPartitionHandler for message-based communication.
      */
     @Bean
     public Step managerStep() {
-        return stepBuilderFactory.get("managerStep")
+        return new StepBuilder("managerStep", jobRepository)
             .partitioner("workerStep", partitioner())
             .partitionHandler(messageChannelPartitionHandler())
             .build();
@@ -513,9 +518,11 @@ public class RemotePartitioningConfig {
         // Channel for sending partition requests to workers
         handler.setStepName("workerStep");
         handler.setGridSize(16);  // 16 partitions distributed across remote workers
+        handler.setJobRepository(jobRepository);
 
         // Messaging gateway for request/reply pattern
         handler.setMessagingOperations(messagingTemplate());
+        handler.setReplyChannel(replyChannel());
 
         return handler;
     }
@@ -544,8 +551,8 @@ public class RemotePartitioningConfig {
      * Inbound channel for partition results from workers.
      */
     @Bean
-    public DirectChannel replyChannel() {
-        return new DirectChannel();
+    public QueueChannel replyChannel() {
+        return new QueueChannel();
     }
 }
 
@@ -557,7 +564,10 @@ public class RemotePartitioningConfig {
 public class RemoteWorkerConfig {
 
     @Autowired
-    private StepBuilderFactory stepBuilderFactory;
+    private JobRepository jobRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     /**
      * StepExecutionRequestHandler processes partition requests from the manager.
@@ -567,7 +577,7 @@ public class RemoteWorkerConfig {
     @ServiceActivator(inputChannel = "requestChannel", outputChannel = "replyChannel")
     public StepExecutionRequestHandler stepExecutionRequestHandler() {
         StepExecutionRequestHandler handler = new StepExecutionRequestHandler();
-        handler.setJobExplorer(jobExplorer);
+        handler.setJobRepository(jobRepository);
         handler.setStepLocator(stepLocator());
         return handler;
     }
@@ -586,8 +596,9 @@ public class RemoteWorkerConfig {
      */
     @Bean
     public Step workerStep() {
-        return stepBuilderFactory.get("workerStep")
+        return new StepBuilder("workerStep", jobRepository)
             .<Order, ProcessedOrder>chunk(100)
+            .transactionManager(transactionManager)
             .reader(partitionedReader(null, null))
             .processor(orderProcessor())
             .writer(orderWriter())
@@ -997,7 +1008,7 @@ public class PartitionFailureHandler {
                         "Partition %d attempt %d failed, retrying in %dms: %s",
                         partitionId, attempts, retryDelayMs, e.getMessage()
                     ));
-                    Thread.sleep(retryDelayMs * attempts);  // Exponential backoff
+                    Thread.sleep(retryDelayMs * attempts);  // Linear backoff
                 } else {
                     // Non-transient failure or max retries exceeded
                     break;
@@ -1016,10 +1027,11 @@ public class PartitionFailureHandler {
      */
     private boolean isTransientFailure(Exception e) {
         // Network timeouts, database deadlocks, temporary unavailability
+        String message = e.getMessage() != null ? e.getMessage().toLowerCase(Locale.ROOT) : "";
         return e instanceof java.net.SocketTimeoutException
             || e instanceof java.sql.SQLTransientException
-            || e.getMessage().contains("deadlock")
-            || e.getMessage().contains("connection reset");
+            || message.contains("deadlock")
+            || message.contains("connection reset");
     }
 
     /**
@@ -1085,6 +1097,8 @@ public class PartitionMetricsCollector {
 
     private final MeterRegistry meterRegistry;
     private final Map<Integer, Timer.Sample> partitionTimers = new ConcurrentHashMap<>();
+    private final Set<String> activePartitionGauges = ConcurrentHashMap.newKeySet();
+    private final Map<String, AtomicInteger> partitionProgress = new ConcurrentHashMap<>();
 
     public PartitionMetricsCollector(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
@@ -1098,10 +1112,12 @@ public class PartitionMetricsCollector {
         Timer.Sample sample = Timer.start(meterRegistry);
         partitionTimers.put(partitionId, sample);
 
-        // Track active partitions gauge
-        Gauge.builder("batch.partitions.active", partitionTimers, Map::size)
-            .tag("job", jobName)
-            .register(meterRegistry);
+        // Track active partitions gauge once per job tag set
+        if (activePartitionGauges.add(jobName)) {
+            Gauge.builder("batch.partitions.active", partitionTimers, Map::size)
+                .tag("job", jobName)
+                .register(meterRegistry);
+        }
     }
 
     /**
@@ -1151,10 +1167,17 @@ public class PartitionMetricsCollector {
             ? (double) processedRecords / totalRecords * 100
             : 0;
 
-        Gauge.builder("batch.partition.progress", () -> progressPercent)
-            .tag("job", jobName)
-            .tag("partition", String.valueOf(partitionId))
-            .register(meterRegistry);
+        String gaugeKey = jobName + ":" + partitionId;
+        AtomicInteger progressGauge = partitionProgress.computeIfAbsent(gaugeKey, key -> {
+            AtomicInteger gauge = new AtomicInteger(0);
+            Gauge.builder("batch.partition.progress", gauge, AtomicInteger::get)
+                .tag("job", jobName)
+                .tag("partition", String.valueOf(partitionId))
+                .register(meterRegistry);
+            return gauge;
+        });
+
+        progressGauge.set((int) Math.round(progressPercent));
     }
 }
 
