@@ -273,15 +273,17 @@ data:
         metricsQuery: 'rate(<<.Series>>{<<.LabelMatchers>>}[2m])'
 
       # Queue depth metric
-      - seriesQuery: 'rabbitmq_queue_messages{namespace!=""}'
+      - seriesQuery: 'rabbitmq_queue_messages{namespace!="",service!=""}'
         resources:
           overrides:
             namespace:
               resource: namespace
+            service:
+              resource: service
         name:
           matches: "^(.*)$"
           as: "queue_messages_ready"
-        metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (namespace)'
+        metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (namespace, service)'
 
       # Response latency percentile
       - seriesQuery: 'http_request_duration_seconds_bucket{namespace!="",pod!=""}'
@@ -294,7 +296,7 @@ data:
         name:
           matches: "^(.*)_bucket$"
           as: "${1}_p99"
-        metricsQuery: 'histogram_quantile(0.99, rate(<<.Series>>{<<.LabelMatchers>>}[5m]))'
+        metricsQuery: 'histogram_quantile(0.99, sum(rate(<<.Series>>{<<.LabelMatchers>>}[5m])) by (le, namespace, pod))'
 ```
 
 ## Vertical Pod Autoscaler (VPA)
@@ -357,12 +359,13 @@ spec:
 
   # Update policy determines how VPA applies recommendations
   updatePolicy:
-    # Options: "Off", "Initial", "Recreate", "Auto"
+    # Options: "Off", "Initial", "Recreate", "InPlaceOrRecreate", "InPlace"
     # - Off: VPA only provides recommendations, no automatic updates
     # - Initial: VPA only assigns resources on pod creation
     # - Recreate: VPA evicts pods to apply new resources
-    # - Auto: VPA updates resources using available mechanisms
-    updateMode: "Auto"
+    # - InPlaceOrRecreate: VPA updates resources in place when possible, otherwise evicts pods
+    # - InPlace: VPA only updates resources in place (requires VPA and Kubernetes feature gates)
+    updateMode: "Recreate"
 
   # Resource policy to control VPA behavior per container
   resourcePolicy:
@@ -612,8 +615,8 @@ spec:
       metadata:
         # Queue name to monitor
         queueName: tasks-queue
-        # Host URL with credentials reference
-        host: amqp://guest:guest@rabbitmq.messaging:5672/
+        # Protocol used to connect to RabbitMQ; host is provided by TriggerAuthentication below
+        protocol: amqp
         # Mode: QueueLength or MessageRate
         mode: QueueLength
         # Target queue length per replica
@@ -622,6 +625,8 @@ spec:
         activationValue: "5"
         # Virtual host
         vhostName: /
+      authenticationRef:
+        name: rabbitmq-auth
 
 ---
 # TriggerAuthentication for RabbitMQ credentials
@@ -741,8 +746,8 @@ spec:
     - type: cron
       metadata:
         timezone: America/New_York
-        start: "0 0 * * 0,6"
-        end: "0 23 * * 0,6"
+        start: "0 0 * * 6"
+        end: "0 0 * * 1"
         desiredReplicas: "5"
 
     # Also scale based on actual CPU usage
@@ -936,7 +941,6 @@ spec:
 
   pollingInterval: 15
   cooldownPeriod: 300
-  idleReplicaCount: 1
   minReplicaCount: 2
   maxReplicaCount: 100
 
@@ -1019,9 +1023,15 @@ spec:
           expr: |
             abs(
               kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target{resource="cpu"}
-              - on(namespace, target_name)
-              kube_pod_container_resource_requests{resource="cpu"}
-            ) / kube_pod_container_resource_requests{resource="cpu"} > 0.5
+              - on(namespace, container) group_left(verticalpodautoscaler)
+              avg by (namespace, container) (
+                kube_pod_container_resource_requests{resource="cpu"}
+              )
+            )
+            / on(namespace, container) group_left(verticalpodautoscaler)
+              avg by (namespace, container) (
+                kube_pod_container_resource_requests{resource="cpu"}
+              ) > 0.5
           for: 1h
           labels:
             severity: info
@@ -1032,7 +1042,7 @@ spec:
         # Alert when KEDA scaler fails
         - alert: KEDAScalerError
           expr: |
-            keda_scaler_errors_total > 0
+            increase(keda_scaler_detail_errors_total[5m]) > 0
           for: 5m
           labels:
             severity: critical
