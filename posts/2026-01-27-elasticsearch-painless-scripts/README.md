@@ -145,7 +145,7 @@ text.toUpperCase();          // "HELLO WORLD"
 text.substring(0, 5);        // "Hello"
 text.contains("World");      // true
 text.replace("World", "ES"); // "Hello ES"
-text.split(" ");             // ["Hello", "World"]
+text.splitOnToken(" ");      // ["Hello", "World"]
 
 // Math operations
 Math.abs(-5);                // 5
@@ -156,7 +156,10 @@ Math.sqrt(16);               // 4.0
 Math.round(3.7);             // 4
 
 // Date/time operations
-def now = Instant.now();
+def now = ZonedDateTime.ofInstant(
+    Instant.ofEpochMilli(params.now),
+    ZoneId.of('Z')
+);
 def timestamp = doc['created_at'].value;
 def daysDiff = ChronoUnit.DAYS.between(timestamp, now);
 ```
@@ -207,10 +210,7 @@ Runtime fields are computed at query time and can be used like regular fields.
         "source": """
           // Extract day of week from timestamp
           // Returns: MONDAY, TUESDAY, etc.
-          emit(doc['timestamp'].value.dayOfWeekEnum.getDisplayName(
-            TextStyle.FULL,
-            Locale.ROOT
-          ));
+          emit(doc['timestamp'].value.dayOfWeekEnum.toString());
         """
       }
     },
@@ -479,7 +479,7 @@ POST /orders/_update_by_query
       // 'delete' - remove the document
 
       def orderDate = ZonedDateTime.parse(ctx._source.order_date);
-      def now = ZonedDateTime.now();
+      def now = ZonedDateTime.parse(params.now);
       def daysSinceOrder = ChronoUnit.DAYS.between(orderDate, now);
 
       if (daysSinceOrder > 30) {
@@ -494,7 +494,10 @@ POST /orders/_update_by_query
         // Skip recent orders - no modification needed
         ctx.op = 'noop';
       }
-    """
+    """,
+    "params": {
+      "now": "2026-01-27T00:00:00Z"
+    }
   }
 }
 ```
@@ -517,9 +520,9 @@ POST /logs/_update_by_query
       // Example: "user=john action=login ip=192.168.1.1"
       Map parsed = new HashMap();
 
-      for (String part : raw.split(' ')) {
+      for (String part : raw.splitOnToken(' ')) {
         if (part.contains('=')) {
-          String[] kv = part.split('=', 2);
+          String[] kv = part.splitOnToken('=', 2);
           if (kv.length == 2) {
             parsed.put(kv[0], kv[1]);
           }
@@ -626,7 +629,7 @@ PUT _ingest/pipeline/enrich-logs
           // Extract service name from host pattern
           // Example: "web-server-prod-01" -> "web-server"
           if (ctx.containsKey('host')) {
-            def parts = ctx.host.split('-');
+            def parts = ctx.host.splitOnToken('-');
             if (parts.length >= 2) {
               ctx.service = parts[0] + '-' + parts[1];
             }
@@ -733,11 +736,11 @@ def value = doc.containsKey('field') && doc['field'].size() > 0
 ### Cluster Settings for Script Security
 
 ```json
-// Disable dynamic scripting if not needed (elasticsearch.yml)
+// Disable scripts if not needed (elasticsearch.yml)
 // script.allowed_types: none
 
 // Or restrict to specific contexts
-// script.allowed_contexts: search, update
+// script.allowed_contexts: score, update
 
 // Limit compilation rate to prevent DoS
 PUT _cluster/settings
@@ -789,7 +792,7 @@ PUT _scripts/calculate-discount
 
 ```java
 // SLOW: Regex on every document
-// Pattern compilation is expensive
+// Regex matching can be expensive in frequently run scripts
 if (doc['field'].value =~ /complex.*pattern/) {
     // ...
 }
@@ -855,8 +858,8 @@ if (value > 10) {
     "debug_output": {
       "script": {
         "source": """
-          // Debug.explain() returns detailed info about a value
-          // Useful for understanding types and content
+          // Debug.explain() throws an informative exception
+          // Useful for understanding types and content during debugging
           def value = doc['complex_field'];
           Debug.explain(value);
         """
@@ -1047,7 +1050,7 @@ POST /users/_update_by_query
 
       // 1. Normalize name fields
       if (ctx._source.containsKey('name')) {
-        def nameParts = ctx._source.name.split(' ', 2);
+        def nameParts = ctx._source.name.splitOnToken(' ', 2);
         ctx._source.first_name = nameParts[0];
         ctx._source.last_name = nameParts.length > 1 ? nameParts[1] : '';
         ctx._source.remove('name');
