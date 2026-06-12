@@ -62,11 +62,12 @@ chmod 400 private/ca.key.pem
 # -x509: Output a self-signed certificate instead of a certificate request
 # -days 3650: Certificate valid for 10 years
 # -sha256: Use SHA-256 for the certificate signature
-openssl req -config openssl.cnf \
-    -key private/ca.key.pem \
+openssl req -key private/ca.key.pem \
     -new -x509 -days 3650 -sha256 \
-    -extensions v3_ca \
     -out certs/ca.cert.pem \
+    -addext "basicConstraints=critical,CA:TRUE,pathlen:1" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
+    -addext "subjectKeyIdentifier=hash" \
     -subj "/C=US/ST=California/L=San Francisco/O=MyOrg/OU=IT/CN=MyOrg Root CA"
 
 # Verify the CA certificate
@@ -83,8 +84,10 @@ openssl x509 -noout -text -in certs/ca.cert.pem
 SERVER_NAME="${1:-rabbitmq}"
 DAYS_VALID="${2:-365}"
 
+mkdir -p server
+
 # Create server private key
-# No encryption (-nodes) for server keys to allow automatic startup
+# No encryption for server keys to allow automatic startup
 openssl genrsa -out server/${SERVER_NAME}.key.pem 2048
 chmod 400 server/${SERVER_NAME}.key.pem
 
@@ -177,56 +180,62 @@ echo "Client certificate created: client/${CLIENT_NAME}.cert.pem"
 
 ## TLS Configuration in RabbitMQ
 
-RabbitMQ uses an Erlang-style configuration file. Here is how to configure TLS.
+RabbitMQ uses a sysctl-style `rabbitmq.conf` file for most configuration. Here is how to configure TLS.
 
 ### Basic TLS Configuration
 
-```erlang
-%% rabbitmq.conf (new-style configuration)
-%% This is the recommended configuration format for RabbitMQ 3.7+
+```ini
+# rabbitmq.conf (new-style configuration)
+# This is the recommended configuration format for RabbitMQ 3.7+
 
-%% ===================
-%% TLS/SSL Configuration
-%% ===================
+# ===================
+# TLS/SSL Configuration
+# ===================
 
-%% Enable TLS on the default AMQP port (5671 is standard for AMQPS)
+# Enable TLS on the default AMQP port (5671 is standard for AMQPS)
 listeners.ssl.default = 5671
 
-%% Disable non-TLS connections entirely for security
-%% Comment this out if you need to support legacy clients
+# Disable non-TLS connections entirely for security
+# Comment this out if you need to support legacy clients
 listeners.tcp = none
 
-%% Path to the CA certificate bundle
-%% This is used to verify client certificates when mutual TLS is enabled
+# Path to the CA certificate bundle
+# This is used to verify client certificates when mutual TLS is enabled
 ssl_options.cacertfile = /etc/rabbitmq/certs/ca.cert.pem
 
-%% Path to the server certificate
+# Path to the server certificate
 ssl_options.certfile = /etc/rabbitmq/certs/server.cert.pem
 
-%% Path to the server private key
+# Path to the server private key
 ssl_options.keyfile = /etc/rabbitmq/certs/server.key.pem
 
-%% Require clients to present a valid certificate (mutual TLS)
-%% Options: verify_none, verify_peer
+# Require clients to present a valid certificate (mutual TLS)
+# Options: verify_none, verify_peer
 ssl_options.verify = verify_peer
 
-%% Fail if client doesn't present a certificate
+# Fail if client doesn't present a certificate
 ssl_options.fail_if_no_peer_cert = true
 
-%% Minimum TLS version - TLS 1.2 is the minimum for security compliance
+# Minimum TLS version - TLS 1.2 is the minimum for security compliance
 ssl_options.versions.1 = tlsv1.2
 ssl_options.versions.2 = tlsv1.3
 
-%% Cipher suites - only allow strong ciphers
-%% These are the recommended ciphers for TLS 1.2
+# Cipher suites - only allow strong ciphers
+# These are the recommended ciphers for TLS 1.2
 ssl_options.ciphers.1 = ECDHE-ECDSA-AES256-GCM-SHA384
 ssl_options.ciphers.2 = ECDHE-RSA-AES256-GCM-SHA384
 ssl_options.ciphers.3 = ECDHE-ECDSA-AES128-GCM-SHA256
 ssl_options.ciphers.4 = ECDHE-RSA-AES128-GCM-SHA256
 
-%% Honor server cipher order (server chooses the cipher)
+# Honor server cipher order (server chooses the cipher)
 ssl_options.honor_cipher_order = true
 ssl_options.honor_ecc_order = true
+
+# Enable HTTPS for the Management UI/API on port 15671
+management.ssl.port       = 15671
+management.ssl.cacertfile = /etc/rabbitmq/certs/ca.cert.pem
+management.ssl.certfile   = /etc/rabbitmq/certs/server.cert.pem
+management.ssl.keyfile    = /etc/rabbitmq/certs/server.key.pem
 ```
 
 ### Advanced Configuration with Environment File
@@ -236,13 +245,13 @@ ssl_options.honor_ecc_order = true
 # Environment variables for RabbitMQ startup
 
 # Node name for clustering
-RABBITMQ_NODENAME=rabbit@hostname
+NODENAME=rabbit@hostname
 
 # Configuration file location
-RABBITMQ_CONFIG_FILE=/etc/rabbitmq/rabbitmq
+CONFIG_FILE=/etc/rabbitmq/rabbitmq.conf
 
 # Enable detailed TLS logging for debugging
-RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-rabbit ssl_options [{log_level,debug}]"
+SERVER_ADDITIONAL_ERL_ARGS="-rabbit ssl_options [{log_level,debug}]"
 ```
 
 ### Docker Compose with TLS
@@ -255,7 +264,7 @@ version: '3.8'
 
 services:
   rabbitmq:
-    image: rabbitmq:3.12-management
+    image: rabbitmq:4.3-management
     hostname: rabbitmq
     ports:
       # AMQPS (TLS-enabled AMQP)
@@ -304,21 +313,24 @@ sequenceDiagram
 
 ### RabbitMQ Configuration for mTLS
 
-```erlang
-%% rabbitmq.conf
-%% Configuration for mutual TLS authentication
+```ini
+# rabbitmq.conf
+# Configuration for mutual TLS authentication
 
-%% Require client certificates
+# Require client certificates
 ssl_options.verify = verify_peer
 ssl_options.fail_if_no_peer_cert = true
 
-%% Extract username from certificate CN (Common Name)
-%% This allows certificate-based authentication without passwords
+# Enable the rabbitmq_auth_mechanism_ssl plugin before using EXTERNAL:
+# rabbitmq-plugins enable rabbitmq_auth_mechanism_ssl
+#
+# Extract username from certificate CN (Common Name).
+# The RabbitMQ user must still exist and have permissions.
 auth_mechanisms.1 = EXTERNAL
 auth_mechanisms.2 = PLAIN
 
-%% SSL certificate authentication backend
-%% Maps certificate CN to RabbitMQ username
+# SSL certificate authentication backend
+# Maps certificate CN to RabbitMQ username
 ssl_cert_login_from = common_name
 ```
 
@@ -555,11 +567,12 @@ flowchart TB
 
 ### Inter-Node TLS Configuration
 
-```erlang
-%% rabbitmq.conf
-%% Inter-node (clustering) TLS configuration
+```ini
+# rabbitmq.conf
+# Inter-node (clustering) TLS configuration
 
-%% Enable TLS for Erlang distribution (inter-node communication)
+# Cluster formation is configured in rabbitmq.conf; TLS for Erlang distribution
+# is enabled with runtime flags in rabbitmq-env.conf below.
 cluster_formation.peer_discovery_backend = rabbit_peer_discovery_classic_config
 cluster_formation.classic_config.nodes.1 = rabbit@node1
 cluster_formation.classic_config.nodes.2 = rabbit@node2
@@ -609,12 +622,13 @@ cluster_formation.classic_config.nodes.3 = rabbit@node3
 # /etc/rabbitmq/rabbitmq-env.conf
 # Enable inter-node TLS
 
-# Tell Erlang to use TLS for distribution
-RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-proto_dist inet_tls"
+# Tell Erlang to use TLS for distribution and load the SSL application path.
+# ERL_SSL_PATH is system dependent; verify it for your Erlang installation.
+ERL_SSL_PATH="/usr/lib64/erlang/lib/ssl-9.4/ebin"
 
-# Path to the inter-node TLS configuration
-RABBITMQ_CTL_ERL_ARGS="-proto_dist inet_tls -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"
-RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-proto_dist inet_tls -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"
+# Path to the inter-node TLS configuration.
+SERVER_ADDITIONAL_ERL_ARGS="-pa $ERL_SSL_PATH -proto_dist inet_tls -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"
+RABBITMQ_CTL_ERL_ARGS="-pa $ERL_SSL_PATH -proto_dist inet_tls -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"
 ```
 
 ### Kubernetes StatefulSet with Inter-Node TLS
@@ -640,8 +654,10 @@ spec:
     spec:
       containers:
         - name: rabbitmq
-          image: rabbitmq:3.12-management
+          image: rabbitmq:4.3-management
           ports:
+            - containerPort: 4369
+              name: epmd
             - containerPort: 5671
               name: amqps
             - containerPort: 15671
@@ -649,12 +665,22 @@ spec:
             - containerPort: 25672
               name: clustering
           env:
-            - name: RABBITMQ_USE_LONGNAME
-              value: "true"
-            - name: RABBITMQ_NODENAME
+            - name: POD_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: RABBITMQ_USE_LONGNAME
+              value: "true"
+            - name: RABBITMQ_NODENAME
+              value: "rabbit@$(POD_NAME).rabbitmq-headless.$(POD_NAMESPACE).svc.cluster.local"
+            - name: RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS
+              value: "-proto_dist inet_tls -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"
+            - name: RABBITMQ_CTL_ERL_ARGS
+              value: "-proto_dist inet_tls -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"
           volumeMounts:
             - name: config
               mountPath: /etc/rabbitmq
@@ -679,8 +705,12 @@ spec:
   selector:
     app: rabbitmq
   ports:
+    - port: 4369
+      name: epmd
     - port: 5671
       name: amqps
+    - port: 15671
+      name: management
     - port: 25672
       name: clustering
 ```
