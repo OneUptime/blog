@@ -8,11 +8,11 @@ Description: Learn how to extend ArgoCD with custom Config Management Plugins (C
 
 ---
 
-ArgoCD supports Helm, Kustomize, and plain YAML out of the box. But what if you need to use Jsonnet, cue, or a custom templating tool? Config Management Plugins (CMPs) let you extend ArgoCD to generate Kubernetes manifests from any source format.
+ArgoCD supports Helm, Kustomize, Jsonnet, and plain YAML out of the box. But what if you need to use cue, Helm with SOPS, or a custom templating tool? Config Management Plugins (CMPs) let you extend ArgoCD to generate Kubernetes manifests from any source format.
 
 ## What Are Config Management Plugins?
 
-Config Management Plugins are sidecar containers that ArgoCD uses to generate Kubernetes manifests. When ArgoCD encounters a repository that matches a plugin's discovery rules, it delegates manifest generation to that plugin.
+Config Management Plugins are configured in sidecar containers that ArgoCD uses to generate Kubernetes manifests. When ArgoCD encounters a repository that matches a plugin's discovery rules, it delegates manifest generation to that plugin.
 
 ```mermaid
 flowchart LR
@@ -34,7 +34,7 @@ flowchart LR
 
 ## CMP Architecture
 
-The modern CMP architecture (ArgoCD 2.4+) uses sidecar containers instead of the legacy ConfigMap-based approach. Each plugin runs as a separate container alongside the repo-server.
+The modern CMP architecture (ArgoCD 2.4+) uses sidecar containers instead of the legacy `argocd-cm` plugin approach. Each plugin runs as a separate container alongside the repo-server.
 
 ```mermaid
 flowchart TB
@@ -58,11 +58,11 @@ flowchart TB
 
 ## Creating Your First CMP
 
-Let me walk you through creating a simple CMP that processes Jsonnet files.
+Let me walk you through creating a simple CMP that processes Jsonnet files with custom tooling.
 
 ### Step 1: Define the Plugin Configuration
 
-Create a ConfigMap that contains your plugin configuration. This file tells ArgoCD how to discover and run your plugin.
+Create a plugin configuration file. This file tells ArgoCD how to discover and run your plugin. The `ConfigManagementPlugin` document looks like a Kubernetes object, but for sidecar plugins it is a file mounted or baked into the sidecar at `/home/argocd/cmp-server/config/plugin.yaml`, not a Kubernetes CRD to apply directly.
 
 ```yaml
 # plugin.yaml
@@ -80,7 +80,7 @@ spec:
     args:
       - |
         echo "Initializing Jsonnet plugin..."
-        jsonnet-bundler install
+        jb install
 
   # Generate produces Kubernetes manifests
   generate:
@@ -96,16 +96,11 @@ spec:
     find:
       glob: "**/main.jsonnet"
 
-  # Allow concurrent processing
-  allowConcurrency: true
-
-  # Lock repo during generation
-  lockRepo: false
 ```
 
 ### Step 2: Build the Sidecar Container
 
-Create a Dockerfile for your CMP sidecar. The container must include the argocd-cmp-server binary and your tools.
+Create a Dockerfile for your CMP sidecar. The container must include your tools. The sidecar will use the `argocd-cmp-server` binary mounted by the repo-server pod.
 
 ```dockerfile
 # Dockerfile
@@ -137,9 +132,6 @@ COPY --from=builder /go/bin/jsonnet /usr/local/bin/
 COPY --from=builder /go/bin/jsonnetfmt /usr/local/bin/
 COPY --from=builder /go/bin/jb /usr/local/bin/
 
-# Copy argocd-cmp-server from ArgoCD image
-COPY --from=quay.io/argoproj/argocd:v2.9.3 /usr/local/bin/argocd-cmp-server /usr/local/bin/
-
 # Copy plugin configuration
 COPY plugin.yaml /home/argocd/cmp-server/config/plugin.yaml
 
@@ -150,8 +142,7 @@ USER 999
 # Set working directory
 WORKDIR /home/argocd
 
-# Entry point
-ENTRYPOINT ["/usr/local/bin/argocd-cmp-server"]
+# The Deployment sets the argocd-cmp-server command from /var/run/argocd.
 ```
 
 Build and push the image.
@@ -176,17 +167,10 @@ spec:
   template:
     spec:
       containers:
-        # Existing repo-server container
-        - name: argocd-repo-server
-          volumeMounts:
-            - name: cmp-plugins
-              mountPath: /home/argocd/cmp-server/plugins
-            - name: cmp-tmp
-              mountPath: /tmp
-
         # Jsonnet CMP sidecar
         - name: cmp-jsonnet
           image: myregistry/argocd-jsonnet-cmp:v1.0.0
+          command: ["/var/run/argocd/argocd-cmp-server"]
           securityContext:
             runAsNonRoot: true
             runAsUser: 999
@@ -202,13 +186,7 @@ spec:
               value: /tmp
 
       volumes:
-        - name: cmp-plugins
-          emptyDir: {}
         - name: cmp-tmp
-          emptyDir: {}
-        - name: var-files
-          emptyDir: {}
-        - name: plugins
           emptyDir: {}
 ```
 
@@ -298,14 +276,13 @@ RUN curl -sL https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.
 # Install helm-secrets plugin
 RUN helm plugin install https://github.com/jkroepke/helm-secrets
 
-COPY --from=quay.io/argoproj/argocd:v2.9.3 /usr/local/bin/argocd-cmp-server /usr/local/bin/
 COPY plugin.yaml /home/argocd/cmp-server/config/plugin.yaml
 
 RUN adduser -D -u 999 argocd
 USER 999
 WORKDIR /home/argocd
 
-ENTRYPOINT ["/usr/local/bin/argocd-cmp-server"]
+# The Deployment sets the argocd-cmp-server command from /var/run/argocd.
 ```
 
 ### Kustomize with Environment Variables
@@ -335,8 +312,7 @@ spec:
 
   discover:
     find:
-      glob: "**/kustomization.yaml"
-    fileName: ".use-envsubst"
+      command: [sh, -c, 'test -f .use-envsubst && find . -name kustomization.yaml -print -quit']
 
   parameters:
     static:
@@ -344,6 +320,7 @@ spec:
         title: Environment
         tooltip: Target environment (dev, staging, prod)
         required: true
+        string: "dev"
 ```
 
 ### CUE Language Support
@@ -385,7 +362,7 @@ spec:
       - name: environment
         title: Environment
         required: false
-        default: "production"
+        string: "production"
 ```
 
 ## Using CMP Parameters
@@ -404,7 +381,7 @@ spec:
         title: Release Name
         tooltip: Helm release name
         required: false
-        default: "$ARGOCD_APP_NAME"
+        string: "$ARGOCD_APP_NAME"
       - name: values-file
         title: Values File
         required: false
@@ -448,7 +425,7 @@ spec:
     path: deploy
     targetRevision: HEAD
     plugin:
-      name: helm-secrets
+      name: helm-secrets-v1.0
       env:
         - name: ENVIRONMENT
           value: production
@@ -485,9 +462,9 @@ generate:
   command: [sh, -c]
   args:
     - |
-      echo "Generating manifests for $ARGOCD_APP_NAME"
-      echo "Namespace: $ARGOCD_APP_NAMESPACE"
-      echo "Revision: $ARGOCD_APP_REVISION"
+      echo "Generating manifests for $ARGOCD_APP_NAME" >&2
+      echo "Namespace: $ARGOCD_APP_NAMESPACE" >&2
+      echo "Revision: $ARGOCD_APP_REVISION" >&2
 
       helm template "$ARGOCD_APP_NAME" . \
         --namespace "$ARGOCD_APP_NAMESPACE" \
@@ -502,12 +479,9 @@ For production deployments, use Helm to manage your ArgoCD installation with CMP
 # argocd-values.yaml
 repoServer:
   volumes:
-    - name: cmp-jsonnet
+    - name: argocd-cmp-cm
       configMap:
-        name: cmp-jsonnet-plugin
-    - name: cmp-helm-secrets
-      configMap:
-        name: cmp-helm-secrets-plugin
+        name: argocd-cmp-cm
     - name: cmp-tmp
       emptyDir: {}
     - name: gnupg-home
@@ -520,6 +494,7 @@ repoServer:
     # Jsonnet CMP
     - name: cmp-jsonnet
       image: myregistry/argocd-jsonnet-cmp:v1.0.0
+      command: ["/var/run/argocd/argocd-cmp-server"]
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
@@ -530,13 +505,14 @@ repoServer:
           mountPath: /home/argocd/cmp-server/plugins
         - name: cmp-tmp
           mountPath: /tmp
-        - name: cmp-jsonnet
+        - name: argocd-cmp-cm
           mountPath: /home/argocd/cmp-server/config/plugin.yaml
-          subPath: plugin.yaml
+          subPath: jsonnet.yaml
 
     # Helm Secrets CMP
     - name: cmp-helm-secrets
       image: myregistry/argocd-helm-secrets-cmp:v1.0.0
+      command: ["/var/run/argocd/argocd-cmp-server"]
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
@@ -551,9 +527,9 @@ repoServer:
           mountPath: /home/argocd/.gnupg
         - name: sops-age
           mountPath: /home/argocd/.config/sops/age
-        - name: cmp-helm-secrets
+        - name: argocd-cmp-cm
           mountPath: /home/argocd/cmp-server/config/plugin.yaml
-          subPath: plugin.yaml
+          subPath: helm-secrets.yaml
       env:
         - name: SOPS_AGE_KEY_FILE
           value: /home/argocd/.config/sops/age/keys.txt
@@ -565,13 +541,36 @@ configs:
       jsonnet:
         init:
           command: [sh, -c]
-          args: ["jsonnet-bundler install"]
+          args: ["jb install"]
         generate:
           command: [sh, -c]
           args: ["jsonnet -J vendor main.jsonnet"]
         discover:
           find:
             glob: "**/main.jsonnet"
+      helm-secrets:
+        init:
+          command: [sh, -c]
+          args: ["helm dependency build"]
+        generate:
+          command: [sh, -c]
+          args:
+            - |
+              for f in secrets.*.yaml; do
+                if [ -f "$f" ]; then
+                  sops -d "$f" > "decrypted-$f"
+                fi
+              done
+              HELM_CMD="helm template $ARGOCD_APP_NAME . --namespace $ARGOCD_APP_NAMESPACE"
+              for f in values.yaml values-*.yaml decrypted-secrets.*.yaml; do
+                if [ -f "$f" ]; then
+                  HELM_CMD="$HELM_CMD -f $f"
+                fi
+              done
+              eval $HELM_CMD
+        discover:
+          find:
+            glob: "**/secrets.*.yaml"
 ```
 
 Install ArgoCD with the custom values.
