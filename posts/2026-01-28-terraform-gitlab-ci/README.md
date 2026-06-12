@@ -84,21 +84,27 @@ Show Terraform plans in merge requests for review.
 ```yaml
 plan-mr:
   stage: plan
+  before_script:
+    - apk --no-cache add jq
+    - cd ${TF_ROOT}
+    - terraform init
   script:
     - terraform plan -out=tfplan
     # Generate plan output for MR comment
     - terraform show -no-color tfplan > plan.txt
+    - terraform show -json tfplan | jq -r '([.resource_changes[]?.change.actions?]|flatten)|{"create":(map(select(.=="create"))|length),"update":(map(select(.=="update"))|length),"delete":(map(select(.=="delete"))|length)}' > tfplan.json
   artifacts:
     paths:
       - ${TF_ROOT}/tfplan
       - ${TF_ROOT}/plan.txt
+      - ${TF_ROOT}/tfplan.json
     reports:
-      terraform: ${TF_ROOT}/tfplan
+      terraform: ${TF_ROOT}/tfplan.json
   rules:
     - if: $CI_MERGE_REQUEST_IID
 ```
 
-GitLab displays the plan diff directly in the merge request when using the Terraform report.
+GitLab displays the plan summary directly in the merge request when using the Terraform report.
 
 ## State Management
 
@@ -132,7 +138,7 @@ before_script:
       -backend-config="unlock_method=DELETE"
 ```
 
-For external state storage (S3, GCS):
+For external state storage like S3:
 
 ```yaml
 variables:
@@ -154,9 +160,6 @@ Handle cloud credentials securely.
 
 ```yaml
 variables:
-  # AWS credentials from CI variables
-  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
   AWS_DEFAULT_REGION: us-east-1
 
 # Or use OIDC for keyless authentication
@@ -168,13 +171,14 @@ plan:
   script:
     # Exchange OIDC token for AWS credentials
     - |
-      export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
-        $(aws sts assume-role-with-web-identity \
-          --role-arn ${AWS_ROLE_ARN} \
-          --role-session-name "gitlab-${CI_JOB_ID}" \
-          --web-identity-token ${AWS_OIDC_TOKEN} \
-          --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
-          --output text))
+      aws_sts_output=$(aws sts assume-role-with-web-identity \
+        --role-arn ${AWS_ROLE_ARN} \
+        --role-session-name "gitlab-${CI_JOB_ID}" \
+        --web-identity-token ${AWS_OIDC_TOKEN} \
+        --duration-seconds 3600 \
+        --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+        --output text)
+      export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" ${aws_sts_output})
     - terraform plan -out=tfplan
 ```
 
@@ -262,8 +266,8 @@ tfsec:
   script:
     - tfsec ${TF_ROOT} --format json --out tfsec-report.json
   artifacts:
-    reports:
-      sast: tfsec-report.json
+    paths:
+      - tfsec-report.json
   allow_failure: true
 
 checkov:
@@ -323,17 +327,20 @@ Detect infrastructure drift with scheduled pipelines.
 drift-check:
   stage: plan
   script:
-    - terraform plan -detailed-exitcode -out=tfplan
+    - |
+      set +e
+      terraform plan -detailed-exitcode -out=tfplan
+      exit_code=$?
+      set -e
+      if [ "$exit_code" -eq 2 ]; then
+        curl -X POST "${SLACK_WEBHOOK}" \
+          -H "Content-Type: application/json" \
+          -d "{\"text\":\"Infrastructure drift detected in ${CI_PROJECT_NAME}\"}"
+        exit 0
+      fi
+      exit "$exit_code"
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
-  after_script:
-    # Alert if drift detected (exit code 2)
-    - |
-      if [ $CI_JOB_STATUS == "failed" ]; then
-        curl -X POST ${SLACK_WEBHOOK} \
-          -H "Content-Type: application/json" \
-          -d '{"text":"Infrastructure drift detected in '${CI_PROJECT_NAME}'"}'
-      fi
 ```
 
 Schedule this job to run daily to catch manual changes.
@@ -407,6 +414,7 @@ cache:
 
 .terraform-init:
   before_script:
+    - apk --no-cache add jq
     - cd ${TF_ROOT}
     - |
       terraform init \
@@ -438,7 +446,7 @@ plan:
   stage: plan
   script:
     - terraform plan -out=tfplan
-    - terraform show -json tfplan > tfplan.json
+    - terraform show -json tfplan | jq -r '([.resource_changes[]?.change.actions?]|flatten)|{"create":(map(select(.=="create"))|length),"update":(map(select(.=="update"))|length),"delete":(map(select(.=="delete"))|length)}' > tfplan.json
   artifacts:
     paths:
       - ${TF_ROOT}/tfplan
@@ -474,8 +482,6 @@ destroy:
   rules:
     - if: $CI_MERGE_REQUEST_IID
       when: manual
-  variables:
-    GIT_STRATEGY: none
 ```
 
 ---
