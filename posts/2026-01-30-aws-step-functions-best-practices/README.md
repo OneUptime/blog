@@ -25,8 +25,8 @@ flowchart LR
 Step Functions execute state machines. Each state performs work (Task), makes decisions (Choice), waits (Wait), runs states in parallel (Parallel), iterates over arrays (Map), or handles success/failure (Succeed/Fail). The service tracks execution history, handles retries, and provides built-in observability.
 
 Two execution types exist:
-- **Standard**: Exactly-once execution, up to one year duration, full execution history, priced per state transition
-- **Express**: At-least-once execution, up to five minutes duration, no persistent history, priced per execution and duration
+- **Standard**: Exactly-once execution, up to one year duration, execution history available for up to 90 days after completion, priced per state transition
+- **Express**: Asynchronous Express uses at-least-once execution and Synchronous Express uses at-most-once execution, up to five minutes duration, no Step Functions-managed execution history, priced per execution and duration
 
 Pick Standard for long-running business processes. Pick Express for high-volume, short-lived workloads like API backends or stream processing.
 
@@ -132,10 +132,13 @@ Order matters. Step Functions evaluates catchers top to bottom and uses the firs
 ### Built-in Error Types
 
 Step Functions defines several error types:
-- `States.ALL`: Catches everything
+- `States.ALL`: Wildcard for known error names, except terminal `States.DataLimitExceeded` and `States.Runtime` errors
 - `States.Timeout`: Task exceeded `TimeoutSeconds`
 - `States.TaskFailed`: Task reported failure
 - `States.Permissions`: Insufficient IAM permissions
+- `States.DataLimitExceeded`: Input or output exceeded the payload size quota
+- `States.Runtime`: Runtime failure while processing a state definition
+- `States.HeartbeatTimeout`: Task missed its heartbeat timeout
 - `States.ResultPathMatchFailure`: ResultPath could not be applied
 - `States.ParameterPathFailure`: Parameter path reference failed
 - `States.BranchFailed`: Parallel or Map branch failed
@@ -318,9 +321,9 @@ When you need to process a list of items, the Map state iterates over an array a
 }
 ```
 
-`MaxConcurrency` limits simultaneous executions. Set it to prevent overwhelming downstream services. Use `0` for unlimited concurrency (dangerous for production).
+`MaxConcurrency` limits simultaneous executions. Set it to prevent overwhelming downstream services. Use `0` to remove the state-level cap and rely on Step Functions service quotas, which is dangerous for production.
 
-For large datasets, use `DISTRIBUTED` mode instead of `INLINE`. Distributed Map can process millions of items using S3 as input and output, with child executions running in parallel.
+For large datasets in Standard workflows, use `DISTRIBUTED` mode instead of `INLINE`. Distributed Map can process large S3 datasets with child executions running in parallel. Distributed mode is not supported in Express parent workflows, though child executions can be Express.
 
 ```json
 {
@@ -405,7 +408,11 @@ flowchart TD
 The Lambda function sends the task token to an external system (email, Slack, approval UI). When approved, that system calls Step Functions with the token:
 
 ```javascript
-const { SFNClient, SendTaskSuccessCommand } = require('@aws-sdk/client-sfn');
+const {
+  SFNClient,
+  SendTaskFailureCommand,
+  SendTaskSuccessCommand
+} = require('@aws-sdk/client-sfn');
 
 const sfn = new SFNClient({});
 
@@ -533,7 +540,7 @@ Standard workflows cost $0.025 per 1,000 state transitions. Express workflows co
 
 For a workflow with 10 states running 1 million times:
 - **Standard**: 10 million transitions = $250
-- **Express (100ms avg, 1KB payload)**: 1M requests ($1) + duration (~$0.17) = ~$1.17
+- **Express (100ms avg, small payload, 64 MB billed memory)**: 1M requests ($1) + duration (~$0.10) = ~$1.10
 
 Express is dramatically cheaper for high-volume, short workflows. But Express has no execution history, so debugging production issues requires external logging.
 
@@ -864,7 +871,7 @@ flowchart TD
     "OrderFailed": {
       "Type": "Fail",
       "Error": "OrderProcessingFailed",
-      "Cause.$": "$.failureReason"
+      "CausePath": "$.failureReason"
     }
   }
 }
