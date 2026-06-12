@@ -62,11 +62,11 @@ flowchart LR
 Before scaling, measure current throughput and identify bottlenecks:
 
 ```bash
-# Check connector lag
+# Check connector task status
 
 curl -s http://localhost:8083/connectors/inventory-connector/status | jq '.tasks[0]'
 
-# Monitor events per second
+# Monitor consumer group lag
 kafka-consumer-groups --bootstrap-server kafka:9092 \
   --describe --group connect-inventory-connector
 
@@ -104,7 +104,7 @@ Optimize Kafka Connect JVM settings:
 export KAFKA_HEAP_OPTS="-Xms4g -Xmx4g"
 
 # Use G1GC for large heaps
-export KAFKA_JVM_OPTS="-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16m"
+export KAFKA_OPTS="-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:G1HeapRegionSize=16m"
 
 # Enable JMX for monitoring
 export KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=9999"
@@ -213,21 +213,21 @@ services:
 
 ### Task Parallelism
 
-For databases that support it, use multiple tasks:
+For connectors that support it, use multiple tasks. The PostgreSQL connector always uses a single task, so `tasks.max` does not increase streaming parallelism:
 
 ```json
 {
   "name": "parallel-connector",
   "config": {
     "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
-    "tasks.max": "4",
+    "tasks.max": "1",
 
     "table.include.list": "inventory.orders,inventory.products,inventory.customers,inventory.shipments"
   }
 }
 ```
 
-Note: PostgreSQL logical replication limits parallelism. For true parallelism, consider:
+Note: The Debezium PostgreSQL connector always uses a single task. For true parallelism, consider:
 
 1. **Multiple connectors** for different tables
 2. **Sharded databases** with separate connectors per shard
@@ -425,7 +425,7 @@ spec:
 
 ### Horizontal Pod Autoscaler
 
-Auto-scale based on CPU usage:
+Auto-scale based on CPU and memory usage:
 
 ```yaml
 # kafka-connect-hpa.yaml
@@ -474,7 +474,7 @@ Use Strimzi operator for Kubernetes-native management:
 
 ```yaml
 # kafka-connect-strimzi.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaConnect
 metadata:
   name: debezium-connect
@@ -540,7 +540,7 @@ Configure Debezium to use appropriate partitioning:
     "topic.creation.default.replication.factor": "3",
 
     "transforms": "partition",
-    "transforms.partition.type": "io.debezium.transforms.PartitionRouting",
+    "transforms.partition.type": "io.debezium.transforms.partitions.PartitionRouting",
     "transforms.partition.partition.payload.fields": "after.customer_id",
     "transforms.partition.partition.topic.num": "12"
   }
@@ -615,29 +615,31 @@ Track key scaling metrics:
 
 ```yaml
 # prometheus-alerts.yml
+# Metric names depend on your JMX exporter rules. These examples use Debezium's
+# example JMX exporter pattern for connector metrics.
 groups:
 - name: debezium-scaling
   rules:
   - alert: HighConnectorLag
-    expr: debezium_streaming_millisecondsbehindSource > 60000
+    expr: debezium_metrics_MilliSecondsBehindSource{context="streaming"} > 60000
     for: 5m
     labels:
       severity: warning
     annotations:
       summary: "High replication lag detected"
-      description: "Connector {{ $labels.server }} is {{ $value | humanizeDuration }} behind"
+      description: "Connector {{ $labels.name }} is {{ $value }} ms behind"
 
-  - alert: ConnectorTaskImbalance
-    expr: stddev by (connector) (kafka_connect_connector_task_metrics_offset_commit_completion_rate) > 100
+  - alert: ConnectorQueueNearCapacity
+    expr: debezium_metrics_QueueRemainingCapacity{context="streaming"} / debezium_metrics_QueueTotalCapacity{context="streaming"} < 0.1
     for: 10m
     labels:
       severity: warning
     annotations:
-      summary: "Task imbalance detected"
-      description: "Tasks for {{ $labels.connector }} have uneven throughput"
+      summary: "Connector queue nearly full"
+      description: "Connector {{ $labels.name }} has less than 10% queue capacity remaining"
 
   - alert: WorkerOverloaded
-    expr: kafka_connect_worker_metrics_task_count > 20
+    expr: sum(kafka_connect_worker_metrics_connector_total_task_count) by (connector) > 20
     for: 5m
     labels:
       severity: warning
