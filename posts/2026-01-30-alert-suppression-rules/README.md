@@ -158,10 +158,10 @@ curl -X POST "${ALERTMANAGER_URL}/api/v2/silences" \
 ALERTMANAGER_URL="http://alertmanager:9093"
 
 # List all active silences
-# Filter parameter options: active, pending, expired
 list_silences() {
-  local filter="${1:-active}"
-  curl -s "${ALERTMANAGER_URL}/api/v2/silences?filter=${filter}" | jq '.'
+  local state="${1:-active}"
+  curl -s "${ALERTMANAGER_URL}/api/v2/silences" |
+    jq --arg state "${state}" '[.[] | select(.status.state == $state)]'
 }
 
 # Get a specific silence by ID
@@ -241,8 +241,8 @@ route:
 
   routes:
     # Route for infrastructure alerts during maintenance
-    - match:
-        team: infrastructure
+    - matchers:
+        - team = infrastructure
       receiver: 'infrastructure-team'
       # Mute during weekly maintenance window
       mute_time_intervals:
@@ -250,16 +250,16 @@ route:
         - monthly-maintenance
 
     # Route for non-critical alerts
-    - match:
-        severity: warning
+    - matchers:
+        - severity = warning
       receiver: 'slack-warnings'
       # Only notify during business hours
       active_time_intervals:
         - business-hours
 
     # Critical alerts always go through
-    - match:
-        severity: critical
+    - matchers:
+        - severity = critical
       receiver: 'pagerduty-critical'
       # No time restrictions for critical alerts
 
@@ -299,7 +299,7 @@ integrates with calendar systems, and handles recurring windows.
 
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 import logging
 
@@ -356,14 +356,16 @@ class MaintenanceScheduler:
             )
         """
         if start_time is None:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
+        elif start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=timezone.utc)
 
         end_time = start_time + timedelta(hours=duration_hours)
 
         payload = {
             "matchers": matchers,
-            "startsAt": start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "endsAt": end_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "startsAt": start_time.isoformat().replace("+00:00", "Z"),
+            "endsAt": end_time.isoformat().replace("+00:00", "Z"),
             "createdBy": created_by,
             "comment": f"Maintenance window: {name}"
         }
@@ -393,9 +395,8 @@ class MaintenanceScheduler:
         """
         Extend an existing maintenance window.
 
-        Alertmanager does not support updating silences directly.
-        We must delete the old one and create a new one with
-        extended end time.
+        Alertmanager updates a silence when the POST payload includes
+        the existing silence ID.
 
         Args:
             silence_id: ID of the silence to extend
@@ -418,39 +419,31 @@ class MaintenanceScheduler:
             return False
 
         # Calculate new end time
-        current_end = datetime.strptime(
-            silence["endsAt"].replace("Z", ""),
-            "%Y-%m-%dT%H:%M:%S"
+        current_end = datetime.fromisoformat(
+            silence["endsAt"].replace("Z", "+00:00")
         )
         new_end = current_end + timedelta(hours=additional_hours)
 
-        # Create new silence with extended time
-        new_payload = {
+        # Update the existing silence with extended time
+        updated_payload = {
+            "id": silence_id,
             "matchers": silence["matchers"],
             "startsAt": silence["startsAt"],
-            "endsAt": new_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "endsAt": new_end.isoformat().replace("+00:00", "Z"),
             "createdBy": silence["createdBy"],
             "comment": f"{silence['comment']} (extended by {additional_hours}h)"
         }
 
         try:
-            # Delete old silence
-            requests.delete(
-                f"{self.api_base}/silence/{silence_id}",
-                timeout=10
-            )
-
-            # Create new one
             response = requests.post(
                 f"{self.api_base}/silences",
                 headers={"Content-Type": "application/json"},
-                data=json.dumps(new_payload),
+                data=json.dumps(updated_payload),
                 timeout=10
             )
             response.raise_for_status()
 
-            new_id = response.json().get("silenceID")
-            logger.info(f"Extended maintenance window. New ID: {new_id}")
+            logger.info(f"Extended maintenance window: {silence_id}")
             return True
 
         except requests.RequestException as e:
@@ -490,11 +483,13 @@ class MaintenanceScheduler:
         try:
             response = requests.get(
                 f"{self.api_base}/silences",
-                params={"filter": "active"},
                 timeout=10
             )
             response.raise_for_status()
-            return response.json()
+            return [
+                silence for silence in response.json()
+                if silence.get("status", {}).get("state") == "active"
+            ]
 
         except requests.RequestException as e:
             logger.error(f"Failed to list active windows: {e}")
@@ -632,7 +627,7 @@ time_intervals:
       - weekdays: ['monday:friday']
         times:
           - start_time: '18:00'
-            end_time: '23:59'
+            end_time: '24:00'
           - start_time: '00:00'
             end_time: '09:00'
       # Weekends
@@ -693,15 +688,15 @@ route:
 
   routes:
     # Critical alerts: always page, no time restrictions
-    - match:
-        severity: critical
+    - matchers:
+        - severity = critical
       receiver: 'pagerduty-critical'
       continue: true
 
     # Production alerts during business hours
-    - match:
-        environment: production
-        severity: warning
+    - matchers:
+        - environment = production
+        - severity = warning
       receiver: 'slack-prod-warnings'
       active_time_intervals:
         - business-hours-us-east
@@ -712,9 +707,9 @@ route:
         - holidays-2026
 
     # Production warnings after hours go to email digest
-    - match:
-        environment: production
-        severity: warning
+    - matchers:
+        - environment = production
+        - severity = warning
       receiver: 'email-digest'
       active_time_intervals:
         - after-hours
@@ -722,15 +717,15 @@ route:
       group_interval: 4h
 
     # Staging alerts only during business hours
-    - match:
-        environment: staging
+    - matchers:
+        - environment = staging
       receiver: 'slack-staging'
       active_time_intervals:
         - business-hours-us-east
 
     # Development alerts suppressed after hours
-    - match:
-        environment: development
+    - matchers:
+        - environment = development
       receiver: 'slack-dev'
       active_time_intervals:
         - business-hours-us-east
@@ -949,26 +944,23 @@ labels:
   app: backend
 ```
 
-### 4. Monitor Suppressed Alerts
+### 4. Monitor Active Silences
 
-Track what is being suppressed to catch issues:
+Track active silences so long-running or overly broad suppression does not go unnoticed:
 
 ```yaml
-# Prometheus recording rule to track suppressed alerts
+# Prometheus alert rule to track active Alertmanager silences
 groups:
   - name: suppression-monitoring
     rules:
-      - record: alerts:suppressed:count
-        expr: count(ALERTS{alertstate="suppressed"}) or vector(0)
-
-      - alert: HighSuppressionRate
-        expr: alerts:suppressed:count > 50
+      - alert: HighActiveSilenceCount
+        expr: alertmanager_silences{state="active"} > 50
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "High number of suppressed alerts"
-          description: "{{ $value }} alerts are currently suppressed. Review active silences."
+          summary: "High number of active silences"
+          description: "{{ $value }} silences are currently active. Review active silences."
 ```
 
 ### 5. Implement Silence Approval Workflows
@@ -989,7 +981,7 @@ app = Flask(__name__)
 # Silences targeting production require approval
 PROTECTED_MATCHERS = [
     {"name": "environment", "value": "production"},
-    {"name": "cluster", "value": "prod-.*"}
+    {"name": "cluster", "value": "prod-.*", "isRegex": True}
 ]
 
 APPROVAL_WEBHOOK = "https://slack.com/api/chat.postMessage"
@@ -1096,7 +1088,7 @@ flowchart TD
 | Missing comments | No audit trail | Require comments with ticket links |
 | Silencing instead of fixing | Alert debt accumulates | Fix root cause, silence temporarily |
 | Manual silences for deployments | Inconsistent, error-prone | Automate in CI/CD pipeline |
-| Ignoring suppressed alert counts | Miss cascading failures | Monitor suppression metrics |
+| Ignoring active silences | Miss cascading failures | Monitor active silence counts |
 
 ---
 
