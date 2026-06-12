@@ -358,6 +358,7 @@ class TopologyCorrelator {
   private getUpstreamServices(serviceName: string, maxHops: number): Set<string> {
     const upstream = new Set<string>();
     const queue: Array<{ service: string; hops: number }> = [{ service: serviceName, hops: 0 }];
+    const visited = new Set<string>([serviceName]);
 
     while (queue.length > 0) {
       const { service, hops } = queue.shift()!;
@@ -368,7 +369,8 @@ class TopologyCorrelator {
       if (!node) continue;
 
       for (const dependent of node.dependents) {
-        if (!upstream.has(dependent)) {
+        if (!visited.has(dependent)) {
+          visited.add(dependent);
           upstream.add(dependent);
           queue.push({ service: dependent, hops: hops + 1 });
         }
@@ -381,6 +383,7 @@ class TopologyCorrelator {
   private getDownstreamServices(serviceName: string, maxHops: number): Set<string> {
     const downstream = new Set<string>();
     const queue: Array<{ service: string; hops: number }> = [{ service: serviceName, hops: 0 }];
+    const visited = new Set<string>([serviceName]);
 
     while (queue.length > 0) {
       const { service, hops } = queue.shift()!;
@@ -391,7 +394,8 @@ class TopologyCorrelator {
       if (!node) continue;
 
       for (const dependency of node.dependencies) {
-        if (!downstream.has(dependency)) {
+        if (!visited.has(dependency)) {
+          visited.add(dependency);
           downstream.add(dependency);
           queue.push({ service: dependency, hops: hops + 1 });
         }
@@ -426,7 +430,7 @@ class TopologyCorrelator {
     }
 
     // Identify likely root cause (deepest in dependency tree with earliest alert)
-    const likelyRootCause = this.identifyRootCause(correlatedAlerts);
+    const likelyRootCause = this.identifyRootCause([alert, ...correlatedAlerts]);
 
     // Store this alert
     const existingAlerts = this.alertsByService.get(service) || [];
@@ -455,13 +459,16 @@ class TopologyCorrelator {
     return scored[0]?.alert || null;
   }
 
-  private calculateDependencyDepth(serviceName: string): number {
+  private calculateDependencyDepth(serviceName: string, visited: Set<string> = new Set()): number {
+    if (visited.has(serviceName)) return 0;
+    visited.add(serviceName);
+
     const node = this.topology.services.get(serviceName);
     if (!node || node.dependencies.length === 0) return 0;
 
     let maxDepth = 0;
     for (const dep of node.dependencies) {
-      const depDepth = this.calculateDependencyDepth(dep);
+      const depDepth = this.calculateDependencyDepth(dep, new Set(visited));
       maxDepth = Math.max(maxDepth, depDepth + 1);
     }
     return maxDepth;
@@ -935,6 +942,16 @@ class AlertCorrelationEngine {
         rootCause: parentChildResult.parentAlert!,
         correlatedAlerts: [],
         suppressedAlerts: [alert],
+        ruleName: 'parent-child',
+        confidence: 1.0
+      };
+    }
+    if (parentChildResult.action === 'correlate') {
+      return {
+        groupId: parentChildResult.correlationGroup!,
+        rootCause: parentChildResult.parentAlert!,
+        correlatedAlerts: [alert],
+        suppressedAlerts: [],
         ruleName: 'parent-child',
         confidence: 1.0
       };
