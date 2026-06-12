@@ -46,11 +46,18 @@ Add the Testcontainers dependencies to your `pom.xml`:
         <scope>test</scope>
     </dependency>
 
-    <!-- Testcontainers BOM for version management -->
+    <!-- Spring Boot's Testcontainers integration -->
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-testcontainers</artifactId>
         <scope>test</scope>
+    </dependency>
+
+    <!-- PostgreSQL JDBC driver for Spring's DataSource -->
+    <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+        <scope>runtime</scope>
     </dependency>
 
     <!-- Testcontainers JUnit 5 integration -->
@@ -70,11 +77,11 @@ Add the Testcontainers dependencies to your `pom.xml`:
 
 <dependencyManagement>
     <dependencies>
-        <!-- Testcontainers BOM ensures compatible versions -->
+        <!-- Use this only if your project does not already use Spring Boot's dependency management -->
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers-bom</artifactId>
-            <version>1.19.7</version>
+            <version>1.21.4</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -91,6 +98,7 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
 }
 ```
 
@@ -239,6 +247,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 // Extends base class to reuse the shared container
 @Transactional // Each test runs in a transaction that rolls back
 class OrderServiceTest extends IntegrationTestBase {
@@ -295,8 +305,9 @@ class CachedUserServiceTest {
     @ServiceConnection
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
-    // Redis for caching - using GenericContainer since there is no @ServiceConnection for Redis
+    // Redis for caching - use the service name so Spring Boot can infer Redis connection details
     @Container
+    @ServiceConnection(name = "redis")
     static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
         .withExposedPorts(6379);
 
@@ -305,14 +316,6 @@ class CachedUserServiceTest {
 
     @Autowired
     private UserRepository userRepository;
-
-    // Configure Redis connection dynamically
-    @org.springframework.test.context.DynamicPropertySource
-    static void configureRedis(org.springframework.test.context.DynamicPropertyRegistry registry) {
-        // Testcontainers maps container ports to random host ports
-        registry.add("spring.data.redis.host", redis::getHost);
-        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
-    }
 
     @BeforeEach
     void setUp() {
@@ -347,7 +350,6 @@ For complex setups, use Docker Compose to define your test infrastructure:
 ```yaml
 # src/test/resources/docker-compose-test.yml
 
-version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
@@ -362,22 +364,6 @@ services:
     image: redis:7-alpine
     ports:
       - "6379"
-
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092"
-
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
 ```
 
 ```java
@@ -389,10 +375,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.DockerComposeContainer;
+import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import java.io.File;
 import java.time.Duration;
@@ -402,23 +389,21 @@ import java.time.Duration;
 class DockerComposeIntegrationTest {
 
     @Container
-    static DockerComposeContainer<?> compose = new DockerComposeContainer<>(
+    static ComposeContainer compose = new ComposeContainer(
+            DockerImageName.parse("docker:25.0.5"),
             new File("src/test/resources/docker-compose-test.yml"))
         // Wait for PostgreSQL to be ready
-        .withExposedService("postgres", 5432,
+        .withExposedService("postgres-1", 5432,
             Wait.forListeningPort().withStartupTimeout(Duration.ofSeconds(60)))
         // Wait for Redis to be ready
-        .withExposedService("redis", 6379,
-            Wait.forListeningPort())
-        // Wait for Kafka to be ready
-        .withExposedService("kafka", 9092,
-            Wait.forListeningPort().withStartupTimeout(Duration.ofSeconds(90)));
+        .withExposedService("redis-1", 6379,
+            Wait.forListeningPort());
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         // Configure PostgreSQL
-        String postgresHost = compose.getServiceHost("postgres", 5432);
-        Integer postgresPort = compose.getServicePort("postgres", 5432);
+        String postgresHost = compose.getServiceHost("postgres-1", 5432);
+        Integer postgresPort = compose.getServicePort("postgres-1", 5432);
         registry.add("spring.datasource.url",
             () -> "jdbc:postgresql://" + postgresHost + ":" + postgresPort + "/testdb");
         registry.add("spring.datasource.username", () -> "test");
@@ -426,27 +411,20 @@ class DockerComposeIntegrationTest {
 
         // Configure Redis
         registry.add("spring.data.redis.host",
-            () -> compose.getServiceHost("redis", 6379));
+            () -> compose.getServiceHost("redis-1", 6379));
         registry.add("spring.data.redis.port",
-            () -> compose.getServicePort("redis", 6379));
-
-        // Configure Kafka
-        registry.add("spring.kafka.bootstrap-servers",
-            () -> compose.getServiceHost("kafka", 9092) + ":" +
-                  compose.getServicePort("kafka", 9092));
+            () -> compose.getServicePort("redis-1", 6379));
     }
 
     @Autowired
-    private OrderEventPublisher eventPublisher;
+    private CachedUserService userService;
 
     @Test
-    void shouldPublishOrderEventToKafka() {
+    void shouldUseServicesFromComposeFile() {
         // Test with all services running
-        Order order = new Order(1L, "SKU-001", 5);
+        userService.warmUpCache();
 
-        eventPublisher.publish(order);
-
-        // Assert event was published and can be consumed
+        // Assert PostgreSQL and Redis-backed behavior
         // ... verification logic
     }
 }
@@ -474,6 +452,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers
 @SpringBootTest
@@ -555,6 +534,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -690,6 +670,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.math.BigDecimal;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
 class OrderHistoryTest extends IntegrationTestBase {
 
     @Autowired
@@ -741,8 +725,8 @@ stateDiagram-v2
     end note
 
     note right of TestExecution
-        Each test runs in
-        transaction that rolls back
+        Transactional tests can
+        roll back after execution
     end note
 ```
 
@@ -762,10 +746,14 @@ testcontainers.reuse.enable=true
 Then mark containers as reusable:
 
 ```java
-@Container
 @ServiceConnection
 static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
-    .withReuse(true);  // Keep container running between test runs
+    .withReuse(true);
+
+static {
+    // Reusable containers must be started manually, not through the JUnit extension
+    postgres.start();
+}
 ```
 
 ### 2. Use Alpine Images
@@ -778,9 +766,9 @@ new PostgreSQLContainer<>("postgres:16-alpine")  // 80MB vs 400MB
 new GenericContainer<>("redis:7-alpine")          // 15MB vs 50MB
 ```
 
-### 3. Parallel Test Execution
+### 3. Be Careful with Parallel Test Execution
 
-Configure JUnit 5 to run tests in parallel with shared containers:
+The Testcontainers JUnit 5 extension is tested with sequential execution. If you enable parallel test execution, avoid shared mutable test data and verify that your containers are managed safely:
 
 ```properties
 # src/test/resources/junit-platform.properties
@@ -795,6 +783,10 @@ For focused tests, use Spring Boot test slices instead of `@SpringBootTest`:
 
 ```java
 // Only loads JPA-related beans
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
 @DataJpaTest
 @Testcontainers
 class UserRepositorySliceTest {
