@@ -10,7 +10,9 @@ Description: A comprehensive guide to implementing various memory types in LangC
 
 > Memory is what transforms a stateless LLM into a conversational agent. Without memory, every interaction starts from zero. With the right memory strategy, your AI can recall context, learn from interactions, and provide coherent multi-turn conversations.
 
-LangChain provides several memory modules that enable your AI applications to maintain state across interactions. This guide covers the core memory types, when to use each one, and how to implement custom memory solutions for advanced use cases.
+LangChain's classic memory modules enable AI applications to maintain state across interactions. This guide covers the core memory types, when to use each one, and how to implement custom memory solutions for advanced use cases.
+
+> Note: The examples in this guide use `langchain-classic` memory classes. In LangChain 1.x, these classic memory classes and `ConversationChain` are deprecated and scheduled for removal in LangChain 2.0. For new LangChain agents, prefer `create_agent` with LangGraph checkpointing for short-term memory and LangGraph stores for long-term memory.
 
 ---
 
@@ -63,14 +65,14 @@ The simplest memory type. It stores the entire conversation history verbatim and
 
 # Demonstrates basic ConversationBufferMemory usage
 
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationChain
+from langchain_classic.memory import ConversationBufferMemory
+from langchain_classic.chains import ConversationChain
 from langchain_openai import ChatOpenAI
 
 # Initialize the language model
-# Using gpt-4 for better conversation quality
+# Using gpt-5.4 for better conversation quality
 llm = ChatOpenAI(
-    model="gpt-4",
+    model="gpt-5.4",
     temperature=0.7  # Slight randomness for natural responses
 )
 
@@ -143,17 +145,17 @@ Instead of storing raw conversation, this memory type maintains a running summar
 # conversation_summary_example.py
 # Uses an LLM to maintain a compressed summary of the conversation
 
-from langchain.memory import ConversationSummaryMemory
-from langchain.chains import ConversationChain
+from langchain_classic.memory import ConversationSummaryMemory
+from langchain_classic.chains import ConversationChain
 from langchain_openai import ChatOpenAI
 
 # Initialize models
 # Note: We need an LLM for both the chain AND the summarization
-llm = ChatOpenAI(model="gpt-4", temperature=0.7)
+llm = ChatOpenAI(model="gpt-5.4", temperature=0.7)
 
 # The summary memory uses an LLM to compress history
 # You can use a smaller/cheaper model for summarization
-summary_llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+summary_llm = ChatOpenAI(model="gpt-5.4-mini", temperature=0)
 
 memory = ConversationSummaryMemory(
     llm=summary_llm,  # LLM used to generate summaries
@@ -211,7 +213,7 @@ summary = "Bob ordered a blue widget (order #12345, last Tuesday, $49.99) but re
 
 ```python
 # You can customize how summaries are generated
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 
 # Custom summary prompt for more specific summarization
 custom_prompt = PromptTemplate(
@@ -255,11 +257,11 @@ A middle ground between full buffer and summary. It keeps only the last K exchan
 # conversation_window_example.py
 # Maintains a sliding window of the K most recent exchanges
 
-from langchain.memory import ConversationBufferWindowMemory
-from langchain.chains import ConversationChain
+from langchain_classic.memory import ConversationBufferWindowMemory
+from langchain_classic.chains import ConversationChain
 from langchain_openai import ChatOpenAI
 
-llm = ChatOpenAI(model="gpt-4", temperature=0.7)
+llm = ChatOpenAI(model="gpt-5.4", temperature=0.7)
 
 # k=3 means keep the last 3 exchanges (6 messages total: 3 human + 3 AI)
 memory = ConversationBufferWindowMemory(
@@ -301,12 +303,12 @@ For the best of both worlds, combine window memory with summary memory:
 # combined_memory_example.py
 # Uses ConversationSummaryBufferMemory for hybrid approach
 
-from langchain.memory import ConversationSummaryBufferMemory
-from langchain.chains import ConversationChain
+from langchain_classic.memory import ConversationSummaryBufferMemory
+from langchain_classic.chains import ConversationChain
 from langchain_openai import ChatOpenAI
 
-llm = ChatOpenAI(model="gpt-4", temperature=0.7)
-summary_llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+llm = ChatOpenAI(model="gpt-5.4", temperature=0.7)
+summary_llm = ChatOpenAI(model="gpt-5.4-mini", temperature=0)
 
 # This memory type keeps recent messages verbatim
 # and summarizes older messages when token limit is exceeded
@@ -347,11 +349,12 @@ Extracts and tracks information about specific entities (people, places, organiz
 # entity_memory_example.py
 # Tracks entities and their attributes across the conversation
 
-from langchain.memory import ConversationEntityMemory
-from langchain.chains import ConversationChain
+from langchain_classic.memory import ConversationEntityMemory
+from langchain_classic.chains import ConversationChain
+from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 
-llm = ChatOpenAI(model="gpt-4", temperature=0.7)
+llm = ChatOpenAI(model="gpt-5.4", temperature=0.7)
 
 # Entity memory uses the LLM to extract and update entity information
 memory = ConversationEntityMemory(
@@ -360,9 +363,22 @@ memory = ConversationEntityMemory(
     return_messages=True
 )
 
+entity_prompt = PromptTemplate(
+    input_variables=["entities", "history", "input"],
+    template="""Known entities:
+{entities}
+
+Conversation history:
+{history}
+
+Human: {input}
+AI:"""
+)
+
 conversation = ConversationChain(
     llm=llm,
     memory=memory,
+    prompt=entity_prompt,
     verbose=True
 )
 
@@ -403,14 +419,13 @@ for entity, description in memory.entity_store.store.items():
 
 ```python
 # You can customize which entities to track and how
-from langchain.memory.entity import BaseEntityStore
+from langchain_classic.memory.entity import BaseEntityStore
 from typing import Dict, Optional
 
 class CustomEntityStore(BaseEntityStore):
     """Custom entity store with persistence."""
 
-    def __init__(self):
-        self.store: Dict[str, str] = {}
+    store: Dict[str, str] = {}
 
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
         return self.store.get(key, default)
@@ -455,16 +470,16 @@ Uses embeddings to store and retrieve conversation snippets based on semantic si
 # vector_store_memory_example.py
 # Stores conversation in a vector database for semantic retrieval
 
-from langchain.memory import VectorStoreRetrieverMemory
+from langchain_classic.memory import VectorStoreRetrieverMemory
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.docstore.document import Document
+from langchain_core.documents import Document
 
-llm = ChatOpenAI(model="gpt-4", temperature=0.7)
+llm = ChatOpenAI(model="gpt-5.4", temperature=0.7)
 
 # Initialize embeddings model
 # This converts text into numerical vectors for similarity search
-embeddings = OpenAIEmbeddings()
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
 # Create an empty FAISS vector store
 # FAISS is a fast similarity search library from Meta
@@ -519,14 +534,14 @@ print(relevant_memories2)
 # vector_conversation_example.py
 # Full conversation chain with vector memory
 
-from langchain.memory import VectorStoreRetrieverMemory
-from langchain.chains import ConversationChain
+from langchain_classic.memory import VectorStoreRetrieverMemory
+from langchain_classic.chains import ConversationChain
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
-from langchain.prompts import PromptTemplate
+from langchain_chroma import Chroma
+from langchain_core.prompts import PromptTemplate
 
-llm = ChatOpenAI(model="gpt-4", temperature=0.7)
-embeddings = OpenAIEmbeddings()
+llm = ChatOpenAI(model="gpt-5.4", temperature=0.7)
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
 # Use Chroma for persistent vector storage
 # This persists to disk so memories survive restarts
@@ -574,14 +589,14 @@ print(response)
 # hybrid_memory_example.py
 # Combines recent buffer with semantic retrieval
 
-from langchain.memory import CombinedMemory, ConversationBufferWindowMemory, VectorStoreRetrieverMemory
-from langchain.chains import ConversationChain
+from langchain_classic.memory import CombinedMemory, ConversationBufferWindowMemory, VectorStoreRetrieverMemory
+from langchain_classic.chains import ConversationChain
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 
-llm = ChatOpenAI(model="gpt-4", temperature=0.7)
-embeddings = OpenAIEmbeddings()
+llm = ChatOpenAI(model="gpt-5.4", temperature=0.7)
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
 # Recent conversation memory (last 3 exchanges)
 buffer_memory = ConversationBufferWindowMemory(
@@ -636,8 +651,8 @@ When built-in memory types do not fit your needs, you can create custom memory c
 # custom_memory_example.py
 # Implements a custom memory class with Redis backend
 
-from langchain.memory.chat_memory import BaseChatMemory
-from langchain.schema import BaseMessage, HumanMessage, AIMessage
+from langchain_classic.memory.chat_memory import BaseChatMemory
+from langchain_core.messages import HumanMessage, AIMessage
 from typing import List, Dict, Any
 import redis
 import json
@@ -732,8 +747,7 @@ conversation = ConversationChain(
 # filtered_memory_example.py
 # Memory that filters out sensitive information
 
-from langchain.memory import ConversationBufferMemory
-from langchain.schema import HumanMessage, AIMessage
+from langchain_classic.memory import ConversationBufferMemory
 from typing import Dict, Any, List
 import re
 
@@ -779,7 +793,7 @@ memory = FilteredConversationMemory(
     return_messages=True,
     filter_patterns=[
         r'\b\d{3}-\d{2}-\d{4}\b',  # SSN
-        r'secret[:\s]*\S+',        # Secrets
+        r'secret(?:\s+is|[:\s]+)\s*\S+',        # Secrets
     ]
 )
 
@@ -799,8 +813,7 @@ print(memory.load_memory_variables({}))
 # ttl_memory_example.py
 # Memory with time-based expiration
 
-from langchain.memory import ConversationBufferMemory
-from langchain.schema import HumanMessage, AIMessage
+from langchain_classic.memory import ConversationBufferMemory
 from typing import Dict, Any, List, Tuple
 from datetime import datetime, timedelta
 import threading
