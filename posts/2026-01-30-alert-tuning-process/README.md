@@ -85,6 +85,9 @@ interface BaselineStats {
 function calculateBaseline(samples: MetricSample[]): BaselineStats {
   const values = samples.map(s => s.value).sort((a, b) => a - b);
   const n = values.length;
+  if (n === 0) {
+    throw new Error('Cannot calculate baseline without samples');
+  }
 
   const sum = values.reduce((acc, v) => acc + v, 0);
   const mean = sum / n;
@@ -428,33 +431,33 @@ route:
   receiver: 'default'
   routes:
     # Suppress during deployments
-    - match:
-        deploy_suppressed: 'true'
+    - matchers:
+        - deploy_suppressed = "true"
       receiver: 'null'
       continue: false
 
     # Route by severity
-    - match:
-        severity: 'critical'
+    - matchers:
+        - severity = "critical"
       receiver: 'pagerduty-critical'
 
-    - match:
-        severity: 'warning'
+    - matchers:
+        - severity = "warning"
       receiver: 'slack-warnings'
 
 inhibit_rules:
   # If a service is down, suppress all other alerts for that service
-  - source_match:
-      alertname: 'ServiceDown'
-    target_match_re:
-      alertname: '.+'
+  - source_matchers:
+      - alertname = "ServiceDown"
+    target_matchers:
+      - alertname =~ ".+"
     equal: ['service']
 
   # Suppress warnings when critical is firing for same alert
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
     equal: ['alertname', 'service']
 ```
 
@@ -627,15 +630,15 @@ flowchart LR
 groups:
   - name: business-hours-alerts
     rules:
-      # Stricter during business hours
+      # Stricter during business hours in UTC
       - alert: HighErrorRateBusinessHours
         expr: |
           (
             rate(http_requests_total{status=~"5.."}[5m])
             / rate(http_requests_total[5m])
           ) > 0.01
-          and ON() hour() >= 9 < 18
-          and ON() day_of_week() >= 1 <= 5
+          and on() (hour() >= 9 and hour() < 18)
+          and on() (day_of_week() >= 1 and day_of_week() <= 5)
         for: 5m
         labels:
           severity: critical
@@ -643,14 +646,17 @@ groups:
         annotations:
           summary: "High error rate during business hours"
 
-      # More lenient outside business hours
+      # More lenient outside business hours in UTC
       - alert: HighErrorRateOffHours
         expr: |
           (
             rate(http_requests_total{status=~"5.."}[5m])
             / rate(http_requests_total[5m])
           ) > 0.05
-          and ON() (hour() < 9 or hour() >= 18 or day_of_week() < 1 or day_of_week() > 5)
+          and on() (
+            (hour() < 9 or hour() >= 18)
+            or (day_of_week() < 1 or day_of_week() > 5)
+          )
         for: 10m
         labels:
           severity: warning
@@ -817,7 +823,7 @@ function getSeasonalMultiplier(
   metric: string,
   date: Date = new Date()
 ): number {
-  const month = date.getMonth();
+  const month = date.getMonth() + 1; // 1 = January, 12 = December
   const dayOfMonth = date.getDate();
   const dayOfWeek = date.getDay();
 
@@ -861,24 +867,17 @@ groups:
   - name: seasonal-baselines
     interval: 1h
     rules:
-      # Calculate same-hour, same-day-of-week average from past 4 weeks
-      - record: metric:baseline:hourly_weekly
+      # Calculate a four-week average from a precomputed 5m rate
+      - record: metric:baseline:four_week
         expr: |
-          avg_over_time(
-            http_request_duration_seconds:rate5m[4w]
-            offset 0s
-          )
-          # This is simplified - real implementation needs subqueries
+          avg_over_time(http_request_duration_seconds:rate5m[4w])
 
-      # Error rate baseline by day of week
+      # Error rate baseline over the past day
       - record: error_rate:baseline:daily
         expr: |
-          avg by (service, day_of_week) (
-            label_replace(
-              rate(http_requests_total{status=~"5.."}[1d]),
-              "day_of_week", "$1", "", ""
-            )
-          )
+          sum by (service) (rate(http_requests_total{status=~"5.."}[1d]))
+          /
+          sum by (service) (rate(http_requests_total[1d]))
 ```
 
 ## Implementing the Complete Tuning Workflow
@@ -931,15 +930,15 @@ panels:
       - expr: |
           topk(10,
             sum by (alertname) (
-              increase(ALERTS_FOR_STATE{alertstate="firing"}[7d])
+              sum_over_time(ALERTS{alertstate="firing"}[7d])
             )
           )
 
-  - title: "Alert Volume Trend"
+  - title: "Alert Firing Time Trend"
     type: "timeseries"
     targets:
       - expr: |
-          sum(increase(ALERTS_FOR_STATE{alertstate="firing"}[1d]))
+          sum(sum_over_time(ALERTS{alertstate="firing"}[1d]))
 ```
 
 ## Key Metrics to Track
