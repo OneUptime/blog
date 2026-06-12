@@ -45,7 +45,7 @@ Understanding the different timeout types helps you configure each appropriately
 
 ### PostgreSQL with Node.js
 
-The pg library provides several timeout options. The connectionTimeoutMillis controls how long to wait when establishing a new connection, while query_timeout limits individual query execution time.
+The pg library provides several timeout options. The connectionTimeoutMillis controls how long to wait when establishing a new connection, while query_timeout limits how long the client waits for a query call to complete. Use PostgreSQL's statement_timeout when you want the server to cancel a long-running statement.
 
 ```javascript
 const { Pool } = require('pg');
@@ -66,8 +66,8 @@ const pool = new Pool({
   connectionTimeoutMillis: 10000, // Wait 10s to connect
   idleTimeoutMillis: 30000,       // Close idle connections after 30s
 
-  // Query timeout (statement_timeout in PostgreSQL)
-  query_timeout: 30000,           // Cancel queries after 30s
+  // Client-side query timeout
+  query_timeout: 30000,           // Stop waiting for query calls after 30s
 });
 
 // Handle pool errors
@@ -78,10 +78,16 @@ pool.on('error', (err, client) => {
 // Wrapper function with timeout handling
 async function queryWithTimeout(sql, params, timeoutMs = 30000) {
   const client = await pool.connect();
+  const statementTimeout = Number(timeoutMs);
+
+  if (!Number.isInteger(statementTimeout) || statementTimeout < 0) {
+    client.release();
+    throw new Error('Timeout must be a non-negative integer in milliseconds');
+  }
 
   try {
     // Set statement timeout for this session
-    await client.query(`SET statement_timeout = ${timeoutMs}`);
+    await client.query(`SET statement_timeout = ${statementTimeout}`);
 
     const result = await client.query(sql, params);
     return result.rows;
@@ -92,8 +98,12 @@ async function queryWithTimeout(sql, params, timeoutMs = 30000) {
     }
     throw error;
   } finally {
-    // Always release connection back to pool
-    client.release();
+    // Reset session state before returning the connection to the pool
+    try {
+      await client.query('RESET statement_timeout');
+    } finally {
+      client.release();
+    }
   }
 }
 
@@ -111,7 +121,7 @@ try {
 
 ### MySQL with Connection Pool
 
-MySQL2 provides similar timeout controls. The connectTimeout applies when establishing connections, while the timeout option on individual queries limits execution time.
+MySQL2 provides similar timeout controls. The connectTimeout applies when establishing connections, while the timeout option on individual queries limits how long the client waits for results. MySQL's max_execution_time can limit server-side execution time for read-only SELECT statements.
 
 ```javascript
 const mysql = require('mysql2/promise');
@@ -139,22 +149,32 @@ const pool = mysql.createPool({
 // Query with explicit timeout
 async function executeQuery(sql, params, timeoutMs = 30000) {
   const connection = await pool.getConnection();
+  const queryTimeout = Number(timeoutMs);
+
+  if (!Number.isInteger(queryTimeout) || queryTimeout < 0) {
+    connection.release();
+    throw new Error('Timeout must be a non-negative integer in milliseconds');
+  }
 
   try {
-    // Set session-level timeout
+    // Set session-level timeout for read-only SELECT statements
     await connection.query(
-      `SET SESSION max_execution_time = ${timeoutMs}`
+      `SET SESSION max_execution_time = ${queryTimeout}`
     );
 
     const [rows] = await connection.query({
       sql,
       values: params,
-      timeout: timeoutMs,
+      timeout: queryTimeout,
     });
 
     return rows;
   } finally {
-    connection.release();
+    try {
+      await connection.query('SET SESSION max_execution_time = 0');
+    } finally {
+      connection.release();
+    }
   }
 }
 ```
@@ -233,7 +253,11 @@ async function fetchWithTimeout(url, options = {}) {
     });
     return response.data;
   } catch (error) {
-    if (error.code === 'ECONNABORTED' || error.name === 'AbortError') {
+    if (
+      error.code === 'ECONNABORTED' ||
+      error.code === 'ERR_CANCELED' ||
+      error.name === 'CanceledError'
+    ) {
       throw new Error(`Request timed out after ${timeout}ms`);
     }
     throw error;
