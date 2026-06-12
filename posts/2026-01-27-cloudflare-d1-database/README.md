@@ -4,26 +4,26 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cloudflare, D1, Database, SQLite, Serverless, Worker, Edge Computing
 
-Description: Learn how to use Cloudflare D1, a serverless SQLite database that runs at the edge, including database creation, schema migrations, queries in Workers, prepared statements, transactions.
+Description: Learn how to use Cloudflare D1, a serverless SQLite database for Cloudflare Workers, including database creation, schema migrations, queries in Workers, prepared statements, transactions.
 
 ---
 
-> D1 brings the simplicity of SQLite to the edge. Your data lives close to your users, your queries run in milliseconds, and you never have to manage database servers again.
+> D1 brings the simplicity of SQLite to Cloudflare Workers. With read replication enabled and the Sessions API, read queries can run closer to your users, and you never have to manage database servers again.
 
 ## What is Cloudflare D1?
 
-Cloudflare D1 is a serverless SQL database built on SQLite that runs on Cloudflare's global edge network. Unlike traditional databases that run in a single region, D1 replicates your data across Cloudflare's network, bringing your database closer to your users worldwide.
+Cloudflare D1 is a serverless SQL database built on SQLite and integrated with Cloudflare Workers. D1 stores data in a primary database instance, and optional read replication can add read-only replicas across Cloudflare's network for lower-latency reads when you use the D1 Sessions API.
 
-D1 is designed to work seamlessly with Cloudflare Workers, giving you a complete serverless stack for building applications. You get the familiar SQL interface of SQLite with the benefits of edge computing: low latency, automatic scaling, and zero infrastructure management.
+D1 is designed to work seamlessly with Cloudflare Workers, giving you a complete serverless stack for building applications. You get the familiar SQL interface of SQLite with the benefits of serverless infrastructure: automatic scaling, Worker integration, and zero database server management.
 
 ### Key Features
 
 - **SQLite compatibility**: Use standard SQL syntax and SQLite features you already know
-- **Edge-native**: Data is replicated globally for low-latency reads
+- **Read replication**: Optional read replicas can reduce read latency when used with the Sessions API
 - **Serverless**: No servers to provision, scale, or maintain
 - **Integrated with Workers**: First-class binding to Cloudflare Workers
-- **Time Travel**: Query historical versions of your data for debugging
-- **Branching**: Create database branches for development and testing
+- **Time Travel**: Restore your database to a previous point in time for recovery and debugging
+- **Multiple databases**: Create separate databases for development, testing, and production isolation
 
 ## Creating a D1 Database
 
@@ -215,7 +215,7 @@ interface Post {
   title: string;
   content: string;
   slug: string;
-  published: boolean;
+  published: number;
   created_at: string;
   updated_at: string;
 }
@@ -487,7 +487,7 @@ interface Env {
   DB: D1Database;
 }
 
-// Transfer points between users atomically
+// Transfer points between users after validating the sender balance
 async function transferPoints(
   fromUserId: number,
   toUserId: number,
@@ -495,14 +495,25 @@ async function transferPoints(
   env: Env
 ): Promise<{ success: boolean; message: string }> {
   try {
-    // All statements in the batch execute as a single atomic transaction
-    const results = await env.DB.batch([
+    const sender = await env.DB.prepare(
+      "SELECT points FROM users WHERE id = ?"
+    )
+      .bind(fromUserId)
+      .first<{ points: number }>();
+
+    if (!sender || sender.points < amount) {
+      return { success: false, message: "Insufficient points" };
+    }
+
+    // The users.points column should have a CHECK (points >= 0) constraint so
+    // concurrent debits that would overdraw fail and roll back the batch.
+    await env.DB.batch([
       // Deduct points from sender
       env.DB.prepare(
         `UPDATE users
          SET points = points - ?, updated_at = datetime('now')
-         WHERE id = ? AND points >= ?`
-      ).bind(amount, fromUserId, amount),
+         WHERE id = ?`
+      ).bind(amount, fromUserId),
 
       // Add points to receiver
       env.DB.prepare(
@@ -517,13 +528,6 @@ async function transferPoints(
          VALUES (?, ?, ?)`
       ).bind(fromUserId, toUserId, amount),
     ]);
-
-    // Check if the deduction succeeded (user had enough points)
-    if (results[0].meta.changes === 0) {
-      // The batch already executed, but no rows were updated
-      // In a real app, you would check balance first or use a trigger
-      return { success: false, message: "Insufficient points" };
-    }
 
     return { success: true, message: "Transfer completed" };
   } catch (error) {
@@ -540,34 +544,37 @@ async function createUserWithSettings(
   env: Env
 ): Promise<User> {
   // Use batch to ensure both operations succeed or fail together
-  const results = await env.DB.batch([
+  await env.DB.batch([
     // Create the user
     env.DB.prepare(
       `INSERT INTO users (username, email, password_hash)
-       VALUES (?, ?, ?)
-       RETURNING *`
+       VALUES (?, ?, ?)`
     ).bind(username, email, passwordHash),
 
-    // We need the user ID from the first query, but batch does not allow that
-    // Instead, use a subquery or handle this differently
+    // Use a subquery because batch statements cannot consume prior results directly
+    env.DB.prepare(
+      `INSERT INTO user_settings (user_id, theme, notifications_enabled)
+       SELECT id, 'light', TRUE FROM users WHERE email = ?`
+    ).bind(email),
   ]);
 
-  // For operations that need the inserted ID, use RETURNING and a separate query
-  const user = results[0].results[0] as User;
-
-  // Now create settings with the known user ID
-  await env.DB.prepare(
-    `INSERT INTO user_settings (user_id, theme, notifications_enabled)
-     VALUES (?, 'light', TRUE)`
+  // Fetch the created row after the atomic batch completes
+  const user = await env.DB.prepare(
+    `SELECT id, username, email, created_at, updated_at
+     FROM users
+     WHERE email = ?`
   )
-    .bind(user.id)
-    .run();
+    .bind(email)
+    .first<User>();
 
-  return user;
+  return user!;
 }
 
 // Bulk insert with batch for better performance
-async function bulkInsertPosts(posts: Omit<Post, 'id'>[], env: Env): Promise<void> {
+async function bulkInsertPosts(
+  posts: Omit<Post, 'id' | 'created_at' | 'updated_at'>[],
+  env: Env
+): Promise<void> {
   // Create an array of prepared statements for the batch
   const statements = posts.map(post =>
     env.DB.prepare(
@@ -759,11 +766,11 @@ Here are the key best practices for working with Cloudflare D1.
 | **Version migrations** | Number your migration files and track them in version control |
 | **Type your bindings** | Define TypeScript interfaces for your Env to get type safety |
 | **Monitor query performance** | Check `result.meta.rows_read` to identify slow queries |
-| **Use Time Travel** | Leverage D1's Time Travel feature to debug data issues |
+| **Use Time Travel** | Leverage D1's Time Travel feature to restore from data issues |
 
 ## Conclusion
 
-Cloudflare D1 brings the power of SQLite to the edge, giving you a serverless database that scales automatically and runs close to your users. With familiar SQL syntax, strong integration with Cloudflare Workers, and tools like migrations and Time Travel, D1 is an excellent choice for building fast, globally distributed applications.
+Cloudflare D1 brings the power of SQLite to Cloudflare Workers, giving you a serverless database that scales automatically and can use read replicas for lower-latency reads. With familiar SQL syntax, strong integration with Cloudflare Workers, and tools like migrations and Time Travel, D1 is an excellent choice for building fast, globally distributed applications.
 
 The combination of D1 and Workers provides a complete serverless platform where you can build everything from simple APIs to complex applications without managing any infrastructure. Start with the basics, use prepared statements for security, leverage batch operations for transactions, and take advantage of local development to iterate quickly.
 
