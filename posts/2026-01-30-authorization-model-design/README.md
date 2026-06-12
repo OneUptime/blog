@@ -57,7 +57,7 @@ ABAC handles nuanced rules but requires more infrastructure.
 
 ### Relationship-Based Access Control (ReBAC)
 
-ReBAC defines access through relationships in a graph. If user A owns document B, and document B is in folder C, then user A has access to folder C. Google Docs uses this model for sharing.
+ReBAC defines access through relationships in a graph. If user A owns document B, and document B is in folder C, then user A has access to folder C. Google Drive uses this style of relationship-based authorization for sharing.
 
 ## Designing Your Permission Schema
 
@@ -334,13 +334,13 @@ def can_with_hierarchy(self, ctx: AuthContext, permission: str) -> bool:
 
 ## Common Pitfalls
 
-1. **Checking permissions in the wrong layer.** Authorization belongs in your service layer, not your database queries or UI. The UI can hide buttons, but the backend must enforce rules.
+1. **Checking permissions in the wrong layer.** Authorization belongs on the server side, ideally behind a central service or policy layer, not only in the UI. The UI can hide buttons, but the backend must enforce rules.
 
 2. **Forgetting to invalidate caches.** When roles change, cached permissions become stale. Invalidate on role assignment changes or use short TTLs.
 
 3. **Over-engineering early.** Start with RBAC. Move to ABAC or ReBAC only when RBAC cannot express your rules. Most applications never need that complexity.
 
-4. **Missing audit logs.** Log every permission check, especially denials. This helps debug issues and satisfies compliance requirements.
+4. **Missing audit logs.** Log security-relevant permission decisions, especially denials. This helps debug issues and satisfies compliance requirements.
 
 5. **Hardcoding role names.** Store roles in the database, not code. This lets you add roles without deployments.
 
@@ -354,4 +354,4 @@ def can_with_hierarchy(self, ctx: AuthContext, permission: str) -> bool:
 - [ ] Default roles are documented and tested
 - [ ] Resource deletion cascades to permission records
 
-Authorization is not a feature you ship once. As your product evolves, your permission model will need updates. Build it with change in mind: use a central service, keep permissions in the database, and log everything.
+Authorization is not a feature you ship once. As your product evolves, your permission model will need updates. Build it with change in mind: use a central service, keep permissions in the database, and log security-relevant decisions.
