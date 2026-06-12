@@ -81,7 +81,7 @@ time_based:
 ### Python Implementation
 
 ```python
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 
@@ -104,7 +104,7 @@ class Incident:
     id: str
     root_alert: Alert
     correlated_alerts: List[Alert] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class TimeBasedCorrelator:
@@ -169,9 +169,9 @@ if __name__ == "__main__":
 
     # Simulate a burst of alerts from the same host
     alerts = [
-        Alert("a1", "db-primary", "postgres", "critical", "Connection refused", datetime.utcnow()),
-        Alert("a2", "db-primary", "postgres", "critical", "Replication lag", datetime.utcnow() + timedelta(seconds=5)),
-        Alert("a3", "db-primary", "postgres", "warning", "High CPU", datetime.utcnow() + timedelta(seconds=10)),
+        Alert("a1", "db-primary", "postgres", "critical", "Connection refused", datetime.now(timezone.utc)),
+        Alert("a2", "db-primary", "postgres", "critical", "Replication lag", datetime.now(timezone.utc) + timedelta(seconds=5)),
+        Alert("a3", "db-primary", "postgres", "warning", "High CPU", datetime.now(timezone.utc) + timedelta(seconds=10)),
     ]
 
     for alert in alerts:
@@ -195,12 +195,12 @@ Topology-based correlation uses your infrastructure dependency graph to identify
 flowchart TD
     subgraph Infrastructure Topology
         LB[Load Balancer]
-        LB --> API1[API Server 1]
-        LB --> API2[API Server 2]
-        API1 --> Cache[Redis Cache]
-        API2 --> Cache
-        API1 --> DB[(PostgreSQL Primary)]
-        API2 --> DB
+        DB[(PostgreSQL Primary)] --> API1[API Server 1]
+        DB --> API2[API Server 2]
+        Cache[Redis Cache] --> API1
+        Cache --> API2
+        API1 --> LB[Load Balancer]
+        API2 --> LB
         DB --> DBR[(PostgreSQL Replica)]
     end
 
@@ -219,7 +219,7 @@ When PostgreSQL Primary fails, the API servers and cache will generate connectio
 ```python
 from dataclasses import dataclass, field
 from typing import Dict, List, Set, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -336,7 +336,7 @@ if __name__ == "__main__":
     correlator.add_dependency("api-server-1", "load-balancer")
     correlator.add_dependency("api-server-2", "load-balancer")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Simulate database failure cascade
     alerts = [
@@ -377,7 +377,7 @@ Establishing clear parent-child relationships between alerts enables powerful su
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class RelationshipType(Enum):
@@ -456,7 +456,7 @@ def build_incident_tree(root_alert: AlertNode, child_alerts: List[AlertNode]) ->
 
 # Example usage
 if __name__ == "__main__":
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Create alerts
     root = AlertNode("a1", "postgres-primary", "critical", "Connection refused", now)
@@ -505,7 +505,7 @@ flowchart LR
 
 ```python
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from collections import defaultdict
 import statistics
@@ -592,7 +592,9 @@ class AlertStormDetector:
             all_label_keys.update(alert.labels.keys())
 
         for key in all_label_keys:
-            values = [a.labels.get(key) for a in alerts if key in a.labels]
+            if not all(key in alert.labels for alert in alerts):
+                continue
+            values = [a.labels[key] for a in alerts]
             if values and len(set(values)) == 1:
                 common[f"label:{key}"] = values[0]
 
@@ -613,20 +615,26 @@ class AlertStormDetector:
 
         # Check if we are in an active storm
         if self.current_storm and self.current_storm.is_active:
-            # Add alert to existing storm
-            self.current_storm.alerts.append(alert)
-            self.current_storm.common_attributes = self._find_common_attributes(
-                self.current_storm.alerts
-            )
+            previous_last_alert_time = self.current_storm.alerts[-1].timestamp
 
             # Check if storm should end (rate dropped)
             if current_rate < self.rate_threshold / 2:
-                last_alert_time = self.current_storm.alerts[-1].timestamp
-                if now - last_alert_time > self.cooldown:
+                if now - previous_last_alert_time > self.cooldown:
                     self.current_storm.is_active = False
                     print(f"[STORM ENDED] {self.current_storm.id} with {self.current_storm.alert_count} alerts")
-
-            return None  # Suppress individual notification
+                else:
+                    self.current_storm.alerts.append(alert)
+                    self.current_storm.common_attributes = self._find_common_attributes(
+                        self.current_storm.alerts
+                    )
+                    return None  # Suppress individual notification
+            else:
+                # Add alert to existing storm
+                self.current_storm.alerts.append(alert)
+                self.current_storm.common_attributes = self._find_common_attributes(
+                    self.current_storm.alerts
+                )
+                return None  # Suppress individual notification
 
         # Check if we should start a new storm
         if current_rate >= self.rate_threshold:
@@ -652,7 +660,7 @@ class AlertStormDetector:
 if __name__ == "__main__":
     detector = AlertStormDetector(rate_threshold=5, window_seconds=60)
 
-    base_time = datetime.utcnow()
+    base_time = datetime.now(timezone.utc)
 
     # Simulate rapid-fire alerts (storm scenario)
     for i in range(25):
@@ -679,8 +687,9 @@ Combining all strategies into a production-ready correlation engine.
 
 ```python
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set
+from collections import defaultdict
 from enum import Enum
 import hashlib
 
@@ -718,7 +727,7 @@ class Incident:
     root_alert: Alert
     correlation_type: CorrelationType
     correlated_alerts: List[Alert] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     is_notified: bool = False
     suppressed_count: int = 0
 
@@ -748,6 +757,7 @@ class CorrelationEngine:
         # State
         self.open_incidents: Dict[str, Incident] = {}
         self.dependencies: Dict[str, Set[str]] = defaultdict(set)
+        self.parents: Dict[str, Set[str]] = defaultdict(set)
         self.recent_alerts: List[Alert] = []
         self.seen_fingerprints: Set[str] = set()
 
@@ -758,22 +768,35 @@ class CorrelationEngine:
     def register_dependency(self, parent: str, child: str) -> None:
         """Register that child depends on parent."""
         self.dependencies[parent].add(child)
+        self.parents[child].add(parent)
 
     def _build_correlation_key(self, alert: Alert) -> str:
         """Build grouping key from alert attributes."""
         parts = [f"{attr}={getattr(alert, attr, 'unknown')}" for attr in self.group_by]
         return "|".join(sorted(parts))
 
+    def _find_parent_incident(self, node: str, visited: Set[str] = None) -> Optional[Incident]:
+        """Walk up the dependency graph to find an open parent incident."""
+        if visited is None:
+            visited = set()
+        if node in visited:
+            return None
+        visited.add(node)
+
+        for parent in self.parents.get(node, set()):
+            for incident in self.open_incidents.values():
+                if incident.root_alert.host == parent or incident.root_alert.service == parent:
+                    return incident
+
+            parent_incident = self._find_parent_incident(parent, visited)
+            if parent_incident:
+                return parent_incident
+
+        return None
+
     def _check_topology(self, alert: Alert) -> Optional[Incident]:
         """Check if alert should be suppressed due to parent failure."""
-        # Check if any parent of this node has an open incident
-        for parent, children in self.dependencies.items():
-            if alert.host in children or alert.service in children:
-                parent_key = f"host={parent}|service={parent}"
-                for key, incident in self.open_incidents.items():
-                    if parent in key:
-                        return incident
-        return None
+        return self._find_parent_incident(alert.host) or self._find_parent_incident(alert.service)
 
     def _check_storm(self, now: datetime) -> bool:
         """Check if we are in an alert storm."""
@@ -853,7 +876,7 @@ class CorrelationEngine:
 
         return incident
 
-    def get_metrics(self) -> Dict[str, int]:
+    def get_metrics(self) -> Dict[str, int | float]:
         """Return correlation effectiveness metrics."""
         return {
             "total_received": self.total_received,
@@ -879,7 +902,7 @@ if __name__ == "__main__":
     engine.register_dependency("api-server-1", "checkout-service")
     engine.register_dependency("api-server-2", "checkout-service")
 
-    base_time = datetime.utcnow()
+    base_time = datetime.now(timezone.utc)
 
     # Simulate incident cascade
     alerts = [
