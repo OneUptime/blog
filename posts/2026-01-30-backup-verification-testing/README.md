@@ -85,7 +85,7 @@ in a separate manifest for later verification.
 import hashlib
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -150,7 +150,7 @@ class BackupChecksumManager:
         """
         manifest = {
             "backup_id": backup_id,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "algorithm": "sha256",
             "files": []
         }
@@ -167,7 +167,8 @@ class BackupChecksumManager:
                     "checksum": checksum,
                     "size": file_size,
                     "modified": datetime.fromtimestamp(
-                        file_path.stat().st_mtime
+                        file_path.stat().st_mtime,
+                        tz=timezone.utc
                     ).isoformat()
                 })
 
@@ -207,7 +208,7 @@ class BackupChecksumManager:
 
         results = {
             "backup_id": backup_id,
-            "verified_at": datetime.utcnow().isoformat(),
+            "verified_at": datetime.now(timezone.utc).isoformat(),
             "total_files": len(manifest["files"]),
             "verified_files": 0,
             "failed_files": [],
@@ -504,10 +505,11 @@ import hashlib
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import psycopg2
+from psycopg2 import sql
 
 
 @dataclass
@@ -559,7 +561,8 @@ class PostgresRestoreValidator(DatabaseValidator):
         user: str,
         password: str,
         expected_counts: Dict[str, int],
-        checksum_queries: Dict[str, str]
+        checksum_queries: Dict[str, str],
+        expected_checksums: Optional[Dict[str, str]] = None
     ):
         """
         Initialize the PostgreSQL validator.
@@ -572,6 +575,7 @@ class PostgresRestoreValidator(DatabaseValidator):
             password: Database password
             expected_counts: Expected row counts per table
             checksum_queries: Queries that return checksums for data validation
+            expected_checksums: Expected checksum value per validation query
         """
         self.host = host
         self.port = port
@@ -580,6 +584,7 @@ class PostgresRestoreValidator(DatabaseValidator):
         self.password = password
         self.expected_counts = expected_counts
         self.checksum_queries = checksum_queries
+        self.expected_checksums = expected_checksums or {}
         self.conn = None
 
     def connect(self) -> None:
@@ -649,7 +654,7 @@ class PostgresRestoreValidator(DatabaseValidator):
         for table, expected_count in self.expected_counts.items():
             start_time = time.time()
 
-            query = f"SELECT COUNT(*) FROM {table}"
+            query = sql.SQL("SELECT COUNT(*) FROM {}").format(sql.Identifier(table))
 
             try:
                 with self.conn.cursor() as cur:
@@ -707,14 +712,16 @@ class PostgresRestoreValidator(DatabaseValidator):
 
                 # Hash the result for consistent comparison
                 checksum = hashlib.md5(str(result).encode()).hexdigest()
+                expected_checksum = self.expected_checksums.get(test_name)
+                passed = expected_checksum is not None and checksum == expected_checksum
 
                 results.append(ValidationResult(
                     test_name=f"integrity_{test_name}",
-                    passed=True,  # Will be compared against baseline
-                    expected="baseline",
+                    passed=passed,
+                    expected=expected_checksum,
                     actual=checksum,
                     duration_ms=duration,
-                    message="Checksum computed successfully"
+                    message="Checksum matches baseline" if passed else "Checksum does not match baseline"
                 ))
 
             except Exception as e:
@@ -757,7 +764,7 @@ class PostgresRestoreValidator(DatabaseValidator):
         total_count = len(all_results)
 
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "database": self.database,
             "total_tests": total_count,
             "passed_tests": passed_count,
@@ -792,13 +799,18 @@ if __name__ == "__main__":
             "transactions": 10000000
         },
         checksum_queries={
-            "user_emails": "SELECT md5(string_agg(email, '')) FROM users ORDER BY id",
+            "user_emails": "SELECT md5(string_agg(email, '' ORDER BY id)) FROM users",
             "order_totals": "SELECT SUM(total) FROM orders",
             "recent_transactions": """
                 SELECT COUNT(*), SUM(amount)
                 FROM transactions
                 WHERE created_at > NOW() - INTERVAL '30 days'
             """
+        },
+        expected_checksums={
+            "user_emails": "f8e8e0fb1d63c6bb14f09d77ef5d0184",
+            "order_totals": "d41d8cd98f00b204e9800998ecf8427e",
+            "recent_transactions": "9e107d9d372bb6826bd81d3542a419d6"
         }
     )
 
@@ -1300,6 +1312,13 @@ run_sample_verification() {
 
     # Select random files for verification
     local indices
+    if [ "$total_files" -eq 0 ]; then
+        log "ERROR" "Manifest contains no files"
+        return 1
+    fi
+    if [ "$sample_size" -gt "$total_files" ]; then
+        sample_size="$total_files"
+    fi
     indices=$(shuf -i 0-$((total_files-1)) -n "$sample_size")
 
     for idx in $indices; do
@@ -1312,9 +1331,9 @@ run_sample_verification() {
         size=$(echo "$file_info" | jq -r '.size')
 
         if verify_file_restore "$path" "$checksum" "$size"; then
-            ((verified++))
+            ((verified+=1))
         else
-            ((failed++))
+            ((failed+=1))
         fi
     done
 
