@@ -78,47 +78,45 @@ To use percolate queries, you need an index with a field of type `percolator`. T
 const createPercolatorIndex = async (client) => {
   await client.indices.create({
     index: 'alert-queries',
-    body: {
-      mappings: {
-        properties: {
-          // The percolator field - stores the actual queries
-          query: {
-            type: 'percolator'
-          },
-          // Metadata about who created this alert
-          user_id: {
-            type: 'keyword'
-          },
-          // Human-readable name for the alert
-          alert_name: {
-            type: 'text'
-          },
-          // Priority level for routing
-          priority: {
-            type: 'keyword'
-          },
-          // When this alert was created
-          created_at: {
-            type: 'date'
-          },
-          // Fields that documents will be matched against
-          // These must match the structure of documents you'll percolate
-          message: {
-            type: 'text',
-            analyzer: 'standard'
-          },
-          severity: {
-            type: 'keyword'
-          },
-          service: {
-            type: 'keyword'
-          },
-          status_code: {
-            type: 'integer'
-          },
-          response_time_ms: {
-            type: 'integer'
-          }
+    mappings: {
+      properties: {
+        // The percolator field - stores the actual queries
+        query: {
+          type: 'percolator'
+        },
+        // Metadata about who created this alert
+        user_id: {
+          type: 'keyword'
+        },
+        // Human-readable name for the alert
+        alert_name: {
+          type: 'text'
+        },
+        // Priority level for routing
+        priority: {
+          type: 'keyword'
+        },
+        // When this alert was created
+        created_at: {
+          type: 'date'
+        },
+        // Fields that documents will be matched against
+        // These must match the structure of documents you'll percolate
+        message: {
+          type: 'text',
+          analyzer: 'standard'
+        },
+        severity: {
+          type: 'keyword'
+        },
+        service: {
+          type: 'keyword'
+        },
+        status_code: {
+          type: 'integer'
+        },
+        response_time_ms: {
+          type: 'integer'
         }
       }
     }
@@ -137,52 +135,49 @@ const createPercolatorIndex = async (client) => {
 const createOptimizedPercolatorIndex = async (client) => {
   await client.indices.create({
     index: 'monitoring-alerts',
-    body: {
-      settings: {
-        // Optimize for percolate query performance
-        number_of_shards: 3,
-        number_of_replicas: 1,
-        // Refresh interval affects how quickly new queries become available
-        refresh_interval: '1s',
-        // Analysis settings for consistent text processing
-        analysis: {
-          analyzer: {
-            // Custom analyzer for log messages
-            log_analyzer: {
-              type: 'custom',
-              tokenizer: 'standard',
-              filter: ['lowercase', 'stop', 'snowball']
-            }
+    settings: {
+      // Optimize for percolate query performance
+      number_of_shards: 3,
+      number_of_replicas: 1,
+      // Refresh interval affects how quickly new queries become available
+      refresh_interval: '1s',
+      // Analysis settings for consistent text processing
+      analysis: {
+        analyzer: {
+          // Custom analyzer for log messages
+          log_analyzer: {
+            type: 'custom',
+            tokenizer: 'standard',
+            filter: ['lowercase', 'stop', 'snowball']
           }
         }
       },
-      mappings: {
-        properties: {
-          // Percolator field for storing queries
-          query: {
-            type: 'percolator'
-          },
-          // Alert metadata
-          alert_id: { type: 'keyword' },
-          user_id: { type: 'keyword' },
-          alert_name: { type: 'keyword' },
-          notification_channel: { type: 'keyword' },
-          enabled: { type: 'boolean' },
-          created_at: { type: 'date' },
+    mappings: {
+      properties: {
+        // Percolator field for storing queries
+        query: {
+          type: 'percolator'
+        },
+        // Alert metadata
+        alert_id: { type: 'keyword' },
+        user_id: { type: 'keyword' },
+        alert_name: { type: 'keyword' },
+        notification_channel: { type: 'keyword' },
+        enabled: { type: 'boolean' },
+        created_at: { type: 'date' },
 
-          // Document fields (must match percolated document structure)
-          log_level: { type: 'keyword' },
-          message: {
-            type: 'text',
-            analyzer: 'log_analyzer'
-          },
-          service_name: { type: 'keyword' },
-          environment: { type: 'keyword' },
-          error_code: { type: 'keyword' },
-          latency_ms: { type: 'long' },
-          cpu_percent: { type: 'float' },
-          memory_percent: { type: 'float' }
-        }
+        // Document fields (must match percolated document structure)
+        log_level: { type: 'keyword' },
+        message: {
+          type: 'text',
+          analyzer: 'log_analyzer'
+        },
+        service_name: { type: 'keyword' },
+        environment: { type: 'keyword' },
+        error_code: { type: 'keyword' },
+        latency_ms: { type: 'long' },
+        cpu_percent: { type: 'float' },
+        memory_percent: { type: 'float' }
       }
     }
   });
@@ -205,7 +200,7 @@ const registerErrorAlert = async (client) => {
   await client.index({
     index: 'monitoring-alerts',
     id: 'alert-001',
-    body: {
+    document: {
       // The query to match against incoming documents
       query: {
         bool: {
@@ -356,14 +351,12 @@ With queries registered, you can now percolate documents to find which queries m
 const percolateDocument = async (client, document) => {
   const response = await client.search({
     index: 'monitoring-alerts',
-    body: {
-      query: {
-        percolate: {
-          // The field containing percolator queries
-          field: 'query',
-          // The document to match against stored queries
-          document: document
-        }
+    query: {
+      percolate: {
+        // The field containing percolator queries
+        field: 'query',
+        // The document to match against stored queries
+        document: document
       }
     }
   });
@@ -407,13 +400,11 @@ console.log('Matching alerts:', matches);
 const percolateMultipleDocuments = async (client, documents) => {
   const response = await client.search({
     index: 'monitoring-alerts',
-    body: {
-      query: {
-        percolate: {
-          field: 'query',
-          // Pass array of documents for batch percolation
-          documents: documents
-        }
+    query: {
+      percolate: {
+        field: 'query',
+        // Pass array of documents for batch percolation
+        documents: documents
       }
     }
   });
@@ -422,14 +413,15 @@ const percolateMultipleDocuments = async (client, documents) => {
   const matchesByDocument = {};
 
   response.hits.hits.forEach(hit => {
-    // _percolator_document_slot indicates which document matched
-    const docIndex = hit.fields._percolator_document_slot[0];
-    if (!matchesByDocument[docIndex]) {
-      matchesByDocument[docIndex] = [];
-    }
-    matchesByDocument[docIndex].push({
-      alertId: hit._source.alert_id,
-      alertName: hit._source.alert_name
+    // _percolator_document_slot indicates which documents matched
+    hit.fields._percolator_document_slot.forEach(docIndex => {
+      if (!matchesByDocument[docIndex]) {
+        matchesByDocument[docIndex] = [];
+      }
+      matchesByDocument[docIndex].push({
+        alertId: hit._source.alert_id,
+        alertName: hit._source.alert_name
+      });
     });
   });
 
@@ -455,24 +447,22 @@ const batchMatches = await percolateMultipleDocuments(client, logBatch);
 const percolateWithFilters = async (client, document, userId) => {
   const response = await client.search({
     index: 'monitoring-alerts',
-    body: {
-      query: {
-        bool: {
-          must: [
-            {
-              percolate: {
-                field: 'query',
-                document: document
-              }
+    query: {
+      bool: {
+        must: [
+          {
+            percolate: {
+              field: 'query',
+              document: document
             }
-          ],
-          filter: [
-            // Only match enabled alerts
-            { term: { enabled: true } },
-            // Only match alerts for specific user
-            { term: { user_id: userId } }
-          ]
-        }
+          }
+        ],
+        filter: [
+          // Only match enabled alerts
+          { term: { enabled: true } },
+          // Only match alerts for specific user
+          { term: { user_id: userId } }
+        ]
       }
     }
   });
@@ -490,18 +480,16 @@ const percolateWithFilters = async (client, document, userId) => {
 const percolateWithHighlighting = async (client, document) => {
   const response = await client.search({
     index: 'monitoring-alerts',
-    body: {
-      query: {
-        percolate: {
-          field: 'query',
-          document: document
-        }
-      },
-      highlight: {
-        fields: {
-          // Highlight matches in the message field
-          message: {}
-        }
+    query: {
+      percolate: {
+        field: 'query',
+        document: document
+      }
+    },
+    highlight: {
+      fields: {
+        // Highlight matches in the message field
+        message: {}
       }
     }
   });
@@ -566,42 +554,40 @@ class AlertingSystem {
     if (!indexExists) {
       await this.client.indices.create({
         index: this.indexName,
-        body: {
-          settings: {
-            number_of_shards: 3,
-            number_of_replicas: 1,
-            refresh_interval: '1s'
-          },
-          mappings: {
-            properties: {
-              // Percolator field
-              query: { type: 'percolator' },
+        settings: {
+          number_of_shards: 3,
+          number_of_replicas: 1,
+          refresh_interval: '1s'
+        },
+        mappings: {
+          properties: {
+            // Percolator field
+            query: { type: 'percolator' },
 
-              // Alert metadata
-              alert_id: { type: 'keyword' },
-              alert_name: { type: 'keyword' },
-              user_id: { type: 'keyword' },
-              team_id: { type: 'keyword' },
-              severity: { type: 'keyword' },
-              notification_channels: { type: 'keyword' },
-              cooldown_minutes: { type: 'integer' },
-              enabled: { type: 'boolean' },
-              created_at: { type: 'date' },
-              last_triggered: { type: 'date' },
+            // Alert metadata
+            alert_id: { type: 'keyword' },
+            alert_name: { type: 'keyword' },
+            user_id: { type: 'keyword' },
+            team_id: { type: 'keyword' },
+            severity: { type: 'keyword' },
+            notification_channels: { type: 'keyword' },
+            cooldown_minutes: { type: 'integer' },
+            enabled: { type: 'boolean' },
+            created_at: { type: 'date' },
+            last_triggered: { type: 'date' },
 
-              // Document fields for matching
-              event_type: { type: 'keyword' },
-              service: { type: 'keyword' },
-              environment: { type: 'keyword' },
-              region: { type: 'keyword' },
-              log_level: { type: 'keyword' },
-              message: { type: 'text' },
-              error_type: { type: 'keyword' },
-              http_status: { type: 'integer' },
-              latency_ms: { type: 'long' },
-              error_rate: { type: 'float' },
-              request_count: { type: 'long' }
-            }
+            // Document fields for matching
+            event_type: { type: 'keyword' },
+            service: { type: 'keyword' },
+            environment: { type: 'keyword' },
+            region: { type: 'keyword' },
+            log_level: { type: 'keyword' },
+            message: { type: 'text' },
+            error_type: { type: 'keyword' },
+            http_status: { type: 'integer' },
+            latency_ms: { type: 'long' },
+            error_rate: { type: 'float' },
+            request_count: { type: 'long' }
           }
         }
       });
@@ -634,7 +620,7 @@ class AlertingSystem {
     await this.client.index({
       index: this.indexName,
       id: alertId,
-      body: {
+      document: {
         query: esQuery,
         alert_id: alertId,
         alert_name: alertName,
@@ -711,24 +697,22 @@ class AlertingSystem {
     // Percolate the event against all alerts
     const response = await this.client.search({
       index: this.indexName,
-      body: {
-        query: {
-          bool: {
-            must: [
-              {
-                percolate: {
-                  field: 'query',
-                  document: event
-                }
+      query: {
+        bool: {
+          must: [
+            {
+              percolate: {
+                field: 'query',
+                document: event
               }
-            ],
-            filter: [
-              { term: { enabled: true } }
-            ]
-          }
-        },
-        size: 100  // Limit number of matching alerts
-      }
+            }
+          ],
+          filter: [
+            { term: { enabled: true } }
+          ]
+        }
+      },
+      size: 100  // Limit number of matching alerts
     });
 
     const matchingAlerts = response.hits.hits;
@@ -775,10 +759,8 @@ class AlertingSystem {
     await this.client.update({
       index: this.indexName,
       id: alert.alert_id,
-      body: {
-        doc: {
-          last_triggered: new Date().toISOString()
-        }
+      doc: {
+        last_triggered: new Date().toISOString()
       }
     });
 
@@ -801,35 +783,34 @@ class AlertingSystem {
 
     const response = await this.client.search({
       index: this.indexName,
-      body: {
-        query: {
-          bool: {
-            must: [
-              {
-                percolate: {
-                  field: 'query',
-                  documents: events
-                }
+      query: {
+        bool: {
+          must: [
+            {
+              percolate: {
+                field: 'query',
+                documents: events
               }
-            ],
-            filter: [
-              { term: { enabled: true } }
-            ]
-          }
-        },
-        size: 1000
-      }
+            }
+          ],
+          filter: [
+            { term: { enabled: true } }
+          ]
+        }
+      },
+      size: 1000
     });
 
     // Group results by document
     const results = new Map();
 
     for (const hit of response.hits.hits) {
-      const docSlot = hit.fields._percolator_document_slot?.[0] ?? 0;
-      if (!results.has(docSlot)) {
-        results.set(docSlot, []);
+      for (const docSlot of hit.fields._percolator_document_slot ?? [0]) {
+        if (!results.has(docSlot)) {
+          results.set(docSlot, []);
+        }
+        results.get(docSlot).push(hit._source);
       }
-      results.get(docSlot).push(hit._source);
     }
 
     // Process each event's matching alerts
@@ -952,26 +933,24 @@ class ContentClassifier {
   async initialize() {
     await this.client.indices.create({
       index: this.indexName,
-      body: {
-        mappings: {
-          properties: {
-            // Percolator field for category rules
-            query: { type: 'percolator' },
+      mappings: {
+        properties: {
+          // Percolator field for category rules
+          query: { type: 'percolator' },
 
-            // Category metadata
-            category_id: { type: 'keyword' },
-            category_name: { type: 'keyword' },
-            parent_category: { type: 'keyword' },
-            priority: { type: 'integer' },
-            auto_tag: { type: 'boolean' },
+          // Category metadata
+          category_id: { type: 'keyword' },
+          category_name: { type: 'keyword' },
+          parent_category: { type: 'keyword' },
+          priority: { type: 'integer' },
+          auto_tag: { type: 'boolean' },
 
-            // Document fields for classification
-            title: { type: 'text', analyzer: 'english' },
-            body: { type: 'text', analyzer: 'english' },
-            tags: { type: 'keyword' },
-            source: { type: 'keyword' },
-            language: { type: 'keyword' }
-          }
+          // Document fields for classification
+          title: { type: 'text', analyzer: 'english' },
+          body: { type: 'text', analyzer: 'english' },
+          tags: { type: 'keyword' },
+          source: { type: 'keyword' },
+          language: { type: 'keyword' }
         }
       }
     });
@@ -1033,9 +1012,7 @@ class ContentClassifier {
 
     // Require specific tags
     if (requiredTags.length > 0) {
-      filter.push({
-        terms: { tags: requiredTags }
-      });
+      filter.push(...requiredTags.map(tag => ({ term: { tags: tag } })));
     }
 
     // Filter by source
@@ -1058,7 +1035,7 @@ class ContentClassifier {
     await this.client.index({
       index: this.indexName,
       id: categoryId,
-      body: {
+      document: {
         query,
         category_id: categoryId,
         category_name: categoryName,
@@ -1076,18 +1053,16 @@ class ContentClassifier {
   async classify(content) {
     const response = await this.client.search({
       index: this.indexName,
-      body: {
-        query: {
-          percolate: {
-            field: 'query',
-            document: content
-          }
+      query: {
+        percolate: {
+          field: 'query',
+          document: content
         },
-        sort: [
-          { priority: 'desc' },
-          { _score: 'desc' }
-        ]
-      }
+      },
+      sort: [
+        { priority: 'desc' },
+        { _score: 'desc' }
+      ]
     });
 
     // Extract categories sorted by priority and relevance
@@ -1116,27 +1091,26 @@ class ContentClassifier {
   async classifyBatch(documents) {
     const response = await this.client.search({
       index: this.indexName,
-      body: {
-        query: {
-          percolate: {
-            field: 'query',
-            documents: documents
-          }
-        },
-        size: documents.length * 10  // Allow multiple categories per doc
-      }
+      query: {
+        percolate: {
+          field: 'query',
+          documents: documents
+        }
+      },
+      size: documents.length * 10  // Allow multiple categories per doc
     });
 
     // Group by document
     const results = documents.map(() => ({ categories: [] }));
 
     for (const hit of response.hits.hits) {
-      const docIndex = hit.fields._percolator_document_slot?.[0] ?? 0;
-      results[docIndex].categories.push({
-        categoryId: hit._source.category_id,
-        categoryName: hit._source.category_name,
-        confidence: hit._score
-      });
+      for (const docIndex of hit.fields._percolator_document_slot ?? [0]) {
+        results[docIndex].categories.push({
+          categoryId: hit._source.category_id,
+          categoryName: hit._source.category_name,
+          confidence: hit._score
+        });
+      }
     }
 
     // Sort categories by confidence for each document
@@ -1299,12 +1273,10 @@ class PercolatorOptimizer {
 
       await this.client.search({
         index: this.indexName,
-        body: {
-          query: {
-            percolate: {
-              field: 'query',
-              documents: documents
-            }
+        query: {
+          percolate: {
+            field: 'query',
+            documents: documents
           }
         }
       });
@@ -1335,10 +1307,10 @@ class PercolatorOptimizer {
 // Strategies for optimizing percolate query performance
 
 // 1. Use filters instead of queries where possible
-// Filters are cached and faster for exact matches
+// Filter context avoids scoring for exact matches
 const optimizedQuery = {
   bool: {
-    // Use filter for exact matches (cached)
+    // Use filter for exact matches
     filter: [
       { term: { environment: 'production' } },
       { term: { service: 'api' } },
@@ -1361,12 +1333,10 @@ async function efficientBatchProcessing(client, documents, batchSize = 100) {
 
     const response = await client.search({
       index: 'alert-queries',
-      body: {
-        query: {
-          percolate: {
-            field: 'query',
-            documents: batch
-          }
+      query: {
+        percolate: {
+          field: 'query',
+          documents: batch
         }
       }
     });
@@ -1383,30 +1353,28 @@ async function preFilteredPercolation(client, document) {
   // Only check queries relevant to this document's service
   const response = await client.search({
     index: 'alert-queries',
-    body: {
-      query: {
-        bool: {
-          must: [
-            {
-              percolate: {
-                field: 'query',
-                document: document
-              }
+    query: {
+      bool: {
+        must: [
+          {
+            percolate: {
+              field: 'query',
+              document: document
             }
-          ],
-          // Pre-filter to relevant queries only
-          filter: [
-            { term: { enabled: true } },
-            {
-              bool: {
-                should: [
-                  { term: { target_service: document.service } },
-                  { term: { target_service: '_all' } }
-                ]
-              }
+          }
+        ],
+        // Pre-filter to relevant queries only
+        filter: [
+          { term: { enabled: true } },
+          {
+            bool: {
+              should: [
+                { term: { target_service: document.service } },
+                { term: { target_service: '_all' } }
+              ]
             }
-          ]
-        }
+          }
+        ]
       }
     }
   });
@@ -1438,12 +1406,10 @@ async function shardAwarePercolation(client, document, routingKey) {
   const response = await client.search({
     index: 'alert-queries',
     routing: routingKey,  // Route to specific shard
-    body: {
-      query: {
-        percolate: {
-          field: 'query',
-          document: document
-        }
+    query: {
+      percolate: {
+        field: 'query',
+        document: document
       }
     }
   });
