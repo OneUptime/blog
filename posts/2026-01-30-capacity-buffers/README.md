@@ -43,6 +43,9 @@ spec:
     matchLabels:
       app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api
@@ -324,21 +327,16 @@ print(f"Optimal buffer: {analysis['optimal_buffer']*100:.0f}%")
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cluster-autoscaler-priority
+  name: cluster-autoscaler-priority-expander
+  namespace: kube-system
 data:
-  priorities: |
+  priorities: |-
     10:
-      - name: reserved-nodes
-        minSize: 5
-        maxSize: 5
+      - .*reserved-nodes.*
     20:
-      - name: on-demand-buffer
-        minSize: 0
-        maxSize: 3
+      - .*on-demand-buffer.*
     30:
-      - name: spot-surge
-        minSize: 0
-        maxSize: 10
+      - .*spot-surge.*
 ```
 
 Resource-Specific Buffers
@@ -354,7 +352,13 @@ kind: Deployment
 metadata:
   name: compute-service
 spec:
+  selector:
+    matchLabels:
+      app: compute-service
   template:
+    metadata:
+      labels:
+        app: compute-service
     spec:
       containers:
         - name: app
@@ -379,7 +383,13 @@ kind: Deployment
 metadata:
   name: memory-intensive-service
 spec:
+  selector:
+    matchLabels:
+      app: memory-intensive-service
   template:
+    metadata:
+      labels:
+        app: memory-intensive-service
     spec:
       containers:
         - name: app
@@ -445,7 +455,7 @@ graph TD
     F --> G[Expansion Triggered]
 ```
 
-```bash
+```yaml
 # Prometheus alert for storage buffer monitoring
 groups:
   - name: storage-buffer-alerts
@@ -600,7 +610,7 @@ print(f"Action needed: {action}")
 
 ```yaml
 # Kubernetes CronHPA for predictable patterns
-apiVersion: autoscaling.k8s.io/v1alpha1
+apiVersion: autoscaling.alibabacloud.com/v1beta1
 kind: CronHorizontalPodAutoscaler
 metadata:
   name: api-buffer-schedule
@@ -612,17 +622,17 @@ spec:
   jobs:
     # Higher buffer during business hours
     - name: business-hours-buffer
-      schedule: "0 8 * * 1-5"  # 8 AM weekdays
+      schedule: "0 0 8 * * 1-5"  # 8 AM weekdays
       targetSize: 10
 
     # Lower buffer overnight
     - name: overnight-buffer
-      schedule: "0 20 * * 1-5"  # 8 PM weekdays
+      schedule: "0 0 20 * * 1-5"  # 8 PM weekdays
       targetSize: 4
 
     # Pre-scale for known events
     - name: monday-morning-spike
-      schedule: "30 7 * * 1"  # Monday 7:30 AM
+      schedule: "0 30 7 * * 1"  # Monday 7:30 AM
       targetSize: 15
 ```
 
@@ -748,7 +758,10 @@ def generate_buffer_report(
         current = values[-1] if values else 0
         avg = sum(values) / len(values) if values else 0
         minimum = min(values) if values else 0
-        time_below_threshold = sum(1 for v in values if v < threshold) / len(values)
+        time_below_threshold = (
+            sum(1 for v in values if v < threshold) / len(values)
+            if values else 0
+        )
 
         metric_report = {
             'current_buffer': current,
