@@ -128,17 +128,17 @@ amtool config routes test --config.file=alertmanager.yml \
 Common configuration mistakes:
 
 ```yaml
-# WRONG: Using single quotes in YAML can break environment variables
+# WRONG: Alertmanager does not expand environment variables in its config
 receivers:
   - name: slack
     slack_configs:
-      - api_url: '${SLACK_WEBHOOK}'  # Won't expand!
+      - api_url: '${SLACK_WEBHOOK}'  # Treated as a literal string!
 
-# CORRECT: Use double quotes or no quotes
+# CORRECT: Load secrets from a file using the _file suffix
 receivers:
   - name: slack
     slack_configs:
-      - api_url: "${SLACK_WEBHOOK}"  # Will expand correctly
+      - api_url_file: '/etc/alertmanager/secrets/slack_webhook'
 ```
 
 ## 4. Debug Notification Failures
