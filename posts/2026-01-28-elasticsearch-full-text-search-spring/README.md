@@ -32,6 +32,13 @@ Add the required dependencies:
         <groupId>com.fasterxml.jackson.core</groupId>
         <artifactId>jackson-databind</artifactId>
     </dependency>
+
+    <!-- Lombok for DTO builders and accessors -->
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
 </dependencies>
 ```
 
@@ -58,8 +65,9 @@ spring:
     uris: https://elasticsearch.example.com:9200
     username: ${ELASTICSEARCH_USERNAME}
     password: ${ELASTICSEARCH_PASSWORD}
-    ssl:
-      bundle: elasticsearch
+    restclient:
+      ssl:
+        bundle: elasticsearch
 ```
 
 ---
@@ -77,6 +85,8 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
+import org.springframework.data.elasticsearch.annotations.InnerField;
+import org.springframework.data.elasticsearch.annotations.MultiField;
 import org.springframework.data.elasticsearch.annotations.Setting;
 
 import java.math.BigDecimal;
@@ -90,8 +100,15 @@ public class Product {
     @Id
     private String id;
 
-    // Text field for full-text search with custom analyzer
-    @Field(type = FieldType.Text, analyzer = "standard")
+    // Text field for full-text search and autocomplete
+    @MultiField(
+        mainField = @Field(type = FieldType.Text, analyzer = "standard"),
+        otherFields = {
+            @InnerField(suffix = "keyword", type = FieldType.Keyword),
+            @InnerField(suffix = "autocomplete", type = FieldType.Text,
+                        analyzer = "autocomplete", searchAnalyzer = "autocomplete_search")
+        }
+    )
     private String name;
 
     // Text field with multiple analyzers for different search scenarios
@@ -99,7 +116,8 @@ public class Product {
         mainField = @Field(type = FieldType.Text, analyzer = "standard"),
         otherFields = {
             @InnerField(suffix = "keyword", type = FieldType.Keyword),
-            @InnerField(suffix = "autocomplete", type = FieldType.Text, analyzer = "autocomplete")
+            @InnerField(suffix = "autocomplete", type = FieldType.Text,
+                        analyzer = "autocomplete", searchAnalyzer = "autocomplete_search")
         }
     )
     private String description;
@@ -112,7 +130,7 @@ public class Product {
     @Field(type = FieldType.Keyword)
     private String brand;
 
-    // Nested field for searchable tags
+    // Keyword list for searchable tags
     @Field(type = FieldType.Keyword)
     private List<String> tags;
 
@@ -156,7 +174,6 @@ public class Product {
 Create custom index settings for better search quality:
 
 ```json
-// src/main/resources/elasticsearch/product-settings.json
 {
   "analysis": {
     "analyzer": {
@@ -241,7 +258,6 @@ package com.example.service;
 import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
-import co.elastic.clients.elasticsearch._types.query_dsl.QueryBuilders;
 import com.example.document.Product;
 import com.example.dto.ProductSearchRequest;
 import com.example.dto.ProductSearchResponse;
@@ -255,7 +271,6 @@ import org.springframework.data.elasticsearch.core.query.highlight.Highlight;
 import org.springframework.data.elasticsearch.core.query.highlight.HighlightField;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -402,6 +417,7 @@ package com.example.service;
 
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import com.example.document.Product;
+import com.example.dto.ProductSuggestion;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHits;
@@ -626,6 +642,26 @@ public class ProductSearchResponse {
 }
 ```
 
+```java
+// ProductSuggestion.java
+// Autocomplete response DTO
+package com.example.dto;
+
+import lombok.Builder;
+import lombok.Getter;
+
+import java.math.BigDecimal;
+
+@Getter
+@Builder
+public class ProductSuggestion {
+    private String id;
+    private String name;
+    private String category;
+    private BigDecimal price;
+}
+```
+
 ---
 
 ## REST Controller
@@ -783,7 +819,7 @@ public class ProductIndexService {
 
 3. **Enable fuzzy matching** - Users make typos; handle them gracefully
 
-4. **Normalize URIs in autocomplete** - Limit autocomplete results to prevent UI clutter
+4. **Use dedicated autocomplete fields** - Limit autocomplete results to prevent UI clutter
 
 5. **Add highlighting** - Show users why results matched their query
 
