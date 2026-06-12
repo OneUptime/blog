@@ -15,7 +15,7 @@ Prefetch count controls how many unacknowledged messages a consumer can have at 
 Without prefetch limits, RabbitMQ pushes messages to consumers as fast as possible. This can cause problems:
 
 - One fast consumer grabs all messages before slow consumers get any
-- A crashed consumer loses all prefetched messages
+- A crashed consumer returns many unacknowledged messages for redelivery
 - Memory fills up with buffered messages on the consumer side
 
 ```mermaid
@@ -140,7 +140,7 @@ channel.basic_qos(prefetch_count=250)
 channel.basic_qos(prefetch_count=0)  # No limit
 ```
 
-**Almost never use this.** Messages pile up on consumers, risking memory issues and lost work on crashes.
+**Almost never use this.** Messages pile up on consumers, risking memory issues and a large burst of redelivered work on crashes.
 
 ## Calculating Optimal Prefetch
 
@@ -429,14 +429,17 @@ def create_consumer(priority):
 **Prefetch too high:**
 - Uneven message distribution
 - Some consumers overloaded while others idle
-- Large message loss on consumer crash
+- Large redelivery bursts on consumer crash
 - Memory pressure on consumer side
 
 ### Checking Current Prefetch
 
 ```bash
-# Via rabbitmqctl
-rabbitmqctl list_consumers queue name prefetch_count
+# Via rabbitmqctl, per consumer
+rabbitmqctl list_consumers
+
+# Via rabbitmqctl, per channel
+rabbitmqctl list_channels name prefetch_count
 
 # Via Management API
 curl -u admin:password http://localhost:15672/api/consumers | \
@@ -449,9 +452,9 @@ curl -u admin:password http://localhost:15672/api/consumers | \
 2. **Match prefetch to processing time**: Faster processing = higher prefetch
 3. **Use per-consumer prefetch**: Global prefetch rarely makes sense
 4. **Monitor utilization**: High idle time means prefetch is too low
-5. **Consider failure impact**: Lower prefetch = fewer lost messages on crash
+5. **Consider failure impact**: Lower prefetch = fewer messages to redeliver on crash
 6. **Test under load**: Behavior differs between idle and loaded queues
 
 ## Conclusion
 
-Prefetch count is a critical tuning parameter for RabbitMQ consumers. Start with a conservative value like 1-10, measure your consumer utilization and message distribution, then adjust based on data. The goal is to keep consumers busy without causing unfair distribution or risking message loss. Monitor continuously and be prepared to adjust as your workload characteristics change.
+Prefetch count is a critical tuning parameter for RabbitMQ consumers. Start with a conservative value like 1-10, measure your consumer utilization and message distribution, then adjust based on data. The goal is to keep consumers busy without causing unfair distribution or excessive redelivery after consumer failures. Monitor continuously and be prepared to adjust as your workload characteristics change.
