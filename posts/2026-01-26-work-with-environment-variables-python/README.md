@@ -103,7 +103,7 @@ from dotenv import load_dotenv
 import os
 
 # Load variables from .env file
-# By default, looks for .env in the current directory
+# By default, finds a .env file automatically
 load_dotenv()
 
 # Now access variables as usual
@@ -264,35 +264,41 @@ print(f"Database URL: {config.database.url}")
 ```python
 # config_pydantic.py
 # Configuration with automatic validation using Pydantic
-from pydantic import BaseSettings, validator, Field
-from typing import List, Optional
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from typing import Annotated, List, Optional
 
 class Settings(BaseSettings):
     """Application settings with validation."""
 
     # Required variables
-    database_url: str = Field(..., env='DATABASE_URL')
-    secret_key: str = Field(..., env='SECRET_KEY')
+    database_url: str = Field(..., validation_alias='DATABASE_URL')
+    secret_key: str = Field(..., validation_alias='SECRET_KEY')
 
     # Optional with defaults
-    debug: bool = Field(False, env='DEBUG')
-    port: int = Field(8000, env='PORT')
-    log_level: str = Field('INFO', env='LOG_LEVEL')
+    debug: bool = Field(False, validation_alias='DEBUG')
+    port: int = Field(8000, validation_alias='PORT')
+    log_level: str = Field('INFO', validation_alias='LOG_LEVEL')
 
     # List from comma-separated string
-    allowed_hosts: List[str] = Field(['localhost'], env='ALLOWED_HOSTS')
+    allowed_hosts: Annotated[List[str], NoDecode] = Field(
+        default_factory=lambda: ['localhost'],
+        validation_alias='ALLOWED_HOSTS'
+    )
 
     # Nested settings
-    redis_url: Optional[str] = Field(None, env='REDIS_URL')
+    redis_url: Optional[str] = Field(None, validation_alias='REDIS_URL')
 
-    @validator('allowed_hosts', pre=True)
+    @field_validator('allowed_hosts', mode='before')
+    @classmethod
     def parse_allowed_hosts(cls, v):
         """Parse comma-separated hosts into a list."""
         if isinstance(v, str):
-            return [host.strip() for host in v.split(',')]
+            return [host.strip() for host in v.split(',') if host.strip()]
         return v
 
-    @validator('log_level')
+    @field_validator('log_level')
+    @classmethod
     def validate_log_level(cls, v):
         """Ensure log level is valid."""
         valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
@@ -300,11 +306,12 @@ class Settings(BaseSettings):
             raise ValueError(f"Invalid log level. Must be one of: {valid_levels}")
         return v.upper()
 
-    class Config:
-        # Load from .env file automatically
-        env_file = '.env'
-        env_file_encoding = 'utf-8'
-        case_sensitive = False
+    # Load from .env file automatically
+    model_config = SettingsConfigDict(
+        env_file='.env',
+        env_file_encoding='utf-8',
+        case_sensitive=False
+    )
 
 # Usage
 settings = Settings()
@@ -364,7 +371,7 @@ class ProductionConfig(BaseConfig):
 
 def get_config():
     """Get configuration based on environment."""
-    env = os.environ.get('FLASK_ENV', 'development').lower()
+    env = os.environ.get('APP_ENV', 'development').lower()
 
     config_map = {
         'development': DevelopmentConfig,
@@ -377,7 +384,7 @@ def get_config():
 
 # Usage
 config = get_config()
-print(f"Running in: {os.environ.get('FLASK_ENV', 'development')}")
+print(f"Running in: {os.environ.get('APP_ENV', 'development')}")
 print(f"Debug: {config.DEBUG}")
 ```
 
@@ -464,7 +471,7 @@ app = Flask(__name__)
 
 # Configure from environment
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key')
-app.config['DEBUG'] = os.environ.get('DEBUG', 'false').lower() == 'true'
+app.config['DEBUG'] = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
 ```
 
@@ -473,15 +480,14 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
 ```python
 # fastapi_config.py
 from fastapi import FastAPI
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "My API"
     debug: bool = False
     database_url: str
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env")
 
 settings = Settings()
 app = FastAPI(title=settings.app_name, debug=settings.debug)
@@ -505,4 +511,3 @@ Following these practices keeps your configuration secure and your applications 
 ---
 
 *Managing configuration across environments? [OneUptime](https://oneuptime.com) helps you monitor your applications and track configuration-related issues in production.*
-
