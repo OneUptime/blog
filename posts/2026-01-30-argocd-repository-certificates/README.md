@@ -14,7 +14,7 @@ ArgoCD needs to trust your Git repositories to pull manifests securely. When you
 
 ```mermaid
 flowchart LR
-    ArgoCD[ArgoCD Server] -->|HTTPS/TLS| Git[Git Repository]
+    ArgoCD[ArgoCD Repo Server] -->|HTTPS/TLS| Git[Git Repository]
 
     subgraph TLS Handshake
         Git -->|Present Certificate| ArgoCD
@@ -49,7 +49,7 @@ flowchart TD
 
 Before adding a certificate to ArgoCD, you need to extract it from your Git server.
 
-Use openssl to connect to the server and retrieve its certificate chain.
+Use openssl to connect to the server and retrieve its leaf certificate.
 
 ```bash
 openssl s_client -connect gitlab.example.com:443 -showcerts </dev/null 2>/dev/null | \
@@ -65,7 +65,7 @@ openssl s_client -connect gitlab.example.com:443 \
   openssl x509 -outform PEM > gitlab-cert.pem
 ```
 
-To get the full certificate chain including intermediate certificates, save all certificates from the output.
+To get the certificate chain presented by the server, save all certificates from the output.
 
 ```bash
 openssl s_client -connect gitlab.example.com:443 -showcerts </dev/null 2>/dev/null | \
@@ -173,7 +173,7 @@ flowchart TD
     CA -->|Validates| Cert3
 ```
 
-Add the CA certificate to the ConfigMap using a wildcard-style key or the specific hostname.
+Add the CA certificate to the ConfigMap using the specific repository server hostname. Repeat the same CA certificate under each hostname that uses that private CA.
 
 ```yaml
 apiVersion: v1
@@ -192,15 +192,15 @@ data:
 
 ## Certificate Chain Configuration
 
-When your Git server presents an incomplete certificate chain, you may need to provide the full chain.
+When your Git server presents an incomplete certificate chain, you may need to provide the missing CA certificates.
 
-Concatenate certificates in order from server certificate to root CA.
+Concatenate the CA certificates, usually from intermediate CA to root CA.
 
 ```bash
-cat server-cert.pem intermediate-ca.pem root-ca.pem > full-chain.pem
+cat intermediate-ca.pem root-ca.pem > ca-bundle.pem
 ```
 
-The ConfigMap should contain the complete chain.
+The ConfigMap should contain the CA bundle for the repository server hostname.
 
 ```yaml
 apiVersion: v1
@@ -210,11 +210,6 @@ metadata:
   namespace: argocd
 data:
   gitlab.example.com: |
-    -----BEGIN CERTIFICATE-----
-    # Server Certificate
-    MIIFazCCA1OgAwIBAgIUEJLHzR3fqBgPKvPZgJuXqlHYyN4wDQYJKoZIhvcNAQEL
-    ...
-    -----END CERTIFICATE-----
     -----BEGIN CERTIFICATE-----
     # Intermediate CA
     MIIFbzCCA1egAwIBAgIUKJ8hz2n4qBgPKvPZgJuXqlHYyN4wDQYJKoZIhvcNAQEL
@@ -282,7 +277,7 @@ spec:
           serviceAccountName: argocd-cert-updater
           containers:
             - name: cert-updater
-              image: bitnami/kubectl:latest
+              image: your-registry/argocd-cert-updater:latest  # Must include kubectl and openssl
               command:
                 - /bin/bash
                 - -c
@@ -298,7 +293,7 @@ spec:
                     -n argocd \
                     --dry-run=client -o yaml | kubectl apply -f -
 
-                  # Restart repo-server to pick up changes
+                  # Optional: restart repo-server to pick up changes immediately
                   kubectl rollout restart deployment argocd-repo-server -n argocd
           restartPolicy: OnFailure
 ```
@@ -404,7 +399,7 @@ Include all missing certificates in your ConfigMap.
 
 ### Changes Not Taking Effect
 
-ArgoCD caches certificates. Restart the repo-server after making changes.
+ConfigMap updates can take a few minutes to appear in ArgoCD pods. Restart the repo-server if you need the change to take effect immediately.
 
 ```bash
 kubectl rollout restart deployment argocd-repo-server -n argocd
@@ -443,7 +438,7 @@ argocd repo add https://gitlab.dev.local/myorg/myapp.git \
 
 ## Best Practices
 
-1. **Use CA certificates when possible** - Adding the CA certificate covers all servers signed by that CA
+1. **Use CA certificates when possible** - A CA certificate can validate all servers signed by that CA when configured for each repository server hostname
 2. **Automate certificate rotation** - Set up monitoring and automated renewal before expiration
 3. **Monitor certificate expiry** - Alert when certificates are approaching expiration
 4. **Keep certificates in version control** - Store certificate configurations in Git (not the private keys)
