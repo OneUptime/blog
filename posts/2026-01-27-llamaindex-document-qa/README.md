@@ -36,6 +36,19 @@ pip install llama-index-vector-stores-chroma llama-index-vector-stores-qdrant
 
 # Document loaders for various file types
 pip install llama-index-readers-file pypdf docx2txt
+
+# Additional readers used in later examples
+pip install llama-index-readers-web llama-index-readers-database html2text sqlalchemy
+
+# Reranking integration used in later examples
+pip install llama-index-postprocessor-cohere-rerank
+```
+
+### Optional Application Dependencies
+
+```bash
+# API, cache, and tracing examples
+pip install fastapi uvicorn redis pandas opentelemetry-sdk opentelemetry-exporter-otlp
 ```
 
 ### Basic Configuration
@@ -54,9 +67,9 @@ def initialize_llamaindex():
     """Configure LlamaIndex with LLM and embedding model settings"""
 
     # Configure the LLM for response generation
-    # GPT-4 provides better reasoning; GPT-3.5-turbo is faster and cheaper
+    # Use a current high-quality model; choose a smaller model when optimizing latency or cost
     Settings.llm = OpenAI(
-        model="gpt-4-turbo-preview",  # Model identifier
+        model="gpt-5.5",  # Model identifier
         temperature=0.1,  # Low temperature for factual responses
         max_tokens=1024,  # Maximum response length
         api_key=os.getenv("OPENAI_API_KEY")  # API key from environment
@@ -70,7 +83,7 @@ def initialize_llamaindex():
     )
 
     # Configure chunking parameters for document processing
-    Settings.chunk_size = 512  # Characters per chunk (smaller = more precise retrieval)
+    Settings.chunk_size = 512  # Tokens per chunk (smaller = more precise retrieval)
     Settings.chunk_overlap = 50  # Overlap between chunks (preserves context at boundaries)
 
     return Settings
@@ -189,7 +202,6 @@ def load_from_urls(urls: List[str]) -> List[Document]:
 def load_from_database(
     connection_string: str,
     query: str,
-    text_column: str,
     metadata_columns: Optional[List[str]] = None
 ) -> List[Document]:
     """
@@ -202,8 +214,8 @@ def load_from_database(
 
     documents = reader.load_data(
         query=query,
-        text_column=text_column,
-        metadata_columns=metadata_columns or []
+        metadata_cols=metadata_columns or [],
+        excluded_text_cols=metadata_columns or []
     )
 
     return documents
@@ -537,8 +549,7 @@ When you need multi-turn conversations with context retention.
 # chat_engine.py
 # Conversational chat engine with memory
 from llama_index.core import VectorStoreIndex
-from llama_index.core.chat_engine import CondensePlusContextChatEngine
-from llama_index.core.memory import ChatMemoryBuffer
+from llama_index.core.memory import Memory
 
 def create_chat_engine(
     index: VectorStoreIndex,
@@ -566,7 +577,7 @@ def create_chat_engine(
         when information is not found in the documents. Be concise but thorough."""
 
     # Chat memory maintains conversation history
-    memory = ChatMemoryBuffer.from_defaults(
+    memory = Memory.from_defaults(
         token_limit=memory_token_limit
     )
 
@@ -826,7 +837,7 @@ def create_cohere_reranking_engine(
     cohere_reranker = CohereRerank(
         api_key=os.getenv("COHERE_API_KEY"),
         top_n=final_top_k,
-        model="rerank-english-v3.0"  # Latest Cohere rerank model
+        model="rerank-v4.0-pro"  # Current Cohere rerank model
     )
 
     query_engine = index.as_query_engine(
@@ -1024,8 +1035,8 @@ async def evaluate_response_quality(
     - Correctness: Is the answer correct? (requires reference)
     """
 
-    # Create evaluators (use GPT-4 for evaluation)
-    eval_llm = OpenAI(model="gpt-4-turbo-preview")
+    # Create evaluators (use a strong model for evaluation)
+    eval_llm = OpenAI(model="gpt-5.5")
 
     faithfulness_evaluator = FaithfulnessEvaluator(llm=eval_llm)
     relevancy_evaluator = RelevancyEvaluator(llm=eval_llm)
@@ -1085,13 +1096,12 @@ async def evaluate_response_quality(
 ```python
 # eval_dataset.py
 # Generate evaluation datasets for systematic testing
-from llama_index.core.evaluation import DatasetGenerator
-from llama_index.core import VectorStoreIndex
+from llama_index.core.llama_dataset.generator import RagDatasetGenerator
 from llama_index.llms.openai import OpenAI
-from typing import List
+from typing import List, Dict
 from llama_index.core.schema import Document
 
-async def generate_eval_dataset(
+def generate_eval_dataset(
     documents: List[Document],
     num_questions_per_doc: int = 3
 ) -> List[Dict]:
@@ -1103,20 +1113,27 @@ async def generate_eval_dataset(
     for production evaluation.
     """
 
-    # Use GPT-4 for high-quality question generation
-    generator_llm = OpenAI(model="gpt-4-turbo-preview")
+    # Use a strong model for high-quality question generation
+    generator_llm = OpenAI(model="gpt-5.5")
 
     # Create dataset generator
-    generator = DatasetGenerator.from_documents(
-        documents,
+    generator = RagDatasetGenerator.from_documents(
+        documents=documents,
         llm=generator_llm,
         num_questions_per_chunk=num_questions_per_doc
     )
 
     # Generate question-answer pairs
-    eval_questions = await generator.agenerate_questions_from_nodes()
+    eval_dataset = generator.generate_dataset_from_nodes()
 
-    return eval_questions
+    return [
+        {
+            "question": example.query,
+            "reference_answer": example.reference_answer,
+            "reference_contexts": example.reference_contexts
+        }
+        for example in eval_dataset.examples
+    ]
 
 
 def create_golden_dataset(
@@ -1263,11 +1280,18 @@ async def query_documents(request: QueryRequest):
 
     try:
         # Run query in thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
+        query_engine = app_state["query_engine"]
+        if request.top_k != 5:
+            query_engine = create_basic_query_engine(
+                app_state["index"],
+                similarity_top_k=request.top_k
+            )
+
         result = await loop.run_in_executor(
             None,
             query_with_sources,
-            app_state["query_engine"],
+            query_engine,
             request.question
         )
 
