@@ -269,7 +269,7 @@ Here is a complete escalation engine implementation:
 # Escalation engine implementation
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import Optional, Dict, List
 import logging
 
@@ -281,16 +281,18 @@ class EscalationEngine:
         self.triggers = config["triggers"]
         self.notification_policies = config["notification_policies"]
         self.active_escalations: Dict[str, "EscalationState"] = {}
+        self.incidents: Dict[str, Dict] = {}
 
     async def handle_incident(self, incident: Dict) -> None:
         """Main entry point for incident escalation"""
         incident_id = incident["id"]
+        self.incidents[incident_id] = incident
 
         # Initialize escalation state
         state = EscalationState(
             incident_id=incident_id,
             current_level=EscalationLevel.L1,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
             acknowledged=False,
             resolved=False
         )
@@ -347,17 +349,19 @@ class EscalationEngine:
                 break
 
             # Check time-based escalation
-            elapsed = (datetime.utcnow() - state.started_at).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - state.started_at).total_seconds()
 
-            if not state.acknowledged and elapsed > 300:
+            if not state.acknowledged and not state.ack_escalated and elapsed > 300:
                 # No ack after 5 minutes - escalate
-                await self._escalate(incident_id, "No acknowledgment after 5 minutes")
+                state.ack_escalated = True
+                await self.escalate(incident_id, "No acknowledgment after 5 minutes")
 
-            if not state.resolved and elapsed > 1800:
+            if not state.resolution_escalated and elapsed > 1800:
                 # Not resolved after 30 minutes - escalate
-                await self._escalate(incident_id, "Not resolved after 30 minutes")
+                state.resolution_escalated = True
+                await self.escalate(incident_id, "Not resolved after 30 minutes")
 
-    async def _escalate(self, incident_id: str, reason: str) -> None:
+    async def escalate(self, incident_id: str, reason: str) -> None:
         """Escalate to the next level"""
         state = self.active_escalations.get(incident_id)
         if not state:
@@ -372,7 +376,7 @@ class EscalationEngine:
         next_level = list(EscalationLevel)[current_index + 1]
         state.current_level = next_level
         state.escalation_history.append({
-            "timestamp": datetime.utcnow(),
+            "timestamp": datetime.now(timezone.utc),
             "from_level": list(EscalationLevel)[current_index],
             "to_level": next_level,
             "reason": reason
@@ -381,7 +385,7 @@ class EscalationEngine:
         logger.info(f"Escalating incident {incident_id} to {next_level}: {reason}")
 
         # Get incident details and notify
-        incident = await self._get_incident(incident_id)
+        incident = self.incidents[incident_id]
         await self._notify_level(next_level, incident)
 
     async def _notify_level(self, level: EscalationLevel,
@@ -420,6 +424,8 @@ class EscalationEngine:
             await sms_client.send(recipient, message["short_message"])
         elif channel == NotificationChannel.EMAIL:
             await email_client.send(recipient, message["subject"], message["body"])
+        elif channel == NotificationChannel.PUSH:
+            await push_client.send(recipient, message["short_message"])
 
     def _format_message(self, incident: Dict, level: EscalationLevel) -> Dict:
         """Format incident message for notifications"""
@@ -454,7 +460,7 @@ Dashboard: https://oneuptime.com/incidents/{incident['id']}
         if state:
             state.acknowledged = True
             state.acknowledged_by = responder
-            state.acknowledged_at = datetime.utcnow()
+            state.acknowledged_at = datetime.now(timezone.utc)
             logger.info(f"Incident {incident_id} acknowledged by {responder}")
 
     async def resolve(self, incident_id: str, responder: str) -> None:
@@ -463,7 +469,7 @@ Dashboard: https://oneuptime.com/incidents/{incident['id']}
         if state:
             state.resolved = True
             state.resolved_by = responder
-            state.resolved_at = datetime.utcnow()
+            state.resolved_at = datetime.now(timezone.utc)
             logger.info(f"Incident {incident_id} resolved by {responder}")
 
 @dataclass
@@ -477,6 +483,8 @@ class EscalationState:
     acknowledged_at: Optional[datetime] = None
     resolved_by: Optional[str] = None
     resolved_at: Optional[datetime] = None
+    ack_escalated: bool = False
+    resolution_escalated: bool = False
     escalation_history: List[Dict] = None
 
     def __post_init__(self):
@@ -593,7 +601,7 @@ For global teams, route to whoever is awake:
 ```python
 # Follow-the-sun escalation
 
-from datetime import datetime
+from datetime import datetime, timezone
 import pytz
 
 class FollowTheSunEscalation:
@@ -618,11 +626,11 @@ class FollowTheSunEscalation:
 
     def get_active_region(self) -> str:
         """Determine which region is currently in business hours"""
-        now_utc = datetime.utcnow()
+        now_utc = datetime.now(timezone.utc)
 
         for region_name, config in self.regions.items():
             tz = pytz.timezone(config["timezone"])
-            local_time = now_utc.replace(tzinfo=pytz.UTC).astimezone(tz)
+            local_time = now_utc.astimezone(tz)
             hour = local_time.hour
 
             start, end = config["business_hours"]
@@ -710,7 +718,7 @@ async def perform_handoff(incident_id: str, from_responder: str,
     handoff_summary = {
         "incident_id": incident_id,
         "from_responder": from_responder,
-        "handoff_time": datetime.utcnow().isoformat(),
+        "handoff_time": datetime.now(timezone.utc).isoformat(),
         "current_status": incident["status"],
         "actions_taken": incident.get("actions_taken", []),
         "hypotheses_tested": incident.get("hypotheses", []),
@@ -798,7 +806,7 @@ async def test_escalation_path(service: str, dry_run: bool = True) -> Dict:
 
     results = {
         "service": service,
-        "tested_at": datetime.utcnow().isoformat(),
+        "tested_at": datetime.now(timezone.utc).isoformat(),
         "levels_tested": [],
         "issues_found": []
     }
