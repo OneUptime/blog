@@ -23,8 +23,8 @@ LangChain provides a rich library of pre-built tools for common tasks. These too
 ```bash
 # Install LangChain and common tool dependencies
 
-pip install langchain langchain-openai langchain-community
-pip install duckduckgo-search  # For web search
+pip install langchain langchain-openai langchain-community langchain-classic
+pip install ddgs               # For DuckDuckGo web search
 pip install wikipedia          # For Wikipedia lookups
 ```
 
@@ -36,14 +36,14 @@ The following example demonstrates how to load and use built-in tools with a Lan
 # builtin_tools.py
 # Demonstrates using LangChain's pre-built tools with an agent
 from langchain_openai import ChatOpenAI
-from langchain.agents import AgentExecutor, create_openai_tools_agent
+from langchain_classic.agents import AgentExecutor, create_openai_tools_agent
 from langchain_community.tools import DuckDuckGoSearchRun, WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
-from langchain import hub
+from langchain_classic import hub
 
 # Initialize the language model with function calling capability
 llm = ChatOpenAI(
-    model="gpt-4-turbo-preview",  # Use a model that supports function calling
+    model="gpt-5.5",  # Use a model that supports tool calling
     temperature=0  # Lower temperature for more deterministic tool selection
 )
 
@@ -316,7 +316,7 @@ The decorator supports several parameters that control how the tool is presented
 ```python
 # tool_decorator.py
 # Explore different @tool decorator configurations
-from langchain_core.tools import tool
+from langchain_core.tools import InjectedToolArg, tool
 from typing import Annotated
 import json
 
@@ -369,7 +369,7 @@ def generate_report(report_type: str) -> str:
 @tool(parse_docstring=True)  # Parse docstring for description
 def query_database(
     query: str,
-    db_connection: Annotated[object, "injected"]  # Hidden from LLM
+    db_connection: Annotated[object, InjectedToolArg]  # Hidden from LLM
 ) -> str:
     """
     Execute a read-only database query.
@@ -556,11 +556,11 @@ async def async_database_query(
 async def run_async_agent():
     """Example of running an async agent with async tools"""
     from langchain_openai import ChatOpenAI
-    from langchain.agents import AgentExecutor, create_openai_tools_agent
-    from langchain import hub
+    from langchain_classic.agents import AgentExecutor, create_openai_tools_agent
+    from langchain_classic import hub
 
     # Initialize components
-    llm = ChatOpenAI(model="gpt-4-turbo-preview", temperature=0)
+    llm = ChatOpenAI(model="gpt-5.5", temperature=0)
     tools = [fetch_url_content, fetch_multiple_tool, async_database_query]
     prompt = hub.pull("hwchase17/openai-tools-agent")
 
@@ -787,7 +787,7 @@ def create_tool_with_error_handling():
     """Wrap tool execution with error handling"""
     from langchain_core.tools import ToolException
 
-    @tool(handle_tool_error=True)  # Return error message instead of raising
+    @tool
     def safe_email_tool(recipient: str, subject: str, body: str) -> str:
         """Send email with built-in error handling"""
         # Validation
@@ -796,6 +796,9 @@ def create_tool_with_error_handling():
             raise ToolException(f"Invalid email: {recipient}. Please provide a valid email address.")
 
         return f"Email sent to {recipient}"
+
+    # Return ToolException messages instead of raising them to the agent.
+    safe_email_tool.handle_tool_error = True
 
     return safe_email_tool
 ```
@@ -814,7 +817,7 @@ This example demonstrates a practical agent that can manage tasks, search inform
 # agent_integration.py
 # Complete example of integrating custom tools with a LangChain agent
 from langchain_openai import ChatOpenAI
-from langchain.agents import AgentExecutor, create_openai_tools_agent
+from langchain_classic.agents import AgentExecutor, create_openai_tools_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage
@@ -959,7 +962,7 @@ def create_productivity_agent():
 
     # Initialize the LLM
     llm = ChatOpenAI(
-        model="gpt-4-turbo-preview",
+        model="gpt-5.5",
         temperature=0
     )
 
@@ -1043,7 +1046,7 @@ if __name__ == "__main__":
 2. **Define explicit schemas** - Pydantic models provide type safety and help the LLM generate correct inputs
 3. **Validate inputs thoroughly** - Catch errors early with field validators and model validators
 4. **Use async for I/O** - Async tools prevent blocking during network calls and database queries
-5. **Handle errors gracefully** - Use `handle_tool_error=True` to return error messages instead of crashing
+5. **Handle errors gracefully** - Configure `handle_tool_error` to return tool error messages instead of crashing
 6. **Keep tools focused** - Each tool should do one thing well rather than handling multiple responsibilities
 7. **Provide helpful error messages** - When validation fails, tell the LLM what went wrong and how to fix it
 8. **Test tools independently** - Verify tool behavior before integrating with agents
