@@ -43,12 +43,11 @@ flowchart TB
 Use Wrangler to run your Worker locally with full debugging support:
 
 ```bash
-# Start local dev server with remote resources
-
+# Start local dev server (runs locally by default in Wrangler v3+)
 wrangler dev
 
-# Start with local-only mode (no network calls to Cloudflare)
-wrangler dev --local
+# Start with remote resources (connects to Cloudflare's network)
+wrangler dev --remote
 
 # Start on a specific port
 wrangler dev --port 8787
@@ -742,8 +741,8 @@ export default {
         console.log(`Processed ${results.length} items, elapsed: ${Date.now() - start}ms`);
       }
 
-      // Check if approaching limit (50ms for free, more for paid)
-      if (Date.now() - start > 40) {
+      // Check if approaching CPU limit (10ms for Free plan, up to 30s for Paid)
+      if (Date.now() - start > 8) {
         console.warn("Approaching CPU limit, stopping early");
         break;
       }
