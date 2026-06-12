@@ -79,7 +79,7 @@ kind: ClusterConfig
 metadata:
   name: production-cluster
   region: us-west-2
-  version: "1.29"
+  version: "1.32"
 
 # VPC configuration - use existing VPC or let eksctl create one
 vpc:
@@ -165,6 +165,10 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.25"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.13"
+    }
   }
 
   backend "s3" {
@@ -214,7 +218,7 @@ variable "cluster_name" {
 variable "cluster_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "1.29"
+  default     = "1.32"
 }
 
 variable "vpc_cidr" {
@@ -285,6 +289,7 @@ module "vpc" {
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb"             = 1
     "kubernetes.io/cluster/${var.cluster_name}"   = "owned"
+    "karpenter.sh/discovery"                      = var.cluster_name
   }
 }
 ```
@@ -315,10 +320,10 @@ module "eks" {
     coredns = {
       most_recent = true
     }
-    kube-proxy = {
+    "kube-proxy" = {
       most_recent = true
     }
-    vpc-cni = {
+    "vpc-cni" = {
       most_recent              = true
       service_account_role_arn = module.vpc_cni_irsa.iam_role_arn
     }
@@ -392,6 +397,10 @@ module "eks" {
     }
   }
 
+  node_security_group_tags = {
+    "karpenter.sh/discovery" = var.cluster_name
+  }
+
   tags = {
     Environment = var.environment
     Cluster     = var.cluster_name
@@ -446,7 +455,7 @@ kind: ClusterConfig
 metadata:
   name: production-cluster
   region: us-west-2
-  version: "1.29"
+  version: "1.32"
 
 managedNodeGroups:
   - name: custom-workers
@@ -544,29 +553,30 @@ Content-Type: text/x-shellscript; charset="us-ascii"
 set -ex
 
 # Install additional packages
-yum install -y amazon-ssm-agent
+yum install -y amazon-ssm-agent jq
 systemctl enable amazon-ssm-agent
 systemctl start amazon-ssm-agent
 
 # Configure kubelet with custom settings
-cat <<KUBELET_CONFIG >> /etc/kubernetes/kubelet/kubelet-config.json
-{
-  "maxPods": 110,
-  "evictionHard": {
-    "memory.available": "100Mi",
-    "nodefs.available": "10%",
-    "nodefs.inodesFree": "5%"
-  },
-  "evictionSoft": {
-    "memory.available": "200Mi",
-    "nodefs.available": "15%"
-  },
-  "evictionSoftGracePeriod": {
-    "memory.available": "2m",
-    "nodefs.available": "2m"
-  }
-}
-KUBELET_CONFIG
+jq '.maxPods = 110 |
+    .evictionHard = {
+      "memory.available": "100Mi",
+      "nodefs.available": "10%",
+      "nodefs.inodesFree": "5%"
+    } |
+    .evictionSoft = {
+      "memory.available": "200Mi",
+      "nodefs.available": "15%"
+    } |
+    .evictionSoftGracePeriod = {
+      "memory.available": "2m",
+      "nodefs.available": "2m"
+    }' /etc/kubernetes/kubelet/kubelet-config.json > /tmp/kubelet-config.json
+mv /tmp/kubelet-config.json /etc/kubernetes/kubelet/kubelet-config.json
+
+# Bootstrap the node into the EKS cluster because EKS does not merge user data
+# when an AMI ID is specified in the launch template.
+/etc/eks/bootstrap.sh ${var.cluster_name} --use-max-pods false
 
 --==BOUNDARY==--
 EOF
@@ -667,7 +677,7 @@ variable "aws_region" {
 
 variable "eks_version" {
   type    = string
-  default = "1.29"
+  default = "1.32"
 }
 
 # Find the latest EKS-optimized AMI as base
@@ -852,7 +862,7 @@ kind: ClusterConfig
 metadata:
   name: production-cluster
   region: us-west-2
-  version: "1.29"
+  version: "1.32"
 
 iam:
   withOIDC: true
@@ -938,7 +948,6 @@ resource "helm_release" "karpenter" {
   name             = "karpenter"
   repository       = "oci://public.ecr.aws/karpenter"
   chart            = "karpenter"
-  version          = "v0.33.0"
 
   set {
     name  = "settings.clusterName"
@@ -966,7 +975,7 @@ Create a Karpenter NodePool for automatic provisioning:
 
 ```yaml
 # karpenter-nodepool.yaml - NodePool configuration
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: default
@@ -987,15 +996,17 @@ spec:
           operator: Gt
           values: ["4"]
       nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
         name: default
   limits:
     cpu: 1000
     memory: 1000Gi
   disruption:
-    consolidationPolicy: WhenUnderutilized
+    consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 30s
 ---
-apiVersion: karpenter.k8s.aws/v1beta1
+apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
   name: default
@@ -1114,7 +1125,7 @@ kind: ClusterConfig
 metadata:
   name: production-cluster
   region: us-west-2
-  version: "1.29"
+  version: "1.32"
 
 managedNodeGroups:
   # On-demand node group for critical workloads
@@ -1151,10 +1162,7 @@ managedNodeGroups:
         value: "true"
         effect: PreferNoSchedule
 
-    # Spot allocation strategy
-    spot:
-      # Use capacity-optimized for better availability
-      allocationStrategy: capacity-optimized
+    # EKS managed node groups use the capacity-optimized allocation strategy for Spot.
 ```
 
 Terraform configuration for spot instances:
@@ -1264,7 +1272,7 @@ spec:
                   - "sleep 10 && /app/graceful-shutdown.sh"
 ```
 
-Handle spot interruptions with the AWS Node Termination Handler:
+Optionally handle additional interruption events with the AWS Node Termination Handler:
 
 ```bash
 # Install Node Termination Handler
@@ -1288,8 +1296,7 @@ Set up monitoring for your node groups using CloudWatch Container Insights:
 # Enable Container Insights with CloudWatch agent
 aws eks create-addon \
   --cluster-name production-cluster \
-  --addon-name amazon-cloudwatch-observability \
-  --addon-version v1.2.0-eksbuild.1
+  --addon-name amazon-cloudwatch-observability
 ```
 
 Create CloudWatch alarms for node group health:
