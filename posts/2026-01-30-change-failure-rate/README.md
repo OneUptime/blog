@@ -8,7 +8,7 @@ Description: Learn to implement change failure rate tracking with deployment cor
 
 ---
 
-Change Failure Rate (CFR) measures what percentage of your deployments cause problems. It is one of four DORA metrics that predict software delivery performance. A high CFR means your releases frequently break production. A low CFR means your deployment pipeline is producing reliable changes.
+Change Failure Rate (CFR) measures what percentage of your deployments cause problems. It is one of the DORA metrics that predict software delivery performance. A high CFR means your releases frequently break production. A low CFR means your deployment pipeline is producing reliable changes.
 
 This guide shows you how to build a CFR tracking system from scratch - defining what counts as a failure, correlating deployments with incidents, calculating the metric, and using it to improve.
 
@@ -48,11 +48,11 @@ The formula is simple:
 Change Failure Rate = (Failed Deployments / Total Deployments) * 100
 ```
 
-DORA benchmarks:
-- Elite: 0-15%
-- High: 16-30%
-- Medium: 31-45%
-- Low: 46-60%+
+Common CFR target bands:
+- Strong: 0-15%
+- Needs attention: 16-30%
+- High risk: 31-45%
+- Critical: 46%+
 
 ## Step 1: Define What Counts as a Failure
 
@@ -568,7 +568,7 @@ CREATE INDEX idx_deployments_status ON deployments(status);
 -- CFR aggregates (materialized for performance)
 CREATE TABLE cfr_daily (
   date DATE NOT NULL,
-  service VARCHAR(255),
+  service VARCHAR(255) NOT NULL DEFAULT 'all',
   total_deployments INTEGER NOT NULL,
   failed_deployments INTEGER NOT NULL,
   change_failure_rate DECIMAL(5,2) NOT NULL,
