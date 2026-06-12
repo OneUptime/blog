@@ -4,25 +4,27 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, RKE, Cluster Templates, Infrastructure as Code, DevOps, Version Management
 
-Description: A comprehensive guide to building Rancher Cluster Templates for standardizing Kubernetes deployments across your organization, covering RKE templates, version enforcement, configuration inheritance.
+Description: A comprehensive guide to building Rancher Cluster Templates for standardizing Kubernetes deployments across your organization, covering RKE templates, version enforcement, and configuration composition.
 
 ---
 
 > "Consistency is the foundation of reliability. In Kubernetes, cluster templates are the blueprint that ensures every environment operates with the same proven configuration."
 
-Rancher Cluster Templates provide a powerful way to standardize Kubernetes cluster configurations across your organization. Instead of manually configuring each cluster and risking configuration drift, templates let you define approved configurations that teams can use as a foundation for their deployments.
+Rancher RKE1 Cluster Templates provide a powerful way to standardize Kubernetes cluster configurations across your organization. Instead of manually configuring each cluster and risking configuration drift, templates let you define approved configurations that teams can use as a foundation for their deployments.
+
+> **Important:** RKE1 reached end of life on July 31, 2025, and Rancher 2.12.0 and later no longer support provisioning or managing downstream RKE1 clusters. Use this guide for legacy Rancher installations that still support RKE1 templates; for new deployments, plan around RKE2 or K3s provisioning instead. Some RKE1 Kubernetes versions released after the EOL date require an active RKE Extended Life subscription.
 
 ## Understanding Rancher Cluster Templates
 
-Cluster Templates in Rancher are reusable configurations that define how Kubernetes clusters should be provisioned. They enforce organizational standards while still allowing flexibility where needed.
+RKE1 Cluster Templates in Rancher are reusable configurations that define how Kubernetes clusters should be provisioned. They enforce organizational standards while still allowing flexibility where needed.
 
 ```mermaid
 flowchart TB
     subgraph Templates["Cluster Template Hierarchy"]
         Base["Base Template<br/>Core Settings"]
-        Dev["Dev Template<br/>Inherits Base"]
-        Staging["Staging Template<br/>Inherits Base"]
-        Prod["Production Template<br/>Inherits Base"]
+        Dev["Dev Template<br/>Based on Base Settings"]
+        Staging["Staging Template<br/>Based on Base Settings"]
+        Prod["Production Template<br/>Based on Base Settings"]
     end
 
     subgraph Clusters["Deployed Clusters"]
@@ -53,7 +55,7 @@ flowchart TB
 
 ## Creating Your First RKE Template
 
-RKE (Rancher Kubernetes Engine) templates define the core Kubernetes configuration. Here is a basic template structure.
+RKE1 (Rancher Kubernetes Engine) templates define the core Kubernetes configuration. Here is a basic template structure.
 
 ```yaml
 # base-cluster-template.yaml
@@ -110,7 +112,7 @@ spec:
       clusterConfig:
         rkeConfig:
           # Kubernetes version - pin to specific version for stability
-          kubernetesVersion: "v1.28.5-rancher1"
+          kubernetesVersion: "v1.30.14-rancher1-1"
 
           # Network configuration
           network:
@@ -176,8 +178,8 @@ spec:
                 authorization-mode: "RBAC,Node"
                 # Disable anonymous authentication
                 anonymous-auth: "false"
-                # Enable admission controllers
-                enable-admission-plugins: "NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,DefaultTolerationSeconds,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,ResourceQuota,NodeRestriction,PodSecurityPolicy"
+                # Enable admission controllers. PodSecurity replaces PodSecurityPolicy on Kubernetes v1.25+.
+                enable-admission-plugins: "NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,DefaultTolerationSeconds,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,ResourceQuota,NodeRestriction,PodSecurity"
                 # Audit policy file
                 audit-policy-file: "/etc/kubernetes/audit-policy.yaml"
 
@@ -204,8 +206,8 @@ spec:
             # Scheduler configuration
             scheduler:
               extraArgs:
-                # Scoring strategy for pod placement
-                policy-config-file: "/etc/kubernetes/scheduler-policy.json"
+                # Profiling disabled for security
+                profiling: "false"
 ```
 
 ## Version Enforcement
@@ -224,7 +226,7 @@ metadata:
   annotations:
     # Document the version policy
     cattle.io/version-policy: |
-      Production clusters must use LTS Kubernetes versions.
+      Production clusters must use approved Kubernetes versions from the Rancher support matrix.
       Upgrades require approval from Platform Team.
 spec:
   displayName: "Production - Version Controlled"
@@ -238,13 +240,13 @@ spec:
 
   revisions:
     # Keep multiple revisions for controlled upgrades
-    - name: v1.27-lts
+    - name: v1.30-approved
       enabled: true
       default: false
       clusterConfig:
         rkeConfig:
           # Pin to specific patch version
-          kubernetesVersion: "v1.27.11-rancher1"
+          kubernetesVersion: "v1.30.14-rancher1-1"
 
           # Upgrade strategy
           upgradeStrategy:
@@ -262,25 +264,25 @@ spec:
               ignoreDaemonSets: true
               timeout: 120
 
-    # Current LTS version
-    - name: v1.28-lts
+    # Current approved version
+    - name: v1.31-approved
       enabled: true
       default: true  # New clusters use this version
       clusterConfig:
         rkeConfig:
-          kubernetesVersion: "v1.28.5-rancher1"
+          kubernetesVersion: "v1.31.14-rancher1-1"
           upgradeStrategy:
             drain: true
             maxUnavailableWorker: "10%"
             maxUnavailableControlplane: "1"
 
     # Preview version for testing
-    - name: v1.29-preview
+    - name: v1.32-preview
       enabled: true
       default: false
       clusterConfig:
         rkeConfig:
-          kubernetesVersion: "v1.29.2-rancher1"
+          kubernetesVersion: "v1.32.13-rancher1-3"
           upgradeStrategy:
             drain: true
             maxUnavailableWorker: "20%"
@@ -292,9 +294,9 @@ spec:
 ```mermaid
 flowchart LR
     subgraph Versions["Version Lifecycle"]
-        Preview["Preview<br/>v1.29"]
-        Current["Current LTS<br/>v1.28"]
-        Previous["Previous LTS<br/>v1.27"]
+        Preview["Preview<br/>v1.32"]
+        Current["Current Approved<br/>v1.31"]
+        Previous["Previous Approved<br/>v1.30"]
         Deprecated["Deprecated<br/>v1.26"]
     end
 
@@ -344,28 +346,12 @@ spec:
         enableNetworkPolicy: true
 
         rkeConfig:
-          kubernetesVersion: "v1.28.5-rancher1"
+          kubernetesVersion: "v1.30.14-rancher1-1"
 
           services:
             kubeApi:
-              # Pod Security Standards enforcement
-              podSecurityConfiguration: |
-                apiVersion: pod-security.admission.config.k8s.io/v1
-                kind: PodSecurityConfiguration
-                defaults:
-                  enforce: "restricted"
-                  enforce-version: "latest"
-                  audit: "restricted"
-                  audit-version: "latest"
-                  warn: "restricted"
-                  warn-version: "latest"
-                exemptions:
-                  usernames: []
-                  runtimeClasses: []
-                  namespaces:
-                    - kube-system
-                    - cattle-system
-                    - rancher-operator-system
+              # Pod Security Admission preset. Valid RKE1 values are restricted or privileged.
+              podSecurityConfiguration: restricted
 
               extraArgs:
                 # Secure API server configuration
@@ -445,7 +431,7 @@ Resource Quotas and Limits
 
 ```yaml
 # resource-standards-template.yaml
-# Define default resource quotas applied to all namespaces
+# Define default resource quotas applied by an RKE add-on
 
 apiVersion: management.cattle.io/v3
 kind: ClusterTemplate
@@ -461,36 +447,38 @@ spec:
       default: true
 
       clusterConfig:
-        # Default project resource quotas
-        defaultPodSecurityPolicyTemplateId: "restricted"
-
-        # Cluster-wide resource quota defaults
-        # These are applied via Rancher's project system
-        clusterResourceQuota:
-          # Limit total cluster resource consumption
-          hard:
-            # Total CPU across all namespaces
-            requests.cpu: "100"
-            limits.cpu: "200"
-            # Total memory across all namespaces
-            requests.memory: "400Gi"
-            limits.memory: "800Gi"
-            # Total storage
-            requests.storage: "10Ti"
-            # Pod count
-            pods: "5000"
-            # Service count
-            services: "1000"
-            services.loadbalancers: "10"
-            services.nodeports: "50"
-            # ConfigMap and Secret limits
-            configmaps: "2000"
-            secrets: "2000"
-            # PVC count
-            persistentvolumeclaims: "500"
-
         rkeConfig:
-          kubernetesVersion: "v1.28.5-rancher1"
+          kubernetesVersion: "v1.30.14-rancher1-1"
+
+          # RKE add-ons can apply Kubernetes resources after cluster creation.
+          addons: |
+            apiVersion: v1
+            kind: ResourceQuota
+            metadata:
+              name: namespace-defaults
+              namespace: default
+            spec:
+              hard:
+                requests.cpu: "20"
+                limits.cpu: "40"
+                requests.memory: "80Gi"
+                limits.memory: "160Gi"
+                pods: "500"
+            ---
+            apiVersion: v1
+            kind: LimitRange
+            metadata:
+              name: default-container-limits
+              namespace: default
+            spec:
+              limits:
+                - type: Container
+                  default:
+                    cpu: "500m"
+                    memory: "512Mi"
+                  defaultRequest:
+                    cpu: "100m"
+                    memory: "128Mi"
 
           services:
             kubelet:
@@ -504,13 +492,13 @@ spec:
                 eviction-soft-grace-period: "memory.available=2m,nodefs.available=2m,imagefs.available=2m"
 ```
 
-## Template Inheritance
+## Template Composition
 
-Rancher supports template inheritance through a combination of base templates and overlays. Here is how to structure a multi-environment setup.
+Rancher RKE1 templates do not provide native inheritance between `ClusterTemplate` resources. A common pattern is to keep a base template in version control, then create environment-specific templates from that base with your own tooling or review process.
 
 ```yaml
 # base-template.yaml
-# Foundation template that other templates inherit from
+# Foundation template used as the source for environment-specific templates
 
 apiVersion: management.cattle.io/v3
 kind: ClusterTemplate
@@ -521,7 +509,7 @@ metadata:
     template-type: base
 spec:
   displayName: "[BASE] Organization Foundation"
-  description: "Base template - do not use directly. Other templates inherit from this."
+  description: "Base template - do not use directly. Use it as the source for environment-specific templates."
 
   revisions:
     - name: v1.0.0
@@ -534,7 +522,7 @@ spec:
           enabled: true
 
         rkeConfig:
-          kubernetesVersion: "v1.28.5-rancher1"
+          kubernetesVersion: "v1.30.14-rancher1-1"
 
           network:
             plugin: calico
@@ -558,7 +546,7 @@ spec:
 
 ```yaml
 # development-template.yaml
-# Development environment template extending base
+# Development environment template based on the base settings
 
 apiVersion: management.cattle.io/v3
 kind: ClusterTemplate
@@ -579,7 +567,7 @@ spec:
   members:
     - accessType: owner
       groupPrincipalId: "local://g-platform-admins"
-    - accessType: member
+    - accessType: read-only
       groupPrincipalId: "local://g-developers"
 
   revisions:
@@ -587,40 +575,33 @@ spec:
       enabled: true
       default: true
 
+      # Questions allow customization when creating clusters.
+      # RKE1 template questions support boolean, int, and string values.
+      questions:
+        - variable: "clusterName"
+          default: "dev-cluster"
+          type: "string"
+          required: true
+
+        - variable: "nodeCount"
+          default: "3"
+          type: "int"
+          required: true
+
+        - variable: "instanceType"
+          default: "t3.medium"
+          type: "string"
+          required: true
+
       clusterConfig:
         enableNetworkPolicy: true
 
-        # Questions allow customization when creating clusters
-        questions:
-          - variable: "clusterName"
-            default: "dev-cluster"
-            description: "Name for the development cluster"
-            type: "string"
-            required: true
-
-          - variable: "nodeCount"
-            default: "3"
-            description: "Number of worker nodes"
-            type: "int"
-            required: true
-            min: 1
-            max: 10
-
-          - variable: "instanceType"
-            default: "t3.medium"
-            description: "EC2 instance type for nodes"
-            type: "enum"
-            options:
-              - "t3.small"
-              - "t3.medium"
-              - "t3.large"
-
         rkeConfig:
-          kubernetesVersion: "v1.28.5-rancher1"
+          kubernetesVersion: "v1.30.14-rancher1-1"
 
           # Development-specific: Allow preview versions
           # Uncomment to test newer Kubernetes versions
-          # kubernetesVersion: "v1.29.2-rancher1"
+          # kubernetesVersion: "v1.32.13-rancher1-3"
 
           network:
             plugin: calico
@@ -648,7 +629,7 @@ spec:
 
 ```yaml
 # production-template.yaml
-# Production environment template with strict controls
+# Production environment template based on the base settings
 
 apiVersion: management.cattle.io/v3
 kind: ClusterTemplate
@@ -677,33 +658,24 @@ spec:
       enabled: true
       default: true
 
-      # Locked fields cannot be changed when creating clusters
-      locked: true
+      # Keep production questions narrow so users can only set approved values.
+      questions:
+        - variable: "clusterName"
+          default: ""
+          type: "string"
+          required: true
+
+        - variable: "region"
+          default: "us-east-1"
+          type: "string"
+          required: true
 
       clusterConfig:
         enableNetworkPolicy: true
 
-        # Limited customization for production
-        questions:
-          - variable: "clusterName"
-            default: ""
-            description: "Production cluster name (requires approval)"
-            type: "string"
-            required: true
-
-          - variable: "region"
-            default: "us-east-1"
-            description: "AWS region for deployment"
-            type: "enum"
-            required: true
-            options:
-              - "us-east-1"
-              - "us-west-2"
-              - "eu-west-1"
-
         rkeConfig:
-          # Pinned to LTS version
-          kubernetesVersion: "v1.28.5-rancher1"
+          # Pinned to an approved version from the Rancher support matrix
+          kubernetesVersion: "v1.30.14-rancher1-1"
 
           network:
             plugin: calico
@@ -740,18 +712,18 @@ spec:
                 protect-kernel-defaults: "true"
 ```
 
-### Template Inheritance Architecture
+### Template Composition Architecture
 
 ```mermaid
 flowchart TB
     subgraph Base["Base Layer"]
-        BaseTemplate["Base Organization Template<br/>Common settings for all clusters"]
+        BaseTemplate["Base Organization Source<br/>Common settings for all clusters"]
     end
 
     subgraph Environment["Environment Layer"]
-        DevTemplate["Development Template"]
-        StagingTemplate["Staging Template"]
-        ProdTemplate["Production Template"]
+        DevTemplate["Development Template<br/>Generated from base source"]
+        StagingTemplate["Staging Template<br/>Generated from base source"]
+        ProdTemplate["Production Template<br/>Generated from base source"]
     end
 
     subgraph Regional["Regional Layer"]
@@ -815,7 +787,7 @@ resource "rancher2_cluster_template" "base" {
     cluster_config {
       # RKE configuration
       rke_config {
-        kubernetes_version = "v1.28.5-rancher1"
+        kubernetes_version = "v1.30.14-rancher1-1"
 
         # Network plugin configuration
         network {
@@ -858,7 +830,7 @@ resource "rancher2_cluster_template" "base" {
   }
 }
 
-# Development template extending base
+# Development template based on base settings
 resource "rancher2_cluster_template" "development" {
   name        = "development-environment"
   description = "Development clusters with relaxed settings"
@@ -870,7 +842,7 @@ resource "rancher2_cluster_template" "development" {
   }
 
   members {
-    access_type       = "member"
+    access_type       = "read-only"
     group_principal_id = "local://g-developers"
   }
 
@@ -883,7 +855,6 @@ resource "rancher2_cluster_template" "development" {
     questions {
       variable    = "cluster_name"
       default     = "dev-cluster"
-      description = "Name for the development cluster"
       type        = "string"
       required    = true
     }
@@ -891,14 +862,13 @@ resource "rancher2_cluster_template" "development" {
     questions {
       variable    = "worker_count"
       default     = "3"
-      description = "Number of worker nodes (1-10)"
       type        = "int"
       required    = true
     }
 
     cluster_config {
       rke_config {
-        kubernetes_version = "v1.28.5-rancher1"
+        kubernetes_version = "v1.30.14-rancher1-1"
 
         network {
           plugin = "calico"
@@ -927,7 +897,7 @@ resource "rancher2_cluster_template" "development" {
   }
 }
 
-# Production template with locked settings
+# Production template with restricted access
 resource "rancher2_cluster_template" "production" {
   name        = "production-environment"
   description = "Production clusters with strict security"
@@ -944,7 +914,7 @@ resource "rancher2_cluster_template" "production" {
 
     cluster_config {
       rke_config {
-        kubernetes_version = "v1.28.5-rancher1"
+        kubernetes_version = "v1.30.14-rancher1-1"
 
         network {
           plugin = "calico"
@@ -1027,7 +997,7 @@ variable "rancher_secret_key" {
 variable "kubernetes_version" {
   description = "Default Kubernetes version for templates"
   type        = string
-  default     = "v1.28.5-rancher1"
+  default     = "v1.30.14-rancher1-1"
 }
 
 variable "backup_s3_bucket" {
