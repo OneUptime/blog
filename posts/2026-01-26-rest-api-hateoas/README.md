@@ -81,7 +81,7 @@ The `_links` object contains hypermedia controls. Each link has a relation name 
 
 ## Common Link Relation Types
 
-Link relations describe the relationship between the current resource and the linked resource. Some standard relations include:
+Link relations describe the relationship between the current resource and the linked resource. Some standard relations and common action names include:
 
 | Relation | Description |
 |----------|-------------|
@@ -92,7 +92,7 @@ Link relations describe the relationship between the current resource and the li
 | `first` | Link to the first page |
 | `last` | Link to the last page |
 | `edit` | Link to edit the resource |
-| `delete` | Link to delete the resource |
+| `delete` | Application-specific action link to delete the resource |
 | `related` | Link to related resources |
 
 ## Implementing HATEOAS in Node.js with Express
@@ -107,8 +107,6 @@ src/
 │   └── orderController.js
 ├── models/
 │   └── order.js
-├── middleware/
-│   └── hateoasLinks.js
 ├── utils/
 │   └── linkBuilder.js
 └── app.js
@@ -335,12 +333,17 @@ class OrderController {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const status = req.query.status; // Optional filter
+    const customerId = req.query.customerId; // Optional filter
 
     // Convert orders map to array and apply filters
     let orderList = Array.from(this.orders.values());
 
     if (status) {
       orderList = orderList.filter(order => order.status === status);
+    }
+
+    if (customerId) {
+      orderList = orderList.filter(order => order.customerId === parseInt(customerId));
     }
 
     const totalItems = orderList.length;
@@ -421,6 +424,36 @@ class OrderController {
     res.status(201).json(response);
   }
 
+  // PUT /api/orders/:id
+  // Updates a pending order
+  updateOrder(req, res) {
+    const orderId = parseInt(req.params.id);
+    const order = this.orders.get(orderId);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (order.status !== 'pending') {
+      return res.status(409).json({
+        error: 'Only pending orders can be updated',
+        currentStatus: order.status,
+        _links: this.linkBuilder.buildOrderLinks(order)
+      });
+    }
+
+    order.items = req.body?.items ?? order.items;
+    order.totalAmount = req.body?.totalAmount ?? order.totalAmount;
+    order.updatedAt = new Date().toISOString();
+
+    const response = {
+      ...order,
+      _links: this.linkBuilder.buildOrderLinks(order)
+    };
+
+    res.json(response);
+  }
+
   // POST /api/orders/:id/confirm
   // Confirms a pending order
   confirmOrder(req, res) {
@@ -461,8 +494,8 @@ class OrderController {
 
     try {
       order.transitionTo('shipped');
-      order.trackingNumber = req.body.trackingNumber;
-      order.carrier = req.body.carrier;
+      order.trackingNumber = req.body?.trackingNumber;
+      order.carrier = req.body?.carrier;
 
       const response = {
         ...order,
@@ -491,7 +524,7 @@ class OrderController {
 
     try {
       order.transitionTo('cancelled');
-      order.cancellationReason = req.body.reason;
+      order.cancellationReason = req.body?.reason;
 
       const response = {
         ...order,
@@ -506,6 +539,145 @@ class OrderController {
         _links: this.linkBuilder.buildOrderLinks(order)
       });
     }
+  }
+
+  // POST /api/orders/:id/deliver
+  // Marks a shipped order as delivered
+  deliverOrder(req, res) {
+    const orderId = parseInt(req.params.id);
+    const order = this.orders.get(orderId);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    try {
+      order.transitionTo('delivered');
+
+      const response = {
+        ...order,
+        _links: this.linkBuilder.buildOrderLinks(order)
+      };
+
+      res.json(response);
+    } catch (error) {
+      res.status(409).json({
+        error: error.message,
+        currentStatus: order.status,
+        _links: this.linkBuilder.buildOrderLinks(order)
+      });
+    }
+  }
+
+  // GET /api/orders/:id/tracking
+  // Returns tracking information for a shipped order
+  getTracking(req, res) {
+    const orderId = parseInt(req.params.id);
+    const order = this.orders.get(orderId);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    res.json({
+      orderId: order.id,
+      carrier: order.carrier,
+      trackingNumber: order.trackingNumber,
+      _links: {
+        order: this.linkBuilder.buildLink(`/api/orders/${order.id}`)
+      }
+    });
+  }
+
+  // POST /api/orders/:id/return
+  // Initiates a return for a delivered order
+  returnOrder(req, res) {
+    const orderId = parseInt(req.params.id);
+    const order = this.orders.get(orderId);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    try {
+      order.transitionTo('returned');
+
+      const response = {
+        ...order,
+        returnReason: req.body?.reason,
+        _links: this.linkBuilder.buildOrderLinks(order)
+      };
+
+      res.json(response);
+    } catch (error) {
+      res.status(409).json({
+        error: error.message,
+        currentStatus: order.status,
+        _links: this.linkBuilder.buildOrderLinks(order)
+      });
+    }
+  }
+
+  // POST /api/orders/:id/reorder
+  // Creates a new pending order from a cancelled order
+  reorder(req, res) {
+    const orderId = parseInt(req.params.id);
+    const originalOrder = this.orders.get(orderId);
+
+    if (!originalOrder) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (originalOrder.status !== 'cancelled') {
+      return res.status(409).json({
+        error: 'Only cancelled orders can be reordered',
+        currentStatus: originalOrder.status,
+        _links: this.linkBuilder.buildOrderLinks(originalOrder)
+      });
+    }
+
+    const order = new Order({
+      id: this.nextId++,
+      customerId: originalOrder.customerId,
+      items: originalOrder.items,
+      totalAmount: originalOrder.totalAmount,
+      status: 'pending'
+    });
+
+    this.orders.set(order.id, order);
+
+    res.status(201).json({
+      ...order,
+      _links: this.linkBuilder.buildOrderLinks(order)
+    });
+  }
+
+  // POST /api/orders/:id/review
+  // Accepts a review for a delivered order
+  reviewOrder(req, res) {
+    const orderId = parseInt(req.params.id);
+    const order = this.orders.get(orderId);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (order.status !== 'delivered') {
+      return res.status(409).json({
+        error: 'Only delivered orders can be reviewed',
+        currentStatus: order.status,
+        _links: this.linkBuilder.buildOrderLinks(order)
+      });
+    }
+
+    res.status(201).json({
+      orderId: order.id,
+      rating: req.body?.rating,
+      comment: req.body?.comment,
+      _links: {
+        order: this.linkBuilder.buildLink(`/api/orders/${order.id}`)
+      }
+    });
   }
 }
 
@@ -553,9 +725,57 @@ app.get('/api', (req, res) => {
 app.get('/api/orders', (req, res) => orderController.listOrders(req, res));
 app.post('/api/orders', (req, res) => orderController.createOrder(req, res));
 app.get('/api/orders/:id', (req, res) => orderController.getOrder(req, res));
+app.put('/api/orders/:id', (req, res) => orderController.updateOrder(req, res));
+app.get('/api/orders/:id/items', (req, res) => {
+  const order = orderController.orders.get(parseInt(req.params.id));
+
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+
+  res.json({
+    items: order.items,
+    _links: {
+      order: orderController.linkBuilder.buildLink(`/api/orders/${order.id}`)
+    }
+  });
+});
 app.post('/api/orders/:id/confirm', (req, res) => orderController.confirmOrder(req, res));
 app.post('/api/orders/:id/ship', (req, res) => orderController.shipOrder(req, res));
 app.post('/api/orders/:id/cancel', (req, res) => orderController.cancelOrder(req, res));
+app.post('/api/orders/:id/deliver', (req, res) => orderController.deliverOrder(req, res));
+app.get('/api/orders/:id/tracking', (req, res) => orderController.getTracking(req, res));
+app.post('/api/orders/:id/return', (req, res) => orderController.returnOrder(req, res));
+app.post('/api/orders/:id/reorder', (req, res) => orderController.reorder(req, res));
+app.post('/api/orders/:id/review', (req, res) => orderController.reviewOrder(req, res));
+
+app.get('/api/customers/:id', (req, res) => {
+  res.json({
+    id: parseInt(req.params.id),
+    _links: {
+      self: { href: `${BASE_URL}/api/customers/${req.params.id}` },
+      orders: { href: `${BASE_URL}/api/orders?customerId=${req.params.id}` }
+    }
+  });
+});
+
+app.get('/api/customers', (req, res) => {
+  res.json({
+    _embedded: { customers: [] },
+    _links: {
+      self: { href: `${BASE_URL}/api/customers` }
+    }
+  });
+});
+
+app.get('/api/products', (req, res) => {
+  res.json({
+    _embedded: { products: [] },
+    _links: {
+      self: { href: `${BASE_URL}/api/products` }
+    }
+  });
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
@@ -766,6 +986,7 @@ public class Order {
 // OrderModelAssembler.java - Converts Order to HATEOAS model
 package com.example.orders.assembler;
 
+import com.example.orders.controller.CustomerController;
 import com.example.orders.controller.OrderController;
 import com.example.orders.model.Order;
 import com.example.orders.model.Order.OrderStatus;
@@ -935,7 +1156,38 @@ public class OrderController {
         return assembler.toModel(order);
     }
 
-    // Additional endpoints omitted for brevity
+    @PutMapping("/{id}")
+    public EntityModel<Order> updateOrder(
+            @PathVariable Long id,
+            @RequestBody Order updatedOrder) {
+        Order order = orderService.update(id, updatedOrder);
+        return assembler.toModel(order);
+    }
+
+    @PostMapping("/{id}/deliver")
+    public EntityModel<Order> deliverOrder(@PathVariable Long id) {
+        Order order = orderService.deliver(id);
+        return assembler.toModel(order);
+    }
+
+    @GetMapping("/{id}/tracking")
+    public TrackingInfo getTracking(@PathVariable Long id) {
+        return orderService.getTracking(id);
+    }
+
+    @PostMapping("/{id}/return")
+    public EntityModel<Order> returnOrder(
+            @PathVariable Long id,
+            @RequestBody ReturnRequest request) {
+        Order order = orderService.returnOrder(id, request);
+        return assembler.toModel(order);
+    }
+
+    @PostMapping("/{id}/reorder")
+    public EntityModel<Order> reorder(@PathVariable Long id) {
+        Order order = orderService.reorder(id);
+        return assembler.toModel(order);
+    }
 }
 ```
 
@@ -1189,7 +1441,7 @@ Several formats exist for representing hypermedia in JSON:
 | Siren | Includes actions with form-like definitions |
 | JSON:API | Includes relationships and compound documents |
 
-The examples in this post use HAL-style conventions, which is the most widely adopted format.
+The examples in this post use HAL-style conventions, which are widely adopted.
 
 ## Conclusion
 
