@@ -25,7 +25,7 @@ Grafana offers multiple approaches to reporting depending on your needs and lice
 
 ### Grafana Enterprise Reporting
 
-Enterprise and Cloud Pro plans include native reporting with PDF generation and scheduling.
+Grafana Enterprise and Grafana Cloud include native reporting with PDF generation and scheduling.
 
 ### Open Source Alternatives
 
@@ -41,12 +41,8 @@ The image renderer is required for any screenshot-based reporting.
 ### Installation
 
 ```bash
-# Plugin installation
-
-grafana-cli plugins install grafana-image-renderer
-
-# Or via Docker
-docker run -p 8081:8081 grafana/grafana-image-renderer:latest
+# Run the supported image renderer service
+docker run --name renderer --rm --detach -p 8081:8081 grafana/grafana-image-renderer:latest
 ```
 
 ### Configuration
@@ -74,8 +70,8 @@ https://grafana.example.com/render/d-solo/abc123/dashboard?panelId=1&width=1000&
 ### Configuring a Report
 
 1. Open the dashboard you want to report on
-2. Click Share > Report
-3. Configure report settings:
+2. Click Share > Schedule report
+3. Click + Create a new report and configure report settings:
 
 ```yaml
 Report Name: Weekly Platform Health
@@ -113,14 +109,15 @@ Schedule Type: Monthly
 Day: 1
 Time: 08:00
 
-# Custom cron
-Schedule Type: Custom
-Cron: 0 8 * * 1-5  # Weekdays at 8 AM
+# Weekday report
+Schedule Type: Daily
+Send only from Monday to Friday: true
+Time: 08:00
 ```
 
 ### Managing Multiple Reports
 
-Reports are managed in Grafana under Reporting > Reports:
+Reports are managed in Grafana under Dashboards > Reporting:
 
 ```yaml
 Reports:
@@ -194,6 +191,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.platypus import SimpleDocTemplate, Image, Paragraph, Spacer, Table
 from reportlab.lib.styles import getSampleStyleSheet
+from datetime import datetime
 from io import BytesIO
 
 def generate_report(grafana_url: str, token: str, dashboards: list,
@@ -399,10 +397,9 @@ Report Sections:
 ```python
 import requests
 
-def post_report_to_slack(report_url: str, channel: str, webhook_url: str):
+def post_report_to_slack(report_url: str, webhook_url: str):
     """Post report notification to Slack."""
     payload = {
-        "channel": channel,
         "text": "Weekly Platform Report",
         "blocks": [
             {
@@ -449,7 +446,7 @@ def upload_to_s3(file_path: str, bucket: str, key: str):
 **Panels not rendering:**
 - Check image renderer is running
 - Verify network connectivity between Grafana and renderer
-- Increase timeout settings
+- Increase render concurrency or render key lifetime if logs indicate those limits are being hit
 
 ```ini
 [rendering]
