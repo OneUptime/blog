@@ -65,7 +65,7 @@ Chaos Monkey is part of Netflix's Simian Army, now available through the Spinnak
 
 ### Prerequisites
 
-You need a running Spinnaker installation or you can run Chaos Monkey standalone. The following example uses the standalone approach with a Go-based implementation.
+You need a running Spinnaker installation. Chaos Monkey relies on Spinnaker as the source of truth for application configuration and uses a MySQL-compatible database to track its termination schedule. The current Go-based implementation cannot run truly standalone.
 
 ### Installation
 
@@ -80,55 +80,41 @@ cd chaosmonkey
 # Build the binary
 go build -o chaosmonkey ./cmd/chaosmonkey
 
-# Verify the installation
-./chaosmonkey --version
+# Verify the installation by listing available subcommands
+./chaosmonkey
 ```
 
 ### Configuration File
 
-Create a configuration file that defines your chaos parameters:
+Chaos Monkey reads a TOML file named `chaosmonkey.toml` from the current directory, `/apps/chaosmonkey`, `/etc`, or `/etc/chaosmonkey`. The file points at the database and Spinnaker; per-application behavior (probability, exceptions, grouping) is configured in Spinnaker itself.
 
-```yaml
-# chaosmonkey.yaml
-# Defines the chaos behavior and targeting rules
+```toml
+# chaosmonkey.toml
 
-enabled: true
+[chaosmonkey]
+enabled = true
+schedule_enabled = true
+leashed = false
+# Accounts (Spinnaker account names) eligible for termination
+accounts = ["production"]
+# Window during which terminations may happen, in the configured time zone
+start_hour = 9
+end_hour = 15
+time_zone = "America/Los_Angeles"
+cron_path = "/etc/cron.d/chaosmonkey-daily-terminations"
+term_account = "root"
 
-# Schedule chaos during business hours for visibility
-schedule:
-  start_hour: 9
-  end_hour: 17
-  timezone: "America/Los_Angeles"
-  # Only run on weekdays
-  excluded_days:
-    - Saturday
-    - Sunday
+[database]
+host = "dbhost.example.com"
+name = "chaosmonkey"
+user = "chaosmonkey"
+encrypted_password = "<encrypted password>"
 
-# Target specific applications
-accounts:
-  - name: production
-    cloud_provider: aws
-    region: us-west-2
-    # Applications to target
-    apps:
-      - api-service
-      - payment-service
-      - notification-service
-
-# Safety settings
-safety:
-  # Minimum instances that must remain running
-  min_instances: 2
-  # Maximum terminations per day per group
-  max_terminations_per_day: 1
-  # Probability of termination (0-100)
-  probability: 50
-
-# Notification settings
-notifications:
-  slack_webhook: "https://hooks.slack.com/services/xxx/yyy/zzz"
-  email: "oncall@yourcompany.com"
+[spinnaker]
+endpoint = "http://spinnaker.example.com:8084"
 ```
+
+When `leashed = true`, Chaos Monkey runs in a no-op mode that logs intended terminations without actually killing instances. Use this while validating a new deployment.
 
 ### AWS IAM Policy
 
@@ -159,18 +145,22 @@ Chaos Monkey needs permissions to describe and terminate instances:
 
 ## Running Your First Chaos Experiment
 
-Start with a controlled experiment in a non-production environment:
+Start with a controlled experiment in a non-production environment. The typical workflow runs `schedule` once per day (usually from cron) to generate the day's termination plan, and then `terminate` fires at each scheduled time:
 
 ```bash
-# Dry run to see what would be terminated
-./chaosmonkey --config chaosmonkey.yaml --dry-run
+# Create the database schema (one-time setup)
+./chaosmonkey migrate
 
-# Output shows targeted instances without terminating
-# Instance i-0abc123def456 in api-service would be terminated
-# Instance i-0def789ghi012 in payment-service would be terminated
+# Generate today's schedule (writes entries into the database)
+./chaosmonkey schedule
 
-# Run actual chaos (start in staging first!)
-./chaosmonkey --config chaosmonkey.yaml --run-once
+# Inspect what Spinnaker reports for an app and verify it is eligible
+./chaosmonkey config chaosguineapig
+./chaosmonkey fetch-schedule
+
+# Terminate a specific instance immediately (start in staging first!)
+./chaosmonkey terminate chaosguineapig test \
+  --cluster=chaosguineapig --region=us-east-1
 ```
 
 ### Validating Results
@@ -272,7 +262,6 @@ Integrate with your observability platform to track chaos events:
 # Send chaos events to your monitoring system
 
 from opentelemetry import metrics
-from opentelemetry.sdk.metrics import MeterProvider
 
 meter = metrics.get_meter("chaos_monkey")
 
