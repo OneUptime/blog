@@ -230,7 +230,24 @@ export class UserTranslator {
     if (!timestamp || timestamp.trim() === '') {
       return null;
     }
-    const parsed = new Date(timestamp);
+
+    const match = timestamp.match(
+      /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/
+    );
+    if (!match) {
+      return null;
+    }
+
+    const [, year, month, day, hour, minute, second] = match;
+    const parsed = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second)
+    );
+
     return isNaN(parsed.getTime()) ? null : parsed;
   }
 
@@ -244,7 +261,13 @@ export class UserTranslator {
 
   // Format Date to legacy timestamp format
   private formatLegacyTimestamp(date: Date): string {
-    return date.toISOString().replace('T', ' ').substring(0, 19);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hour = String(date.getHours()).padStart(2, '0');
+    const minute = String(date.getMinutes()).padStart(2, '0');
+    const second = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
   }
 
   // Build full name from legacy name fields
@@ -308,7 +331,7 @@ The adapter handles all communication with the external system. It deals with HT
 
 ```typescript
 // acl/adapters/LegacyUserAdapter.ts
-import axios, { AxiosInstance, AxiosError } from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import { LegacyUserRecord } from '../legacy/LegacyUserTypes';
 
 export interface LegacyUserAdapterConfig {
@@ -405,7 +428,7 @@ export class LegacyUserAdapter {
 
   // Check if error is retryable (network issues, 5xx errors)
   private isRetryableError(error: unknown): boolean {
-    if (error instanceof AxiosError) {
+    if (axios.isAxiosError(error)) {
       if (!error.response) return true; // Network error
       return error.response.status >= 500;
     }
@@ -414,18 +437,18 @@ export class LegacyUserAdapter {
 
   // Check if error is a 404 not found
   private isNotFoundError(error: unknown): boolean {
-    return error instanceof AxiosError && error.response?.status === 404;
+    return axios.isAxiosError(error) && error.response?.status === 404;
   }
 
-  // Transform errors into domain-specific exceptions
-  private handleError(error: AxiosError): never {
-    const status = error.response?.status;
-    const message = error.message;
+  // Log errors before retry and caller-level error handling
+  private handleError(error: unknown): never {
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    const message = error instanceof Error ? error.message : 'Unknown error';
 
     console.error('Legacy API error:', {
       status,
       message,
-      url: error.config?.url,
+      url: axios.isAxiosError(error) ? error.config?.url : undefined,
     });
 
     throw error;
@@ -576,7 +599,7 @@ This facade aggregates data from multiple external systems into a single domain 
 
 ```typescript
 // acl/facades/UnifiedUserFacade.ts
-import { User, UserStatus } from '../../domain/models/User';
+import { User } from '../../domain/models/User';
 import { UserTranslator } from '../translators/UserTranslator';
 import { CrmContactTranslator } from '../translators/CrmContactTranslator';
 import { AuthUserTranslator } from '../translators/AuthUserTranslator';
@@ -694,7 +717,7 @@ describe('UserTranslator', () => {
       expect(user.preferences.emailNotifications).toBe(true);
     });
 
-    it('handles missing middle name', () => {
+    it('handles middle name', () => {
       const legacy: LegacyUserRecord = {
         USER_ID: 1,
         EMAIL_ADDR: 'TEST@TEST.COM',
@@ -866,7 +889,7 @@ Add observability to track translation errors and external system health.
 
 ```typescript
 // acl/monitoring/AclMetrics.ts
-import { Counter, Histogram, Gauge } from 'prom-client';
+import { Counter, Histogram } from 'prom-client';
 
 export class AclMetrics {
   // Count translation operations by source system and success/failure

@@ -60,7 +60,7 @@ The registration system accepts API specifications from various sources and vali
 ```typescript
 // src/catalog/registration.service.ts
 import { Injectable } from '@nestjs/common';
-import { APISpecification, RegistrationResult, APIFormat } from './types';
+import { APIMetadata, RegistrationResult, APIFormat } from './types';
 import { SpecificationParser } from './parser.service';
 import { SearchIndexer } from './indexer.service';
 import { MetadataStore } from './metadata.service';
@@ -131,7 +131,7 @@ This service orchestrates the entire registration flow. It validates incoming sp
 
 ```typescript
 // src/catalog/registration.controller.ts
-import { Controller, Post, Body, UseGuards, HttpStatus } from '@nestjs/common';
+import { BadRequestException, Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { RegistrationService } from './registration.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -139,7 +139,7 @@ import { Roles } from '../auth/roles.decorator';
 
 interface RegisterAPIRequest {
   specification: string;
-  format: 'openapi' | 'graphql' | 'grpc' | 'asyncapi';
+  format: 'openapi' | 'graphql';
   metadata: {
     name: string;
     version: string;
@@ -166,15 +166,13 @@ export class RegistrationController {
     );
 
     if (!result.success) {
-      return {
-        statusCode: HttpStatus.BAD_REQUEST,
+      throw new BadRequestException({
         message: 'API registration failed',
         errors: result.errors,
-      };
+      });
     }
 
     return {
-      statusCode: HttpStatus.CREATED,
       message: 'API registered successfully',
       data: {
         apiId: result.apiId,
@@ -189,7 +187,7 @@ The controller exposes the registration endpoint with role-based access control.
 
 ## Specification Parsing
 
-Different API formats require different parsing strategies. A unified parser abstraction handles this complexity.
+Different API formats require different parsing strategies. A unified parser abstraction handles this complexity. The implementation below supports OpenAPI and GraphQL; add dedicated parsers before enabling formats such as gRPC or AsyncAPI.
 
 ```mermaid
 flowchart LR
@@ -250,7 +248,8 @@ export class SpecificationParser {
       }
       return { isValid: true, errors: [] };
     } catch (error) {
-      return { isValid: false, errors: [error.message] };
+      const message = error instanceof Error ? error.message : String(error);
+      return { isValid: false, errors: [message] };
     }
   }
 
@@ -431,12 +430,12 @@ flowchart TB
 
 ```typescript
 // src/catalog/indexer.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Client } from '@elastic/elasticsearch';
 import { StoredAPI, SearchResult } from './types';
 
 @Injectable()
-export class SearchIndexer {
+export class SearchIndexer implements OnModuleInit {
   private client: Client;
   private readonly INDEX_NAME = 'api-catalog';
 
@@ -444,7 +443,10 @@ export class SearchIndexer {
     this.client = new Client({
       node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200',
     });
-    this.ensureIndex();
+  }
+
+  async onModuleInit() {
+    await this.ensureIndex();
   }
 
   private async ensureIndex() {
@@ -479,6 +481,7 @@ export class SearchIndexer {
                 analyzer: 'api_analyzer',
                 fields: { keyword: { type: 'keyword' } },
               },
+              nameSuggest: { type: 'completion' },
               description: { type: 'text' },
               version: { type: 'keyword' },
               owner: { type: 'keyword' },
@@ -486,7 +489,6 @@ export class SearchIndexer {
               tags: { type: 'keyword' },
               visibility: { type: 'keyword' },
               endpoints: {
-                type: 'nested',
                 properties: {
                   path: { type: 'text' },
                   method: { type: 'keyword' },
@@ -510,6 +512,7 @@ export class SearchIndexer {
       body: {
         id: api.id,
         name: api.name,
+        nameSuggest: api.name,
         description: api.specification.description,
         version: api.version,
         owner: api.owner,
@@ -618,7 +621,7 @@ export class SearchIndexer {
           api_suggest: {
             prefix,
             completion: {
-              field: 'name',
+              field: 'nameSuggest',
               size: 10,
               skip_duplicates: true,
             },
@@ -645,7 +648,7 @@ interface SearchFilters {
 }
 ```
 
-The indexer creates a custom Elasticsearch index with edge n-gram analysis for autocomplete functionality. The search method supports full-text queries with field boosting, faceted filters for narrowing results, and aggregations for building filter options in the UI.
+The indexer creates a custom Elasticsearch index with edge n-gram analysis for prefix matching and a completion field for autocomplete suggestions. The search method supports full-text queries with field boosting, faceted filters for narrowing results, and aggregations for building filter options in the UI.
 
 ## API Versioning
 
@@ -862,7 +865,7 @@ export class VersionManager {
       }
     }
 
-    // Check for removed required parameters
+    // Check for removed parameters
     for (const oldEndpoint of oldSpec.endpoints) {
       const newEndpoint = newSpec.endpoints.find(
         (e) => e.path === oldEndpoint.path && e.method === oldEndpoint.method,
@@ -1071,6 +1074,7 @@ The documentation component renders API specifications as interactive documentat
 // src/portal/documentation.service.ts
 import { Injectable } from '@nestjs/common';
 import { MetadataStore } from '../catalog/metadata.service';
+import { Parameter, RequestBody, Response, Schema } from '../catalog/types';
 
 interface DocumentationPage {
   api: {
@@ -1080,7 +1084,7 @@ interface DocumentationPage {
     baseUrl: string;
   };
   endpoints: EndpointDocumentation[];
-  schemas: SchemaDocumentation[];
+  schemas: Schema[];
   examples: CodeExample[];
 }
 
@@ -1089,9 +1093,9 @@ interface EndpointDocumentation {
   method: string;
   summary: string;
   description: string;
-  parameters: ParameterDoc[];
-  requestBody: RequestBodyDoc | null;
-  responses: ResponseDoc[];
+  parameters: Parameter[];
+  requestBody: RequestBody | null;
+  responses: Response[];
   codeExamples: Record<string, string>;
 }
 
@@ -1177,7 +1181,8 @@ export class DocumentationService {
   }
 
   private generatePythonExample(endpoint: any, url: string): string {
-    let code = `import requests\n\n`;
+    let code = `import json\n`;
+    code += `import requests\n\n`;
     code += `url = "${url}"\n`;
     code += `headers = {\n`;
     code += `    "Authorization": "Bearer YOUR_API_KEY",\n`;
@@ -1186,7 +1191,7 @@ export class DocumentationService {
 
     if (endpoint.requestBody) {
       const exampleBody = this.generateExampleBody(endpoint.requestBody.schema);
-      code += `payload = ${JSON.stringify(exampleBody, null, 4)}\n\n`;
+      code += `payload = json.loads('''${JSON.stringify(exampleBody, null, 4)}''')\n\n`;
       code += `response = requests.${endpoint.method.toLowerCase()}(url, headers=headers, json=payload)\n`;
     } else {
       code += `response = requests.${endpoint.method.toLowerCase()}(url, headers=headers)\n`;
@@ -1210,9 +1215,8 @@ export class DocumentationService {
 
     if (endpoint.requestBody) {
       const exampleBody = this.generateExampleBody(endpoint.requestBody.schema);
-      code += `    payload := map[string]interface{}${JSON.stringify(exampleBody)}\n`;
-      code += `    jsonData, _ := json.Marshal(payload)\n`;
-      code += `    req, _ := http.NewRequest("${endpoint.method}", url, bytes.NewBuffer(jsonData))\n`;
+      code += `    payload := []byte(\`${JSON.stringify(exampleBody)}\`)\n`;
+      code += `    req, _ := http.NewRequest("${endpoint.method}", url, bytes.NewBuffer(payload))\n`;
     } else {
       code += `    req, _ := http.NewRequest("${endpoint.method}", url, nil)\n`;
     }
@@ -1281,7 +1285,7 @@ Here is the database schema that supports the entire catalog system:
 ```typescript
 // src/catalog/types.ts
 
-export type APIFormat = 'openapi' | 'graphql' | 'grpc' | 'asyncapi';
+export type APIFormat = 'openapi' | 'graphql';
 export type VersionStatus = 'draft' | 'active' | 'deprecated' | 'retired';
 export type Visibility = 'public' | 'internal' | 'private';
 
@@ -1429,7 +1433,6 @@ on:
     branches: [main]
     paths:
       - 'api/openapi.yaml'
-      - 'api/schema.graphql'
 
 jobs:
   sync-catalog:
@@ -1455,7 +1458,7 @@ jobs:
             -H "Content-Type: application/json" \
             -d @- << EOF
           {
-            "specification": $(cat api/openapi.yaml | yq -o=json),
+            "specification": $(yq -o=json api/openapi.yaml | jq -Rs .),
             "format": "openapi",
             "metadata": {
               "name": "${{ github.event.repository.name }}",
