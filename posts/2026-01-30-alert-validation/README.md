@@ -212,8 +212,8 @@ flowchart TD
     B -->|Valid| D{Execute Query}
     D -->|No Data| E[Warning: No matching series]
     D -->|Returns Data| F{Check Return Type}
-    F -->|Scalar/Vector| G[Valid for Alerting]
-    F -->|String/Matrix| H[Invalid for Alerting]
+    F -->|Vector| G[Valid for Alerting]
+    F -->|Scalar/String/Matrix| H[Invalid for Alerting]
 ```
 
 ### Query Validation Script
@@ -228,7 +228,6 @@ import requests
 import yaml
 import sys
 from typing import Dict, Any, List, Tuple
-from urllib.parse import urljoin
 
 class PromQLValidator:
     def __init__(self, prometheus_url: str):
@@ -264,8 +263,8 @@ class PromQLValidator:
             result_type = data['data']['resultType']
             results = data['data']['result']
 
-            # Alerts need instant vectors or scalars
-            if result_type not in ['vector', 'scalar']:
+            # Alerting rules fire from instant-vector elements
+            if result_type != 'vector':
                 return False, f"Invalid result type '{result_type}' for alerting"
 
             if not results:
@@ -324,7 +323,7 @@ if __name__ == "__main__":
 $ python promql_validator.py alerting-rules.yaml
 [PASS] HighErrorRate: Valid: Returns 3 series
 [PASS] HighLatency: Valid: Returns 5 series
-[FAIL] DiskSpaceWarning: Query error: unknown metric: node_filesystem_free
+[PASS] DiskSpaceWarning: Warning: Query returns no data (check metric names)
 [PASS] MemoryPressure: Warning: Query returns no data (check metric names)
 ```
 
@@ -342,6 +341,7 @@ threshold_analyzer.py - Analyzes alert thresholds against historical data
 
 import requests
 import yaml
+import sys
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
@@ -422,6 +422,15 @@ class ThresholdAnalyzer:
                 return expr.split(op)[0].strip()
         return expr
 
+    def _extract_comparison(self, expr: str):
+        """Extract a simple comparison expression into expression, operator, threshold."""
+        import re
+        match = re.search(r'(.+?)\s*(>=|<=|!=|>|<|==)\s*(-?\d+(?:\.\d+)?)\s*$', expr, re.S)
+        if not match:
+            return None
+        base_expr, operator, threshold = match.groups()
+        return base_expr.strip(), operator, float(threshold)
+
     def _check_threshold(self, value: float, threshold: float, operator: str) -> bool:
         """Check if a value violates the threshold."""
         ops = {
@@ -448,21 +457,43 @@ class ThresholdAnalyzer:
 def main():
     analyzer = ThresholdAnalyzer("http://localhost:9090")
 
-    # Example: Analyze error rate threshold
-    result = analyzer.analyze_threshold(
-        expr='sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))',
-        threshold=0.05,
-        operator='>',
-        lookback_days=7
-    )
+    if len(sys.argv) > 1:
+        for filepath in sys.argv[1:]:
+            with open(filepath) as f:
+                content = yaml.safe_load(f)
 
-    print("Threshold Analysis Results:")
-    print(f"  Total samples analyzed: {result.get('total_samples', 'N/A')}")
-    print(f"  Threshold violations: {result.get('violations', 'N/A')}")
-    print(f"  Violation rate: {result.get('violation_rate', 'N/A')}%")
-    print(f"  Value range: {result.get('min_value', 'N/A')} - {result.get('max_value', 'N/A')}")
-    print(f"  Average value: {result.get('avg_value', 'N/A')}")
-    print(f"  Recommendation: {result.get('recommendation', 'N/A')}")
+            for group in content.get('groups', []):
+                for rule in group.get('rules', []):
+                    expr = rule.get('expr', '')
+                    comparison = analyzer._extract_comparison(expr)
+                    if not comparison:
+                        print(f"{rule.get('alert', 'unnamed')}: No simple threshold found")
+                        continue
+
+                    base_expr, operator, threshold = comparison
+                    result = analyzer.analyze_threshold(
+                        expr=base_expr,
+                        threshold=threshold,
+                        operator=operator,
+                        lookback_days=7
+                    )
+                    print(f"{rule.get('alert', 'unnamed')}: {result}")
+    else:
+        # Example: Analyze error rate threshold
+        result = analyzer.analyze_threshold(
+            expr='sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))',
+            threshold=0.05,
+            operator='>',
+            lookback_days=7
+        )
+
+        print("Threshold Analysis Results:")
+        print(f"  Total samples analyzed: {result.get('total_samples', 'N/A')}")
+        print(f"  Threshold violations: {result.get('violations', 'N/A')}")
+        print(f"  Violation rate: {result.get('violation_rate', 'N/A')}%")
+        print(f"  Value range: {result.get('min_value', 'N/A')} - {result.get('max_value', 'N/A')}")
+        print(f"  Average value: {result.get('avg_value', 'N/A')}")
+        print(f"  Recommendation: {result.get('recommendation', 'N/A')}")
 
 if __name__ == "__main__":
     main()
@@ -570,7 +601,7 @@ class LabelValidator:
         with open(policy_file) as f:
             self.policies = yaml.safe_load(f)
 
-    def validate_labels(self, labels: Dict[str, str], alert_name: str) -> List[str]:
+    def validate_labels(self, labels: Dict[str, str], alert_name: str) -> tuple[List[str], List[str]]:
         """Validate labels against policies."""
         errors = []
         warnings = []
@@ -643,7 +674,8 @@ class LabelValidator:
 
 def main():
     validator = LabelValidator('label-policies.yaml')
-    results = validator.validate_file('alerting-rules.yaml')
+    alert_file = sys.argv[1] if len(sys.argv) > 1 else 'alerting-rules.yaml'
+    results = validator.validate_file(alert_file)
 
     if results['errors']:
         print("ERRORS:")
@@ -694,7 +726,8 @@ route_validator.py - Validates alert routing in Alertmanager
 import yaml
 import requests
 import sys
-from typing import Dict, Any, List, Optional
+import re
+from typing import Dict, Any, List
 
 class RouteValidator:
     def __init__(self, alertmanager_url: str):
@@ -711,51 +744,74 @@ class RouteValidator:
 
     def find_route(self, labels: Dict[str, str]) -> List[Dict[str, Any]]:
         """Find which routes an alert with given labels would match."""
-        matches = []
-        self._match_route(self.config['route'], labels, matches, [])
-        return matches
+        return self._match_route(self.config['route'], labels, [])
 
     def _match_route(
         self,
         route: Dict[str, Any],
         labels: Dict[str, str],
-        matches: List[Dict[str, Any]],
         path: List[str]
-    ):
+    ) -> List[Dict[str, Any]]:
         """Recursively match routes."""
         current_path = path + [route.get('receiver', 'default')]
 
-        # Check if labels match this route
-        match_labels = route.get('match', {})
-        match_re = route.get('match_re', {})
+        if not self._route_matches(route, labels):
+            return []
 
-        matches_route = True
+        child_matches = []
+        for child in route.get('routes', []):
+            matches = self._match_route(child, labels, current_path)
+            if matches:
+                child_matches.extend(matches)
 
-        for key, value in match_labels.items():
+                # A matching route stops sibling evaluation unless continue is true
+                if not child.get('continue', False):
+                    break
+
+        if child_matches:
+            return child_matches
+
+        receiver = route.get('receiver')
+        if not receiver:
+            return []
+
+        return [{
+            'receiver': receiver,
+            'path': ' -> '.join(current_path),
+            'continue': route.get('continue', False)
+        }]
+
+    def _route_matches(self, route: Dict[str, Any], labels: Dict[str, str]) -> bool:
+        """Check Alertmanager route matchers."""
+        for key, value in route.get('match', {}).items():
             if labels.get(key) != value:
-                matches_route = False
-                break
+                return False
 
-        for key, pattern in match_re.items():
-            import re
+        for key, pattern in route.get('match_re', {}).items():
             if not re.match(pattern, labels.get(key, '')):
-                matches_route = False
-                break
+                return False
 
-        if matches_route:
-            matches.append({
-                'receiver': route.get('receiver'),
-                'path': ' -> '.join(current_path),
-                'continue': route.get('continue', False)
-            })
+        for matcher in route.get('matchers', []):
+            match = re.match(
+                r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(!=|=~|!~|=)\s*"?(.*?)"?\s*$',
+                matcher
+            )
+            if not match:
+                return False
 
-            # Check child routes
-            for child in route.get('routes', []):
-                self._match_route(child, labels, matches, current_path)
+            key, operator, expected = match.groups()
+            actual = labels.get(key, '')
 
-                # Stop if we matched and continue is False
-                if matches and not route.get('continue', False):
-                    return
+            if operator == '=' and actual != expected:
+                return False
+            if operator == '!=' and actual == expected:
+                return False
+            if operator == '=~' and not re.match(expected, actual):
+                return False
+            if operator == '!~' and re.match(expected, actual):
+                return False
+
+        return True
 
     def validate_alert_routing(self, alert_file: str) -> List[Dict[str, Any]]:
         """Validate routing for all alerts in a file."""
@@ -767,7 +823,7 @@ class RouteValidator:
         for group in content.get('groups', []):
             for rule in group.get('rules', []):
                 alert_name = rule.get('alert', 'unnamed')
-                labels = rule.get('labels', {})
+                labels = dict(rule.get('labels', {}))
                 labels['alertname'] = alert_name  # Alertmanager adds this
 
                 routes = self.find_route(labels)
@@ -814,6 +870,7 @@ class RouteValidator:
 
 def main():
     validator = RouteValidator("http://localhost:9093")
+    alert_file = sys.argv[1] if len(sys.argv) > 1 else 'alerting-rules.yaml'
 
     # Check receiver configuration
     receiver_errors = validator.verify_receivers_exist()
@@ -823,7 +880,7 @@ def main():
             print(f"  - {error}")
 
     # Validate alert routing
-    results = validator.validate_alert_routing('alerting-rules.yaml')
+    results = validator.validate_alert_routing(alert_file)
 
     print("\nAlert Routing Validation:")
     for result in results:
@@ -904,7 +961,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pyyaml requests
-          wget https://github.com/prometheus/prometheus/releases/download/v2.47.0/prometheus-2.47.0.linux-amd64.tar.gz
+          wget https://github.com/prometheus/prometheus/releases/download/v3.12.0/prometheus-3.12.0.linux-amd64.tar.gz
           tar xzf prometheus-*.tar.gz
           mv prometheus-*/promtool /usr/local/bin/
 
@@ -953,7 +1010,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## Threshold Analysis Report\n```\n${report}\n````
+              body: '## Threshold Analysis Report\n```\n' + report + '\n```'
             });
 ```
 
