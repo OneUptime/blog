@@ -296,6 +296,7 @@ Build a simple rate limiting filter using in-memory storage:
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Caching.Memory;
+using System.Threading;
 
 public class RateLimitFilter : IAsyncActionFilter
 {
@@ -325,13 +326,15 @@ public class RateLimitFilter : IAsyncActionFilter
         var endpoint = context.HttpContext.Request.Path.ToString();
         var cacheKey = $"rate_limit:{ipAddress}:{endpoint}";
 
-        var requestCount = _cache.GetOrCreate(cacheKey, entry =>
+        var counter = _cache.GetOrCreate(cacheKey, entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = _window;
-            return 0;
+            return new RateLimitCounter();
         });
 
-        if (requestCount >= _maxRequests)
+        var requestCount = Interlocked.Increment(ref counter!.Count);
+
+        if (requestCount > _maxRequests)
         {
             _logger.LogWarning(
                 "Rate limit exceeded for IP {IpAddress} on endpoint {Endpoint}",
@@ -350,10 +353,13 @@ public class RateLimitFilter : IAsyncActionFilter
             return;
         }
 
-        _cache.Set(cacheKey, requestCount + 1, _window);
-
         await next();
     }
+}
+
+public class RateLimitCounter
+{
+    public int Count;
 }
 ```
 
@@ -411,13 +417,15 @@ public class ConfigurableRateLimitFilter : IAsyncActionFilter
         var endpoint = context.HttpContext.Request.Path.ToString();
         var cacheKey = $"rate_limit:{ipAddress}:{endpoint}";
 
-        var requestCount = _cache.GetOrCreate(cacheKey, entry =>
+        var counter = _cache.GetOrCreate(cacheKey, entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = window;
-            return 0;
+            return new RateLimitCounter();
         });
 
-        if (requestCount >= maxRequests)
+        var requestCount = Interlocked.Increment(ref counter!.Count);
+
+        if (requestCount > maxRequests)
         {
             context.Result = new ObjectResult(new
             {
@@ -430,8 +438,6 @@ public class ConfigurableRateLimitFilter : IAsyncActionFilter
 
             return;
         }
-
-        _cache.Set(cacheKey, requestCount + 1, window);
 
         await next();
     }
