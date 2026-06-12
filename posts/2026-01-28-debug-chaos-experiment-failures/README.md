@@ -46,7 +46,7 @@ Before debugging, collect all relevant data while it is still available:
 
 import json
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -102,7 +102,7 @@ class ChaosDebugCollector:
 
         return DebugBundle(
             experiment_id=experiment_id,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             experiment_config=experiment.to_dict(),
             timeline=timeline,
             metrics_snapshots=metrics,
