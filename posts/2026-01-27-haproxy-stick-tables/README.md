@@ -51,7 +51,7 @@ flowchart LR
 # Define a table that tracks client IPs with a 30-minute expiry
 backend my_backend
     # Create stick table: type=ip, size=100k entries, expire after 30m
-    stick-table type ip size 100k expire 30m
+    stick-table type ipv4 size 100k expire 30m
 
     # Store the server assignment based on source IP
     stick on src
@@ -72,7 +72,7 @@ HAProxy supports several key types for stick tables. Choose based on what you wa
 # Track by client IP address (IPv4)
 # Use case: Simple session persistence by source IP
 backend web_backend
-    stick-table type ip size 100k expire 30m
+    stick-table type ipv4 size 100k expire 30m
     stick on src
 
     server web1 10.0.0.1:80 check
@@ -117,8 +117,8 @@ backend api_backend
 backend user_backend
     stick-table type integer size 50k expire 2h
 
-    # Extract user_id from URL query parameter
-    stick on url_param(user_id)
+    # Extract user_id from URL query parameter as an integer
+    stick on urlp_val(user_id)
 
     server app1 10.0.0.1:8080 check
     server app2 10.0.0.2:8080 check
@@ -193,7 +193,7 @@ backend web_servers
 ### Source IP Persistence with Fallback
 
 ```haproxy
-# Sticky sessions by source IP with cookie fallback
+# Sticky sessions with source IP and cookie persistence
 # Handles NAT scenarios where multiple users share an IP
 frontend http_front
     bind *:80
@@ -202,11 +202,11 @@ frontend http_front
 backend web_servers
     balance roundrobin
 
-    # Primary stick table: by source IP
-    stick-table type ip size 100k expire 30m
+    # Source IP table for first requests and cookieless clients
+    stick-table type ipv4 size 100k expire 30m
     stick on src
 
-    # Cookie as backup for shared IP scenarios
+    # Persistence cookies take precedence when present
     cookie SERVERID insert indirect nocache httponly secure
 
     server web1 10.0.0.1:8080 check cookie s1
@@ -260,7 +260,7 @@ frontend http_front
     bind *:80
 
     # Define stick table with request rate tracking
-    stick-table type ip size 100k expire 30s store http_req_rate(10s)
+    stick-table type ipv4 size 100k expire 30s store http_req_rate(10s)
 
     # Track client requests
     http-request track-sc0 src
@@ -283,7 +283,7 @@ frontend http_front
     bind *:80
 
     # Track connection rate
-    stick-table type ip size 100k expire 30s store conn_rate(1s),conn_cur
+    stick-table type ipv4 size 100k expire 30s store conn_rate(1s),conn_cur
 
     # Track source IP
     tcp-request connection track-sc0 src
@@ -305,12 +305,13 @@ frontend http_front
     bind *:80
 
     # Main rate limiting table
-    stick-table type ip size 100k expire 1m store http_req_rate(10s),http_err_rate(10s),conn_rate(1s)
+    stick-table type ipv4 size 100k expire 1m store http_req_rate(10s),http_err_rate(10s),conn_rate(1s)
 
     http-request track-sc0 src
 
-    # Tier 1: Soft limit - add delay (tarpit)
-    # If > 50 requests/10s, add 2 second delay
+    # Tier 1: Soft limit - hold the request, then return 429
+    # If > 50 requests/10s, hold for 2 seconds
+    timeout tarpit 2s
     http-request tarpit deny_status 429 if { sc_http_req_rate(0) gt 50 } { sc_http_req_rate(0) le 100 }
 
     # Tier 2: Hard limit - deny request
@@ -337,15 +338,17 @@ frontend api_front
     # Track by API key
     http-request track-sc0 req.hdr(X-API-Key)
 
-    # Different limits based on plan (using map file)
+    # Different limits based on plan
     # Premium keys (starting with 'prm_') get 1000 req/min
-    http-request deny deny_status 429 if { req.hdr(X-API-Key) -m beg prm_ } { sc_http_req_rate(0) gt 1000 }
+    acl premium_key req.hdr(X-API-Key) -m beg prm_
+    http-request deny deny_status 429 if premium_key { sc_http_req_rate(0) gt 1000 }
 
     # Standard keys get 100 req/min
-    http-request deny deny_status 429 if { req.hdr(X-API-Key) -m beg std_ } { sc_http_req_rate(0) gt 100 }
+    acl standard_key req.hdr(X-API-Key) -m beg std_
+    http-request deny deny_status 429 if standard_key { sc_http_req_rate(0) gt 100 }
 
     # Default: 10 req/min
-    http-request deny deny_status 429 if { sc_http_req_rate(0) gt 10 }
+    http-request deny deny_status 429 if !premium_key !standard_key { sc_http_req_rate(0) gt 10 }
 
     default_backend api_servers
 ```
@@ -361,7 +364,7 @@ flowchart TD
     Counter -->|Over Hard Limit| Deny[Deny 429]
 
     Allow --> Backend[Backend Server]
-    Tarpit --> Backend
+    Tarpit --> Client
     Deny --> Client[Return to Client]
 
     Backend --> Increment[Increment Counter]
@@ -380,7 +383,7 @@ frontend http_front
     bind *:80
 
     # Track multiple metrics for abuse detection
-    stick-table type ip size 100k expire 10m store http_req_rate(10s),http_err_rate(10s),gpc0,gpc0_rate(1m)
+    stick-table type ipv4 size 100k expire 10m store http_req_rate(10s),http_err_rate(10s),gpc0,gpc0_rate(1m)
 
     http-request track-sc0 src
 
@@ -404,7 +407,7 @@ frontend http_front
 frontend http_front
     bind *:80
 
-    stick-table type ip size 200k expire 5m store http_req_rate(1s),http_req_rate(1m)
+    stick-table type ipv4 size 200k expire 5m store http_req_rate(1s)
 
     http-request track-sc0 src
 
@@ -474,7 +477,7 @@ backend web_servers
 
     # Stick table with peer replication
     # The 'peers' keyword links to the peers section
-    stick-table type ip size 100k expire 30m peers haproxy_peers
+    stick-table type ipv4 size 100k expire 30m peers haproxy_peers
 
     stick on src
 
@@ -497,6 +500,8 @@ global
     user haproxy
     group haproxy
     daemon
+    # Set this differently on each node, or pass -L with the local peer name
+    localpeer haproxy-node-1
 
 defaults
     log     global
@@ -509,18 +514,15 @@ defaults
 
 # Peer configuration - each node needs this
 peers mycluster
-    # Bind address for peer communication
-    bind *:1024
-
     # List all peers (including self)
-    # The local peer must match the hostname
+    # The local peer must match localpeer or the -L command-line argument
     peer haproxy-node-1 10.0.1.1:1024
     peer haproxy-node-2 10.0.1.2:1024
     peer haproxy-node-3 10.0.1.3:1024
 
 # Shared rate limiting table (replicated)
 backend rate_limit_table
-    stick-table type ip size 200k expire 5m store http_req_rate(10s),conn_rate(1s) peers mycluster
+    stick-table type ipv4 size 200k expire 5m store http_req_rate(10s),conn_rate(1s) peers mycluster
 
 frontend http_front
     bind *:80
@@ -535,7 +537,7 @@ backend web_servers
     balance roundrobin
 
     # Session persistence table (replicated)
-    stick-table type ip size 100k expire 30m peers mycluster
+    stick-table type ipv4 size 100k expire 30m peers mycluster
     stick on src
 
     server web1 10.0.0.1:8080 check
@@ -587,6 +589,7 @@ echo "clear table web_servers" | socat stdio /run/haproxy/admin.sock
 # Enable Prometheus metrics endpoint
 frontend stats
     bind *:8405
+    mode http
     http-request use-service prometheus-exporter if { path /metrics }
 ```
 
@@ -612,7 +615,7 @@ scrape_configs:
 backend web_servers
     # Size based on expected unique clients
     # Allow 20% headroom for spikes
-    stick-table type ip size 120k expire 30m store http_req_rate(10s),conn_rate(1s),conn_cur
+    stick-table type ipv4 size 120k expire 30m store http_req_rate(10s),conn_rate(1s),conn_cur
 ```
 
 ### Expire Times
@@ -624,13 +627,13 @@ backend web_servers
 # - Abuse tracking: Longer (10m - 1h)
 
 # Session persistence
-stick-table type ip size 100k expire 30m
+stick-table type ipv4 size 100k expire 30m
 
 # Rate limiting (short memory)
-stick-table type ip size 200k expire 30s store http_req_rate(10s)
+stick-table type ipv4 size 200k expire 30s store http_req_rate(10s)
 
 # Abuse tracking (longer memory)
-stick-table type ip size 50k expire 1h store gpc0,http_err_cnt
+stick-table type ipv4 size 50k expire 1h store gpc0,http_err_cnt
 ```
 
 ### Multiple Tables
@@ -655,10 +658,10 @@ frontend http_front
     default_backend web_servers
 
 backend rate_limits
-    stick-table type ip size 200k expire 30s store http_req_rate(10s)
+    stick-table type ipv4 size 200k expire 30s store http_req_rate(10s)
 
 backend abuse_tracking
-    stick-table type ip size 50k expire 1h store gpc0,http_err_cnt
+    stick-table type ipv4 size 50k expire 1h store gpc0,http_err_cnt
 ```
 
 ## Troubleshooting
