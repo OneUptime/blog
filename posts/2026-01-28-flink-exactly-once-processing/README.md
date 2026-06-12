@@ -8,9 +8,9 @@ Description: A practical guide to implementing exactly-once processing semantics
 
 ---
 
-> Exactly-once processing is the holy grail of stream processing. Apache Flink provides robust mechanisms to guarantee that each record is processed exactly once, even in the face of failures. This guide walks you through implementing these guarantees in production systems.
+> Exactly-once processing is the holy grail of stream processing. Apache Flink provides robust mechanisms to make stateful computations behave as if each record affected state exactly once, even in the face of failures. This guide walks you through implementing these guarantees in production systems.
 
-Data integrity matters. In financial transactions, event counting, or any stateful computation, processing a record twice or missing it entirely can have serious consequences. Flink's exactly-once semantics ensure that your results are always correct, regardless of machine failures or network issues.
+Data integrity matters. In financial transactions, event counting, or any stateful computation, processing a record twice or missing it entirely can have serious consequences. Flink's exactly-once semantics help keep your results correct across failures when the job uses checkpointed state and compatible sources and sinks.
 
 ---
 
@@ -45,7 +45,7 @@ Flink achieves exactly-once through a combination of:
 ## Prerequisites
 
 Before implementing exactly-once processing, ensure you have:
-- Apache Flink 1.17 or higher
+- Apache Flink 2.2 for the APIs shown (or adapt package names for Flink 1.x)
 - Kafka cluster (for end-to-end exactly-once with Kafka)
 - State backend configured (RocksDB recommended for production)
 - Understanding of Flink's checkpoint mechanism
@@ -58,7 +58,7 @@ Checkpointing is the foundation of exactly-once processing. Here's how to config
 
 ```java
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.CheckpointingMode;
+import org.apache.flink.core.execution.CheckpointingMode;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 
 public class ExactlyOnceJob {
@@ -70,10 +70,10 @@ public class ExactlyOnceJob {
         env.enableCheckpointing(10000);
 
         // Set exactly-once mode - this is the default but explicit is better
-        env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
+        env.getCheckpointConfig().setCheckpointingConsistencyMode(CheckpointingMode.EXACTLY_ONCE);
 
         // Minimum time between checkpoints - prevents checkpoint storms
-        // If checkpoints take 8 seconds, next one starts 2 seconds after completion
+        // If checkpoints take 8 seconds, next one starts 0.5 seconds after completion
         env.getCheckpointConfig().setMinPauseBetweenCheckpoints(500);
 
         // Checkpoint timeout - fail checkpoint if not complete within this time
@@ -105,8 +105,9 @@ public class ExactlyOnceJob {
 The state backend determines how and where Flink stores checkpoint data. RocksDB is recommended for production:
 
 ```java
-import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend;
+import org.apache.flink.state.rocksdb.EmbeddedRocksDBStateBackend;
 import org.apache.flink.runtime.state.storage.FileSystemCheckpointStorage;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
 public class StateBackendConfiguration {
     public static void configureStateBackend(StreamExecutionEnvironment env) {
@@ -133,7 +134,7 @@ public class StateBackendConfiguration {
 
 ## End-to-End Exactly-Once with Kafka
 
-Achieving exactly-once from source to sink requires compatible connectors. Kafka supports this through the two-phase commit protocol.
+Achieving exactly-once from source to sink requires compatible connectors. Kafka supports this through checkpointed source offsets and transactional sink writes; downstream Kafka consumers must read with `isolation.level=read_committed` to avoid seeing aborted transactions.
 
 ### Kafka Source Configuration
 
@@ -141,6 +142,7 @@ Achieving exactly-once from source to sink requires compatible connectors. Kafka
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 
 public class KafkaExactlyOnceSource {
     public static KafkaSource<String> createSource() {
@@ -150,12 +152,12 @@ public class KafkaExactlyOnceSource {
             .setGroupId("flink-consumer-group")
             // Start from committed offsets, fall back to earliest
             .setStartingOffsets(OffsetsInitializer.committedOffsets(
-                OffsetsInitializer.OffsetResetStrategy.EARLIEST
+                OffsetResetStrategy.EARLIEST
             ))
             .setValueOnlyDeserializer(new SimpleStringSchema())
-            // Commit offsets to Kafka on checkpoints
-            // This ensures source position is part of the checkpoint
-            .setProperty("enable.auto.commit", "false")
+            // Commit offsets to Kafka when checkpoints complete
+            // This exposes consumer progress; Flink's fault tolerance uses checkpointed source state
+            .setProperty("commit.offsets.on.checkpoint", "true")
             .build();
     }
 }
@@ -169,6 +171,7 @@ The Kafka sink uses two-phase commit to ensure exactly-once delivery:
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.base.DeliveryGuarantee;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.kafka.clients.producer.ProducerConfig;
 
 public class KafkaExactlyOnceSink {
@@ -186,8 +189,8 @@ public class KafkaExactlyOnceSink {
             // Transaction prefix - must be unique per sink
             // Used to identify pending transactions after recovery
             .setTransactionalIdPrefix("flink-kafka-sink")
-            // Kafka transaction timeout - must be less than broker's
-            // transaction.max.timeout.ms (default 15 minutes)
+            // Kafka transaction timeout - should cover max checkpoint duration plus restart time
+            // and must not exceed broker transaction.max.timeout.ms (default 15 minutes)
             .setProperty(
                 ProducerConfig.TRANSACTION_TIMEOUT_CONFIG,
                 String.valueOf(15 * 60 * 1000)
@@ -202,7 +205,16 @@ public class KafkaExactlyOnceSink {
 ```java
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.connector.base.DeliveryGuarantee;
+import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
+import org.apache.flink.connector.kafka.sink.KafkaSink;
+import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.flink.core.execution.CheckpointingMode;
+import org.apache.flink.state.rocksdb.EmbeddedRocksDBStateBackend;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.kafka.clients.producer.ProducerConfig;
 
 public class ExactlyOnceKafkaJob {
     public static void main(String[] args) throws Exception {
@@ -210,7 +222,7 @@ public class ExactlyOnceKafkaJob {
 
         // Configure checkpointing for exactly-once
         env.enableCheckpointing(10000);
-        env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
+        env.getCheckpointConfig().setCheckpointingConsistencyMode(CheckpointingMode.EXACTLY_ONCE);
         env.getCheckpointConfig().setMinPauseBetweenCheckpoints(500);
 
         // Configure RocksDB state backend
@@ -250,6 +262,10 @@ public class ExactlyOnceKafkaJob {
             )
             .setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
             .setTransactionalIdPrefix("order-processor")
+            .setProperty(
+                ProducerConfig.TRANSACTION_TIMEOUT_CONFIG,
+                String.valueOf(15 * 60 * 1000)
+            )
             .build();
 
         // Write to sink
@@ -294,11 +310,15 @@ sequenceDiagram
 
 ## Implementing Custom Exactly-Once Sinks
 
-For sinks that don't support two-phase commit natively, implement the `TwoPhaseCommitSinkFunction`:
+For sinks that don't support two-phase commit natively, implement a sink using Flink's two-phase commit pattern. In Flink 1.x legacy jobs, this often used `TwoPhaseCommitSinkFunction`:
 
 ```java
-import org.apache.flink.streaming.api.functions.sink.TwoPhaseCommitSinkFunction;
-import org.apache.flink.api.common.typeutils.base.StringSerializer;
+import org.apache.flink.streaming.api.functions.sink.legacy.TwoPhaseCommitSinkFunction;
+import org.apache.flink.api.common.typeutils.base.VoidSerializer;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 
 public class ExactlyOnceDatabaseSink
     extends TwoPhaseCommitSinkFunction<String, DatabaseTransaction, Void> {
@@ -336,17 +356,15 @@ public class ExactlyOnceDatabaseSink
     @Override
     protected void preCommit(DatabaseTransaction transaction) throws Exception {
         // Called during checkpoint - prepare to commit
-        // Flush any buffers, ensure all writes are durable
-        transaction.getConnection().commit();
-        // But don't close - might need to rollback if checkpoint fails
+        // Flush any buffers and make the transaction durable but not yet visible
+        transaction.prepareTransaction();
     }
 
     @Override
     protected void commit(DatabaseTransaction transaction) {
-        // Called after checkpoint succeeds - finalize the commit
-        // At this point, commit is already done in preCommit
-        // Close resources
+        // Called after checkpoint succeeds - make the prepared transaction visible
         try {
+            transaction.commitPrepared();
             transaction.getConnection().close();
         } catch (SQLException e) {
             LOG.warn("Error closing connection", e);
@@ -373,13 +391,40 @@ public class ExactlyOnceDatabaseSink
 When exactly-once sinks aren't available, use idempotent writes as an alternative:
 
 ```java
-import org.apache.flink.streaming.api.functions.sink.SinkFunction;
+import org.apache.flink.api.connector.sink2.Sink;
+import org.apache.flink.api.connector.sink2.SinkWriter;
+import org.apache.flink.api.connector.sink2.WriterInitContext;
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Timestamp;
 
-public class IdempotentDatabaseSink implements SinkFunction<OrderEvent> {
+public class IdempotentDatabaseSink implements Sink<OrderEvent> {
     private final String jdbcUrl;
 
     @Override
-    public void invoke(OrderEvent event, Context context) throws Exception {
+    public SinkWriter<OrderEvent> createWriter(WriterInitContext context) {
+        return new SinkWriter<OrderEvent>() {
+            @Override
+            public void write(OrderEvent event, Context context) throws IOException {
+                writeEvent(event);
+            }
+
+            @Override
+            public void flush(boolean endOfInput) {
+                // No buffering in this sink
+            }
+
+            @Override
+            public void close() {
+                // Connections are opened per write in this simple example
+            }
+        };
+    }
+
+    private void writeEvent(OrderEvent event) throws IOException {
         try (Connection conn = DriverManager.getConnection(jdbcUrl)) {
             // Use UPSERT/MERGE for idempotency
             // If the same record is written twice, it produces the same result
@@ -399,6 +444,8 @@ public class IdempotentDatabaseSink implements SinkFunction<OrderEvent> {
             stmt.setTimestamp(4, new Timestamp(event.getTimestamp()));
 
             stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new IOException("Failed to write order event", e);
         }
     }
 }
@@ -474,8 +521,8 @@ env.getCheckpointConfig().setMinPauseBetweenCheckpoints(10000);  // More pause
 // Solution: Align timeouts properly
 
 // Flink checkpoint interval: 10s
-// Kafka transaction timeout must be > checkpoint interval
-// But less than broker's transaction.max.timeout.ms
+// Kafka transaction timeout should cover max checkpoint duration plus restart time
+// But must not exceed broker's transaction.max.timeout.ms
 
 kafkaSinkBuilder
     .setProperty(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG,
@@ -510,7 +557,7 @@ Enable unaligned checkpoints for high-throughput jobs:
 // Trade-off: Larger checkpoint size due to buffered data
 env.getCheckpointConfig().enableUnalignedCheckpoints();
 
-// Set threshold for when to use unaligned (in bytes)
+// Set how long Flink tries an aligned checkpoint before switching to unaligned
 env.getCheckpointConfig().setAlignedCheckpointTimeout(
     Duration.ofSeconds(30)
 );
@@ -566,7 +613,7 @@ Exactly-once processing in Flink requires careful configuration of checkpointing
 - Configure Kafka connectors with exactly-once delivery guarantees
 - Monitor checkpoint health and tune accordingly
 
-When exactly-once sinks aren't available, idempotent writes provide a practical alternative that achieves the same data consistency guarantees.
+When exactly-once sinks aren't available, idempotent writes provide a practical alternative that can achieve equivalent observable results for deterministic updates.
 
 ---
 
