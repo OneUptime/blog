@@ -39,7 +39,7 @@ DB_PASSWORD=your_secret_password
 
 ### Advanced Configuration
 
-For production environments, configure additional PostgreSQL-specific options in `config/database.php`. These settings optimize connection handling and enable SSL for secure communications.
+For production environments, configure additional PostgreSQL-specific options in `config/database.php`. These settings tune connection behavior and configure SSL for secure communications.
 
 ```php
 <?php
@@ -72,10 +72,11 @@ return [
             // Use 'public' schema by default (PostgreSQL concept)
             'search_path' => 'public',
 
-            // Enable SSL for production connections
+            // Request SSL when the server supports it.
+            // Use require, verify-ca, or verify-full for stricter production settings.
             'sslmode' => env('DB_SSLMODE', 'prefer'),
 
-            // Path to SSL certificate for secure connections
+            // Paths to client and root certificates for secure connections
             'sslcert' => env('DB_SSLCERT'),
             'sslkey' => env('DB_SSLKEY'),
             'sslrootcert' => env('DB_SSLROOTCERT'),
@@ -100,7 +101,7 @@ flowchart TB
 
     subgraph PostgreSQL["PostgreSQL Server"]
         CONN["Connection Handler"]
-        POOL["Connection Pool"]
+        BACKEND["Backend Process"]
         DB["Database"]
     end
 
@@ -109,8 +110,8 @@ flowchart TB
     ELOQUENT --> QB
     QB --> PDO
     PDO --> CONN
-    CONN --> POOL
-    POOL --> DB
+    CONN --> BACKEND
+    BACKEND --> DB
 ```
 
 ## Working with JSONB Columns
@@ -159,7 +160,7 @@ return new class extends Migration
 
 ### Querying JSONB Data
 
-Laravel provides fluent methods for querying JSONB columns using PostgreSQL's arrow operators. The `->` operator extracts JSON as text, while `->>` extracts as JSON.
+Laravel provides fluent methods for querying JSONB columns using PostgreSQL's arrow operators. In PostgreSQL, the `->` operator extracts JSON or JSONB, while `->>` extracts the value as text.
 
 ```php
 <?php
@@ -173,7 +174,7 @@ class ProductController extends Controller
 {
     /**
      * Find products by a specific attribute value.
-     * Uses PostgreSQL's -> operator via Laravel's arrow syntax.
+     * Uses Laravel's arrow syntax for PostgreSQL JSON selectors.
      */
     public function findByAttribute(string $key, string $value)
     {
@@ -188,9 +189,11 @@ class ProductController extends Controller
      */
     public function findByNestedAttribute()
     {
-        // Query nested JSONB: attributes->'dimensions'->>'width'
-        return Product::where('attributes->dimensions->width', '>', 10)
-            ->get();
+        // Cast extracted JSONB text before numeric comparison
+        return Product::whereRaw(
+            "(attributes->'dimensions'->>'width')::numeric > ?",
+            [10]
+        )->get();
     }
 
     /**
@@ -224,7 +227,7 @@ class ProductController extends Controller
     public function findWithAttribute(string $key)
     {
         // Check if the JSONB object has a specific key
-        return Product::whereNotNull("attributes->{$key}")->get();
+        return Product::whereJsonContainsKey("attributes->{$key}")->get();
     }
 }
 ```
@@ -250,8 +253,8 @@ return new class extends Migration
             ON products USING GIN (attributes)
         ');
 
-        // GIN index with jsonb_path_ops for specific path queries
-        // Smaller index, faster for path queries like @>
+        // GIN index with jsonb_path_ops for containment queries
+        // Smaller index, faster for @>, @?, and @@ queries
         DB::statement('
             CREATE INDEX products_attributes_path_gin
             ON products USING GIN (attributes jsonb_path_ops)
@@ -264,7 +267,7 @@ return new class extends Migration
             ON products ((attributes->>\'category\'))
         ');
 
-        // GIN index on tags array for containment queries
+        // GIN index on the JSONB tags array for containment queries
         DB::statement('
             CREATE INDEX products_tags_gin
             ON products USING GIN (tags)
@@ -366,7 +369,7 @@ class PostgresArray implements CastsAttributes
             return $value;
         }
 
-        // Remove curly braces and split by comma
+        // Remove curly braces before parsing CSV-style array contents
         // PostgreSQL format: {item1,item2,item3}
         $value = trim($value, '{}');
 
@@ -375,7 +378,7 @@ class PostgresArray implements CastsAttributes
         }
 
         // Parse PostgreSQL array format, handling quoted strings
-        return str_getcsv($value);
+        return str_getcsv($value, ',', '"', '\\');
     }
 
     /**
@@ -394,10 +397,17 @@ class PostgresArray implements CastsAttributes
 
         // Escape values and format as PostgreSQL array
         $escaped = array_map(function ($item) {
-            // Escape quotes and wrap in quotes if contains special chars
-            if (str_contains($item, ',') || str_contains($item, '"')) {
-                return '"' . str_replace('"', '\\"', $item) . '"';
+            $item = (string) $item;
+
+            // Escape values and wrap in quotes if they contain array syntax chars
+            if (
+                $item === '' ||
+                preg_match('/[,"\{\}\\\\\s]/', $item) ||
+                strtoupper($item) === 'NULL'
+            ) {
+                return '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], $item) . '"';
             }
+
             return $item;
         }, $value);
 
@@ -674,7 +684,7 @@ class SearchService
         $query = preg_replace('/[^\w\s]/', '', $query);
 
         // Split into words and join with & for AND logic
-        $words = array_filter(explode(' ', $query));
+        $words = array_filter(preg_split('/\s+/', trim($query)));
 
         // Add :* suffix for prefix matching (partial words)
         return implode(' & ', array_map(fn($word) => $word . ':*', $words));
@@ -725,7 +735,14 @@ class Post extends Model
         }
 
         // Prepare search terms
-        $terms = collect(explode(' ', $search))
+        $search = preg_replace('/[^\w\s]/', '', $search);
+        $words = array_filter(preg_split('/\s+/', trim($search)));
+
+        if (empty($words)) {
+            return $query;
+        }
+
+        $terms = collect($words)
             ->filter()
             ->map(fn($term) => $term . ':*')
             ->implode(' & ');
@@ -744,11 +761,20 @@ class Post extends Model
         string $search,
         array $columns
     ): Builder {
+        $grammar = $query->getQuery()->getGrammar();
+
         $vectors = collect($columns)
-            ->map(fn($col) => "COALESCE({$col}, '')")
+            ->map(fn($col) => "COALESCE(" . $grammar->wrap($col) . ", '')")
             ->implode(" || ' ' || ");
 
-        $terms = collect(explode(' ', $search))
+        $search = preg_replace('/[^\w\s]/', '', $search);
+        $words = array_filter(preg_split('/\s+/', trim($search)));
+
+        if (empty($words)) {
+            return $query;
+        }
+
+        $terms = collect($words)
             ->filter()
             ->map(fn($term) => $term . ':*')
             ->implode(' & ');
@@ -788,8 +814,8 @@ return new class extends Migration
 
             $table->string('name');
 
-            // Native timestamp with timezone support
-            // Stores timezone info unlike regular timestamp
+            // Native timestamp with time zone support
+            // Normalizes values to UTC and displays them in the session time zone
             $table->timestampTz('starts_at');
             $table->timestampTz('ends_at');
 
@@ -911,13 +937,12 @@ class Event extends Model
      */
     public function setPriceRange(float $min, float $max): void
     {
-        // '[' means inclusive, ')' means exclusive
+        // '[]' means both bounds are inclusive
         // Standard mathematical interval notation
-        DB::table('events')
-            ->where('id', $this->id)
-            ->update([
-                'price_range' => DB::raw("numrange({$min}, {$max}, '[]')")
-            ]);
+        DB::update(
+            "UPDATE events SET price_range = numrange(?, ?, '[]') WHERE id = ?",
+            [$min, $max, $this->id]
+        );
     }
 }
 ```
