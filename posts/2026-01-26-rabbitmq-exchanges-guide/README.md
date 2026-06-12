@@ -29,7 +29,7 @@ The exchange sits between producers and queues. Producers never send messages di
 
 ## The Four Exchange Types
 
-RabbitMQ provides four built-in exchange types, each serving different routing needs.
+RabbitMQ provides four standard exchange types, each serving different routing needs.
 
 ### 1. Direct Exchange
 
@@ -211,8 +211,8 @@ async function setupTopicExchange() {
     const priorityQueue = await channel.assertQueue('priority_orders', { durable: true });
 
     // Binding patterns:
-    // order.*.us - matches order.created.us, order.shipped.us, etc.
-    await channel.bindQueue(usOrdersQueue.queue, exchangeName, 'order.*.us');
+    // order.*.us.# - matches order.created.us, order.shipped.us, order.created.us.premium, etc.
+    await channel.bindQueue(usOrdersQueue.queue, exchangeName, 'order.*.us.#');
 
     // order.# - matches anything starting with 'order.'
     // This includes order.created, order.created.us, order.shipped.eu.premium
@@ -235,7 +235,7 @@ async function setupTopicExchange() {
     // This message goes to: us_orders, all_orders_analytics
     channel.publish(
         exchangeName,
-        'order.created.us',  // matches order.*.us and order.#
+        'order.created.us',  // matches order.*.us.# and order.#
         Buffer.from(JSON.stringify(orderCreatedUS)),
         { persistent: true }
     );
@@ -319,12 +319,14 @@ async function setupHeadersExchange() {
         'requires-ocr': 'true'
     });
 
-    // Match any image format
+    // Match supported image formats with separate bindings
     await channel.bindQueue(imageQueue.queue, exchangeName, '', {
-        'x-match': 'any',
-        'content-type': 'image/jpeg',
-        'content-type': 'image/png',  // Note: only last value is used
-        'format': 'image'  // Use this pattern for multiple values
+        'x-match': 'all',
+        'content-type': 'image/jpeg'
+    });
+    await channel.bindQueue(imageQueue.queue, exchangeName, '', {
+        'x-match': 'all',
+        'content-type': 'image/png'
     });
 
     // Match all documents for virus scanning
@@ -631,12 +633,10 @@ async function optimizedExchangeSetup() {
     // Too many bindings slow down routing
     // Consider using exchange-to-exchange bindings to distribute load
 
-    // TIP 3: Use lazy queues for queues that may accumulate messages
-    const lazyQueue = await channel.assertQueue('high_volume_queue', {
-        durable: true,
-        arguments: {
-            'x-queue-mode': 'lazy'  // Store messages on disk to reduce memory
-        }
+    // TIP 3: Avoid the old x-queue-mode: 'lazy' setting
+    // RabbitMQ no longer supports lazy mode; current queues already use stable memory behavior
+    const highVolumeQueue = await channel.assertQueue('high_volume_queue', {
+        durable: true
     });
 
     // TIP 4: Set appropriate prefetch counts for consumers
@@ -734,8 +734,7 @@ async function setupMicroservicesEventSystem() {
     const analyticsQueue = await channel.assertQueue('analytics_events', {
         durable: true,
         arguments: {
-            'x-dead-letter-exchange': dlExchange,
-            'x-queue-mode': 'lazy'  // High volume, store on disk
+            'x-dead-letter-exchange': dlExchange
         }
     });
     await channel.bindQueue(analyticsQueue.queue, eventsExchange, '#');
