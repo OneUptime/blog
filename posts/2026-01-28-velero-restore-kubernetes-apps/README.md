@@ -54,7 +54,8 @@ velero backup get
 velero backup describe production-backup-20260128 --details
 
 # Restore the entire backup to the same cluster
-velero restore create --from-backup production-backup-20260128
+velero restore create production-backup-20260128-restore \
+    --from-backup production-backup-20260128
 
 # Watch restore progress
 velero restore describe production-backup-20260128-restore --details
@@ -129,7 +130,7 @@ flowchart LR
 # but set to read-only mode to prevent accidental backup overwrites
 velero install \
     --provider aws \
-    --plugins velero/velero-plugin-for-aws:v1.8.0 \
+    --plugins velero/velero-plugin-for-aws:v1.14.1 \
     --bucket velero-backups-prod \
     --backup-location-config region=us-east-1 \
     --secret-file ./credentials-velero \
@@ -152,13 +153,26 @@ velero backup get
 velero restore create cross-cluster-restore \
     --from-backup source-cluster-backup \
     --include-namespaces application \
-    --exclude-cluster-scoped-resources
+    --include-cluster-resources=false
 
 # Map storage classes between clusters
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: change-storage-class-config
+  namespace: velero
+  labels:
+    velero.io/plugin-config: ""
+    velero.io/change-storage-class: RestoreItemAction
+data:
+  gp2: standard-rwo
+  io1: premium-rwo
+EOF
+
 velero restore create storage-mapped-restore \
     --from-backup backup-name \
-    --include-namespaces data-tier \
-    --storage-class-mappings gp2:standard-rwo,io1:premium-rwo
+    --include-namespaces data-tier
 ```
 
 ## Handling Persistent Volumes During Restore
@@ -180,9 +194,9 @@ spec:
     - database
   # Restore PVs from snapshots
   restorePVs: true
-  # Preserve the original node affinity
+  # Preserve original Service nodePorts
   preserveNodePorts: true
-  # Wait for additional items to become ready
+  # Wait for asynchronous item operations before timing out
   itemOperationTimeout: 1h
 ```
 
@@ -205,13 +219,26 @@ velero restore describe fs-restore --details | grep -A 20 "Phase:"
 
 ```bash
 # When restoring to a cluster with different storage classes
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: change-storage-class-config
+  namespace: velero
+  labels:
+    velero.io/plugin-config: ""
+    velero.io/change-storage-class: RestoreItemAction
+data:
+  aws-ebs-gp2: azure-disk-premium
+  aws-efs: azure-file
+EOF
+
 velero restore create mapped-restore \
     --from-backup source-backup \
-    --include-namespaces databases \
-    --storage-class-mappings "aws-ebs-gp2:azure-disk-premium,aws-efs:azure-file"
+    --include-namespaces databases
 ```
 
-Resource Conflict Resolution
+## Resource Conflict Resolution
 
 When restoring to a cluster with existing resources, you need a strategy for handling conflicts.
 
@@ -359,7 +386,7 @@ velero restore describe $RESTORE_NAME
 
 # Wait for restore to complete
 while true; do
-    STATUS=$(velero restore get $RESTORE_NAME -o jsonpath='{.status.phase}')
+    STATUS=$(kubectl get restore $RESTORE_NAME -n velero -o jsonpath='{.status.phase}')
     if [ "$STATUS" == "Completed" ] || [ "$STATUS" == "PartiallyFailed" ]; then
         echo "Restore finished with status: $STATUS"
         break
@@ -417,17 +444,17 @@ kubectl get events -n velero --sort-by='.lastTimestamp'
 
 ```yaml
 # Issue: PVC stuck in Pending
-# Solution: Check storage class mapping
-apiVersion: velero.io/v1
-kind: Restore
+# Solution: Create a Velero storage class mapping ConfigMap
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: fix-storage-class
+  name: change-storage-class-config
   namespace: velero
-spec:
-  backupName: backup-name
-  # Map old storage class to one that exists in target cluster
-  storageClassMapping:
-    old-storage-class: new-storage-class
+  labels:
+    velero.io/plugin-config: ""
+    velero.io/change-storage-class: RestoreItemAction
+data:
+  old-storage-class: new-storage-class
 ---
 # Issue: Resources not being restored due to conflicts
 # Solution: Check existing resources and decide on policy
@@ -481,26 +508,37 @@ spec:
           serviceAccountName: velero
           containers:
           - name: restore-test
-            image: velero/velero:v1.12.0
+            image: bitnami/kubectl:latest
             command:
             - /bin/sh
             - -c
             - |
               # Find latest backup
-              BACKUP=$(velero backup get -o json | jq -r '.items | sort_by(.metadata.creationTimestamp) | last | .metadata.name')
+              BACKUP=$(kubectl get backups.velero.io -n velero --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}')
+              RESTORE_NAME=test-restore-$(date +%Y%m%d)
+              RESTORE_NAMESPACE=restore-test-$(date +%Y%m%d)
 
               # Create test restore
-              velero restore create test-restore-$(date +%Y%m%d) \
-                --from-backup $BACKUP \
-                --include-namespaces test-app \
-                --namespace-mappings test-app:restore-test-$(date +%Y%m%d)
+              kubectl apply -f - <<EOF
+              apiVersion: velero.io/v1
+              kind: Restore
+              metadata:
+                name: ${RESTORE_NAME}
+                namespace: velero
+              spec:
+                backupName: ${BACKUP}
+                includedNamespaces:
+                  - test-app
+                namespaceMapping:
+                  test-app: ${RESTORE_NAMESPACE}
+              EOF
 
               # Wait and verify
               sleep 300
-              kubectl get pods -n restore-test-$(date +%Y%m%d)
+              kubectl get pods -n ${RESTORE_NAMESPACE}
 
               # Cleanup test namespace
-              kubectl delete namespace restore-test-$(date +%Y%m%d)
+              kubectl delete namespace ${RESTORE_NAMESPACE}
           restartPolicy: OnFailure
 ```
 
