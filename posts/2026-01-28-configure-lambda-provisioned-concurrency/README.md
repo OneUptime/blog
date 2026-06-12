@@ -356,8 +356,8 @@ Provisioned Concurrency costs more than on-demand Lambda. Use these strategies t
 | Metric | On-Demand | Provisioned Concurrency |
 |--------|-----------|------------------------|
 | Invocations | $0.20 per 1M | $0.20 per 1M |
-| Duration | $0.0000166667/GB-s | $0.000004167/GB-s |
-| Provisioned | N/A | $0.000004167/GB-s (always) |
+| Duration | $0.0000166667/GB-s | $0.0000097222/GB-s |
+| Provisioned | N/A | $0.0000041667/GB-s (always) |
 
 ### Strategy 1: Use Provisioned Concurrency Only for Critical Paths
 
@@ -457,11 +457,11 @@ Provisioned Concurrency runs your initialization code once per environment. Opti
 
 ```javascript
 // index.js - Initialization runs once per provisioned instance
-const AWS = require('aws-sdk');
+const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 const pg = require('pg');
 
 // These initialize during provisioning, not during invocation
-const secretsManager = new AWS.SecretsManager();
+const secretsManager = new SecretsManagerClient({});
 let dbPool = null;
 let cachedConfig = null;
 
@@ -470,9 +470,9 @@ async function initialize() {
   if (cachedConfig) return;
 
   // Fetch secrets once
-  const secret = await secretsManager.getSecretValue({
+  const secret = await secretsManager.send(new GetSecretValueCommand({
     SecretId: process.env.DB_SECRET_ARN
-  }).promise();
+  }));
 
   cachedConfig = JSON.parse(secret.SecretString);
 
