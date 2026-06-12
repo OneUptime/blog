@@ -388,7 +388,7 @@ spec:
 
 ### Matrix Generator - Git x Clusters
 
-Deploy to all registered ArgoCD clusters:
+Deploy to registered ArgoCD clusters selected by label:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -405,7 +405,7 @@ spec:
               revision: HEAD
               directories:
                 - path: services/*
-          # Cluster generator returns all registered clusters
+          # Cluster generator returns registered clusters matching the selector
           - clusters:
               selector:
                 matchLabels:
@@ -475,7 +475,7 @@ spec:
 
 ## Handling Deletions
 
-Control what happens when a directory is removed:
+Control whether Kubernetes resources are deleted when the generated Application is deleted:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -492,7 +492,7 @@ spec:
           - path: services/*
   # Controls ApplicationSet behavior
   syncPolicy:
-    # Delete Applications when their directory is removed
+    # Add the Argo CD resources finalizer to generated Applications
     preserveResourcesOnDeletion: false
   template:
     metadata:
@@ -514,7 +514,7 @@ spec:
           prune: true
 ```
 
-Warning: Setting `preserveResourcesOnDeletion: false` means removing a directory deletes all Kubernetes resources. Use with caution in production.
+Warning: With the default ApplicationSet sync policy, removing a directory removes the generated Application. Setting `preserveResourcesOnDeletion: false` means that deleted Application also deletes its Kubernetes resources. Use with caution in production.
 
 ## Troubleshooting
 
