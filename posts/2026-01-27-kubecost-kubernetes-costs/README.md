@@ -42,7 +42,7 @@ kubectl cluster-info
 
 ```bash
 # Add the Kubecost Helm repository
-helm repo add kubecost https://kubecost.github.io/cost-analyzer/
+helm repo add kubecost https://kubecost.github.io/kubecost/
 
 # Update your local Helm chart repository cache
 helm repo update
@@ -51,13 +51,11 @@ helm repo update
 ### Basic Installation
 
 ```bash
-# Create a dedicated namespace for Kubecost
-kubectl create namespace kubecost
-
 # Install Kubecost with default settings
-helm install kubecost kubecost/cost-analyzer \
+helm install kubecost kubecost/kubecost \
   --namespace kubecost \
-  --set kubecostToken="YOUR_TOKEN_HERE"
+  --create-namespace \
+  --set global.clusterId="production-cluster"
 ```
 
 ### Production Installation with Custom Values
@@ -68,20 +66,35 @@ For production deployments, create a values file with your specific configuratio
 # kubecost-values.yaml
 # Production-ready Kubecost configuration
 
-# Kubecost token for premium features (optional for basic use)
-kubecostToken: "YOUR_TOKEN_HERE"
+# Unique identifier for this cluster
+global:
+  clusterId: "production-cluster"
 
 # Enable persistent storage for cost data retention
-persistentVolume:
-  # Enable persistent storage to retain data across restarts
-  enabled: true
-  # Storage size for cost data (adjust based on cluster size)
-  size: 32Gi
-  # Use your cluster's default storage class or specify one
-  storageClass: "standard"
+localStore:
+  persistentVolume:
+    # Enable persistent storage to retain data across restarts
+    enabled: true
+    # Storage size for cost data (adjust based on cluster size)
+    size: 32Gi
+    # Use your cluster's default storage class or specify one
+    storageClass: "standard"
 
-# Resource requests and limits for the cost-analyzer pod
-kubecostModel:
+# Resource requests and limits for the local store pod
+  resources:
+    requests:
+      # Minimum CPU required for local storage
+      cpu: "500m"
+      # Minimum memory for storing cost data
+      memory: "1Gi"
+    limits:
+      # Maximum CPU allocation
+      cpu: "1000m"
+      # Maximum memory allocation
+      memory: "3Gi"
+
+# Resource requests and limits for the FinOps agent
+finopsagent:
   resources:
     requests:
       # Minimum CPU required for cost calculations
@@ -94,39 +107,21 @@ kubecostModel:
       # Maximum memory allocation
       memory: "2Gi"
 
-# Prometheus configuration (Kubecost includes its own Prometheus)
-prometheus:
-  server:
-    # Retain 15 days of metrics for cost analysis
-    retention: 15d
-    persistentVolume:
-      # Enable persistent storage for Prometheus
-      enabled: true
-      size: 32Gi
-
 # Network costs tracking (requires cloud provider integration)
 networkCosts:
   # Enable network cost tracking
   enabled: true
-  # Prometheus port for network metrics
-  prometheusScrape: true
-
-# Grafana dashboards for visualization
-grafana:
-  # Enable Grafana for additional dashboards
-  enabled: true
-  # Use persistent storage for Grafana dashboards
-  persistence:
-    enabled: true
-    size: 5Gi
+  # Set to true only if you want Prometheus scrape annotations
+  prometheusScrape: false
 ```
 
 Install with the custom values:
 
 ```bash
 # Install Kubecost with production configuration
-helm install kubecost kubecost/cost-analyzer \
+helm install kubecost kubecost/kubecost \
   --namespace kubecost \
+  --create-namespace \
   --values kubecost-values.yaml
 ```
 
@@ -136,21 +131,18 @@ helm install kubecost kubecost/cost-analyzer \
 # Check that all Kubecost pods are running
 kubectl get pods -n kubecost
 
-# Expected output shows pods in Running state:
-# NAME                                          READY   STATUS    RESTARTS   AGE
-# kubecost-cost-analyzer-xxx                    2/2     Running   0          5m
-# kubecost-prometheus-server-xxx                1/1     Running   0          5m
-# kubecost-grafana-xxx                          1/1     Running   0          5m
+# Check the installed Kubecost workloads
+kubectl get deployments,statefulsets,daemonsets -n kubecost
 
 # Access the Kubecost UI via port-forward
-kubectl port-forward -n kubecost deployment/kubecost-cost-analyzer 9090:9090
+kubectl port-forward -n kubecost svc/kubecost-frontend 9090:9090
 ```
 
 Open your browser to `http://localhost:9090` to access the Kubecost dashboard.
 
 ## Understanding Cost Allocation
 
-Kubecost calculates costs by combining resource usage data from Prometheus with pricing information from your cloud provider.
+Kubecost calculates costs by combining Kubernetes resource metrics collected by the FinOps agent with pricing information from your cloud provider.
 
 ### How Cost Calculation Works
 
@@ -178,68 +170,47 @@ curl -s "http://localhost:9090/model/allocation?window=7d&aggregate=namespace" |
 curl -s "http://localhost:9090/model/allocation?window=7d&filterNamespaces=production" | jq .
 ```
 
-### Creating a Namespace Cost Report ConfigMap
+### Creating a Namespace Cost Report
 
 ```yaml
-# namespace-cost-config.yaml
-# Configuration for namespace-based cost tracking
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-namespace-config
-  namespace: kubecost
-data:
-  # Define namespace groupings for cost reports
-  namespace-groups.yaml: |
-    # Group namespaces by team or environment
-    groups:
-      # Production workloads
-      - name: production
-        namespaces:
-          - production
-          - prod-api
-          - prod-workers
-      # Development and staging
-      - name: non-production
-        namespaces:
-          - development
-          - staging
-          - qa
-      # Platform and infrastructure
-      - name: platform
-        namespaces:
-          - kube-system
-          - monitoring
-          - logging
-          - istio-system
+# kubecost-values.yaml
+# Saved report for namespace-based cost tracking
+global:
+  savedReports:
+    enabled: true
+    reports:
+      - title: "Production namespace costs"
+        window: "7d"
+        aggregateBy: "namespace"
+        chartDisplay: "category"
+        idle: "separate"
+        rate: "cumulative"
+        accumulate: false
+        filters:
+          - key: "namespace"
+            operator: ":"
+            value: "production"
 ```
 
 ### Namespace Cost Alerts
 
 ```yaml
-# namespace-cost-alerts.yaml
+# kubecost-values.yaml
 # Alert when namespace costs exceed thresholds
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-alerts
-  namespace: kubecost
-data:
-  alerts.yaml: |
-    alerts:
-      # Alert when production namespace exceeds daily budget
-      - name: production-cost-alert
-        type: budget
-        # Target namespace to monitor
-        filter:
-          namespaces: ["production"]
-        # Daily cost threshold in dollars
-        threshold: 500
-        window: 1d
-        # Notification channels
-        notifications:
-          - type: slack
-            webhook: "https://hooks.slack.com/services/xxx/yyy/zzz"
+global:
+  notifications:
+    alertConfigs:
+      frontendUrl: http://localhost:9090
+      globalSlackWebhookUrl: "https://hooks.slack.com/services/xxx/yyy/zzz"
+      alerts:
+        # Alert when production namespace exceeds daily budget
+        - type: budget
+          # Daily cost threshold in dollars
+          threshold: 500
+          window: 1d
+          # Target namespace to monitor
+          aggregation: namespace
+          filter: production
 ```
 
 ## Using Labels for Cost Tracking
@@ -303,44 +274,24 @@ spec:
 curl -s "http://localhost:9090/model/allocation?window=7d&aggregate=label:team" | jq .
 
 # Get costs for a specific team
-curl -s "http://localhost:9090/model/allocation?window=7d&filterLabels=team:platform" | jq .
+curl -G "http://localhost:9090/model/allocation" \
+  --data-urlencode "window=7d" \
+  --data-urlencode "filter=label[team]:\"platform\"" | jq .
 
 # Get costs by cost center
 curl -s "http://localhost:9090/model/allocation?window=7d&aggregate=label:cost-center" | jq .
 ```
 
-### Label-Based Cost Allocation Policy
+### Label-Based Shared Cost Allocation
 
-```yaml
-# cost-allocation-policy.yaml
-# Define how costs should be attributed based on labels
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-allocation-policy
-  namespace: kubecost
-data:
-  allocation.yaml: |
-    # Primary allocation dimension
-    primaryAggregation: label:team
-
-    # Fallback allocation when primary label is missing
-    fallbackAggregation: namespace
-
-    # Shared cost distribution
-    sharedCosts:
-      # Distribute platform namespace costs across teams
-      - namespace: kube-system
-        # Distribute proportionally based on resource usage
-        distribution: proportional
-      - namespace: monitoring
-        distribution: proportional
-
-    # Label requirements for cost tracking
-    requiredLabels:
-      - team
-      - environment
-      - cost-center
+```bash
+# Example Allocation API query
+# Attribute costs by the team label and share platform namespaces proportionally
+curl -G "http://localhost:9090/model/allocation" \
+  --data-urlencode "window=7d" \
+  --data-urlencode "aggregate=label:team" \
+  --data-urlencode "shareNamespaces=kube-system,monitoring" \
+  --data-urlencode "shareIdle=true" | jq .
 ```
 
 ## Getting Efficiency Recommendations
@@ -351,13 +302,7 @@ Kubecost analyzes your resource usage patterns and provides recommendations for 
 
 ```bash
 # Get container right-sizing recommendations
-curl -s "http://localhost:9090/model/savings/containerSizing?window=7d" | jq .
-
-# Get cluster sizing recommendations
-curl -s "http://localhost:9090/model/savings/clusterSizing" | jq .
-
-# Get abandoned workload recommendations
-curl -s "http://localhost:9090/model/savings/abandonedWorkloads?window=7d" | jq .
+curl -s "http://localhost:9090/model/savings/requestSizingV2?window=7d" | jq .
 ```
 
 ### Understanding Efficiency Scores
@@ -396,6 +341,9 @@ spec:
     matchLabels:
       app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api
@@ -422,93 +370,60 @@ Alerts help you catch cost anomalies before they become expensive problems.
 ```yaml
 # kubecost-alerts.yaml
 # Comprehensive alert configuration
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-alert-config
-  namespace: kubecost
-data:
-  alerts.yaml: |
-    alerts:
-      # Budget alert: triggers when spend exceeds threshold
-      - name: daily-budget-exceeded
-        type: budget
-        threshold: 1000  # Daily spend in dollars
-        window: 1d
-        filter:
-          namespaces: ["production", "staging"]
-        notifications:
-          - type: slack
-            webhook: "${SLACK_WEBHOOK_URL}"
-          - type: email
-            recipients: ["platform-team@company.com"]
+global:
+  notifications:
+    alertConfigs:
+      frontendUrl: http://localhost:9090
+      globalSlackWebhookUrl: "${SLACK_WEBHOOK_URL}"
+      globalAlertEmails:
+        - platform-team@company.com
+      alerts:
+        # Budget alert: triggers when spend exceeds threshold
+        - type: budget
+          threshold: 1000  # Daily spend in dollars
+          window: 1d
+          aggregation: namespace
+          filter: production,staging
 
-      # Efficiency alert: triggers when efficiency drops
-      - name: low-efficiency-alert
-        type: efficiency
-        # Alert when efficiency drops below 50%
-        threshold: 50
-        window: 24h
-        filter:
-          namespaces: ["production"]
-        notifications:
-          - type: slack
-            webhook: "${SLACK_WEBHOOK_URL}"
+        # Efficiency alert: triggers when efficiency drops
+        - type: efficiency
+          # Alert when efficiency drops below 50%
+          efficiencyThreshold: 0.5
+          spendThreshold: 100
+          window: 24h
+          aggregation: namespace
+          filter: production
 
-      # Anomaly alert: triggers on unusual spending patterns
-      - name: cost-anomaly-alert
-        type: anomaly
-        # Alert when costs are 30% higher than baseline
-        threshold: 30
-        # Use 7-day baseline for comparison
-        baselineWindow: 7d
-        notifications:
-          - type: pagerduty
-            integrationKey: "${PAGERDUTY_KEY}"
+        # Spend change alert: triggers on unusual spending patterns
+        - type: spendChange
+          window: 1d
+          relativeThreshold: 0.3
+          baselineWindow: 7d
+          aggregation: namespace
+          filter: production
 
-      # Recurring report: daily cost summary
-      - name: daily-cost-report
-        type: report
-        schedule: "0 9 * * *"  # Daily at 9 AM
-        window: 1d
-        aggregate: namespace
-        notifications:
-          - type: email
-            recipients: ["finance@company.com"]
+        # Recurring report: daily cost summary
+        - type: recurringUpdate
+          window: 1d
+          aggregation: namespace
 ```
 
 ### Setting Up Slack Notifications
 
 ```yaml
 # slack-integration.yaml
-# Configure Slack notifications for cost alerts
-apiVersion: v1
-kind: Secret
-metadata:
-  name: kubecost-slack-config
-  namespace: kubecost
-type: Opaque
-stringData:
-  # Slack webhook URL for notifications
-  webhook-url: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-notifications
-  namespace: kubecost
-data:
-  notifications.yaml: |
-    slack:
-      # Enable Slack notifications
-      enabled: true
-      # Reference to webhook secret
-      webhookSecretName: kubecost-slack-config
-      webhookSecretKey: webhook-url
-      # Default channel for alerts
-      channel: "#kubernetes-costs"
-      # Include cost breakdown in messages
-      includeBreakdown: true
+# Configure Slack notifications for cost alerts through Helm values
+global:
+  notifications:
+    alertConfigs:
+      frontendUrl: http://localhost:9090
+      globalSlackWebhookUrl: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+      alerts:
+        - type: budget
+          threshold: 500
+          window: 1d
+          aggregation: namespace
+          filter: production
 ```
 
 ## Setting Up Budgets
@@ -517,53 +432,48 @@ Budgets help teams stay accountable for their cloud spending.
 
 ### Namespace Budgets
 
-```yaml
-# namespace-budgets.yaml
-# Define spending budgets per namespace
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-budgets
-  namespace: kubecost
-data:
-  budgets.yaml: |
-    budgets:
-      # Production namespace budget
-      - name: production-monthly
-        # Monthly budget in dollars
-        amount: 15000
-        window: month
-        filter:
-          namespaces: ["production"]
-        # Alert thresholds as percentage of budget
-        alerts:
-          - threshold: 50
-            message: "Production at 50% of monthly budget"
-          - threshold: 80
-            message: "Production at 80% of monthly budget - review spending"
-          - threshold: 100
-            message: "Production exceeded monthly budget!"
+```bash
+# Create a monthly budget for the production namespace
+curl -X POST "http://localhost:9090/model/budget" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "production-monthly",
+    "budgetType": "allocations",
+    "values": {
+      "namespace": ["production"]
+    },
+    "kind": "soft",
+    "interval": "monthly",
+    "intervalDay": 1,
+    "spendLimit": 15000,
+    "actions": [
+      {
+        "percentage": 80,
+        "emails": ["platform-team@company.com"]
+      }
+    ]
+  }'
 
-      # Development environment budget
-      - name: development-monthly
-        amount: 3000
-        window: month
-        filter:
-          namespaces: ["development", "staging"]
-        alerts:
-          - threshold: 80
-            message: "Dev/Staging approaching budget limit"
-
-      # Team-based budget using labels
-      - name: platform-team-monthly
-        amount: 8000
-        window: month
-        filter:
-          labels:
-            team: platform
-        alerts:
-          - threshold: 75
-            message: "Platform team at 75% of monthly budget"
+# Create a monthly budget for workloads with team=platform
+curl -X POST "http://localhost:9090/model/budget" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "platform-team-monthly",
+    "budgetType": "allocations",
+    "values": {
+      "label": ["team:platform"]
+    },
+    "kind": "soft",
+    "interval": "monthly",
+    "intervalDay": 1,
+    "spendLimit": 8000,
+    "actions": [
+      {
+        "percentage": 75,
+        "emails": ["platform-team@company.com"]
+      }
+    ]
+  }'
 ```
 
 ### Budget Enforcement with Resource Quotas
@@ -630,40 +540,27 @@ Kubecost integrates with cloud providers for accurate pricing data.
 ```yaml
 # aws-integration.yaml
 # Configure AWS Cost and Usage Report integration
-apiVersion: v1
-kind: Secret
-metadata:
-  name: kubecost-aws-credentials
-  namespace: kubecost
-type: Opaque
-stringData:
-  # AWS credentials for accessing Cost and Usage Reports
-  # Use IAM roles for service accounts in production
-  AWS_ACCESS_KEY_ID: "YOUR_ACCESS_KEY"
-  AWS_SECRET_ACCESS_KEY: "YOUR_SECRET_KEY"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-aws-config
-  namespace: kubecost
-data:
-  aws.yaml: |
-    aws:
-      # Enable AWS integration
-      enabled: true
-      # S3 bucket containing Cost and Usage Reports
-      athenaBucketName: "your-cur-bucket"
-      # Athena database name
-      athenaDatabase: "athenacurcfn_cur_report"
-      # Athena table name
-      athenaTable: "cur_report"
-      # AWS region for Athena queries
-      athenaRegion: "us-east-1"
-      # Workgroup for Athena queries
-      athenaWorkgroup: "primary"
-      # S3 bucket for Athena query results
-      athenaResultsBucket: "your-athena-results-bucket"
+cloudCost:
+  cloudIntegrationJSON: |-
+    {
+      "aws": {
+        "athena": [
+          {
+            "bucket": "your-athena-query-results-bucket",
+            "region": "us-east-1",
+            "database": "athenacurcfn_cur_report",
+            "table": "cur_report",
+            "workgroup": "primary",
+            "account": "123456789012",
+            "authorizer": {
+              "authorizerType": "AWSAccessKey",
+              "id": "YOUR_ACCESS_KEY",
+              "secret": "YOUR_SECRET_KEY"
+            }
+          }
+        ]
+      }
+    }
 ```
 
 ### GCP Integration
@@ -671,42 +568,34 @@ data:
 ```yaml
 # gcp-integration.yaml
 # Configure Google Cloud billing integration
-apiVersion: v1
-kind: Secret
-metadata:
-  name: kubecost-gcp-credentials
-  namespace: kubecost
-type: Opaque
-stringData:
-  # GCP service account key JSON
-  key.json: |
+cloudCost:
+  cloudIntegrationJSON: |-
     {
-      "type": "service_account",
-      "project_id": "your-project-id",
-      "private_key_id": "xxx",
-      "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
-      "client_email": "kubecost@your-project.iam.gserviceaccount.com",
-      "client_id": "123456789",
-      "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-      "token_uri": "https://oauth2.googleapis.com/token"
+      "gcp": {
+        "bigQuery": [
+          {
+            "projectID": "your-billing-project",
+            "dataset": "billing_dataset",
+            "table": "gcp_billing_export_v1_XXXXXX",
+            "authorizer": {
+              "authorizerType": "GCPServiceAccountKey",
+              "key": {
+                "type": "service_account",
+                "project_id": "your-project-id",
+                "private_key_id": "xxx",
+                "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+                "client_email": "kubecost@your-project.iam.gserviceaccount.com",
+                "client_id": "123456789",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_x509_cert_url": ""
+              }
+            }
+          }
+        ]
+      }
     }
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-gcp-config
-  namespace: kubecost
-data:
-  gcp.yaml: |
-    gcp:
-      # Enable GCP billing integration
-      enabled: true
-      # BigQuery dataset for billing export
-      bigQueryBillingDataDataset: "billing_dataset"
-      # BigQuery table name
-      bigQueryBillingDataTable: "gcp_billing_export_v1_XXXXXX"
-      # GCP project containing billing data
-      projectID: "your-billing-project"
 ```
 
 ### Azure Integration
@@ -714,77 +603,105 @@ data:
 ```yaml
 # azure-integration.yaml
 # Configure Azure cost management integration
-apiVersion: v1
-kind: Secret
-metadata:
-  name: kubecost-azure-credentials
-  namespace: kubecost
-type: Opaque
-stringData:
-  # Azure service principal credentials
-  AZURE_CLIENT_ID: "your-client-id"
-  AZURE_CLIENT_SECRET: "your-client-secret"
-  AZURE_TENANT_ID: "your-tenant-id"
-  AZURE_SUBSCRIPTION_ID: "your-subscription-id"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubecost-azure-config
-  namespace: kubecost
-data:
-  azure.yaml: |
-    azure:
-      # Enable Azure integration
-      enabled: true
-      # Subscription ID to monitor
-      subscriptionID: "your-subscription-id"
-      # Storage account for billing exports
-      storageAccount: "yourstorageaccount"
-      # Container with billing data
-      storageContainer: "billing-exports"
-      # Enable Azure rate card API for accurate pricing
-      useRateCard: true
+cloudCost:
+  cloudIntegrationJSON: |-
+    {
+      "azure": {
+        "storage": [
+          {
+            "subscriptionID": "your-subscription-id",
+            "account": "yourstorageaccount",
+            "container": "billing-exports",
+            "path": "",
+            "cloud": "public",
+            "authorizer": {
+              "authorizerType": "AzureAccessKey",
+              "account": "yourstorageaccount",
+              "accessKey": "YOUR_STORAGE_ACCOUNT_ACCESS_KEY"
+            }
+          }
+        ]
+      }
+    }
 ```
 
 ### Multi-Cloud Helm Values
 
+Multi-cloud and unified multi-cluster views are Kubecost Enterprise features. For those environments, configure cloud integrations and federated storage together.
+
 ```yaml
 # multi-cloud-values.yaml
 # Kubecost configuration for multi-cloud environments
-kubecostProductConfigs:
+cloudCost:
   # Enable cloud provider integrations
-  cloudIntegrationJSON: |
+  cloudIntegrationJSON: |-
     {
-      "aws": [
-        {
-          "athenaBucketName": "your-aws-cur-bucket",
-          "athenaRegion": "us-east-1",
-          "athenaDatabase": "athenacurcfn_cur",
-          "athenaTable": "cur"
-        }
-      ],
-      "gcp": [
-        {
-          "projectID": "your-gcp-project",
-          "bigQueryBillingDataDataset": "billing",
-          "bigQueryBillingDataTable": "gcp_billing"
-        }
-      ],
-      "azure": [
-        {
-          "subscriptionID": "your-azure-subscription",
-          "storageAccount": "yourstorageaccount"
-        }
-      ]
+      "aws": {
+        "athena": [
+          {
+            "bucket": "your-athena-query-results-bucket",
+            "region": "us-east-1",
+            "database": "athenacurcfn_cur",
+            "table": "cur",
+            "workgroup": "primary",
+            "account": "123456789012",
+            "authorizer": {
+              "authorizerType": "AWSAccessKey",
+              "id": "YOUR_ACCESS_KEY",
+              "secret": "YOUR_SECRET_KEY"
+            }
+          }
+        ]
+      },
+      "gcp": {
+        "bigQuery": [
+          {
+            "projectID": "your-gcp-project",
+            "dataset": "billing",
+            "table": "gcp_billing",
+            "authorizer": {
+              "authorizerType": "GCPServiceAccountKey",
+              "key": {
+                "type": "service_account",
+                "project_id": "your-gcp-project",
+                "private_key_id": "xxx",
+                "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+                "client_email": "kubecost@your-project.iam.gserviceaccount.com",
+                "client_id": "123456789",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_x509_cert_url": ""
+              }
+            }
+          }
+        ]
+      },
+      "azure": {
+        "storage": [
+          {
+            "subscriptionID": "your-azure-subscription",
+            "account": "yourstorageaccount",
+            "container": "billing-exports",
+            "path": "",
+            "cloud": "public",
+            "authorizer": {
+              "authorizerType": "AzureAccessKey",
+              "account": "yourstorageaccount",
+              "accessKey": "YOUR_STORAGE_ACCOUNT_ACCESS_KEY"
+            }
+          }
+        ]
+      }
     }
 
 # Enable multi-cluster support
-federatedETL:
-  # Enable federated metrics collection
-  enabled: true
+global:
   # Primary cluster identifier
-  primaryClusterID: "primary-cluster"
+  clusterId: "primary-cluster"
+  # Configure federated object storage for multi-cluster deployments
+  federatedStorage:
+    existingSecret: "kubecost-federated-storage"
 ```
 
 ## Best Practices Summary
