@@ -120,7 +120,7 @@ author.articles.create(title: "Getting Started", body: "...")
 
 ## has_one: Single Child Relationships
 
-Use `has_one` when a parent has exactly one child record. The foreign key still lives on the child table.
+Use `has_one` when a parent has zero or one child record. The foreign key still lives on the child table.
 
 ```ruby
 # app/models/user.rb
@@ -148,7 +148,7 @@ profile = user.build_profile(bio: "Software engineer", location: "NYC")
 # Create and save in one step
 profile = user.create_profile(bio: "Software engineer", location: "NYC")
 
-# Replace existing profile (destroys old one if dependent: :destroy)
+# Replace existing profile (saves the new profile and updates the old one)
 user.profile = Profile.new(bio: "Updated bio")
 ```
 
@@ -232,7 +232,7 @@ patient.doctors          # All doctors this patient has seen
 doctor.appointments.upcoming  # Upcoming appointments for this doctor
 
 # You can also use the << operator, but you lose control over join attributes
-# This creates an appointment with nil scheduled_at (probably not what you want)
+# This attempts to create an appointment without scheduled_at or status, so it will fail validations here
 doctor.patients << patient
 ```
 
@@ -276,7 +276,7 @@ class CreateComments < ActiveRecord::Migration[7.1]
       t.text :body, null: false
       t.references :user, null: false, foreign_key: true
       # Polymorphic reference creates both commentable_type and commentable_id
-      t.references :commentable, polymorphic: true, null: false
+      t.references :commentable, polymorphic: true, null: false, index: false
       t.timestamps
     end
 
