@@ -12,7 +12,7 @@ Description: A practical guide to configuring Cilium bandwidth management in Kub
 
 ## Introduction to Cilium Bandwidth Management
 
-Cilium provides advanced bandwidth management capabilities for Kubernetes clusters using eBPF. Unlike traditional approaches that rely on tc (traffic control) and HTB (Hierarchical Token Bucket), Cilium uses EDT (Earliest Departure Time) for more efficient and accurate rate limiting.
+Cilium provides advanced bandwidth management capabilities for Kubernetes clusters using eBPF. Unlike traditional approaches that rely on the bandwidth CNI plugin's TBF (Token Bucket Filter), Cilium uses EDT (Earliest Departure Time) for efficient and accurate egress rate limiting.
 
 ```mermaid
 flowchart LR
@@ -56,7 +56,8 @@ Before configuring bandwidth management, ensure your cluster meets these require
 
 cilium status
 
-# Verify kernel version (5.1+ required for full EDT support)
+# Verify kernel version (current Cilium releases recommend Linux 5.10+ or an equivalent distribution kernel;
+# BBR for Pods requires Linux 5.18+)
 uname -r
 
 # Check if bandwidth manager is enabled
@@ -107,9 +108,9 @@ kind: Pod
 metadata:
   name: bandwidth-limited-app
   annotations:
-    # Limit incoming traffic to 10 Megabits per second
+    # Limit incoming traffic to 10 megabits per second
     kubernetes.io/ingress-bandwidth: "10M"
-    # Limit outgoing traffic to 5 Megabits per second
+    # Limit outgoing traffic to 5 megabits per second
     kubernetes.io/egress-bandwidth: "5M"
 spec:
   containers:
@@ -186,7 +187,7 @@ metadata:
 
 ## EDT-Based Rate Limiting Deep Dive
 
-EDT (Earliest Departure Time) is the modern approach to rate limiting that Cilium uses by default.
+EDT (Earliest Departure Time) is the modern approach to egress rate limiting that Cilium uses when the bandwidth manager is enabled. Ingress bandwidth limits use an eBPF-based token bucket implementation.
 
 ```mermaid
 sequenceDiagram
@@ -214,7 +215,7 @@ metadata:
   name: cilium-config
   namespace: kube-system
 data:
-  # EDT is used automatically when bandwidth-manager is enabled
+  # EDT is used automatically for egress bandwidth limits when bandwidth-manager is enabled
   enable-bandwidth-manager: "true"
 
   # The FQ (Fair Queue) scheduler is required for EDT
@@ -235,8 +236,8 @@ tc qdisc show dev eth0
 # qdisc fq 8001: root refcnt 2 limit 10000p flow_limit 100p
 #   buckets 1024 orphan_mask 1023 quantum 3028b initial_quantum 15140b
 
-# Verify Cilium bandwidth manager status
-cilium bpf bandwidth list
+# Verify Cilium bandwidth manager status from a Cilium agent pod
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf bandwidth list
 
 # Check EDT timestamps on packets (requires bpftrace)
 bpftrace -e 'kprobe:__dev_queue_xmit {
@@ -256,7 +257,7 @@ flowchart TB
         H3 -.->|"Lock Required"| H3
     end
 
-    subgraph EDT["Cilium EDT Approach"]
+    subgraph EDT["Cilium Egress EDT Approach"]
         E1["Packet Arrives"] --> E2["Calculate EDT"]
         E2 --> E3["Set Timestamp"]
         E3 --> E4["FQ Scheduler"]
@@ -269,26 +270,26 @@ flowchart TB
 
 ## Advanced Rate Limiting Patterns
 
-### Per-Namespace Bandwidth Policies
+### Per-Namespace Bandwidth Annotation Patterns
 
-Use Cilium Network Policies to enforce bandwidth limits at the namespace level:
+Use namespace-level pod templates or admission automation to apply bandwidth annotations consistently. Cilium Network Policies do not define bandwidth limits, but they can still select namespace traffic for security policy:
 
 ```yaml
-# namespace-bandwidth-policy.yaml
-# CiliumClusterwideNetworkPolicy for namespace-level bandwidth control
+# namespace-network-policy.yaml
+# CiliumClusterwideNetworkPolicy for namespace-level traffic selection
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
-  name: production-bandwidth-limit
+  name: production-egress-policy
 spec:
-  description: "Limit bandwidth for production namespace"
+  description: "Restrict production namespace egress to external destinations"
   endpointSelector:
     matchLabels:
       "k8s:io.kubernetes.pod.namespace": production
   egress:
     - toEntities:
         - world
-      # Note: L7 policies can also include rate limiting rules
+      # Note: bandwidth limits still need pod annotations
 ```
 
 ### Tiered Bandwidth Classes
@@ -443,64 +444,27 @@ flowchart TB
 
 ### Enable Hubble for Flow Visibility
 
-```yaml
-# hubble-config.yaml
-# Enable Hubble for detailed traffic observability
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cilium-config
-  namespace: kube-system
-data:
-  enable-hubble: "true"
-  hubble-listen-address: ":4244"
-  hubble-metrics-server: ":9965"
-  hubble-metrics:
-    - dns
-    - drop
-    - tcp
-    - flow
-    - icmp
-    - http
+```bash
+# Enable Hubble and Hubble metrics with Helm
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --reuse-values \
+  --set hubble.enabled=true \
+  --set hubble.relay.enabled=true \
+  --set hubble.metrics.enableOpenMetrics=true \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,httpV2}"
 ```
 
 ### Prometheus Metrics for Bandwidth
 
-```yaml
-# prometheus-servicemonitor.yaml
-# ServiceMonitor to scrape Cilium and Hubble metrics
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: cilium-metrics
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      k8s-app: cilium
-  namespaceSelector:
-    matchNames:
-      - kube-system
-  endpoints:
-    - port: metrics
-      interval: 15s
-      path: /metrics
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: hubble-metrics
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      k8s-app: hubble
-  namespaceSelector:
-    matchNames:
-      - kube-system
-  endpoints:
-    - port: metrics
-      interval: 15s
+```bash
+# Create ServiceMonitor resources from the Cilium Helm chart
+helm upgrade cilium cilium/cilium \
+  --namespace kube-system \
+  --reuse-values \
+  --set prometheus.enabled=true \
+  --set prometheus.serviceMonitor.enabled=true \
+  --set hubble.metrics.serviceMonitor.enabled=true
 ```
 
 ### Key Metrics to Monitor
@@ -509,9 +473,9 @@ spec:
 # Useful PromQL queries for bandwidth monitoring
 
 # Total bytes transmitted per pod
-sum(rate(hubble_flows_processed_total{verdict="FORWARDED"}[5m])) by (source_pod)
+sum(rate(container_network_transmit_bytes_total[5m])) by (pod, namespace)
 
-# Dropped packets due to policy or rate limiting
+# Dropped packets observed by Hubble
 sum(rate(hubble_drop_total[5m])) by (reason)
 
 # Network throughput by namespace
@@ -559,7 +523,7 @@ sum(rate(container_network_transmit_bytes_total[5m])) by (namespace)
         }
       },
       {
-        "title": "Bandwidth Limit Violations",
+        "title": "Policy Drops",
         "type": "stat",
         "targets": [
           {
@@ -628,20 +592,30 @@ data:
       prometheus:
         config:
           scrape_configs:
-            - job_name: 'cilium'
+            - job_name: 'kubernetes-pods'
               kubernetes_sd_configs:
                 - role: pod
               relabel_configs:
-                - source_labels: [__meta_kubernetes_pod_label_k8s_app]
-                  regex: cilium
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
                   action: keep
-            - job_name: 'hubble'
+                  regex: true
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: ${1}:${2}
+                  target_label: __address__
+            - job_name: 'kubernetes-endpoints'
               kubernetes_sd_configs:
-                - role: pod
+                - role: endpoints
               relabel_configs:
-                - source_labels: [__meta_kubernetes_pod_label_k8s_app]
-                  regex: hubble
+                - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
                   action: keep
+                  regex: true
+                - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+                  action: replace
+                  target_label: __address__
+                  regex: (.+)(?::\d+);(\d+)
+                  replacement: $1:$2
 
     processors:
       batch:
@@ -704,7 +678,8 @@ hubble observe --verdict DROPPED
 ### Issue: Inconsistent Rate Limiting
 
 ```bash
-# EDT requires kernel 5.1+ for best results
+# Current Cilium releases recommend Linux 5.10+ or an equivalent distribution kernel.
+# BBR for Pods requires Linux 5.18+.
 uname -r
 
 # Check for clock synchronization issues
@@ -714,8 +689,8 @@ timedatectl status
 tc qdisc show
 tc filter show
 
-# Check Cilium BPF maps
-cilium bpf bandwidth list
+# Check Cilium BPF bandwidth map from a Cilium agent pod
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf bandwidth list
 ```
 
 ### Debugging Script
@@ -738,7 +713,7 @@ echo -e "\n=== TC Qdiscs ==="
 tc qdisc show
 
 echo -e "\n=== Cilium BPF Bandwidth ==="
-cilium bpf bandwidth list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf bandwidth list
 
 echo -e "\n=== Recent Drops ==="
 hubble observe --verdict DROPPED --last 10
@@ -759,6 +734,10 @@ kind: Deployment
 metadata:
   name: new-service
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: new-service
   template:
     metadata:
       labels:
@@ -802,11 +781,21 @@ metadata:
       Max concurrent streams: 4
       Required bandwidth: 100 Mbps + 20% headroom = 120 Mbps
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: video-processor
   template:
     metadata:
+      labels:
+        app: video-processor
       annotations:
         kubernetes.io/ingress-bandwidth: "120M"
         kubernetes.io/egress-bandwidth: "120M"
+    spec:
+      containers:
+        - name: processor
+          image: video-processor:latest
 ```
 
 ### 4. Test Under Load
