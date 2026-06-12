@@ -70,7 +70,7 @@ For each resource, you need to measure both **utilization** (how much is being u
 | Metric | Description | Warning Threshold | Critical Threshold |
 |--------|-------------|-------------------|-------------------|
 | CPU Utilization | Percentage of CPU time spent on work | 70% | 85% |
-| Load Average | Number of processes waiting for CPU | 0.7 * cores | 1.0 * cores |
+| Load Average | Runnable and uninterruptible tasks competing for CPU or I/O | 0.7 * cores | 1.0 * cores |
 | CPU Steal | Time stolen by hypervisor (VMs) | 5% | 10% |
 | Context Switches | Rate of process switching | Baseline + 50% | Baseline + 100% |
 
@@ -163,6 +163,7 @@ node_memory_MemAvailable_bytes / 1024 / 1024 / 1024
 (
   node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes
 ) / node_memory_SwapTotal_bytes * 100
+and on(instance) node_memory_SwapTotal_bytes > 0
 
 # Memory saturation via major page faults
 # Major faults require disk I/O and indicate memory pressure
@@ -227,7 +228,7 @@ flowchart LR
 
 # Disk space exhaustion prediction
 # Predicts when disk will be full based on growth rate
-# Returns seconds until full (negative means shrinking)
+# Returns true when available space is predicted to go below zero in 7 days
 predict_linear(
   node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}[24h],
   7 * 24 * 3600
@@ -363,9 +364,9 @@ Current State:
 Growth Rate: {metrics.growth_rate_bytes_per_day / (1024**3):.2f} GB/day
 
 Projections:
-  Days to 70%: {days_to_70 if days_to_70 else 'N/A (shrinking)'}
-  Days to 85%: {days_to_85 if days_to_85 else 'N/A (shrinking)'}
-  Days to 90%: {days_to_90 if days_to_90 else 'N/A (shrinking)'}
+  Days to 70%: {days_to_70 if days_to_70 is not None else 'N/A (shrinking)'}
+  Days to 85%: {days_to_85 if days_to_85 is not None else 'N/A (shrinking)'}
+  Days to 90%: {days_to_90 if days_to_90 is not None else 'N/A (shrinking)'}
 """
 
     return report
@@ -433,8 +434,8 @@ rate(node_netstat_Tcp_OutSegs[5m]) * 100
 rate(node_network_receive_errs_total{device="eth0"}[5m]) +
 rate(node_network_transmit_errs_total{device="eth0"}[5m])
 
-# Socket saturation (time spent waiting)
-# High values indicate network stack congestion
+# TCP sockets in TIME_WAIT
+# High values can indicate connection churn
 node_sockstat_TCP_tw
 ```
 
@@ -498,17 +499,18 @@ flowchart TB
 # docker-compose.yml for capacity monitoring stack
 # This deploys Prometheus and Node Exporter for collecting metrics
 
-version: '3.8'
-
 services:
   # Prometheus server for metrics storage and querying
   prometheus:
-    image: prom/prometheus:v2.45.0
+    image: prom/prometheus:latest
     container_name: prometheus
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     command:
       # Enable storage for 30 days
@@ -519,25 +521,29 @@ services:
 
   # Node Exporter for host metrics
   node-exporter:
-    image: prom/node-exporter:v1.6.0
+    image: prom/node-exporter:latest
     container_name: node-exporter
-    ports:
-      - "9100:9100"
+    network_mode: host
+    pid: host
     volumes:
-      # Mount host filesystems read-only
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
+      # Mount host filesystem read-only
+      - /:/host:ro,rslave
     command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--path.rootfs=/rootfs'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($$|/)'
+    restart: unless-stopped
+
+  # Alertmanager for routing capacity alerts
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
     restart: unless-stopped
 
   # Grafana for visualization
   grafana:
-    image: grafana/grafana:10.0.0
+    image: grafana/grafana:latest
     container_name: grafana
     ports:
       - "3000:3000"
@@ -587,7 +593,7 @@ scrape_configs:
   - job_name: 'node'
     static_configs:
       - targets:
-          - 'node-exporter:9100'
+          - 'host.docker.internal:9100'
           - 'server1:9100'
           - 'server2:9100'
           - 'server3:9100'
@@ -659,8 +665,11 @@ groups:
       - alert: HighSwapUsage
         expr: |
           (
-            node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes
-          ) / node_memory_SwapTotal_bytes * 100 > 25
+            (
+              node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes
+            ) / node_memory_SwapTotal_bytes * 100 > 25
+          )
+          and on(instance) node_memory_SwapTotal_bytes > 0
         for: 5m
         labels:
           severity: warning
@@ -1326,10 +1335,8 @@ Before setting thresholds, collect at least two weeks of baseline data:
 ```promql
 # Calculate baseline CPU utilization with percentiles
 # Use this to understand normal operating range
-histogram_quantile(0.50,
-  sum by(le) (
-    rate(node_cpu_seconds_total{mode="idle"}[24h])
-  )
+quantile_over_time(0.50,
+  (100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100))[14d:5m]
 )
 
 # Get P95 CPU utilization over last 7 days
@@ -1400,12 +1407,13 @@ topk(10,
 )
 
 # Check for high system time (kernel overhead)
-rate(node_cpu_seconds_total{mode="system"}[5m]) /
-rate(node_cpu_seconds_total[5m])
+sum by(instance) (rate(node_cpu_seconds_total{mode="system"}[5m])) /
+sum by(instance) (rate(node_cpu_seconds_total[5m])) * 100
 
 # Check for high interrupt handling
-rate(node_cpu_seconds_total{mode="irq"}[5m]) +
-rate(node_cpu_seconds_total{mode="softirq"}[5m])
+sum by(instance) (
+  rate(node_cpu_seconds_total{mode=~"irq|softirq"}[5m])
+) * 100
 ```
 
 ### Memory Leaks
@@ -1425,8 +1433,7 @@ node_memory_Committed_AS_bytes / node_memory_MemTotal_bytes
 rate(node_disk_io_time_seconds_total[5m]) * 100
 
 # Check average queue size
-rate(node_disk_io_time_weighted_seconds_total[5m]) /
-rate(node_disk_io_time_seconds_total[5m])
+rate(node_disk_io_time_weighted_seconds_total[5m])
 
 # Check average request size
 rate(node_disk_read_bytes_total[5m]) /
