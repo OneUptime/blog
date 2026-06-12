@@ -14,7 +14,7 @@ Description: A comprehensive guide to building real-time streaming pipelines wit
 
 Google Cloud Pub/Sub and Dataflow form a powerful combination for building real-time data processing pipelines. Pub/Sub provides reliable, scalable message delivery while Dataflow (powered by Apache Beam) handles the complex processing, windowing, and aggregation logic.
 
-This guide walks through building production-ready streaming pipelines that can handle millions of events per second with exactly-once processing guarantees.
+This guide walks through building production-ready streaming pipelines that can handle millions of events per second with Dataflow's default exactly-once processing mode.
 
 ```mermaid
 flowchart LR
@@ -99,7 +99,7 @@ gcloud pubsub schemas create events-schema \
         "name": "Event",
         "fields": [
             {"name": "event_id", "type": "string"},
-            {"name": "timestamp", "type": "long"},
+            {"name": "timestamp", "type": "string"},
             {"name": "user_id", "type": "string"},
             {"name": "event_type", "type": "string"},
             {"name": "payload", "type": "string"}
@@ -200,12 +200,12 @@ Here is a complete streaming pipeline that reads from Pub/Sub, processes events,
 
 ### Project Dependencies
 
-```python
+```text
 # requirements.txt
 # Install these packages before running the pipeline
-apache-beam[gcp]==2.52.0    # Apache Beam with GCP connectors
-google-cloud-pubsub==2.19.0  # Pub/Sub client library
-google-cloud-bigquery==3.14.0 # BigQuery client library
+apache-beam[gcp]==2.74.0     # Apache Beam with GCP connectors
+google-cloud-pubsub==2.39.0  # Pub/Sub client library
+google-cloud-bigquery==3.41.0 # BigQuery client library
 ```
 
 ### Complete Pipeline Implementation
@@ -240,7 +240,8 @@ class ParseEventFn(beam.DoFn):
 
         Args:
             element: Raw bytes from Pub/Sub message
-            timestamp: Event timestamp from Pub/Sub message attributes
+            timestamp: Beam element timestamp, from timestamp_attribute when configured
+                or from the Pub/Sub publish timestamp by default
 
         Yields:
             Parsed event dictionary with added processing metadata
@@ -338,7 +339,7 @@ def run_pipeline():
     with beam.Pipeline(options=options) as p:
 
         # Step 1: Read from Pub/Sub subscription
-        # The subscription ensures exactly-once delivery semantics with Dataflow
+        # Dataflow's Pub/Sub connector deduplicates messages in exactly-once mode
         raw_messages = (
             p
             | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(
@@ -378,17 +379,18 @@ def run_pipeline():
         )
 
         # Step 5: Aggregate by event type within each window
+        def format_count(kv, window=beam.DoFn.WindowParam):
+            return {
+                'event_type': kv[0],
+                'count': kv[1],
+                'window_end': window.end.to_utc_datetime().isoformat()
+            }
+
         aggregated = (
             windowed_events
             | 'KeyByEventType' >> beam.Map(lambda e: (e['event_type'], e))
-            | 'GroupByType' >> beam.GroupByKey()
-            | 'CountEvents' >> beam.Map(
-                lambda kv: {
-                    'event_type': kv[0],
-                    'count': len(list(kv[1])),
-                    'window_end': datetime.utcnow().isoformat()
-                }
-            )
+            | 'CountEvents' >> beam.combiners.Count.PerKey()
+            | 'FormatCounts' >> beam.Map(format_count)
         )
 
         # Step 6: Write aggregated results to BigQuery
@@ -403,8 +405,8 @@ def run_pipeline():
             },
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
             create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
-            # Use streaming inserts for real-time data
-            method=beam.io.WriteToBigQuery.Method.STREAMING_INSERTS
+            # Use the BigQuery Storage Write API for exactly-once streaming writes
+            method=beam.io.WriteToBigQuery.Method.STORAGE_WRITE_API
         )
 
 
@@ -641,7 +643,7 @@ class ProcessWithTimestamp(beam.DoFn):
 
         # Parse event timestamp from the data itself
         # This is the "event time" - when the event actually occurred
-        event_time = datetime.fromisoformat(event['timestamp'])
+        event_time = datetime.fromisoformat(event['timestamp'].replace('Z', '+00:00'))
 
         # Yield with explicit timestamp for proper windowing
         # This ensures the event goes into the correct window
@@ -687,10 +689,18 @@ def late_data_pipeline(p):
         )
     )
 
+    def format_window_count(count, window=beam.DoFn.WindowParam):
+        return {
+            'count': count,
+            'window_start': window.start.to_utc_datetime().isoformat(),
+            'window_end': window.end.to_utc_datetime().isoformat()
+        }
+
     # Process windowed data
     on_time_results = (
         windowed
         | 'CountPerWindow' >> beam.combiners.Count.Globally()
+        | 'FormatWindowCount' >> beam.Map(format_window_count)
         | 'WriteResults' >> beam.io.WriteToBigQuery(
             table='project:dataset.event_counts',
             schema='count:INTEGER,window_start:TIMESTAMP,window_end:TIMESTAMP'
@@ -1046,12 +1056,11 @@ def get_production_options():
 
         # Performance optimizations
         '--experiments=use_runner_v2',           # Newer, faster runner
-        '--experiments=enable_streaming_engine', # Ensure streaming engine
 
         # Custom container for faster startup and dependency management
         '--sdk_container_image=gcr.io/your-project/beam-python:latest',
 
-        # Enable in-place updates without job restart
+        # Replace an existing streaming job that has the same job_name and region
         '--update',
     ])
 ```
@@ -1097,7 +1106,7 @@ class ResilientProcessFn(beam.DoFn):
             result = self._process_element(element)
 
             # Success - yield to main output
-            yield pvalue.TaggedOutput(self.MAIN_OUTPUT, result)
+            yield result
 
         except RecoverableError as e:
             # Transient error - eligible for retry
@@ -1220,7 +1229,7 @@ deploy() {
         --max_num_workers=20
 }
 
-# Update a running pipeline in-place (no data loss)
+# Update a running streaming pipeline by replacing the existing job
 update() {
     echo "Updating pipeline..."
     python streaming_pipeline.py \
