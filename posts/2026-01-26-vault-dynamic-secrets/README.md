@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HashiCorp Vault, Dynamic Secret, Security, Database, DevOps
 
-Description: Learn how to use Vault dynamic secrets for databases, AWS, and other services with automatic credential rotation and TTLs.
+Description: Learn how to use Vault dynamic secrets for databases, AWS, and other services with automatic expiration and TTLs.
 
 ---
 
@@ -122,7 +122,7 @@ from contextlib import contextmanager
 class VaultDatabaseManager:
     """
     Manages database connections using Vault dynamic secrets.
-    Automatically fetches new credentials and handles renewal.
+    Automatically fetches new credentials and handles revocation.
     """
 
     def __init__(self, vault_addr, vault_token, db_host, db_name):
@@ -284,7 +284,7 @@ vault read aws/creds/s3-readonly
 # lease_renewable    true
 # access_key         AKIAIOSFODNN7EXAMPLE
 # secret_key         wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-# security_token     <nil>
+# session_token      <nil>
 ```
 
 ### Using AWS Dynamic Secrets in Applications
@@ -296,7 +296,7 @@ import boto3
 class VaultAWSManager:
     """
     Manages AWS credentials using Vault dynamic secrets.
-    Provides boto3 clients with automatic credential refresh.
+    Provides boto3 clients with explicit credential cleanup.
     """
 
     def __init__(self, vault_addr, vault_token):
@@ -317,8 +317,8 @@ class VaultAWSManager:
         return {
             "aws_access_key_id": response["data"]["access_key"],
             "aws_secret_access_key": response["data"]["secret_key"],
-            # security_token is present for assumed_role credential type
-            "aws_session_token": response["data"].get("security_token")
+            # session_token is present for STS credential types
+            "aws_session_token": response["data"].get("session_token")
         }
 
     def get_s3_client(self, role="s3-readonly"):
