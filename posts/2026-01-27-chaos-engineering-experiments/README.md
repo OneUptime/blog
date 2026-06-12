@@ -220,7 +220,7 @@ spec:
 ### CPU and Memory Stress
 
 ```bash
-# CPU stress - consume 80% of available CPU
+# CPU stress - run 4 CPU workers at 80% load
 stress-ng --cpu 4 --cpu-load 80 --timeout 300s
 
 # Memory stress - consume 2GB of memory
@@ -255,11 +255,11 @@ spec:
 ### Disk Failures
 
 ```bash
-# Fill disk to 95% capacity
+# Create a large file to consume disk space
 fallocate -l 50G /tmp/fill_disk.dat
 
-# Simulate slow disk I/O
-echo "8:0 rbps=1048576 wbps=1048576" > /sys/fs/cgroup/blkio/blkio.throttle.read_bps_device
+# Simulate slow disk I/O with cgroup v2
+echo "8:0 rbps=1048576 wbps=1048576" > /sys/fs/cgroup/<cgroup>/io.max
 
 # Simulate disk errors (read-only filesystem)
 mount -o remount,ro /data
@@ -276,28 +276,29 @@ pkill -9 -f "payment-service" && \
   mv /usr/bin/payment-service /usr/bin/payment-service.bak
 
 # Simulate OOM kill
-echo 1 > /proc/$(pgrep payment-service)/oom_adj && \
+echo 1000 > /proc/$(pgrep -n payment-service)/oom_score_adj && \
   stress-ng --vm 1 --vm-bytes 90%
 ```
 
 **Container-level:**
 
 ```yaml
-# Chaos Mesh pod kill
+# Chaos Mesh scheduled pod kill
 apiVersion: chaos-mesh.org/v1alpha1
-kind: PodChaos
+kind: Schedule
 metadata:
-  name: pod-kill
+  name: scheduled-pod-kill
 spec:
-  action: pod-kill
-  mode: one
-  selector:
-    namespaces:
-      - production
-    labelSelectors:
-      app: payment-service
-  scheduler:
-    cron: "@every 10m"  # Kill one pod every 10 minutes
+  schedule: "*/10 * * * *"  # Kill one pod every 10 minutes
+  type: PodChaos
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        app: payment-service
 ```
 
 ---
@@ -334,6 +335,8 @@ spec:
 ### Safe Execution Pattern
 
 ```python
+import time
+
 class ChaosExperiment:
     def __init__(self, config):
         self.config = config
@@ -561,7 +564,7 @@ chaos_experiment:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"  # Run on schedule only
   script:
-    - chaos-toolkit run experiment.json
+    - chaos run experiment.json
   artifacts:
     paths:
       - chaos-report.json
@@ -594,7 +597,7 @@ spec:
         spec:
           containers:
             - name: chaos-runner
-              image: chaos-toolkit:latest
+              image: chaostoolkit/chaostoolkit:latest
               args:
                 - run
                 - /experiments/database-failover.json
