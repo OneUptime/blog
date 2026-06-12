@@ -80,6 +80,7 @@ import os
 
 def setup_chaos_telemetry():
     """Configure OpenTelemetry with chaos experiment context."""
+    otlp_headers = os.environ.get("OTEL_EXPORTER_OTLP_HEADERS")
 
     # Resource attributes identify the service and experiment
     resource = Resource.create({
@@ -94,7 +95,8 @@ def setup_chaos_telemetry():
     # Configure tracing
     trace_provider = TracerProvider(resource=resource)
     trace_exporter = OTLPSpanExporter(
-        endpoint=os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+        endpoint=os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
+        headers=otlp_headers
     )
     trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
     trace.set_tracer_provider(trace_provider)
@@ -102,7 +104,8 @@ def setup_chaos_telemetry():
     # Configure metrics
     metric_reader = PeriodicExportingMetricReader(
         OTLPMetricExporter(
-            endpoint=os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+            endpoint=os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
+            headers=otlp_headers
         ),
         export_interval_millis=10000  # Export every 10 seconds during experiments
     )
@@ -126,7 +129,13 @@ recovery_histogram = meter.create_histogram(
     unit="s"
 )
 
-impact_gauge = meter.create_observable_gauge(
+active_experiments_gauge = meter.create_gauge(
+    name="chaos.experiments.active",
+    description="Current number of active chaos experiments",
+    unit="1"
+)
+
+impact_gauge = meter.create_gauge(
     name="chaos.impact.score",
     description="Current impact score of active experiment",
     unit="1"
@@ -142,10 +151,11 @@ Create structured events for experiment lifecycle:
 # Track chaos experiment lifecycle events
 
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
-import json
 import requests
+
+from chaos_telemetry import active_experiments_gauge, experiment_counter, impact_gauge, recovery_histogram, tracer
 
 @dataclass
 class ChaosEvent:
@@ -166,6 +176,7 @@ class ChaosEventTracker:
         self.endpoint = oneuptime_endpoint
         self.api_key = api_key
         self.events: List[ChaosEvent] = []
+        self.active_experiment_count = 0
 
     def record_experiment_start(self, experiment_id: str, name: str,
                                  targets: List[str], attack_type: str,
@@ -175,7 +186,7 @@ class ChaosEventTracker:
             event_type="started",
             experiment_id=experiment_id,
             experiment_name=name,
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.now(timezone.utc).isoformat(),
             targets=targets,
             attack_type=attack_type,
             parameters=parameters
@@ -183,6 +194,14 @@ class ChaosEventTracker:
 
         self._send_event(event)
         self.events.append(event)
+        self.active_experiment_count += 1
+        active_experiments_gauge.set(self.active_experiment_count)
+        experiment_counter.add(1, attributes={
+            "experiment_id": experiment_id,
+            "experiment_name": name,
+            "attack_type": attack_type,
+            "result": "started"
+        })
 
         # Also create a span for distributed tracing
         with tracer.start_as_current_span("chaos.experiment.start") as span:
@@ -198,7 +217,7 @@ class ChaosEventTracker:
             event_type="completed" if success else "failed",
             experiment_id=experiment_id,
             experiment_name=self._get_experiment_name(experiment_id),
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.now(timezone.utc).isoformat(),
             targets=[],
             attack_type="",
             parameters={},
@@ -210,6 +229,13 @@ class ChaosEventTracker:
         )
 
         self._send_event(event)
+        self.active_experiment_count = max(0, self.active_experiment_count - 1)
+        active_experiments_gauge.set(self.active_experiment_count)
+        impact_gauge.set(impact_metrics.get("impact_score", 0.0))
+        experiment_counter.add(1, attributes={
+            "experiment_id": experiment_id,
+            "result": "completed" if success else "failed"
+        })
 
         # Record recovery time metric
         recovery_histogram.record(
@@ -226,7 +252,7 @@ class ChaosEventTracker:
             event_type="halted",
             experiment_id=experiment_id,
             experiment_name=self._get_experiment_name(experiment_id),
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.now(timezone.utc).isoformat(),
             targets=[],
             attack_type="",
             parameters={},
@@ -234,15 +260,21 @@ class ChaosEventTracker:
         )
 
         self._send_event(event)
+        self.active_experiment_count = max(0, self.active_experiment_count - 1)
+        active_experiments_gauge.set(self.active_experiment_count)
+        experiment_counter.add(1, attributes={
+            "experiment_id": experiment_id,
+            "result": "halted"
+        })
 
     def _send_event(self, event: ChaosEvent):
-        """Send event to OneUptime."""
+        """Send event to a configured event ingestion endpoint."""
         try:
             response = requests.post(
-                f"{self.endpoint}/api/telemetry/events",
+                self.endpoint,
                 headers={
                     "Content-Type": "application/json",
-                    "X-OneUptime-Token": self.api_key
+                    "x-oneuptime-token": self.api_key
                 },
                 json=asdict(event),
                 timeout=5
@@ -272,6 +304,9 @@ kind: GrafanaDashboard
 metadata:
   name: chaos-experiments
 spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: "grafana"
   json: |
     {
       "title": "Chaos Engineering Dashboard",
@@ -329,7 +364,7 @@ spec:
           "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
           "targets": [
             {
-              "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[1m]))",
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[1m])))",
               "legendFormat": "P99 Latency"
             }
           ]
@@ -411,7 +446,7 @@ Set up alerts that automatically halt experiments when safety thresholds are bre
 # Alert configuration for chaos experiment safety
 
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import List
 import asyncio
 
 @dataclass
@@ -435,7 +470,7 @@ safety_thresholds = [
     ),
     SafetyThreshold(
         name="Extreme Latency",
-        metric_query="histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[1m]))",
+        metric_query="histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[1m])))",
         threshold_value=10.0,  # 10 second P99
         comparison="gt",
         duration_seconds=30,
@@ -594,11 +629,11 @@ class ChaosCorrelator:
                 start, end
             ),
             "p50_latency": await self.metrics.query_range(
-                "histogram_quantile(0.5, rate(http_request_duration_seconds_bucket[1m]))",
+                "histogram_quantile(0.5, sum by (le) (rate(http_request_duration_seconds_bucket[1m])))",
                 start, end
             ),
             "p99_latency": await self.metrics.query_range(
-                "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[1m]))",
+                "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[1m])))",
                 start, end
             ),
             "throughput": await self.metrics.query_range(
@@ -607,17 +642,42 @@ class ChaosCorrelator:
             )
         }
 
+    async def _get_experiment_metrics(self, start: datetime, end: datetime) -> Dict:
+        """Get metrics during the experiment."""
+        return await self._get_baseline_metrics(start, end)
+
+    async def _get_recovery_metrics(self, start: datetime, end: datetime) -> Dict:
+        """Get recovery metrics after the experiment."""
+        recovery_metrics = await self._get_baseline_metrics(start, end)
+        recovery_metrics["time_to_baseline"] = (end - start).total_seconds()
+        return recovery_metrics
+
+    async def _get_correlated_incidents(self, start: datetime, end: datetime) -> List[Dict]:
+        """Get incidents that occurred during the analysis window."""
+        if hasattr(self.incidents, "list_between"):
+            return await self.incidents.list_between(start, end)
+        return []
+
+    async def _get_triggered_alerts(self, start: datetime, end: datetime) -> List[Dict]:
+        """Get alerts that fired during the analysis window."""
+        if hasattr(self.incidents, "list_alerts_between"):
+            return await self.incidents.list_alerts_between(start, end)
+        return []
+
     def _analyze_impact(self, report: Dict) -> Dict:
         """Analyze the impact of the experiment."""
         baseline = report["baseline"]
         during = report["during_experiment"]
 
+        baseline_error_rate = sum(baseline["error_rate"]) / len(baseline["error_rate"])
+        baseline_p99_latency = sum(baseline["p99_latency"]) / len(baseline["p99_latency"])
+
         return {
             "error_rate_increase": (
-                max(during["error_rate"]) - sum(baseline["error_rate"]) / len(baseline["error_rate"])
+                max(during["error_rate"]) - baseline_error_rate
             ),
             "latency_increase_percent": (
-                (max(during["p99_latency"]) / (sum(baseline["p99_latency"]) / len(baseline["p99_latency"])) - 1) * 100
+                (max(during["p99_latency"]) / baseline_p99_latency - 1) * 100
             ),
             "recovery_time_seconds": report["recovery"]["time_to_baseline"],
             "incidents_created": len(report["incidents"]),
