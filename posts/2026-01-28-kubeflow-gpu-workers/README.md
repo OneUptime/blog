@@ -22,7 +22,7 @@ flowchart TB
 
     subgraph Driver["Driver Layer"]
         NVDriver[NVIDIA Driver]
-        CUDA[CUDA Toolkit]
+        CUDA[CUDA Libraries in Container Image]
     end
 
     subgraph Container["Container Layer"]
@@ -73,13 +73,7 @@ lspci | grep -i nvidia
 On Ubuntu nodes:
 
 ```bash
-# Add NVIDIA package repository
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/libnvidia-container/gpgkey | sudo apt-key add -
-curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-
-# Install drivers
+# Install a supported NVIDIA driver package
 sudo apt-get update
 sudo apt-get install -y nvidia-driver-535
 
@@ -93,6 +87,14 @@ nvidia-smi
 ### Install NVIDIA Container Toolkit
 
 ```bash
+# Add NVIDIA Container Toolkit package repository
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update
+
 # Install container toolkit
 sudo apt-get install -y nvidia-container-toolkit
 
@@ -331,6 +333,7 @@ def train_gpu_model(
 ```python
 from kfp import dsl
 from kfp import compiler
+from kfp import kubernetes
 
 @dsl.pipeline(name="gpu-training-pipeline")
 def gpu_training_pipeline(
@@ -359,12 +362,17 @@ def gpu_training_pipeline(
     train_task.set_memory_limit("32Gi")
 
     # Schedule on GPU nodes
-    train_task.add_node_selector_constraint(
-        "accelerator", "nvidia-tesla-a100"
+    kubernetes.add_node_selector(
+        train_task, "accelerator", "nvidia-tesla-a100"
     )
 
     # Tolerate GPU node taints
-    train_task.set_gpu_limit(1)
+    kubernetes.add_toleration(
+        train_task,
+        key="nvidia.com/gpu",
+        operator="Exists",
+        effect="NoSchedule"
+    )
 ```
 
 ## Multi-GPU Training
@@ -483,20 +491,21 @@ spec:
       replicas: 1
       restartPolicy: OnFailure
       template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
         spec:
           containers:
             - name: pytorch
               image: your-registry/distributed-trainer:v1.0
               imagePullPolicy: Always
               command:
-                - python
-                - -m
-                - torch.distributed.launch
-                - --nproc_per_node=4
+                - torchrun
+                - --nproc-per-node=4
                 - --nnodes=2
-                - --node_rank=0
-                - --master_addr=$(MASTER_ADDR)
-                - --master_port=$(MASTER_PORT)
+                - --node-rank=0
+                - --master-addr=$(MASTER_ADDR)
+                - --master-port=$(MASTER_PORT)
                 - train.py
               resources:
                 requests:
@@ -510,23 +519,28 @@ spec:
                   value: "INFO"
           nodeSelector:
             accelerator: nvidia-tesla-a100
+          tolerations:
+            - key: "nvidia.com/gpu"
+              operator: "Exists"
+              effect: "NoSchedule"
     Worker:
       replicas: 1
       restartPolicy: OnFailure
       template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
         spec:
           containers:
             - name: pytorch
               image: your-registry/distributed-trainer:v1.0
               command:
-                - python
-                - -m
-                - torch.distributed.launch
-                - --nproc_per_node=4
+                - torchrun
+                - --nproc-per-node=4
                 - --nnodes=2
-                - --node_rank=1
-                - --master_addr=$(MASTER_ADDR)
-                - --master_port=$(MASTER_PORT)
+                - --node-rank=1
+                - --master-addr=$(MASTER_ADDR)
+                - --master-port=$(MASTER_PORT)
                 - train.py
               resources:
                 requests:
@@ -537,6 +551,10 @@ spec:
                   nvidia.com/gpu: 4
           nodeSelector:
             accelerator: nvidia-tesla-a100
+          tolerations:
+            - key: "nvidia.com/gpu"
+              operator: "Exists"
+              effect: "NoSchedule"
 ```
 
 ### Distributed Training Script
@@ -662,7 +680,9 @@ def train_with_checkpointing(
         def forward(self, x):
             # Use checkpointing to reduce memory
             # Segments define how many layers to checkpoint together
-            return checkpoint_sequential(self.layers, segments=10, input=x)
+            return checkpoint_sequential(
+                self.layers, segments=10, input=x, use_reentrant=False
+            )
 
     model = LargeModel().cuda()
     # ... training code
@@ -670,7 +690,7 @@ def train_with_checkpointing(
 
 ### Mixed Precision Training
 
-Use FP16 to double effective batch size:
+Use FP16 to reduce memory usage and often increase effective batch size:
 
 ```python
 @dsl.component(
@@ -683,11 +703,11 @@ def train_mixed_precision(
 ):
     """Train with automatic mixed precision."""
     import torch
-    from torch.cuda.amp import autocast, GradScaler
+    from torch.amp import autocast, GradScaler
 
     model = create_model().cuda()
     optimizer = torch.optim.Adam(model.parameters())
-    scaler = GradScaler()
+    scaler = GradScaler("cuda")
 
     for epoch in range(epochs):
         for data, target in train_loader:
@@ -697,7 +717,7 @@ def train_mixed_precision(
             optimizer.zero_grad()
 
             # Automatic mixed precision context
-            with autocast():
+            with autocast("cuda"):
                 output = model(data)
                 loss = criterion(output, target)
 
@@ -811,8 +831,8 @@ kubectl run gpu-test --rm -it --restart=Never \
 ### GPU Not Detected in Pod
 
 ```bash
-# Check if nvidia runtime is default
-kubectl exec -it <pod> -- cat /etc/docker/daemon.json
+# Check which container runtime the node uses
+kubectl get node <gpu-node> -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}'
 
 # Verify device files exist
 kubectl exec -it <pod> -- ls -la /dev/nvidia*
