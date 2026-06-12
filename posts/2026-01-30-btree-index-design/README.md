@@ -161,11 +161,11 @@ flowchart TB
     end
 ```
 
-The leftmost prefix rule is critical. A composite index on (A, B, C) can be used for:
+The leftmost prefix rule is critical. A composite index on (A, B, C) is most efficient for:
 - Queries filtering on A
 - Queries filtering on A and B
 - Queries filtering on A, B, and C
-- But NOT queries filtering only on B or C
+- But not usually for efficient lookups that filter only on B or C
 
 This demonstrates proper composite index usage:
 
@@ -181,7 +181,7 @@ AND created_at > '2024-01-01';
 -- This query uses only the first column of the index
 SELECT * FROM orders WHERE status = 'pending';
 
--- This query CANNOT use the index (no leftmost column)
+-- This query usually needs a separate index on created_at for efficient lookup
 SELECT * FROM orders WHERE created_at > '2024-01-01';
 ```
 
@@ -192,8 +192,8 @@ Choosing the right column order is one of the most important decisions in index 
 | Guideline | Reason |
 | --- | --- |
 | Equality conditions first | Exact matches narrow results faster |
-| Range conditions last | Ranges stop further index use |
-| High cardinality first | More selective filtering |
+| Range conditions last | Columns after the first range condition are less useful for narrowing the scan |
+| High cardinality first | More selective filtering when it fits the query pattern |
 | Frequently filtered columns first | Maximizes index utilization |
 
 This example shows optimal column ordering:
@@ -213,7 +213,7 @@ CREATE INDEX idx_orders_date_customer ON orders(created_at, customer_id);
 
 ## Covering Indexes
 
-A covering index includes all columns needed by a query, allowing the database to satisfy the query entirely from the index without accessing the table.
+A covering index includes all columns needed by a query, allowing the database to satisfy the query from the index. In PostgreSQL, this enables an index-only scan when the table pages are visible to the current transaction.
 
 ```mermaid
 flowchart LR
@@ -238,7 +238,7 @@ FROM orders
 WHERE customer_id = 123
 AND status = 'pending';
 
--- Covering index includes all selected columns
+-- PostgreSQL: covering index includes all selected columns
 CREATE INDEX idx_orders_covering
 ON orders(customer_id, status)
 INCLUDE (order_id, total);
@@ -249,7 +249,7 @@ INCLUDE (order_id, total);
 
 ## Partial Indexes
 
-Partial indexes only index rows that match a condition. They are smaller and faster for specific query patterns.
+Partial indexes only index rows that match a condition. They are smaller and faster for specific query patterns. The following examples use PostgreSQL partial index syntax.
 
 ```sql
 -- Only index active orders (most queries filter for active)
@@ -287,6 +287,8 @@ CREATE INDEX idx_events_timestamp ON events(timestamp);
 -- Query: SELECT * FROM products WHERE name LIKE 'iPhone%'
 CREATE INDEX idx_products_name ON products(name);
 -- Note: Index works for prefix patterns, NOT suffix ('%iPhone')
+-- In PostgreSQL databases that do not use the C locale, use a pattern operator class
+-- such as text_pattern_ops for LIKE prefix searches.
 
 -- Pattern 4: Sorting
 -- Query: SELECT * FROM posts ORDER BY created_at DESC LIMIT 10
@@ -294,7 +296,7 @@ CREATE INDEX idx_posts_created_desc ON posts(created_at DESC);
 
 -- Pattern 5: Multiple conditions with OR
 -- Query: SELECT * FROM users WHERE email = 'x' OR username = 'y'
--- Create separate indexes; database will use bitmap OR
+-- Create separate indexes; PostgreSQL may use BitmapOr and MySQL may use Index Merge
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_username ON users(username);
 ```
@@ -366,7 +368,7 @@ ORDER BY pg_relation_size(indexname::regclass) DESC;
 For MySQL, use this query to find unused indexes:
 
 ```sql
--- MySQL: Check index usage
+-- MySQL: Find indexes with no recorded reads since statistics were last reset
 SELECT
     object_schema,
     object_name,
@@ -376,7 +378,8 @@ SELECT
 FROM performance_schema.table_io_waits_summary_by_index_usage
 WHERE object_schema = 'your_database'
 AND index_name IS NOT NULL
-ORDER BY count_star DESC;
+AND count_read = 0
+ORDER BY count_star ASC;
 ```
 
 ## B-Tree Index Maintenance
@@ -390,13 +393,13 @@ REINDEX INDEX idx_orders_status;
 -- PostgreSQL: Rebuild all indexes on a table
 REINDEX TABLE orders;
 
--- PostgreSQL: Rebuild concurrently (no locks, requires extra disk space)
+-- PostgreSQL: Rebuild concurrently (minimum locking of writes, requires extra disk space)
 REINDEX INDEX CONCURRENTLY idx_orders_status;
 
 -- MySQL: Optimize table (rebuilds indexes)
 OPTIMIZE TABLE orders;
 
--- PostgreSQL: Check index bloat
+-- PostgreSQL: Check index sizes (use a dedicated bloat query or extension for bloat estimates)
 SELECT
     tablename,
     indexname,
@@ -435,9 +438,10 @@ CREATE INDEX idx_orders_status_date ON orders(status, created_at);
 
 -- 3. Admin search by order ID (already covered by PRIMARY KEY)
 
--- 4. Reporting queries for active orders
+-- 4. Reporting queries for completed orders
 -- Query: SELECT customer_id, SUM(total) FROM orders
 --        WHERE status = 'completed' AND created_at > ? GROUP BY customer_id
+-- PostgreSQL syntax: partial covering index
 CREATE INDEX idx_orders_reporting
 ON orders(created_at, customer_id)
 INCLUDE (total)
@@ -445,6 +449,7 @@ WHERE status = 'completed';
 
 -- 5. Payment reconciliation
 -- Query: SELECT * FROM orders WHERE payment_method = ? AND status = 'pending'
+-- PostgreSQL syntax: partial index
 CREATE INDEX idx_orders_payment_pending
 ON orders(payment_method)
 WHERE status = 'pending';
@@ -468,7 +473,7 @@ flowchart TD
     Q4 -->|No| Single["Create Single-Column Index"]
     Q4 -->|Yes| Q5{"All conditions are<br/>equality (=)?"}
 
-    Q5 -->|Yes| CompositeEq["Composite: Any Order<br/>(prefer high cardinality first)"]
+    Q5 -->|Yes| CompositeEq["Composite: Match Query Prefixes<br/>(prefer selective columns when possible)"]
     Q5 -->|No| CompositeRange["Composite: Equality First,<br/>Range Last"]
 
     Single --> Q6{"Query selects<br/>few columns?"}
