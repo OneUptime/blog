@@ -31,7 +31,7 @@ In ACL systems, the resource maintains a list of who can access it. In capabilit
 
 ## Core Properties of Capabilities
 
-A proper capability implementation must satisfy three properties:
+A practical capability implementation should provide three properties:
 
 1. **Unforgeability**: Users cannot create capabilities out of thin air
 2. **Transferability**: Capabilities can be delegated to other users or services
@@ -67,7 +67,7 @@ interface Capability {
 The following implementation shows how to create and verify capabilities using cryptographic signatures. We use HMAC-SHA256 to sign tokens, ensuring they cannot be forged without the secret key.
 
 ```typescript
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 
 class CapabilityService {
   private secretKey: string;
@@ -79,31 +79,89 @@ class CapabilityService {
     this.secretKey = secretKey;
   }
 
+  private buildPayload(capability: Omit<Capability, 'signature'>): string {
+    return JSON.stringify({
+      id: capability.id,
+      resourceId: capability.resourceId,
+      permissions: capability.permissions,
+      expiresAt: capability.expiresAt,
+      parentCapabilityId: capability.parentCapabilityId ?? null
+    });
+  }
+
+  private signCapability(capability: Omit<Capability, 'signature'>): string {
+    return crypto
+      .createHmac('sha256', this.secretKey)
+      .update(this.buildPayload(capability))
+      .digest('hex');
+  }
+
   // Create a new capability token for a resource
   createCapability(
     resourceId: string,
     permissions: string[],
-    ttlSeconds: number = 3600
+    ttlSeconds: number = 300,
+    parentCapabilityId?: string
   ): Capability {
     const id = crypto.randomUUID();
     const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds;
 
-    // Build the payload to sign
-    const payload = `${id}:${resourceId}:${permissions.join(',')}:${expiresAt}`;
-
-    // Create HMAC signature to prevent forgery
-    const signature = crypto
-      .createHmac('sha256', this.secretKey)
-      .update(payload)
-      .digest('hex');
-
-    return {
+    const unsignedCapability = {
       id,
       resourceId,
       permissions,
       expiresAt,
-      signature
+      parentCapabilityId
     };
+
+    return {
+      ...unsignedCapability,
+      // Create HMAC signature to prevent forgery
+      signature: this.signCapability(unsignedCapability)
+    };
+  }
+
+  // Delegate a capability with reduced permissions
+  delegateCapability(
+    parentCapability: Capability,
+    delegatedPermissions: string[],
+    ttlSeconds: number = 300
+  ): Capability | null {
+    // Ensure delegated permissions are subset of parent permissions
+    const validPermissions = delegatedPermissions.filter(
+      perm => parentCapability.permissions.includes(perm)
+    );
+
+    if (validPermissions.length === 0) {
+      return null;
+    }
+
+    // First verify the parent capability is still valid
+    if (!validPermissions.every(perm => this.verifyCapability(parentCapability, perm))) {
+      return null;
+    }
+
+    // Calculate expiration: cannot exceed parent
+    const parentTtl = parentCapability.expiresAt - Math.floor(Date.now() / 1000);
+    const actualTtl = Math.min(ttlSeconds, parentTtl);
+
+    return this.createCapability(
+      parentCapability.resourceId,
+      validPermissions,
+      actualTtl,
+      parentCapability.id
+    );
+  }
+
+  private signaturesMatch(
+    signature: string,
+    expectedSignature: string
+  ): boolean {
+    const signatureBuffer = Buffer.from(signature, 'hex');
+    const expectedSignatureBuffer = Buffer.from(expectedSignature, 'hex');
+
+    return signatureBuffer.length === expectedSignatureBuffer.length &&
+      crypto.timingSafeEqual(signatureBuffer, expectedSignatureBuffer);
   }
 
   // Verify a capability is valid and grants the requested permission
@@ -123,13 +181,15 @@ class CapabilityService {
     }
 
     // Verify cryptographic signature
-    const payload = `${capability.id}:${capability.resourceId}:${capability.permissions.join(',')}:${capability.expiresAt}`;
-    const expectedSignature = crypto
-      .createHmac('sha256', this.secretKey)
-      .update(payload)
-      .digest('hex');
+    const expectedSignature = this.signCapability({
+      id: capability.id,
+      resourceId: capability.resourceId,
+      permissions: capability.permissions,
+      expiresAt: capability.expiresAt,
+      parentCapabilityId: capability.parentCapabilityId
+    });
 
-    if (capability.signature !== expectedSignature) {
+    if (!this.signaturesMatch(capability.signature, expectedSignature)) {
       return false;
     }
 
@@ -165,13 +225,8 @@ The delegation method ensures that child capabilities are always a subset of the
 delegateCapability(
   parentCapability: Capability,
   delegatedPermissions: string[],
-  ttlSeconds: number = 3600
+  ttlSeconds: number = 300
 ): Capability | null {
-  // First verify the parent capability is still valid
-  if (!this.verifyCapability(parentCapability, delegatedPermissions[0])) {
-    return null;
-  }
-
   // Ensure delegated permissions are subset of parent permissions
   const validPermissions = delegatedPermissions.filter(
     perm => parentCapability.permissions.includes(perm)
@@ -181,32 +236,41 @@ delegateCapability(
     return null;
   }
 
+  // First verify the parent capability is still valid
+  if (!validPermissions.every(perm => this.verifyCapability(parentCapability, perm))) {
+    return null;
+  }
+
   // Calculate expiration: cannot exceed parent
   const parentTtl = parentCapability.expiresAt - Math.floor(Date.now() / 1000);
   const actualTtl = Math.min(ttlSeconds, parentTtl);
 
-  const childCapability = this.createCapability(
+  return this.createCapability(
     parentCapability.resourceId,
     validPermissions,
-    actualTtl
+    actualTtl,
+    parentCapability.id
   );
-
-  // Track delegation chain for auditing
-  childCapability.parentCapabilityId = parentCapability.id;
-
-  return childCapability;
 }
 ```
 
 ## Integrating with Express.js
 
-Here is how to use capabilities in an Express middleware. The middleware extracts the capability from the request header, verifies it, and either allows the request to proceed or returns a 403 error.
+Here is how to use capabilities in an Express middleware. The middleware extracts the capability from the request header, verifies it, and either allows the request to proceed or returns a 401 or 403 error.
 
 ```typescript
 import express, { Request, Response, NextFunction } from 'express';
 
 const app = express();
 const capService = new CapabilityService(process.env.CAPABILITY_SECRET!);
+
+declare global {
+  namespace Express {
+    interface Request {
+      capability?: Capability;
+    }
+  }
+}
 
 // Middleware to verify capability tokens
 function requireCapability(permission: string) {
@@ -243,7 +307,7 @@ app.get('/api/documents/:id', requireCapability('read'), (req, res) => {
   const docId = req.params.id;
 
   // Verify capability is for this specific document
-  if (req.capability.resourceId !== docId) {
+  if (!req.capability || req.capability.resourceId !== docId) {
     return res.status(403).json({ error: 'Capability not valid for this resource' });
   }
 
