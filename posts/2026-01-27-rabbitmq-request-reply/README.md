@@ -36,9 +36,9 @@ This guide walks through implementing the request-reply pattern in RabbitMQ with
 The request-reply pattern enables synchronous-style communication over asynchronous messaging infrastructure. Unlike traditional HTTP requests, messages flow through a broker, providing:
 
 - **Decoupling**: Client and server don't need direct network connectivity
-- **Reliability**: Messages persist if the server is temporarily unavailable
+- **Reliability**: Messages can persist if they are published as persistent messages to durable queues
 - **Load balancing**: Multiple servers can consume from the same queue
-- **Resilience**: Automatic retries and dead-letter handling
+- **Resilience**: Configured retries and dead-letter handling
 
 ```mermaid
 sequenceDiagram
@@ -118,7 +118,7 @@ Let's start with a minimal working example before building the production versio
 ### Dependencies
 
 ```bash
-npm install amqplib uuid
+npm install amqplib
 npm install -D @types/amqplib typescript
 ```
 
@@ -126,7 +126,7 @@ npm install -D @types/amqplib typescript
 
 ```typescript
 // simple-rpc-client.ts
-import amqp, { Connection, Channel, ConsumeMessage } from 'amqplib';
+import amqp, { Channel, ConsumeMessage } from 'amqplib';
 import { randomUUID } from 'crypto';
 
 async function callRpc(
@@ -290,7 +290,7 @@ The basic implementation works but lacks important features for production use. 
 
 ```typescript
 // rpc-client.ts
-import amqp, { Connection, Channel, ConsumeMessage } from 'amqplib';
+import amqp, { ChannelModel, Channel, ConsumeMessage } from 'amqplib';
 import { randomUUID } from 'crypto';
 import { EventEmitter } from 'events';
 
@@ -309,12 +309,13 @@ interface RpcClientOptions {
 }
 
 export class RpcClient extends EventEmitter {
-  private connection: Connection | null = null;
+  private connection: ChannelModel | null = null;
   private channel: Channel | null = null;
   private replyQueue: string = '';
   private pendingRequests: Map<string, PendingRequest> = new Map();
   private options: Required<RpcClientOptions>;
   private isConnected: boolean = false;
+  private isClosing: boolean = false;
   private reconnectAttempts: number = 0;
 
   constructor(options: RpcClientOptions) {
@@ -330,6 +331,7 @@ export class RpcClient extends EventEmitter {
   async connect(): Promise<void> {
     try {
       // Establish connection to RabbitMQ
+      this.isClosing = false;
       this.connection = await amqp.connect(this.options.url);
       this.channel = await this.connection.createChannel();
 
@@ -407,6 +409,10 @@ export class RpcClient extends EventEmitter {
     this.isConnected = false;
     this.emit('disconnected');
 
+    if (this.isClosing) {
+      return;
+    }
+
     // Reject all pending requests
     for (const [correlationId, pending] of this.pendingRequests) {
       clearTimeout(pending.timeout);
@@ -476,6 +482,8 @@ export class RpcClient extends EventEmitter {
   }
 
   async close(): Promise<void> {
+    this.isClosing = true;
+
     // Reject all pending requests
     for (const [, pending] of this.pendingRequests) {
       clearTimeout(pending.timeout);
@@ -527,6 +535,7 @@ async function main() {
   // Set up event listeners for monitoring
   client.on('connected', () => console.log('Connected to RabbitMQ'));
   client.on('disconnected', () => console.log('Disconnected from RabbitMQ'));
+  client.on('error', (error) => console.error('RPC client error:', error));
   client.on('request', ({ queue, correlationId }) => {
     console.log(`Request sent to ${queue}: ${correlationId}`);
   });
@@ -574,7 +583,7 @@ A production RPC server needs proper error handling, graceful shutdown, and obse
 
 ```typescript
 // rpc-server.ts
-import amqp, { Connection, Channel, ConsumeMessage } from 'amqplib';
+import amqp, { ChannelModel, Channel, ConsumeMessage } from 'amqplib';
 import { EventEmitter } from 'events';
 
 type RequestHandler<TRequest, TResponse> = (
@@ -590,7 +599,7 @@ interface RpcServerOptions {
 }
 
 export class RpcServer<TRequest, TResponse> extends EventEmitter {
-  private connection: Connection | null = null;
+  private connection: ChannelModel | null = null;
   private channel: Channel | null = null;
   private options: Required<RpcServerOptions>;
   private handler: RequestHandler<TRequest, TResponse>;
@@ -792,6 +801,14 @@ async function main() {
   server.on('success', ({ correlationId, processingTime }) => {
     console.log(`Request completed: ${correlationId} (${processingTime}ms)`);
   });
+  server.on('error', (event) => {
+    if (event instanceof Error) {
+      console.error('RPC server error:', event);
+      return;
+    }
+
+    console.error(`Request failed: ${event.correlationId}`, event.error);
+  });
 
   await server.start();
 
@@ -834,7 +851,8 @@ flowchart TD
 
 ```typescript
 // timeout-strategies.ts
-import amqp, { Channel } from 'amqplib';
+import { Channel } from 'amqplib';
+import { RpcClient } from './rpc-client';
 
 // 1. Client-side timeout (JavaScript Promise timeout)
 function withTimeout<T>(
@@ -842,15 +860,23 @@ function withTimeout<T>(
   timeoutMs: number,
   operation: string
 ): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)),
-        timeoutMs
-      )
-    ),
-  ]);
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)),
+      timeoutMs
+    );
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
 }
 
 // 2. Message TTL (RabbitMQ-level expiration)
@@ -872,7 +898,7 @@ async function sendWithTTL(
 
 // 3. Server-side processing timeout
 async function processWithDeadline<T>(
-  handler: () => Promise<T>,
+  handler: (signal: AbortSignal) => Promise<T>,
   deadlineMs: number
 ): Promise<T> {
   const controller = new AbortController();
@@ -880,26 +906,23 @@ async function processWithDeadline<T>(
 
   try {
     // Pass abort signal to cancellable operations
-    return await handler();
+    return await handler(controller.signal);
   } finally {
     clearTimeout(timeout);
   }
 }
 
 // Combined usage example
-async function robustRpcCall(
-  channel: Channel,
+async function robustRpcCall<TRequest, TResponse>(
+  client: RpcClient,
   queue: string,
-  request: object,
+  request: TRequest,
   timeoutMs: number = 30000
-): Promise<object> {
-  // Layer 1: Set message TTL slightly longer than client timeout
-  // This ensures the message is removed if client gives up
-  const messageTTL = timeoutMs + 5000;
-
-  // Layer 2: Client timeout wraps the entire call
+): Promise<TResponse> {
+  // The production client sets message expiration and also applies
+  // a client-side timeout around the full operation.
   return withTimeout(
-    callRpc(channel, queue, request, messageTTL),
+    client.call<TRequest, TResponse>(queue, request, { timeout: timeoutMs }),
     timeoutMs,
     `RPC call to ${queue}`
   );
@@ -910,6 +933,7 @@ async function robustRpcCall(
 
 ```typescript
 // timeout-handling.ts
+import { RpcClient } from './rpc-client';
 
 interface RpcResult<T> {
   success: boolean;
@@ -1172,6 +1196,7 @@ Proper observability is essential for production RPC systems. Track these key me
 ```typescript
 // monitoring.ts
 import { trace, metrics, SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import { RpcClient } from './rpc-client';
 
 const tracer = trace.getTracer('rpc-client');
 const meter = metrics.getMeter('rpc-client');
@@ -1253,8 +1278,8 @@ Send your OpenTelemetry data to [OneUptime](https://oneuptime.com) for comprehen
 ```typescript
 // telemetry-setup.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 
 const traceExporter = new OTLPTraceExporter({
