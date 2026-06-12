@@ -119,7 +119,7 @@ The JVM is the foundation of Cassandra performance. Incorrect JVM settings can c
 # CMS SETTINGS - For Java 8 or systems requiring CMS
 # ============================================================
 
-# Enable CMS Garbage Collector
+# Enable CMS Garbage Collector. CMS is available on Java 8 and was removed in Java 14.
 -XX:+UseConcMarkSweepGC
 -XX:+CMSParallelRemarkEnabled
 
@@ -166,7 +166,7 @@ flowchart LR
 
 ```sql
 -- Good for: Write-heavy workloads, general purpose
--- Trade-off: Requires 2x disk space during compaction, may cause read amplification
+-- Trade-off: Needs significant free disk space during compaction, may cause read amplification
 
 CREATE TABLE user_events (
     user_id uuid,
@@ -371,7 +371,7 @@ sequenceDiagram
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.config.DefaultDriverOption;
 import com.datastax.oss.driver.api.core.config.DriverConfigLoader;
-import com.datastax.oss.driver.api.core.ConsistencyLevel;
+import java.time.Duration;
 
 public class CassandraConfig {
 
@@ -392,8 +392,9 @@ public class CassandraConfig {
 
             // Enable speculative execution for latency-sensitive reads
             // Sends duplicate requests if first is slow
-            .withClass(DefaultDriverOption.SPECULATIVE_EXECUTION_POLICY_CLASS,
-                ConstantSpeculativeExecutionPolicy.class)
+            // Only idempotent statements are eligible for speculative execution
+            .withString(DefaultDriverOption.SPECULATIVE_EXECUTION_POLICY_CLASS,
+                "ConstantSpeculativeExecutionPolicy")
             .withInt(DefaultDriverOption.SPECULATIVE_EXECUTION_MAX, 2)
             .withDuration(DefaultDriverOption.SPECULATIVE_EXECUTION_DELAY,
                 Duration.ofMillis(100))
@@ -431,8 +432,8 @@ commitlog_segment_size_in_mb: 32
 commitlog_compression:
   - class_name: LZ4Compressor
 
-# Concurrent writes (controls memtable flush parallelism)
-# Formula: 8 * number_of_drives is a good starting point
+# Concurrent writes (controls write request concurrency)
+# Formula: 8 * number_of_cores is a good starting point
 concurrent_writes: 32
 
 # Concurrent memtable flushes
@@ -454,13 +455,14 @@ range_request_timeout_in_ms: 10000
 
 # Enable chunk cache for compressed SSTables (off-heap)
 # Caches decompressed chunks in memory
+file_cache_enabled: true
 file_cache_size_in_mb: 512
 
 # Disk access mode
 # - standard: Traditional buffered I/O
-# - mmap: Memory-mapped I/O (better for SSDs)
-# - mmap_index_only: Hybrid approach
-disk_access_mode: mmap
+# - mmap: Memory-mapped I/O; best only when active SSTables fit in RAM
+# - mmap_index_only: Hybrid approach and the Cassandra 4.x default
+disk_access_mode: mmap_index_only
 ```
 
 ### Batch and Prepared Statement Optimization
@@ -470,6 +472,21 @@ disk_access_mode: mmap
 // PREPARED STATEMENTS - Always use for repeated queries
 // Prepared statements are parsed once and cached
 // ============================================================
+
+import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.DefaultConsistencyLevel;
+import com.datastax.oss.driver.api.core.cql.AsyncResultSet;
+import com.datastax.oss.driver.api.core.cql.BatchStatement;
+import com.datastax.oss.driver.api.core.cql.BatchStatementBuilder;
+import com.datastax.oss.driver.api.core.cql.BatchType;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
+import com.datastax.oss.driver.api.core.cql.Row;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 public class OptimizedCassandraRepository {
     private final CqlSession session;
@@ -498,19 +515,18 @@ public class OptimizedCassandraRepository {
     public void batchInsert(UUID partitionId, List<Event> events) {
         // UNLOGGED batch: No distributed transaction overhead
         // Safe when all statements target the same partition
-        BatchStatement batch = BatchStatement.builder(BatchType.UNLOGGED)
-            .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
-            .build();
+        BatchStatementBuilder batchBuilder = BatchStatement.builder(BatchType.UNLOGGED)
+            .setConsistencyLevel(DefaultConsistencyLevel.LOCAL_QUORUM);
 
         for (Event event : events) {
-            batch = batch.add(insertStatement.bind(
+            batchBuilder.addStatement(insertStatement.bind(
                 partitionId,
                 event.getTimestamp(),
                 event.getData()
             ));
         }
 
-        session.execute(batch);
+        session.execute(batchBuilder.build());
     }
 
     // ============================================================
@@ -519,14 +535,14 @@ public class OptimizedCassandraRepository {
     // ============================================================
 
     public CompletableFuture<List<Row>> asyncRead(List<UUID> ids) {
-        List<CompletionStage<AsyncResultSet>> futures = ids.stream()
+        List<CompletableFuture<AsyncResultSet>> futures = ids.stream()
             .map(id -> session.executeAsync(selectStatement.bind(id)))
+            .map(CompletionStage::toCompletableFuture)
             .collect(Collectors.toList());
 
         return CompletableFuture.allOf(
             futures.toArray(new CompletableFuture[0])
         ).thenApply(v -> futures.stream()
-            .map(CompletionStage::toCompletableFuture)
             .map(CompletableFuture::join)
             .flatMap(rs -> StreamSupport.stream(rs.currentPage().spliterator(), false))
             .collect(Collectors.toList())
@@ -558,8 +574,8 @@ flowchart TD
     HS --> HDD
 
     subgraph Config["Configuration"]
-        S1[concurrent_reads: 128<br/>disk_access_mode: mmap]
-        S2[concurrent_reads: 64<br/>disk_access_mode: mmap]
+        S1[concurrent_reads: 128<br/>disk_access_mode: mmap_index_only]
+        S2[concurrent_reads: 64<br/>disk_access_mode: mmap_index_only]
         S3[concurrent_reads: 16<br/>disk_access_mode: standard]
     end
 
@@ -637,12 +653,11 @@ echo "none" > /sys/block/${DEVICE}/queue/scheduler
 # For SATA SSDs - use deadline or mq-deadline
 # echo "mq-deadline" > /sys/block/${DEVICE}/queue/scheduler
 
-# Increase read-ahead for sequential workloads
-# Lower values (8-64) better for random I/O
-# Higher values (128-256) better for sequential/compaction
-echo 64 > /sys/block/${DEVICE}/queue/read_ahead_kb
+# Keep read-ahead low for SSD-backed random I/O
+# Higher values (128-256) only help sequential/compaction-heavy workloads
+echo 4 > /sys/block/${DEVICE}/queue/read_ahead_kb
 
-# Disable write-back caching if you have battery-backed cache
+# Disable write-back caching only if the device lacks power-loss protection
 # hdparm -W 0 /dev/${DEVICE}
 
 # Set optimal nr_requests for high concurrency
@@ -653,10 +668,12 @@ echo 256 > /sys/block/${DEVICE}/queue/nr_requests
 # ============================================================
 
 # Recommended mount options for XFS (preferred for Cassandra)
-# /dev/nvme0n1 /var/lib/cassandra xfs noatime,nodiratime,nobarrier 0 0
+# Use nobarrier only with storage that has protected write cache.
+# /dev/nvme0n1 /var/lib/cassandra xfs noatime,nodiratime 0 0
 
 # For ext4
-# /dev/nvme0n1 /var/lib/cassandra ext4 noatime,nodiratime,data=writeback,barrier=0,nobh 0 0
+# Avoid barrier=0/data=writeback unless the storage stack is explicitly protected.
+# /dev/nvme0n1 /var/lib/cassandra ext4 noatime,nodiratime 0 0
 ```
 
 ### Network Configuration
