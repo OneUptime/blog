@@ -106,6 +106,32 @@ openssl x509 -req -days 365 \
     -CAcreateserial \
     -out server/server-cert.pem \
     -extfile server/server-ext.cnf
+
+# Generate client private key for mutual TLS
+openssl genrsa -out client/client-key.pem 4096
+
+# Create client certificate signing request
+openssl req -new \
+    -key client/client-key.pem \
+    -out client/client.csr \
+    -subj "/CN=order-service/O=MyOrganization"
+
+# Create client certificate with client authentication usage
+cat > client/client-ext.cnf << EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = clientAuth
+EOF
+
+# Sign the client certificate with the CA
+openssl x509 -req -days 365 \
+    -in client/client.csr \
+    -CA ca/ca-cert.pem \
+    -CAkey ca/ca-key.pem \
+    -CAcreateserial \
+    -out client/client-cert.pem \
+    -extfile client/client-ext.cnf
 ```
 
 ### NATS Server TLS Configuration
@@ -136,7 +162,7 @@ tls {
     # Require clients to present valid certificates (mutual TLS)
     verify: true
 
-    # Reject connections without client certificates
+    # Do not map certificate identity to a NATS user
     verify_and_map: false
 
     # TLS handshake timeout (default: 500ms)
@@ -155,7 +181,7 @@ tls {
     # Curve preferences for ECDHE
     curve_preferences: [
         "X25519",
-        "P-256"
+        "CurveP256"
     ]
 }
 
@@ -356,8 +382,8 @@ go install github.com/nats-io/nkeys/nk@latest
 nk -gen user -pubout
 
 # Example output:
-# SUACSSL3UAHUDXKFSNVUZRF5UHPMWZ6BFDTJ7M6USDXIEDNPPQYYYCU3VY  <- Seed (keep secret!)
-# UAHJZB6POOHSHCE7XHWW4INJHZK4X5H2ACJMQVQGVZDFM2LRMW6AJTJU  <- Public key
+# SUAHDKMWIPWXPUPFZGSGJGGSBWUCDHKWHXFYT56K2DMQ3N5Z5QRNBYXRTA  <- Seed (keep secret!)
+# UCN3IQR74ZLAVXHPUS5I5Y5EXNZQBKGWOACIGZIXCTTLV5DH7SRIU6NE  <- Public key
 
 # Generate a server NKey (for cluster authentication)
 # Server seeds start with 'SN', public keys start with 'N'
@@ -393,7 +419,7 @@ authorization {
     users: [
         {
             # Order service - can publish and subscribe to orders.*
-            nkey: "UAHJZB6POOHSHCE7XHWW4INJHZK4X5H2ACJMQVQGVZDFM2LRMW6AJTJU"
+            nkey: "UCN3IQR74ZLAVXHPUS5I5Y5EXNZQBKGWOACIGZIXCTTLV5DH7SRIU6NE"
             permissions: {
                 publish: {
                     allow: ["orders.*", "orders.>"]
@@ -405,7 +431,7 @@ authorization {
         },
         {
             # Inventory service - can publish inventory updates
-            nkey: "UBXYZ123ABCDEF456789GHIJKLMNOPQRSTUVWXYZ123456789"
+            nkey: "UB2AD3SPRQS6D47JIADRVOUKBRIFG26Z7ZJBEZSL6VDPCBZWP46QOT54"
             permissions: {
                 publish: {
                     allow: ["inventory.*"]
@@ -417,7 +443,7 @@ authorization {
         },
         {
             # Admin user - full access for operations
-            nkey: "UADMIN123FULLACCESS456789OPERATIONS123456789ABC"
+            nkey: "UCS6LIUXLY5IXWSK65SUBE5TST5WZSPB7U2B7L2HNI36JBG47POMH7T7"
             # No permissions block = full access to everything
         }
     ]
@@ -430,7 +456,7 @@ authorization {
 # Python client with NKey authentication
 import nats
 import asyncio
-from nats.nkeys import from_seed
+import ssl
 
 async def connect_with_nkey():
     # Load the NKey seed from a secure location
@@ -445,42 +471,47 @@ async def connect_with_nkey():
     # import os
     # seed = os.environ.get('NATS_NKEY_SEED')
 
-    # Create the NKey user from seed
-    user = from_seed(seed.encode())
-
-    async def sign_callback(nonce: bytes) -> bytes:
-        """
-        Callback function to sign the server's nonce.
-        This proves we possess the private key without revealing it.
-        """
-        return user.sign(nonce)
+    tls_ctx = ssl.create_default_context(
+        cafile='/etc/nats/certs/ca-cert.pem'
+    )
+    tls_ctx.load_cert_chain(
+        certfile='/etc/nats/certs/client-cert.pem',
+        keyfile='/etc/nats/certs/client-key.pem',
+    )
 
     # Connect using the NKey
     nc = await nats.connect(
         servers=['tls://nats.example.com:4222'],
 
         # NKey authentication
-        nkeys_seed=seed,
-        signature_cb=sign_callback,
+        nkeys_seed_str=seed,
 
         # TLS settings (required for secure NKey auth)
-        tls={
-            'ca_file': '/etc/nats/certs/ca-cert.pem',
-            'cert_file': '/etc/nats/certs/client-cert.pem',
-            'key_file': '/etc/nats/certs/client-key.pem',
-        },
+        tls=tls_ctx,
 
         # Connection metadata
         name='order-service-python',
 
         # Error handling
-        error_cb=lambda e: print(f'Error: {e}'),
-        disconnected_cb=lambda: print('Disconnected'),
-        reconnected_cb=lambda: print('Reconnected'),
+        error_cb=error_cb,
+        disconnected_cb=disconnected_cb,
+        reconnected_cb=reconnected_cb,
     )
 
     print(f'Connected to NATS at {nc.connected_url.netloc}')
     return nc
+
+
+async def error_cb(e):
+    print(f'Error: {e}')
+
+
+async def disconnected_cb():
+    print('Disconnected')
+
+
+async def reconnected_cb():
+    print('Reconnected')
 
 
 async def main():
@@ -547,17 +578,13 @@ The operator is the root of trust. Guard the operator key carefully.
 # Install NSC (NATS Security CLI)
 go install github.com/nats-io/nsc/v2@latest
 
-# Initialize a new operator
+# Initialize a new operator with a signing key and system account
 # This creates the operator and stores keys in ~/.local/share/nats/nsc
-nsc add operator --name MyCompany
+nsc add operator --name MyCompany --generate-signing-key --sys
 
 # The operator key is automatically generated
 # View the operator details
 nsc describe operator
-
-# Add a signing key for the operator (best practice)
-# This allows you to rotate keys without recreating everything
-nsc edit operator --sk generate
 
 # Export the operator JWT for the NATS server
 nsc describe operator --raw > /etc/nats/jwt/operator.jwt
@@ -590,8 +617,7 @@ nsc edit account --name ExternalPartner \
 # Enable exports from TeamAlpha (share subjects with other accounts)
 nsc add export --account TeamAlpha \
     --name "PublicOrders" \
-    --subject "orders.public.>" \
-    --service
+    --subject "orders.public.>"
 
 # Enable imports to ExternalPartner (consume shared subjects)
 nsc add import --account ExternalPartner \
@@ -653,7 +679,7 @@ nsc describe user --account TeamAlpha --name order-service
 
 port: 4222
 
-# TLS is mandatory for JWT authentication
+# TLS is strongly recommended for JWT authentication
 tls {
     cert_file: "/etc/nats/certs/server-cert.pem"
     key_file: "/etc/nats/certs/server-key.pem"
@@ -665,7 +691,7 @@ tls {
 operator: "/etc/nats/jwt/operator.jwt"
 
 # System account for NATS internal operations
-system_account: "AASYSTEMACCOUNTPUBLICKEY123456789ABCDEFGHIJ"
+system_account: "ABJNYPPUN46NNPMA66KNHC4WLUBPQ3WB2ADG4OJCRQESLAR3S5I6F7SI"
 
 # Account resolver - how to find account JWTs
 resolver: {
@@ -885,7 +911,7 @@ tls {
     key_file: "/etc/nats/certs/server-key.pem"
     ca_file: "/etc/nats/certs/ca-cert.pem"
     verify: true
-    verify_and_map: true
+    verify_and_map: false
     timeout: 2.0
     min_version: "1.2"
     cipher_suites: [
@@ -896,7 +922,7 @@ tls {
 
 # JWT/Account authentication
 operator: "/etc/nats/jwt/operator.jwt"
-system_account: "AASYSTEMACCOUNTPUBLICKEY123456789ABCDEFGHIJ"
+system_account: "ABJNYPPUN46NNPMA66KNHC4WLUBPQ3WB2ADG4OJCRQESLAR3S5I6F7SI"
 
 resolver: {
     type: full
@@ -921,14 +947,15 @@ cluster {
 
     # Cluster routes
     routes: [
-        "tls://nats-prod-1.internal:6222"
-        "tls://nats-prod-2.internal:6222"
-        "tls://nats-prod-3.internal:6222"
+        "tls://route-user:route-password@nats-prod-1.internal:6222"
+        "tls://route-user:route-password@nats-prod-2.internal:6222"
+        "tls://route-user:route-password@nats-prod-3.internal:6222"
     ]
 
-    # Cluster authentication with NKeys
+    # Cluster route authentication
     authorization {
-        user: "NCLUSTERPUBLICNKEY123456789ABCDEFGHIJKLMNO"
+        user: "route-user"
+        password: "route-password"
         timeout: 2
     }
 }
@@ -996,7 +1023,6 @@ async function setupMonitoring(nc) {
         console.log(JSON.stringify({
             type: 'nats_metrics',
             timestamp: new Date().toISOString(),
-            connections: stats.inMsgs,
             messagesIn: stats.inMsgs,
             messagesOut: stats.outMsgs,
             bytesIn: stats.inBytes,
