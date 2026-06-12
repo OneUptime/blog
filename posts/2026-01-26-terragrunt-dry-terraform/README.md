@@ -64,7 +64,7 @@ terraform {
     key            = "network/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks-dev"
+    use_lockfile   = true
   }
 }
 
@@ -75,7 +75,7 @@ terraform {
     key            = "network/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks-staging"
+    use_lockfile   = true
   }
 }
 
@@ -86,7 +86,7 @@ terraform {
     key            = "network/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks-prod"
+    use_lockfile   = true
   }
 }
 ```
@@ -129,15 +129,13 @@ Install Terragrunt using your package manager:
 # macOS with Homebrew
 brew install terragrunt
 
-# Linux with apt (Ubuntu/Debian)
-# First, add the repository
-curl -s https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
-sudo apt-get update && sudo apt-get install terragrunt
+# Linux with Homebrew
+brew install terragrunt
 
-# Or download directly
-wget https://github.com/gruntwork-io/terragrunt/releases/download/v0.55.0/terragrunt_linux_amd64
-chmod +x terragrunt_linux_amd64
-sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
+# Or download a pinned release directly
+wget -O terragrunt https://github.com/gruntwork-io/terragrunt/releases/download/v1.0.8/terragrunt_linux_amd64
+chmod +x terragrunt
+sudo mv terragrunt /usr/local/bin/terragrunt
 
 # Verify installation
 terragrunt --version
@@ -168,9 +166,9 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
 
-    # Skip prompts when creating the bucket
+    # Keep bucket versioning enabled
     skip_bucket_versioning = false
   }
 }
@@ -363,22 +361,22 @@ Terragrunt commands mirror Terraform commands but add extra functionality:
 cd infrastructure/dev/network
 
 # Initialize and apply a single module
-terragrunt init
+terragrunt init --backend-bootstrap
 terragrunt plan
 terragrunt apply
 
 # Apply all modules in an environment (respects dependencies)
 cd infrastructure/dev
-terragrunt run-all apply
+terragrunt run --all apply
 
 # Plan across all modules
-terragrunt run-all plan
+terragrunt run --all plan
 
 # Destroy in reverse dependency order
-terragrunt run-all destroy
+terragrunt run --all destroy
 
 # Show the dependency graph
-terragrunt graph-dependencies
+terragrunt dag graph
 ```
 
 ## Advanced Patterns
@@ -818,8 +816,10 @@ Establish a naming convention and stick to it:
 # infrastructure/terragrunt.hcl
 
 locals {
+  env_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
+
   # Standard naming convention
-  name_prefix = "${local.project_name}-${local.environment}"
+  name_prefix = "${local.env_vars.locals.project_name}-${local.env_vars.locals.environment}"
 }
 ```
 
@@ -863,19 +863,19 @@ jobs:
 
       - name: Setup Terragrunt
         run: |
-          wget https://github.com/gruntwork-io/terragrunt/releases/download/v0.55.0/terragrunt_linux_amd64
-          chmod +x terragrunt_linux_amd64
-          sudo mv terragrunt_linux_amd64 /usr/local/bin/terragrunt
+          wget -O terragrunt https://github.com/gruntwork-io/terragrunt/releases/download/v1.0.8/terragrunt_linux_amd64
+          chmod +x terragrunt
+          sudo mv terragrunt /usr/local/bin/terragrunt
 
       - name: Validate All Modules
         run: |
           cd infrastructure
-          terragrunt run-all validate
+          terragrunt run --all validate
 
       - name: Plan Dev Environment
         run: |
           cd infrastructure/dev
-          terragrunt run-all plan -out=tfplan
+          terragrunt run --all plan --out-dir tfplan
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -892,9 +892,9 @@ If you have an existing Terraform project, here is a step-by-step migration path
 5. **Update CI/CD**: Modify your pipelines to use Terragrunt commands
 
 ```bash
-# Import existing state into Terragrunt-managed configuration
+# Import an existing resource into Terragrunt-managed state
 cd infrastructure/dev/network
-terragrunt import aws_vpc.main vpc-12345678
+terragrunt run -- import aws_vpc.main vpc-12345678
 ```
 
 ## Conclusion
