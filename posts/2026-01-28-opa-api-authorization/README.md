@@ -494,7 +494,7 @@ curl -X POST http://localhost:8181/v1/compile \
   -H "Content-Type: application/json" \
   -d '{
     "query": "data.api.authz.allow == true",
-    "unknowns": ["input.user"]
+    "unknowns": ["input"]
   }'
 ```
 
