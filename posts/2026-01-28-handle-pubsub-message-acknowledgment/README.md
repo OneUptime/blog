@@ -36,7 +36,7 @@ With pull subscriptions, your subscriber receives a message plus an ack ID. You 
 ### When to Ack
 
 - Ack only after the side effects are complete.
-- If you cannot process the message, do not ack it. Let it be redelivered or send it to a dead letter topic.
+- If you cannot process the message, do not ack it. Let it be redelivered, or configure a dead letter topic so Pub/Sub can forward it after repeated delivery attempts.
 - Handle duplicates by designing idempotent processing.
 
 ### Example: Pull Subscriber with Ack Deadline Extensions
@@ -146,7 +146,7 @@ Ack deadlines should cover your normal processing time, plus headroom for spikes
 
 Retries are part of the normal delivery model. Build a clear path for messages that repeatedly fail:
 
-1. Track delivery attempts.
+1. Track delivery attempts when a dead letter policy is configured.
 2. Route failed messages to a dead letter topic.
 3. Alert when dead letter volume grows.
 
@@ -165,7 +165,7 @@ Focus on signals that reveal acknowledgment problems:
 - Delivery attempt counts rising
 - Backlog size growing
 - Oldest unacked message age
-- Ack deadline exceeded errors
+- Expired ack deadline count
 
 ## Quick Checklist
 
