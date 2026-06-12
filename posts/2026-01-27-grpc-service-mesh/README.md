@@ -102,9 +102,6 @@ spec:
       labels:
         app: grpc-server
         version: v1
-      annotations:
-        # Tells Istio this service speaks gRPC on port 50051
-        sidecar.istio.io/userVolume: '[{"name":"grpc-certs","emptyDir":{}}]'
     spec:
       containers:
         - name: grpc-server
@@ -152,7 +149,7 @@ spec:
 ```yaml
 # grpc-virtual-service.yaml
 # Configure traffic routing for gRPC services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-server
@@ -182,7 +179,7 @@ spec:
 ```yaml
 # grpc-destination-rule.yaml
 # Configure connection pooling and load balancing for gRPC
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-server
@@ -201,7 +198,7 @@ spec:
         maxRetries: 3
     # Load balancer configuration
     loadBalancer:
-      simple: ROUND_ROBIN  # Options: ROUND_ROBIN, LEAST_CONN, RANDOM
+      simple: ROUND_ROBIN  # Options: ROUND_ROBIN, LEAST_REQUEST, RANDOM
     # Outlier detection (circuit breaking)
     outlierDetection:
       consecutive5xxErrors: 5
@@ -260,23 +257,26 @@ spec:
     # Define routes for each gRPC method
     - name: "POST /mypackage.MyService/GetUser"
       condition:
-        method: POST
-        pathRegex: /mypackage\.MyService/GetUser
+        all:
+          - method: POST
+          - pathRegex: /mypackage\.MyService/GetUser
       # Enable retries for this route
       isRetryable: true
       # Timeout for this specific method
       timeout: 5s
     - name: "POST /mypackage.MyService/CreateUser"
       condition:
-        method: POST
-        pathRegex: /mypackage\.MyService/CreateUser
+        all:
+          - method: POST
+          - pathRegex: /mypackage\.MyService/CreateUser
       # Don't retry mutations
       isRetryable: false
       timeout: 10s
     - name: "POST /mypackage.MyService/StreamUpdates"
       condition:
-        method: POST
-        pathRegex: /mypackage\.MyService/StreamUpdates
+        all:
+          - method: POST
+          - pathRegex: /mypackage\.MyService/StreamUpdates
       # Longer timeout for streaming RPCs
       timeout: 300s
   # Retry budget prevents retry storms
@@ -295,7 +295,7 @@ Both Istio and Linkerd provide automatic mTLS between services. Here's how to co
 ```yaml
 # peer-authentication.yaml
 # Enable strict mTLS for the entire mesh
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -306,7 +306,7 @@ spec:
 ---
 # namespace-peer-auth.yaml
 # Or enable per-namespace
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -317,7 +317,7 @@ spec:
 ---
 # workload-peer-auth.yaml
 # Or per-workload with port-level granularity
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: grpc-server
@@ -368,7 +368,7 @@ linkerd viz dashboard
 ```yaml
 # istio-authz-policy.yaml
 # Restrict which services can call your gRPC server
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: grpc-server-authz
@@ -430,7 +430,7 @@ flowchart LR
 ```yaml
 # load-balancing-examples.yaml
 # Different load balancing strategies for different use cases
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-round-robin
@@ -440,7 +440,7 @@ spec:
     loadBalancer:
       simple: ROUND_ROBIN  # Default, good for uniform requests
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-least-conn
@@ -451,7 +451,7 @@ spec:
       simple: LEAST_REQUEST  # Better for varying request durations
 ---
 # Consistent hashing for sticky sessions
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-consistent-hash
@@ -471,7 +471,7 @@ spec:
 ```yaml
 # locality-lb.yaml
 # Prefer local backends, fail over to remote only when necessary
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-server-locality
@@ -506,7 +506,7 @@ Istio automatically collects metrics, traces, and access logs for gRPC traffic.
 ```yaml
 # telemetry-config.yaml
 # Configure what telemetry to collect
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: grpc-telemetry
@@ -520,7 +520,7 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 400"  # Log only errors
+        expression: "!has(response.code) || response.code >= 400"  # Log HTTP-level errors and connection failures
   # Tracing configuration
   tracing:
     - providers:
@@ -550,10 +550,12 @@ spec:
           expr: |
             sum(rate(istio_requests_total{
               destination_service="grpc-server.default.svc.cluster.local",
-              response_code!~"0|OK"
+              request_protocol="grpc",
+              grpc_response_status!="0"
             }[5m])) /
             sum(rate(istio_requests_total{
-              destination_service="grpc-server.default.svc.cluster.local"
+              destination_service="grpc-server.default.svc.cluster.local",
+              request_protocol="grpc"
             }[5m])) > 0.05
           for: 5m
           labels:
@@ -665,7 +667,7 @@ data:
 ```yaml
 # canary-deployment.yaml
 # Gradually shift traffic to new gRPC server version
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-server-canary
@@ -691,7 +693,7 @@ spec:
             subset: v2
           weight: 10
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-server-versions
@@ -711,7 +713,7 @@ spec:
 ```yaml
 # circuit-breaker.yaml
 # Prevent cascading failures in gRPC services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-server-circuit-breaker
@@ -729,14 +731,15 @@ spec:
       # Eject hosts with consecutive errors
       consecutive5xxErrors: 5
       # Also track gateway errors (connection failures)
-      consecutiveGatewayErrors: 5
+      consecutiveGatewayErrors: 3
       # Check every 30 seconds
       interval: 30s
       # Eject for 30 seconds minimum
       baseEjectionTime: 30s
       # Don't eject more than 50% of hosts
       maxEjectionPercent: 50
-      # Eject on specific gRPC status codes
+      # Eject on local origin failures when splitExternalLocalOriginErrors is enabled
+      splitExternalLocalOriginErrors: true
       consecutiveLocalOriginFailures: 5
 ```
 
@@ -828,7 +831,7 @@ sequenceDiagram
 ```yaml
 # streaming-config.yaml
 # Special configuration for long-running gRPC streams
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-streaming-server
@@ -845,7 +848,7 @@ spec:
       # Long timeout for streaming RPCs
       timeout: 0s  # No timeout (use with caution)
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-streaming-server
@@ -886,11 +889,11 @@ istioctl analyze
 istioctl proxy-status
 ```
 
-### Enable Debug Logging
+### Enable Access Logging
 
 ```yaml
 # debug-logging.yaml
-# Enable debug logs for troubleshooting
+# Enable detailed access logs for troubleshooting
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
@@ -909,6 +912,7 @@ spec:
       patch:
         operation: MERGE
         value:
+          name: "envoy.filters.network.http_connection_manager"
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
             access_log:
