@@ -74,17 +74,18 @@ For production environments, install TimescaleDB directly on your server.
 ```bash
 # Add TimescaleDB repository
 sudo apt install -y gnupg postgresql-common apt-transport-https lsb-release wget
+sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
 
 # Add repository key and source
 echo "deb https://packagecloud.io/timescale/timescaledb/ubuntu/ $(lsb_release -c -s) main" | \
   sudo tee /etc/apt/sources.list.d/timescaledb.list
 
 wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey | \
-  sudo apt-key add -
+  sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg
 
 # Update and install
 sudo apt update
-sudo apt install -y timescaledb-2-postgresql-16
+sudo apt install -y timescaledb-2-postgresql-16 postgresql-client-16
 
 # Run the tuning script to optimize PostgreSQL settings
 sudo timescaledb-tune --quiet --yes
@@ -97,10 +98,12 @@ sudo systemctl restart postgresql
 
 Once installed, you need to enable TimescaleDB in your database.
 
-```sql
--- Connect to your database
+```bash
+# Connect to your database
 psql -U postgres -d metrics
+```
 
+```sql
 -- Enable the TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
@@ -126,14 +129,14 @@ CREATE TABLE server_metrics (
     host_id     TEXT NOT NULL,         -- Server identifier
     cpu_usage   DOUBLE PRECISION,      -- CPU percentage (0-100)
     memory_used BIGINT,                -- Memory in bytes
-    disk_io     DOUBLE PRECISION,      -- Disk I/O in MB/s
+    disk_io     DOUBLE PRECISION,      -- Disk I/O in MB (cumulative)
     network_in  BIGINT,                -- Network bytes received
     network_out BIGINT                 -- Network bytes sent
 );
 
 -- Convert to a hypertable, partitioned by time
 -- TimescaleDB will create chunks automatically (default: 7 days per chunk)
-SELECT create_hypertable('server_metrics', 'time');
+SELECT create_hypertable('server_metrics', by_range('time'));
 ```
 
 The `create_hypertable` function transforms your table into a time-partitioned hypertable. By default, it creates weekly chunks, but you can customize this.
@@ -143,8 +146,7 @@ The `create_hypertable` function transforms your table into a time-partitioned h
 -- Useful for high-volume data where you want smaller partitions
 SELECT create_hypertable(
     'server_metrics',
-    'time',
-    chunk_time_interval => INTERVAL '1 day'
+    by_range('time', INTERVAL '1 day')
 );
 ```
 
@@ -218,7 +220,7 @@ def collect_metrics(host_id: str) -> dict:
         "host_id": host_id,
         "cpu_usage": cpu,
         "memory_used": memory.used,
-        "disk_io": (disk.read_bytes + disk.write_bytes) / (1024 * 1024),  # Convert to MB
+        "disk_io": (disk.read_bytes + disk.write_bytes) / (1024 * 1024),  # Cumulative MB
         "network_in": network.bytes_recv,
         "network_out": network.bytes_sent
     }
@@ -319,7 +321,7 @@ ORDER BY bucket DESC;
 ### Finding Gaps and Anomalies
 
 ```sql
--- Find time periods where CPU exceeded 90% for more than 5 minutes
+-- Find 5-minute buckets where average CPU exceeded 90%
 WITH high_cpu_events AS (
     SELECT
         time_bucket('5 minutes', time) AS bucket,
@@ -416,29 +418,30 @@ WHERE proc_name = 'policy_retention';
 
 ### Compression for Storage Efficiency
 
-Compression can reduce storage by 90% or more for time-series data.
+Columnstore conversion can reduce storage by 90% or more for time-series data.
 
 ```sql
--- Enable compression on the hypertable
+-- Enable columnstore on the hypertable
 -- segment_by keeps hosts separate for faster filtered queries
 -- order_by ensures time-ordered compression
 ALTER TABLE server_metrics SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'host_id',
-    timescaledb.compress_orderby = 'time DESC'
+    timescaledb.enable_columnstore = true,
+    timescaledb.segmentby = 'host_id',
+    timescaledb.orderby = 'time DESC'
 );
 
--- Add policy to compress chunks older than 7 days
-SELECT add_compression_policy('server_metrics', INTERVAL '7 days');
+-- Add policy to convert chunks older than 7 days to the columnstore
+CALL add_columnstore_policy('server_metrics', after => INTERVAL '7 days');
 
--- Check compression statistics
+-- Check columnstore compression statistics
 SELECT
     chunk_name,
     before_compression_total_bytes,
     after_compression_total_bytes,
     round((1 - after_compression_total_bytes::numeric /
            before_compression_total_bytes) * 100, 2) AS compression_ratio
-FROM chunk_compression_stats('server_metrics');
+FROM chunk_columnstore_stats('server_metrics')
+WHERE compression_status = 'Compressed';
 ```
 
 ---
@@ -601,7 +604,7 @@ if __name__ == '__main__':
 ### Data Management
 
 1. **Set up retention policies early** - Prevent unbounded growth
-2. **Enable compression for older data** - 90%+ storage savings is common
+2. **Enable columnstore for older data** - 90%+ storage savings is common
 3. **Monitor chunk sizes** - Keep them manageable (aim for chunks that fit in memory)
 4. **Regular VACUUM** - TimescaleDB handles this better than vanilla PostgreSQL, but still monitor
 
@@ -612,12 +615,14 @@ if __name__ == '__main__':
 ```sql
 -- Check hypertable size and chunk count
 SELECT
-    hypertable_name,
-    num_chunks,
-    pg_size_pretty(total_bytes) AS total_size,
-    pg_size_pretty(table_bytes) AS table_size,
-    pg_size_pretty(index_bytes) AS index_size
-FROM hypertable_detailed_size('server_metrics');
+    h.hypertable_name,
+    h.num_chunks,
+    pg_size_pretty(s.total_bytes) AS total_size,
+    pg_size_pretty(s.table_bytes) AS table_size,
+    pg_size_pretty(s.index_bytes) AS index_size
+FROM timescaledb_information.hypertables h
+CROSS JOIN hypertable_detailed_size('server_metrics') s
+WHERE h.hypertable_name = 'server_metrics';
 
 -- View all chunks and their time ranges
 SELECT
@@ -630,14 +635,15 @@ WHERE hypertable_name = 'server_metrics'
 ORDER BY range_start DESC
 LIMIT 10;
 
--- Check compression status
+-- Check columnstore status
 SELECT
-    hypertable_name,
+    chunk_schema,
     chunk_name,
     compression_status,
-    uncompressed_total_size,
-    compressed_total_size
-FROM timescaledb_information.chunk_compression_settings;
+    before_compression_total_bytes,
+    after_compression_total_bytes
+FROM chunk_columnstore_stats('server_metrics')
+ORDER BY chunk_name;
 ```
 
 ---
