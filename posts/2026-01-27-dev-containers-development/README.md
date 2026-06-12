@@ -96,7 +96,7 @@ For more control, define your own Dockerfile.
   },
 
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    "ghcr.io/devcontainers/features/docker-in-docker:3": {}
   },
 
   "customizations": {
@@ -157,7 +157,7 @@ Features are pre-packaged tools you can add without modifying Dockerfiles.
 
   "features": {
     // Node.js with specific version
-    "ghcr.io/devcontainers/features/node:1": {
+    "ghcr.io/devcontainers/features/node:2": {
       "version": "20"
     },
 
@@ -167,7 +167,7 @@ Features are pre-packaged tools you can add without modifying Dockerfiles.
     },
 
     // Docker for building images
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:3": {},
 
     // Kubernetes tools
     "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {},
@@ -382,8 +382,6 @@ For applications needing databases or other services, use Docker Compose.
 ```yaml
 # .devcontainer/docker-compose.yml
 
-version: '3.8'
-
 services:
   app:
     build:
@@ -441,8 +439,8 @@ volumes:
 
   // Pin feature versions
   "features": {
-    "ghcr.io/devcontainers/features/git:1.2.0": {},
-    "ghcr.io/devcontainers/features/node:1.5.0": {
+    "ghcr.io/devcontainers/features/git:1.3.5": {},
+    "ghcr.io/devcontainers/features/node:2.0.0": {
       "version": "20.10.0"
     }
   }
