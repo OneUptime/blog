@@ -43,6 +43,16 @@ Start by adding the required dependencies to your `pom.xml`:
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-validation</artifactId>
     </dependency>
+
+    <!-- Spring Security support for password hashing and auditing -->
+    <dependency>
+        <groupId>org.springframework.security</groupId>
+        <artifactId>spring-security-core</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.security</groupId>
+        <artifactId>spring-security-crypto</artifactId>
+    </dependency>
 </dependencies>
 ```
 
@@ -55,6 +65,8 @@ dependencies {
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.security:spring-security-core'
+    implementation 'org.springframework.security:spring-security-crypto'
 }
 ```
 
@@ -87,7 +99,7 @@ spring:
       hibernate:
         # Format SQL for readable logs during development
         format_sql: true
-        # Batch inserts for better performance
+        # Batch DML where supported by the identifier strategy and driver
         jdbc:
           batch_size: 25
         order_inserts: true
@@ -100,7 +112,7 @@ logging:
   level:
     # Enable SQL logging for debugging (use sparingly in production)
     org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.hibernate.orm.jdbc.bind: TRACE
 ```
 
 ## Entity Definition
@@ -118,10 +130,13 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 @Entity
@@ -160,8 +175,9 @@ public class User {
     private UserStatus status = UserStatus.ACTIVE;
 
     // PostgreSQL supports JSONB - useful for flexible data
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private String preferences;
+    private Map<String, Object> preferences;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -212,7 +228,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-@Entity
+@Entity(name = "CustomerOrder")
 @Table(name = "orders", indexes = {
     @Index(name = "idx_orders_user_id", columnList = "user_id"),
     @Index(name = "idx_orders_status", columnList = "status"),
@@ -248,6 +264,16 @@ public class Order {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+}
+```
+
+```java
+package com.example.domain;
+
+public enum OrderStatus {
+    PENDING,
+    COMPLETED,
+    CANCELLED
 }
 ```
 
@@ -315,23 +341,24 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
     // JPQL query - uses entity and field names, not table/column names
-    @Query("SELECT o FROM Order o WHERE o.user.id = :userId AND o.status = :status")
+    @Query("SELECT o FROM CustomerOrder o WHERE o.user.id = :userId AND o.status = :status")
     List<Order> findUserOrdersByStatus(
         @Param("userId") Long userId,
         @Param("status") OrderStatus status
     );
 
     // JPQL with JOIN FETCH to avoid N+1 queries
-    @Query("SELECT o FROM Order o JOIN FETCH o.user WHERE o.id = :id")
+    @Query("SELECT o FROM CustomerOrder o JOIN FETCH o.user WHERE o.id = :id")
     Optional<Order> findByIdWithUser(@Param("id") Long id);
 
     // Pagination support
-    @Query("SELECT o FROM Order o WHERE o.user.id = :userId ORDER BY o.createdAt DESC")
+    @Query("SELECT o FROM CustomerOrder o WHERE o.user.id = :userId ORDER BY o.createdAt DESC")
     Page<Order> findUserOrdersPaged(@Param("userId") Long userId, Pageable pageable);
 
     // Native PostgreSQL query - useful for database-specific features
@@ -355,18 +382,18 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             o.status,
             o.createdAt
         )
-        FROM Order o
+        FROM CustomerOrder o
         WHERE o.user.id = :userId
         """)
     List<OrderSummary> findOrderSummariesByUser(@Param("userId") Long userId);
 
     // Aggregate query
-    @Query("SELECT SUM(o.totalAmount) FROM Order o WHERE o.user.id = :userId AND o.status = 'COMPLETED'")
+    @Query("SELECT SUM(o.totalAmount) FROM CustomerOrder o WHERE o.user.id = :userId AND o.status = com.example.domain.OrderStatus.COMPLETED")
     BigDecimal calculateUserTotalSpent(@Param("userId") Long userId);
 
     // Update query - requires @Modifying
     @Modifying
-    @Query("UPDATE Order o SET o.status = :newStatus WHERE o.status = :oldStatus AND o.createdAt < :before")
+    @Query("UPDATE CustomerOrder o SET o.status = :newStatus WHERE o.status = :oldStatus AND o.createdAt < :before")
     int updateOldOrderStatuses(
         @Param("oldStatus") OrderStatus oldStatus,
         @Param("newStatus") OrderStatus newStatus,
@@ -375,7 +402,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     // Delete query
     @Modifying
-    @Query("DELETE FROM Order o WHERE o.status = 'CANCELLED' AND o.createdAt < :before")
+    @Query("DELETE FROM CustomerOrder o WHERE o.status = com.example.domain.OrderStatus.CANCELLED AND o.createdAt < :before")
     int deleteOldCancelledOrders(@Param("before") LocalDateTime before);
 }
 ```
@@ -383,6 +410,24 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 ## Service Layer
 
 Encapsulate business logic in service classes:
+
+```java
+package com.example.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+@Configuration
+public class PasswordConfig {
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}
+```
 
 ```java
 package com.example.service;
@@ -601,8 +646,9 @@ PostgreSQL's JSONB type is useful for flexible schema data:
 
 ```java
 // Entity with JSONB field
+@JdbcTypeCode(SqlTypes.JSON)
 @Column(columnDefinition = "jsonb")
-private String metadata;
+private Map<String, Object> metadata;
 
 // Native query to search within JSONB
 @Query(value = """
@@ -614,7 +660,7 @@ List<User> findByPreferenceTheme(@Param("theme") String theme);
 // Query JSONB array contains
 @Query(value = """
     SELECT * FROM users
-    WHERE preferences->'tags' ? :tag
+    WHERE jsonb_exists(preferences->'tags', :tag)
     """, nativeQuery = true)
 List<User> findByPreferenceTag(@Param("tag") String tag);
 ```
@@ -626,7 +672,7 @@ PostgreSQL has powerful full-text search capabilities:
 ```java
 @Query(value = """
     SELECT * FROM users
-    WHERE to_tsvector('english', name || ' ' || COALESCE(bio, ''))
+    WHERE to_tsvector('english', name)
     @@ plainto_tsquery('english', :searchTerm)
     """, nativeQuery = true)
 List<User> fullTextSearch(@Param("searchTerm") String searchTerm);
@@ -711,7 +757,6 @@ spring:
       hibernate:
         # Enable query plan caching
         query.plan_cache_max_size: 2048
-        query.plan_parameter_metadata_max_size: 128
         # Generate statistics for monitoring
         generate_statistics: true
 ```
