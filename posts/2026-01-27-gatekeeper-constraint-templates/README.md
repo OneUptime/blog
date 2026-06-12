@@ -30,7 +30,7 @@ Before diving in, ensure you have Gatekeeper installed:
 ```bash
 # Install Gatekeeper using kubectl
 
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.14.0/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.2/deploy/gatekeeper.yaml
 
 # Verify installation
 kubectl get pods -n gatekeeper-system
@@ -45,7 +45,7 @@ A ConstraintTemplate consists of two main parts: the CRD specification and the R
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
-  name: k8srequiredlabels  # Template name (lowercase, no hyphens)
+  name: k8srequiredlabels  # Lowercase form of the constraint kind
 spec:
   crd:
     spec:
@@ -72,7 +72,7 @@ spec:
 
 ### Key Components Explained
 
-1. **metadata.name**: Must be lowercase with no hyphens. This becomes part of the CRD name.
+1. **metadata.name**: Must equal the lowercase form of `spec.crd.spec.names.kind`. This becomes part of the CRD name.
 2. **spec.crd.spec.names.kind**: The Kind name for Constraint resources using this template.
 3. **spec.crd.spec.validation**: OpenAPI v3 schema defining parameters the Constraint can accept.
 4. **spec.targets**: Where the Rego policy lives. The target specifies this is for admission control.
@@ -84,7 +84,7 @@ Rego is the policy language used by OPA. In Gatekeeper, you write rules that pro
 ### Basic Rego Structure for Gatekeeper
 
 ```rego
-# Package name must match the ConstraintTemplate name
+# Package name commonly matches the ConstraintTemplate name
 package k8srequiredlabels
 
 # The violation rule is what Gatekeeper evaluates
@@ -460,14 +460,14 @@ status:
 ### Configuring Audit Behavior
 
 ```yaml
-# Gatekeeper config for audit settings
+# Gatekeeper config for syncing data used by audit and referential constraints
 apiVersion: config.gatekeeper.sh/v1alpha1
 kind: Config
 metadata:
   name: config
   namespace: gatekeeper-system
 spec:
-  # How often to run audits (default: 60 seconds)
+  # Resources to replicate into Gatekeeper's data client
   sync:
     syncOnly:
       - group: ""
@@ -680,12 +680,18 @@ spec:
 
         # Extract tag from image reference
         get_tag(image) = tag {
-            contains(image, ":")
-            parts := split(image, ":")
+            image_without_digest := split(image, "@")[0]
+            path_parts := split(image_without_digest, "/")
+            last_part := path_parts[count(path_parts) - 1]
+            contains(last_part, ":")
+            parts := split(last_part, ":")
             tag := parts[count(parts) - 1]
         }
         get_tag(image) = "latest" {
-            not contains(image, ":")
+            image_without_digest := split(image, "@")[0]
+            path_parts := split(image_without_digest, "/")
+            last_part := path_parts[count(path_parts) - 1]
+            not contains(last_part, ":")
         }
 
         # Check if tag is disallowed
