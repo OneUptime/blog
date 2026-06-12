@@ -8,11 +8,11 @@ Description: Master ordered message processing with AWS SQS FIFO queues using me
 
 ---
 
-Standard SQS queues deliver messages at least once but do not guarantee order. When your application requires strict ordering and exactly-once processing, SQS FIFO queues are the solution. This guide covers advanced patterns for building reliable, ordered message processing systems.
+Standard SQS queues deliver messages at least once but do not guarantee order. When your application requires strict ordering and duplicate prevention within a deduplication interval, SQS FIFO queues are the solution. This guide covers advanced patterns for building reliable, ordered message processing systems.
 
 ## Understanding FIFO Queue Fundamentals
 
-FIFO (First-In-First-Out) queues guarantee that messages are processed exactly once, in the exact order they were sent. This is critical for applications like financial transactions, inventory updates, and event sourcing.
+FIFO (First-In-First-Out) queues preserve message order within each message group and prevent duplicate deliveries within a deduplication interval. This is critical for applications like financial transactions, inventory updates, and event sourcing.
 
 ```mermaid
 flowchart LR
@@ -46,10 +46,10 @@ flowchart LR
 
 ### Key FIFO Characteristics
 
-- **Exactly-once processing**: Duplicates are automatically removed
-- **Ordered delivery**: Messages arrive in the order they were sent
+- **Duplicate prevention**: Duplicate sends with the same deduplication ID are acknowledged but not delivered within the 5-minute deduplication interval
+- **Ordered delivery**: Messages arrive in the order they were sent within each message group
 - **Queue name must end with .fifo**: For example, `orders-queue.fifo`
-- **Default throughput**: 300 messages per second (or 3000 with batching)
+- **Default throughput**: 300 transactions per second per API action (or 3000 messages per second with batching)
 
 ## Creating a FIFO Queue with AWS SDK
 
@@ -84,8 +84,8 @@ async function createFifoQueue(queueName) {
       // Visibility timeout in seconds
       VisibilityTimeout: "60",
 
-      // Maximum message size in bytes (256 KB)
-      MaximumMessageSize: "262144",
+      // Maximum message size in bytes (1 MiB)
+      MaximumMessageSize: "1048576",
 
       // Long polling wait time in seconds
       ReceiveMessageWaitTimeSeconds: "20",
@@ -109,7 +109,7 @@ createFifoQueue("order-processing");
 
 ## Message Group IDs: Parallel Processing with Order
 
-Message Group IDs are the secret to scaling FIFO queues. Messages within the same group are processed in order, but different groups can be processed in parallel.
+Message Group IDs are the secret to scaling FIFO queues. Messages within the same group are delivered in order, but different groups can be processed in parallel.
 
 ```mermaid
 flowchart TB
@@ -217,6 +217,7 @@ The queue generates a hash of the message body to detect duplicates.
 // Using content-based deduplication - same message body = duplicate
 
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
+import { randomUUID } from "node:crypto";
 
 const sqsClient = new SQSClient({ region: "us-east-1" });
 
@@ -242,7 +243,7 @@ async function sendUniqueMessage(queueUrl, eventData) {
     MessageBody: JSON.stringify({
       ...eventData,
       timestamp: Date.now(),  // Ensures unique hash
-      eventId: crypto.randomUUID(),
+      eventId: randomUUID(),
     }),
     MessageGroupId: eventData.entityId,
   };
@@ -266,7 +267,7 @@ const sqsClient = new SQSClient({ region: "us-east-1" });
 
 async function sendWithExplicitDedup(queueUrl, payment) {
   // Generate a deterministic deduplication ID based on business logic
-  // Same ID within 5 minutes = duplicate (rejected)
+  // Same ID within 5 minutes = duplicate (acknowledged but not delivered)
   const deduplicationId = `payment-${payment.transactionId}`;
 
   const params = {
@@ -281,9 +282,7 @@ async function sendWithExplicitDedup(queueUrl, payment) {
     const response = await sqsClient.send(command);
     return { success: true, messageId: response.MessageId };
   } catch (error) {
-    if (error.name === "MessageDeduplicationIdNotProvided") {
-      console.error("Queue requires explicit deduplication ID");
-    }
+    console.error("Failed to send payment message:", error);
     throw error;
   }
 }
@@ -295,7 +294,7 @@ async function processPaymentWithRetry(queueUrl, payment, maxRetries = 3) {
       return await sendWithExplicitDedup(queueUrl, payment);
     } catch (error) {
       if (attempt === maxRetries) throw error;
-      // Safe to retry - deduplication prevents double processing
+      // Safe to retry - deduplication prevents duplicate delivery
       await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
     }
   }
@@ -304,18 +303,18 @@ async function processPaymentWithRetry(queueUrl, payment, maxRetries = 3) {
 
 ## High Throughput Mode
 
-Standard FIFO queues support 300 messages per second per message group. High throughput mode increases this to 3000 messages per second per message group and up to 30000 messages per second per queue.
+Standard FIFO queues support 300 transactions per second per API action, or up to 3000 messages per second when using batches of 10. High throughput mode raises the queue-level quota based on the AWS Region and can reach up to 70,000 transactions per second without batching, or 700,000 messages per second with batching in the highest-throughput Regions.
 
 ```mermaid
 flowchart TB
     subgraph Standard["Standard FIFO Mode"]
-        S1[300 msg/sec per group]
-        S2[3000 msg/sec with batching]
+        S1[300 transactions/sec per API action]
+        S2[3000 messages/sec with batching]
     end
 
     subgraph HighThroughput["High Throughput Mode"]
-        H1[3000 msg/sec per group]
-        H2[30000 msg/sec per queue]
+        H1[Regional transaction quotas]
+        H2[Up to 700000 msg/sec with batching]
         H3[Partitioned message groups]
     end
 
@@ -380,7 +379,7 @@ const sqsClient = new SQSClient({ region: "us-east-1" });
 
 async function sendBatch(queueUrl, messages) {
   // Batch can contain up to 10 messages
-  // Total batch size must not exceed 256 KB
+  // Total batch size must not exceed 1 MiB
   const entries = messages.map((msg, index) => ({
     Id: `msg-${index}`,  // Unique within batch
     MessageBody: JSON.stringify(msg.body),
@@ -471,8 +470,7 @@ flowchart LR
 import {
   SQSClient,
   CreateQueueCommand,
-  GetQueueAttributesCommand,
-  SetQueueAttributesCommand
+  GetQueueAttributesCommand
 } from "@aws-sdk/client-sqs";
 
 const sqsClient = new SQSClient({ region: "us-east-1" });
@@ -533,7 +531,7 @@ async function processDLQMessages(dlqUrl, handler) {
     QueueUrl: dlqUrl,
     MaxNumberOfMessages: 10,
     WaitTimeSeconds: 20,
-    AttributeNames: ["All"],
+    MessageSystemAttributeNames: ["All"],
     MessageAttributeNames: ["All"],
   });
 
@@ -611,7 +609,7 @@ class FifoConsumer {
       MaxNumberOfMessages: this.maxMessages,
       WaitTimeSeconds: this.waitTimeSeconds,
       VisibilityTimeout: this.visibilityTimeout,
-      AttributeNames: ["All"],
+      MessageSystemAttributeNames: ["All"],
       MessageAttributeNames: ["All"],
     });
 
@@ -644,12 +642,14 @@ class FifoConsumer {
   async processMessageGroup(groupId, messages, handler) {
     // Process messages in order within the group
     for (const message of messages) {
+      let heartbeat;
+
       try {
         // Parse message body
         const body = JSON.parse(message.Body);
 
         // Start heartbeat to extend visibility for long-running tasks
-        const heartbeat = this.startHeartbeat(message.ReceiptHandle);
+        heartbeat = this.startHeartbeat(message.ReceiptHandle);
 
         // Process the message
         await handler(body, {
@@ -659,14 +659,19 @@ class FifoConsumer {
           receiveCount: parseInt(message.Attributes.ApproximateReceiveCount),
         });
 
-        // Stop heartbeat and delete message on success
-        heartbeat.stop();
+        // Delete message on success
         await this.deleteMessage(message.ReceiptHandle);
 
       } catch (error) {
         console.error(`Failed to process message in group ${groupId}:`, error);
         // Message will return to queue after visibility timeout
         // and potentially move to DLQ after max receive count
+        // Stop processing this group so later messages do not complete before this one
+        break;
+      } finally {
+        if (heartbeat) {
+          heartbeat.stop();
+        }
       }
     }
   }
@@ -886,7 +891,7 @@ async function createQueueAlarms(queueName, snsTopicArn) {
       Statistic: "Sum",
       AlarmDescription: "Messages appearing in dead letter queue",
       // Override queue name for DLQ
-      queueNameOverride: `${queueName}-dlq`,
+      queueNameOverride: `${queueName}-dlq.fifo`,
     },
   ];
 
@@ -923,16 +928,16 @@ async function createQueueAlarms(queueName, snsTopicArn) {
 
 2. **Set appropriate visibility timeouts**: The timeout should be longer than your maximum expected processing time. Use heartbeats for variable-length processing.
 
-3. **Implement idempotent consumers**: Even with exactly-once delivery, design your processors to handle duplicates safely in case of partial failures.
+3. **Implement idempotent consumers**: Even with FIFO deduplication, design your processors to handle retries safely in case of partial failures.
 
 4. **Monitor DLQ actively**: Messages in the DLQ indicate processing failures. Set up alerts and investigate promptly.
 
 5. **Use batching for throughput**: Send and receive messages in batches of 10 to maximize throughput and reduce API costs.
 
-6. **Enable high throughput mode**: For workloads exceeding 300 messages per second per group, enable high throughput mode with per-message-group limits.
+6. **Enable high throughput mode**: For workloads exceeding the default FIFO transaction quota, enable high throughput mode with per-message-group limits.
 
 7. **Plan for message retention**: Default is 4 days. Increase for systems that may have extended outages.
 
 ---
 
-FIFO queues provide the ordered, exactly-once processing guarantees that critical business workflows require. By leveraging message groups for parallelism, implementing proper deduplication, and integrating dead letter queues for failure handling, you can build reliable message processing systems that scale with your application.
+FIFO queues provide the ordered delivery and deduplication guarantees that critical business workflows require. By leveraging message groups for parallelism, implementing proper deduplication, and integrating dead letter queues for failure handling, you can build reliable message processing systems that scale with your application.
