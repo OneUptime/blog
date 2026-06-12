@@ -26,7 +26,7 @@ Airflow provides several built-in sensors for common use cases:
 | `S3KeySensor` | AWS S3 | Object in bucket |
 | `ExternalTaskSensor` | DAG dependencies | Upstream task completion |
 | `HttpSensor` | REST APIs | HTTP response condition |
-| `SqlSensor` | Databases | Query returning rows |
+| `SqlSensor` | Databases | Query first cell becoming truthy |
 | `TimeDeltaSensor` | Time-based | Duration to pass |
 | `DateTimeSensor` | Time-based | Specific datetime |
 
@@ -36,16 +36,16 @@ All sensors inherit from `BaseSensorOperator` and share common parameters for co
 
 ## FileSensor: Waiting for Local Files
 
-The `FileSensor` monitors a filesystem path and succeeds when the file or directory exists.
+The `FileSensor` monitors a filesystem path and succeeds when the file exists, or when a directory path contains at least one file.
 
 ```python
 # file_sensor_example.py
 
 # Demonstrates using FileSensor to wait for a data file before processing
 
-from airflow import DAG
-from airflow.sensors.filesystem import FileSensor
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.sensors.filesystem import FileSensor
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 # Define default arguments applied to all tasks in this DAG
@@ -63,7 +63,7 @@ def process_sales_data(**context):
     Process the sales data file once it arrives.
     The sensor ensures this only runs after the file exists.
     """
-    file_path = '/data/incoming/sales_{{ ds }}.csv'
+    file_path = f"/data/incoming/sales_{context['ds']}.csv"
     # Your processing logic here
     print(f"Processing file: {file_path}")
 
@@ -71,7 +71,7 @@ with DAG(
     dag_id='file_sensor_pipeline',
     default_args=default_args,
     description='Wait for daily sales file and process it',
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=False,
     tags=['sensors', 'file-processing'],
@@ -108,9 +108,9 @@ The `ExternalTaskSensor` waits for a task in another DAG to complete. This is es
 # external_task_sensor_example.py
 # Wait for an upstream DAG to complete before running downstream processing
 
-from airflow import DAG
-from airflow.sensors.external_task import ExternalTaskSensor
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 default_args = {
@@ -131,7 +131,7 @@ with DAG(
     dag_id='aggregation_pipeline',
     default_args=default_args,
     description='Aggregate data after upstream pipelines complete',
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=False,
 ) as dag:
@@ -186,10 +186,10 @@ The `HttpSensor` makes HTTP requests and succeeds based on the response. Use it 
 # http_sensor_example.py
 # Wait for an external API to indicate data is ready
 
-from airflow import DAG
+from airflow.sdk import DAG
 from airflow.providers.http.sensors.http import HttpSensor
-from airflow.providers.http.operators.http import SimpleHttpOperator
-from airflow.operators.python import PythonOperator
+from airflow.providers.http.operators.http import HttpOperator
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 import json
 
@@ -231,7 +231,7 @@ with DAG(
     dag_id='http_sensor_pipeline',
     default_args=default_args,
     description='Wait for external API data availability',
-    schedule_interval='@hourly',
+    schedule='@hourly',
     start_date=datetime(2026, 1, 1),
     catchup=False,
 ) as dag:
@@ -257,7 +257,7 @@ with DAG(
     )
 
     # Fetch the actual data once it is ready
-    fetch_data = SimpleHttpOperator(
+    fetch_data = HttpOperator(
         task_id='fetch_data',
         http_conn_id='external_api',
         endpoint='/api/v1/data',
@@ -286,10 +286,10 @@ The `S3KeySensor` monitors AWS S3 for objects, making it essential for cloud-nat
 # s3_sensor_example.py
 # Wait for data files to arrive in S3 before processing
 
-from airflow import DAG
+from airflow.sdk import DAG
 from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 from airflow.providers.amazon.aws.operators.s3 import S3CopyObjectOperator
-from airflow.operators.python import PythonOperator
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 default_args = {
@@ -303,14 +303,14 @@ def process_s3_data(**context):
     Process data after S3 file is confirmed to exist.
     """
     bucket = 'my-data-bucket'
-    key = f"raw/transactions/{{ ds }}/data.parquet"
+    key = f"raw/transactions/{context['ds']}/data.parquet"
     print(f"Processing s3://{bucket}/{key}")
 
 with DAG(
     dag_id='s3_sensor_pipeline',
     default_args=default_args,
     description='Process data files from S3',
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=False,
 ) as dag:
@@ -329,13 +329,16 @@ with DAG(
         mode='reschedule',  # Free worker between checks
     )
 
-    # Wait for multiple files using wildcard matching
+    # Wait for multiple known partition files
     wait_for_all_partitions = S3KeySensor(
         task_id='wait_for_all_partitions',
         aws_conn_id='aws_default',
         bucket_name='my-data-bucket',
-        bucket_key='raw/transactions/{{ ds }}/partition_*/data.parquet',
-        wildcard_match=True,  # Enable glob-style matching
+        bucket_key=[
+            'raw/transactions/{{ ds }}/partition_0/data.parquet',
+            'raw/transactions/{{ ds }}/partition_1/data.parquet',
+            'raw/transactions/{{ ds }}/partition_2/data.parquet',
+        ],
         poke_interval=120,
         timeout=10800,
         mode='reschedule',
@@ -370,11 +373,11 @@ When built-in sensors do not meet your needs, create custom sensors by extending
 # Create a custom sensor to check database record counts
 
 from airflow.sensors.base import BaseSensorOperator
-from airflow.hooks.postgres_hook import PostgresHook
-from airflow.utils.decorators import apply_defaults
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
+import re
 from typing import Any
 
 
@@ -389,13 +392,12 @@ class RecordCountSensor(BaseSensorOperator):
     :param min_records: Minimum number of records required
     """
 
-    # Template fields allow Jinja templating in these parameters
-    template_fields = ('table_name', 'date_column', 'target_date')
+    # Template fields allow Jinja templating in the date parameter
+    template_fields = ('target_date',)
 
     # Define UI color for this sensor in the Airflow graph view
     ui_color = '#7c8ac9'
 
-    @apply_defaults
     def __init__(
         self,
         postgres_conn_id: str,
@@ -406,11 +408,19 @@ class RecordCountSensor(BaseSensorOperator):
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
+        self._validate_identifier(table_name, allow_schema=True)
+        self._validate_identifier(date_column)
         self.postgres_conn_id = postgres_conn_id
         self.table_name = table_name
         self.date_column = date_column
         self.min_records = min_records
         self.target_date = target_date
+
+    @staticmethod
+    def _validate_identifier(identifier: str, allow_schema: bool = False) -> None:
+        pattern = r'^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$' if allow_schema else r'^[A-Za-z_][A-Za-z0-9_]*$'
+        if not re.match(pattern, identifier):
+            raise ValueError(f"Invalid SQL identifier: {identifier}")
 
     def poke(self, context: dict) -> bool:
         """
@@ -456,7 +466,6 @@ class ApiHealthSensor(BaseSensorOperator):
     template_fields = ('endpoint',)
     ui_color = '#66c2a5'
 
-    @apply_defaults
     def __init__(
         self,
         http_conn_id: str,
@@ -523,7 +532,7 @@ with DAG(
     dag_id='custom_sensor_pipeline',
     default_args=default_args,
     description='Pipeline using custom sensors',
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=False,
 ) as dag:
@@ -572,14 +581,14 @@ The `poke_interval` and `timeout` parameters control how sensors behave over tim
 # sensor_timing_example.py
 # Demonstrates timing configuration for sensors
 
-from airflow import DAG
-from airflow.sensors.filesystem import FileSensor
+from airflow.sdk import DAG
+from airflow.providers.standard.sensors.filesystem import FileSensor
 from datetime import datetime, timedelta
 
 with DAG(
     dag_id='sensor_timing_demo',
     start_date=datetime(2026, 1, 1),
-    schedule_interval='@daily',
+    schedule='@daily',
     catchup=False,
 ) as dag:
 
@@ -632,15 +641,15 @@ The `mode` parameter fundamentally changes how sensors use resources.
 # sensor_mode_example.py
 # Compare poke and reschedule modes
 
-from airflow import DAG
-from airflow.sensors.filesystem import FileSensor
+from airflow.sdk import DAG
+from airflow.providers.standard.sensors.filesystem import FileSensor
 from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 from datetime import datetime, timedelta
 
 with DAG(
     dag_id='sensor_mode_comparison',
     start_date=datetime(2026, 1, 1),
-    schedule_interval='@daily',
+    schedule='@daily',
     catchup=False,
 ) as dag:
 
