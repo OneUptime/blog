@@ -15,7 +15,7 @@ AWS Lambda Layers let you package libraries, custom runtimes, and shared code se
 | Problem | Without Layers | With Layers |
 |---------|----------------|-------------|
 | Shared dependencies | Duplicated in every function | Shared across functions |
-| Deployment package size | Can hit 250MB limit | Function code stays small |
+| Deployment package size | Can hit 250 MB unzipped limit | Function code stays small |
 | Dependency updates | Update every function | Update layer once |
 | Cold start time | Large packages load slowly | Smaller packages load faster |
 | Code organization | Mixed application and library code | Clean separation |
@@ -43,7 +43,7 @@ graph TB
 
 ## Creating a Python Lambda Layer
 
-Let's build a layer containing common Python packages like `requests` and `boto3` utilities.
+Let's build a layer containing common Python packages like `requests` and AWS utilities.
 
 ### Step 1: Set Up the Directory Structure
 
@@ -63,7 +63,7 @@ cd my-python-layer
 Install packages into the layer directory. You need to target the correct platform since Lambda runs on Amazon Linux.
 
 ```bash
-# Install packages for Lambda's Amazon Linux 2 environment
+# Install packages for Lambda's Linux x86_64 environment
 # The --platform flag ensures compatibility with Lambda's runtime
 pip install \
     --platform manylinux2014_x86_64 \
@@ -156,7 +156,7 @@ aws lambda publish-layer-version \
     --layer-name my-node-utilities \
     --description "Common Node.js utilities including lodash and axios" \
     --zip-file fileb://my-node-layer.zip \
-    --compatible-runtimes nodejs18.x nodejs20.x \
+    --compatible-runtimes nodejs22.x nodejs24.x \
     --compatible-architectures x86_64 arm64
 ```
 
@@ -166,20 +166,20 @@ Sometimes you need native binaries in your Lambda function, such as FFmpeg for v
 
 ### Building FFmpeg Layer
 
-Since Lambda runs on Amazon Linux 2, you should compile or download binaries that are compatible with that environment.
+Since Lambda runtimes are paired with specific Amazon Linux versions, you should compile or download binaries that are compatible with your target runtime environment.
 
 ```bash
-# Use Docker to build in an Amazon Linux 2 environment
+# Use Docker to build in an Amazon Linux 2023 environment
 # This ensures binary compatibility with Lambda
 
 # Create a Dockerfile for building the layer
 cat > Dockerfile << 'EOF'
-FROM amazonlinux:2
+FROM amazonlinux:2023
 
-RUN yum update -y && \
-    yum install -y tar gzip xz
+RUN dnf update -y && \
+    dnf install -y tar gzip xz curl zip
 
-# Download pre-compiled FFmpeg for Amazon Linux
+# Download a static Linux x86_64 FFmpeg build
 RUN curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
     -o ffmpeg.tar.xz && \
     tar -xf ffmpeg.tar.xz && \
@@ -190,8 +190,7 @@ RUN curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-stati
 
 # Create the layer ZIP
 WORKDIR /opt
-RUN yum install -y zip && \
-    zip -r /ffmpeg-layer.zip bin/
+RUN zip -r /ffmpeg-layer.zip bin/
 EOF
 
 # Build the Docker image and extract the layer
@@ -203,7 +202,7 @@ aws lambda publish-layer-version \
     --layer-name ffmpeg \
     --description "FFmpeg and FFprobe binaries" \
     --zip-file fileb://ffmpeg-layer.zip \
-    --compatible-runtimes python3.11 python3.12 nodejs18.x nodejs20.x \
+    --compatible-runtimes python3.12 python3.13 nodejs22.x nodejs24.x \
     --compatible-architectures x86_64
 ```
 
@@ -280,7 +279,14 @@ Create a standardized logging configuration for all your functions.
 import logging
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+
+LOG_RECORD_BUILTINS = {
+    'args', 'asctime', 'created', 'exc_info', 'exc_text', 'filename',
+    'funcName', 'levelname', 'levelno', 'lineno', 'module', 'msecs',
+    'message', 'msg', 'name', 'pathname', 'process', 'processName',
+    'relativeCreated', 'stack_info', 'thread', 'threadName',
+}
 
 class JSONFormatter(logging.Formatter):
     """
@@ -290,7 +296,7 @@ class JSONFormatter(logging.Formatter):
 
     def format(self, record):
         log_entry = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'level': record.levelname,
             'message': record.getMessage(),
             'logger': record.name,
@@ -302,9 +308,10 @@ class JSONFormatter(logging.Formatter):
         if record.exc_info:
             log_entry['exception'] = self.formatException(record.exc_info)
 
-        # Include any extra fields
-        if hasattr(record, 'extra'):
-            log_entry.update(record.extra)
+        # Include any fields passed through logger calls with extra={...}
+        for key, value in record.__dict__.items():
+            if key not in LOG_RECORD_BUILTINS and key not in log_entry:
+                log_entry[key] = value
 
         return json.dumps(log_entry)
 
@@ -835,9 +842,9 @@ Maintain documentation of what each layer contains and its version history.
 |-------|-------|----------|
 | Module not found | Wrong directory structure | Verify `python/` or `nodejs/node_modules/` at root |
 | Binary not executable | Permissions lost in ZIP | Run `chmod +x` before zipping |
-| Binary fails to run | Wrong architecture | Build for Amazon Linux 2 and x86_64 or arm64 |
+| Binary fails to run | Wrong architecture or OS build target | Build for the runtime's Amazon Linux version and x86_64 or arm64 |
 | Import errors | Version mismatch | Pin versions and test with same runtime |
-| Layer too large | Over 250MB limit | Split into multiple layers or use container images |
+| Layer too large | Over 250 MB unzipped limit | Split into multiple layers or use container images |
 
 ## Summary
 
@@ -846,7 +853,7 @@ Lambda Layers provide a clean way to manage shared code and dependencies across 
 Key takeaways:
 
 - Use the correct directory structure for your runtime (`python/` or `nodejs/node_modules/`)
-- Build native binaries in an Amazon Linux 2 environment for compatibility
+- Build native binaries in an environment that matches the runtime's Amazon Linux version
 - Version your layers and test updates incrementally
 - Keep layers focused on single concerns
 - Use infrastructure as code (SAM or Terraform) for reproducible deployments
