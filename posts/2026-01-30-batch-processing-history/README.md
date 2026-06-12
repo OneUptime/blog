@@ -83,11 +83,11 @@ CREATE TABLE batch_job_execution (
 );
 
 -- Job Execution Parameters: Runtime parameters passed to job
--- Supports typed parameters (STRING, LONG, DOUBLE, DATE) with identifying flag
+-- Stores parameter type names and values with an identifying flag
 CREATE TABLE batch_job_execution_params (
     job_execution_id BIGINT NOT NULL,             -- Links to job execution
     parameter_name VARCHAR(100) NOT NULL,         -- Parameter key name
-    parameter_type VARCHAR(100) NOT NULL,         -- Java type of parameter value
+    parameter_type VARCHAR(100) NOT NULL,         -- Fully qualified Java type name
     parameter_value VARCHAR(2500),                -- Serialized parameter value
     identifying CHAR(1) NOT NULL,                 -- Y/N: affects job instance identity
     CONSTRAINT job_exec_params_fk FOREIGN KEY (job_execution_id)
@@ -141,7 +141,7 @@ CREATE TABLE batch_job_execution_context (
 -- Sequences for generating unique IDs
 CREATE SEQUENCE batch_step_execution_seq START WITH 1 INCREMENT BY 1;
 CREATE SEQUENCE batch_job_execution_seq START WITH 1 INCREMENT BY 1;
-CREATE SEQUENCE batch_job_seq START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE batch_job_instance_seq START WITH 1 INCREMENT BY 1;
 
 -- Indexes for common query patterns
 CREATE INDEX idx_job_exec_instance ON batch_job_execution(job_instance_id);
@@ -153,7 +153,7 @@ CREATE INDEX idx_step_exec_status ON batch_step_execution(status);
 
 ## 3. Configuring the Job Repository
 
-Configure Spring Batch to use a persistent job repository. This configuration enables automatic history tracking and restart support. The `@EnableBatchProcessing` annotation sets up the infrastructure, while the datasource configuration points to your history database.
+Configure Spring Batch to use a persistent job repository. This configuration enables automatic history tracking and restart support. In Spring Batch 6, `@EnableBatchProcessing` sets up common batch infrastructure, while `@EnableJdbcJobRepository` selects JDBC storage for the repository metadata.
 
 `BatchHistoryConfig.java`
 
@@ -162,15 +162,10 @@ package com.example.batch.config;
 
 import javax.sql.DataSource;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
-import org.springframework.batch.core.explore.JobExplorer;
-import org.springframework.batch.core.explore.support.JobExplorerFactoryBean;
-import org.springframework.batch.core.launch.JobLauncher;
-import org.springframework.batch.core.launch.support.TaskExecutorJobLauncher;
-import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.batch.core.repository.support.JobRepositoryFactoryBean;
+import org.springframework.batch.core.configuration.annotation.EnableJdbcJobRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.transaction.PlatformTransactionManager;
 
 /**
@@ -180,67 +175,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  */
 @Configuration
 @EnableBatchProcessing
+@EnableJdbcJobRepository(tablePrefix = "batch_")
 public class BatchHistoryConfig {
-
-    /**
-     * Creates the job repository that stores all execution history.
-     * Uses JDBC for persistence, enabling restart after application restart.
-     *
-     * @param dataSource Database connection for history tables
-     * @param transactionManager Transaction manager for atomic updates
-     * @return Configured job repository
-     */
-    @Bean
-    public JobRepository jobRepository(DataSource dataSource,
-                                        PlatformTransactionManager transactionManager)
-            throws Exception {
-        JobRepositoryFactoryBean factory = new JobRepositoryFactoryBean();
-        factory.setDataSource(dataSource);
-        factory.setTransactionManager(transactionManager);
-
-        // Use database-specific incrementer for ID generation
-        factory.setDatabaseType("POSTGRES");
-
-        // Table prefix allows multiple batch apps to share a database
-        factory.setTablePrefix("batch_");
-
-        // Validate that metadata schema exists on startup
-        factory.setValidateTransactionState(true);
-
-        factory.afterPropertiesSet();
-        return factory.getObject();
-    }
-
-    /**
-     * Job explorer provides read-only access to execution history.
-     * Use this for querying past executions without modifying state.
-     *
-     * @param dataSource Database connection for history tables
-     * @return Configured job explorer for history queries
-     */
-    @Bean
-    public JobExplorer jobExplorer(DataSource dataSource) throws Exception {
-        JobExplorerFactoryBean factory = new JobExplorerFactoryBean();
-        factory.setDataSource(dataSource);
-        factory.setTablePrefix("batch_");
-        factory.afterPropertiesSet();
-        return factory.getObject();
-    }
-
-    /**
-     * Job launcher for starting batch jobs.
-     * Configured for synchronous execution; use TaskExecutor for async.
-     *
-     * @param jobRepository Repository for persisting execution state
-     * @return Configured job launcher
-     */
-    @Bean
-    public JobLauncher jobLauncher(JobRepository jobRepository) throws Exception {
-        TaskExecutorJobLauncher launcher = new TaskExecutorJobLauncher();
-        launcher.setJobRepository(jobRepository);
-        launcher.afterPropertiesSet();
-        return launcher;
-    }
 
     /**
      * Transaction manager for job repository operations.
@@ -251,7 +187,7 @@ public class BatchHistoryConfig {
      */
     @Bean
     public PlatformTransactionManager transactionManager(DataSource dataSource) {
-        return new DataSourceTransactionManager(dataSource);
+        return new JdbcTransactionManager(dataSource);
     }
 }
 ```
@@ -275,12 +211,12 @@ stateDiagram-v2
     note right of FAILED
         Failed jobs can be
         restarted from the
-        last successful step
+        last persisted checkpoint
     end note
 
     note right of STOPPED
         Stopped jobs resume
-        from exact position
+        from persisted state
         using execution context
     end note
 ```
@@ -299,12 +235,11 @@ package com.example.batch.service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobInstance;
 import org.springframework.batch.core.StepExecution;
-import org.springframework.batch.core.explore.JobExplorer;
+import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.stereotype.Service;
 
 /**
@@ -315,10 +250,10 @@ import org.springframework.stereotype.Service;
 @Service
 public class BatchHistoryService {
 
-    private final JobExplorer jobExplorer;
+    private final JobRepository jobRepository;
 
-    public BatchHistoryService(JobExplorer jobExplorer) {
-        this.jobExplorer = jobExplorer;
+    public BatchHistoryService(JobRepository jobRepository) {
+        this.jobRepository = jobRepository;
     }
 
     /**
@@ -329,21 +264,12 @@ public class BatchHistoryService {
      * @return Most recent execution or empty if job never ran
      */
     public Optional<JobExecution> getLastExecution(String jobName) {
-        // Get the most recent job instance
-        List<JobInstance> instances = jobExplorer.findJobInstancesByJobName(
-            jobName, 0, 1  // Start at 0, fetch 1 instance
-        );
-
-        if (instances.isEmpty()) {
+        JobInstance instance = jobRepository.getLastJobInstance(jobName);
+        if (instance == null) {
             return Optional.empty();
         }
 
-        // Get all executions for this instance (includes restarts)
-        List<JobExecution> executions = jobExplorer.getJobExecutions(instances.get(0));
-
-        // Return the most recent execution
-        return executions.stream()
-            .max((e1, e2) -> e1.getStartTime().compareTo(e2.getStartTime()));
+        return Optional.ofNullable(jobRepository.getLastJobExecution(instance));
     }
 
     /**
@@ -356,16 +282,17 @@ public class BatchHistoryService {
      */
     public List<JobExecution> getFailedExecutions(String jobName, LocalDateTime since) {
         // Get recent instances (adjust count based on expected volume)
-        List<JobInstance> instances = jobExplorer.findJobInstancesByJobName(
-            jobName, 0, 100
-        );
+        List<JobInstance> instances = jobRepository.findJobInstances(jobName)
+            .stream()
+            .limit(100)
+            .toList();
 
         return instances.stream()
-            .flatMap(instance -> jobExplorer.getJobExecutions(instance).stream())
+            .flatMap(instance -> jobRepository.getJobExecutions(instance).stream())
             .filter(exec -> exec.getStatus() == BatchStatus.FAILED)
             .filter(exec -> exec.getStartTime() != null &&
-                           !exec.getStartTime().isBefore(java.sql.Timestamp.valueOf(since).toInstant()))
-            .collect(Collectors.toList());
+                           !exec.getStartTime().isBefore(since))
+            .toList();
     }
 
     /**
@@ -390,7 +317,7 @@ public class BatchHistoryService {
      * @return List of step executions with metrics
      */
     public List<StepExecution> getStepHistory(Long jobExecutionId) {
-        JobExecution execution = jobExplorer.getJobExecution(jobExecutionId);
+        JobExecution execution = jobRepository.getJobExecution(jobExecutionId);
         if (execution == null) {
             return List.of();
         }
@@ -406,14 +333,15 @@ public class BatchHistoryService {
      * @return Execution statistics
      */
     public ExecutionStats getExecutionStats(String jobName, int instanceCount) {
-        List<JobInstance> instances = jobExplorer.findJobInstancesByJobName(
-            jobName, 0, instanceCount
-        );
+        List<JobInstance> instances = jobRepository.findJobInstances(jobName)
+            .stream()
+            .limit(instanceCount)
+            .toList();
 
         long completed = 0, failed = 0, running = 0;
 
         for (JobInstance instance : instances) {
-            for (JobExecution exec : jobExplorer.getJobExecutions(instance)) {
+            for (JobExecution exec : jobRepository.getJobExecutions(instance)) {
                 switch (exec.getStatus()) {
                     case COMPLETED -> completed++;
                     case FAILED -> failed++;
@@ -557,17 +485,17 @@ sequenceDiagram
 package com.example.batch.service;
 
 import java.util.Set;
+import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.JobInstance;
 import org.springframework.batch.core.JobParameters;
-import org.springframework.batch.core.JobParametersInvalidException;
-import org.springframework.batch.core.explore.JobExplorer;
-import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 import org.springframework.batch.core.launch.JobOperator;
-import org.springframework.batch.core.launch.NoSuchJobException;
 import org.springframework.batch.core.launch.NoSuchJobExecutionException;
 import org.springframework.batch.core.repository.JobExecutionAlreadyRunningException;
 import org.springframework.batch.core.repository.JobInstanceAlreadyCompleteException;
+import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.repository.JobRestartException;
 import org.springframework.stereotype.Service;
 
@@ -579,15 +507,12 @@ import org.springframework.stereotype.Service;
 public class BatchRestartService {
 
     private final JobOperator jobOperator;
-    private final JobExplorer jobExplorer;
-    private final JobLauncher jobLauncher;
+    private final JobRepository jobRepository;
 
     public BatchRestartService(JobOperator jobOperator,
-                               JobExplorer jobExplorer,
-                               JobLauncher jobLauncher) {
+                               JobRepository jobRepository) {
         this.jobOperator = jobOperator;
-        this.jobExplorer = jobExplorer;
-        this.jobLauncher = jobLauncher;
+        this.jobRepository = jobRepository;
     }
 
     /**
@@ -596,16 +521,15 @@ public class BatchRestartService {
      *
      * @param jobName Name of the job to restart
      * @return New job execution ID
-     * @throws NoSuchJobException if job does not exist
      * @throws JobRestartException if job cannot be restarted
      */
     public Long restartLastFailedExecution(String jobName)
-            throws NoSuchJobException, NoSuchJobExecutionException,
+            throws NoSuchJobExecutionException,
                    JobRestartException, JobInstanceAlreadyCompleteException,
-                   JobParametersInvalidException, JobExecutionAlreadyRunningException {
+                   InvalidJobParametersException, JobExecutionAlreadyRunningException {
 
         // Find all running executions for this job
-        Set<Long> runningExecutions = jobOperator.getRunningExecutions(jobName);
+        Set<JobExecution> runningExecutions = jobRepository.findRunningJobExecutions(jobName);
         if (!runningExecutions.isEmpty()) {
             throw new JobExecutionAlreadyRunningException(
                 "Job " + jobName + " already has running executions: " + runningExecutions
@@ -613,18 +537,25 @@ public class BatchRestartService {
         }
 
         // Find the most recent execution
-        Set<Long> executions = jobOperator.getExecutions(
-            jobExplorer.getLastJobInstance(jobName).getInstanceId()
-        );
+        JobInstance lastInstance = jobRepository.getLastJobInstance(jobName);
+        if (lastInstance == null) {
+            throw new NoSuchJobExecutionException("No executions found for job: " + jobName);
+        }
 
-        Long lastExecutionId = executions.stream()
-            .max(Long::compareTo)
-            .orElseThrow(() -> new NoSuchJobExecutionException(
-                "No executions found for job: " + jobName
-            ));
+        JobExecution lastExecution = jobRepository.getLastJobExecution(lastInstance);
+        if (lastExecution == null) {
+            throw new NoSuchJobExecutionException("No executions found for job: " + jobName);
+        }
+
+        if (lastExecution.getStatus() != BatchStatus.FAILED &&
+            lastExecution.getStatus() != BatchStatus.STOPPED) {
+            throw new JobRestartException(
+                "Last execution is not failed or stopped: " + lastExecution.getStatus()
+            );
+        }
 
         // Restart returns the new execution ID
-        return jobOperator.restart(lastExecutionId);
+        return jobOperator.restart(lastExecution).getId();
     }
 
     /**
@@ -636,13 +567,17 @@ public class BatchRestartService {
      */
     public Long restartExecution(Long executionId)
             throws NoSuchJobExecutionException, JobRestartException,
-                   JobInstanceAlreadyCompleteException, JobParametersInvalidException,
-                   NoSuchJobException, JobExecutionAlreadyRunningException {
-        return jobOperator.restart(executionId);
+                   JobInstanceAlreadyCompleteException, InvalidJobParametersException,
+                   JobExecutionAlreadyRunningException {
+        JobExecution execution = jobRepository.getJobExecution(executionId);
+        if (execution == null) {
+            throw new NoSuchJobExecutionException("No execution found for ID: " + executionId);
+        }
+        return jobOperator.restart(execution).getId();
     }
 
     /**
-     * Starts a job fresh, abandoning any previous failed executions.
+     * Starts a job fresh, leaving previous failed executions untouched.
      * Use when you want to reprocess from the beginning.
      *
      * @param job The job to run
@@ -650,27 +585,30 @@ public class BatchRestartService {
      * @return Job execution with status
      */
     public JobExecution startFresh(Job job, JobParameters parameters) throws Exception {
-        // Adding a timestamp parameter ensures a new job instance
-        // even if other parameters match a previous run
-        return jobLauncher.run(job, parameters);
+        // Pass parameters that identify a new job instance.
+        return jobOperator.start(job, parameters);
     }
 
     /**
-     * Abandons a stuck execution so the job can be restarted.
+     * Recovers a stuck execution so the job can be restarted.
      * Use when an execution shows as STARTED but the process died.
      *
      * @param executionId ID of the stuck execution
      */
-    public void abandonExecution(Long executionId)
-            throws NoSuchJobExecutionException, JobExecutionAlreadyRunningException {
-        jobOperator.abandon(executionId);
+    public JobExecution recoverExecution(Long executionId)
+            throws NoSuchJobExecutionException {
+        JobExecution execution = jobRepository.getJobExecution(executionId);
+        if (execution == null) {
+            throw new NoSuchJobExecutionException("No execution found for ID: " + executionId);
+        }
+        return jobOperator.recover(execution);
     }
 }
 ```
 
 ## 8. History Retention and Cleanup
 
-Batch history tables grow over time and need periodic cleanup. Implement a retention policy that keeps recent history while removing old records. The following job handles automated cleanup.
+Batch history tables grow over time and need periodic cleanup. Implement a retention policy that keeps recent history while removing old records. Do not delete failed executions that you still expect to restart. The following job handles automated cleanup for completed or abandoned executions.
 
 `HistoryRetentionConfig.java`
 
@@ -750,7 +688,7 @@ public class HistoryRetentionConfig {
                     FROM batch_step_execution se
                     JOIN batch_job_execution je ON se.job_execution_id = je.job_execution_id
                     WHERE je.end_time < """ + cutoffDate + """
-                    AND je.status IN ('COMPLETED', 'FAILED', 'ABANDONED')
+                    AND je.status IN ('COMPLETED', 'ABANDONED')
                 )
                 """);
 
@@ -761,7 +699,7 @@ public class HistoryRetentionConfig {
                     SELECT job_execution_id
                     FROM batch_job_execution
                     WHERE end_time < """ + cutoffDate + """
-                    AND status IN ('COMPLETED', 'FAILED', 'ABANDONED')
+                    AND status IN ('COMPLETED', 'ABANDONED')
                 )
                 """);
 
@@ -772,7 +710,7 @@ public class HistoryRetentionConfig {
                     SELECT job_execution_id
                     FROM batch_job_execution
                     WHERE end_time < """ + cutoffDate + """
-                    AND status IN ('COMPLETED', 'FAILED', 'ABANDONED')
+                    AND status IN ('COMPLETED', 'ABANDONED')
                 )
                 """);
 
@@ -783,7 +721,7 @@ public class HistoryRetentionConfig {
                     SELECT job_execution_id
                     FROM batch_job_execution
                     WHERE end_time < """ + cutoffDate + """
-                    AND status IN ('COMPLETED', 'FAILED', 'ABANDONED')
+                    AND status IN ('COMPLETED', 'ABANDONED')
                 )
                 """);
 
@@ -791,7 +729,7 @@ public class HistoryRetentionConfig {
             int execsDeleted = jdbc.update("""
                 DELETE FROM batch_job_execution
                 WHERE end_time < """ + cutoffDate + """
-                AND status IN ('COMPLETED', 'FAILED', 'ABANDONED')
+                AND status IN ('COMPLETED', 'ABANDONED')
                 """);
 
             // 6. Delete orphaned job instances (no remaining executions)
@@ -829,12 +767,15 @@ package com.example.batch.metrics;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import java.time.Duration;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobInstance;
-import org.springframework.batch.core.explore.JobExplorer;
+import org.springframework.batch.core.configuration.JobRegistry;
+import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -845,11 +786,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class BatchHistoryMetrics {
 
-    private final JobExplorer jobExplorer;
+    private final JobRepository jobRepository;
+    private final JobRegistry jobRegistry;
     private final MeterRegistry registry;
 
-    public BatchHistoryMetrics(JobExplorer jobExplorer, MeterRegistry registry) {
-        this.jobExplorer = jobExplorer;
+    public BatchHistoryMetrics(JobRepository jobRepository,
+                               JobRegistry jobRegistry,
+                               MeterRegistry registry) {
+        this.jobRepository = jobRepository;
+        this.jobRegistry = jobRegistry;
         this.registry = registry;
 
         // Register gauges for each known job
@@ -861,7 +806,7 @@ public class BatchHistoryMetrics {
      * Call this at startup and when new jobs are deployed.
      */
     private void registerJobMetrics() {
-        List<String> jobNames = jobExplorer.getJobNames();
+        Collection<String> jobNames = jobRegistry.getJobNames();
 
         for (String jobName : jobNames) {
             // Gauge for failed execution count
@@ -889,12 +834,13 @@ public class BatchHistoryMetrics {
      * Looks at recent instances to avoid scanning full history.
      */
     private long countByStatus(String jobName, BatchStatus status) {
-        List<JobInstance> instances = jobExplorer.findJobInstancesByJobName(
-            jobName, 0, 100  // Check last 100 instances
-        );
+        List<JobInstance> instances = jobRepository.findJobInstances(jobName)
+            .stream()
+            .limit(100)
+            .toList();
 
         return instances.stream()
-            .flatMap(instance -> jobExplorer.getJobExecutions(instance).stream())
+            .flatMap(instance -> jobRepository.getJobExecutions(instance).stream())
             .filter(exec -> exec.getStatus() == status)
             .count();
     }
@@ -910,8 +856,10 @@ public class BatchHistoryMetrics {
             return;
         }
 
-        long durationMs = execution.getEndTime().toEpochMilli() -
-                          execution.getStartTime().toEpochMilli();
+        long durationMs = Duration.between(
+            execution.getStartTime(),
+            execution.getEndTime()
+        ).toMillis();
 
         Timer.builder("batch.job.duration")
             .tag("job", execution.getJobInstance().getJobName())
@@ -927,17 +875,20 @@ public class BatchHistoryMetrics {
      */
     @Scheduled(fixedRate = 300000)  // Every 5 minutes
     public void checkForStuckJobs() {
-        for (String jobName : jobExplorer.getJobNames()) {
-            List<JobInstance> instances = jobExplorer.findJobInstancesByJobName(
-                jobName, 0, 10
-            );
+        for (String jobName : jobRegistry.getJobNames()) {
+            List<JobInstance> instances = jobRepository.findJobInstances(jobName)
+                .stream()
+                .limit(10)
+                .toList();
 
             for (JobInstance instance : instances) {
-                for (JobExecution exec : jobExplorer.getJobExecutions(instance)) {
-                    if (exec.getStatus() == BatchStatus.STARTED) {
-                        long minutesSinceUpdate =
-                            (System.currentTimeMillis() - exec.getLastUpdated().toEpochMilli())
-                            / 60000;
+                for (JobExecution exec : jobRepository.getJobExecutions(instance)) {
+                    if (exec.getStatus() == BatchStatus.STARTED &&
+                        exec.getLastUpdated() != null) {
+                        long minutesSinceUpdate = Duration.between(
+                            exec.getLastUpdated(),
+                            java.time.LocalDateTime.now()
+                        ).toMinutes();
 
                         if (minutesSinceUpdate > 30) {
                             System.err.printf(
@@ -966,12 +917,13 @@ package com.example.batch.controller;
 import com.example.batch.service.BatchHistoryService;
 import com.example.batch.service.BatchHistoryService.ExecutionStats;
 import com.example.batch.service.BatchRestartService;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.StepExecution;
-import org.springframework.batch.core.explore.JobExplorer;
+import org.springframework.batch.core.configuration.JobRegistry;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -985,14 +937,14 @@ public class BatchHistoryController {
 
     private final BatchHistoryService historyService;
     private final BatchRestartService restartService;
-    private final JobExplorer jobExplorer;
+    private final JobRegistry jobRegistry;
 
     public BatchHistoryController(BatchHistoryService historyService,
                                    BatchRestartService restartService,
-                                   JobExplorer jobExplorer) {
+                                   JobRegistry jobRegistry) {
         this.historyService = historyService;
         this.restartService = restartService;
-        this.jobExplorer = jobExplorer;
+        this.jobRegistry = jobRegistry;
     }
 
     /**
@@ -1000,8 +952,8 @@ public class BatchHistoryController {
      * GET /api/batch/jobs
      */
     @GetMapping("/jobs")
-    public List<String> listJobs() {
-        return jobExplorer.getJobNames();
+    public Collection<String> listJobs() {
+        return jobRegistry.getJobNames();
     }
 
     /**
