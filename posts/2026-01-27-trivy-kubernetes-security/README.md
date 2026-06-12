@@ -320,42 +320,40 @@ spec:
     maxHigh: 5
 ```
 
-### Option 3: Trivy Admission Webhook (Native)
+### Option 3: Custom Admission Webhook Fed by the Operator
 
-Aqua provides a standalone admission webhook that scans images at deploy time.
+The Trivy Operator can broadcast scan reports to an external endpoint as they are created or updated. You can pair that with a `ValidatingWebhookConfiguration` that consults your service before allowing deployments - useful when you need bespoke admission logic that Kyverno or Gatekeeper cannot express.
 
 ```bash
-# Install the Trivy admission webhook
-helm install trivy-admission aqua/trivy \
+# Configure the operator to broadcast reports to your endpoint
+helm upgrade trivy-operator aqua/trivy-operator \
   --namespace trivy-system \
-  --set trivy.mode=admission \
-  --set trivy.severity="CRITICAL,HIGH" \
-  --set trivy.ignoreUnfixed=true
+  --set operator.webhookBroadcastURL="https://your-webhook.example.com/trivy" \
+  --set operator.webhookBroadcastTimeout="30s"
 ```
 
 ```yaml
-# Configure webhook behavior
-# trivy-admission-config.yaml
-apiVersion: v1
-kind: ConfigMap
+# A ValidatingWebhookConfiguration that defers admission decisions
+# to your service, which consults the latest VulnerabilityReport
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
 metadata:
-  name: trivy-admission-config
-  namespace: trivy-system
-data:
-  config.yaml: |
-    # Block images with critical vulnerabilities
-    block:
-      severities:
-        - CRITICAL
-      # Allow specific images to bypass checks
-      allowlist:
-        - "gcr.io/distroless/*"
-        - "registry.k8s.io/pause:*"
-    # Warn but allow high severity
-    warn:
-      severities:
-        - HIGH
+  name: trivy-vuln-admission
+webhooks:
+  - name: vuln-check.example.com
+    clientConfig:
+      url: "https://your-webhook.example.com/admit"
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
 ```
+
+This approach gives you maximum flexibility but means running and maintaining your own webhook service. For most teams, Options 1 or 2 are simpler because the policy engine handles the webhook plumbing for you.
 
 ## CI/CD Integration
 
@@ -394,7 +392,7 @@ jobs:
           exit-code: '1'
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -434,11 +432,10 @@ Export Trivy metrics to Prometheus and create alerts for security issues.
 ### Enable Prometheus Metrics
 
 ```bash
-# Enable metrics in the operator
+# Enable a ServiceMonitor so Prometheus scrapes the operator's metrics endpoint
 helm upgrade trivy-operator aqua/trivy-operator \
   --namespace trivy-system \
-  --set serviceMonitor.enabled=true \
-  --set trivy.metrics.enabled=true
+  --set serviceMonitor.enabled=true
 ```
 
 ### Prometheus Alert Rules
@@ -457,20 +454,20 @@ spec:
       rules:
         - alert: CriticalVulnerabilitiesDetected
           expr: |
-            sum by (namespace, resource_name) (
-              trivy_vulnerability_id{severity="Critical"}
+            sum by (namespace, name) (
+              trivy_image_vulnerabilities{severity="Critical"}
             ) > 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Critical vulnerabilities found in {{ $labels.namespace }}/{{ $labels.resource_name }}"
+            summary: "Critical vulnerabilities found in {{ $labels.namespace }}/{{ $labels.name }}"
             description: "Workload has critical vulnerabilities that need immediate attention."
 
         - alert: HighVulnerabilityCount
           expr: |
             sum by (namespace) (
-              trivy_vulnerability_id{severity=~"Critical|High"}
+              trivy_image_vulnerabilities{severity=~"Critical|High"}
             ) > 50
           for: 1h
           labels:
@@ -481,14 +478,14 @@ spec:
 
         - alert: ConfigAuditFailures
           expr: |
-            sum by (namespace, resource_name) (
-              trivy_configaudit_info{severity="Critical"}
+            sum by (namespace, name) (
+              trivy_resource_configaudits{severity="Critical"}
             ) > 0
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Critical misconfigurations in {{ $labels.namespace }}/{{ $labels.resource_name }}"
+            summary: "Critical misconfigurations in {{ $labels.namespace }}/{{ $labels.name }}"
             description: "Workload has critical security misconfigurations."
 ```
 
