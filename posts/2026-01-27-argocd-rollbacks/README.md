@@ -53,7 +53,7 @@ argocd app history myapp
 ```bash
 # Get detailed information about a specific history entry
 # Useful for understanding what was deployed at that point
-argocd app history myapp --id 2
+argocd app get myapp -o json | jq '.status.history[] | select(.id == 2)'
 
 # View the manifests that were deployed in a specific revision
 argocd app manifests myapp --revision def456ghi
@@ -61,22 +61,10 @@ argocd app manifests myapp --revision def456ghi
 
 ### Configuring History Retention
 
-```yaml
-# argocd-cm ConfigMap - controls how much history ArgoCD retains
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Number of history entries to keep per application
-  # Higher values provide more rollback options but use more storage
-  resource.customizations.health.argoproj.io_Application: |
-    hs = {}
-    hs.status = "Healthy"
-    return hs
-  # Configure history limit (default is 10)
-  controller.status.processors: "20"
+```bash
+# Configure history limit for an existing application (default is 10)
+# Higher values provide more rollback options but use more storage
+argocd app set myapp --revision-history-limit 15
 ```
 
 ```yaml
@@ -187,8 +175,8 @@ echo "Starting emergency rollback for ${APP_NAME}..."
 # If no revision specified, rollback to previous
 if [ -z "$REVISION_ID" ]; then
     # Get the second-to-last revision (previous deployment)
-    REVISION_ID=$(argocd app history "$APP_NAME" -o json | \
-        jq -r '.[-2].id // empty')
+    REVISION_ID=$(argocd app get "$APP_NAME" -o json | \
+        jq -r '.status.history[-2].id // empty')
 
     if [ -z "$REVISION_ID" ]; then
         echo "Error: No previous revision found"
@@ -216,7 +204,7 @@ fi
 
 ## Automated Rollback with Health Checks
 
-Automated rollbacks take the human element out of incident response. By combining ArgoCD's sync policies with health checks, you can create self-healing deployments.
+ArgoCD can automatically sync, retry failed syncs, and self-heal cluster drift, but it does not natively roll an application back when health checks fail. For automated rollback behavior, combine ArgoCD health checks with an external controller or use Argo Rollouts for progressive delivery.
 
 ```mermaid
 flowchart TD
@@ -238,7 +226,7 @@ flowchart TD
     I -->|No| F
 ```
 
-### Configure Automated Sync with Rollback
+### Configure Automated Sync and Health Signals
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -246,7 +234,7 @@ kind: Application
 metadata:
   name: myapp
   namespace: argocd
-  # Annotations for automated rollback behavior
+  # Annotations for alerting on sync failure
   annotations:
     # Enable notifications on sync failure
     notifications.argoproj.io/subscribe.on-sync-failed.slack: alerts
@@ -265,7 +253,7 @@ spec:
       prune: true
       # Revert manual changes made to the cluster
       selfHeal: true
-      # Allow empty resources (useful during rollback)
+      # Keep empty applications blocked by default as a safety mechanism
       allowEmpty: false
     syncOptions:
       - Validate=true
@@ -319,7 +307,7 @@ data:
 
 ### Automated Rollback Controller
 
-For fully automated rollbacks, you can create a custom controller that monitors application health:
+For fully automated rollbacks, create a custom controller that monitors application health and disables automated sync before running an ArgoCD rollback:
 
 ```yaml
 # CronJob that checks application health and triggers rollback
@@ -338,7 +326,7 @@ spec:
           serviceAccountName: argocd-auto-rollback
           containers:
           - name: rollback-checker
-            image: argoproj/argocd:v2.9.0
+            image: quay.io/argoproj/argocd:v3.4.3
             command:
             - /bin/bash
             - -c
@@ -348,18 +336,20 @@ spec:
 
               for APP in $APPS; do
                 # Get current health status
-                HEALTH=$(argocd app get $APP -o json | jq -r '.status.health.status')
-                SYNC=$(argocd app get $APP -o json | jq -r '.status.sync.status')
+                HEALTH=$(argocd --core app get "$APP" -o json | jq -r '.status.health.status')
+                SYNC=$(argocd --core app get "$APP" -o json | jq -r '.status.sync.status')
 
-                # Check if unhealthy for more than 5 minutes
+                # Check if the application is currently unhealthy
                 if [ "$HEALTH" = "Degraded" ]; then
                   echo "Application $APP is degraded, initiating rollback..."
 
-                  # Get previous healthy revision
-                  PREV_REV=$(argocd app history $APP -o json | jq -r '.[-2].id')
+                  # Get previous revision
+                  PREV_REV=$(argocd --core app get "$APP" -o json | jq -r '.status.history[-2].id // empty')
 
                   if [ -n "$PREV_REV" ]; then
-                    argocd app rollback $APP $PREV_REV
+                    # ArgoCD does not allow rollback while automated sync is enabled
+                    argocd --core app set "$APP" --sync-policy manual
+                    argocd --core app rollback "$APP" "$PREV_REV"
                     echo "Rolled back $APP to revision $PREV_REV"
                   fi
                 fi
@@ -372,13 +362,26 @@ spec:
 For more sophisticated automated rollbacks, combine ArgoCD with Argo Rollouts:
 
 ```yaml
-# Rollout with automatic rollback on metrics failure
+# Rollout with analysis-driven aborts and fast-tracked rollback to recent revisions
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
   name: myapp
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: myapp
+        image: myorg/myapp:v1.2.0
+        ports:
+        - containerPort: 8080
   strategy:
     canary:
       # Start with 20% of traffic
@@ -395,7 +398,7 @@ spec:
         args:
         - name: service-name
           value: myapp
-  # Automatic rollback on analysis failure
+  # Fast-track rollback to recent ReplicaSets
   rollbackWindow:
     revisions: 3
 ---
@@ -467,7 +470,7 @@ git push origin main
 git log --oneline -10
 
 # Step 2: Create a revert commit
-git revert abc123def -m "Revert: deployment caused 5xx errors"
+git revert abc123def --no-edit
 
 # Step 3: Push to trigger ArgoCD sync
 git push origin main
@@ -523,7 +526,7 @@ git checkout main
 git pull origin main
 
 # Create revert commit
-git revert "$BAD_COMMIT" --no-edit -m "Emergency revert: deployment issue"
+git revert "$BAD_COMMIT" --no-edit
 git push origin main
 
 echo "Phase 3: Syncing ArgoCD with Git revert..."
@@ -598,10 +601,17 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
       - name: myapp
+        image: myorg/myapp:v1.2.0
         # Liveness probe - restart if unhealthy
         livenessProbe:
           httpGet:
@@ -636,6 +646,8 @@ kind: Job
 metadata:
   name: db-migrate
   annotations:
+    # Run as an ArgoCD sync hook
+    argocd.argoproj.io/hook: Sync
     # Run before main deployment
     argocd.argoproj.io/sync-wave: "-1"
     # Only keep successful jobs
@@ -656,6 +668,18 @@ metadata:
   annotations:
     # Deploy after migrations complete
     argocd.argoproj.io/sync-wave: "0"
+spec:
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: myapp
+        image: myapp:latest
 ```
 
 ### 4. Configure Notifications
@@ -706,8 +730,8 @@ CURRENT_REV=$(argocd app get "$APP_NAME" -o json | jq -r '.status.sync.revision'
 echo "Current revision: $CURRENT_REV"
 
 # Get previous revision
-HISTORY=$(argocd app history "$APP_NAME" -o json)
-PREV_REV=$(echo "$HISTORY" | jq -r '.[-2].id')
+HISTORY=$(argocd app get "$APP_NAME" -o json)
+PREV_REV=$(echo "$HISTORY" | jq -r '.status.history[-2].id // empty')
 echo "Previous revision: $PREV_REV"
 
 # Perform rollback
@@ -780,6 +804,6 @@ Create clear runbooks for your team:
 
 ---
 
-Effective rollback strategies are essential for maintaining reliable deployments. ArgoCD provides powerful tools for both manual and automated rollbacks, but the key is preparation. Regular testing, clear documentation, and proper health checks ensure that when issues occur, recovery is swift and stress-free.
+Effective rollback strategies are essential for maintaining reliable deployments. ArgoCD provides powerful tools for manual rollbacks and integrates well with external automation for automated rollback workflows, but the key is preparation. Regular testing, clear documentation, and proper health checks ensure that when issues occur, recovery is swift and stress-free.
 
 For comprehensive monitoring of your ArgoCD deployments and automated alerting on deployment issues, check out [OneUptime](https://oneuptime.com) - the open-source observability platform that helps you detect and respond to incidents before they impact your users.
