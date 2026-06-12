@@ -35,23 +35,23 @@ Grafana supports several approaches from simple to sophisticated:
 Detect values more than N standard deviations from the mean:
 
 ```promql
-# Current value
+# Current request rate
 
-http_requests_total
+sum(rate(http_requests_total[5m]))
 
 # Mean over past week
-avg_over_time(http_requests_total[7d])
+avg_over_time((sum(rate(http_requests_total[5m])))[7d:1h])
 
 # Standard deviation
-stddev_over_time(http_requests_total[7d])
+stddev_over_time((sum(rate(http_requests_total[5m])))[7d:1h])
 
 # Z-score: How many standard deviations from mean
 (
-  http_requests_total
-  - avg_over_time(http_requests_total[7d])
+  sum(rate(http_requests_total[5m]))
+  - avg_over_time((sum(rate(http_requests_total[5m])))[7d:1h])
 )
 /
-stddev_over_time(http_requests_total[7d])
+stddev_over_time((sum(rate(http_requests_total[5m])))[7d:1h])
 ```
 
 Alert when z-score exceeds threshold:
@@ -105,9 +105,8 @@ Use quantiles to identify outliers:
 
 ```promql
 # Values above 99th percentile are anomalous
-http_request_duration_seconds
-> on()
-quantile_over_time(0.99, http_request_duration_seconds[7d])
+request_latency_seconds
+> quantile_over_time(0.99, request_latency_seconds[7d])
 ```
 
 ## Seasonal Anomaly Detection
@@ -162,37 +161,38 @@ Average multiple historical periods for a more stable baseline:
 ) / 4
 ```
 
-## Grafana Machine Learning (Enterprise)
+## Grafana AI/ML (Grafana Cloud)
 
-Grafana Enterprise includes native ML capabilities for anomaly detection.
+Grafana Cloud includes AI/ML capabilities for anomaly detection.
 
 ### Setting Up ML-Powered Alerts
 
-1. Navigate to Alerting > Alert rules
-2. Create a new alert rule
-3. In the expression builder, select "Machine Learning" condition
-4. Configure the ML model:
+1. Navigate to AI & machine learning > Outlier Detection
+2. Create an Outlier Detector
+3. Build the query that defines the baseline group
+4. Configure the detection algorithm and sensitivity:
 
 ```yaml
 ML Configuration:
-  Algorithm: Outlier detection
-  Training window: 14 days
+  Algorithm: DBSCAN or MAD
   Sensitivity: Medium
 
-  # Model learns normal patterns from historical data
-  # Alerts when current value deviates significantly
+  # Detector compares similar time series in the baseline group
+  # Alerts when one or more series behave differently from their peers
 ```
+
+5. Click Create Alert from the Outlier Detectors list and save the generated Grafana-managed alert.
 
 ### ML Expression in Alert Rules
 
 ```yaml
-# Alert rule using ML predictions
+# Alert rule using an Outlier Detector result
 groups:
   - name: ml-anomalies
     rules:
       - alert: MLDetectedAnomaly
         expr: |
-          grafana_ml_outlier_score{model="request-rate"} > 0.9
+          request_rate:outliers == 1
         for: 5m
         labels:
           severity: warning
@@ -208,6 +208,8 @@ Facebook's Prophet excels at time series forecasting with seasonality.
 
 ```python
 # anomaly_detector.py
+from datetime import datetime, timedelta
+
 from prophet import Prophet
 import pandas as pd
 from prometheus_api_client import PrometheusConnect
@@ -239,7 +241,7 @@ def detect_anomalies(prom_url: str, query: str, lookback_days: int = 30):
     model.fit(df)
 
     # Generate predictions
-    future = model.make_future_dataframe(periods=24, freq='H')
+    future = model.make_future_dataframe(periods=24, freq='h')
     forecast = model.predict(future)
 
     # Identify anomalies (outside prediction interval)
@@ -251,9 +253,11 @@ def detect_anomalies(prom_url: str, query: str, lookback_days: int = 30):
 
 ### Exposing Anomalies as Metrics
 
-Push anomaly scores back to Prometheus:
+Expose anomaly scores for Prometheus to scrape:
 
 ```python
+import time
+
 from prometheus_client import Gauge, start_http_server
 
 anomaly_score = Gauge(
@@ -261,6 +265,12 @@ anomaly_score = Gauge(
     'Anomaly score from ML model',
     ['metric', 'service']
 )
+
+services = ['api']
+
+def detect_anomaly_score(service: str) -> float:
+    # Replace with the score from your model.
+    return 0.0
 
 def update_anomaly_scores():
     for service in services:
@@ -288,12 +298,12 @@ Show predictions with confidence intervals:
 sum(rate(http_requests_total[5m]))
 
 # Upper bound (mean + 2*stddev)
-avg_over_time(sum(rate(http_requests_total[5m]))[1d:])
-+ 2 * stddev_over_time(sum(rate(http_requests_total[5m]))[1d:])
+avg_over_time((sum(rate(http_requests_total[5m])))[1d:])
++ 2 * stddev_over_time((sum(rate(http_requests_total[5m])))[1d:])
 
 # Lower bound (mean - 2*stddev)
-avg_over_time(sum(rate(http_requests_total[5m]))[1d:])
-- 2 * stddev_over_time(sum(rate(http_requests_total[5m]))[1d:])
+avg_over_time((sum(rate(http_requests_total[5m])))[1d:])
+- 2 * stddev_over_time((sum(rate(http_requests_total[5m])))[1d:])
 ```
 
 Panel configuration:
@@ -377,10 +387,10 @@ count_over_time(
 ```yaml
 # Silence anomaly alerts during deployments
 inhibit_rules:
-  - source_match:
-      alertname: DeploymentInProgress
-    target_match_re:
-      alertname: '.*Anomaly.*'
+  - source_matchers:
+      - alertname="DeploymentInProgress"
+    target_matchers:
+      - alertname=~".*Anomaly.*"
 ```
 
 **Holiday adjustments:**
@@ -405,8 +415,8 @@ groups:
     rules:
       - alert: LatencyAnomaly
         expr: |
-          histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
-          > 2 * avg_over_time(histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))[1d:])
+          histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+          > 2 * avg_over_time((histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)))[1d:])
         for: 10m
         annotations:
           summary: "P99 latency is 2x normal"
@@ -417,10 +427,10 @@ groups:
             sum(rate(http_requests_total{status=~"5.."}[5m]))
             / sum(rate(http_requests_total[5m]))
           )
-          > 3 * avg_over_time(
+          > 3 * avg_over_time((
             sum(rate(http_requests_total{status=~"5.."}[5m]))
             / sum(rate(http_requests_total[5m]))
-          [7d:1h])
+          )[7d:1h])
         for: 5m
         annotations:
           summary: "Error rate is 3x normal"
