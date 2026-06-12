@@ -202,10 +202,10 @@ cluster.remote:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `seeds` | Initial nodes for cluster discovery (transport port 9300) | Required |
-| `skip_unavailable` | If `true`, skip cluster if unavailable; if `false`, fail entire query | `false` |
+| `seeds` | Initial nodes for cluster discovery (transport port 9300 for the certificate-based transport model, 9443 for the API key-based remote cluster interface) | Required |
+| `skip_unavailable` | If `true`, skip cluster if unavailable; if `false`, fail entire query | `true` in Elasticsearch 8.15+, `false` before 8.15 |
 | `transport.compress` | Enable compression for cross-cluster communication | `false` |
-| `transport.ping_schedule` | How often to send keepalive pings | `30s` |
+| `transport.ping_schedule` | How often to send application-level keepalive pings; TCP keepalives are preferred | `-1` unless the global transport setting is configured |
 | `mode` | Connection mode: `sniff` or `proxy` | `sniff` |
 
 ### Proxy Mode Configuration
@@ -403,20 +403,18 @@ async function searchAcrossClusters(query, timeRange = '1h') {
 
     const response = await client.search({
       index: indices,
-      body: {
-        size: 100,
-        query: {
-          bool: {
-            must: [
-              { match: { message: query } },
-              { range: { '@timestamp': { gte: `now-${timeRange}` } } }
-            ]
-          }
-        },
-        sort: [{ '@timestamp': 'desc' }],
-        // Include cluster information in response
-        _source: ['@timestamp', 'message', 'level', 'service']
+      size: 100,
+      query: {
+        bool: {
+          must: [
+            { match: { message: query } },
+            { range: { '@timestamp': { gte: `now-${timeRange}` } } }
+          ]
+        }
       },
+      sort: [{ '@timestamp': 'desc' }],
+      // Include cluster information in response
+      _source: ['@timestamp', 'message', 'level', 'service'],
       // CCS-specific options
       ccs_minimize_roundtrips: true,  // Optimize network calls
       allow_partial_search_results: true  // Return results even if some clusters fail
@@ -453,7 +451,6 @@ searchAcrossClusters('connection timeout', '6h')
 # Demonstrates cross-cluster search with error handling
 
 from elasticsearch import Elasticsearch
-from datetime import datetime, timedelta
 import os
 
 # Initialize client
@@ -465,7 +462,7 @@ es = Elasticsearch(
 
 def cross_cluster_search(
     query_text: str,
-    clusters: list = ['cluster_us_east', 'cluster_eu_west'],
+    clusters: list | None = None,
     index_pattern: str = 'logs-*',
     hours_back: int = 24
 ) -> dict:
@@ -481,6 +478,9 @@ def cross_cluster_search(
     Returns:
         Dictionary containing hits and aggregations
     """
+    if clusters is None:
+        clusters = ['cluster_us_east', 'cluster_eu_west']
+
     # Build the index string with cluster prefixes
     # Include local cluster (no prefix) and remote clusters
     indices = [f"{cluster}:{index_pattern}" for cluster in clusters]
@@ -490,35 +490,33 @@ def cross_cluster_search(
     # Execute the search
     response = es.search(
         index=index_string,
-        body={
-            "size": 200,
-            "query": {
-                "bool": {
-                    "must": [
-                        {"query_string": {"query": query_text}},
-                        {
-                            "range": {
-                                "@timestamp": {
-                                    "gte": f"now-{hours_back}h",
-                                    "lte": "now"
-                                }
+        size=200,
+        query={
+            "bool": {
+                "must": [
+                    {"query_string": {"query": query_text}},
+                    {
+                        "range": {
+                            "@timestamp": {
+                                "gte": f"now-{hours_back}h",
+                                "lte": "now"
                             }
                         }
-                    ]
-                }
-            },
-            "aggs": {
-                "by_cluster": {
-                    "terms": {"field": "_index", "size": 50}
-                },
-                "by_level": {
-                    "terms": {"field": "level.keyword", "size": 10}
-                }
-            },
-            "sort": [{"@timestamp": {"order": "desc"}}],
-            "highlight": {
-                "fields": {"message": {}}
+                    }
+                ]
             }
+        },
+        aggregations={
+            "by_cluster": {
+                "terms": {"field": "_index", "size": 50}
+            },
+            "by_level": {
+                "terms": {"field": "level.keyword", "size": 10}
+            }
+        },
+        sort=[{"@timestamp": {"order": "desc"}}],
+        highlight={
+            "fields": {"message": {}}
         },
         # CCS optimization flags
         ccs_minimize_roundtrips=True,
@@ -553,7 +551,7 @@ Security is critical when connecting clusters, especially across network boundar
 # elasticsearch.yml - TLS settings for cross-cluster communication
 # All inter-cluster traffic should be encrypted
 
-# Enable TLS on the transport layer (required for CCS)
+# Enable TLS on the transport layer for the certificate-based security model
 xpack.security.transport.ssl.enabled: true
 xpack.security.transport.ssl.verification_mode: certificate
 
@@ -565,9 +563,14 @@ xpack.security.transport.ssl.truststore.path: certs/elastic-certificates.p12
 # Option 1: Use the same CA for all clusters (recommended)
 # Option 2: Import each cluster's CA into the truststore
 
-# Remote cluster specific TLS (if using different certs per cluster)
-cluster.remote.cluster_us_east.transport.ssl.enabled: true
-cluster.remote.cluster_us_east.transport.ssl.verification_mode: certificate
+# For the API key-based remote cluster model, enable TLS on the remote cluster interface
+xpack.security.remote_cluster_server.enabled: true
+xpack.security.remote_cluster_server.ssl.enabled: true
+xpack.security.remote_cluster_server.ssl.keystore.path: certs/cross-cluster.p12
+
+# On local cluster nodes, trust the remote cluster interface certificate authority
+xpack.security.remote_cluster_client.ssl.enabled: true
+xpack.security.remote_cluster_client.ssl.certificate_authorities: [ "certs/remote-cluster-ca.crt" ]
 ```
 
 ### API Key Authentication
@@ -576,21 +579,17 @@ cluster.remote.cluster_us_east.transport.ssl.verification_mode: certificate
 # Create a cross-cluster API key for CCS
 # This key grants search access to remote cluster indices
 
-curl -X POST "localhost:9200/_security/api_key?pretty" \
+curl -X POST "localhost:9200/_security/cross_cluster/api_key?pretty" \
   -H 'Content-Type: application/json' \
   -d '{
     "name": "ccs-api-key",
     "expiration": "30d",
-    "role_descriptors": {
-      "cross_cluster_search": {
-        "cluster": ["cross_cluster_search"],
-        "indices": [
-          {
-            "names": ["logs-*", "metrics-*"],
-            "privileges": ["read", "view_index_metadata"]
-          }
-        ]
-      }
+    "access": {
+      "search": [
+        {
+          "names": ["logs-*", "metrics-*"]
+        }
+      ]
     }
   }'
 ```
@@ -604,15 +603,10 @@ curl -X POST "localhost:9200/_security/api_key?pretty" \
 curl -X PUT "localhost:9200/_security/role/ccs_reader?pretty" \
   -H 'Content-Type: application/json' \
   -d '{
-    "cluster": [
-      "cross_cluster_search"
-    ],
     "indices": [
       {
         "names": [
-          "logs-*",
-          "cluster_us_east:logs-*",
-          "cluster_eu_west:logs-*"
+          "logs-*"
         ],
         "privileges": [
           "read",
@@ -628,7 +622,7 @@ curl -X PUT "localhost:9200/_security/role/ccs_reader?pretty" \
       {
         "clusters": ["cluster_us_east", "cluster_eu_west"],
         "names": ["logs-*"],
-        "privileges": ["read", "view_index_metadata"]
+        "privileges": ["read", "read_cross_cluster", "view_index_metadata"]
       }
     ]
   }'
@@ -672,7 +666,7 @@ graph TB
     end
 
     subgraph "Cross-Region VPN/Private Link"
-        VPN[Encrypted Tunnel<br/>Port 9300 Only]
+        VPN[Encrypted Tunnel<br/>Port 9300 or 9443]
     end
 
     Client --> LB
@@ -687,9 +681,9 @@ graph TB
 
 ### Security Checklist
 
-- [ ] Enable TLS on transport layer for all clusters
-- [ ] Use certificate-based authentication between clusters
-- [ ] Configure firewall rules to allow only port 9300 between clusters
+- [ ] Enable TLS for the transport layer or the remote cluster interface, depending on the security model
+- [ ] Use certificate-based authentication or cross-cluster API keys between clusters
+- [ ] Configure firewall rules to allow only the required remote-cluster port (9300 for transport-based connections, 9443 by default for API key-based connections)
 - [ ] Implement RBAC to control who can perform CCS
 - [ ] Use field-level security to protect sensitive data
 - [ ] Audit log all cross-cluster queries
@@ -708,10 +702,9 @@ Cross-cluster search introduces network latency. Here are strategies to optimize
 # Enable round-trip minimization (default in ES 7.x+)
 # This reduces the number of network calls between clusters
 
-curl -X GET "localhost:9200/cluster_*:logs-*/_search?pretty" \
+curl -X GET "localhost:9200/cluster_*:logs-*/_search?pretty&ccs_minimize_roundtrips=true" \
   -H 'Content-Type: application/json' \
   -d '{
-    "ccs_minimize_roundtrips": true,
     "query": {
       "match": {
         "message": "error"
@@ -750,15 +743,15 @@ curl -X GET "localhost:9200/cluster_*:logs-*/_search?pretty" \
 ```yaml
 # elasticsearch.yml - Connection pool settings
 
-# Number of connections per remote cluster (default: 3)
+# Number of gateway node connections in sniff mode (default: 3)
 # Increase for high-throughput scenarios
-cluster.remote.cluster_us_east.transport.connections_per_cluster: 10
+cluster.remote.cluster_us_east.node_connections: 10
 
-# Socket timeout for remote connections
-cluster.remote.cluster_us_east.transport.socket_timeout: 30s
+# Number of socket connections in proxy mode (default: 18)
+cluster.remote.cluster_us_east.proxy_socket_connections: 18
 
-# Connection timeout
-cluster.remote.cluster_us_east.transport.connect_timeout: 10s
+# Initial connection timeout when nodes start
+cluster.remote.initial_connect_timeout: 30s
 ```
 
 ### Shard Allocation Strategy
@@ -786,7 +779,7 @@ curl -X PUT "localhost:9200/logs-2024.01.27?pretty" \
 | Reduce `size` parameter | Proportional reduction in transfer time | May miss relevant results |
 | Use `_source` filtering | Reduces payload size | Must know needed fields upfront |
 | Index data closer to users | Reduces latency significantly | Increases operational complexity |
-| Increase connection pool | Better throughput | More resource usage |
+| Increase remote cluster connections | Better throughput | More resource usage |
 | Use filters over queries | Better cache utilization | No relevance scoring |
 
 ### Caching Strategies
@@ -828,7 +821,7 @@ curl -X GET "localhost:9200/cluster_*:logs-*/_search?pretty&request_cache=true" 
 # Get detailed information about remote cluster connections
 curl -X GET "localhost:9200/_remote/info?pretty"
 
-# Check cluster health including remote clusters
+# Check local cluster health separately
 curl -X GET "localhost:9200/_cluster/health?pretty"
 ```
 
@@ -851,7 +844,7 @@ curl -X GET "localhost:9200/_nodes/stats/transport?pretty"
 
 | Issue | Symptoms | Solution |
 |-------|----------|----------|
-| Connection refused | `NoSeedNodeLeftException` | Check firewall rules, verify port 9300 is open |
+| Connection refused | `NoSeedNodeLeftException` | Check firewall rules, verify the remote-cluster port is open |
 | TLS handshake failed | `SSLHandshakeException` | Verify certificates, check trust store configuration |
 | Timeout on large queries | Query takes > 30s | Reduce result size, add time range filter, enable `ccs_minimize_roundtrips` |
 | Inconsistent results | Missing documents | Check `skip_unavailable` setting, verify cluster health |
@@ -960,9 +953,9 @@ logs-web-2024.01.27
 async function resilientCrossClusterSearch(query) {
   const response = await client.search({
     index: 'cluster_us_east:logs-*,cluster_eu_west:logs-*,logs-*',
-    body: { query },
+    query,
     allow_partial_search_results: true,  // Don't fail if some clusters are down
-    request_timeout: '30s'
+    timeout: '30s'
   });
 
   // Check for partial results
