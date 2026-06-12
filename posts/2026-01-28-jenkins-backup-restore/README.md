@@ -15,13 +15,13 @@ Backing up Jenkins is critical because jobs, plugins, credentials, and build his
 - `JENKINS_HOME/config.xml`
 - `jobs/` directory
 - `plugins/` directory
-- `credentials.xml` and `secrets/`
+- `credentials.xml`, `secrets/`, and the controller key stored separately and securely
 - `users/` and `nodes/`
 
 ## Safe Backup Steps
 
 1. Put Jenkins in quiet mode
-2. Stop builds
+2. Wait for running builds to finish
 3. Copy or snapshot the entire `JENKINS_HOME` directory
 
 Example (Linux):
@@ -37,6 +37,8 @@ systemctl start jenkins
 ```
 
 For larger systems, use filesystem snapshots to reduce downtime.
+
+Keep the controller key separate from routine backups and store it securely. Jenkins needs it to decrypt credentials after a restore.
 
 ## Restore Steps
 
