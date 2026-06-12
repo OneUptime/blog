@@ -197,7 +197,7 @@ Here is how to implement blast radius controls:
 
 from enum import Enum
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 import random
 
 
@@ -318,11 +318,10 @@ from contextlib import contextmanager
 @dataclass
 class NetworkChaosConfig:
     """Configuration for network chaos injection"""
-    target_host: str              # Host to affect
     latency_ms: Optional[int]     # Add latency in milliseconds
     packet_loss_percent: float    # Percentage of packets to drop
     duration_seconds: int         # How long to run the experiment
-    interface: str = "eth0"       # Network interface to affect
+    interface: str = "eth0"       # Network interface whose outgoing traffic is affected
 
 
 class NetworkChaosInjector:
@@ -338,7 +337,7 @@ class NetworkChaosInjector:
     def start(self):
         """
         Apply network chaos rules using tc (traffic control).
-        This adds latency and packet loss to outgoing traffic.
+        This adds latency and packet loss to outgoing traffic on the interface.
         """
         if self.is_active:
             raise RuntimeError("Chaos injection already active")
@@ -396,7 +395,6 @@ class NetworkChaosInjector:
 # Example: Test how the system handles 200ms latency and 5% packet loss
 def run_network_chaos_experiment():
     config = NetworkChaosConfig(
-        target_host="api-service",
         latency_ms=200,
         packet_loss_percent=5.0,
         duration_seconds=300,  # 5 minutes
@@ -445,9 +443,8 @@ class CPUStressor:
     Uses multiple threads to stress all available cores.
     """
 
-    def __init__(self, target_percent: int, duration: int):
+    def __init__(self, target_percent: int):
         self.target_percent = target_percent
-        self.duration = duration
         self.stop_flag = threading.Event()
         self.threads: List[threading.Thread] = []
 
@@ -541,7 +538,7 @@ class DiskStressor:
     def start(self):
         """
         Create files to consume the specified disk space.
-        Uses sparse files for efficiency where possible.
+        Writes real data so disk space is actually consumed.
         """
         os.makedirs(self.target_path, exist_ok=True)
 
@@ -589,7 +586,7 @@ Rollback procedures are your safety net. Every chaos experiment must have a clea
 import time
 import logging
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
+from typing import Callable, List
 from enum import Enum
 from contextlib import contextmanager
 
@@ -614,12 +611,12 @@ class RollbackStep:
     """
     name: str
     action: Callable[[], bool]     # Function that performs the rollback
-    timeout_seconds: int = 60       # Maximum time for this step
+    timeout_seconds: int = 60       # Timeout budget for external orchestration
     required: bool = True           # If True, failure aborts remaining steps
 
     def execute(self) -> bool:
         """
-        Execute the rollback step with timeout protection.
+        Execute the rollback step.
         Returns True if successful, False otherwise.
         """
         logger.info(f"Executing rollback step: {self.name}")
