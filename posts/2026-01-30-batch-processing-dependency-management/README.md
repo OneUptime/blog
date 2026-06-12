@@ -60,10 +60,9 @@ The foundation of batch dependency management is a proper graph structure. Here 
 
 ```python
 from enum import Enum
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Optional
 from collections import defaultdict
-import time
 
 
 class DependencyType(Enum):
@@ -326,7 +325,7 @@ def validate_graph(graph: "DependencyGraph") -> None:
 
     Performs multiple validation checks:
     1. Circular dependency detection
-    2. Orphan task detection (tasks with no path to execution)
+    2. Root task detection (tasks with no upstream dependencies)
     3. Missing task references in dependencies
 
     Args:
@@ -344,7 +343,7 @@ def validate_graph(graph: "DependencyGraph") -> None:
             f"Please review your task dependencies and remove the cycle."
         )
 
-    # Check for orphan tasks (no incoming edges and not a root task)
+    # Check that at least one task can start execution
     root_tasks = []
     for task in graph.tasks:
         if not graph.reverse_edges[task]:
@@ -767,12 +766,11 @@ Apache Airflow is the industry standard for batch workflow orchestration. Here i
 
 ```python
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.empty import EmptyOperator
-from airflow.sensors.external_task import ExternalTaskSensor
-from airflow.sensors.filesystem import FileSensor
-from airflow.utils.task_group import TaskGroup
+from airflow.sdk import DAG, TaskGroup
+from airflow.providers.standard.operators.python import PythonOperator
+from airflow.providers.standard.operators.empty import EmptyOperator
+from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
+from airflow.providers.standard.sensors.filesystem import FileSensor
 
 
 # Default arguments applied to all tasks in the DAG
@@ -794,20 +792,20 @@ def extract_sales_data(**context):
     """
     Extract sales data from the source system.
 
-    Uses Airflow's context to access execution date and other
-    runtime information. The execution_date is the logical date
+    Uses Airflow's context to access the logical date and other
+    runtime information. The logical_date is the logical date
     for this run, not the actual runtime.
     """
-    execution_date = context["execution_date"]
-    print(f"Extracting sales data for {execution_date}")
+    logical_date = context["logical_date"]
+    print(f"Extracting sales data for {logical_date}")
     # Your extraction logic here
     return {"records_extracted": 50000}
 
 
 def extract_inventory_data(**context):
     """Extract inventory data from warehouse management system."""
-    execution_date = context["execution_date"]
-    print(f"Extracting inventory data for {execution_date}")
+    logical_date = context["logical_date"]
+    print(f"Extracting inventory data for {logical_date}")
     return {"records_extracted": 12000}
 
 
@@ -853,7 +851,7 @@ with DAG(
     default_args=default_args,
     description="Daily sales and inventory ETL pipeline",
     # Schedule to run daily at 2 AM UTC
-    schedule_interval="0 2 * * *",
+    schedule="0 2 * * *",
     start_date=datetime(2026, 1, 1),
     # Prevent backfilling all historical dates on first run
     catchup=False,
@@ -877,7 +875,7 @@ with DAG(
 
     ### Alerts
     - On-call team notified on any task failure
-    - SLA miss alerts if not complete by 6 AM UTC
+    - Review run duration if the pipeline is not complete by 6 AM UTC
     """,
 ) as dag:
 
@@ -898,7 +896,7 @@ with DAG(
         # Timeout after 1 hour of waiting
         timeout=3600,
         # Check every 60 seconds
-        poke_interval=60,
+        poll_interval=60,
         # Use reschedule mode to free up worker slots while waiting
         mode="reschedule",
     )
@@ -921,28 +919,23 @@ with DAG(
         extract_sales = PythonOperator(
             task_id="extract_sales",
             python_callable=extract_sales_data,
-            # Provide context to access execution date, etc.
-            provide_context=True,
         )
 
         extract_inventory = PythonOperator(
             task_id="extract_inventory",
             python_callable=extract_inventory_data,
-            provide_context=True,
         )
 
     # Transform task depends on all extractions completing
     transform = PythonOperator(
         task_id="transform_data",
         python_callable=transform_data,
-        provide_context=True,
     )
 
     # Load task depends on transform completing
     load = PythonOperator(
         task_id="load_to_warehouse",
         python_callable=load_to_warehouse,
-        provide_context=True,
     )
 
     # Downstream tasks can run in parallel after load
@@ -950,13 +943,11 @@ with DAG(
         reports = PythonOperator(
             task_id="generate_reports",
             python_callable=generate_reports,
-            provide_context=True,
         )
 
         notify = PythonOperator(
             task_id="send_notifications",
             python_callable=send_notifications,
-            provide_context=True,
             # This task can be skipped without failing the DAG
             trigger_rule="all_done",
         )
@@ -1246,7 +1237,7 @@ def get_failed_task_report(graph: "DependencyGraph") -> dict:
 
 ## Complete Workflow Executor
 
-Here is a complete executor that ties together all the components into a production-ready system.
+Here is a complete executor that ties together all the components into a working workflow runner.
 
 `workflow_executor.py`
 
@@ -1255,8 +1246,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
+import os
 import time
 import threading
+
+from circular_detection import validate_graph
+from dependency_graph import DependencyGraph, Task, DependencyType
+from failure_handling import FailureHandler, FailureStrategy, RetryConfig
 
 
 @dataclass
@@ -1339,7 +1335,14 @@ class WorkflowExecutor:
             if dep.source not in self.completed_tasks:
                 return False
 
-            # Check data dependency condition if specified
+            # Check data artifact and custom condition if specified
+            if (
+                dep.dep_type == DependencyType.DATA
+                and dep.data_artifact
+                and not os.path.exists(dep.data_artifact)
+            ):
+                return False
+
             if dep.condition and not dep.condition():
                 return False
 
@@ -1406,6 +1409,7 @@ class WorkflowExecutor:
         """
         self.execution_start = datetime.now()
         print(f"Starting workflow execution at {self.execution_start.isoformat()}")
+        validate_graph(self.graph)
 
         # Track tasks that are ready to execute
         pending_tasks = set(self.graph.tasks.keys())
@@ -1453,8 +1457,10 @@ class WorkflowExecutor:
                                 break
                         else:
                             self.graph.status[task_name] = "failed"
+                            pending_tasks.discard(task_name)
 
-                        pending_tasks.discard(task_name)
+                        if self.graph.status[task_name] != "pending":
+                            pending_tasks.discard(task_name)
 
         self.execution_end = datetime.now()
         return self._generate_summary()
@@ -1493,11 +1499,6 @@ class WorkflowExecutor:
 
 # Example usage demonstrating the complete workflow
 if __name__ == "__main__":
-    # Import our modules (in practice, these would be separate files)
-    # from dependency_graph import DependencyGraph, Task, DependencyType
-    # from circular_detection import validate_graph
-    # from failure_handling import FailureHandler, FailureStrategy, RetryConfig
-
     # Create sample tasks
     def task_factory(name: str):
         """Factory function to create sample task executables."""
