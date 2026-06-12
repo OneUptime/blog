@@ -81,7 +81,7 @@ terraform {
     }
     helm = {
       source  = "hashicorp/helm"
-      version = ">= 2.9"
+      version = ">= 2.9, < 3.0"
     }
   }
 }
@@ -108,7 +108,7 @@ variable "cluster_name" {
 variable "cluster_version" {
   description = "Kubernetes version for the cluster"
   type        = string
-  default     = "1.29"
+  default     = "1.34"
 }
 
 variable "vpc_cidr" {
@@ -129,7 +129,7 @@ Create the networking foundation and core cluster.
 
 ```hcl
 # main.tf
-# Use the official EKS Blueprints module
+# Use the upstream EKS module for the core cluster
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 5.0"
@@ -255,7 +255,8 @@ provider "helm" {
 
 # AWS Load Balancer Controller for ingress
 module "aws_load_balancer_controller" {
-  source = "aws-ia/eks-blueprints-addons/aws"
+  source  = "aws-ia/eks-blueprints-addons/aws"
+  version = "~> 1.0"
 
   cluster_name      = module.eks.cluster_name
   cluster_endpoint  = module.eks.cluster_endpoint
@@ -280,7 +281,8 @@ module "aws_load_balancer_controller" {
 
 # External DNS for automatic DNS record management
 module "external_dns" {
-  source = "aws-ia/eks-blueprints-addons/aws"
+  source  = "aws-ia/eks-blueprints-addons/aws"
+  version = "~> 1.0"
 
   cluster_name      = module.eks.cluster_name
   cluster_endpoint  = module.eks.cluster_endpoint
@@ -301,7 +303,8 @@ module "external_dns" {
 
 # Karpenter for intelligent autoscaling
 module "karpenter" {
-  source = "aws-ia/eks-blueprints-addons/aws"
+  source  = "aws-ia/eks-blueprints-addons/aws"
+  version = "~> 1.0"
 
   cluster_name      = module.eks.cluster_name
   cluster_endpoint  = module.eks.cluster_endpoint
@@ -331,11 +334,11 @@ provider "aws" {
 
 ## Configuring Teams
 
-Teams let you define namespaces with specific RBAC policies, quotas, and network policies.
+Teams let you define namespaces with specific RBAC policies, quotas, and network policies. Network policies require a compatible CNI or enabled Amazon VPC CNI network policy support to be enforced.
 
 ```hcl
 # teams.tf
-# Platform team has cluster-admin access
+# Bind the platform-team Kubernetes group to cluster-admin
 resource "kubernetes_namespace" "platform" {
   metadata {
     name = "platform"
@@ -394,7 +397,7 @@ resource "kubernetes_resource_quota" "team_quota" {
   }
 }
 
-# Network policies isolate team namespaces by default
+# Network policies isolate team namespaces by default when your CNI enforces them
 resource "kubernetes_network_policy" "team_isolation" {
   for_each = var.application_teams
 
@@ -425,6 +428,10 @@ resource "kubernetes_network_policy" "team_isolation" {
       ports {
         port     = 53
         protocol = "UDP"
+      }
+      ports {
+        port     = 53
+        protocol = "TCP"
       }
     }
 
@@ -508,7 +515,8 @@ For production environments, combine blueprints with ArgoCD for continuous deplo
 ```hcl
 # Add to addons.tf
 module "argocd" {
-  source = "aws-ia/eks-blueprints-addons/aws"
+  source  = "aws-ia/eks-blueprints-addons/aws"
+  version = "~> 1.0"
 
   cluster_name      = module.eks.cluster_name
   cluster_endpoint  = module.eks.cluster_endpoint
