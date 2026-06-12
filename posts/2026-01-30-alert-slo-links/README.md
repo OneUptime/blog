@@ -66,6 +66,12 @@ receivers:
     webhook_configs:
       - url: 'http://alert-router:8080/webhook'
         send_resolved: true
+    slack_configs:
+      - api_url_file: '/etc/alertmanager/secrets/slack-webhook-url'
+        channel: '#sre-alerts'
+        title: '{{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.slo.message" . }}'
+        send_resolved: true
 
 templates:
   - '/etc/alertmanager/templates/*.tmpl'
@@ -86,8 +92,8 @@ Create a template that embeds SLO dashboard links.
 
 *SLO Context:*
 - SLO Name: {{ .Labels.slo_name }}
-- Current Error Budget: {{ .Labels.error_budget_remaining }}%
-- Burn Rate: {{ .Labels.burn_rate }}x
+- Current Error Budget: {{ .Annotations.error_budget_remaining }}
+- Burn Rate: {{ .Annotations.burn_rate }}
 
 *Quick Links:*
 - <{{ .Annotations.slo_dashboard_url }}|SLO Dashboard>
@@ -103,14 +109,14 @@ Error budget status is the most critical context for incident prioritization. Bu
 
 ```typescript
 // error-budget-calculator.ts
-interface SLOConfig {
+export interface SLOConfig {
   name: string;
   target: number;          // e.g., 0.999 for 99.9%
   windowDays: number;      // e.g., 30 for monthly
   service: string;
 }
 
-interface ErrorBudgetStatus {
+export interface ErrorBudgetStatus {
   sloName: string;
   target: number;
   currentSLI: number;
@@ -168,21 +174,37 @@ export function calculateErrorBudget(
     projectedExhaustion
   };
 }
+
+export function calculateWindowBurnRate(
+  config: SLOConfig,
+  goodEvents: number,
+  totalEvents: number
+): number {
+  const currentSLI = totalEvents > 0 ? goodEvents / totalEvents : 1;
+  const errorRate = 1 - currentSLI;
+  const budgetTotal = 1 - config.target;
+
+  return budgetTotal > 0 ? errorRate / budgetTotal : 0;
+}
 ```
 
 Use this calculator to enrich alerts with budget context.
 
 ```typescript
 // alert-enricher.ts
-import { calculateErrorBudget, ErrorBudgetStatus } from './error-budget-calculator';
+import {
+  calculateErrorBudget,
+  ErrorBudgetStatus,
+  SLOConfig
+} from './error-budget-calculator';
 
-interface Alert {
+export interface Alert {
   name: string;
   labels: Record<string, string>;
   annotations: Record<string, string>;
 }
 
-interface EnrichedAlert extends Alert {
+export interface EnrichedAlert extends Alert {
   sloContext: ErrorBudgetStatus;
   priorityScore: number;
 }
@@ -282,6 +304,9 @@ Implement the correlation logic.
 
 ```typescript
 // alert-correlator.ts
+import { randomUUID } from 'node:crypto';
+import { Alert, EnrichedAlert } from './alert-enricher';
+
 interface CorrelationGroup {
   id: string;
   primarySLO: string;
@@ -293,7 +318,7 @@ interface CorrelationGroup {
   rootCauseCandidate: Alert | null;
 }
 
-class AlertCorrelator {
+export class AlertCorrelator {
   private correlationGroups: Map<string, CorrelationGroup> = new Map();
   private correlationWindowMs = 5 * 60 * 1000; // 5 minutes
 
@@ -333,7 +358,7 @@ class AlertCorrelator {
     const affectedSLOs = this.findAffectedSLOs(alert, sloMappings);
 
     return {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       primarySLO: alert.sloContext.sloName,
       affectedSLOs,
       alerts: [alert],
@@ -433,10 +458,23 @@ Implement multi-SLO impact calculation.
 
 ```typescript
 // impact-assessor.ts
+import {
+  calculateErrorBudget,
+  ErrorBudgetStatus,
+  SLOConfig
+} from './error-budget-calculator';
+
 interface ServiceDependency {
   service: string;
   dependsOn: string[];
   slos: string[];
+}
+
+export interface MetricsClient {
+  getSLOMetrics(
+    sloName: string,
+    durationHours?: number
+  ): Promise<{ goodEvents: number; totalEvents: number; windowStart: Date }>;
 }
 
 interface ImpactAssessment {
@@ -457,7 +495,7 @@ interface SLOImpact {
   estimatedRecoveryTime: number | null;
 }
 
-class MultiSLOImpactAssessor {
+export class MultiSLOImpactAssessor {
   constructor(
     private dependencies: ServiceDependency[],
     private sloConfigs: Map<string, SLOConfig>,
@@ -473,10 +511,7 @@ class MultiSLOImpactAssessor {
 
     // Find transitively affected SLOs through dependency chain
     const dependentServices = this.findDependentServices(incidentService);
-    const transitiveSLOs = await this.getTransitivelyAffectedSLOs(
-      dependentServices,
-      incidentService
-    );
+    const transitiveSLOs = await this.getTransitivelyAffectedSLOs(dependentServices);
 
     // Calculate business impact
     const allSLOs = [...directSLOs, ...transitiveSLOs];
@@ -524,24 +559,24 @@ class MultiSLOImpactAssessor {
     return impacts;
   }
 
-  private findDependentServices(service: string): string[] {
+  private findDependentServices(service: string, visited = new Set<string>()): string[] {
+    if (visited.has(service)) return [];
+    visited.add(service);
+
     const dependents: string[] = [];
 
     for (const dep of this.dependencies) {
       if (dep.dependsOn.includes(service)) {
         dependents.push(dep.service);
         // Recursively find services that depend on dependents
-        dependents.push(...this.findDependentServices(dep.service));
+        dependents.push(...this.findDependentServices(dep.service, visited));
       }
     }
 
     return [...new Set(dependents)]; // Remove duplicates
   }
 
-  private async getTransitivelyAffectedSLOs(
-    services: string[],
-    rootCause: string
-  ): Promise<SLOImpact[]> {
+  private async getTransitivelyAffectedSLOs(services: string[]): Promise<SLOImpact[]> {
     const impacts: SLOImpact[] = [];
 
     for (const service of services) {
@@ -602,6 +637,8 @@ Alerts should link to trend visualizations that show how the SLO has behaved ove
 
 ```typescript
 // trend-link-builder.ts
+import { Alert } from './alert-enricher';
+
 interface TrendLinkConfig {
   baseUrl: string;
   defaultTimeRange: string;
@@ -623,6 +660,7 @@ export function buildTrendLinks(
   service: string,
   config: TrendLinkConfig
 ): TrendLinks {
+  const encodedSloName = encodeURIComponent(sloName);
   const baseParams = new URLSearchParams({
     slo: sloName,
     service: service,
@@ -630,24 +668,24 @@ export function buildTrendLinks(
   });
 
   return {
-    currentStatus: `${config.baseUrl}/slo/${sloName}/status?${baseParams}`,
+    currentStatus: `${config.baseUrl}/slo/${encodedSloName}/status?${baseParams}`,
 
-    last24Hours: `${config.baseUrl}/slo/${sloName}/trends?` +
+    last24Hours: `${config.baseUrl}/slo/${encodedSloName}/trends?` +
       `${baseParams}&from=now-24h&to=now`,
 
-    last7Days: `${config.baseUrl}/slo/${sloName}/trends?` +
+    last7Days: `${config.baseUrl}/slo/${encodedSloName}/trends?` +
       `${baseParams}&from=now-7d&to=now`,
 
-    last30Days: `${config.baseUrl}/slo/${sloName}/trends?` +
+    last30Days: `${config.baseUrl}/slo/${encodedSloName}/trends?` +
       `${baseParams}&from=now-30d&to=now`,
 
-    burnRateChart: `${config.baseUrl}/slo/${sloName}/burn-rate?` +
+    burnRateChart: `${config.baseUrl}/slo/${encodedSloName}/burn-rate?` +
       `${baseParams}&windows=1h,6h,24h,72h`,
 
-    errorBudgetHistory: `${config.baseUrl}/slo/${sloName}/budget-history?` +
+    errorBudgetHistory: `${config.baseUrl}/slo/${encodedSloName}/budget-history?` +
       `${baseParams}&from=now-30d&to=now`,
 
-    compareToLastWeek: `${config.baseUrl}/slo/${sloName}/compare?` +
+    compareToLastWeek: `${config.baseUrl}/slo/${encodedSloName}/compare?` +
       `${baseParams}&baseline=now-7d&comparison=now`
   };
 }
@@ -714,6 +752,12 @@ Implement multi-window burn rate calculation.
 
 ```typescript
 // burn-rate-calculator.ts
+import {
+  calculateWindowBurnRate,
+  SLOConfig
+} from './error-budget-calculator';
+import { MetricsClient } from './impact-assessor';
+
 interface BurnRateWindow {
   windowName: string;
   durationHours: number;
@@ -728,7 +772,7 @@ interface BurnRateContext {
   alertSeverity: 'critical' | 'high' | 'medium' | 'low';
 }
 
-class BurnRateCalculator {
+export class BurnRateCalculator {
   private readonly windowConfigs = [
     { name: '1h', hours: 1, criticalThreshold: 14.4, warningThreshold: 6 },
     { name: '6h', hours: 6, criticalThreshold: 6, warningThreshold: 3 },
@@ -748,15 +792,14 @@ class BurnRateCalculator {
         config.hours
       );
 
-      const budget = calculateErrorBudget(
+      const burnRate = calculateWindowBurnRate(
         sloConfig,
         metrics.goodEvents,
-        metrics.totalEvents,
-        new Date(Date.now() - config.hours * 60 * 60 * 1000)
+        metrics.totalEvents
       );
 
       const severity = this.determineSeverity(
-        budget.burnRate,
+        burnRate,
         config.criticalThreshold,
         config.warningThreshold
       );
@@ -764,7 +807,7 @@ class BurnRateCalculator {
       windows.push({
         windowName: config.name,
         durationHours: config.hours,
-        burnRate: budget.burnRate,
+        burnRate,
         severity
       });
     }
@@ -808,7 +851,6 @@ class BurnRateCalculator {
   private determineOverallSeverity(
     windows: BurnRateWindow[]
   ): 'critical' | 'high' | 'medium' | 'low' {
-    const criticalCount = windows.filter(w => w.severity === 'critical').length;
     const warningCount = windows.filter(w => w.severity === 'warning').length;
 
     // Critical if 1h OR 6h windows are critical
@@ -860,11 +902,12 @@ class BurnRateCalculator {
 
 ## Putting It All Together
 
-Here is a complete alert enrichment pipeline that combines all the SLO linking capabilities.
+Here is an example alert enrichment pipeline that combines all the SLO linking capabilities.
 
 ```typescript
 // alert-pipeline.ts
 import express from 'express';
+import { enrichAlertWithSLO } from './alert-enricher';
 import { AlertCorrelator } from './alert-correlator';
 import { MultiSLOImpactAssessor } from './impact-assessor';
 import { BurnRateCalculator } from './burn-rate-calculator';
