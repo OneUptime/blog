@@ -84,7 +84,7 @@ on:
 
 # Ensure only one deployment runs at a time to prevent state conflicts
 concurrency:
-  group: pulumi-${{ github.ref }}
+  group: pulumi-dev
   cancel-in-progress: false
 
 env:
@@ -102,6 +102,9 @@ jobs:
     runs-on: ubuntu-latest
     # Only run preview on pull requests
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       # Checkout the repository code
@@ -123,7 +126,7 @@ jobs:
       # Run Pulumi preview to show planned changes
       # This adds a comment to the PR with the diff
       - name: Pulumi Preview
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: preview
           stack-name: dev
@@ -151,7 +154,7 @@ jobs:
 
       # Deploy the infrastructure changes
       - name: Pulumi Up
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: up
           stack-name: dev
@@ -186,12 +189,19 @@ jobs:
     name: Preview ${{ matrix.stack }}
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
 
     strategy:
       # Run all previews even if one fails
       fail-fast: false
       matrix:
-        stack: [staging, production]
+        include:
+          - stack: staging
+            secret_suffix: STAGING
+          - stack: production
+            secret_suffix: PRODUCTION
 
     steps:
       - uses: actions/checkout@v4
@@ -209,12 +219,12 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets[format('AWS_ACCESS_KEY_ID_{0}', matrix.stack)] }}
-          aws-secret-access-key: ${{ secrets[format('AWS_SECRET_ACCESS_KEY_{0}', matrix.stack)] }}
+          aws-access-key-id: ${{ secrets[format('AWS_ACCESS_KEY_ID_{0}', matrix.secret_suffix)] }}
+          aws-secret-access-key: ${{ secrets[format('AWS_SECRET_ACCESS_KEY_{0}', matrix.secret_suffix)] }}
           aws-region: us-east-1
 
       - name: Pulumi Preview
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: preview
           stack-name: ${{ matrix.stack }}
@@ -248,7 +258,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Pulumi Up
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: up
           stack-name: staging
@@ -280,7 +290,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Pulumi Up
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: up
           stack-name: production
@@ -297,7 +307,10 @@ GitLab CI provides excellent support for Pulumi deployments with built-in enviro
 # Pulumi CI/CD pipeline for GitLab
 
 # Use a Node.js image with Pulumi pre-installed
-image: pulumi/pulumi-nodejs:latest
+default:
+  image:
+    name: pulumi/pulumi-nodejs:latest
+    entrypoint: [""]
 
 # Define pipeline stages
 stages:
@@ -307,9 +320,6 @@ stages:
 
 # Global variables available to all jobs
 variables:
-  # Pulumi configuration
-  PULUMI_ACCESS_TOKEN: $PULUMI_ACCESS_TOKEN
-
   # Disable interactive prompts
   PULUMI_SKIP_CONFIRMATIONS: "true"
 
@@ -371,7 +381,10 @@ deploy-dev:
 # .gitlab-ci.yml
 # Multi-environment Pulumi deployment pipeline
 
-image: pulumi/pulumi-nodejs:latest
+default:
+  image:
+    name: pulumi/pulumi-nodejs:latest
+    entrypoint: [""]
 
 stages:
   - validate
@@ -380,7 +393,6 @@ stages:
   - deploy-production
 
 variables:
-  PULUMI_ACCESS_TOKEN: $PULUMI_ACCESS_TOKEN
   PULUMI_SKIP_CONFIRMATIONS: "true"
 
 cache:
@@ -502,6 +514,9 @@ jobs:
     runs-on: ubuntu-latest
     # Only run when PR is not closed
     if: github.event.action != 'closed'
+    permissions:
+      contents: read
+      issues: write
 
     outputs:
       # Export the preview URL for use in other jobs
@@ -527,7 +542,7 @@ jobs:
           STACK_NAME="preview-pr-${{ github.event.pull_request.number }}"
 
           # Initialize stack if it does not exist
-          pulumi stack select $STACK_NAME --create || true
+          pulumi stack select $STACK_NAME --create
 
           # Set PR-specific configuration
           pulumi config set environment preview
@@ -605,6 +620,8 @@ jobs:
     runs-on: ubuntu-latest
     # Only run when PR is closed
     if: github.event.action == 'closed'
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -678,6 +695,9 @@ jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
@@ -694,7 +714,7 @@ jobs:
       # Pulumi Cloud handles state automatically
       # No need to configure S3/GCS backends
       - name: Deploy with Pulumi Cloud
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: ${{ github.event_name == 'pull_request' && 'preview' || 'up' }}
           stack-name: org-name/project-name/dev
@@ -707,36 +727,32 @@ jobs:
 
 ### Using Pulumi Deployments
 
-Pulumi Deployments runs your infrastructure deployments directly in Pulumi Cloud, eliminating the need for CI/CD runners.
+Pulumi Deployments runs your infrastructure deployments directly in Pulumi Cloud, eliminating the need for CI/CD runners. Deployment settings are configured on each stack in Pulumi Cloud, through the REST API, or with the Pulumi Cloud provider.
 
-```yaml
-# Pulumi.yaml
-# Configure Pulumi Deployments
-
-name: my-infrastructure
-runtime: nodejs
-
-# Pulumi Deployments configuration
-deployment:
-  # Trigger deployments on git push
-  gitHub:
-    repository: myorg/my-infrastructure
-    previewPullRequests: true
-    deployCommits: true
-    paths:
-      - "**/*.ts"
-      - "package.json"
-
-  # Environment configuration
-  environments:
-    dev:
-      branch: main
-      environmentVariables:
-        NODE_ENV: development
-    production:
-      branch: release
-      environmentVariables:
-        NODE_ENV: production
+```json
+{
+  "sourceContext": {
+    "git": {
+      "branch": "main",
+      "repoDir": "infra"
+    }
+  },
+  "operationContext": {
+    "environmentVariables": {
+      "NODE_ENV": "development"
+    }
+  },
+  "vcs": {
+    "provider": "github",
+    "repository": "myorg/my-infrastructure",
+    "previewPullRequests": true,
+    "deployCommits": true,
+    "paths": [
+      "**/*.ts",
+      "package.json"
+    ]
+  }
+}
 ```
 
 ### Stack References for Multi-Stack Deployments
@@ -756,13 +772,56 @@ const networkStack = new pulumi.StackReference("org/network/dev");
 const vpcId = networkStack.getOutput("vpcId");
 const privateSubnetIds = networkStack.getOutput("privateSubnetIds");
 
+const securityGroup = new aws.ec2.SecurityGroup("app-sg", {
+  vpcId: vpcId,
+  ingress: [{
+    protocol: "tcp",
+    fromPort: 80,
+    toPort: 80,
+    cidrBlocks: ["0.0.0.0/0"],
+  }],
+  egress: [{
+    protocol: "-1",
+    fromPort: 0,
+    toPort: 0,
+    cidrBlocks: ["0.0.0.0/0"],
+  }],
+});
+
 // Create resources in the referenced VPC
 const cluster = new aws.ecs.Cluster("app-cluster", {
   // ECS cluster configuration
 });
 
+const taskExecutionRole = new aws.iam.Role("task-execution-role", {
+  assumeRolePolicy: aws.iam.assumeRolePolicyForPrincipal({
+    Service: "ecs-tasks.amazonaws.com",
+  }),
+});
+
+const taskDefinition = new aws.ecs.TaskDefinition("app-task", {
+  family: "app",
+  cpu: "256",
+  memory: "512",
+  networkMode: "awsvpc",
+  requiresCompatibilities: ["FARGATE"],
+  executionRoleArn: taskExecutionRole.arn,
+  containerDefinitions: JSON.stringify([{
+    name: "app",
+    image: "nginx:latest",
+    essential: true,
+    portMappings: [{
+      containerPort: 80,
+      protocol: "tcp",
+    }],
+  }]),
+});
+
 const service = new aws.ecs.Service("app-service", {
   cluster: cluster.arn,
+  taskDefinition: taskDefinition.arn,
+  desiredCount: 2,
+  launchType: "FARGATE",
   networkConfiguration: {
     // Use subnets from the network stack
     subnets: privateSubnetIds,
@@ -859,7 +918,7 @@ jobs:
 
       # Pulumi secrets are decrypted at runtime
       - name: Deploy
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: up
           stack-name: production
@@ -883,8 +942,8 @@ const dbCredentials = aws.secretsmanager.getSecretVersionOutput({
   secretId: "prod/database/credentials",
 });
 
-// Parse the secret JSON
-const credentials = dbCredentials.secretString.apply(s => JSON.parse(s));
+// Parse the secret JSON and mark it as a Pulumi secret
+const credentials = pulumi.secret(dbCredentials.secretString).apply(s => JSON.parse(s ?? "{}"));
 
 // Use secrets in resources
 const database = new aws.rds.Instance("app-db", {
@@ -927,6 +986,7 @@ Enforce compliance rules in your CI/CD pipeline using Pulumi CrossGuard.
 // Define policy rules for infrastructure compliance
 
 import * as policy from "@pulumi/policy";
+import * as aws from "@pulumi/aws";
 
 // Create a policy pack
 new policy.PolicyPack("compliance", {
@@ -1020,7 +1080,7 @@ jobs:
 
       # Run preview with policy enforcement
       - name: Pulumi Preview with Policies
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: preview
           stack-name: dev
