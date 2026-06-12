@@ -21,7 +21,7 @@ Create a Vault role that allows access to specific secrets:
 ```bash
 vault write auth/jwt/role/gitlab-ci \
   role_type=jwt \
-  bound_audiences="https://gitlab.example.com" \
+  bound_audiences="https://vault.example.com" \
   user_claim="sub" \
   policies="ci-read" \
   ttl="15m"
@@ -29,7 +29,7 @@ vault write auth/jwt/role/gitlab-ci \
 
 ## Step 3: Fetch Secrets in GitLab CI
 
-Use the GitLab JWT to authenticate and fetch secrets at runtime.
+Use a GitLab ID token to authenticate and fetch secrets at runtime.
 
 ```yaml
 variables:
@@ -38,9 +38,12 @@ variables:
 fetch-secrets:
   stage: build
   image: hashicorp/vault:latest
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: https://vault.example.com
   script:
-    - vault login -method=jwt role=gitlab-ci jwt=$CI_JOB_JWT
-    - vault kv get -field=DATABASE_URL secret/data/app
+    - vault login -method=jwt role=gitlab-ci jwt="$VAULT_ID_TOKEN"
+    - vault kv get -field=DATABASE_URL secret/app
 ```
 
 ## Step 4: Avoid Storing Secrets in Logs
