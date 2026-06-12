@@ -205,22 +205,17 @@ Project when the budget will run out:
 ```promql
 # Hours until budget exhaustion at current burn rate
 (
-  # Remaining budget (as ratio)
-  (
-    sum(rate(http_requests_total{service="api-gateway", status!~"5.."}[30d]))
-    /
-    sum(rate(http_requests_total{service="api-gateway"}[30d]))
-  )
-  - 0.999
+  # Remaining budget (as requests)
+  sum(increase(http_requests_total{service="api-gateway", status!~"5.."}[30d]))
+  -
+  0.999 * sum(increase(http_requests_total{service="api-gateway"}[30d]))
 )
 /
 (
-  # Current hourly error rate
-  1 - (
-    sum(rate(http_requests_total{service="api-gateway", status!~"5.."}[1h]))
-    /
-    sum(rate(http_requests_total{service="api-gateway"}[1h]))
-  )
+  # Current hourly error count
+  sum(increase(http_requests_total{service="api-gateway"}[1h]))
+  -
+  sum(increase(http_requests_total{service="api-gateway", status!~"5.."}[1h]))
 )
 ```
 
@@ -264,13 +259,32 @@ Visualize budget burn as a time series:
 
 ```promql
 # Cumulative error budget consumption
-1 - (
-  sum(increase(http_requests_total{service="api-gateway", status!~"5.."}[$__range]))
-  /
-  sum(increase(http_requests_total{service="api-gateway"}[$__range]))
+(
+  1 - (
+    sum(increase(http_requests_total{service="api-gateway", status!~"5.."}[$__range]))
+    /
+    sum(increase(http_requests_total{service="api-gateway"}[$__range]))
+  )
 )
 /
 (1 - 0.999)
+```
+
+If you want to show this as a percentage, multiply by 100:
+
+```promql
+(
+  (
+    1 - (
+      sum(increase(http_requests_total{service="api-gateway", status!~"5.."}[$__range]))
+      /
+      sum(increase(http_requests_total{service="api-gateway"}[$__range]))
+    )
+  )
+  /
+  (1 - 0.999)
+)
+* 100
 ```
 
 ## Latency SLO Panels
@@ -288,7 +302,7 @@ sum(rate(http_request_duration_seconds_count{service="api-gateway"}[30d]))
 
 ### Latency Distribution
 
-A histogram panel shows the full latency distribution:
+A heatmap panel shows the full latency distribution:
 
 ```promql
 # Histogram buckets
@@ -301,7 +315,7 @@ Panel configuration:
 Panel Type: Heatmap
 Title: Latency Distribution
 
-Data format: Time series buckets
+Query format: Heatmap
 Y-axis: le
 Color scheme: Spectral
 ```
@@ -315,7 +329,9 @@ Scale to multiple services with template variables.
 ```yaml
 Variable: service
 Type: Query
-Query: label_values(http_requests_total, service)
+Query type: Label values
+Metric: http_requests_total
+Label: service
 Multi-value: true
 Include All option: true
 ```
@@ -371,12 +387,33 @@ groups:
   - name: slo_recording_rules
     interval: 1m
     rules:
+      # Availability SLI (5m window)
+      - record: slo:availability:ratio_rate5m
+        expr: |
+          sum(rate(http_requests_total{status!~"5.."}[5m])) by (service)
+          /
+          sum(rate(http_requests_total[5m])) by (service)
+
+      # Availability SLI (30m window)
+      - record: slo:availability:ratio_rate30m
+        expr: |
+          sum(rate(http_requests_total{status!~"5.."}[30m])) by (service)
+          /
+          sum(rate(http_requests_total[30m])) by (service)
+
       # Availability SLI (1h window)
       - record: slo:availability:ratio_rate1h
         expr: |
           sum(rate(http_requests_total{status!~"5.."}[1h])) by (service)
           /
           sum(rate(http_requests_total[1h])) by (service)
+
+      # Availability SLI (6h window)
+      - record: slo:availability:ratio_rate6h
+        expr: |
+          sum(rate(http_requests_total{status!~"5.."}[6h])) by (service)
+          /
+          sum(rate(http_requests_total[6h])) by (service)
 
       # Availability SLI (30d window)
       - record: slo:availability:ratio_rate30d
@@ -390,10 +427,25 @@ groups:
         expr: |
           (slo:availability:ratio_rate30d - 0.999) / (1 - 0.999)
 
-      # Burn rate
+      # Burn rate (5m window)
+      - record: slo:burn_rate:ratio_rate5m
+        expr: |
+          (1 - slo:availability:ratio_rate5m) / (1 - 0.999)
+
+      # Burn rate (30m window)
+      - record: slo:burn_rate:ratio_rate30m
+        expr: |
+          (1 - slo:availability:ratio_rate30m) / (1 - 0.999)
+
+      # Burn rate (1h window)
       - record: slo:burn_rate:ratio_rate1h
         expr: |
           (1 - slo:availability:ratio_rate1h) / (1 - 0.999)
+
+      # Burn rate (6h window)
+      - record: slo:burn_rate:ratio_rate6h
+        expr: |
+          (1 - slo:availability:ratio_rate6h) / (1 - 0.999)
 ```
 
 Then simplify dashboard queries:
@@ -416,17 +468,23 @@ groups:
     rules:
       # Fast burn (page immediately)
       - alert: SLOBurnRateCritical
-        expr: slo:burn_rate:ratio_rate1h > 14.4
+        expr: |
+          slo:burn_rate:ratio_rate1h > 14.4
+          and
+          slo:burn_rate:ratio_rate5m > 14.4
         for: 2m
         labels:
           severity: critical
         annotations:
           summary: "SLO burn rate critical for {{ $labels.service }}"
-          description: "Burn rate is {{ $value }}, budget will exhaust in < 1 hour"
+          description: "Burn rate is {{ $value }}, consuming error budget faster than the allowed rate"
 
       # Slow burn (ticket)
       - alert: SLOBurnRateWarning
-        expr: slo:burn_rate:ratio_rate6h > 6
+        expr: |
+          slo:burn_rate:ratio_rate6h > 6
+          and
+          slo:burn_rate:ratio_rate30m > 6
         for: 1h
         labels:
           severity: warning
@@ -449,7 +507,7 @@ Annotations:
 
 ### Choose Appropriate Windows
 
-- Short windows (1h, 6h) for burn rate and alerting
+- Short windows (5m, 30m, 1h, 6h) for burn rate and alerting
 - Long windows (7d, 30d) for SLO compliance reporting
 
 ### Avoid Vanity SLOs
