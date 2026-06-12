@@ -27,7 +27,7 @@ Multi-stage builds are the single most effective technique for reducing image si
 # This stage contains all the tools needed to compile and build the application
 # None of these tools will exist in the final production image
 # =============================================================================
-FROM node:20-bullseye AS builder
+FROM node:24-bookworm AS builder
 
 # Set the working directory for the build
 WORKDIR /app
@@ -52,7 +52,7 @@ RUN npm run build
 # This stage contains only what is needed to run the application
 # No build tools, no source code, no devDependencies
 # =============================================================================
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 
 # Set NODE_ENV to production for optimized runtime behavior
 ENV NODE_ENV=production
@@ -88,8 +88,8 @@ Your choice of base image has an enormous impact on final size. Here is a compar
 |------------|------|----------|
 | ubuntu:22.04 | ~77MB | Full OS, maximum compatibility |
 | debian:bookworm-slim | ~74MB | Slimmed Debian, good compatibility |
-| alpine:3.19 | ~7MB | Minimal Linux, musl libc |
-| gcr.io/distroless/static | ~2MB | Static binaries only |
+| alpine:3.23 | ~7MB | Minimal Linux, musl libc |
+| gcr.io/distroless/static-debian13 | ~2MB | Static binaries only |
 | scratch | 0MB | Absolute minimum, no OS |
 
 ```dockerfile
@@ -99,23 +99,19 @@ Your choice of base image has an enormous impact on final size. Here is a compar
 # =============================================================================
 FROM python:3.12-alpine
 
-# Alpine uses apk instead of apt-get
-# --no-cache prevents storing the package index (saves space)
-# --virtual creates a named group for easy removal of build dependencies later
-RUN apk add --no-cache --virtual .build-deps \
-    gcc \
-    musl-dev \
-    libffi-dev
-
 WORKDIR /app
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Remove build dependencies that are no longer needed at runtime
-# This removes all packages installed with --virtual .build-deps
-RUN apk del .build-deps
+# Alpine uses apk instead of apt-get
+# --no-cache prevents storing the package index (saves space)
+# --virtual creates a named group for easy removal of build dependencies
+# Install dependencies and remove build tools in the same layer
+RUN apk add --no-cache --virtual .build-deps \
+        gcc \
+        musl-dev \
+        libffi-dev && \
+    pip install --no-cache-dir -r requirements.txt && \
+    apk del .build-deps
 
 COPY . .
 CMD ["python", "app.py"]
@@ -128,7 +124,7 @@ For compiled languages like Go or Rust, you can use even smaller bases.
 # Go application with scratch base (0 bytes)
 # This works because Go can produce fully static binaries
 # =============================================================================
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -208,7 +204,7 @@ Order your Dockerfile instructions from least-changed to most-changed. This maxi
 # =============================================================================
 # Optimal layer ordering for cache efficiency
 # =============================================================================
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -416,38 +412,36 @@ COPY . .
 RUN ./gradlew build --no-daemon
 
 # Extract layers for better caching (Spring Boot feature)
-RUN java -Djarmode=layertools -jar build/libs/*.jar extract
+RUN java -Djarmode=tools -jar build/libs/*.jar extract --layers --destination extracted
 
 # =============================================================================
 # Distroless Java runtime
 # Contains only JRE and CA certificates - no shell, no package manager
 # =============================================================================
-FROM gcr.io/distroless/java21-debian12
+FROM gcr.io/distroless/java21-debian13
 
 WORKDIR /app
 
 # Copy extracted layers in order of change frequency
 # Spring Boot layers: dependencies, spring-boot-loader, snapshot-deps, application
-COPY --from=builder /app/dependencies/ ./
-COPY --from=builder /app/spring-boot-loader/ ./
-COPY --from=builder /app/snapshot-dependencies/ ./
-COPY --from=builder /app/application/ ./
+COPY --from=builder /app/extracted/dependencies/ ./
+COPY --from=builder /app/extracted/spring-boot-loader/ ./
+COPY --from=builder /app/extracted/snapshot-dependencies/ ./
+COPY --from=builder /app/extracted/application/ ./
 
 # Distroless has a nonroot user at UID 65532
 USER nonroot:nonroot
 
 # JVM options for containers
-ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
-
-ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
+ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-jar", "application.jar"]
 ```
 
 Available distroless images include:
-- `gcr.io/distroless/static` - For static binaries
-- `gcr.io/distroless/base` - For dynamically linked binaries
-- `gcr.io/distroless/java21` - Java 21 runtime
-- `gcr.io/distroless/python3` - Python 3 runtime
-- `gcr.io/distroless/nodejs20` - Node.js 20 runtime
+- `gcr.io/distroless/static-debian13` - For static binaries
+- `gcr.io/distroless/base-debian13` - For dynamically linked binaries
+- `gcr.io/distroless/java21-debian13` - Java 21 runtime
+- `gcr.io/distroless/python3-debian13` - Python 3 runtime
+- `gcr.io/distroless/nodejs24-debian13` - Node.js 24 runtime
 
 ## Best Practices Summary
 
