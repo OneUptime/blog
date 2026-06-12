@@ -79,6 +79,9 @@ k6 provides six executors, each suited for different testing patterns.
 Maintains a fixed number of virtual users throughout the test. Use this for steady-state load testing.
 
 ```javascript
+import http from 'k6/http';
+import { sleep } from 'k6';
+
 export const options = {
   scenarios: {
     steady_load: {
@@ -125,6 +128,8 @@ export const options = {
 Maintains a constant rate of iterations regardless of response times. This executor adds VUs as needed to hit the target rate.
 
 ```javascript
+import http from 'k6/http';
+
 export const options = {
   scenarios: {
     constant_request_rate: {
@@ -163,7 +168,7 @@ export const options = {
       maxVUs: 500,
       stages: [
         { duration: '2m', target: 50 },    // Warm up
-        { duration: '1m', target: 500 },   // Spike to 500 req/s
+        { duration: '1m', target: 500 },   // Spike to 500 iterations/second
         { duration: '2m', target: 500 },   // Hold spike
         { duration: '1m', target: 50 },    // Return to normal
         { duration: '4m', target: 50 },    // Observe recovery
@@ -179,6 +184,8 @@ export const options = {
 Each virtual user runs a fixed number of iterations. The test ends when all VUs complete their iterations.
 
 ```javascript
+import http from 'k6/http';
+
 export const options = {
   scenarios: {
     data_migration: {
@@ -193,7 +200,7 @@ export const options = {
 
 export function migrateRecord() {
   // Process one record per iteration
-  const record = sharedData.getNextRecord(__VU, __ITER);
+  const record = { vu: __VU, iteration: __ITER };
   http.post('https://api.example.com/migrate', JSON.stringify(record));
 }
 ```
@@ -390,31 +397,36 @@ Use environment variables to run different scenario combinations.
 const isSmoke = __ENV.TEST_TYPE === 'smoke';
 const isStress = __ENV.TEST_TYPE === 'stress';
 
+const loadStages = isStress
+  ? [
+      { duration: '10m', target: 500 },
+      { duration: '30m', target: 500 },
+      { duration: '10m', target: 0 },
+    ]
+  : [
+      { duration: '5m', target: 100 },
+      { duration: '10m', target: 100 },
+      { duration: '5m', target: 0 },
+    ];
+
 export const options = {
-  scenarios: {
-    smoke: {
-      executor: 'constant-vus',
-      vus: isSmoke ? 5 : 0,      // Only run in smoke mode
-      duration: '1m',
-      exec: 'smokeTest',
-    },
-    load: {
-      executor: 'ramping-vus',
-      startVUs: 0,
-      stages: isStress
-        ? [
-            { duration: '10m', target: 500 },
-            { duration: '30m', target: 500 },
-            { duration: '10m', target: 0 },
-          ]
-        : [
-            { duration: '5m', target: 100 },
-            { duration: '10m', target: 100 },
-            { duration: '5m', target: 0 },
-          ],
-      exec: 'loadTest',
-    },
-  },
+  scenarios: isSmoke
+    ? {
+        smoke: {
+          executor: 'constant-vus',
+          vus: 5,
+          duration: '1m',
+          exec: 'smokeTest',
+        },
+      }
+    : {
+        load: {
+          executor: 'ramping-vus',
+          startVUs: 0,
+          stages: loadStages,
+          exec: 'loadTest',
+        },
+      },
 };
 ```
 
@@ -448,7 +460,7 @@ gantt
     ramp down                 :m3, 17:00, 3m
 
     section Chaos
-    chaos injection (5 req/s) :c1, 07:00, 5m
+    chaos injection (5 iter/s) :c1, 07:00, 5m
 
     section Background
     monitoring (constant)     :b1, 00:00, 20m
