@@ -14,7 +14,7 @@ K3s ships with Traefik as its default ingress controller, making it incredibly e
 
 ## Understanding K3s and Traefik Integration
 
-K3s is a lightweight Kubernetes distribution that includes Traefik v2 by default. When you install K3s, Traefik is automatically deployed as a DaemonSet, ready to handle ingress traffic.
+K3s is a lightweight Kubernetes distribution that includes Traefik v3 by default. When you install K3s, Traefik is automatically deployed as a Helm-managed Deployment, ready to handle ingress traffic.
 
 ```mermaid
 flowchart LR
@@ -62,15 +62,15 @@ kubectl get svc -n kube-system traefik
 
 ### Traefik Dashboard Access
 
-Traefik includes a dashboard for monitoring. Enable it by port-forwarding:
+Traefik includes a dashboard for monitoring. After enabling the dashboard IngressRoute, access it by port-forwarding:
 
 ```bash
 # Port forward to access the Traefik dashboard
 kubectl port-forward -n kube-system \
   $(kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik -o jsonpath='{.items[0].metadata.name}') \
-  9000:9000
+  8080:8080
 
-# Access dashboard at http://localhost:9000/dashboard/
+# Access dashboard at http://localhost:8080/dashboard/
 ```
 
 ## Configuring the Built-in Traefik
@@ -91,10 +91,9 @@ metadata:
 spec:
   valuesContent: |-
     # Enable access logs for debugging and monitoring
-    logs:
-      access:
-        enabled: true
-        format: json
+    accessLog:
+      enabled: true
+      format: json
 
     # Configure entrypoints (ports Traefik listens on)
     ports:
@@ -134,12 +133,16 @@ spec:
         port: 5432
         exposedPort: 5432
         protocol: TCP
+        expose:
+          default: true
 
       # Add a UDP entrypoint for DNS or game servers
       dns:
         port: 53
         exposedPort: 53
         protocol: UDP
+        expose:
+          default: true
 
     # Increase resources for production workloads
     resources:
@@ -161,7 +164,7 @@ Traefik's IngressRoute CRD provides more powerful routing capabilities than stan
 # basic-ingressroute.yaml
 # Route traffic to a simple web application
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: webapp-route
@@ -186,7 +189,7 @@ spec:
 # path-routing.yaml
 # Route different paths to different services
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: api-routes
@@ -223,7 +226,7 @@ spec:
 # header-routing.yaml
 # Route based on request headers (useful for A/B testing or canary deployments)
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: canary-route
@@ -233,7 +236,7 @@ spec:
     - web
   routes:
     # Route beta users to the new version
-    - match: Host(`app.example.com`) && Headers(`X-Beta-User`, `true`)
+    - match: Host(`app.example.com`) && Header(`X-Beta-User`, `true`)
       kind: Rule
       priority: 100  # Higher priority takes precedence
       services:
@@ -291,7 +294,7 @@ data:
 # tls-ingressroute.yaml
 # IngressRoute with TLS enabled
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: webapp-secure
@@ -329,7 +332,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: traefik
+            ingressClassName: traefik
 ---
 # certificate.yaml
 # Request a certificate for your domain
@@ -351,7 +354,7 @@ spec:
 # secure-ingressroute.yaml
 # Use the automatically managed certificate
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: webapp-auto-tls
@@ -375,7 +378,7 @@ spec:
 # http-redirect.yaml
 # Redirect all HTTP traffic to HTTPS
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: redirect-https
@@ -385,7 +388,7 @@ spec:
     scheme: https
     permanent: true  # 301 redirect
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: webapp-http-redirect
@@ -434,7 +437,7 @@ stringData:
     admin:$apr1$xyz123$hashedpassword
     readonly:$apr1$abc456$anotherhashedpassword
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: basic-auth
@@ -452,7 +455,7 @@ spec:
 # rate-limit-middleware.yaml
 # Prevent abuse by limiting request rates
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: rate-limit
@@ -468,7 +471,7 @@ spec:
     # Use client IP as the rate limit key
     sourceCriterion:
       ipStrategy:
-        depth: 1  # Use first X-Forwarded-For IP
+        depth: 1  # Use the rightmost X-Forwarded-For IP
 ```
 
 ### Headers Middleware
@@ -477,7 +480,7 @@ spec:
 # security-headers.yaml
 # Add security headers to all responses
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: security-headers
@@ -505,19 +508,19 @@ spec:
       Referrer-Policy: "strict-origin-when-cross-origin"
 ```
 
-### IP Whitelist
+### IP Allowlist
 
 ```yaml
-# ip-whitelist.yaml
+# ip-allowlist.yaml
 # Restrict access to specific IP addresses
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: ip-whitelist
+  name: ip-allowlist
   namespace: default
 spec:
-  ipWhiteList:
+  ipAllowList:
     # Only allow these IP ranges
     sourceRange:
       - "10.0.0.0/8"       # Internal network
@@ -533,7 +536,7 @@ spec:
 # retry-middleware.yaml
 # Automatically retry failed requests
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: retry-requests
@@ -552,7 +555,7 @@ spec:
 # compression-middleware.yaml
 # Enable gzip/brotli compression for responses
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: compress-response
@@ -574,7 +577,7 @@ spec:
 # combined-ingressroute.yaml
 # Apply multiple middlewares to a route
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: secure-api
@@ -587,7 +590,7 @@ spec:
       kind: Rule
       middlewares:
         # Middlewares are applied in order
-        - name: ip-whitelist      # 1. Check IP whitelist
+        - name: ip-allowlist      # 1. Check IP allowlist
         - name: rate-limit        # 2. Apply rate limiting
         - name: basic-auth        # 3. Authenticate user
         - name: security-headers  # 4. Add security headers
@@ -607,7 +610,7 @@ spec:
 # canary-deployment.yaml
 # Gradually shift traffic between service versions
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: canary-release
@@ -645,7 +648,7 @@ flowchart LR
 # sticky-sessions.yaml
 # Ensure users always hit the same backend pod
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: sticky-app
@@ -675,7 +678,7 @@ spec:
 # tcp-route.yaml
 # Route raw TCP traffic (e.g., database connections)
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRouteTCP
 metadata:
   name: postgres-route
@@ -695,7 +698,7 @@ spec:
 # udp-route.yaml
 # Route UDP traffic
 
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRouteUDP
 metadata:
   name: dns-route
@@ -754,13 +757,13 @@ spec:
               memory: 256Mi
           livenessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 80
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /
               port: 80
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -779,7 +782,7 @@ spec:
       targetPort: 80
 ---
 # Rate limiting middleware
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: webapp-rate-limit
@@ -790,7 +793,7 @@ spec:
     burst: 200
 ---
 # Security headers middleware
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: webapp-security
@@ -804,7 +807,7 @@ spec:
     stsIncludeSubdomains: true
 ---
 # Compression middleware
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: webapp-compress
@@ -813,7 +816,7 @@ spec:
   compress: {}
 ---
 # HTTP to HTTPS redirect
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: webapp-redirect
@@ -824,7 +827,7 @@ spec:
     permanent: true
 ---
 # HTTP IngressRoute (redirects to HTTPS)
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: webapp-http
@@ -842,7 +845,7 @@ spec:
           port: 80
 ---
 # HTTPS IngressRoute with all middlewares
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: webapp-https
