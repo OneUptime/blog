@@ -22,7 +22,7 @@ DNS failover solves this by:
 - Automatically detecting unhealthy servers through health checks
 - Removing failed servers from DNS responses
 - Routing traffic only to healthy endpoints
-- Reducing downtime from hours to seconds
+- Reducing downtime from hours to the health-check detection window plus DNS cache expiry
 
 Without failover:
 1. Server fails
@@ -34,7 +34,7 @@ Without failover:
 
 With failover:
 1. Server fails
-2. Health check detects failure within seconds
+2. Health check detects failure after the configured interval and failure threshold
 3. DNS automatically returns healthy server IPs
 4. Users experience minimal or no interruption
 
@@ -66,14 +66,14 @@ Configure HTTP health checks to:
 
 ### HTTPS Health Checks
 
-HTTPS checks work like HTTP but also verify SSL/TLS certificates. Use these for production endpoints that require encryption.
+HTTPS checks work like HTTP but perform the request over TLS. Some providers validate SSL/TLS certificates, while others only verify that the TLS connection and HTTP response succeed. Use these for production endpoints that require encryption.
 
 ```bash
 # HTTPS health check verifies:
 # 1. TCP connection succeeds
 # 2. TLS handshake completes
-# 3. Certificate is valid
-# 4. HTTP response is healthy
+# 3. HTTP response is healthy
+# 4. Certificate validity if your provider enforces it
 ```
 
 ### TCP Health Checks
@@ -203,7 +203,7 @@ Time To Live (TTL) controls how long DNS resolvers cache your records. This dire
 ### Low TTL (30-60 seconds)
 
 Pros:
-- Faster failover - changes propagate in under a minute
+- Faster failover - compliant resolvers refresh records more quickly
 - More responsive to health check results
 
 Cons:
@@ -249,8 +249,10 @@ Route 53 provides robust health checking with multiple checker locations worldwi
 
 ### Creating a Health Check
 
+Replace the documentation IPs in these examples with publicly reachable endpoint IPs or DNS names.
+
 ```bash
-# Create HTTP health check using AWS CLI
+# Create HTTPS health check using AWS CLI
 aws route53 create-health-check \
   --caller-reference "api-primary-$(date +%s)" \
   --health-check-config '{
@@ -259,6 +261,7 @@ aws route53 create-health-check \
     "Type": "HTTPS",
     "ResourcePath": "/health",
     "FullyQualifiedDomainName": "api.example.com",
+    "EnableSNI": true,
     "RequestInterval": 30,
     "FailureThreshold": 3
   }'
@@ -320,7 +323,7 @@ health_check:
     - us-east-1
     - us-west-2
     - eu-west-1
-  enable_sni: true            # Server Name Indication for HTTPS
+  enable_sni: true            # Server Name Indication for HTTPS; Route 53 does not validate certificate expiration
   search_string: "healthy"    # For STR_MATCH types
 ```
 
@@ -331,6 +334,8 @@ health_check:
 Cloudflare provides health checks through their Load Balancing feature.
 
 ### Pool and Health Check Setup
+
+Replace the documentation IPs in these examples with reachable origin IPs or hostnames.
 
 ```bash
 # Using Cloudflare API to create a pool with health checks
@@ -367,7 +372,6 @@ curl -X POST "https://api.cloudflare.com/client/v4/accounts/{account_id}/load_ba
     "enabled": true,
     "minimum_origins": 1,
     "monitor": "{monitor_id}",
-    "notification_email": "ops@example.com",
     "origins": [
       {
         "name": "server-1",
@@ -400,7 +404,7 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/load_balancer
     "enabled": true,
     "default_pools": ["{primary_pool_id}"],
     "fallback_pool": "{secondary_pool_id}",
-    "steering_policy": "failover"
+    "steering_policy": "off"
   }'
 ```
 
@@ -409,13 +413,12 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/load_balancer
 ```yaml
 # Available steering policies
 steering_policies:
-  off: "Use default pool only"
-  failover: "Use pools in order, failover to next"
+  off: "Use default_pools in failover order"
   random: "Random selection from healthy origins"
   dynamic_latency: "Route to lowest latency pool"
   geo: "Route based on user geography"
   proximity: "Route to nearest pool"
-  least_outstanding: "Route to pool with fewest requests"
+  least_outstanding_requests: "Route to pool with fewest outstanding requests"
   least_connections: "Route to pool with fewest connections"
 ```
 
@@ -427,29 +430,16 @@ For teams preferring self-hosted infrastructure, several options exist for DNS f
 
 ### PowerDNS with Lua Records
 
-PowerDNS supports dynamic records using Lua scripts for health-aware responses.
+PowerDNS supports dynamic records using Lua records for health-aware responses.
 
 ```lua
--- /etc/pdns/lua-records/failover.lua
--- Dynamic A record with health checks
-
-function failover(dname, bestwho, bestwhat)
-    local servers = {
-        {ip = "192.0.2.1", check = "http://192.0.2.1/health"},
-        {ip = "192.0.2.2", check = "http://192.0.2.2/health"}
-    }
-
-    for _, server in ipairs(servers) do
-        -- Simple HTTP health check
-        local result = ifurlup(server.check, {{server.ip}})
-        if result then
-            return {server.ip}
-        end
-    end
-
-    -- Return all if none healthy (let client retry)
-    return {"192.0.2.1", "192.0.2.2"}
-end
+-- PowerDNS LUA record content
+-- Returns the primary group when healthy, otherwise the secondary group.
+ifurlup(
+    "http://api.example.com/health",
+    {{"192.0.2.1"}, {"192.0.2.2"}},
+    {selector = "all", backupSelector = "all", stringmatch = "healthy"}
+)
 ```
 
 ```sql
@@ -459,27 +449,27 @@ VALUES (
     1,
     'api.example.com',
     'LUA',
-    'A "failover()"',
+    'A "ifurlup(''http://api.example.com/health'', {{''192.0.2.1''}, {''192.0.2.2''}}, {selector=''all'', backupSelector=''all'', stringmatch=''healthy''})"',
     60
 );
 ```
 
-### CoreDNS with Health Plugin
+### CoreDNS for Resolver Upstream Failover
 
-CoreDNS can perform health checks with the health plugin and forward to healthy upstreams.
+CoreDNS can health check its own process with the health plugin and forward DNS queries to healthy upstream resolvers. This improves resolver availability; it is not an application A-record failover mechanism.
 
 ```corefile
 # /etc/coredns/Corefile
-example.com {
+. {
     loadbalance round_robin
 
-    # Health check every 5 seconds
+    # Expose CoreDNS's own health endpoint
     health {
         lameduck 5s
     }
 
-    # Forward with health checks
-    forward . 192.0.2.1 192.0.2.2 {
+    # Forward DNS queries with upstream health checks
+    forward . 192.0.2.53 192.0.2.54 {
         health_check 5s
         policy round_robin
     }
@@ -489,9 +479,9 @@ example.com {
 }
 ```
 
-### HAProxy with DNS
+### HAProxy Behind DNS
 
-Use HAProxy as a DNS-aware load balancer with health checks.
+Use HAProxy as an HTTP load balancer with health checks, and point DNS at the HAProxy address.
 
 ```haproxy
 # /etc/haproxy/haproxy.cfg
@@ -504,7 +494,7 @@ defaults
     timeout connect 5s
     timeout client 30s
     timeout server 30s
-    option httpchk GET /health
+    option httpchk
 
 frontend api
     bind *:80
@@ -512,7 +502,8 @@ frontend api
 
 backend api_servers
     balance roundrobin
-    option httpchk GET /health HTTP/1.1\r\nHost:\ api.example.com
+    http-check send meth GET uri /health ver HTTP/1.1 hdr Host api.example.com
+    http-check expect status 200
 
     # Health check every 3 seconds, mark down after 3 failures
     server server1 192.0.2.1:80 check inter 3000 fall 3 rise 2
