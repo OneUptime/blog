@@ -48,7 +48,7 @@ flowchart LR
     end
 ```
 
-The typical deduplication ratio for backup workloads ranges from 10:1 to 50:1. That means 10TB of backup data compresses to 1TB or less of actual storage.
+The typical deduplication ratio for backup workloads ranges from 10:1 to 50:1. That means 10TB of backup data deduplicates to 1TB or less of actual storage.
 
 ---
 
@@ -144,15 +144,13 @@ def fixed_chunk(data: bytes, chunk_size: int = 8192) -> list[bytes]:
 
 ### Variable-Length Chunking (Content-Defined Chunking)
 
-Use the data itself to determine chunk boundaries. The most common technique is Rabin fingerprinting.
+Use the data itself to determine chunk boundaries. Production systems commonly use Rabin fingerprinting, FastCDC, or similar rolling-hash techniques. The simplified example below demonstrates the boundary logic.
 
 ```python
-import hashlib
-
-def rabin_chunk(data: bytes,
-                min_size: int = 2048,
-                max_size: int = 65536,
-                target_size: int = 8192) -> list[bytes]:
+def content_defined_chunk(data: bytes,
+                          min_size: int = 2048,
+                          max_size: int = 65536,
+                          target_size: int = 8192) -> list[bytes]:
     """
     Content-defined chunking using a rolling hash.
     Chunk boundaries are determined by the data content,
@@ -163,18 +161,22 @@ def rabin_chunk(data: bytes,
     pos = 0
     window_size = 48
 
-    # Mask determines average chunk size (target_size)
-    # For 8KB average: mask = 0x1FFF (13 bits set)
+    # Mask determines average chunk size when target_size is a power of two.
+    # For 8KB average: mask = 0x1FFF (13 bits set).
     mask = target_size - 1
 
     rolling_hash = 0
+    base = 257
+    base_window = pow(base, window_size, 2**32)
 
     while pos < len(data):
         # Update rolling hash with current byte
+        rolling_hash = (rolling_hash * base + data[pos]) & 0xFFFFFFFF
         if pos >= window_size:
             # Remove contribution of byte leaving the window
-            rolling_hash ^= data[pos - window_size]
-        rolling_hash = ((rolling_hash << 1) | (data[pos] & 1)) & 0xFFFFFFFF
+            rolling_hash = (
+                rolling_hash - data[pos - window_size] * base_window
+            ) & 0xFFFFFFFF
 
         chunk_len = pos - start + 1
 
@@ -199,7 +201,7 @@ def rabin_chunk(data: bytes,
     return chunks
 ```
 
-Variable-length chunking handles insertions and deletions gracefully. Only the affected chunks change; the rest of the file still deduplicates against previous versions.
+Variable-length chunking handles insertions and deletions gracefully. Only the affected chunks and nearby boundary regions change; the rest of the file still deduplicates against previous versions.
 
 ---
 
@@ -213,13 +215,13 @@ Each chunk needs a fingerprint to identify duplicates. The hash must be:
 
 | Algorithm | Hash Size | Speed | Collision Resistance |
 |-----------|-----------|-------|---------------------|
-| MD5 | 128 bits | Very fast | Weak (broken for security, fine for dedup) |
-| SHA-1 | 160 bits | Fast | Weak (broken for security, acceptable for dedup) |
+| MD5 | 128 bits | Very fast | Weak (non-adversarial use only) |
+| SHA-1 | 160 bits | Fast | Weak (non-adversarial use only) |
 | SHA-256 | 256 bits | Moderate | Strong |
 | xxHash | 64/128 bits | Extremely fast | Good for dedup |
 | BLAKE3 | 256 bits | Very fast | Strong |
 
-For deduplication, cryptographic strength matters less than speed and collision avoidance. Many production systems use xxHash or BLAKE3 for performance, with SHA-256 as a fallback for verification.
+For deduplication, cryptographic strength matters less than speed and collision avoidance unless clients or stored data are adversarial. Many production systems use fast non-cryptographic hashes with verification, or BLAKE3/SHA-256 when stronger collision resistance is needed.
 
 ### Implementation Example
 
@@ -269,12 +271,16 @@ class ChunkStore:
         total_refs = sum(self.references.values())
         unique_chunks = len(self.chunks)
         stored_bytes = sum(len(c) for c in self.chunks.values())
+        logical_bytes = sum(
+            len(self.chunks[h]) * refs
+            for h, refs in self.references.items()
+        )
 
         return {
             "unique_chunks": unique_chunks,
             "total_references": total_refs,
             "stored_bytes": stored_bytes,
-            "dedup_ratio": total_refs / unique_chunks if unique_chunks > 0 else 1
+            "dedup_ratio": logical_bytes / stored_bytes if stored_bytes > 0 else 1
         }
 ```
 
@@ -288,7 +294,8 @@ Here is a complete example that ties together chunking, hashing, and storage:
 import os
 import json
 from dataclasses import dataclass
-from typing import Iterator
+from threading import Lock
+import xxhash
 
 @dataclass
 class FileManifest:
@@ -309,6 +316,7 @@ class DedupBackup:
         os.makedirs(self.manifest_dir, exist_ok=True)
 
         self.index = self._load_index()
+        self._lock = Lock()
 
     def _load_index(self) -> dict:
         """Load the chunk index from disk."""
@@ -335,28 +343,29 @@ class DedupBackup:
     def backup_file(self, filepath: str) -> FileManifest:
         """Backup a file with deduplication."""
         chunk_hashes = []
-        file_size = 0
-
         with open(filepath, "rb") as f:
             data = f.read()
 
         file_size = len(data)
-        self.index["stats"]["total_input"] += file_size
 
         # Use content-defined chunking
-        chunks = rabin_chunk(data)
+        chunks = content_defined_chunk(data)
 
-        for chunk in chunks:
-            chunk_hash = xxhash.xxh128(chunk).hexdigest()
-            chunk_hashes.append(chunk_hash)
+        with self._lock:
+            self.index["stats"]["total_input"] += file_size
 
-            # Store if new
-            if chunk_hash not in self.index["chunks"]:
-                chunk_path = self._chunk_path(chunk_hash)
-                with open(chunk_path, "wb") as f:
-                    f.write(chunk)
-                self.index["chunks"][chunk_hash] = len(chunk)
-                self.index["stats"]["stored"] += len(chunk)
+            for chunk in chunks:
+                chunk_hash = xxhash.xxh128(chunk).hexdigest()
+                chunk_hashes.append(chunk_hash)
+
+                # Store if new
+                if chunk_hash not in self.index["chunks"]:
+                    chunk_path = self._chunk_path(chunk_hash)
+                    with open(chunk_path, "wb") as f:
+                        f.write(chunk)
+                    self.index["chunks"][chunk_hash] = len(chunk)
+                    self.index["stats"]["stored"] += len(chunk)
+            self._save_index()
 
         # Save manifest
         manifest = FileManifest(
@@ -375,8 +384,6 @@ class DedupBackup:
                 "size": manifest.size,
                 "chunk_hashes": manifest.chunk_hashes
             }, f)
-
-        self._save_index()
         return manifest
 
     def restore_file(self, manifest_path: str, output_path: str):
@@ -539,11 +546,12 @@ def source_side_backup_with_global_dedup(
     Only uploads chunks the server does not have.
     """
     import requests
+    import xxhash
 
     with open(filepath, "rb") as f:
         data = f.read()
 
-    chunks = rabin_chunk(data)
+    chunks = content_defined_chunk(data)
     chunk_hashes = []
 
     for chunk in chunks:
@@ -583,6 +591,8 @@ While extremely rare with 128-bit or 256-bit hashes, collisions can cause data c
 3. **Periodic verification:** Background job that re-hashes stored chunks
 
 ```python
+import xxhash
+
 def safe_chunk_match(
     new_chunk: bytes,
     stored_hash: str,
@@ -608,6 +618,9 @@ def safe_chunk_match(
 When backups are deleted, chunks may no longer be referenced. Reference counting handles this:
 
 ```python
+import os
+import json
+
 def garbage_collect(backup: DedupBackup):
     """Remove chunks with zero references."""
     # Build reference counts from all manifests
@@ -655,6 +668,7 @@ def store_chunk_compressed(
 
     if chunk_hash in chunk_store.chunks:
         # Duplicate, no need to compress
+        chunk_store.references[chunk_hash] += 1
         return chunk_hash, 0
 
     # New chunk, compress then store
@@ -672,6 +686,8 @@ def store_chunk_compressed(
 Track these metrics:
 
 ```python
+from dataclasses import dataclass
+
 @dataclass
 class DedupMetrics:
     total_input_bytes: int
@@ -708,24 +724,22 @@ Expose these to your monitoring system. If dedup ratios drop suddenly, investiga
 
 ### Encryption
 
-Deduplicate before encryption. Encrypted data appears random and will not deduplicate.
+Deduplicate before encryption. Encrypted data appears random and will not deduplicate unless the encryption scheme is designed to be deterministic.
 
-For secure multi-tenant systems, consider convergent encryption: derive the encryption key from the chunk content itself. Identical chunks encrypt to identical ciphertext, preserving dedup.
+For systems that explicitly need deduplication over encrypted chunks, consider convergent encryption carefully: derive encryption material from the chunk content so identical chunks encrypt to identical ciphertext, preserving dedup. This leaks equality of plaintext chunks and needs threat-model-specific protections such as proof-of-ownership and key-management controls.
 
 ```python
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
 import hashlib
 
 def convergent_encrypt(data: bytes) -> tuple[bytes, bytes]:
-    """Encrypt data using a key derived from the data itself."""
-    # Derive key from content hash
+    """Toy convergent-encryption sketch using deterministic material."""
     key = hashlib.sha256(data).digest()
 
-    # Fixed IV for convergent encryption (or derive from content)
-    iv = hashlib.md5(data).digest()
+    # CTR requires a 16-byte nonce for AES.
+    nonce = hashlib.sha256(b"nonce:" + data).digest()[:16]
 
-    cipher = Cipher(algorithms.AES(key), modes.CTR(iv), backend=default_backend())
+    cipher = Cipher(algorithms.AES(key), modes.CTR(nonce))
     encryptor = cipher.encryptor()
 
     ciphertext = encryptor.update(data) + encryptor.finalize()
@@ -747,6 +761,7 @@ Always verify restores. A dedup system that cannot restore is worthless:
 ```python
 def verify_backup_integrity(backup: DedupBackup, original_path: str):
     """Verify a backup can be restored correctly."""
+    import os
     import tempfile
     import filecmp
 
@@ -755,13 +770,17 @@ def verify_backup_integrity(backup: DedupBackup, original_path: str):
         f"{os.path.basename(original_path)}.manifest.json"
     )
 
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        backup.restore_file(manifest_path, tmp.name)
+    fd, tmp_path = tempfile.mkstemp()
+    os.close(fd)
 
-        if not filecmp.cmp(original_path, tmp.name, shallow=False):
+    try:
+        backup.restore_file(manifest_path, tmp_path)
+
+        if not filecmp.cmp(original_path, tmp_path, shallow=False):
             raise ValueError("Restore verification failed: files differ")
 
-        os.unlink(tmp.name)
+    finally:
+        os.unlink(tmp_path)
 
     return True
 ```
