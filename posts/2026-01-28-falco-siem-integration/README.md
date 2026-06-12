@@ -20,7 +20,7 @@ flowchart LR
 
     B --> C[Elasticsearch]
     B --> D[Splunk HEC]
-    B --> E[AWS Security Hub]
+    B --> E[AWS Security Lake]
     B --> F[Kafka]
 
     F --> G[SIEM Consumer]
@@ -30,7 +30,7 @@ flowchart LR
 
 ## Elasticsearch Integration
 
-Elasticsearch with Kibana provides a popular open-source SIEM solution.
+Elasticsearch with Kibana provides a popular search and security analytics stack.
 
 ### Configure Sidekick for Elasticsearch
 
@@ -198,11 +198,8 @@ First, enable HEC in Splunk:
 # sidekick-values.yaml
 config:
   splunk:
-    hostport: "https://splunk-hec.example.com:8088"
+    host: "https://splunk-hec.example.com:8088/services/collector/event"
     token: "your-hec-token"
-    index: "falco"
-    source: "falco"
-    sourcetype: "_json"
 
     # TLS options
     checkcert: true
@@ -273,10 +270,9 @@ config:
   kafka:
     hostport: "kafka-bootstrap:9092"
     topic: "falco-alerts"
-    partition: 0
 
     # Authentication
-    sasl: "plain"
+    sasl: "PLAIN"
     username: "falco"
     password: "password"
 
@@ -284,7 +280,7 @@ config:
     tls: true
 
     # Compression
-    compression: "gzip"
+    compression: "GZIP"
 
     # Async mode for better performance
     async: true
@@ -311,19 +307,23 @@ config:
 }
 ```
 
-## AWS Security Hub Integration
+## AWS Security Lake Integration
 
-For AWS environments, forward alerts to Security Hub:
+For AWS environments, forward alerts to Security Lake:
 
 ```yaml
 # sidekick-values.yaml
 config:
-  awssecurityhub:
+  aws:
     region: "us-east-1"
-    accountid: "123456789012"
+    securitylake:
+      bucket: "aws-security-lake-falco"
+      region: "us-east-1"
+      prefix: "falco"
+      accountid: "123456789012"
 
-    # Minimum priority to forward
-    minimumpriority: "warning"
+      # Minimum priority to forward
+      minimumpriority: "warning"
 ```
 
 IAM policy required:
@@ -335,7 +335,15 @@ IAM policy required:
     {
       "Effect": "Allow",
       "Action": [
-        "securityhub:BatchImportFindings"
+        "s3:PutObject",
+        "s3:PutObjectAcl"
+      ],
+      "Resource": "arn:aws:s3:::aws-security-lake-falco/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "sts:GetCallerIdentity"
       ],
       "Resource": "*"
     }
@@ -355,7 +363,7 @@ config:
     method: "POST"
 
     # Custom headers
-    customheaders:
+    customHeaders:
       Authorization: "Bearer your-api-token"
       X-Source: "falco"
 
@@ -430,9 +438,9 @@ config:
     team: "platform"
     data_classification: "internal"
 
-  # Add dynamic fields based on alert properties
+  # Add dynamic fields based on output fields
   templatedfields:
-    severity_score: '{{ if eq .Priority "Critical" }}10{{ else if eq .Priority "Warning" }}5{{ else }}1{{ end }}'
+    namespace: '{{ or (index . "k8s.ns.name") "unknown" }}'
 ```
 
 ## SIEM Correlation Rules
