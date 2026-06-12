@@ -50,7 +50,7 @@ Your timeline data lives in many places. Pull from all of them:
 ```python
 # Example: Aggregating timeline data from multiple sources
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict
 
 class TimelineEvent:
@@ -114,16 +114,20 @@ Events from different sources use different formats. Normalize them:
 def normalize_timestamp(ts, source: str) -> datetime:
     """Convert various timestamp formats to UTC datetime"""
     if source == "slack":
-        # Slack uses Unix epoch with microseconds
-        return datetime.utcfromtimestamp(float(ts))
+        # Slack message timestamps look like Unix epoch timestamps with fractional seconds
+        dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
     elif source == "kubernetes":
         # K8s uses RFC3339
-        return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
     elif source == "custom_app":
         # Your app might use a different format
-        return datetime.strptime(ts, "%Y-%m-%d %H:%M:%S.%f")
+        dt = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S.%f")
     else:
-        return datetime.fromisoformat(ts)
+        dt = datetime.fromisoformat(ts)
+
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 def correlate_events(events: List[TimelineEvent]) -> List[Dict]:
     """Group related events together"""
@@ -281,6 +285,7 @@ When responders work in silos:
 
 ```python
 # Detecting communication gaps in timeline
+from collections import defaultdict
 
 def find_communication_gaps(events: List[TimelineEvent]) -> List[Dict]:
     """Find periods where responders weren't coordinating"""
@@ -392,13 +397,13 @@ class IncidentScribe:
     def __init__(self, incident_id: str):
         self.incident_id = incident_id
         self.events = []
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(timezone.utc)
 
     def log_event(self, description: str, actor: str = None,
                   source: str = "manual"):
         """Log an event to the timeline"""
         event = TimelineEvent(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             source=source,
             event_type="manual_entry",
             description=description,
@@ -463,6 +468,7 @@ Compare incidents to spot trends:
 
 ```python
 # Track timeline metrics across incidents
+from collections import defaultdict
 
 def analyze_incident_trends(incidents: List[Dict]) -> Dict:
     """Analyze timeline metrics across multiple incidents"""
