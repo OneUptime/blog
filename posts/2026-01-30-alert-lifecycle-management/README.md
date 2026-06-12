@@ -301,7 +301,7 @@ class AlertCreationWorkflow {
     return this.state;
   }
 
-  async approve(reviewer: string, comments?: string): Promise<WorkflowState> {
+  async approve(reviewer: string, _comments?: string): Promise<WorkflowState> {
     if (!this.state.reviewers.includes(reviewer)) {
       throw new Error(`${reviewer} is not an authorized reviewer`);
     }
@@ -900,7 +900,7 @@ class AlertAuditLog {
   }
 
   private generateId(): string {
-    return `audit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `audit_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   private async persistEntry(entry: AuditEntry): Promise<void> {
@@ -1344,7 +1344,7 @@ class AlertArchivalService {
     // Retrieve from cold storage
     const stored = await this.coldStorage.retrieve(`alerts/${alertId}/`);
     if (stored) {
-      const archive = JSON.parse(stored.data) as AlertArchive;
+      const archive = this.parseArchive(JSON.parse(stored.data) as AlertArchive);
       this.archives.set(alertId, archive);
       return archive;
     }
@@ -1380,6 +1380,39 @@ class AlertArchivalService {
     // Update dashboards that reference this alert
     // Clean up related scheduled jobs
     console.log(`Cleaned up active resources for alert ${alertId}`);
+  }
+
+  private parseArchive(archive: AlertArchive): AlertArchive {
+    return {
+      ...archive,
+      archivedAt: new Date(archive.archivedAt),
+      retentionUntil: new Date(archive.retentionUntil),
+      versionHistory: archive.versionHistory.map(version => ({
+        ...version,
+        timestamp: new Date(version.timestamp),
+      })),
+      incidentHistory: archive.incidentHistory.map(incident => ({
+        ...incident,
+        startedAt: new Date(incident.startedAt),
+        resolvedAt: incident.resolvedAt ? new Date(incident.resolvedAt) : undefined,
+      })),
+      deprecationRecord: {
+        ...archive.deprecationRecord,
+        approvedAt: archive.deprecationRecord.approvedAt
+          ? new Date(archive.deprecationRecord.approvedAt)
+          : undefined,
+        disabledAt: archive.deprecationRecord.disabledAt
+          ? new Date(archive.deprecationRecord.disabledAt)
+          : undefined,
+        archivedAt: archive.deprecationRecord.archivedAt
+          ? new Date(archive.deprecationRecord.archivedAt)
+          : undefined,
+        objections: archive.deprecationRecord.objections.map(objection => ({
+          ...objection,
+          timestamp: new Date(objection.timestamp),
+        })),
+      },
+    };
   }
 
   async generateArchiveReport(): Promise<{
