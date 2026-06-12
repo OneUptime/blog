@@ -184,7 +184,7 @@ def create_session_with_retry(
     retries=3,
     backoff_factor=0.5,
     status_forcelist=(500, 502, 503, 504),
-    allowed_methods=("HEAD", "GET", "OPTIONS", "POST")
+    allowed_methods=("HEAD", "GET", "OPTIONS", "PUT", "DELETE")
 ):
     """
     Create a requests session with automatic retry.
@@ -230,13 +230,14 @@ response = session.get("https://api.example.com/data", timeout=30)
 # dns_handling.py
 # Handle DNS-related connection errors
 import socket
+import time
 import requests
 from requests.exceptions import ConnectionError
 
 def check_dns(hostname):
     """Check if hostname can be resolved."""
     try:
-        socket.gethostbyname(hostname)
+        socket.getaddrinfo(hostname, None)
         return True
     except socket.gaierror:
         return False
@@ -391,7 +392,7 @@ class HTTPClient:
             total=max_retries,
             backoff_factor=backoff_factor,
             status_forcelist=[500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET", "OPTIONS", "POST", "PUT", "DELETE"]
+            allowed_methods=["HEAD", "GET", "OPTIONS", "PUT", "DELETE"]
         )
 
         adapter = HTTPAdapter(max_retries=retry_strategy)
@@ -470,6 +471,7 @@ if response:
 ```python
 # connection_pooling.py
 # Efficient connection reuse with pooling
+import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -525,4 +527,3 @@ These patterns ensure your Python applications remain resilient when dealing wit
 ---
 
 *Building applications that depend on external APIs? [OneUptime](https://oneuptime.com) helps you monitor API availability, track connection errors, and get alerted when services fail.*
-
