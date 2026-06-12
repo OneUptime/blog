@@ -29,8 +29,8 @@ Before resizing anything, establish baseline metrics over a meaningful time peri
 
 ```python
 import boto3
-from datetime import datetime, timedelta
-from statistics import mean, stdev
+from datetime import datetime, timedelta, timezone
+from statistics import mean
 
 def get_instance_utilization(instance_id, days=14):
     """
@@ -39,7 +39,7 @@ def get_instance_utilization(instance_id, days=14):
     """
     cloudwatch = boto3.client('cloudwatch')
 
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=days)
 
     # CPU utilization from EC2 metrics
@@ -53,7 +53,7 @@ def get_instance_utilization(instance_id, days=14):
         Statistics=['Average', 'Maximum']
     )
 
-    # Memory utilization from CloudWatch agent
+    # Linux memory utilization from CloudWatch agent
     memory_response = cloudwatch.get_metric_statistics(
         Namespace='CWAgent',
         MetricName='mem_used_percent',
@@ -244,6 +244,8 @@ def find_larger_instance(current_type, cpu_util, memory_util):
 Before implementing changes, validate recommendations will not cause issues:
 
 ```python
+import boto3
+
 def validate_recommendation(recommendation, instance_metadata):
     """
     Validate a right-sizing recommendation against constraints.
@@ -270,11 +272,12 @@ def validate_recommendation(recommendation, instance_metadata):
     if not is_instance_available(recommended_type, availability_zone):
         blockers.append(f"{recommended_type} not available in {availability_zone}")
 
-    # Check for ENA/NVMe driver requirements
-    current_gen = recommendation['current_type'][0] in ['t', 'm', 'c', 'r']
-    new_gen = recommended_type[0] in ['t', 'm', 'c', 'r']
+    # Check for ENA/NVMe driver requirements when moving to Nitro-based families
+    nitro_families = ['t3', 'm5', 'c5', 'r5']
+    current_family = recommendation['current_type'].split('.')[0]
+    new_family = recommended_type.split('.')[0]
 
-    if not current_gen and new_gen:
+    if current_family not in nitro_families and new_family in nitro_families:
         warnings.append("New instance requires ENA drivers - verify AMI compatibility")
 
     return {
@@ -335,7 +338,9 @@ sequenceDiagram
 ```
 
 ```python
+import boto3
 import time
+from datetime import datetime
 
 class RightSizingImplementation:
     """
@@ -415,14 +420,19 @@ class RightSizingImplementation:
             raise
 
     def _create_backup_ami(self, instance_id):
-        """Create an AMI backup before resizing."""
+        """Create an AMI backup before resizing and wait until it is available."""
         timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
         response = self.ec2.create_image(
             InstanceId=instance_id,
             Name=f"pre-resize-backup-{instance_id}-{timestamp}",
             NoReboot=True
         )
-        return response['ImageId']
+        image_id = response['ImageId']
+
+        waiter = self.ec2.get_waiter('image_available')
+        waiter.wait(ImageIds=[image_id])
+
+        return image_id
 
     def _wait_for_state(self, instance_id, target_state, timeout=300):
         """Wait for instance to reach target state."""
@@ -472,8 +482,12 @@ class RightSizingImplementation:
 
     def _rollback(self, instance_id, original_type):
         """Rollback to original instance type."""
-        self.ec2.stop_instances(InstanceIds=[instance_id])
-        self._wait_for_state(instance_id, 'stopped')
+        response = self.ec2.describe_instances(InstanceIds=[instance_id])
+        current_state = response['Reservations'][0]['Instances'][0]['State']['Name']
+
+        if current_state != 'stopped':
+            self.ec2.stop_instances(InstanceIds=[instance_id])
+            self._wait_for_state(instance_id, 'stopped')
 
         self.ec2.modify_instance_attribute(
             InstanceId=instance_id,
@@ -507,6 +521,8 @@ else:
 For instances in ASGs, modify the launch template instead:
 
 ```python
+import boto3
+
 def resize_asg_instances(asg_name, new_instance_type):
     """
     Update ASG to use new instance type via launch template.
