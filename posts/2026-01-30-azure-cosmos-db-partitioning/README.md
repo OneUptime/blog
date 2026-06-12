@@ -20,7 +20,7 @@ A logical partition consists of a set of items that share the same partition key
 
 ### Physical Partitions
 
-Physical partitions are the actual infrastructure resources that store and serve your data. Cosmos DB automatically manages physical partitions behind the scenes. Multiple logical partitions can reside on a single physical partition, and as your data grows, Cosmos DB automatically splits and redistributes logical partitions across more physical partitions.
+Physical partitions are the actual infrastructure resources that store and serve your data. Cosmos DB automatically manages physical partitions behind the scenes. Multiple logical partitions can reside on a single physical partition, and as your data grows, Cosmos DB automatically splits physical partitions and redistributes logical partitions across more physical partitions.
 
 ```mermaid
 flowchart TB
@@ -156,6 +156,8 @@ const product = createDocument("electronics", "us-west", "prod-78901");
 For write-heavy workloads where you need to spread writes across partitions:
 
 ```javascript
+const crypto = require("crypto");
+
 // Add a random suffix to distribute writes across multiple partitions
 function createHighVolumeDocument(eventType, data) {
     // Generate random suffix between 0 and 9
@@ -164,7 +166,7 @@ function createHighVolumeDocument(eventType, data) {
     const syntheticKey = `${eventType}-${randomSuffix}`;
 
     return {
-        id: generateUUID(),
+        id: crypto.randomUUID(),
         partitionKey: syntheticKey,  // e.g., "click-7"
         eventType: eventType,
         timestamp: new Date().toISOString(),
@@ -377,11 +379,11 @@ async function analyzePartitionDistribution(container) {
                     c.partitionKey as PartitionKey,
                     COUNT(1) as DocumentCount
                 FROM c
-                GROUP BY c.partitionKey
-                ORDER BY COUNT(1) DESC`
+                GROUP BY c.partitionKey`
     };
 
     const { resources } = await container.items.query(query).fetchAll();
+    resources.sort((a, b) => b.DocumentCount - a.DocumentCount);
 
     // Calculate distribution statistics
     const totalDocs = resources.reduce((sum, p) => sum + p.DocumentCount, 0);
