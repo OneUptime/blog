@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ASP.NET Core, Minimal API, C#, .NET 8, Web Development, REST API, Backend Development, OpenAPI
 
-Description: A comprehensive guide to building lightweight, high-performance REST APIs using ASP.
+Description: A comprehensive guide to building lightweight, high-performance REST APIs using ASP.NET Core.
 
 ---
 
@@ -74,7 +74,7 @@ app.MapGet("/api/products/{id}", async (int id, IProductService productService) 
 ```bash
 # Create a new minimal API project
 
-dotnet new web -n MyMinimalApi
+dotnet new webapi -n MyMinimalApi
 
 # Navigate to the project directory
 cd MyMinimalApi
@@ -91,6 +91,7 @@ dotnet run
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
+// Add Swagger/OpenAPI support with the Swashbuckle.AspNetCore package
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -396,7 +397,7 @@ public class ProductRepository : IProductRepository
 
 ## Validation
 
-ASP.NET Core 8 provides multiple approaches to validation in Minimal APIs.
+ASP.NET Core 8 provides multiple approaches to validation in Minimal APIs. Data annotations can define validation rules, but Minimal APIs in .NET 8 don't run data annotation validation automatically. Use endpoint filters, a validation library, or manual validation to enforce those rules.
 
 ### Data Annotations
 
@@ -404,7 +405,8 @@ ASP.NET Core 8 provides multiple approaches to validation in Minimal APIs.
 using System.ComponentModel.DataAnnotations;
 
 // Define a request model with validation attributes
-// These attributes define the validation rules declaratively
+// These attributes define the validation rules declaratively.
+// In .NET 8 Minimal APIs, enforce them with a filter or manual validation.
 public record CreateProductRequest(
     [Required(ErrorMessage = "Name is required")]
     [StringLength(100, MinimumLength = 3, ErrorMessage = "Name must be 3-100 characters")]
@@ -565,14 +567,14 @@ public class FluentValidationFilter<T> : IEndpointFilter where T : class
 
 ## OpenAPI Integration
 
-ASP.NET Core 8 provides built-in support for OpenAPI (Swagger) documentation.
+ASP.NET Core 8 exposes endpoint metadata that OpenAPI tools can use. The examples below use Swashbuckle.AspNetCore to generate Swagger/OpenAPI documents and serve Swagger UI.
 
 ### Basic Setup
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 
-// Add OpenAPI services
+// Add Swagger/OpenAPI services with the Swashbuckle.AspNetCore package
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
