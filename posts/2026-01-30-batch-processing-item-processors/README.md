@@ -33,9 +33,9 @@ flowchart LR
 Item processors handle:
 - **Transformation**: Converting data from one format to another
 - **Validation**: Ensuring data meets business rules before writing
-- **Filtering**: Skipping records that should not be processed
+- **Filtering**: Removing records that should not be written
 - **Enrichment**: Adding data from external sources
-- **Aggregation**: Combining or summarizing data
+- **Calculation**: Deriving values from the current item
 
 ## Basic Item Processor Implementation
 
@@ -114,7 +114,7 @@ public class OrderTransformationProcessor
 
 ## Filtering with Item Processors
 
-Returning `null` from a processor tells the batch framework to skip that item. The item will not be passed to the writer, effectively filtering it from the output.
+Returning `null` from a processor tells the batch framework to filter that item. The item will not be passed to the writer, effectively removing it from the output without counting it as a skipped item.
 
 ```mermaid
 flowchart TD
@@ -124,7 +124,7 @@ flowchart TD
     B -->|Invalid| E[Return null]
     E --> F[Item Filtered Out]
     D --> G[Passed to Writer]
-    F --> H[Skipped - Not Written]
+    F --> H[Filtered - Not Written]
 ```
 
 ### Filtering Processor Example
@@ -198,21 +198,28 @@ public class OrderFilterProcessor
 
 ## Validation in Item Processors
 
-Validation ensures data integrity before writing. Unlike filtering (which silently skips items), validation throws exceptions for invalid data, triggering the batch framework's skip or retry policies.
+Validation ensures data integrity before writing. Unlike filtering (which removes items without treating them as bad records), validation throws exceptions for invalid data, triggering the batch framework's skip or retry policies when those policies are configured.
 
 ### Validation Processor with Bean Validation
 
-This processor uses JSR-380 Bean Validation annotations for declarative validation. Invalid items throw exceptions that can trigger skip policies.
+This processor uses Jakarta Bean Validation annotations for declarative validation. Invalid items throw exceptions that can trigger skip policies.
 
 ```java
-import javax.validation.ConstraintViolation;
-import javax.validation.Validator;
-import javax.validation.ValidatorFactory;
-import javax.validation.Validation;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validation;
+import jakarta.validation.ValidationException;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-// Validates items using Bean Validation (JSR-380)
+// Validates items using Jakarta Bean Validation
 // Throws ValidationException for invalid items
 public class ValidatingItemProcessor<T> implements ItemProcessor<T, T> {
 
@@ -354,7 +361,7 @@ flowchart LR
     E --> F[Final Output]
 
     B -.->|Invalid| G[Exception]
-    E -.->|Filtered| H[null / Skip]
+    E -.->|Filtered| H[null / Filtered]
 ```
 
 ### Using CompositeItemProcessor
@@ -1087,7 +1094,7 @@ class OrderTransformationProcessor(ItemProcessor[RawOrder, ProcessedOrder]):
 class OrderFilterProcessor(ItemProcessor[RawOrder, RawOrder]):
     """
     Filters orders based on business rules.
-    Returns None for orders that should be skipped.
+    Returns None for orders that should be filtered.
     """
 
     def __init__(
@@ -1240,45 +1247,29 @@ if __name__ == '__main__':
 
 ## Performance Optimization Tips
 
-### 1. Batch External Calls
+### 1. Cache External Calls
 
-Instead of calling external services for each item, collect items and make batch calls.
+Instead of calling external services repeatedly for the same data, cache lookup results inside the processor. For true chunk-level batch calls, preload reference data before processing with a listener, reader, or tasklet.
 
 ```java
-// Processor that batches external service calls
-public class BatchingEnrichmentProcessor
+// Processor that caches external service calls
+public class CachingEnrichmentProcessor
         implements ItemProcessor<Order, EnrichedOrder> {
 
     private final CustomerService customerService;
-    private final int batchSize;
-    private final List<Order> pendingOrders = new ArrayList<>();
     private final Map<String, Customer> customerData = new HashMap<>();
 
-    public BatchingEnrichmentProcessor(
-            CustomerService customerService,
-            int batchSize) {
+    public CachingEnrichmentProcessor(CustomerService customerService) {
         this.customerService = customerService;
-        this.batchSize = batchSize;
     }
 
     @Override
     public EnrichedOrder process(Order order) throws Exception {
-        // Check if we have customer data cached
-        if (!customerData.containsKey(order.getCustomerId())) {
-            // Collect unique customer IDs and fetch in batch
-            Set<String> customerIds = pendingOrders.stream()
-                .map(Order::getCustomerId)
-                .collect(Collectors.toSet());
-            customerIds.add(order.getCustomerId());
-
-            // Single batch call instead of N individual calls
-            Map<String, Customer> batch =
-                customerService.getCustomersBatch(customerIds);
-            customerData.putAll(batch);
-        }
-
-        // Use cached data
-        Customer customer = customerData.get(order.getCustomerId());
+        // Fetch each customer once per processor instance
+        Customer customer = customerData.computeIfAbsent(
+            order.getCustomerId(),
+            customerService::getCustomer
+        );
         return enrichOrder(order, customer);
     }
 
@@ -1339,7 +1330,7 @@ Item processors are the transformation engine of batch processing pipelines. Key
 | Pattern | Use Case | Implementation |
 |---------|----------|----------------|
 | Transformation | Convert data formats | Map fields, calculate values |
-| Filtering | Skip unwanted records | Return null |
+| Filtering | Filter unwanted records | Return null |
 | Validation | Ensure data quality | Throw exceptions |
 | Enrichment | Add external data | Call services, cache results |
 | Composition | Multi-step processing | Chain processors |
