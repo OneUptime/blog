@@ -29,47 +29,38 @@ Unlike chains (which follow predetermined steps), agents dynamically choose thei
 # agents_intro.py
 
 # Basic agent structure - the model decides what actions to take
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_openai import ChatOpenAI
-from langchain.tools import Tool
-from langchain import hub
+from langchain.agents import create_agent
+from langchain.tools import tool
 
-# Initialize the LLM - agents work best with capable models
-llm = ChatOpenAI(model="gpt-4", temperature=0)
+@tool("calculator", description="Useful for math calculations. Input should be a math expression.")
+def calculator(expression: str) -> str:
+    """Evaluate a simple math expression."""
+    return str(eval(expression))  # Use a safer math parser in production
 
-# Define tools the agent can use
-tools = [
-    Tool(
-        name="Calculator",
-        func=lambda x: eval(x),  # Simple calculator (use safer eval in production)
-        description="Useful for math calculations. Input should be a math expression."
-    ),
-    Tool(
-        name="Search",
-        func=lambda x: "Search results for: " + x,  # Placeholder
-        description="Search the web for current information."
-    )
-]
+@tool("search", description="Search the web for current information.")
+def search(query: str) -> str:
+    """Return search results for a query."""
+    return "Search results for: " + query  # Placeholder
 
-# Pull a standard ReAct prompt from LangChain hub
-prompt = hub.pull("hwchase17/react")
-
-# Create the agent - combines LLM, tools, and prompt
-agent = create_react_agent(llm, tools, prompt)
-
-# AgentExecutor runs the agent loop until completion
-executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+# Create the agent - combines model, tools, and prompt
+agent = create_agent(
+    model="openai:gpt-5.4-mini",
+    tools=[calculator, search],
+    system_prompt="You are a helpful assistant."
+)
 
 # Run the agent with a question
-result = executor.invoke({"input": "What is 25 * 47 + 123?"})
-print(result["output"])  # Agent uses Calculator tool and returns answer
+result = agent.invoke({
+    "messages": [{"role": "user", "content": "What is 25 * 47 + 123?"}]
+})
+print(result["messages"][-1].content)  # Agent uses calculator and returns answer
 ```
 
 ---
 
 ## Agent Types
 
-LangChain provides several agent types optimized for different use cases.
+LangChain's current agent API uses `create_agent` as the standard agent factory, with tools, prompts, middleware, and provider-specific model capabilities controlling the behavior.
 
 ### ReAct Agent
 
@@ -78,12 +69,8 @@ ReAct (Reasoning + Acting) agents follow a thought-action-observation loop. They
 ```python
 # react_agent.py
 # ReAct agents think step by step, showing their reasoning
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain_openai import ChatOpenAI
-from langchain import hub
+from langchain.agents import create_agent
 from langchain.tools import tool
-
-llm = ChatOpenAI(model="gpt-4", temperature=0)
 
 # Define tools using the @tool decorator for cleaner syntax
 @tool
@@ -105,20 +92,20 @@ def get_time(timezone: str) -> str:
     try:
         tz = pytz.timezone(timezone)
         return datetime.now(tz).strftime("%H:%M:%S")
-    except:
+    except pytz.UnknownTimeZoneError:
         return "Invalid timezone"
 
 tools = [get_weather, get_time]
 
-# ReAct prompt encourages step-by-step reasoning
-prompt = hub.pull("hwchase17/react")
-
-agent = create_react_agent(llm, tools, prompt)
-executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+agent = create_agent(
+    model="openai:gpt-5.4-mini",
+    tools=tools,
+    system_prompt="Reason step by step before choosing tools."
+)
 
 # The agent will reason about which tools to use
-result = executor.invoke({
-    "input": "What's the weather in Tokyo and what time is it there?"
+result = agent.invoke({
+    "messages": [{"role": "user", "content": "What's the weather in Tokyo and what time is it there?"}]
 })
 
 # Verbose output shows the agent's reasoning:
@@ -134,21 +121,16 @@ result = executor.invoke({
 # Final Answer: In Tokyo, it's currently 68F and Clear, and the time is 14:30:45
 ```
 
-### OpenAI Functions Agent
+### OpenAI Tool Calling
 
-This agent uses OpenAI's function calling feature for more reliable tool usage. The model outputs structured JSON for tool calls.
+OpenAI models support tool calling, where the model emits structured arguments for tools instead of free-form text.
 
 ```python
-# openai_functions_agent.py
-# OpenAI Functions agent - uses structured function calling
-from langchain.agents import create_openai_functions_agent, AgentExecutor
-from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.tools import StructuredTool
+# openai_tool_calling.py
+# OpenAI tool calling - uses structured tool arguments
+from langchain.agents import create_agent
+from langchain.tools import tool
 from pydantic import BaseModel, Field
-
-# GPT-4 with function calling enabled
-llm = ChatOpenAI(model="gpt-4", temperature=0)
 
 # Define input schema for structured tools
 class OrderLookupInput(BaseModel):
@@ -159,6 +141,7 @@ class CustomerLookupInput(BaseModel):
     customer_id: str = Field(description="The customer ID")
 
 # Create structured tools with Pydantic schemas
+@tool(args_schema=OrderLookupInput)
 def lookup_order(order_id: str, include_items: bool = True) -> dict:
     """Look up order details by order ID"""
     return {
@@ -168,6 +151,7 @@ def lookup_order(order_id: str, include_items: bool = True) -> dict:
         "items": ["Widget A", "Gadget B"] if include_items else []
     }
 
+@tool(args_schema=CustomerLookupInput)
 def lookup_customer(customer_id: str) -> dict:
     """Look up customer details by customer ID"""
     return {
@@ -177,50 +161,30 @@ def lookup_customer(customer_id: str) -> dict:
         "tier": "premium"
     }
 
-tools = [
-    StructuredTool.from_function(
-        func=lookup_order,
-        name="lookup_order",
-        description="Look up order details",
-        args_schema=OrderLookupInput
-    ),
-    StructuredTool.from_function(
-        func=lookup_customer,
-        name="lookup_customer",
-        description="Look up customer information",
-        args_schema=CustomerLookupInput
-    )
-]
+agent = create_agent(
+    model="openai:gpt-5.4-mini",
+    tools=[lookup_order, lookup_customer],
+    system_prompt="You are a helpful customer service assistant."
+)
 
-# Prompt template for OpenAI functions agent
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful customer service assistant."),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")  # For intermediate steps
-])
-
-agent = create_openai_functions_agent(llm, tools, prompt)
-executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-
-# Agent uses function calling to invoke tools with proper parameters
-result = executor.invoke({
-    "input": "Look up order ORD-12345 and tell me the customer's email for customer CUST-789"
+# Agent uses tool calling to invoke tools with proper parameters
+result = agent.invoke({
+    "messages": [{
+        "role": "user",
+        "content": "Look up order ORD-12345 and tell me the customer's email for customer CUST-789"
+    }]
 })
 ```
 
-### Tool Calling Agent (Recommended)
+### Standard Agent with Tool Calling (Recommended)
 
-The newest agent type that works across multiple LLM providers supporting tool calling.
+The standard `create_agent` API works across multiple LLM providers supporting tool calling.
 
 ```python
 # tool_calling_agent.py
 # Universal tool calling agent - works with OpenAI, Anthropic, and others
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
 from langchain.tools import tool
-
-llm = ChatOpenAI(model="gpt-4")
 
 @tool
 def search_database(query: str, table: str = "users") -> str:
@@ -239,17 +203,17 @@ def create_ticket(title: str, description: str, priority: str = "medium") -> str
 
 tools = [search_database, send_email, create_ticket]
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant that manages customer support operations."),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
+agent = create_agent(
+    model="openai:gpt-5.4-mini",
+    tools=tools,
+    system_prompt="You are a helpful assistant that manages customer support operations."
+)
 
-agent = create_tool_calling_agent(llm, tools, prompt)
-executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-
-result = executor.invoke({
-    "input": "Search for customers named Smith and create a high priority ticket for account review"
+result = agent.invoke({
+    "messages": [{
+        "role": "user",
+        "content": "Search for customers named Smith and create a high priority ticket for account review"
+    }]
 })
 ```
 
@@ -265,8 +229,7 @@ Tools are the capabilities you give to agents. Well-designed tools make agents m
 # custom_tools.py
 # Different ways to create custom tools for agents
 from langchain.tools import Tool, tool, StructuredTool
-from langchain.pydantic_v1 import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field
 import requests
 
 # Method 1: Using the @tool decorator (simplest)
@@ -348,24 +311,20 @@ async def async_api_call(endpoint: str, method: str = "GET") -> str:
 
 # Using async tools with agent
 async def run_async_agent():
-    from langchain.agents import create_tool_calling_agent, AgentExecutor
-    from langchain_openai import ChatOpenAI
-    from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+    from langchain.agents import create_agent
 
-    llm = ChatOpenAI(model="gpt-4")
     tools = [async_fetch_data, async_api_call]
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant."),
-        ("human", "{input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad")
-    ])
-
-    agent = create_tool_calling_agent(llm, tools, prompt)
-    executor = AgentExecutor(agent=agent, tools=tools)
+    agent = create_agent(
+        model="openai:gpt-5.4-mini",
+        tools=tools,
+        system_prompt="You are a helpful assistant."
+    )
 
     # Use ainvoke for async execution
-    result = await executor.ainvoke({"input": "Fetch data from https://api.example.com/status"})
+    result = await agent.ainvoke({
+        "messages": [{"role": "user", "content": "Fetch data from https://api.example.com/status"}]
+    })
     return result
 
 # Run the async agent
@@ -380,8 +339,7 @@ Robust tools handle errors gracefully and return useful feedback to the agent.
 # tool_error_handling.py
 # Tools with proper error handling and validation
 from langchain.tools import tool
-from langchain.pydantic_v1 import BaseModel, Field, validator
-from typing import Optional
+from pydantic import BaseModel, Field, field_validator
 import re
 
 class EmailInput(BaseModel):
@@ -390,7 +348,8 @@ class EmailInput(BaseModel):
     subject: str = Field(description="Email subject line")
     body: str = Field(description="Email body content")
 
-    @validator("to_address")
+    @field_validator("to_address")
+    @classmethod
     def validate_email(cls, v):
         # Basic email validation
         pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
@@ -398,7 +357,8 @@ class EmailInput(BaseModel):
             raise ValueError(f"Invalid email address: {v}")
         return v
 
-    @validator("subject")
+    @field_validator("subject")
+    @classmethod
     def validate_subject(cls, v):
         if len(v) > 100:
             raise ValueError("Subject must be under 100 characters")
@@ -425,8 +385,6 @@ def send_email_safe(to_address: str, subject: str, body: str) -> str:
 @tool
 def safe_file_read(filepath: str) -> str:
     """Safely read a file with error handling and path validation."""
-    import os
-
     # Security: Prevent directory traversal
     if ".." in filepath or filepath.startswith("/"):
         return "Error: Invalid file path. Use relative paths only."
@@ -453,19 +411,23 @@ def safe_file_read(filepath: str) -> str:
 
 ---
 
-## Agent Executors
+## Agent Configuration
 
-The AgentExecutor manages the agent loop, handling tool execution, retries, and stopping conditions.
+The agent harness manages the agent loop, handling model calls, tool execution, middleware, and stopping conditions.
 
 ```python
 # agent_executor_config.py
-# Configuring AgentExecutor for production use
-from langchain.agents import create_tool_calling_agent, AgentExecutor
+# Configuring an agent for production use
+from langchain.agents import create_agent
+from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitMiddleware
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.tools import tool
 
-llm = ChatOpenAI(model="gpt-4")
+llm = ChatOpenAI(
+    model="gpt-5.4-mini",
+    timeout=60,
+    max_retries=2,
+)
 
 @tool
 def complex_calculation(expression: str) -> str:
@@ -474,40 +436,22 @@ def complex_calculation(expression: str) -> str:
 
 tools = [complex_calculation]
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a math assistant. Show your work step by step."),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
-
-agent = create_tool_calling_agent(llm, tools, prompt)
-
-# Configure AgentExecutor with production settings
-executor = AgentExecutor(
-    agent=agent,
+agent = create_agent(
+    model=llm,
     tools=tools,
-
-    # Iteration limits
-    max_iterations=10,  # Maximum reasoning steps (default: 15)
-    max_execution_time=60.0,  # Timeout in seconds
-
-    # Error handling
-    handle_parsing_errors=True,  # Gracefully handle malformed outputs
-    return_intermediate_steps=True,  # Include reasoning in output
-
-    # Execution settings
-    verbose=True,  # Print agent reasoning (disable in production)
-    early_stopping_method="generate"  # How to stop: "force" or "generate"
+    system_prompt="You are a math assistant. Show your work step by step.",
+    middleware=[
+        ModelCallLimitMiddleware(run_limit=5, exit_behavior="end"),
+        ToolCallLimitMiddleware(run_limit=10),
+    ],
 )
 
-result = executor.invoke({"input": "Calculate (25 * 47) + (33 * 19) - 127"})
+result = agent.invoke({
+    "messages": [{"role": "user", "content": "Calculate (25 * 47) + (33 * 19) - 127"}]
+})
 
-# Access intermediate steps for debugging
-print("Final answer:", result["output"])
-print("Steps taken:", len(result["intermediate_steps"]))
-for i, step in enumerate(result["intermediate_steps"]):
-    action, observation = step
-    print(f"Step {i+1}: {action.tool} - {observation}")
+# Access the final message
+print("Final answer:", result["messages"][-1].content)
 ```
 
 ---
@@ -519,13 +463,9 @@ Add memory to agents for context-aware conversations across multiple interaction
 ```python
 # agent_memory.py
 # Agents with conversation memory for multi-turn interactions
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.memory import ConversationBufferMemory, ConversationSummaryMemory
+from langchain.agents import create_agent
+from langgraph.checkpoint.memory import InMemorySaver
 from langchain.tools import tool
-
-llm = ChatOpenAI(model="gpt-4")
 
 @tool
 def get_user_profile(user_id: str) -> str:
@@ -539,47 +479,36 @@ def update_preferences(user_id: str, preference: str, value: str) -> str:
 
 tools = [get_user_profile, update_preferences]
 
-# Buffer memory - stores full conversation history
-buffer_memory = ConversationBufferMemory(
-    memory_key="chat_history",  # Key used in prompt template
-    return_messages=True  # Return as message objects
-)
-
-# Alternative: Summary memory for long conversations
-# summary_memory = ConversationSummaryMemory(
-#     llm=llm,
-#     memory_key="chat_history",
-#     return_messages=True
-# )
-
-# Prompt must include the memory placeholder
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful customer support agent. Use the conversation history to maintain context."),
-    MessagesPlaceholder(variable_name="chat_history"),  # Memory goes here
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
-
-agent = create_tool_calling_agent(llm, tools, prompt)
-
-executor = AgentExecutor(
-    agent=agent,
+# Checkpointer stores conversation history by thread ID
+agent = create_agent(
+    model="openai:gpt-5.4-mini",
     tools=tools,
-    memory=buffer_memory,  # Attach memory to executor
-    verbose=True
+    system_prompt="You are a helpful customer support agent. Use conversation history to maintain context.",
+    checkpointer=InMemorySaver()
 )
+
+config = {"configurable": {"thread_id": "customer-user-123"}}
 
 # Multi-turn conversation - agent remembers context
-response1 = executor.invoke({"input": "Get my profile, my user ID is USER-123"})
-print("Response 1:", response1["output"])
+response1 = agent.invoke(
+    {"messages": [{"role": "user", "content": "Get my profile, my user ID is USER-123"}]},
+    config=config
+)
+print("Response 1:", response1["messages"][-1].content)
 
 # Agent remembers the user ID from previous turn
-response2 = executor.invoke({"input": "Update my notification preference to email only"})
-print("Response 2:", response2["output"])
+response2 = agent.invoke(
+    {"messages": [{"role": "user", "content": "Update my notification preference to email only"}]},
+    config=config
+)
+print("Response 2:", response2["messages"][-1].content)
 
 # Reference earlier context
-response3 = executor.invoke({"input": "What plan am I on again?"})
-print("Response 3:", response3["output"])
+response3 = agent.invoke(
+    {"messages": [{"role": "user", "content": "What plan am I on again?"}]},
+    config=config
+)
+print("Response 3:", response3["messages"][-1].content)
 ```
 
 ### Token-Aware Memory
@@ -589,21 +518,25 @@ For long conversations, manage context window limits.
 ```python
 # token_aware_memory.py
 # Memory that respects token limits for long conversations
-from langchain.memory import ConversationTokenBufferMemory
-from langchain_openai import ChatOpenAI
+from langchain.agents import create_agent
+from langchain.agents.middleware import SummarizationMiddleware
+from langgraph.checkpoint.memory import InMemorySaver
 
-llm = ChatOpenAI(model="gpt-4")
-
-# Memory that automatically trims to token limit
-memory = ConversationTokenBufferMemory(
-    llm=llm,
-    max_token_limit=2000,  # Keep conversation under 2000 tokens
-    memory_key="chat_history",
-    return_messages=True
+# Summarization middleware compresses history when it grows too large
+agent = create_agent(
+    model="openai:gpt-5.4-mini",
+    tools=[],
+    middleware=[
+        SummarizationMiddleware(
+            model="openai:gpt-5.4-mini",
+            trigger=("tokens", 4000),
+            keep=("messages", 20)
+        )
+    ],
+    checkpointer=InMemorySaver()
 )
 
-# Older messages are dropped when limit is exceeded
-# Most recent context is preserved
+# Older messages are summarized while recent context is preserved
 ```
 
 ---
@@ -615,14 +548,13 @@ Production agents need robust error handling for reliability.
 ```python
 # error_handling.py
 # Comprehensive error handling for production agents
-from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain.agents import create_agent
+from langchain.agents.middleware import ToolRetryMiddleware
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.tools import tool
-from langchain.callbacks import StdOutCallbackHandler
 import time
 
-llm = ChatOpenAI(model="gpt-4")
+llm = ChatOpenAI(model="gpt-5.4-mini", max_retries=2)
 
 @tool
 def unreliable_api(query: str) -> str:
@@ -632,43 +564,23 @@ def unreliable_api(query: str) -> str:
         raise Exception("API temporarily unavailable")
     return f"API result for: {query}"
 
-tools = [unreliable_api]
-
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant. If a tool fails, try rephrasing or try again."),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
-
-agent = create_tool_calling_agent(llm, tools, prompt)
-
-# Custom error handler function
-def handle_tool_error(error: Exception) -> str:
-    """Convert exceptions to agent-readable feedback"""
-    error_msg = str(error)
-    if "unavailable" in error_msg.lower():
-        return "The API is temporarily unavailable. Please try again or use an alternative approach."
-    elif "timeout" in error_msg.lower():
-        return "The request timed out. Consider simplifying the query."
-    else:
-        return f"Tool error occurred: {error_msg}. Please try a different approach."
-
-executor = AgentExecutor(
-    agent=agent,
-    tools=tools,
-    verbose=True,
-    handle_parsing_errors=True,  # Handle malformed LLM outputs
-    max_iterations=5,  # Limit retry attempts
+agent = create_agent(
+    model=llm,
+    tools=[unreliable_api],
+    system_prompt="You are a helpful assistant. If a tool fails, try an alternative approach.",
+    middleware=[
+        ToolRetryMiddleware(max_retries=3)
+    ],
 )
 
 # Wrap execution with retry logic
-def invoke_with_retry(executor, input_data, max_retries=3, delay=1.0):
+def invoke_with_retry(agent, input_data, max_retries=3, delay=1.0):
     """Execute agent with exponential backoff retry"""
     last_error = None
 
     for attempt in range(max_retries):
         try:
-            result = executor.invoke(input_data)
+            result = agent.invoke(input_data)
             return result
         except Exception as e:
             last_error = e
@@ -682,8 +594,8 @@ def invoke_with_retry(executor, input_data, max_retries=3, delay=1.0):
 
 # Usage with retry
 result = invoke_with_retry(
-    executor,
-    {"input": "Query the API for latest updates"},
+    agent,
+    {"messages": [{"role": "user", "content": "Query the API for latest updates"}]},
     max_retries=3
 )
 ```
@@ -697,18 +609,8 @@ Stream responses for better user experience in interactive applications.
 ```python
 # streaming_agents.py
 # Stream agent thoughts and tool outputs in real-time
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
 from langchain.tools import tool
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-
-# Enable streaming on the LLM
-llm = ChatOpenAI(
-    model="gpt-4",
-    streaming=True,  # Enable token streaming
-    callbacks=[StreamingStdOutCallbackHandler()]  # Print tokens as they arrive
-)
 
 @tool
 def analyze_data(dataset: str) -> str:
@@ -717,36 +619,25 @@ def analyze_data(dataset: str) -> str:
 
 tools = [analyze_data]
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a data analyst. Explain your analysis step by step."),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
-
-agent = create_tool_calling_agent(llm, tools, prompt)
-executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
+agent = create_agent(
+    model="openai:gpt-5.4-mini",
+    tools=tools,
+    system_prompt="You are a data analyst. Explain your analysis step by step."
+)
 
 # Stream execution events
 async def stream_agent():
-    async for event in executor.astream_events(
-        {"input": "Analyze the sales dataset and summarize findings"},
-        version="v1"
-    ):
-        kind = event["event"]
+    stream = agent.stream_events({
+        "messages": [{"role": "user", "content": "Analyze the sales dataset and summarize findings"}],
+    }, version="v3")
 
-        if kind == "on_chat_model_stream":
-            # Stream LLM tokens
-            content = event["data"]["chunk"].content
-            if content:
-                print(content, end="", flush=True)
+    for message in stream.messages:
+        for delta in message.text:
+            print(delta, end="", flush=True)
 
-        elif kind == "on_tool_start":
-            # Tool invocation started
-            print(f"\n[Using tool: {event['name']}]")
-
-        elif kind == "on_tool_end":
-            # Tool completed
-            print(f"\n[Tool result: {event['data']['output'][:100]}...]")
+    for call in stream.tool_calls:
+        print(f"\n[Using tool: {call.tool_name}]")
+        print(f"\n[Tool result: {str(call.output)[:100]}...]")
 
 # Run streaming: asyncio.run(stream_agent())
 ```
@@ -758,35 +649,31 @@ async def stream_agent():
 # Stream agent responses through a FastAPI endpoint
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from langchain.agents import AgentExecutor
-import asyncio
 import json
 
 app = FastAPI()
 
-# Assume executor is configured elsewhere
-# executor = AgentExecutor(...)
+# Assume agent is configured elsewhere with create_agent(...)
+# agent = create_agent(...)
 
 @app.post("/chat/stream")
 async def stream_chat(request: dict):
     """Stream agent response as Server-Sent Events"""
 
     async def generate():
-        async for event in executor.astream_events(
-            {"input": request["message"]},
-            version="v1"
-        ):
-            if event["event"] == "on_chat_model_stream":
-                content = event["data"]["chunk"].content
-                if content:
-                    # Format as SSE
-                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+        stream = agent.stream_events(
+            {"messages": [{"role": "user", "content": request["message"]}]},
+            version="v3"
+        )
 
-            elif event["event"] == "on_tool_start":
-                yield f"data: {json.dumps({'type': 'tool_start', 'tool': event['name']})}\n\n"
+        for message in stream.messages:
+            for delta in message.text:
+                # Format as SSE
+                yield f"data: {json.dumps({'type': 'token', 'content': delta})}\n\n"
 
-            elif event["event"] == "on_tool_end":
-                yield f"data: {json.dumps({'type': 'tool_end', 'result': event['data']['output']})}\n\n"
+        for call in stream.tool_calls:
+            yield f"data: {json.dumps({'type': 'tool_start', 'tool': call.tool_name})}\n\n"
+            yield f"data: {json.dumps({'type': 'tool_end', 'result': str(call.output)})}\n\n"
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
@@ -798,19 +685,20 @@ async def stream_chat(request: dict):
 
 ---
 
-## Agent Callbacks for Monitoring
+## Agent Middleware for Monitoring
 
-Callbacks provide hooks for logging, monitoring, and debugging agent behavior.
+Middleware provides hooks for logging, monitoring, and debugging agent behavior.
 
 ```python
-# agent_callbacks.py
-# Custom callbacks for monitoring and logging agent execution
-from langchain.callbacks.base import BaseCallbackHandler
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+# agent_monitoring.py
+# Custom middleware for monitoring and logging agent execution
+from collections.abc import Callable
+from langchain.agents import create_agent
+from langchain.agents.middleware import AgentMiddleware
+from langchain.messages import ToolMessage
 from langchain.tools import tool
-from typing import Any, Dict, List
+from langchain.tools.tool_node import ToolCallRequest
+from langgraph.types import Command
 import time
 import logging
 
@@ -818,77 +706,35 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class AgentMonitorCallback(BaseCallbackHandler):
-    """Custom callback handler for monitoring agent execution"""
+class AgentMonitorMiddleware(AgentMiddleware):
+    """Custom middleware for monitoring tool execution"""
 
     def __init__(self):
-        self.start_time = None
         self.tool_calls = []
-        self.total_tokens = 0
         self.errors = []
 
-    def on_chain_start(self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs):
-        """Called when agent execution starts"""
-        self.start_time = time.time()
-        logger.info(f"Agent started with input: {inputs.get('input', '')[:100]}")
-
-    def on_chain_end(self, outputs: Dict[str, Any], **kwargs):
-        """Called when agent execution completes"""
-        duration = time.time() - self.start_time
-        logger.info(f"Agent completed in {duration:.2f}s")
-        logger.info(f"Tools used: {len(self.tool_calls)}")
-        logger.info(f"Errors encountered: {len(self.errors)}")
-
-        # Send metrics to monitoring system
-        self._send_metrics({
-            "duration_seconds": duration,
-            "tool_calls": len(self.tool_calls),
-            "errors": len(self.errors),
-            "success": len(self.errors) == 0
-        })
-
-    def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs):
-        """Called when a tool is invoked"""
-        tool_name = serialized.get("name", "unknown")
+    def wrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], ToolMessage | Command],
+    ) -> ToolMessage | Command:
+        """Called around each tool invocation"""
+        tool_name = request.tool_call["name"]
+        started_at = time.time()
         logger.info(f"Tool started: {tool_name}")
-        self.tool_calls.append({
-            "tool": tool_name,
-            "input": input_str,
-            "start_time": time.time()
-        })
 
-    def on_tool_end(self, output: str, **kwargs):
-        """Called when a tool completes"""
-        if self.tool_calls:
-            last_call = self.tool_calls[-1]
-            last_call["duration"] = time.time() - last_call["start_time"]
-            last_call["output_length"] = len(output)
-            logger.info(f"Tool completed: {last_call['tool']} in {last_call['duration']:.2f}s")
+        try:
+            result = handler(request)
+            duration = time.time() - started_at
+            self.tool_calls.append({"tool": tool_name, "duration": duration})
+            logger.info(f"Tool completed: {tool_name} in {duration:.2f}s")
+            return result
+        except Exception as error:
+            self.errors.append(str(error))
+            logger.error(f"Tool error: {error}")
+            raise
 
-    def on_tool_error(self, error: Exception, **kwargs):
-        """Called when a tool raises an exception"""
-        self.errors.append(str(error))
-        logger.error(f"Tool error: {error}")
-
-    def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs):
-        """Called when LLM inference starts"""
-        logger.debug(f"LLM call started")
-
-    def on_llm_end(self, response, **kwargs):
-        """Called when LLM inference completes"""
-        # Track token usage if available
-        if hasattr(response, "llm_output") and response.llm_output:
-            usage = response.llm_output.get("token_usage", {})
-            self.total_tokens += usage.get("total_tokens", 0)
-
-    def _send_metrics(self, metrics: Dict[str, Any]):
-        """Send metrics to your monitoring system"""
-        # Integration with Prometheus, DataDog, OneUptime, etc.
-        logger.info(f"Metrics: {metrics}")
-
-# Use the callback with an agent
-llm = ChatOpenAI(model="gpt-4")
-
+# Use the middleware with an agent
 @tool
 def process_data(data: str) -> str:
     """Process some data"""
@@ -896,29 +742,23 @@ def process_data(data: str) -> str:
 
 tools = [process_data]
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant."),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
+# Create middleware instance
+monitor = AgentMonitorMiddleware()
 
-agent = create_tool_calling_agent(llm, tools, prompt)
-
-# Create callback instance
-monitor = AgentMonitorCallback()
-
-executor = AgentExecutor(
-    agent=agent,
+agent = create_agent(
+    model="openai:gpt-5.4-mini",
     tools=tools,
-    callbacks=[monitor],  # Attach callback
-    verbose=False  # Disable default verbose output
+    middleware=[monitor],
+    system_prompt="You are a helpful assistant."
 )
 
-result = executor.invoke({"input": "Process the customer data"})
+result = agent.invoke({
+    "messages": [{"role": "user", "content": "Process the customer data"}]
+})
 
 # Access collected metrics
 print(f"Tool calls made: {monitor.tool_calls}")
-print(f"Total tokens used: {monitor.total_tokens}")
+print(f"Errors encountered: {monitor.errors}")
 ```
 
 ---
@@ -930,13 +770,9 @@ Coordinate multiple specialized agents for complex workflows.
 ```python
 # multi_agent.py
 # Multi-agent system with specialized agents
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.agents import create_agent
 from langchain.tools import tool
 from typing import Dict, Any
-
-llm = ChatOpenAI(model="gpt-4")
 
 # Research Agent - gathers information
 @tool
@@ -951,14 +787,11 @@ def read_document(doc_id: str) -> str:
 
 research_tools = [web_search, read_document]
 
-research_prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a research agent. Gather relevant information to answer questions."),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
-
-research_agent = create_tool_calling_agent(llm, research_tools, research_prompt)
-research_executor = AgentExecutor(agent=research_agent, tools=research_tools)
+research_agent = create_agent(
+    model="openai:gpt-5.4-mini",
+    tools=research_tools,
+    system_prompt="You are a research agent. Gather relevant information to answer questions."
+)
 
 # Writer Agent - creates content
 @tool
@@ -973,14 +806,11 @@ def edit_text(text: str, instructions: str) -> str:
 
 writer_tools = [write_draft, edit_text]
 
-writer_prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a writing agent. Create clear, well-structured content."),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
-
-writer_agent = create_tool_calling_agent(llm, writer_tools, writer_prompt)
-writer_executor = AgentExecutor(agent=writer_agent, tools=writer_tools)
+writer_agent = create_agent(
+    model="openai:gpt-5.4-mini",
+    tools=writer_tools,
+    system_prompt="You are a writing agent. Create clear, well-structured content."
+)
 
 # Coordinator Agent - orchestrates the workflow
 class MultiAgentCoordinator:
@@ -988,8 +818,8 @@ class MultiAgentCoordinator:
 
     def __init__(self):
         self.agents = {
-            "research": research_executor,
-            "writer": writer_executor
+            "research": research_agent,
+            "writer": writer_agent
         }
 
     def run_workflow(self, task: str) -> Dict[str, Any]:
@@ -998,15 +828,18 @@ class MultiAgentCoordinator:
 
         # Step 1: Research phase
         research_result = self.agents["research"].invoke({
-            "input": f"Research the following topic: {task}"
+            "messages": [{"role": "user", "content": f"Research the following topic: {task}"}]
         })
-        results["research"] = research_result["output"]
+        results["research"] = research_result["messages"][-1].content
 
         # Step 2: Writing phase using research results
         writing_result = self.agents["writer"].invoke({
-            "input": f"Write content about: {task}\n\nResearch findings: {results['research']}"
+            "messages": [{
+                "role": "user",
+                "content": f"Write content about: {task}\n\nResearch findings: {results['research']}"
+            }]
         })
-        results["content"] = writing_result["output"]
+        results["content"] = writing_result["messages"][-1].content
 
         return results
 
@@ -1024,45 +857,45 @@ One agent can use another agent as a tool.
 ```python
 # agent_as_tool.py
 # Use specialized agents as tools for a supervisor agent
-from langchain.tools import Tool
+from langchain.agents import create_agent
+from langchain.tools import tool
 
 # Wrap research executor as a tool
-research_tool = Tool(
-    name="research_assistant",
-    func=lambda q: research_executor.invoke({"input": q})["output"],
-    description="Use this to research any topic. Input should be a research question."
-)
+@tool
+def research_assistant(question: str) -> str:
+    """Research any topic. Input should be a research question."""
+    result = research_agent.invoke({
+        "messages": [{"role": "user", "content": question}]
+    })
+    return result["messages"][-1].content
 
 # Wrap writer executor as a tool
-writer_tool = Tool(
-    name="writing_assistant",
-    func=lambda q: writer_executor.invoke({"input": q})["output"],
-    description="Use this to write content. Input should include topic and any context."
-)
+@tool
+def writing_assistant(prompt: str) -> str:
+    """Write content. Input should include topic and any context."""
+    result = writer_agent.invoke({
+        "messages": [{"role": "user", "content": prompt}]
+    })
+    return result["messages"][-1].content
 
 # Supervisor agent that delegates to specialized agents
-supervisor_tools = [research_tool, writer_tool]
+supervisor_tools = [research_assistant, writing_assistant]
 
-supervisor_prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are a supervisor agent that coordinates specialized assistants.
+supervisor_agent = create_agent(
+    model="openai:gpt-5.4-mini",
+    tools=supervisor_tools,
+    system_prompt="""You are a supervisor agent that coordinates specialized assistants.
     Use the research_assistant for gathering information.
     Use the writing_assistant for creating content.
-    Delegate tasks appropriately and combine results."""),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
-
-supervisor_agent = create_tool_calling_agent(llm, supervisor_tools, supervisor_prompt)
-supervisor_executor = AgentExecutor(
-    agent=supervisor_agent,
-    tools=supervisor_tools,
-    verbose=True,
-    max_iterations=10  # Allow multiple delegation rounds
+    Delegate tasks appropriately and combine results."""
 )
 
 # The supervisor decides when to use each specialized agent
-result = supervisor_executor.invoke({
-    "input": "Create a blog post about Kubernetes networking. Research the topic first, then write the post."
+result = supervisor_agent.invoke({
+    "messages": [{
+        "role": "user",
+        "content": "Create a blog post about Kubernetes networking. Research the topic first, then write the post."
+    }]
 })
 ```
 
@@ -1074,10 +907,10 @@ result = supervisor_executor.invoke({
 2. **Design focused tools** - Each tool should do one thing well with clear descriptions
 3. **Validate tool inputs** - Use Pydantic schemas to catch errors early
 4. **Handle errors gracefully** - Return informative messages instead of crashing
-5. **Set iteration limits** - Prevent infinite loops with max_iterations
+5. **Set call limits** - Prevent infinite loops with model and tool call limit middleware
 6. **Use memory wisely** - Token-aware memory for long conversations
 7. **Stream for UX** - Stream responses in interactive applications
-8. **Monitor everything** - Use callbacks to track performance and errors
+8. **Monitor everything** - Use middleware, event streams, and tracing to track performance and errors
 9. **Test tool behavior** - Unit test tools independently before agent integration
 10. **Start simple** - Begin with fewer tools and add complexity as needed
 
