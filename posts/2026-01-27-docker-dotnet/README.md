@@ -19,8 +19,8 @@ The foundation of containerizing any .NET application starts with a well-structu
 
 # This single-stage build is simple but produces larger images
 
-# Use the official .NET 8 SDK image as the base
-# This image includes everything needed to build .NET applications
+# Use the official ASP.NET Core runtime image as the base
+# This image includes everything needed to run ASP.NET Core applications
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 
 # Set the working directory inside the container
@@ -109,7 +109,7 @@ FROM build AS publish
 
 # Publish the application with optimizations
 # /p:UseAppHost=false - Skip generating native executable
-# This reduces image size and improves startup time
+# This reduces output size when you run the app with dotnet MyWebApp.dll
 RUN dotnet publish "MyWebApp.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 # ====================
@@ -117,21 +117,15 @@ RUN dotnet publish "MyWebApp.csproj" -c Release -o /app/publish /p:UseAppHost=fa
 # ====================
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 
-# Create a non-root user for security
-# Running as root in containers is a security risk
-RUN adduser --disabled-password --gecos "" appuser
-
 WORKDIR /app
 
 # Copy only the published output from the publish stage
 # This excludes SDK, source code, and intermediate build files
 COPY --from=publish /app/publish .
 
-# Change ownership to the non-root user
-RUN chown -R appuser:appuser /app
-
 # Switch to non-root user
-USER appuser
+# .NET 8 Linux images include an "app" user
+USER app
 
 # Expose the application port
 EXPOSE 8080
@@ -147,11 +141,11 @@ Image size directly impacts deployment speed, storage costs, and security surfac
 ### Use Alpine-Based Images
 
 ```dockerfile
-# Alpine-based images are significantly smaller
-# Regular aspnet:8.0 is ~220MB, Alpine version is ~110MB
+# Alpine-based images are significantly smaller than the standard Debian-based images
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine AS base
+FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-alpine AS base
 WORKDIR /app
+ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
@@ -161,13 +155,12 @@ COPY ["MyWebApp.csproj", "./"]
 RUN dotnet restore
 
 COPY . .
+# Publish as a self-contained, Linux musl single-file executable
 RUN dotnet publish -c Release -o /app/publish \
-    # Trim unused assemblies to reduce size
     /p:PublishTrimmed=true \
-    # Enable single-file deployment
     /p:PublishSingleFile=true \
-    # Target the specific runtime
-    /p:RuntimeIdentifier=linux-musl-x64
+    /p:RuntimeIdentifier=linux-musl-x64 \
+    --self-contained true
 
 FROM base AS final
 WORKDIR /app
@@ -223,6 +216,12 @@ Add these settings to your project file for aggressive size optimization:
     <!-- Generate single executable file -->
     <PublishSingleFile>true</PublishSingleFile>
 
+    <!-- Single-file and ReadyToRun publishing require a target runtime -->
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+
+    <!-- Trimming is supported for self-contained deployments -->
+    <SelfContained>true</SelfContained>
+
     <!-- Include native dependencies in single file -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
@@ -238,8 +237,6 @@ Docker Compose simplifies running multi-container applications. Here is a comple
 # Defines a complete development environment for a .NET application
 # Includes the web app, database, cache, and message broker
 
-version: '3.8'
-
 services:
   # Main .NET web application
   webapi:
@@ -253,7 +250,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Server=db;Database=MyApp;User=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=true
       - Redis__ConnectionString=redis:6379
-      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__ConnectionString=amqp://guest:guest@rabbitmq:5672/
     depends_on:
       db:
         condition: service_healthy    # Wait for database to be ready
@@ -275,7 +272,7 @@ services:
       - sqlserver-data:/var/opt/mssql    # Persist database files
     healthcheck:
       # Check if SQL Server is ready to accept connections
-      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "YourStrong!Passw0rd" -Q "SELECT 1" || exit 1
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourStrong!Passw0rd" -C -Q "SELECT 1" || exit 1
       interval: 10s
       timeout: 5s
       retries: 5
@@ -326,8 +323,6 @@ Run with development overrides:
 # Development-specific overrides
 # Automatically merged with docker-compose.yml
 
-version: '3.8'
-
 services:
   webapi:
     build:
@@ -357,6 +352,11 @@ Health checks are critical for container orchestration. They allow Docker and Ku
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
+
+# Install curl because the ASP.NET runtime image doesn't include it by default
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=publish /app/publish .
 
@@ -593,7 +593,7 @@ public class FeatureFlags
 ```dockerfile
 # Set environment variables in Dockerfile
 ENV ASPNETCORE_ENVIRONMENT=Production
-ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_HTTP_PORTS=8080
 
 # Or use ARG for build-time variables
 ARG BUILD_VERSION=1.0.0
@@ -620,7 +620,7 @@ services:
 # .env file
 ENVIRONMENT=Production
 DB_CONNECTION_STRING=Server=db;Database=MyApp;User=sa;Password=Secret123!
-REDIS_CONNECTION=redis:6379
+Redis__ConnectionString=redis:6379
 ```
 
 ## Debugging .NET Applications in Containers
@@ -743,8 +743,6 @@ ENTRYPOINT ["dotnet", "watch", "run", "--no-launch-profile"]
 ```yaml
 # docker-compose.debug.yml
 # Debug-specific compose configuration
-
-version: '3.8'
 
 services:
   webapi:
