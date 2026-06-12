@@ -28,7 +28,7 @@ graph TD
     E --> H[Bottleneck 3: Index updates]
 ```
 
-1. **WAL synchronization**: Every commit waits for WAL to hit disk
+1. **WAL synchronization**: By default, every commit waits for WAL to hit disk
 2. **Checkpoint I/O**: Periodic flushes of dirty buffers
 3. **Index maintenance**: Each index slows down writes
 
@@ -41,41 +41,43 @@ graph TD
 ```sql
 -- Check current setting
 SHOW wal_buffers;  -- Default: -1 (auto, usually 16MB)
+```
 
--- Set in postgresql.conf
-wal_buffers = 64MB  -- Increase for high write volume
+```conf
+# Set in postgresql.conf
+wal_buffers = 64MB  # Increase for high write volume
 ```
 
 ### Tune synchronous_commit
 
-```sql
--- Full durability (default) - safest, slowest
+```conf
+# Full durability (default) - safest, slowest
 synchronous_commit = on
 
--- Async WAL write - faster, risk of losing last few transactions on crash
+# Async WAL write - faster, risk of losing last few transactions on crash
 synchronous_commit = off
 
--- Write to OS buffer, don't wait for disk
+# Wait for local disk flush, but not synchronous standby confirmation
 synchronous_commit = local
 
--- Trade-offs:
--- on: Zero data loss, ~3-5x slower
--- off: May lose last ~200ms of commits on crash, much faster
--- local: Middle ground
+# Trade-offs:
+# on: Zero data loss, ~3-5x slower
+# off: May lose up to 3 * wal_writer_delay of commits on crash, much faster
+# local: Same local durability as on, but skips synchronous replication waits
 ```
 
 ### Reduce WAL Volume
 
-```sql
--- Compress WAL records (PostgreSQL 15+)
-wal_compression = zstd  -- or 'pglz', 'lz4'
+```conf
+# Compress WAL records (PostgreSQL 15+)
+wal_compression = zstd  # or 'pglz', 'lz4'
 
--- Reduce full page writes after checkpoint
-full_page_writes = on  -- Keep on for crash safety
+# Reduce full page writes after checkpoint
+full_page_writes = on  # Keep on for crash safety
 
--- But tune checkpoint to reduce frequency
-checkpoint_timeout = 15min  -- Increase from default 5min
-max_wal_size = 4GB  -- Increase from default 1GB
+# But tune checkpoint to reduce frequency
+checkpoint_timeout = 15min  # Increase from default 5min
+max_wal_size = 4GB  # Increase from default 1GB
 min_wal_size = 1GB
 ```
 
@@ -87,35 +89,35 @@ Checkpoints flush dirty pages to disk. Poorly tuned checkpoints cause I/O spikes
 
 ### Spread Checkpoint I/O
 
-```sql
--- postgresql.conf
+```conf
+# postgresql.conf
 
--- Time between checkpoints (increase for less frequent checkpoints)
-checkpoint_timeout = 15min  -- Default: 5min
+# Time between checkpoints (increase for less frequent checkpoints)
+checkpoint_timeout = 15min  # Default: 5min
 
--- Maximum WAL size before forced checkpoint
-max_wal_size = 8GB  -- Default: 1GB
+# Maximum WAL size before forced checkpoint
+max_wal_size = 8GB  # Default: 1GB
 
--- Spread checkpoint over this fraction of checkpoint_timeout
-checkpoint_completion_target = 0.9  -- Default: 0.9
+# Spread checkpoint over this fraction of checkpoint_timeout
+checkpoint_completion_target = 0.9  # Default: 0.9
 
--- WARNING threshold when checkpoints happen too frequently
+# WARNING threshold when checkpoints happen too frequently
 checkpoint_warning = 30s
 ```
 
 ### Monitor Checkpoints
 
 ```sql
--- Check checkpoint frequency
+-- Check checkpoint frequency (PostgreSQL 17+)
 SELECT
-    checkpoints_timed,       -- Scheduled checkpoints
-    checkpoints_req,         -- Requested (forced) checkpoints
-    checkpoint_write_time,   -- Time spent writing
-    checkpoint_sync_time,    -- Time spent syncing
-    buffers_checkpoint       -- Buffers written
-FROM pg_stat_bgwriter;
+    num_timed,        -- Scheduled checkpoints
+    num_requested,    -- Requested (forced) checkpoints
+    write_time,       -- Time spent writing
+    sync_time,        -- Time spent syncing
+    buffers_written   -- Buffers written
+FROM pg_stat_checkpointer;
 
--- If checkpoints_req is high, increase max_wal_size
+-- If num_requested is high, increase max_wal_size
 ```
 
 ---
@@ -124,20 +126,20 @@ FROM pg_stat_bgwriter;
 
 ### Configure Shared Buffers
 
-```sql
--- postgresql.conf
+```conf
+# postgresql.conf
 
--- Database buffer cache (shared across all connections)
-shared_buffers = 8GB  -- Start with 25% of RAM, max ~40%
+# Database buffer cache (shared across all connections)
+shared_buffers = 8GB  # Start with 25% of RAM, max ~40%
 
--- Work memory for sorts/hashes (per operation, not per connection)
-work_mem = 256MB  -- Careful: can multiply by parallel workers
+# Work memory for sorts/hashes (per operation, not per connection)
+work_mem = 256MB  # Careful: can multiply by parallel workers
 
--- Maintenance operations (VACUUM, CREATE INDEX)
+# Maintenance operations (VACUUM, CREATE INDEX)
 maintenance_work_mem = 2GB
 
--- Effective cache size (hint for planner, not allocation)
-effective_cache_size = 24GB  -- ~75% of available RAM
+# Effective cache size (hint for planner, not allocation)
+effective_cache_size = 24GB  # ~75% of available RAM
 ```
 
 ### Huge Pages (Linux)
@@ -205,7 +207,7 @@ DROP INDEX idx_events_user;
 -- Bulk insert (much faster without indexes)
 COPY events FROM '/data/events.csv' WITH CSV;
 
--- Recreate indexes (can run in parallel with PostgreSQL 11+)
+-- Recreate indexes
 CREATE INDEX CONCURRENTLY idx_events_created ON events (created_at);
 CREATE INDEX CONCURRENTLY idx_events_user ON events (user_id);
 ```
@@ -241,9 +243,12 @@ COPY events FROM '/data/events.csv' WITH CSV HEADER;
 for row in rows:
     cursor.execute("INSERT INTO events VALUES (%s, %s)", row)
 
-# Fast: executemany with prepared statement
-cursor.executemany(
-    "INSERT INTO events VALUES (%s, %s)",
+# Faster: batch INSERT helper
+from psycopg2.extras import execute_values
+
+execute_values(
+    cursor,
+    "INSERT INTO events (user_id, data) VALUES %s",
     rows
 )
 
@@ -303,14 +308,14 @@ CREATE UNLOGGED TABLE temp_import (
 ### Consider Table Partitioning
 
 ```sql
--- Partitioned tables can parallelize writes
+-- Partitioned tables split writes across child tables
 CREATE TABLE events (
     id BIGSERIAL,
     created_at TIMESTAMP NOT NULL,
     data JSONB
 ) PARTITION BY RANGE (created_at);
 
--- Creates separate heap files that can be written in parallel
+-- Creates separate heap files that concurrent sessions can write independently
 ```
 
 ---
@@ -357,25 +362,28 @@ fs.file-max = 100000
 
 ## Parallel Operations
 
-### Enable Parallel Writes (PostgreSQL 14+)
+### Enable Parallel Maintenance
 
-```sql
--- Parallelize maintenance operations
+```conf
+# Parallelize maintenance operations
 max_parallel_maintenance_workers = 4
-
--- Parallel CREATE INDEX
-CREATE INDEX CONCURRENTLY idx_events_data ON events (data);
--- Uses multiple workers automatically
 ```
 
-### Parallel Foreign Key Checks
+```sql
+-- Parallel CREATE INDEX
+CREATE INDEX CONCURRENTLY idx_events_data ON events (data);
+-- Uses multiple workers automatically when the index method supports parallel builds
+```
+
+### Add Foreign Keys with Less Blocking
 
 ```sql
--- PostgreSQL 15+ can parallelize FK validation
+-- Skip the initial table scan, then validate existing rows separately
 ALTER TABLE orders
     ADD CONSTRAINT orders_customer_fk
-    FOREIGN KEY (customer_id) REFERENCES customers(id);
--- Validates existing rows in parallel
+    FOREIGN KEY (customer_id) REFERENCES customers(id) NOT VALID;
+
+ALTER TABLE orders VALIDATE CONSTRAINT orders_customer_fk;
 ```
 
 ---
@@ -392,16 +400,20 @@ SELECT
         EXTRACT(EPOCH FROM (NOW() - pg_postmaster_start_time())) / (1024*1024)
         AS wal_mb_per_second;
 
--- Checkpoint activity
-SELECT * FROM pg_stat_bgwriter;
+-- Checkpoint activity (PostgreSQL 17+)
+SELECT * FROM pg_stat_checkpointer;
 
--- Buffer writes
+-- Buffer writes (PostgreSQL 16+)
 SELECT
-    buffers_checkpoint,
-    buffers_clean,
-    buffers_backend,
-    buffers_backend_fsync  -- Bad if > 0 (backend doing sync)
-FROM pg_stat_bgwriter;
+    backend_type,
+    object,
+    context,
+    writes,
+    write_bytes,
+    fsyncs
+FROM pg_stat_io
+WHERE backend_type IN ('client backend', 'background writer', 'checkpointer')
+  AND object = 'relation';
 
 -- Table write activity
 SELECT
@@ -426,7 +438,7 @@ pgbench -c 32 -j 4 -T 60 -N testdb
 # -c: clients
 # -j: threads
 # -T: duration
-# -N: skip vacuum during test
+# -N: run the built-in simple-update workload
 
 # Custom script for INSERT testing
 cat > insert_test.sql << EOF
@@ -441,8 +453,8 @@ pgbench -c 32 -j 4 -T 60 -f insert_test.sql testdb
 
 ## Configuration Summary
 
-```sql
--- postgresql.conf for high write throughput
+```conf
+# postgresql.conf for high write throughput
 
 # WAL
 wal_buffers = 64MB
