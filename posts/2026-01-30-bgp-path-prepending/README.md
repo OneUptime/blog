@@ -43,7 +43,7 @@ flowchart TD
     K --> L
 ```
 
-The AS path length is the fourth criterion in BGP path selection. When all higher-priority attributes are equal (which is common when receiving routes from different providers), the shorter AS path wins.
+In the Cisco best-path order shown above, AS path length is the fourth criterion in BGP path selection. When all higher-priority attributes are equal, the shorter AS path wins.
 
 ---
 
@@ -158,6 +158,8 @@ route-map PREPEND-TO-ISP-B permit 10
  match ip address prefix-list ADVERTISE-ROUTES
  set as-path prepend 65001 65001 65001
 
+route-map PREPEND-TO-ISP-B permit 20
+
 ! Apply to BGP neighbor
 router bgp 65001
  neighbor 192.0.2.1 remote-as 200
@@ -165,7 +167,7 @@ router bgp 65001
  neighbor 192.0.2.1 route-map PREPEND-TO-ISP-B out
 ```
 
-The `set as-path prepend` command adds your AS number the specified number of times. In this example, AS 65001 is added three times, making the total AS path length 4 when received by ISP B (200, 65001, 65001, 65001, 65001).
+The `set as-path prepend` command adds your AS number the specified number of times. In this example, AS 65001 is added three extra times. ISP B receives an AS path of `65001 65001 65001 65001`; remote networks that learn the route through ISP B typically see `200 65001 65001 65001 65001`.
 
 ### Selective Prepending Based on Community
 
@@ -266,9 +268,9 @@ protocols {
 }
 ```
 
-### Using AS Path Prepend with Count
+### Using AS Path Prepend with Repeated ASNs
 
-For cleaner configuration when prepending many times:
+For prepending many times, repeat the AS number in the `as-path-prepend` string:
 
 ```junos
 policy-options {
@@ -460,7 +462,7 @@ Automate prepending configuration across multiple routers using Ansible.
     - name: Configure prepending on Cisco IOS
       cisco.ios.ios_config:
         lines:
-          - set as-path prepend {{ my_asn | repeat(prepend_count) | join(' ') }}
+          - set as-path prepend {{ ([my_asn] * (item.prepend_count | default(prepend_count))) | join(' ') }}
         parents:
           - route-map PREPEND-TO-{{ item.name }} permit 10
       loop: "{{ bgp_neighbors | selectattr('prepend', 'equalto', true) | list }}"
@@ -591,7 +593,6 @@ This script checks how your prefix is seen from various global vantage points.
 """
 
 import requests
-import json
 from collections import Counter
 
 def check_prefix_visibility(prefix: str) -> dict:
@@ -611,15 +612,16 @@ def check_prefix_visibility(prefix: str) -> dict:
     }
 
     response = requests.get(url, params=params)
+    response.raise_for_status()
     data = response.json()
 
     # Analyze AS paths from different vantage points
     paths = []
     for rrcs in data.get("data", {}).get("rrcs", []):
         for peer in rrcs.get("peers", []):
-            as_path = peer.get("as_path", "")
+            as_path = peer.get("as_path", [])
             if as_path:
-                paths.append(as_path.split())
+                paths.append(as_path.split() if isinstance(as_path, str) else as_path)
 
     return analyze_paths(paths)
 
@@ -704,15 +706,16 @@ Monitor interface bandwidth to verify BGP prepending effectiveness.
 Uses SNMP to collect interface statistics before and after prepending changes.
 """
 
-from pysnmp.hlapi import *
+import asyncio
 import time
 from datetime import datetime
+from pysnmp.hlapi.v1arch.asyncio import *
 
 # SNMP OIDs for interface statistics
 IF_HC_IN_OCTETS = "1.3.6.1.2.1.31.1.1.1.6"   # 64-bit input counter
 IF_HC_OUT_OCTETS = "1.3.6.1.2.1.31.1.1.1.10" # 64-bit output counter
 
-def get_interface_counters(host: str, community: str, if_index: int) -> dict:
+async def get_interface_counters(host: str, community: str, if_index: int) -> dict:
     """
     Get current interface octet counters via SNMP.
 
@@ -727,12 +730,11 @@ def get_interface_counters(host: str, community: str, if_index: int) -> dict:
     counters = {}
 
     for name, oid in [("in", IF_HC_IN_OCTETS), ("out", IF_HC_OUT_OCTETS)]:
-        error_indication, error_status, error_index, var_binds = next(
-            getCmd(SnmpEngine(),
-                   CommunityData(community),
-                   UdpTransportTarget((host, 161)),
-                   ContextData(),
-                   ObjectType(ObjectIdentity(f"{oid}.{if_index}")))
+        error_indication, error_status, error_index, var_binds = await get_cmd(
+            SnmpDispatcher(),
+            CommunityData(community),
+            await UdpTransportTarget.create((host, 161)),
+            ObjectType(ObjectIdentity(f"{oid}.{if_index}"))
         )
 
         if error_indication or error_status:
@@ -771,7 +773,7 @@ def calculate_bandwidth(counters_start: dict, counters_end: dict,
         "out_mbps": (out_bytes * 8) / interval_seconds / 1_000_000
     }
 
-def monitor_interfaces(routers: list, interval: int = 60, duration: int = 3600):
+async def monitor_interfaces(routers: list, interval: int = 60, duration: int = 3600):
     """
     Monitor multiple interfaces and report bandwidth over time.
 
@@ -790,11 +792,11 @@ def monitor_interfaces(routers: list, interval: int = 60, duration: int = 3600):
     # Get initial counters
     for router in routers:
         key = f"{router['host']}:{router['if_index']}"
-        previous_counters[key] = get_interface_counters(
+        previous_counters[key] = await get_interface_counters(
             router["host"], router["community"], router["if_index"]
         )
 
-    time.sleep(interval)
+    await asyncio.sleep(interval)
 
     while time.time() - start_time < duration:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -802,7 +804,7 @@ def monitor_interfaces(routers: list, interval: int = 60, duration: int = 3600):
 
         for router in routers:
             key = f"{router['host']}:{router['if_index']}"
-            current = get_interface_counters(
+            current = await get_interface_counters(
                 router["host"], router["community"], router["if_index"]
             )
 
@@ -814,7 +816,7 @@ def monitor_interfaces(routers: list, interval: int = 60, duration: int = 3600):
 
             previous_counters[key] = current
 
-        time.sleep(interval)
+        await asyncio.sleep(interval)
 
 if __name__ == "__main__":
     # Define interfaces to monitor
@@ -833,7 +835,7 @@ if __name__ == "__main__":
         }
     ]
 
-    monitor_interfaces(interfaces, interval=60, duration=3600)
+    asyncio.run(monitor_interfaces(interfaces, interval=60, duration=3600))
 ```
 
 ---
@@ -932,10 +934,10 @@ show bgp summary
 
 **FRRouting:**
 ```bash
-show ip bgp neighbors [ip] advertised-routes
-show ip bgp [prefix]
+show bgp ipv4 unicast neighbors [ip] advertised-routes
+show bgp ipv4 unicast [prefix]
 show route-map [name]
-show bgp summary
+show bgp ipv4 unicast summary
 ```
 
 ---
@@ -960,7 +962,7 @@ Many transit providers support action communities for prepending:
 ! Example: Using upstream's community to request prepending to their peers
 route-map SET-UPSTREAM-COMMUNITY permit 10
  match ip address prefix-list PREPEND-THESE
- set community 100:3333  ! Upstream's "prepend 3x to peers" community
+ set community 100:3333 additive  ! Upstream's "prepend 3x to peers" community
 ```
 
 Check your upstream's BGP community documentation for supported actions.
