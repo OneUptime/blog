@@ -54,12 +54,12 @@ $ trivy image --debug nginx:latest
 flowchart TD
     A[DB Download Fails] --> B{Error Type?}
     B -->|Timeout| C[Increase Timeout]
-    B -->|Auth Error| D[Configure Credentials]
+    B -->|Auth Error| D[Check Registry Tokens]
     B -->|Network Error| E[Check Proxy Settings]
-    B -->|Rate Limited| F[Use Token or Mirror]
+    B -->|Rate Limited| F[Use Mirror]
 
     C --> G[trivy --timeout 30m]
-    D --> H[Set GITHUB_TOKEN]
+    D --> H[Logout/Unset Token]
     E --> I[Set HTTP_PROXY]
     F --> J[Configure Registry]
 ```
@@ -81,8 +81,9 @@ export HTTPS_PROXY=http://proxy.company.com:8080
 export NO_PROXY=localhost,127.0.0.1
 trivy image nginx:latest
 
-# 3. Authenticate to avoid rate limiting
-export GITHUB_TOKEN=your_github_token
+# 3. Remove an expired GHCR token if DB downloads are denied
+docker logout ghcr.io
+unset GITHUB_TOKEN
 trivy image nginx:latest
 
 # 4. Use a mirror registry
@@ -120,7 +121,8 @@ trivy image private-registry.com/myapp:latest
 
 # 4. Scan local image instead
 docker pull nginx:latest
-trivy image --input nginx.tar nginx:latest
+docker save nginx:latest -o nginx.tar
+trivy image --input nginx.tar
 
 # 5. Skip TLS verification (development only)
 trivy image --insecure private-registry.com/myapp:latest
@@ -144,12 +146,12 @@ trivy image --timeout 60m large-image:latest
 # 2. Skip database update (use cached)
 trivy image --skip-db-update nginx:latest
 
-# 3. Scan specific layers only
+# 3. Display only vulnerabilities that have fixes
 trivy image --ignore-unfixed nginx:latest
 
 # 4. Reduce scan scope
-trivy image --vuln-type os nginx:latest  # OS packages only
-trivy image --vuln-type library nginx:latest  # Libraries only
+trivy image --pkg-types os nginx:latest  # OS packages only
+trivy image --pkg-types library nginx:latest  # Libraries only
 
 # 5. Use parallel scanning for multiple images
 # Pre-download DB once
@@ -157,7 +159,7 @@ trivy image --download-db-only
 
 # Then scan without DB update
 for img in image1 image2 image3; do
-    trivy image --skip-db-update $img &
+    trivy image --skip-db-update --cache-backend memory $img &
 done
 wait
 ```
@@ -178,11 +180,12 @@ Total: 0 (UNKNOWN: 0, LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0)
 trivy image --debug nginx:latest 2>&1 | grep "Detected OS"
 
 # 2. Outdated database - force refresh
-trivy image --reset nginx:latest
+trivy clean --vuln-db
+trivy image nginx:latest
 
 # 3. Image uses scratch base - no OS packages
 # This is expected for distroless images
-trivy image --vuln-type library gcr.io/distroless/static:latest
+trivy image --pkg-types library gcr.io/distroless/static:latest
 
 # 4. Check if files are detected
 trivy image --debug nginx:latest 2>&1 | grep -i "analyzing"
@@ -223,7 +226,7 @@ EOF
 trivy image --ignorefile .trivyignore nginx:latest
 
 # 4. Ignore with expiration date
-echo "exp:2024-06-01 CVE-2023-11111" >> .trivyignore
+echo "CVE-2023-11111 exp:2024-06-01" >> .trivyignore
 
 # 5. Filter by status (ignore unfixed)
 trivy image --ignore-unfixed nginx:latest
@@ -246,7 +249,8 @@ trivy image --debug nginx:latest 2>&1 | grep -i "database"
 cat ~/.cache/trivy/db/metadata.json
 
 # 2. Force database update
-trivy image --reset nginx:latest
+trivy clean --vuln-db
+trivy image nginx:latest
 
 # 3. Check if CVE is in supported database
 # Trivy may not track all vulnerability sources
@@ -345,9 +349,14 @@ jobs:
 
 ```yaml
 # .gitlab-ci.yml
+stages:
+  - debug
+
 debug-trivy:
   stage: debug
-  image: aquasec/trivy:latest
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
   script:
     - trivy --version
     - trivy image --debug --download-db-only 2>&1 | tee db.log
@@ -382,15 +391,15 @@ trivy image --download-db-only
 trivy image --cache-dir /dev/shm/trivy-cache nginx:latest
 
 # 3. Scan only what you need
-trivy image --vuln-type os nginx:latest  # Skip library scan
+trivy image --pkg-types os nginx:latest  # Skip library scan
 trivy image --scanners vuln nginx:latest  # Skip misconfig scan
 
 # 4. Skip specific checks
 trivy image --skip-files "*.jar" nginx:latest
 
 # 5. Use server mode for repeated scans
-trivy server --listen 0.0.0.0:8080 &
-trivy client --remote http://localhost:8080 nginx:latest
+trivy server --listen localhost:8080 &
+trivy image --server http://localhost:8080 nginx:latest
 ```
 
 ---
