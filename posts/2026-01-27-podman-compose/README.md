@@ -60,7 +60,7 @@ Key benefits of Podman Compose:
 - **Daemonless**: No background daemon consuming resources
 - **Docker Compose compatible**: Use existing `docker-compose.yml` files
 - **Pod support**: Group related containers into Kubernetes-style pods
-- **Systemd integration**: Generate systemd unit files for production
+- **Systemd integration**: Run containers with Quadlet unit files for production
 
 ---
 
@@ -74,10 +74,10 @@ Understanding the differences helps you choose the right tool and avoid surprise
 | **Root access** | Root by default | Rootless by default |
 | **Pod support** | No native pods | Creates pods for services |
 | **Build support** | Full Buildx support | Uses `podman build` |
-| **Compose spec version** | v3.x, v2.x | v3.x, v2.x |
+| **Compose format** | Compose Specification | Compose Specification |
 | **Network mode** | bridge by default | bridge or slirp4netns |
-| **Secrets** | Docker Swarm secrets | File-based secrets |
-| **Resource limits** | Full support | Full support |
+| **Secrets** | Compose file-based secrets, plus Swarm secrets in Swarm mode | Compose file-based secrets and Podman secrets |
+| **Resource limits** | Broad Compose support | Broad support, with some fields depending on Podman and podman-compose versions |
 
 ### Architecture Comparison
 
@@ -138,7 +138,7 @@ podman machine start
 
 # Verify installation
 podman --version
-# podman version 4.9.0
+# podman version 5.8.2
 ```
 
 ### Installing Podman Compose
@@ -147,7 +147,7 @@ Podman Compose is a Python package. Install it via pip or your package manager.
 
 ```bash
 # Using pip (recommended for latest version)
-# Works on any system with Python 3.6+
+# Works on any system with Python 3.9+
 pip3 install podman-compose
 
 # Ubuntu/Debian
@@ -160,7 +160,7 @@ sudo dnf install podman-compose
 
 # Verify installation
 podman-compose --version
-# podman-compose version 1.0.6
+# podman-compose version 1.6.0
 ```
 
 ### Verifying Your Setup
@@ -171,8 +171,7 @@ podman run --rm hello-world
 
 # Check podman-compose can parse a compose file
 # Create a minimal test file to verify everything works
-echo 'version: "3"
-services:
+echo 'services:
   test:
     image: alpine
     command: echo "Hello from Podman Compose"' > test-compose.yml
@@ -201,7 +200,6 @@ myapp/
 │   ├── Dockerfile
 │   └── server.js
 └── frontend/
-    ├── Dockerfile
     └── index.html
 ```
 
@@ -210,8 +208,6 @@ myapp/
 ```yaml
 # docker-compose.yml
 # This file works with both docker-compose and podman-compose
-version: "3.8"
-
 services:
   # PostgreSQL database service
   db:
@@ -250,16 +246,15 @@ services:
     # Mount source code for development hot-reload
     volumes:
       - ./api:/app
-      - /app/node_modules
 
   # Nginx frontend server
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: nginx:alpine
     container_name: myapp-frontend
     ports:
       - "8080:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
     depends_on:
       - api
 
@@ -275,11 +270,6 @@ volumes:
 FROM node:22-alpine
 
 WORKDIR /app
-
-# Copy package files first for better layer caching
-# This layer only rebuilds when dependencies change
-COPY package*.json ./
-RUN npm ci --only=production
 
 # Copy application source code
 COPY . .
@@ -397,8 +387,6 @@ Define custom networks for isolation or specific configurations.
 
 ```yaml
 # docker-compose.yml with custom networks
-version: "3.8"
-
 services:
   frontend:
     image: nginx:alpine
@@ -496,8 +484,6 @@ Podman Compose supports both named volumes and bind mounts.
 Named volumes are managed by Podman and persist data independently of containers.
 
 ```yaml
-version: "3.8"
-
 services:
   db:
     image: postgres:16
@@ -584,8 +570,6 @@ podman run --rm \
 Multiple ways to pass environment variables:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     image: myapi:latest
@@ -617,8 +601,6 @@ JWT_SECRET=your-secret-key
 For sensitive data, use file-based secrets:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     image: myapi:latest
@@ -660,27 +642,33 @@ const dbPassword = readSecret('DB_PASSWORD');
 
 ## Production Considerations
 
-### Generating Systemd Units
+### Running with Systemd
 
-Podman can generate systemd unit files for production deployments.
+Podman's current recommendation for production systemd integration is Quadlet. Quadlet uses declarative `.container`, `.network`, `.volume`, and `.pod` files that systemd turns into service units.
+
+```ini
+# ~/.config/containers/systemd/myapp-api.container
+[Unit]
+Description=MyApp API container
+After=network-online.target
+
+[Container]
+Image=localhost/myapp-api:latest
+ContainerName=myapp-api
+PublishPort=3000:3000
+Environment=NODE_ENV=production
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
+```
 
 ```bash
-# Start your services first
-podman-compose up -d
-
-# Generate systemd units for containers
-# --new flag ensures container is recreated on service start
-podman generate systemd --new --files --name myapp-api
-podman generate systemd --new --files --name myapp-db
-
-# Move to user systemd directory
-mkdir -p ~/.config/systemd/user/
-mv container-myapp-*.service ~/.config/systemd/user/
-
 # Reload systemd and enable services
 systemctl --user daemon-reload
-systemctl --user enable container-myapp-api.service
-systemctl --user start container-myapp-api.service
+systemctl --user enable --now myapp-api.service
 
 # Enable lingering so services start on boot without login
 loginctl enable-linger $USER
@@ -691,8 +679,6 @@ Resource Limits
 Specify CPU and memory limits:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     image: myapi:latest
@@ -761,8 +747,6 @@ podman-compose -f docker-compose.yml config
 
 ```yaml
 # docker-compose.yml adjustments for Podman
-
-version: "3.8"
 
 services:
   web:
@@ -844,8 +828,6 @@ Production container deployments need proper observability. Monitor your Podman 
 
 ```yaml
 # docker-compose.yml with monitoring
-version: "3.8"
-
 services:
   api:
     image: myapi:latest
@@ -889,22 +871,24 @@ processors:
     timeout: 10s
 
 exporters:
-  otlphttp:
+  otlp_http:
     # Send telemetry to OneUptime
-    endpoint: https://otlp.oneuptime.com
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      Content-Type: application/json
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ### Key Metrics to Monitor
@@ -985,7 +969,7 @@ With [OneUptime](https://oneuptime.com), you can:
 | **Networking** | Service names resolve to container IPs automatically |
 | **Volumes** | Use `:Z` suffix on bind mounts for SELinux systems |
 | **Rootless** | Default mode - no root required for containers |
-| **Production** | Generate systemd units with `podman generate systemd` |
+| **Production** | Use Quadlet unit files for systemd integration |
 | **Migration** | Alias `docker-compose` to `podman-compose` for easy transition |
 
 Podman Compose brings container orchestration to the Podman ecosystem while maintaining Docker Compose compatibility. The rootless, daemonless architecture provides enhanced security for development and production workloads. Combined with systemd integration and [OneUptime](https://oneuptime.com) monitoring, you have a complete solution for running containerized applications.
