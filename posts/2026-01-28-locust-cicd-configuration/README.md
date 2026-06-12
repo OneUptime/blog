@@ -55,7 +55,7 @@ locust \
     --csv=results \
     --html=report.html
 
-# With exit code based on failure ratio
+# With non-zero exit code on any failure or error
 locust \
     --headless \
     --host=https://staging.example.com \
@@ -73,7 +73,7 @@ Key flags for CI/CD:
 - `--run-time`: Test duration (e.g., 5m, 1h)
 - `--csv`: Export results to CSV files
 - `--html`: Generate HTML report
-- `--exit-code-on-error`: Return non-zero exit code on failures
+- `--exit-code-on-error`: Return non-zero exit code on any failure or error
 
 ---
 
@@ -251,6 +251,7 @@ jobs:
             results_stats.csv
             results_stats_history.csv
             results_failures.csv
+            results_exceptions.csv
             report.html
 
       - name: Post results to PR
@@ -265,22 +266,25 @@ jobs:
             const lines = stats.trim().split('\n');
             const headers = lines[0].split(',');
             const aggregated = lines[lines.length - 1].split(',');
+            const requestCount = Number(aggregated[2]);
+            const failureCount = Number(aggregated[3]);
+            const failureRate = requestCount > 0 ? (failureCount / requestCount) * 100 : 0;
 
             // Build comment
             const comment = `## Load Test Results
 
             | Metric | Value |
             |--------|-------|
-            | Total Requests | ${aggregated[2]} |
-            | Failure Rate | ${aggregated[4]}% |
+            | Total Requests | ${requestCount} |
+            | Failure Rate | ${failureRate.toFixed(2)}% |
             | Avg Response Time | ${aggregated[5]}ms |
-            | P95 Response Time | ${aggregated[8]}ms |
+            | P95 Response Time | ${aggregated[16]}ms |
             | Requests/sec | ${aggregated[9]} |
 
-            [Full Report](../actions/runs/${context.runId})
+            [Full Report](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
             `;
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -308,7 +312,9 @@ variables:
 
 load-test:
   stage: load-test
-  image: locustio/locust:2.20.0
+  image:
+    name: locustio/locust:2.20.0
+    entrypoint: [""]
   script:
     - |
       locust \
@@ -325,9 +331,8 @@ load-test:
       - results_stats.csv
       - results_stats_history.csv
       - results_failures.csv
+      - results_exceptions.csv
       - report.html
-    reports:
-      performance: results_stats.csv
     expire_in: 30 days
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
@@ -337,7 +342,9 @@ load-test:
 # Separate job for extended load tests
 load-test-extended:
   stage: load-test
-  image: locustio/locust:2.20.0
+  image:
+    name: locustio/locust:2.20.0
+    entrypoint: [""]
   variables:
     LOCUST_USERS: 500
     LOCUST_RUN_TIME: 30m
@@ -442,8 +449,10 @@ pipeline {
                     def stats = readCSV file: 'results_stats.csv'
                     def aggregated = stats[-1]  // Last row is aggregated
 
-                    def failureRate = aggregated[4] as Float
-                    def p95 = aggregated[8] as Float
+                    def requestCount = aggregated[2] as Float
+                    def failureCount = aggregated[3] as Float
+                    def failureRate = requestCount > 0 ? (failureCount / requestCount) * 100 : 0
+                    def p95 = aggregated[16] as Float
 
                     if (failureRate > 1.0) {
                         error "Failure rate ${failureRate}% exceeds threshold of 1%"
@@ -694,7 +703,7 @@ Create a summary job that aggregates results from parallel tests:
               stats=$(tail -1 "$csv")
               requests=$(echo "$stats" | cut -d',' -f3)
               failures=$(echo "$stats" | cut -d',' -f4)
-              p95=$(echo "$stats" | cut -d',' -f9)
+              p95=$(echo "$stats" | cut -d',' -f17)
               rps=$(echo "$stats" | cut -d',' -f10)
               echo "| $scenario | $requests | $failures | $p95 | $rps |" >> $GITHUB_STEP_SUMMARY
             fi
