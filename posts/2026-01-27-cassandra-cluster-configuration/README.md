@@ -45,7 +45,7 @@ graph TB
 Key topology decisions:
 
 - **Datacenter:** Physical or logical grouping of nodes. Use separate datacenters for geographic distribution or to isolate workloads (OLTP vs. analytics).
-- **Rack:** Represents a failure domain. Cassandra will not place replicas on the same rack if possible.
+- **Rack:** Represents a failure domain. With `NetworkTopologyStrategy`, Cassandra attempts to place replicas on different racks when possible.
 - **Node:** A single Cassandra instance. Plan for 1-2 TB of data per node for optimal performance.
 
 ```yaml
@@ -76,7 +76,7 @@ cluster_name: 'production-cluster'
 
 # Number of tokens per node. Higher values = better load distribution
 # Use 256 for clusters with varying node capacities
-# Use 16 for vnodes with uniform hardware (Cassandra 4.0+)
+# Use 16 for vnodes with uniform hardware (the Cassandra 4.1+ default)
 num_tokens: 16
 
 # -----------------------------------------------------------------
@@ -92,7 +92,7 @@ rpc_address: 192.168.1.10
 
 # Port configurations
 storage_port: 7000           # Inter-node communication
-ssl_storage_port: 7001       # Encrypted inter-node communication
+# ssl_storage_port: 7001     # Legacy encrypted inter-node port; deprecated in Cassandra 4.0+
 native_transport_port: 9042  # CQL client connections
 
 # -----------------------------------------------------------------
@@ -128,10 +128,10 @@ hints_directory: /var/lib/cassandra/hints
 # -----------------------------------------------------------------
 # Commitlog sync mode: periodic (better throughput) or batch (better durability)
 commitlog_sync: periodic
-commitlog_sync_period_in_ms: 10000
+commitlog_sync_period: 10000ms
 
-# Total commitlog space in MB
-commitlog_total_space_in_mb: 8192
+# Total commitlog space
+commitlog_total_space: 8192MiB
 
 # Concurrent reads/writes - tune based on CPU cores
 concurrent_reads: 32
@@ -148,24 +148,24 @@ memtable_flush_writers: 4
 # - SizeTieredCompactionStrategy: Write-heavy, time-series
 # - LeveledCompactionStrategy: Read-heavy, consistent latency
 # - TimeWindowCompactionStrategy: Time-series with TTL
-compaction_throughput_mb_per_sec: 64
+compaction_throughput: 64MiB/s
 
 # -----------------------------------------------------------------
 # TIMEOUTS
 # -----------------------------------------------------------------
-read_request_timeout_in_ms: 5000
-write_request_timeout_in_ms: 2000
-counter_write_request_timeout_in_ms: 5000
-request_timeout_in_ms: 10000
+read_request_timeout: 5000ms
+write_request_timeout: 2000ms
+counter_write_request_timeout: 5000ms
+request_timeout: 10000ms
 
 # -----------------------------------------------------------------
 # HINTED HANDOFF
 # -----------------------------------------------------------------
 # Store hints for unavailable nodes
 hinted_handoff_enabled: true
-max_hint_window_in_ms: 10800000  # 3 hours
-hints_flush_period_in_ms: 10000
-max_hints_file_size_in_mb: 128
+max_hint_window: 3h
+hints_flush_period: 10000ms
+max_hints_file_size: 128MiB
 ```
 
 ## Seed Nodes and Gossip Protocol
@@ -327,7 +327,7 @@ WITH replication = {
 };
 
 -- After changing replication, run repair to sync data
--- nodetool repair -full existing_keyspace
+-- nodetool repair --full existing_keyspace
 ```
 
 ### Replication Factor Guidelines
@@ -357,7 +357,8 @@ def calculate_replication(
     recommendations = {}
 
     # Calculate availability for different RF values
-    for rf in range(1, min(nodes_per_dc + 1, 6)):
+    max_rf_to_evaluate = min(nodes_per_dc, 5)
+    for rf in range(1, max_rf_to_evaluate + 1):
         # Probability that all replicas fail simultaneously
         # (simplified model assuming independent failures)
         failure_prob = node_failure_rate ** rf
@@ -374,7 +375,7 @@ def calculate_replication(
     # Find minimum RF that meets requirement
     min_rf = next(
         (rf for rf, data in recommendations.items() if data['meets_requirement']),
-        nodes_per_dc
+        max_rf_to_evaluate
     )
 
     return {
@@ -382,7 +383,7 @@ def calculate_replication(
         'analysis': recommendations,
         'notes': [
             f"RF={min_rf} provides {recommendations[min_rf]['theoretical_availability']} availability",
-            "Always use odd RF values for better quorum calculations",
+            "Prefer odd RF values when using quorum-based consistency",
             "RF should not exceed nodes in smallest datacenter"
         ]
     }
@@ -518,22 +519,29 @@ class ConsistencyCalculator:
         """
         Check if read + write CLs guarantee strong consistency.
 
-        Strong consistency requires: R + W > RF
+        Strong consistency requires overlapping read and write replica sets.
+        For global consistency, R + W must exceed total RF.
+        For local consistency, R + W must exceed local RF.
         Where R = read replicas, W = write replicas, RF = replication factor
         """
+        total_rf = self.replication_factor * self.datacenters
         cl_to_replicas = {
-            'ONE': 1,
-            'TWO': 2,
-            'THREE': 3,
-            'QUORUM': self.quorum(),
-            'LOCAL_QUORUM': self.local_quorum(),
-            'ALL': self.replication_factor
+            'ONE': (1, total_rf),
+            'TWO': (2, total_rf),
+            'THREE': (3, total_rf),
+            'QUORUM': (self.quorum(), total_rf),
+            'LOCAL_ONE': (1, self.local_rf),
+            'LOCAL_QUORUM': (self.local_quorum(), self.local_rf),
+            'ALL': (total_rf, total_rf)
         }
 
-        r = cl_to_replicas.get(read_cl, 1)
-        w = cl_to_replicas.get(write_cl, 1)
+        r, read_scope = cl_to_replicas.get(read_cl, (1, total_rf))
+        w, write_scope = cl_to_replicas.get(write_cl, (1, total_rf))
 
-        return r + w > self.replication_factor
+        if read_scope != write_scope:
+            return False
+
+        return r + w > read_scope
 
 
 # Example usage
@@ -570,18 +578,19 @@ VALUES (uuid(), toTimestamp(now()), 'page_view');
 -- Critical writes (strong consistency in local DC)
 CONSISTENCY LOCAL_QUORUM;
 INSERT INTO payments.transactions (id, user_id, amount, status)
-VALUES (uuid(), ?, ?, 'pending');
+VALUES (uuid(), 7b4f5c10-6b8a-4d9f-9e88-4f36f7d6f234, 49.95, 'pending');
 
 -- Read your own writes (use same CL for read and write)
 CONSISTENCY QUORUM;
-SELECT * FROM users.profiles WHERE user_id = ?;
+SELECT * FROM users.profiles
+WHERE user_id = 7b4f5c10-6b8a-4d9f-9e88-4f36f7d6f234;
 
 -- Analytics queries (can tolerate stale data)
 CONSISTENCY LOCAL_ONE;
-SELECT COUNT(*) FROM metrics.daily_aggregates WHERE date = ?;
+SELECT COUNT(*) FROM metrics.daily_aggregates WHERE date = '2026-01-27';
 
 -- Lightweight transactions (compare-and-set)
--- Automatically uses SERIAL consistency
+-- Uses the serial phase; set SERIAL CONSISTENCY when you need SERIAL or LOCAL_SERIAL explicitly
 INSERT INTO inventory.stock (product_id, quantity)
 VALUES ('SKU-123', 100)
 IF NOT EXISTS;
@@ -654,7 +663,13 @@ echo ""
 # 6. Check for dropped mutations
 echo "6. Dropped Mutations (indicates overload)"
 echo "-----------------------------------------"
-dropped=$($NODETOOL tpstats | grep -E "MUTATION|READ|COUNTER" | awk '{sum += $5} END {print sum}')
+dropped=$($NODETOOL tpstats | awk '
+    /^Message type/ {in_dropped=1; next}
+    in_dropped && /^(READ|RANGE_SLICE|MUTATION|COUNTER_MUTATION|READ_REPAIR|PAGED_RANGE)[[:space:]]/ {
+        sum += $2
+    }
+    END {print sum + 0}
+')
 if [ "$dropped" -gt 0 ]; then
     echo -e "${RED}WARNING: $dropped dropped messages detected${NC}"
 else
