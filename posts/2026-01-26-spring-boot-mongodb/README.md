@@ -71,18 +71,17 @@ Configure MongoDB connection in `application.yml`:
 
 ```yaml
 spring:
-  data:
-    mongodb:
-      # Connection URI format: mongodb://user:password@host:port/database
-      uri: mongodb://localhost:27017/myapp
+  mongodb:
+    # Connection URI format: mongodb://user:password@host:port/database
+    uri: mongodb://localhost:27017/myapp
 
-      # Or use individual properties
-      # host: localhost
-      # port: 27017
-      # database: myapp
-      # username: myuser
-      # password: mypassword
-      # authentication-database: admin
+    # Or use individual properties
+    # host: localhost
+    # port: 27017
+    # database: myapp
+    # username: myuser
+    # password: mypassword
+    # authentication-database: admin
 
 # Logging for debugging queries (optional)
 
@@ -95,9 +94,8 @@ For production environments, use environment variables:
 
 ```yaml
 spring:
-  data:
-    mongodb:
-      uri: ${MONGODB_URI:mongodb://localhost:27017/myapp}
+  mongodb:
+    uri: ${MONGODB_URI:mongodb://localhost:27017/myapp}
 ```
 
 ## Application Architecture
@@ -155,7 +153,7 @@ import java.util.List;
 // Maps this class to the "users" collection in MongoDB
 @Document(collection = "users")
 // Create a compound index on firstName and lastName for faster queries
-@CompoundIndex(name = "name_idx", def = "{'firstName': 1, 'lastName': 1}")
+@CompoundIndex(name = "name_idx", def = "{'first_name': 1, 'last_name': 1}")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -201,6 +199,10 @@ public class User {
     @LastModifiedDate
     @Field("updated_at")
     private Instant updatedAt;
+
+    // Used by the TTL index to remove deactivated users after the retention period
+    @Field("deactivated_at")
+    private Instant deactivatedAt;
 }
 ```
 
@@ -283,6 +285,9 @@ public interface UserRepository extends MongoRepository<User, String> {
     // Find where field is in a list
     List<User> findByRolesContaining(String role);
 
+    // Find active users where roles contains a value
+    List<User> findByActiveTrueAndRolesContaining(String role);
+
     // Find with sorting
     List<User> findByActiveOrderByCreatedAtDesc(boolean active);
 
@@ -332,7 +337,7 @@ public interface UserRepository extends MongoRepository<User, String> {
 
     // Projection - only return specific fields
     // The fields parameter specifies which fields to include (1) or exclude (0)
-    @Query(value = "{ 'active': true }", fields = "{ 'firstName': 1, 'lastName': 1, 'email': 1 }")
+    @Query(value = "{ 'active': true }", fields = "{ 'first_name': 1, 'last_name': 1, 'email': 1 }")
     List<User> findActiveUsersProjected();
 
     // Query with nested document field
@@ -382,8 +387,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 
 @Service
@@ -434,7 +439,7 @@ public class UserService {
 
     // Get active users by role
     public List<User> getActiveUsersByRole(String role) {
-        return userRepository.findByRolesContaining(role);
+        return userRepository.findByActiveTrueAndRolesContaining(role);
     }
 
     // Update user
@@ -472,6 +477,7 @@ public class UserService {
     public void deactivateUser(String id) {
         User user = getUserById(id);
         user.setActive(false);
+        user.setDeactivatedAt(Instant.now());
         userRepository.save(user);
         log.info("Deactivated user with id: {}", id);
     }
@@ -502,7 +508,6 @@ package com.example.controller;
 import com.example.model.User;
 import com.example.model.Address;
 import com.example.service.UserService;
-import com.example.dto.UserDTO;
 import com.example.dto.CreateUserRequest;
 import com.example.dto.UpdateUserRequest;
 
@@ -652,6 +657,8 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.*;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.TextCriteria;
+import org.springframework.data.mongodb.core.query.TextQuery;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
 
@@ -780,11 +787,10 @@ public class UserCustomRepository {
 
     // Text search (requires text index on collection)
     public List<User> textSearch(String searchText) {
-        Query query = new Query();
-        query.addCriteria(Criteria.where("$text")
-            .is(new org.bson.Document("$search", searchText)));
+        TextCriteria criteria = TextCriteria.forDefaultLanguage()
+            .matchingAny(searchText);
 
-        return mongoTemplate.find(query, User.class);
+        return mongoTemplate.find(TextQuery.queryText(criteria), User.class);
     }
 }
 
@@ -954,12 +960,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.data.mongo.DataMongoTest;
+import org.springframework.boot.data.mongodb.test.autoconfigure.DataMongoTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.MongoDBContainer;
+import org.testcontainers.mongodb.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import java.util.List;
 import java.util.Optional;
@@ -972,12 +979,14 @@ class UserRepositoryTest {
 
     // Start a MongoDB container for testing
     @Container
-    static MongoDBContainer mongoDBContainer = new MongoDBContainer("mongo:7.0");
+    static MongoDBContainer mongoDBContainer = new MongoDBContainer(
+        DockerImageName.parse("mongo:7.0")
+    ).withReplicaSet();
 
     // Configure Spring to use the test container
     @DynamicPropertySource
     static void setProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.mongodb.uri", mongoDBContainer::getReplicaSetUrl);
+        registry.add("spring.mongodb.uri", mongoDBContainer::getReplicaSetUrl);
     }
 
     @Autowired
@@ -1101,14 +1110,14 @@ Add Testcontainers dependency for testing:
 ```xml
 <dependency>
     <groupId>org.testcontainers</groupId>
-    <artifactId>mongodb</artifactId>
-    <version>1.19.3</version>
+    <artifactId>testcontainers-mongodb</artifactId>
+    <version>2.0.5</version>
     <scope>test</scope>
 </dependency>
 <dependency>
     <groupId>org.testcontainers</groupId>
-    <artifactId>junit-jupiter</artifactId>
-    <version>1.19.3</version>
+    <artifactId>testcontainers-junit-jupiter</artifactId>
+    <version>2.0.5</version>
     <scope>test</scope>
 </dependency>
 ```
@@ -1157,8 +1166,8 @@ public class MongoIndexInitializer implements CommandLineRunner {
         // Compound index for name searches
         collection.createIndex(
             Indexes.compoundIndex(
-                Indexes.ascending("firstName"),
-                Indexes.ascending("lastName")
+                Indexes.ascending("first_name"),
+                Indexes.ascending("last_name")
             ),
             new IndexOptions().name("name_compound_idx")
         );
@@ -1187,8 +1196,8 @@ public class MongoIndexInitializer implements CommandLineRunner {
         // Text index for full-text search
         collection.createIndex(
             Indexes.compoundIndex(
-                Indexes.text("firstName"),
-                Indexes.text("lastName"),
+                Indexes.text("first_name"),
+                Indexes.text("last_name"),
                 Indexes.text("email")
             ),
             new IndexOptions().name("user_text_idx")
