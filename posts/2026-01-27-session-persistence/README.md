@@ -44,6 +44,7 @@ The best solution is often to eliminate the need for session persistence entirel
 
 # Store it in Redis (accessible by all servers)
 
+import json
 import redis
 
 # Connect to Redis cluster
