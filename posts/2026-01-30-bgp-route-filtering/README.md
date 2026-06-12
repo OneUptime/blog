@@ -116,17 +116,13 @@ policy-options {
         192.0.2.0/24;
     }
 
-    prefix-list BOGONS {
-        10.0.0.0/8;
-        172.16.0.0/12;
-        192.168.0.0/16;
-        0.0.0.0/0;
-    }
-
     policy-statement FILTER-INBOUND {
         term reject-bogons {
             from {
-                prefix-list BOGONS;
+                route-filter 10.0.0.0/8 orlonger;
+                route-filter 172.16.0.0/12 orlonger;
+                route-filter 192.168.0.0/16 orlonger;
+                route-filter 0.0.0.0/0 exact;
             }
             then reject;
         }
@@ -538,7 +534,7 @@ router bgp 65001
 ```bash
 ! Configure RPKI cache server
 rpki
-  rpki cache 192.0.2.100 8282 preference 1
+  rpki cache tcp 192.0.2.100 8282 preference 1
 
 ! Route map for RPKI validation
 route-map RPKI-FILTER permit 10
@@ -565,14 +561,14 @@ Protect your router from memory exhaustion and routing table manipulation by lim
 
 ```bash
 router bgp 65001
-  ! Warn at 75%, shutdown at 100% of limit
+  ! Warn at 75% of limit without shutting down the session
   neighbor 192.0.2.1 maximum-prefix 1000 75 warning-only
 
   ! Shutdown session if limit exceeded, restart after 30 minutes
   neighbor 192.0.2.2 maximum-prefix 5000 80 restart 30
 
-  ! For transit providers expecting full table
-  neighbor 192.0.2.3 maximum-prefix 900000 90
+  ! For transit providers expecting a full IPv4 table, size the limit above the current table
+  neighbor 192.0.2.3 maximum-prefix 1200000 90
 ```
 
 ### Juniper Maximum Prefix Configuration
@@ -637,35 +633,36 @@ flowchart TD
 
 ```bash
 ! === BOGON PREFIX LISTS ===
-ip prefix-list BOGONS seq 10 deny 0.0.0.0/8 le 32
-ip prefix-list BOGONS seq 20 deny 10.0.0.0/8 le 32
-ip prefix-list BOGONS seq 30 deny 100.64.0.0/10 le 32
-ip prefix-list BOGONS seq 40 deny 127.0.0.0/8 le 32
-ip prefix-list BOGONS seq 50 deny 169.254.0.0/16 le 32
-ip prefix-list BOGONS seq 60 deny 172.16.0.0/12 le 32
-ip prefix-list BOGONS seq 70 deny 192.0.0.0/24 le 32
-ip prefix-list BOGONS seq 80 deny 192.0.2.0/24 le 32
-ip prefix-list BOGONS seq 90 deny 192.168.0.0/16 le 32
-ip prefix-list BOGONS seq 100 deny 198.18.0.0/15 le 32
-ip prefix-list BOGONS seq 110 deny 198.51.100.0/24 le 32
-ip prefix-list BOGONS seq 120 deny 203.0.113.0/24 le 32
-ip prefix-list BOGONS seq 130 deny 224.0.0.0/4 le 32
-ip prefix-list BOGONS seq 140 deny 240.0.0.0/4 le 32
+ip prefix-list BOGONS seq 10 permit 0.0.0.0/8 le 32
+ip prefix-list BOGONS seq 20 permit 10.0.0.0/8 le 32
+ip prefix-list BOGONS seq 30 permit 100.64.0.0/10 le 32
+ip prefix-list BOGONS seq 40 permit 127.0.0.0/8 le 32
+ip prefix-list BOGONS seq 50 permit 169.254.0.0/16 le 32
+ip prefix-list BOGONS seq 60 permit 172.16.0.0/12 le 32
+ip prefix-list BOGONS seq 70 permit 192.0.0.0/24 le 32
+ip prefix-list BOGONS seq 80 permit 192.0.2.0/24 le 32
+ip prefix-list BOGONS seq 90 permit 192.168.0.0/16 le 32
+ip prefix-list BOGONS seq 100 permit 198.18.0.0/15 le 32
+ip prefix-list BOGONS seq 110 permit 198.51.100.0/24 le 32
+ip prefix-list BOGONS seq 120 permit 203.0.113.0/24 le 32
+ip prefix-list BOGONS seq 130 permit 224.0.0.0/4 le 32
+ip prefix-list BOGONS seq 140 permit 240.0.0.0/4 le 32
 ! Reject too specific prefixes
-ip prefix-list BOGONS seq 150 deny 0.0.0.0/0 ge 25
-! Permit everything else
-ip prefix-list BOGONS seq 1000 permit 0.0.0.0/0 le 24
+ip prefix-list BOGONS seq 150 permit 0.0.0.0/0 ge 25
 
 ! === OUR PREFIXES (for outbound) ===
 ip prefix-list OUR-PREFIXES seq 10 permit 203.0.113.0/24
 ip prefix-list OUR-PREFIXES seq 20 permit 198.51.100.0/24
 
 ! === AS-PATH FILTERS ===
-ip as-path access-list 10 deny _0_
-ip as-path access-list 10 deny _23456_
-ip as-path access-list 10 deny _[64496-64511]_
-ip as-path access-list 10 deny _[65536-65551]_
-ip as-path access-list 10 permit .*
+ip as-path access-list 10 permit _0_
+ip as-path access-list 10 permit _23456_
+ip as-path access-list 10 permit _6449[6-9]_
+ip as-path access-list 10 permit _6450[0-9]_
+ip as-path access-list 10 permit _6451[0-1]_
+ip as-path access-list 10 permit _6553[6-9]_
+ip as-path access-list 10 permit _6554[0-9]_
+ip as-path access-list 10 permit _6555[0-1]_
 
 ! === COMMUNITY LISTS ===
 ip community-list standard BLACKHOLE permit 65001:666
@@ -812,9 +809,7 @@ bgpq4 -4 -J -l CUSTOMER-PREFIXES AS64501
 apt install routinator
 
 # Configure /etc/routinator/routinator.conf
-[output]
-format = "rpki-rtr"
-listen = ["192.0.2.100:8282"]
+rtr-listen = ["192.0.2.100:8282"]
 
 # Start service
 systemctl enable --now routinator
