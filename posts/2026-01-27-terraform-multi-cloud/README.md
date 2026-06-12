@@ -808,7 +808,8 @@ terraform {
     encrypt        = true
     dynamodb_table = "terraform-state-locks"
 
-    # State file path becomes: env:/production/multi-cloud/terraform.tfstate
+    # State file path becomes: env/production/multi-cloud/terraform.tfstate
+    # (Terraform's default workspace_key_prefix is "env:" - we override to "env")
     workspace_key_prefix = "env"
   }
 }
