@@ -12,7 +12,7 @@ Most organizations don't start with Terraform. They have existing infrastructure
 
 ## Import Methods
 
-Terraform offers three approaches:
+Common approaches include:
 
 1. **terraform import command** - Traditional, resource-by-resource
 2. **import blocks** - Declarative, in configuration (Terraform 1.5+)
@@ -34,7 +34,7 @@ First, create a placeholder configuration matching the existing resource:
 resource "aws_s3_bucket" "existing_data" {
   bucket = "mycompany-existing-data-bucket"
 
-  # Other attributes will be populated after import
+  # Other attributes can be added after import
 }
 ```
 
@@ -137,6 +137,18 @@ import {
   to = aws_security_group.web
   id = "sg-1234567890abcdef0"
 }
+
+resource "aws_s3_bucket" "data" {
+  bucket = "mycompany-data-bucket"
+}
+
+resource "aws_instance" "web" {
+  # Add non-default arguments after import to match the existing instance
+}
+
+resource "aws_security_group" "web" {
+  # Add non-default arguments after import to match the existing security group
+}
 ```
 
 Then run plan and apply:
@@ -199,7 +211,7 @@ terraformer import aws --resources=* --regions=us-east-1
 terraformer import aws --resources=vpc,subnet,ec2_instance --regions=us-east-1
 
 # Import with filtering
-terraformer import aws --resources=s3 --filter=aws_s3_bucket=myprefix
+terraformer import aws --resources=s3 --filter="Name=tags.Name;Value=myprefix"
 ```
 
 Terraformer generates both state and configuration files.
@@ -287,8 +299,8 @@ Import resources in the right order:
 terraform import aws_vpc.main vpc-abc123
 
 # 2. Subnets (depend on VPC)
-terraform import aws_subnet.public[0] subnet-def456
-terraform import aws_subnet.public[1] subnet-ghi789
+terraform import 'aws_subnet.public[0]' subnet-def456
+terraform import 'aws_subnet.public[1]' subnet-ghi789
 
 # 3. Security groups (depend on VPC)
 terraform import aws_security_group.web sg-pqr678
@@ -356,7 +368,7 @@ Import resources into module instances:
 ```bash
 # Import into a module
 terraform import module.vpc.aws_vpc.main vpc-abc123
-terraform import module.vpc.aws_subnet.private[0] subnet-def456
+terraform import 'module.vpc.aws_subnet.private[0]' subnet-def456
 
 # Import into nested modules
 terraform import module.app.module.database.aws_db_instance.main mydb
