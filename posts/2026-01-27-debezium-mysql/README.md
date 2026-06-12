@@ -18,7 +18,7 @@ Change Data Capture (CDC) has become essential for building event-driven archite
 
 Before diving in, ensure you have:
 
-- MySQL 5.7+ or MySQL 8.0+ (or MariaDB 10.2+)
+- MySQL 8.0+ (verify the tested database versions for your Debezium release; current Debezium releases use a separate MariaDB connector)
 - Apache Kafka cluster running
 - Kafka Connect cluster deployed
 - Administrative access to MySQL
@@ -56,10 +56,10 @@ binlog_row_image = FULL
 
 # Expire binary logs after 7 days to prevent disk exhaustion
 # Adjust based on your replication lag tolerance and disk capacity
-expire_logs_days = 7
+binlog_expire_logs_seconds = 604800
 
-# For MySQL 8.0+, use binlog_expire_logs_seconds instead
-# binlog_expire_logs_seconds = 604800
+# For older MySQL versions, use expire_logs_days instead
+# expire_logs_days = 7
 ```
 
 ### Verify Binary Log Settings
@@ -82,8 +82,11 @@ SHOW VARIABLES LIKE 'binlog_row_image';
 -- List current binary log files
 SHOW BINARY LOGS;
 
--- View current binary log position (useful for debugging)
+-- View current binary log position (useful for debugging in MySQL 8.0)
 SHOW MASTER STATUS;
+
+-- For MySQL 8.4+, use this replacement instead
+SHOW BINARY LOG STATUS;
 ```
 
 ---
@@ -97,8 +100,11 @@ Debezium needs a MySQL user with specific privileges to read the binlog and quer
 -- Use a strong password in production!
 CREATE USER 'debezium'@'%' IDENTIFIED BY 'your_secure_password_here';
 
--- Grant replication privileges (required to read binlog)
+-- Grant replication privileges (required to read binlog and inspect binlog status)
 GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'debezium'@'%';
+
+-- Grant SHOW DATABASES so Debezium can discover database names
+GRANT SHOW DATABASES ON *.* TO 'debezium'@'%';
 
 -- Grant SELECT on databases you want to capture
 -- Option 1: Grant on specific database (recommended for security)
@@ -107,9 +113,13 @@ GRANT SELECT ON your_database.* TO 'debezium'@'%';
 -- Option 2: Grant on all databases (use with caution)
 -- GRANT SELECT ON *.* TO 'debezium'@'%';
 
--- For MySQL 8.0+: Grant RELOAD for consistent snapshots
+-- Grant RELOAD for consistent snapshots
 -- This allows Debezium to acquire global read locks during initial snapshot
 GRANT RELOAD ON *.* TO 'debezium'@'%';
+
+-- If global read locks are unavailable, such as on some hosted MySQL services,
+-- Debezium may need table-level locks for consistent snapshots
+-- GRANT LOCK TABLES ON your_database.* TO 'debezium'@'%';
 
 -- Apply the privilege changes
 FLUSH PRIVILEGES;
@@ -161,11 +171,11 @@ SHOW VARIABLES LIKE 'enforce_gtid_consistency';
 
 ## Debezium Connector Configuration
 
-Now configure the Debezium MySQL connector. This JSON configuration is submitted to Kafka Connect's REST API.
+Now configure the Debezium MySQL connector. The following JSON-style examples include comments for explanation; remove comments before submitting the configuration to Kafka Connect's REST API.
 
 ### Basic Connector Configuration
 
-```json
+```jsonc
 {
   "name": "mysql-connector",
   "config": {
@@ -227,7 +237,7 @@ Debezium maintains a history of all DDL (schema) changes in a dedicated Kafka to
 
 ### Schema History Settings
 
-```json
+```jsonc
 {
   "name": "mysql-connector",
   "config": {
@@ -247,7 +257,8 @@ Debezium maintains a history of all DDL (schema) changes in a dedicated Kafka to
     // Polling interval during schema history recovery (milliseconds)
     "schema.history.internal.kafka.recovery.poll.interval.ms": "100",
 
-    // Store only schema changes for captured tables (reduces storage)
+    // Store only schema changes for captured tables (reduces storage,
+    // but makes it harder to add existing tables to the capture list later)
     "schema.history.internal.store.only.captured.tables.ddl": "true",
 
     // Skip unparseable DDL statements instead of failing
@@ -285,7 +296,7 @@ When Debezium first starts, it can take a snapshot of the existing database stat
 
 ### Available Snapshot Modes
 
-```json
+```jsonc
 {
   "name": "mysql-connector",
   "config": {
@@ -303,13 +314,13 @@ When Debezium first starts, it can take a snapshot of the existing database stat
     // Best for: One-time data migration
     // "snapshot.mode": "initial_only",
 
-    // "schema_only" - Capture schema but skip existing data
+    // "no_data" - Capture schema but skip existing data
     // Best for: When you only care about new changes going forward
-    // "snapshot.mode": "schema_only",
+    // "snapshot.mode": "no_data",
 
-    // "schema_only_recovery" - Re-read schema after connector restart
+    // "recovery" - Rebuild the schema history topic after connector restart
     // Best for: Recovering from schema history corruption
-    // "snapshot.mode": "schema_only_recovery",
+    // "snapshot.mode": "recovery",
 
     // "never" - Never snapshot, fail if no offset exists
     // Best for: Strict streaming-only scenarios
@@ -326,7 +337,7 @@ When Debezium first starts, it can take a snapshot of the existing database stat
 
 Configure how Debezium handles table locks during snapshots:
 
-```json
+```jsonc
 {
   "name": "mysql-connector",
   "config": {
@@ -334,17 +345,15 @@ Configure how Debezium handles table locks during snapshots:
 
     // Locking mode during snapshot
     // "minimal" - Hold global read lock only during schema capture
-    // "minimal_percona" - Use Percona-specific backup locks
     // "extended" - Hold lock for entire snapshot (most consistent but blocks writes)
     // "none" - No locks (may cause inconsistencies)
     "snapshot.locking.mode": "minimal",
 
-    // How to handle snapshot fetch operations
-    // "cursor" - Use server-side cursor (low memory, slower)
-    // "select_all" - Load entire result set (fast, high memory)
-    "snapshot.fetch.size": "10240",
+    // Optional: maximum number of rows fetched in one snapshot query batch.
+    // For MySQL, leave unset unless you have tested the memory impact.
+    // "snapshot.fetch.size": "10240",
 
-    // Maximum time for snapshot (0 = no timeout)
+    // Maximum number of threads used to snapshot tables
     "snapshot.max.threads": "1"
   }
 }
@@ -358,7 +367,7 @@ In production, you often want to capture only specific tables or exclude sensiti
 
 ### Table Filtering
 
-```json
+```jsonc
 {
   "name": "mysql-connector",
   "config": {
@@ -388,7 +397,7 @@ In production, you often want to capture only specific tables or exclude sensiti
 
 ### Column Filtering and Masking
 
-```json
+```jsonc
 {
   "name": "mysql-connector",
   "config": {
@@ -418,7 +427,7 @@ In production, you often want to capture only specific tables or exclude sensiti
 
 ### Complete Production Configuration Example
 
-```json
+```jsonc
 {
   "name": "mysql-production-connector",
   "config": {
@@ -449,7 +458,6 @@ In production, you often want to capture only specific tables or exclude sensiti
     // Snapshot configuration
     "snapshot.mode": "initial",
     "snapshot.locking.mode": "minimal",
-    "snapshot.fetch.size": "10240",
 
     // Message transformation
     "tombstones.on.delete": "true",
@@ -463,7 +471,7 @@ In production, you often want to capture only specific tables or exclude sensiti
 
     // Heartbeat for idle databases (keeps offsets fresh)
     "heartbeat.interval.ms": "10000",
-    "heartbeat.topics.prefix": "__debezium-heartbeat",
+    "topic.heartbeat.prefix": "__debezium-heartbeat",
 
     // Performance tuning
     "max.batch.size": "2048",
@@ -495,13 +503,13 @@ In production, you often want to capture only specific tables or exclude sensiti
 
 - Create the schema history topic with infinite retention (`retention.ms=-1`)
 - Use replication factor of 3 for the schema history topic
-- Enable `store.only.captured.tables.ddl` to reduce storage
+- Consider `store.only.captured.tables.ddl` to reduce storage only when you do not plan to add existing tables later
 - Never delete or compact the schema history topic
 
 ### Snapshots
 
 - Use `snapshot.mode=initial` for new deployments to capture existing data
-- Use `snapshot.mode=schema_only` when you only need new changes
+- Use `snapshot.mode=no_data` when you only need new changes
 - Configure appropriate `snapshot.locking.mode` based on write tolerance
 - Monitor snapshot progress for large databases
 
@@ -545,12 +553,12 @@ SHOW VARIABLES LIKE 'binlog_format';
 
 -- Check if table is using a storage engine that supports binlog
 SHOW TABLE STATUS WHERE Name = 'your_table';
--- Engine should be InnoDB (MyISAM has limited binlog support)
+-- InnoDB is recommended; MyISAM tables may require table locks during snapshots
 ```
 
 ### High Replication Lag
 
-```json
+```jsonc
 {
   // Increase batch sizes for higher throughput
   "max.batch.size": "4096",
