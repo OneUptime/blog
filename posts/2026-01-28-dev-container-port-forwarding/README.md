@@ -85,14 +85,8 @@ Define ports to forward automatically when the container starts.
       // Protocol hint for VS Code
       "protocol": "http",
 
-      // Require authentication to access (Codespaces)
+      // Require the same local port instead of silently choosing another one
       "requireLocalPort": false,
-
-      // Visibility in Codespaces
-      // "private" - only you
-      // "org" - organization members
-      // "public" - anyone with URL
-      "visibility": "private",
 
       // Elevate privileges for ports below 1024
       "elevateIfNeeded": true
@@ -132,7 +126,11 @@ VS Code automatically detects when applications start listening on ports and off
 
 ```json
 {
-  "forwardPorts": [3000, "8000-8010"],
+  "forwardPorts": [
+    3000,
+    8000, 8001, 8002, 8003, 8004, 8005,
+    8006, 8007, 8008, 8009, 8010
+  ],
 
   "portsAttributes": {
     "8000-8010": {
@@ -145,20 +143,20 @@ VS Code automatically detects when applications start listening on ports and off
 
 ## Port Mapping
 
-Forward container ports to different host ports when you have conflicts.
+Publish container ports to different host ports when you have conflicts.
 
 ### devcontainer.json Mapping
 
 ```json
 {
-  // Map container port 3000 to host port 3001
-  "forwardPorts": ["3001:3000"],
+  "name": "Web Application",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
 
-  "portsAttributes": {
-    "3001": {
-      "label": "Frontend (mapped from 3000)"
-    }
-  }
+  // Publish container port 3000 as host port 3001
+  "appPort": ["3001:3000"],
+
+  // Use forwardPorts for VS Code forwarding, not host-port remapping
+  "forwardPorts": [9229]
 }
 ```
 
@@ -185,15 +183,8 @@ services:
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
 
-  // Forward the mapped ports
-  "forwardPorts": [3001, 8081, 5433],
-
-  "portsAttributes": {
-    "5433": {
-      "label": "PostgreSQL (container)",
-      "onAutoForward": "silent"
-    }
-  }
+  // Docker Compose publishes these ports; no VS Code forwarding is required
+  "forwardPorts": []
 }
 ```
 
@@ -300,6 +291,8 @@ Forward HTTPS traffic and handle SSL certificates properly.
 
 ### Using mkcert for Local HTTPS
 
+This creates certificates inside the container. To avoid browser warnings on the host, install and trust the mkcert root CA on your host machine as well.
+
 ```json
 {
   "features": {
@@ -372,24 +365,26 @@ When ports are not accessible, work through this troubleshooting flow.
 flowchart TD
     A[Port not accessible] --> B{Is app running?}
     B -->|No| C[Start the application]
-    B -->|Yes| D{Listening on right interface?}
-    D -->|0.0.0.0| E{Port forwarded?}
-    D -->|127.0.0.1| F[Change to 0.0.0.0]
-    E -->|No| G[Add to forwardPorts]
-    E -->|Yes| H{Port conflict?}
-    H -->|Yes| I[Use different host port]
-    H -->|No| J[Check firewall]
+    B -->|Yes| D{Using Docker-published port?}
+    D -->|Yes| E{Listening on 0.0.0.0?}
+    D -->|No| G{Port forwarded?}
+    E -->|No| F[Change to 0.0.0.0]
+    E -->|Yes| G
+    G -->|No| H[Add to forwardPorts]
+    G -->|Yes| I{Port conflict?}
+    I -->|Yes| J[Use different host port]
+    I -->|No| K[Check firewall]
 ```
 
-### Common Issue: Binding to localhost
+### Common Issue: Binding to localhost with Published Ports
 
-Applications binding to `127.0.0.1` are not accessible via port forwarding. They must bind to `0.0.0.0`.
+Applications binding to `127.0.0.1` are not accessible through Docker-published ports such as `appPort` or Docker Compose `ports`. They must bind to `0.0.0.0`. VS Code forwarded ports are different: they can reach services bound to localhost inside the container.
 
 ```javascript
-// Wrong - only accessible inside container
+// Wrong for Docker-published ports
 app.listen(3000, '127.0.0.1');
 
-// Correct - accessible via port forwarding
+// Correct for Docker-published ports
 app.listen(3000, '0.0.0.0');
 
 // Also correct - defaults to 0.0.0.0
@@ -427,11 +422,11 @@ kill -9 <PID>
 
 Reduce latency in port forwarding for better development experience.
 
-### Use appPort for Better Performance
+### Use appPort for Docker Publishing
 
 ```json
 {
-  // appPort maps directly to Docker, faster than VS Code forwarding
+  // appPort publishes ports through Docker for image or Dockerfile dev containers
   "appPort": [3000, 8080],
 
   // Use forwardPorts for dynamic ports
@@ -441,7 +436,7 @@ Reduce latency in port forwarding for better development experience.
 
 ### Docker Compose Network Mode
 
-For maximum performance, use host network mode (Linux only).
+For maximum performance, use host network mode on Linux, or on Docker Desktop 4.34 and later with host networking enabled.
 
 ```yaml
 # docker-compose.yml
@@ -472,21 +467,20 @@ Port forwarding in Codespaces has additional options for sharing.
   "portsAttributes": {
     "3000": {
       "label": "Web Preview",
-      "visibility": "private"     // Only you can access
+      "onAutoForward": "openPreview"
     },
     "8080": {
       "label": "API Preview",
-      "visibility": "public"      // Anyone with URL can access
-    }
-  },
-
-  "github": {
-    "codespaces": {
-      // Prebuild configuration
-      "prebuildExternalBrowserCommands": ["npm run build"]
+      "onAutoForward": "notify"
     }
   }
 }
+```
+
+Change Codespaces port visibility from the Ports panel or with the GitHub CLI:
+
+```bash
+gh codespace ports visibility 3000:private 8080:public
 ```
 
 ### Visibility Options
@@ -554,4 +548,4 @@ Here is a complete port forwarding setup for a typical full-stack application.
 
 ---
 
-Port forwarding is the bridge between your containerized development environment and the tools you use daily, including browsers, database clients, and API testing tools. Configure your common ports statically for consistency, use attributes to control the experience, and remember that applications must bind to `0.0.0.0` to be accessible. With proper port forwarding configuration, working inside a container feels identical to working on your local machine.
+Port forwarding is the bridge between your containerized development environment and the tools you use daily, including browsers, database clients, and API testing tools. Configure your common ports statically for consistency, use attributes to control the experience, and remember that applications using Docker-published ports must bind to `0.0.0.0` to be accessible. With proper port forwarding configuration, working inside a container feels identical to working on your local machine.
