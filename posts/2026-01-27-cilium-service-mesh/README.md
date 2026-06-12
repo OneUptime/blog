@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cilium, Service Mesh, Kubernetes, eBPF, mTLS, Observability, Hubble, Load Balancing, Sidecar-Free
 
-Description: A comprehensive guide to implementing Cilium Service Mesh in Kubernetes, covering sidecar-free architecture, mTLS encryption, load balancing, and observability with Hubble.
+Description: A comprehensive guide to implementing Cilium Service Mesh in Kubernetes, covering sidecar-free architecture, transparent encryption, mutual authentication, load balancing, and observability with Hubble.
 
 ---
 
 > "The best service mesh is the one you don't notice - it just works at the kernel level." - Cilium Philosophy
 
-Service meshes have traditionally relied on sidecar proxies to handle traffic between services. Cilium takes a radically different approach by leveraging eBPF (extended Berkeley Packet Filter) to implement service mesh capabilities directly in the Linux kernel. This eliminates the overhead of sidecars while providing superior performance and observability.
+Service meshes have traditionally relied on sidecar proxies to handle traffic between services. Cilium takes a radically different approach by leveraging eBPF (extended Berkeley Packet Filter) for networking, load balancing, policy, and observability, while using Envoy for Layer 7 features when needed. This eliminates the overhead of per-pod sidecars while providing strong performance and observability.
 
 ## Why Cilium Service Mesh?
 
@@ -21,7 +21,7 @@ Traditional service meshes like Istio or Linkerd inject a sidecar proxy containe
 - **Complexity**: More containers to manage and debug
 - **Cold start**: Sidecars add to pod startup time
 
-Cilium's eBPF-based approach runs at the kernel level, eliminating these concerns entirely.
+Cilium's eBPF-based datapath runs at the kernel level and avoids per-pod sidecar injection, reducing these concerns.
 
 ```mermaid
 flowchart TB
@@ -43,17 +43,17 @@ flowchart TB
 
 Before implementing Cilium Service Mesh, ensure you have:
 
-- Kubernetes cluster version 1.21 or higher
+- A Kubernetes version supported by your Cilium release
 - Helm 3.x installed
 - kubectl configured with cluster access
-- Linux kernel 4.19+ (5.10+ recommended for full features)
+- Linux kernel 5.10+ or equivalent, such as 4.18 on RHEL 8.10
 
 Check your kernel version:
 
 ```bash
 # Verify kernel version supports eBPF features
 
-# Cilium requires kernel 4.19+, but 5.10+ enables all features
+# Cilium recommends kernel 5.10+ or equivalent for current releases
 uname -r
 ```
 
@@ -80,18 +80,19 @@ helm repo update
 #   --set hubble.enabled=true: Enable observability
 #   --set hubble.relay.enabled=true: Enable Hubble API relay
 #   --set hubble.ui.enabled=true: Enable Hubble web UI
-helm install cilium cilium/cilium --version 1.15.0 \
+helm install cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
   --set kubeProxyReplacement=true \
   --set k8sServiceHost=${API_SERVER_IP} \
   --set k8sServicePort=${API_SERVER_PORT} \
   --set ingressController.enabled=true \
-  --set ingressController.loadBalancerMode=dedicated \
+  --set ingressController.loadbalancerMode=dedicated \
   --set hubble.enabled=true \
   --set hubble.relay.enabled=true \
   --set hubble.ui.enabled=true \
   --set encryption.enabled=true \
-  --set encryption.type=wireguard
+  --set encryption.type=wireguard \
+  --set encryption.nodeEncryption=true
 ```
 
 ### Step 3: Verify Installation
@@ -117,7 +118,7 @@ Expected output shows all components healthy:
     \__/       ClusterMesh:        disabled
 
 Cluster Pods:      18/18 managed by Cilium
-Helm chart version: 1.15.0
+Helm chart version: 1.19.4
 ```
 
 ## Sidecar-Free Architecture
@@ -150,19 +151,15 @@ flowchart TB
 
 The Cilium agent runs as a DaemonSet on each node, programming eBPF hooks into the kernel. These hooks intercept network traffic without requiring any changes to your application pods.
 
-### Enable Service Mesh for a Namespace
+### Create a Namespace for Mesh Policies
 
 ```yaml
 # namespace-mesh.yaml
-# Enable Cilium service mesh features for the production namespace
-# The annotation tells Cilium to apply mesh policies to pods in this namespace
+# Create the production namespace for Cilium policies
 apiVersion: v1
 kind: Namespace
 metadata:
   name: production
-  annotations:
-    # Enable service mesh features for this namespace
-    cilium.io/service-mesh: "enabled"
   labels:
     # Label for policy selection
     environment: production
@@ -175,28 +172,23 @@ Apply the configuration:
 kubectl apply -f namespace-mesh.yaml
 ```
 
-## Implementing mTLS with Cilium
+## Implementing Encryption and Mutual Authentication with Cilium
 
-Mutual TLS (mTLS) ensures all service-to-service communication is encrypted and authenticated. Cilium provides two approaches: WireGuard-based encryption and SPIFFE/SPIRE integration.
+Service-to-service protection requires both encryption and authentication. Cilium supports transparent WireGuard encryption and SPIFFE/SPIRE-based mutual authentication.
 
-### Option 1: WireGuard Encryption (Recommended)
+### Option 1: WireGuard Encryption
 
 WireGuard provides transparent encryption at the node level:
 
-```yaml
-# cilium-wireguard-config.yaml
-# ConfigMap to enable WireGuard encryption for all pod traffic
-# WireGuard operates at Layer 3, encrypting all traffic between nodes
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cilium-config
-  namespace: kube-system
-data:
-  # Enable WireGuard-based encryption
-  enable-wireguard: "true"
-  # Encrypt traffic between nodes
-  encrypt-node: "true"
+```bash
+# Enable WireGuard encryption for Cilium-managed traffic
+# WireGuard operates at Layer 3, encrypting traffic between nodes
+helm upgrade cilium cilium/cilium --version 1.19.4 \
+  --namespace kube-system \
+  --reuse-values \
+  --set encryption.enabled=true \
+  --set encryption.type=wireguard \
+  --set encryption.nodeEncryption=true
 ```
 
 Verify encryption is active:
@@ -204,7 +196,7 @@ Verify encryption is active:
 ```bash
 # Check WireGuard encryption status
 # Shows encryption enabled and peer information
-cilium encrypt status
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg encrypt status
 
 # Expected output:
 # Encryption: Wireguard
@@ -212,9 +204,9 @@ cilium encrypt status
 # Max Seq. Number: 0x12345/0xffffffff
 ```
 
-### Option 2: SPIFFE/SPIRE Integration for mTLS
+### Option 2: SPIFFE/SPIRE Integration for Mutual Authentication
 
-For workload identity-based mTLS:
+For workload identity-based mutual authentication:
 
 ```yaml
 # cilium-spire-config.yaml
@@ -235,20 +227,21 @@ authentication:
 Install with SPIRE:
 
 ```bash
-# Install Cilium with SPIRE for mTLS
+# Install Cilium with SPIRE for mutual authentication
 # SPIRE provides SPIFFE identities for workloads
-helm upgrade cilium cilium/cilium --version 1.15.0 \
+helm upgrade cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
   --reuse-values \
+  --set authentication.enabled=true \
   --set authentication.mutual.spire.enabled=true \
   --set authentication.mutual.spire.install.enabled=true
 ```
 
-### Enforce mTLS with CiliumNetworkPolicy
+### Enforce Mutual Authentication with CiliumNetworkPolicy
 
 ```yaml
 # mtls-policy.yaml
-# CiliumNetworkPolicy requiring mTLS authentication
+# CiliumNetworkPolicy requiring Cilium mutual authentication
 # This policy ensures only authenticated traffic is allowed
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -311,11 +304,12 @@ Maglev provides consistent hashing for better connection affinity:
 ```bash
 # Enable Maglev consistent hashing algorithm
 # Maglev provides minimal disruption when backends change
-helm upgrade cilium cilium/cilium --version 1.15.0 \
+helm upgrade cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
   --reuse-values \
   --set loadBalancer.algorithm=maglev \
-  --set maglev.tableSize=65521
+  --set maglev.tableSize=65521 \
+  --set bpf.lbAlgorithmAnnotation=true
 ```
 
 ### Service Configuration with Annotations
@@ -330,29 +324,29 @@ metadata:
   namespace: production
   annotations:
     # Use Maglev for this specific service
-    cilium.io/lb-algorithm: "maglev"
-    # Enable session affinity using source IP
-    cilium.io/lb-affinity: "sourceIP"
-    # Session timeout in seconds
-    cilium.io/lb-affinity-timeout: "3600"
+    service.cilium.io/lb-algorithm: "maglev"
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   selector:
     app: api
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
   ports:
     - port: 80
       targetPort: 8080
       protocol: TCP
 ```
 
-### L7 Load Balancing with Envoy
+### L7 Policy Enforcement with Envoy
 
-For HTTP-aware load balancing, Cilium uses Envoy:
+For HTTP-aware policy enforcement, Cilium uses Envoy:
 
 ```yaml
 # l7-policy.yaml
-# CiliumNetworkPolicy with L7 HTTP load balancing rules
-# This enables HTTP-aware routing and load balancing
+# CiliumNetworkPolicy with L7 HTTP rules
+# This enables HTTP-aware policy enforcement
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -372,7 +366,7 @@ spec:
               protocol: TCP
           rules:
             http:
-              # Route based on HTTP path
+              # Allow traffic based on HTTP path
               - method: "GET"
                 path: "/api/v1/.*"
               - method: "POST"
@@ -399,10 +393,49 @@ spec:
   backendServices:
     - name: api-v1
       namespace: production
-      weight: 90  # 90% of traffic
     - name: api-v2
       namespace: production
-      weight: 10  # 10% of traffic (canary)
+  resources:
+    - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+      name: weighted-routing-listener
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: weighted-routing
+                rds:
+                  route_config_name: weighted-routing
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+    - "@type": type.googleapis.com/envoy.config.route.v3.RouteConfiguration
+      name: weighted-routing
+      virtual_hosts:
+        - name: api-service
+          domains:
+            - "*"
+          routes:
+            - match:
+                prefix: "/"
+              route:
+                weighted_clusters:
+                  clusters:
+                    - name: "production/api-v1"
+                      weight: 90
+                    - name: "production/api-v2"
+                      weight: 10
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: "production/api-v1"
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: "production/api-v2"
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
 ```
 
 ## Observability with Hubble
@@ -461,10 +494,10 @@ hubble version
 ```bash
 # Enable comprehensive Hubble metrics for observability
 # These metrics integrate with Prometheus for monitoring
-helm upgrade cilium cilium/cilium --version 1.15.0 \
+helm upgrade cilium cilium/cilium --version 1.19.4 \
   --namespace kube-system \
   --reuse-values \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}" \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,httpV2:labelsContext=destination_workload}" \
   --set hubble.metrics.serviceMonitor.enabled=true
 ```
 
@@ -554,7 +587,7 @@ data:
           "type": "graph",
           "targets": [
             {
-              "expr": "sum(rate(hubble_http_requests_total[5m])) by (destination_service)"
+              "expr": "sum(rate(hubble_http_requests_total[5m])) by (destination_workload)"
             }
           ]
         },
@@ -563,7 +596,7 @@ data:
           "type": "graph",
           "targets": [
             {
-              "expr": "histogram_quantile(0.99, sum(rate(hubble_http_request_duration_seconds_bucket[5m])) by (le, destination_service))"
+              "expr": "histogram_quantile(0.99, sum(rate(hubble_http_request_duration_seconds_bucket[5m])) by (le, destination_workload))"
             }
           ]
         },
@@ -622,13 +655,11 @@ flowchart TB
 
 ```yaml
 # namespace.yaml
-# Create namespace with Cilium mesh enabled
+# Create namespace for Cilium policies
 apiVersion: v1
 kind: Namespace
 metadata:
   name: microservices
-  annotations:
-    cilium.io/service-mesh: "enabled"
   labels:
     environment: production
 ---
@@ -640,10 +671,8 @@ metadata:
   namespace: microservices
 spec:
   endpointSelector: {}
-  ingress:
-    - {}
-  egress:
-    - {}
+  ingress: []
+  egress: []
 ```
 
 ### Service Definitions
@@ -714,8 +743,6 @@ kind: Service
 metadata:
   name: api
   namespace: microservices
-  annotations:
-    cilium.io/lb-algorithm: "maglev"
 spec:
   selector:
     app: api
@@ -820,12 +847,8 @@ kind: Ingress
 metadata:
   name: microservices-ingress
   namespace: microservices
-  annotations:
-    # Use Cilium ingress controller
-    kubernetes.io/ingress.class: cilium
-    # Enable TLS termination
-    cilium.io/tls-mode: "enabled"
 spec:
+  ingressClassName: cilium
   tls:
     - hosts:
         - app.example.com
@@ -856,34 +879,42 @@ For production deployments, integrate Cilium metrics with [OneUptime](https://on
 
 ### Export Metrics to OneUptime
 
-Configure Prometheus remote write to send Cilium metrics to OneUptime:
+Configure an OpenTelemetry Collector to scrape Hubble metrics and send them to OneUptime:
 
 ```yaml
-# prometheus-remote-write.yaml
-# Configure Prometheus to forward metrics to OneUptime
+# otel-collector-hubble.yaml
+# Configure OpenTelemetry Collector to forward Hubble metrics to OneUptime
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: prometheus-config
+  name: otel-collector-config
   namespace: monitoring
 data:
-  prometheus.yml: |
-    global:
-      scrape_interval: 15s
+  collector.yaml: |
+    receivers:
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: 'hubble'
+              kubernetes_sd_configs:
+                - role: endpoints
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_service_name]
+                  regex: hubble-metrics
+                  action: keep
 
-    scrape_configs:
-      - job_name: 'hubble'
-        kubernetes_sd_configs:
-          - role: pod
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_k8s_app]
-            regex: hubble
-            action: keep
-
-    remote_write:
-      - url: "https://oneuptime.com/api/telemetry/metrics"
+    exporters:
+      otlphttp:
+        endpoint: "https://oneuptime.com/otlp"
+        encoding: json
         headers:
-          X-OneUptime-Token: "${ONEUPTIME_TOKEN}"
+          x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+
+    service:
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          exporters: [otlphttp]
 ```
 
 ### Key Metrics to Monitor
@@ -895,7 +926,7 @@ Set up alerts in OneUptime for these critical Cilium metrics:
 | `hubble_drop_total` | Dropped packets | > 100/min |
 | `hubble_http_requests_total` | HTTP request rate | Anomaly detection |
 | `hubble_http_request_duration_seconds` | Request latency | P99 > 500ms |
-| `cilium_endpoint_state` | Endpoint health | != ready |
+| `cilium_endpoint_state` | Endpoint state | `state!="ready"` |
 | `cilium_unreachable_nodes` | Node connectivity | > 0 |
 
 ## Troubleshooting
@@ -906,10 +937,10 @@ Set up alerts in OneUptime for these critical Cilium metrics:
 
 ```bash
 # Check Cilium agent status on the node
-kubectl exec -n kube-system cilium-xxxxx -- cilium status
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg status
 
 # Verify endpoint is correctly registered
-kubectl exec -n kube-system cilium-xxxxx -- cilium endpoint list
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg endpoint list
 
 # Check for policy drops
 hubble observe --verdict DROPPED --namespace <namespace>
@@ -919,7 +950,7 @@ hubble observe --verdict DROPPED --namespace <namespace>
 
 ```bash
 # Verify encryption status
-cilium encrypt status
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg encrypt status
 
 # Check SPIRE health (if using SPIRE)
 kubectl get pods -n cilium-spire
@@ -935,7 +966,7 @@ hubble observe --type trace:sock --namespace <namespace>
 # Consider using L4 policies where L7 is not needed
 
 # Check Envoy proxy status
-kubectl exec -n kube-system cilium-xxxxx -- cilium envoy admin
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg envoy admin
 ```
 
 ### Useful Debugging Commands
@@ -945,7 +976,7 @@ kubectl exec -n kube-system cilium-xxxxx -- cilium envoy admin
 cilium connectivity test
 
 # View BPF maps
-kubectl exec -n kube-system cilium-xxxxx -- cilium bpf lb list
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg bpf lb list
 
 # Monitor Cilium agent logs
 kubectl logs -n kube-system -l k8s-app=cilium -f
@@ -959,10 +990,10 @@ cilium sysdump
 Cilium Service Mesh provides a powerful, sidecar-free alternative to traditional service meshes. By leveraging eBPF, it delivers:
 
 - **Better performance**: No sidecar proxy overhead
-- **Transparent encryption**: WireGuard or SPIFFE-based mTLS
+- **Transparent encryption and authentication**: WireGuard encryption with optional SPIFFE/SPIRE-based mutual authentication
 - **Advanced load balancing**: Maglev consistent hashing and L7 routing
 - **Deep observability**: Hubble provides unparalleled visibility
 
-The key to success with Cilium is starting simple - enable basic features first, then gradually add mTLS, L7 policies, and advanced observability as your team becomes comfortable with the platform.
+The key to success with Cilium is starting simple - enable basic features first, then gradually add transparent encryption, mutual authentication, L7 policies, and advanced observability as your team becomes comfortable with the platform.
 
-For production deployments, integrate with [OneUptime](https://oneuptime.com) to monitor your service mesh health, track SLOs, and receive alerts when issues arise. OneUptime's native Prometheus integration makes it easy to visualize Cilium and Hubble metrics alongside your application telemetry.
+For production deployments, integrate with [OneUptime](https://oneuptime.com) to monitor your service mesh health, track SLOs, and receive alerts when issues arise. OneUptime's OpenTelemetry ingestion makes it easy to visualize Cilium and Hubble metrics alongside your application telemetry.
