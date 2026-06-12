@@ -89,8 +89,8 @@ Here is a quick reference for Go template syntax:
   {{ .Labels.alertname }}
 {{ end }}
 
-// Default values
-{{ .Labels.severity | default "warning" }}
+// Fallback values
+{{ or .Labels.severity "warning" }}
 
 // String manipulation
 {{ .Labels.alertname | toUpper }}
@@ -120,7 +120,8 @@ route:
 receivers:
   - name: 'default-receiver'
     slack_configs:
-      - channel: '#alerts'
+      - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+        channel: '#alerts'
         send_resolved: true
 ```
 
@@ -164,15 +165,15 @@ Slack templates should be visually clear and include all necessary context for q
 {{ define "slack.text" }}
 {{ range .Alerts }}
 *Alert:* {{ .Labels.alertname }}
-*Severity:* {{ .Labels.severity | default "unknown" }}
+*Severity:* {{ or .Labels.severity "unknown" }}
 *Status:* {{ .Status }}
-*Instance:* {{ .Labels.instance | default "N/A" }}
+*Instance:* {{ or .Labels.instance "N/A" }}
 
 *Summary:*
-{{ .Annotations.summary | default "No summary provided" }}
+{{ or .Annotations.summary "No summary provided" }}
 
 *Description:*
-{{ .Annotations.description | default "No description provided" }}
+{{ or .Annotations.description "No description provided" }}
 
 {{- if .Annotations.runbook_url }}
 *Runbook:* <{{ .Annotations.runbook_url }}|View Runbook>
@@ -188,81 +189,35 @@ Slack templates should be visually clear and include all necessary context for q
 {{ end }}
 ```
 
-### Advanced Slack Template with Blocks
+### Advanced Slack Configuration with Fields and Actions
 
-For richer formatting, use Slack Block Kit:
+Alertmanager's Slack receiver sends attachment-style payloads. For richer formatting, use fields and actions:
 
-```go
-{{/*
-  File: /etc/alertmanager/templates/slack-blocks.tmpl
-  Purpose: Slack Block Kit templates for rich alert formatting
-*/}}
-
-{{ define "slack.blocks" }}
-[
-  {
-    "type": "header",
-    "text": {
-      "type": "plain_text",
-      "text": "{{ if eq .Status "firing" }}ALERT{{ else }}RESOLVED{{ end }}: {{ .CommonLabels.alertname }}"
-    }
-  },
-  {
-    "type": "section",
-    "fields": [
-      {
-        "type": "mrkdwn",
-        "text": "*Status:*\n{{ .Status | toUpper }}"
-      },
-      {
-        "type": "mrkdwn",
-        "text": "*Severity:*\n{{ .CommonLabels.severity | default "unknown" }}"
-      },
-      {
-        "type": "mrkdwn",
-        "text": "*Alerts Firing:*\n{{ .Alerts.Firing | len }}"
-      },
-      {
-        "type": "mrkdwn",
-        "text": "*Alerts Resolved:*\n{{ .Alerts.Resolved | len }}"
-      }
-    ]
-  },
-  {{- range .Alerts }}
-  {
-    "type": "section",
-    "text": {
-      "type": "mrkdwn",
-      "text": "*{{ .Labels.alertname }}*\n{{ .Annotations.summary | default "No summary" }}"
-    }
-  },
-  {{- if .Annotations.runbook_url }}
-  {
-    "type": "actions",
-    "elements": [
-      {
-        "type": "button",
-        "text": {
-          "type": "plain_text",
-          "text": "View Runbook"
-        },
-        "url": "{{ .Annotations.runbook_url }}"
-      }
-    ]
-  },
-  {{- end }}
-  {{- end }}
-  {
-    "type": "context",
-    "elements": [
-      {
-        "type": "mrkdwn",
-        "text": "Source: Alertmanager | Cluster: {{ .CommonLabels.cluster | default "default" }}"
-      }
-    ]
-  }
-]
-{{ end }}
+```yaml
+slack_configs:
+  - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+    channel: '#alerts'
+    send_resolved: true
+    title: '{{ template "slack.title" . }}'
+    text: '{{ template "slack.text" . }}'
+    color: '{{ template "slack.color" . }}'
+    fields:
+      - title: Status
+        value: '{{ .Status | toUpper }}'
+        short: true
+      - title: Severity
+        value: '{{ or .CommonLabels.severity "unknown" }}'
+        short: true
+      - title: Firing
+        value: '{{ .Alerts.Firing | len }}'
+        short: true
+      - title: Resolved
+        value: '{{ .Alerts.Resolved | len }}'
+        short: true
+    actions:
+      - type: button
+        text: View Runbook
+        url: '{{ or .CommonAnnotations.runbook_url (index .Alerts 0).Annotations.runbook_url }}'
 ```
 
 ### Applying Slack Templates
@@ -281,8 +236,7 @@ receivers:
         title: '{{ template "slack.title" . }}'
         text: '{{ template "slack.text" . }}'
         color: '{{ template "slack.color" . }}'
-        # Optional: Use blocks for richer formatting
-        # blocks: '{{ template "slack.blocks" . }}'
+        # Optional: add fields and actions for richer formatting
 ```
 
 ## PagerDuty Alert Templates
@@ -308,13 +262,13 @@ PagerDuty templates should prioritize critical information for incident response
 {{ define "pagerduty.description" }}
 {{ range .Alerts }}
 Alert: {{ .Labels.alertname }}
-Severity: {{ .Labels.severity | default "unknown" }}
-Instance: {{ .Labels.instance | default "N/A" }}
-Job: {{ .Labels.job | default "N/A" }}
+Severity: {{ or .Labels.severity "unknown" }}
+Instance: {{ or .Labels.instance "N/A" }}
+Job: {{ or .Labels.job "N/A" }}
 
-Summary: {{ .Annotations.summary | default "No summary provided" }}
+Summary: {{ or .Annotations.summary "No summary provided" }}
 
-Description: {{ .Annotations.description | default "No description provided" }}
+Description: {{ or .Annotations.description "No description provided" }}
 
 {{- if .Annotations.runbook_url }}
 Runbook: {{ .Annotations.runbook_url }}
@@ -333,11 +287,11 @@ Started: {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
 {{ define "pagerduty.custom_details" }}
 {
   "alertname": "{{ .CommonLabels.alertname }}",
-  "severity": "{{ .CommonLabels.severity | default "unknown" }}",
+  "severity": "{{ or .CommonLabels.severity "unknown" }}",
   "firing_alerts": "{{ .Alerts.Firing | len }}",
   "resolved_alerts": "{{ .Alerts.Resolved | len }}",
-  "cluster": "{{ .CommonLabels.cluster | default "default" }}",
-  "namespace": "{{ .CommonLabels.namespace | default "N/A" }}"
+  "cluster": "{{ or .CommonLabels.cluster "default" }}",
+  "namespace": "{{ or .CommonLabels.namespace "N/A" }}"
 }
 {{ end }}
 ```
@@ -349,7 +303,7 @@ Started: {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
 receivers:
   - name: 'pagerduty-critical'
     pagerduty_configs:
-      - service_key: 'YOUR_PAGERDUTY_SERVICE_KEY'
+      - routing_key: 'YOUR_PAGERDUTY_ROUTING_KEY'
         send_resolved: true
         # Map severity to PagerDuty severity levels
         severity: '{{ if eq .CommonLabels.severity "critical" }}critical{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}info{{ end }}'
@@ -396,15 +350,15 @@ ALERT DETAILS
 {{ range .Alerts }}
 Alert Name: {{ .Labels.alertname }}
 Status: {{ .Status }}
-Severity: {{ .Labels.severity | default "unknown" }}
-Instance: {{ .Labels.instance | default "N/A" }}
-Job: {{ .Labels.job | default "N/A" }}
+Severity: {{ or .Labels.severity "unknown" }}
+Instance: {{ or .Labels.instance "N/A" }}
+Job: {{ or .Labels.job "N/A" }}
 
 Summary:
-{{ .Annotations.summary | default "No summary provided" }}
+{{ or .Annotations.summary "No summary provided" }}
 
 Description:
-{{ .Annotations.description | default "No description provided" }}
+{{ or .Annotations.description "No description provided" }}
 
 {{ if .Annotations.runbook_url }}
 Runbook URL: {{ .Annotations.runbook_url }}
@@ -540,13 +494,13 @@ This alert was generated by Alertmanager.
   <div class="alert-card">
     <div class="alert-card-header">
       <h3 style="margin: 0;">{{ .Labels.alertname }}</h3>
-      <span class="badge {{ .Labels.severity | default "info" }}">
-        {{ .Labels.severity | default "unknown" }}
+      <span class="badge {{ or .Labels.severity "info" }}">
+        {{ or .Labels.severity "unknown" }}
       </span>
     </div>
     <div class="alert-card-body">
-      <p><strong>Summary:</strong><br>{{ .Annotations.summary | default "No summary provided" }}</p>
-      <p><strong>Description:</strong><br>{{ .Annotations.description | default "No description provided" }}</p>
+      <p><strong>Summary:</strong><br>{{ or .Annotations.summary "No summary provided" }}</p>
+      <p><strong>Description:</strong><br>{{ or .Annotations.description "No description provided" }}</p>
 
       <table class="labels-table">
         <tr>
@@ -578,7 +532,7 @@ This alert was generated by Alertmanager.
   <!-- Footer -->
   <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
     <p>This alert was generated by Alertmanager</p>
-    <p>Cluster: {{ .CommonLabels.cluster | default "default" }}</p>
+    <p>Cluster: {{ or .CommonLabels.cluster "default" }}</p>
   </div>
 </body>
 </html>
@@ -637,22 +591,22 @@ Every alert should contain:
 {{/* Essential alert information checklist */}}
 {{ define "alert.essentials" }}
 Alert: {{ .Labels.alertname }}
-Severity: {{ .Labels.severity | default "unknown" }}
+Severity: {{ or .Labels.severity "unknown" }}
 Status: {{ .Status }}
 Summary: {{ .Annotations.summary }}
-Runbook: {{ .Annotations.runbook_url | default "No runbook available" }}
+Runbook: {{ or .Annotations.runbook_url "No runbook available" }}
 {{ end }}
 ```
 
 ### 2. Use Default Values
 
-Prevent template errors with default values:
+Provide fallback values:
 
 ```go
-{{/* Safe access with defaults */}}
-{{ .Labels.severity | default "warning" }}
-{{ .Annotations.description | default "No description provided" }}
-{{ .CommonLabels.cluster | default "unknown-cluster" }}
+{{/* Safe access with fallbacks */}}
+{{ or .Labels.severity "warning" }}
+{{ or .Annotations.description "No description provided" }}
+{{ or .CommonLabels.cluster "unknown-cluster" }}
 ```
 
 ### 3. Format Timestamps Consistently
@@ -717,35 +671,45 @@ Before deploying templates to production, test them locally.
 amtool check-config alertmanager.yml
 
 # Test template rendering with sample data
-amtool template test templates/slack.tmpl \
-  --template.data='{"status":"firing","alerts":[{"labels":{"alertname":"HighCPU","severity":"critical"},"annotations":{"summary":"CPU usage is high"}}]}'
+amtool template render \
+  --template.glob='templates/*.tmpl' \
+  --template.text='{{ template "slack.text" . }}' \
+  --template.data=template-data.json
 ```
 
 ### Template Test File
 
-Create a test configuration:
+Create a test data file:
 
-```yaml
-# test-alerts.yml - Sample alert data for testing
-status: firing
-commonLabels:
-  alertname: HighCPUUsage
-  severity: critical
-  cluster: production
-commonAnnotations:
-  summary: CPU usage exceeds 90%
-alerts:
-  - status: firing
-    labels:
-      alertname: HighCPUUsage
-      severity: critical
-      instance: server-01:9090
-      job: node-exporter
-    annotations:
-      summary: CPU usage exceeds 90%
-      description: The CPU usage on server-01 has been above 90% for the last 5 minutes.
-      runbook_url: https://runbooks.example.com/high-cpu
-    startsAt: "2024-01-15T10:30:00Z"
+```json
+{
+  "status": "firing",
+  "commonLabels": {
+    "alertname": "HighCPUUsage",
+    "severity": "critical",
+    "cluster": "production"
+  },
+  "commonAnnotations": {
+    "summary": "CPU usage exceeds 90%"
+  },
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "HighCPUUsage",
+        "severity": "critical",
+        "instance": "server-01:9090",
+        "job": "node-exporter"
+      },
+      "annotations": {
+        "summary": "CPU usage exceeds 90%",
+        "description": "The CPU usage on server-01 has been above 90% for the last 5 minutes.",
+        "runbook_url": "https://runbooks.example.com/high-cpu"
+      },
+      "startsAt": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
 ```
 
 ## Common Template Debugging Tips
@@ -779,7 +743,7 @@ Runbook: Not available
 
 ### 3. Escape Special Characters
 
-For JSON output (like Slack blocks):
+For JSON output:
 
 ```go
 {{/* Escape quotes in JSON */}}
@@ -813,19 +777,19 @@ route:
 
   routes:
     # Critical alerts go to PagerDuty and Slack
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'critical-alerts'
       continue: true
 
     # Warning alerts go to Slack only
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'warning-alerts'
 
     # Info alerts go to email
-    - match:
-        severity: info
+    - matchers:
+        - severity="info"
       receiver: 'info-alerts'
 
 receivers:
@@ -840,7 +804,7 @@ receivers:
 
   - name: 'critical-alerts'
     pagerduty_configs:
-      - service_key: 'your-pagerduty-key'
+      - routing_key: 'your-pagerduty-key'
         send_resolved: true
         description: '{{ template "pagerduty.title" . }}'
     slack_configs:
@@ -871,10 +835,10 @@ receivers:
 
 # Inhibition rules to prevent duplicate alerts
 inhibit_rules:
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname', 'instance']
 ```
 
@@ -896,5 +860,5 @@ Start with the templates provided in this guide and customize them to fit your o
 
 - [Alertmanager Documentation](https://prometheus.io/docs/alerting/latest/alertmanager/)
 - [Go Template Package](https://pkg.go.dev/text/template)
-- [Slack Block Kit Builder](https://app.slack.com/block-kit-builder)
-- [PagerDuty Events API](https://developer.pagerduty.com/docs/events-api-v2/overview/)
+- [Slack message attachments](https://docs.slack.dev/legacy/legacy-messaging/legacy-interactive-message-field-guide)
+- [PagerDuty Events API v2](https://developer.pagerduty.com/docs/events-api-v2-overview)
