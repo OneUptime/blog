@@ -79,9 +79,9 @@ class Leaderboard {
   }
 
   // Get top N players
-  // ZREVRANGE returns members from highest to lowest score
+  // ZRANGE with REV returns members from highest to lowest score
   async getTopPlayers(count = 10) {
-    const results = await redis.zrevrange(this.key, 0, count - 1, 'WITHSCORES');
+    const results = await redis.zrange(this.key, 0, count - 1, 'REV', 'WITHSCORES');
     return this.parseResults(results);
   }
 
@@ -92,7 +92,7 @@ class Leaderboard {
     const start = Math.max(0, zeroRank - range);
     const end = zeroRank + range;
 
-    const results = await redis.zrevrange(this.key, start, end, 'WITHSCORES');
+    const results = await redis.zrange(this.key, start, end, 'REV', 'WITHSCORES');
     return this.parseResults(results, start + 1);
   }
 
@@ -109,7 +109,7 @@ class Leaderboard {
     const end = start + pageSize - 1;
 
     const [results, total] = await Promise.all([
-      redis.zrevrange(this.key, start, end, 'WITHSCORES'),
+      redis.zrange(this.key, start, end, 'REV', 'WITHSCORES'),
       redis.zcard(this.key),
     ]);
 
@@ -236,7 +236,7 @@ class TimeBasedLeaderboard {
     const results = await pipeline.exec();
 
     // Return the all-time score (last ZINCRBY result)
-    return parseFloat(results[results.length - 2][1]);
+    return parseFloat(results[results.length - 1][1]);
   }
 
   // Get leaderboard for specific period
@@ -246,7 +246,7 @@ class TimeBasedLeaderboard {
     const end = start + pageSize - 1;
 
     const [results, total] = await Promise.all([
-      redis.zrevrange(key, start, end, 'WITHSCORES'),
+      redis.zrange(key, start, end, 'REV', 'WITHSCORES'),
       redis.zcard(key),
     ]);
 
@@ -313,9 +313,8 @@ const redis = new Redis();
 class TieBreakingLeaderboard {
   constructor(name) {
     this.key = `lb:${name}`;
-    // We'll use 6 decimal places for timestamp, giving us microsecond precision
-    // Score format: SCORE.TIMESTAMP where timestamp is inverse (earlier = higher)
-    this.timestampPrecision = 1000000;
+    // Composite scores work best when your main scores are whole numbers.
+    // The fractional timestamp tiebreaker is inverse (earlier = higher).
   }
 
   // Create composite score: main score + time tiebreaker
@@ -346,7 +345,7 @@ class TieBreakingLeaderboard {
 
   // Get top players with original scores
   async getTopPlayers(count = 10) {
-    const results = await redis.zrevrange(this.key, 0, count - 1, 'WITHSCORES');
+    const results = await redis.zrange(this.key, 0, count - 1, 'REV', 'WITHSCORES');
 
     const players = [];
     for (let i = 0; i < results.length; i += 2) {
@@ -389,7 +388,7 @@ class LexLeaderboard {
   // Get players at a specific score, sorted by time
   async getPlayersAtScore(score) {
     // Get all players with this exact score
-    const players = await redis.zrangebyscore(this.scoreKey, score, score);
+    const players = await redis.zrange(this.scoreKey, score, score, 'BYSCORE');
 
     if (players.length <= 1) {
       return players.map((id, i) => ({ playerId: id, score, rank: i + 1 }));
@@ -551,6 +550,7 @@ app.post('/games/:game/scores', async (req, res) => {
     const [highScoreResult] = await Promise.all([
       lb.highScore.submitScore(playerId, score),
       lb.timed.updateScore(playerId, score),
+      lb.basic.setScore(playerId, score),
     ]);
 
     res.json(highScoreResult);
@@ -624,7 +624,7 @@ app.listen(PORT, () => console.log(`Leaderboard API running on port ${PORT}`));
 |-----------|------------|-------|
 | ZADD | O(log N) | Fast even with millions of players |
 | ZREVRANK | O(log N) | Get any player's rank quickly |
-| ZREVRANGE | O(log N + M) | M is the number of results |
+| ZRANGE ... REV | O(log N + M) | M is the number of results |
 | ZINCRBY | O(log N) | Atomic score increment |
 
 For millions of players:
