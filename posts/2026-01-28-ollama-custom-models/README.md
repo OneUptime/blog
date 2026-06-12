@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ollama, LLM, AI/ML, Custom Models, Machine Learning
 
-Description: A practical guide to importing, creating, and fine-tuning custom models in Ollama for local LLM inference.
+Description: A practical guide to importing, creating, and configuring custom models in Ollama for local LLM inference.
 
 ---
 
@@ -23,7 +23,7 @@ flowchart TD
     C --> F[Template Layer]
     C --> G[System Prompt Layer]
 
-    H[GGUF File] --> I[ollama import]
+    H[GGUF File] --> I[ollama create]
     I --> C
 
     J[ollama.com Registry] --> K[ollama pull]
@@ -191,8 +191,8 @@ PARAMETER repeat_last_n 64
 # Mirostat sampling (0 = disabled, 1 or 2 = enabled)
 PARAMETER mirostat 0
 
-# Seed for reproducible outputs (-1 for random)
-PARAMETER seed -1
+# Seed for reproducible outputs
+PARAMETER seed 42
 ```
 
 ## Managing Custom Models
@@ -205,7 +205,7 @@ ollama list
 ollama show codereview
 
 # Show just the Modelfile content
-ollama show codereview --modelfile
+ollama show --modelfile codereview
 
 # Copy a model to create variants
 ollama cp codereview codereview-v2
@@ -234,9 +234,9 @@ EOF
 ollama create custom-embeddings -f Modelfile.embeddings
 
 # Generate embeddings via API
-curl http://localhost:11434/api/embeddings -d '{
+curl http://localhost:11434/api/embed -d '{
   "model": "custom-embeddings",
-  "prompt": "Your text to embed here"
+  "input": "Your text to embed here"
 }'
 ```
 
@@ -323,18 +323,17 @@ free -h
 
 # Issue: Slow inference
 # Try a smaller quantization
-ollama pull llama3.2:3b-q4_0
+ollama pull llama3.2:3b-instruct-q4_0
 
 # Issue: Poor output quality
 # Review the Modelfile parameters
-ollama show yourmodel --modelfile
+ollama show --modelfile yourmodel
 
 # Issue: Template not working
 # Test with explicit template
 curl http://localhost:11434/api/generate -d '{
   "model": "yourmodel",
   "prompt": "test prompt",
-  "raw": true,
   "template": "[INST] {{ .Prompt }} [/INST]"
 }'
 
