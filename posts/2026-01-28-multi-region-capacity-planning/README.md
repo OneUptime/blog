@@ -58,6 +58,7 @@ class RegionCapacityRequirement:
     base_capacity_percent: float  # Percent of total traffic this region handles
     failover_capacity_percent: float  # Additional capacity needed to absorb failover
     peak_multiplier: float  # Peak vs average traffic ratio
+    target_rps: int = 0
 
     @property
     def total_required_capacity(self) -> float:
@@ -90,15 +91,16 @@ def calculate_region_capacity(
         )
 
     elif pattern == RegionPattern.ACTIVE_ACTIVE:
-        # Split traffic, each region needs capacity to absorb other
+        # Split traffic, each region needs spare capacity for its share of a peer failure
         region_count = len(regions)
         base_percent = 100 / region_count
+        failover_percent = base_percent / (region_count - 1) if region_count > 1 else 0
 
         for region in regions:
             requirements[region] = RegionCapacityRequirement(
                 region=region,
                 base_capacity_percent=base_percent,
-                failover_capacity_percent=base_percent,  # Can absorb one region's traffic
+                failover_capacity_percent=failover_percent,
                 peak_multiplier=1.2,
             )
 
@@ -311,8 +313,11 @@ class FailoverCapacityPlanner:
             total_available += available
             total_current_load += current_load
 
-        # Calculate if we can absorb the failed region's traffic
-        failed_load = failed_traffic  # Simplified: traffic percent = load units
+        # Calculate if we can absorb the failed region's current load
+        failed_region_capacity = self.regions[failed_region]
+        failed_load = failed_region_capacity.current_capacity_units * (
+            failed_region_capacity.current_utilization_percent / 100
+        )
         capacity_gap = failed_load - total_available
 
         # Calculate degradation if capacity is insufficient
@@ -394,7 +399,7 @@ Coordinate scaling decisions across regions.
 ```python
 # cross_region_scaling.py - Coordinate scaling across regions
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from enum import Enum
 
@@ -479,7 +484,7 @@ class CrossRegionScaler:
         )
 
         return GlobalScalingPlan(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             decisions=sorted(decisions, key=lambda d: d.priority),
             total_capacity_change=total_change,
             estimated_cost_change=cost_change,
