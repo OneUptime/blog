@@ -30,7 +30,7 @@ At the heart of every agent is the execution loop. Here is a basic implementatio
 # agent_loop.py - Core agent execution loop
 
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 import json
 
 @dataclass
@@ -42,9 +42,19 @@ class AgentState:
     is_complete: bool = False
 
 class Agent:
-    def __init__(self, llm_client, tools: Dict[str, callable]):
+    def __init__(
+        self,
+        llm_client,
+        tools: Dict[str, Callable],
+        planner=None,
+        memory=None,
+        conversation=None
+    ):
         self.llm = llm_client
         self.tools = tools
+        self.planner = planner
+        self.memory = memory
+        self.conversation = conversation
         self.max_iterations = 10
 
     def run(self, goal: str) -> str:
@@ -97,6 +107,21 @@ class Agent:
             return self.tools[tool_name](**tool_args)
         except Exception as e:
             return {"error": str(e)}
+
+    def _build_system_prompt(self) -> str:
+        """Build the instruction prompt for choosing the next action."""
+        tool_names = ", ".join(self.tools.keys()) or "none"
+        return f"""
+        You are an autonomous agent. Available tools: {tool_names}.
+        Return JSON with either:
+        - {{"type": "tool_call", "name": "tool_name", "arguments": {{...}}}}
+        - {{"type": "final_answer", "content": "answer"}}
+        """
+
+    def _parse_action(self, response) -> Dict[str, Any]:
+        """Parse the LLM response into an action dictionary."""
+        content = response.content if hasattr(response, "content") else str(response)
+        return json.loads(content)
 ```
 
 ## Building a Planning System
@@ -253,12 +278,13 @@ Tools give agents the ability to interact with the outside world. Here is a patt
 
 ```python
 # tools.py - Tool definitions and registry
-from typing import Callable, Dict, Any
-from pydantic import BaseModel, Field
+from typing import Callable, Dict, Any, List
+from pydantic import BaseModel
 import inspect
 
 class ToolDefinition(BaseModel):
     """Schema for tool metadata."""
+    type: str = "function"
     name: str
     description: str
     parameters: Dict[str, Any]
@@ -278,6 +304,7 @@ class ToolRegistry:
             # Extract parameter info from type hints
             sig = inspect.signature(func)
             params = {}
+            required = []
             for param_name, param in sig.parameters.items():
                 param_type = "string"
                 if param.annotation == int:
@@ -288,12 +315,18 @@ class ToolRegistry:
                     param_type = "number"
 
                 params[param_name] = {"type": param_type}
+                if param.default is inspect.Parameter.empty:
+                    required.append(param_name)
 
             self.tools[tool_name] = func
             self.schemas[tool_name] = ToolDefinition(
                 name=tool_name,
                 description=description or func.__doc__ or "",
-                parameters={"type": "object", "properties": params}
+                parameters={
+                    "type": "object",
+                    "properties": params,
+                    "required": required
+                }
             )
 
             return func
@@ -411,7 +444,7 @@ Robust agents need to handle failures gracefully:
 
 ```python
 # recovery.py - Error handling strategies
-from typing import Optional
+from typing import Any, Optional
 import time
 
 class RetryStrategy:
