@@ -270,7 +270,7 @@ Checks whether an attribute exists or not.
 
 ### IP Address (CIDR) Match
 
-Matches IP addresses within a CIDR range. Only works with MessageBody scope.
+Matches IP addresses within a CIDR range for string values in message attributes or the message body.
 
 ```json
 {
@@ -716,6 +716,11 @@ resource "aws_sqs_queue" "premium_orders" {
   name = "premium-orders"
 }
 
+# SQS Queue for high-value orders
+resource "aws_sqs_queue" "high_value_orders" {
+  name = "high-value-orders"
+}
+
 # Queue policy to allow SNS
 resource "aws_sqs_queue_policy" "premium_orders_policy" {
   queue_url = aws_sqs_queue.premium_orders.id
@@ -728,6 +733,28 @@ resource "aws_sqs_queue_policy" "premium_orders_policy" {
         Principal = { Service = "sns.amazonaws.com" }
         Action    = "sqs:SendMessage"
         Resource  = aws_sqs_queue.premium_orders.arn
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = aws_sns_topic.orders.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+# Queue policy to allow SNS for high-value orders
+resource "aws_sqs_queue_policy" "high_value_orders_policy" {
+  queue_url = aws_sqs_queue.high_value_orders.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "sns.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.high_value_orders.arn
         Condition = {
           ArnEquals = {
             "aws:SourceArn" = aws_sns_topic.orders.arn
