@@ -110,7 +110,7 @@ flowchart TB
 | Grandfather (Monthly) | Last Sunday of month | 12 months | 12 |
 | Yearly | December 31st | 7 years | 7 |
 
-Total backups stored: 29 (instead of 2,555 for daily backups over 7 years)
+Total backups stored: up to 29 (instead of roughly 2,555 for daily backups over 7 years)
 
 ---
 
@@ -131,6 +131,7 @@ be safely deleted.
 from datetime import datetime, timedelta
 from typing import List, Dict, Set
 from dataclasses import dataclass
+import calendar
 
 
 @dataclass
@@ -174,7 +175,10 @@ def calculate_retention(
         reference_date = datetime.now()
 
     # Sort backups from newest to oldest
-    sorted_backups = sorted(backup_dates, reverse=True)
+    sorted_backups = sorted(
+        (backup for backup in backup_dates if backup <= reference_date),
+        reverse=True
+    )
 
     keep = set()
 
@@ -191,19 +195,18 @@ def calculate_retention(
 
     # Weekly retention: keep backups from the specified weekday
     weekly_count = 0
+    weeks_seen = set()
     for backup in sorted_backups:
         if weekly_count >= policy.weekly_retention:
             break
         # Check if this backup is on the weekly backup day
         if backup.weekday() == policy.weekly_day:
             # Make sure we do not already have a backup from this week
-            week_num = backup.isocalendar()[1]
-            year = backup.year
-            if not any(
-                k.isocalendar()[1] == week_num and k.year == year
-                for k in keep if k.weekday() == policy.weekly_day
-            ):
+            iso_year, week_num, _ = backup.isocalendar()
+            week_key = (iso_year, week_num)
+            if week_key not in weeks_seen:
                 keep.add(backup)
+                weeks_seen.add(week_key)
                 weekly_count += 1
 
     # Monthly retention: keep backups from the last day of each month
@@ -213,28 +216,21 @@ def calculate_retention(
         if monthly_count >= policy.monthly_retention:
             break
         month_key = (backup.year, backup.month)
-        if month_key not in months_seen:
-            # Find the last backup of this month
-            last_of_month = max(
-                b for b in sorted_backups
-                if b.year == backup.year and b.month == backup.month
-            )
-            keep.add(last_of_month)
+        last_day = calendar.monthrange(backup.year, backup.month)[1]
+        monthly_day = last_day if policy.monthly_day == 0 else policy.monthly_day
+        if month_key not in months_seen and backup.day == monthly_day:
+            keep.add(backup)
             months_seen.add(month_key)
             monthly_count += 1
 
-    # Yearly retention: keep backups from December (or last backup of year)
+    # Yearly retention: keep backups from December 31
     yearly_count = 0
     years_seen = set()
     for backup in sorted_backups:
         if yearly_count >= policy.yearly_retention:
             break
-        if backup.year not in years_seen:
-            # Find the last backup of this year
-            last_of_year = max(
-                b for b in sorted_backups if b.year == backup.year
-            )
-            keep.add(last_of_year)
+        if backup.year not in years_seen and backup.month == 12 and backup.day == 31:
+            keep.add(backup)
             years_seen.add(backup.year)
             yearly_count += 1
 
@@ -358,7 +354,7 @@ main() {
         if [[ $daily_count -lt $DAILY_RETENTION ]]; then
             if [[ -z "${keep_daily[$backup_date]:-}" ]]; then
                 keep_daily[$backup_date]="$backup"
-                ((daily_count++))
+                ((daily_count += 1))
                 log "KEEP (daily): $filename"
                 continue
             fi
@@ -370,7 +366,7 @@ main() {
             week_key=$(date -d "$backup_date" +%Y-W%V)
             if [[ -z "${keep_weekly[$week_key]:-}" ]]; then
                 keep_weekly[$week_key]="$backup"
-                ((weekly_count++))
+                ((weekly_count += 1))
                 log "KEEP (weekly): $filename"
                 continue
             fi
@@ -381,7 +377,7 @@ main() {
             month_key=$(date -d "$backup_date" +%Y-%m)
             if [[ -z "${keep_monthly[$month_key]:-}" ]]; then
                 keep_monthly[$month_key]="$backup"
-                ((monthly_count++))
+                ((monthly_count += 1))
                 log "KEEP (monthly): $filename"
                 continue
             fi
@@ -392,7 +388,7 @@ main() {
             year_key=$(date -d "$backup_date" +%Y)
             if [[ -z "${keep_yearly[$year_key]:-}" ]]; then
                 keep_yearly[$year_key]="$backup"
-                ((yearly_count++))
+                ((yearly_count += 1))
                 log "KEEP (yearly): $filename"
                 continue
             fi
@@ -423,11 +419,11 @@ Different regulations require different retention periods. Here is a reference t
 | Regulation | Typical Retention | Data Types | Notes |
 |------------|-------------------|------------|-------|
 | GDPR | Until purpose fulfilled | Personal data | Right to erasure complicates retention |
-| HIPAA | 6 years | Health records | From date created or last in effect |
+| HIPAA | 6 years | Required policies, procedures, and documentation | From date created or last in effect |
 | SOX | 7 years | Financial records | Audit trails and communications |
 | PCI-DSS | 1 year | Cardholder data | Audit logs specifically |
 | GLBA | 5-7 years | Financial data | Customer records |
-| SEC Rule 17a-4 | 6 years | Broker-dealer records | First 2 years immediately accessible |
+| SEC Rule 17a-4 | 3-6 years | Broker-dealer records | First 2 years easily accessible |
 
 ### Compliance Architecture
 
@@ -505,7 +501,7 @@ flowchart LR
 | Hot (SSD/NVMe) | $0.10-0.20/GB/mo | None | Instant | Active recovery |
 | Warm (S3 Standard) | $0.023/GB/mo | $0.01/1000 requests | Minutes | Recent backups |
 | Cold (S3 IA) | $0.0125/GB/mo | $0.01/GB | Hours | Older backups |
-| Archive (Glacier) | $0.004/GB/mo | $0.03-0.05/GB | 1-12 hours | Compliance |
+| Archive (Glacier Flexible Retrieval) | ~$0.0036/GB/mo | $0.03-0.05/GB | Minutes-12 hours | Compliance |
 | Deep Archive | $0.00099/GB/mo | $0.02/GB | 12-48 hours | Legal hold |
 
 ### Automated Tiering with Lifecycle Policies
@@ -673,7 +669,7 @@ spec:
 
 ### PostgreSQL with pgBackRest
 
-```yaml
+```ini
 # pgBackRest configuration with tiered retention
 # Implements GFS rotation for PostgreSQL backups
 
@@ -1082,9 +1078,8 @@ This script automates the testing of backup restores to ensure
 backups are valid and can be successfully restored.
 """
 
-import subprocess
 import hashlib
-import sys
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -1145,16 +1140,38 @@ class BackupRecoveryTest:
         """
         try:
             # Decompress and restore
-            cmd = f"gunzip -c {backup_file} | psql -h localhost -U postgres -d test_restore"
-            result = subprocess.run(
-                cmd,
-                shell=True,
-                capture_output=True,
-                timeout=3600  # 1 hour timeout
-            )
-            return result.returncode == 0
-        except subprocess.TimeoutExpired:
+            with subprocess.Popen(
+                ["gunzip", "-c", str(backup_file)],
+                stdout=subprocess.PIPE
+            ) as gunzip:
+                result = subprocess.run(
+                    ["psql", "-h", "localhost", "-U", "postgres", "-d", "test_restore"],
+                    stdin=gunzip.stdout,
+                    capture_output=True,
+                    timeout=3600  # 1 hour timeout
+                )
+                if gunzip.stdout:
+                    gunzip.stdout.close()
+                gunzip.wait(timeout=60)
+            return result.returncode == 0 and gunzip.returncode == 0
+        except (subprocess.TimeoutExpired, OSError):
             return False
+
+    def dump_checksum(self) -> Optional[str]:
+        """
+        Export restored data and compute an MD5 checksum.
+
+        Returns:
+            MD5 checksum of the dump output, or None if dump failed
+        """
+        result = subprocess.run(
+            ["pg_dump", "-h", "localhost", "-U", "postgres", "test_restore"],
+            capture_output=True
+        )
+        if result.returncode != 0:
+            return None
+
+        return hashlib.md5(result.stdout).hexdigest()
 
     def validate_restore(self, expected_checksum: str) -> bool:
         """
@@ -1166,11 +1183,7 @@ class BackupRecoveryTest:
         Returns:
             True if validation passed, False otherwise
         """
-        # Export restored data and compute checksum
-        cmd = "pg_dump -h localhost -U postgres test_restore | md5sum"
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-
-        actual_checksum = result.stdout.split()[0]
+        actual_checksum = self.dump_checksum()
         return actual_checksum == expected_checksum
 
     def run_test(self, backup_type: str) -> dict:
