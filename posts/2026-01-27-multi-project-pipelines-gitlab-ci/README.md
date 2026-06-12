@@ -120,7 +120,7 @@ graph TD
 
 ## Waiting for Downstream Pipelines
 
-By default, the trigger job succeeds immediately. Use `strategy: depend` to wait for the downstream pipeline.
+By default, the trigger job succeeds immediately after the downstream pipeline is created. Use `strategy: mirror` to wait for the downstream pipeline and mirror its status. The older `strategy: depend` option still exists, but GitLab no longer recommends it for new configurations.
 
 ```yaml
 trigger-and-wait:
@@ -128,7 +128,7 @@ trigger-and-wait:
   trigger:
     project: team/api
     branch: main
-    strategy: depend  # Wait for downstream pipeline to complete
+    strategy: mirror  # Wait for downstream pipeline to complete
   variables:
     DEPLOY_ENV: staging
 ```
@@ -137,14 +137,14 @@ Now the upstream pipeline waits and reflects the downstream pipeline's status.
 
 ## Mirroring Status
 
-The `strategy: depend` option mirrors the downstream pipeline status:
+The `strategy: mirror` option mirrors the downstream pipeline status:
 
 ```yaml
 integration-tests:
   stage: test
   trigger:
     project: team/integration-tests
-    strategy: depend
+    strategy: mirror
   # Upstream job status matches downstream pipeline status
 ```
 
@@ -167,7 +167,7 @@ use-upstream-artifacts:
     - if: $CI_PIPELINE_SOURCE == "pipeline"
 ```
 
-For more control, use the `needs` keyword with project artifacts (GitLab 14.0+):
+For more control, use the `needs` keyword with project artifacts. This feature is available on GitLab Premium and Ultimate:
 
 ```yaml
 # This requires the upstream project to explicitly allow artifact sharing
@@ -197,7 +197,7 @@ deploy-database:
   stage: deploy-infrastructure
   trigger:
     project: ops/database-migrations
-    strategy: depend
+    strategy: mirror
   variables:
     MIGRATION_VERSION: ${CI_COMMIT_SHA}
 
@@ -205,7 +205,7 @@ deploy-api:
   stage: deploy-services
   trigger:
     project: team/api-service
-    strategy: depend
+    strategy: mirror
   variables:
     API_VERSION: ${API_VERSION}
   needs:
@@ -215,7 +215,7 @@ deploy-web:
   stage: deploy-services
   trigger:
     project: team/web-frontend
-    strategy: depend
+    strategy: mirror
   variables:
     WEB_VERSION: ${WEB_VERSION}
   needs:
@@ -225,7 +225,7 @@ deploy-worker:
   stage: deploy-services
   trigger:
     project: team/background-worker
-    strategy: depend
+    strategy: mirror
   variables:
     WORKER_VERSION: ${WORKER_VERSION}
   needs:
@@ -280,7 +280,7 @@ deploy-regions:
       - REGION: ["us-east-1", "eu-west-1", "ap-southeast-1"]
   trigger:
     project: ops/regional-deployment
-    strategy: depend
+    strategy: mirror
   variables:
     DEPLOY_REGION: ${REGION}
     APP_VERSION: ${CI_COMMIT_SHA}
@@ -296,7 +296,7 @@ trigger-b:
   stage: external
   trigger:
     project: team/project-b
-    strategy: depend
+    strategy: mirror
   variables:
     CALLBACK_PROJECT: ${CI_PROJECT_ID}
     CALLBACK_REF: ${CI_COMMIT_SHA}
@@ -323,21 +323,17 @@ Manage failures in multi-project pipelines.
 trigger-critical:
   trigger:
     project: team/critical-service
-    strategy: depend
-  # Allow manual retry if downstream fails
-  retry:
-    max: 2
-    when:
-      - unknown_failure
-      - runner_system_failure
+    strategy: mirror
 
 trigger-optional:
   trigger:
     project: team/optional-service
-    strategy: depend
+    strategy: mirror
   # Don't block on optional service failures
   allow_failure: true
 ```
+
+If a downstream pipeline fails, retry failed or canceled downstream jobs from the downstream pipeline details page or from the pipeline graph.
 
 ## Security and Permissions
 
@@ -353,9 +349,9 @@ trigger-secured:
     - |
       curl --request POST \
         --header "PRIVATE-TOKEN: ${DOWNSTREAM_TOKEN}" \
-        --form "ref=main" \
-        --form "variables[VERSION]=${CI_COMMIT_SHA}" \
-        "${CI_API_V4_URL}/projects/team%2Fdownstream/pipeline"
+        --form "variables[0][key]=VERSION" \
+        --form "variables[0][value]=${CI_COMMIT_SHA}" \
+        "${CI_API_V4_URL}/projects/team%2Fdownstream/pipeline?ref=main"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 ```
@@ -399,7 +395,7 @@ debug-trigger:
 Common issues:
 - **Permission denied**: Check the user has access to downstream project
 - **Project not found**: Verify the project path and namespace
-- **Variables not passed**: Variables must be explicitly listed in trigger job
+- **Variables not passed**: List variables in the trigger job, or use `trigger:forward` for pipeline variables
 
 ---
 
