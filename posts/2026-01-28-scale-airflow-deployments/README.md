@@ -60,7 +60,7 @@ dag_dir_list_interval = 300  # 5 minutes
 # Parsing processes
 parsing_processes = 4
 
-# How many DAGs to parse per scheduler heartbeat
+# Minimum seconds before parsing the same DAG file again
 min_file_process_interval = 30
 ```
 
@@ -78,6 +78,9 @@ spec:
     matchLabels:
       app: airflow-scheduler
   template:
+    metadata:
+      labels:
+        app: airflow-scheduler
     spec:
       containers:
         - name: scheduler
@@ -106,8 +109,8 @@ scheduler_heartbeat_sec = 5
 # Max DAG runs to create per loop
 max_dagruns_to_create_per_loop = 10
 
-# Max task instances to schedule per loop
-max_tis_per_query = 512
+# Max task instances to examine per scheduler query
+max_tis_per_query = 128
 
 # Use database row-level locking
 use_row_level_locking = True
@@ -133,7 +136,13 @@ metadata:
   name: airflow-dag-processor
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: airflow-dag-processor
   template:
+    metadata:
+      labels:
+        app: airflow-dag-processor
     spec:
       containers:
         - name: dag-processor
@@ -160,7 +169,7 @@ The PostgreSQL metadata database is the most common bottleneck at scale.
 ```sql
 -- Essential indexes (beyond defaults)
 CREATE INDEX CONCURRENTLY idx_ti_state_dag ON task_instance(state, dag_id);
-CREATE INDEX CONCURRENTLY idx_ti_dag_date ON task_instance(dag_id, execution_date);
+CREATE INDEX CONCURRENTLY idx_ti_dag_run ON task_instance(dag_id, run_id);
 CREATE INDEX CONCURRENTLY idx_dr_dag_state ON dag_run(dag_id, state);
 CREATE INDEX CONCURRENTLY idx_log_dttm ON log(dttm);
 
@@ -263,7 +272,13 @@ metadata:
   name: airflow-worker-default
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: airflow-worker-default
   template:
+    metadata:
+      labels:
+        app: airflow-worker-default
     spec:
       containers:
         - name: worker
@@ -380,12 +395,13 @@ def my_task():
     # Use pandas and tf
 ```
 
-### Use DAG Serialization
+### Tune DAG Serialization
+
+DAG serialization is required in Airflow 2.0+, so tune its intervals rather than enabling it separately:
 
 ```ini
 # airflow.cfg
 [core]
-store_serialized_dags = True
 min_serialized_dag_update_interval = 30
 min_serialized_dag_fetch_interval = 10
 ```
@@ -465,9 +481,7 @@ encrypt_s3_logs = True
 # Delete local logs after upload
 delete_local_logs = True
 
-# Log retention
-[scheduler]
-log_cleanup_interval = 86400  # Clean logs daily
+# Configure retention with an S3 bucket lifecycle policy
 ```
 
 ### Elasticsearch for Log Search
@@ -488,27 +502,29 @@ frontend = http://kibana:5601/app/discover#/?_a=(columns:!(message),query:(langu
 ```mermaid
 flowchart TB
     subgraph Shared["Shared Infrastructure"]
-        DB[(PostgreSQL)]
-        Redis[(Redis)]
         S3[(S3 Logs)]
     end
 
     subgraph TenantA["Team A"]
         SA[Scheduler A]
         WA[Workers A]
+        DBA[(PostgreSQL A)]
+        RA[(Redis A)]
         NSA[Namespace: team-a]
     end
 
     subgraph TenantB["Team B"]
         SB[Scheduler B]
         WB[Workers B]
+        DBB[(PostgreSQL B)]
+        RB[(Redis B)]
         NSB[Namespace: team-b]
     end
 
-    SA --> DB
-    SB --> DB
-    SA --> Redis
-    SB --> Redis
+    SA --> DBA
+    SA --> RA
+    SB --> DBB
+    SB --> RB
     WA --> S3
     WB --> S3
 ```
@@ -518,7 +534,7 @@ flowchart TB
 [core]
 dags_folder = /opt/airflow/dags/team-a
 
-[kubernetes]
+[kubernetes_executor]
 namespace = team-a
 worker_container_tag = team-a-workers
 
@@ -534,16 +550,15 @@ flowchart TB
     subgraph US["US Region"]
         US_S[Scheduler]
         US_W[Workers]
-        US_DB[(Primary DB)]
+        US_DB[(Writable DB)]
     end
 
     subgraph EU["EU Region"]
         EU_S[Scheduler]
         EU_W[Workers]
-        EU_DB[(Read Replica)]
+        EU_DB[(Writable DB)]
     end
 
-    US_DB -->|Replicate| EU_DB
     US_S --> US_DB
     EU_S --> EU_DB
 ```
