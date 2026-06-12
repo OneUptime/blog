@@ -36,8 +36,8 @@ The three states are:
 Install the Polly packages:
 
 ```bash
-dotnet add package Polly
-dotnet add package Microsoft.Extensions.Http.Polly
+dotnet package add Polly
+dotnet package add Microsoft.Extensions.Http.Resilience
 ```
 
 ## Basic Circuit Breaker
@@ -130,18 +130,9 @@ The recommended approach for HTTP clients in .NET:
 
 ```csharp
 // Program.cs
-using Polly;
-using Polly.Extensions.Http;
+using Microsoft.Extensions.Http.Resilience;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Define the circuit breaker policy
-var circuitBreakerPolicy = HttpPolicyExtensions
-    .HandleTransientHttpError() // Handles 5xx and 408 responses
-    .OrResult(msg => msg.StatusCode == HttpStatusCode.TooManyRequests)
-    .CircuitBreakerAsync(
-        handledEventsAllowedBeforeBreaking: 5,
-        durationOfBreak: TimeSpan.FromSeconds(30));
 
 // Register HttpClient with circuit breaker
 builder.Services.AddHttpClient("PaymentService", client =>
@@ -149,7 +140,13 @@ builder.Services.AddHttpClient("PaymentService", client =>
     client.BaseAddress = new Uri("https://payment.api.example.com");
     client.Timeout = TimeSpan.FromSeconds(10);
 })
-.AddPolicyHandler(circuitBreakerPolicy);
+.AddStandardResilienceHandler(options =>
+{
+    options.CircuitBreaker.FailureRatio = 0.5;
+    options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
+    options.CircuitBreaker.MinimumThroughput = 5;
+    options.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(30);
+});
 
 var app = builder.Build();
 app.Run();
@@ -159,6 +156,8 @@ Using the configured client:
 
 ```csharp
 // Services/PaymentService.cs
+using Polly.CircuitBreaker;
+
 public class PaymentService
 {
     private readonly HttpClient _httpClient;
@@ -200,28 +199,33 @@ public class PaymentService
 Circuit breakers work well with retry policies:
 
 ```csharp
+using Microsoft.Extensions.Http.Resilience;
+using Polly;
+
 // Define individual policies
-var retryPolicy = HttpPolicyExtensions
-    .HandleTransientHttpError()
-    .WaitAndRetryAsync(
-        retryCount: 3,
-        sleepDurationProvider: attempt => TimeSpan.FromMilliseconds(100 * Math.Pow(2, attempt)),
-        onRetry: (outcome, delay, attempt, context) =>
+builder.Services.AddHttpClient("ExternalApi")
+    .AddResilienceHandler("ExternalApiPipeline", static pipeline =>
+    {
+        pipeline.AddRetry(new HttpRetryStrategyOptions
         {
-            Console.WriteLine($"Retry {attempt} after {delay.TotalMilliseconds}ms");
+            MaxRetryAttempts = 3,
+            Delay = TimeSpan.FromMilliseconds(200),
+            BackoffType = DelayBackoffType.Exponential,
+            OnRetry = args =>
+            {
+                Console.WriteLine($"Retry {args.AttemptNumber} after {args.RetryDelay.TotalMilliseconds}ms");
+                return default;
+            }
         });
 
-var circuitBreakerPolicy = HttpPolicyExtensions
-    .HandleTransientHttpError()
-    .CircuitBreakerAsync(
-        handledEventsAllowedBeforeBreaking: 5,
-        durationOfBreak: TimeSpan.FromSeconds(30));
-
-// Combine policies - order matters!
-// Retry wraps circuit breaker: retries happen before circuit trips
-builder.Services.AddHttpClient("ExternalApi")
-    .AddPolicyHandler(retryPolicy)
-    .AddPolicyHandler(circuitBreakerPolicy);
+        pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+        {
+            FailureRatio = 0.5,
+            SamplingDuration = TimeSpan.FromSeconds(30),
+            MinimumThroughput = 5,
+            BreakDuration = TimeSpan.FromSeconds(30)
+        });
+    });
 ```
 
 ## Custom Circuit Breaker Service
@@ -409,9 +413,10 @@ public class CircuitBreakerHealthCheck : IHealthCheck
 
 // Register in Program.cs
 builder.Services.AddHealthChecks()
-    .AddCheck<CircuitBreakerHealthCheck>(
+    .AddTypeActivatedCheck<CircuitBreakerHealthCheck>(
         "circuit-breakers",
-        tags: new[] { "ready" });
+        tags: new[] { "ready" },
+        args: new object[] { new[] { "inventory-service", "payment-service" } });
 ```
 
 ## Monitoring and Metrics
