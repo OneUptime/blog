@@ -16,7 +16,7 @@ Reserved Instances (RIs) can reduce your AWS compute costs by up to 72% compared
 
 ## Understanding Reserved Instance Types
 
-AWS offers three distinct types of Reserved Instances, each designed for different use cases and flexibility requirements.
+AWS offers two main Reserved Instance offering classes, plus Scheduled Instances for recurring capacity windows. Each is designed for different use cases and flexibility requirements.
 
 ### Standard Reserved Instances
 
@@ -49,12 +49,14 @@ Scheduled RIs allow you to reserve capacity for specific time windows (minimum o
 # List available Scheduled Reserved Instance offerings
 
 # for a recurring daily window (9 AM to 5 PM UTC)
+earliest_time=$(date -u -d '+7 days 09:00' +%Y-%m-%dT%H:%M:%SZ)
+latest_time=$(date -u -d '+7 days 10:00' +%Y-%m-%dT%H:%M:%SZ)
 
 aws ec2 describe-scheduled-instance-availability \
   --recurrence Frequency=Daily,Interval=1 \
-  --first-slot-start-time-range EarliestTime=2026-02-01T09:00:00Z,LatestTime=2026-02-01T10:00:00Z \
+  --first-slot-start-time-range EarliestTime="$earliest_time",LatestTime="$latest_time" \
   --min-slot-duration-in-hours 8 \
-  --filters Name=instance-type,Values=c5.xlarge
+  --filters Name=instance-type,Values=c4.large
 ```
 
 ---
@@ -70,12 +72,12 @@ Pay the entire cost at the time of purchase. This option provides the maximum di
 ```bash
 # Example: Calculate All Upfront cost for a 1-year Standard RI
 # m5.xlarge in us-east-1: approximately $0.192/hour On-Demand
-# All Upfront 1-year RI: approximately $1,050 total
+# All Upfront 1-year RI: approximately $989 total
 
 # Savings calculation:
 # On-Demand annual cost:  $0.192 * 24 * 365 = $1,682.88
-# All Upfront RI cost:    $1,050.00
-# Annual savings:         $632.88 (37.6%)
+# All Upfront RI cost:    $989.00
+# Annual savings:         $693.88 (41.2%)
 ```
 
 ### Partial Upfront
@@ -85,15 +87,15 @@ Pay a portion upfront and the rest in monthly installments. This option balances
 ```bash
 # Example: Calculate Partial Upfront cost for a 1-year Standard RI
 # m5.xlarge in us-east-1
-# Partial Upfront 1-year RI: approximately $530 upfront + $0.044/hour
+# Partial Upfront 1-year RI: approximately $505 upfront + $0.058/hour
 
 # Savings calculation:
 # On-Demand annual cost:    $0.192 * 24 * 365 = $1,682.88
-# Partial Upfront total:    $530 + ($0.044 * 24 * 365) = $915.44
-# Annual savings:           $767.44 (45.6%)
+# Partial Upfront total:    $505 + ($0.058 * 24 * 365) = $1,013.08
+# Annual savings:           $669.80 (39.8%)
 
-# Note: Partial Upfront sometimes offers better total savings than
-# All Upfront due to AWS pricing adjustments
+# Note: All Upfront usually provides the lowest total RI cost, but
+# always compare current offerings before purchasing
 ```
 
 ### No Upfront
@@ -103,20 +105,22 @@ Pay nothing at the start; instead, pay a discounted hourly rate. This option pre
 ```bash
 # Example: Calculate No Upfront cost for a 1-year Standard RI
 # m5.xlarge in us-east-1
-# No Upfront 1-year RI: approximately $0.052/hour
+# No Upfront 1-year RI: approximately $0.121/hour
 
 # Savings calculation:
 # On-Demand annual cost:  $0.192 * 24 * 365 = $1,682.88
-# No Upfront annual cost: $0.052 * 24 * 365 = $455.52
-# Annual savings:         $1,227.36 (72.9%)
+# No Upfront annual cost: $0.121 * 24 * 365 = $1,059.96
+# Annual savings:         $622.92 (37.0%)
 
-# Wait - this looks wrong. Always verify current pricing:
+# Always verify current pricing:
 aws pricing get-products \
   --service-code AmazonEC2 \
   --filters Type=TERM_MATCH,Field=instanceType,Value=m5.xlarge \
             Type=TERM_MATCH,Field=location,Value="US East (N. Virginia)" \
+            Type=TERM_MATCH,Field=operatingSystem,Value=Linux \
             Type=TERM_MATCH,Field=tenancy,Value=Shared \
             Type=TERM_MATCH,Field=preInstalledSw,Value=NA \
+            Type=TERM_MATCH,Field=capacitystatus,Value=Used \
   --region us-east-1
 ```
 
@@ -259,12 +263,12 @@ Understanding the difference between regional and zonal RIs is critical for maxi
 
 ### Regional Reserved Instances
 
-Regional RIs automatically apply to any matching instance in any Availability Zone within the region. They also provide a capacity reservation at the regional level.
+Regional RIs automatically apply to any matching instance in any Availability Zone within the region. They do not reserve capacity; use zonal RIs or On-Demand Capacity Reservations when you need capacity assurance.
 
 **Advantages:**
 - Automatically covers instances across all AZs
 - No need to manage AZ-specific reservations
-- Capacity reservation is more flexible
+- More flexible discount application across Availability Zones
 
 ```bash
 # Purchase a Regional Reserved Instance
@@ -272,7 +276,6 @@ aws ec2 purchase-reserved-instances-offering \
   --reserved-instances-offering-id <offering-id> \
   --instance-count 5
 
-# Regional RIs are the default since 2019
 # They apply to any AZ in the region automatically
 ```
 
@@ -314,20 +317,32 @@ Purchasing RIs is not a one-time decision. You need continuous monitoring to ens
 ### Set Up Utilization Alerts
 
 ```bash
-# Create a CloudWatch alarm for low RI utilization
-# This alerts when utilization drops below 80% for 7 consecutive days
+# Create an AWS Budgets alert for low RI utilization
+# This notifies when daily utilization drops below 80%
 
-aws cloudwatch put-metric-alarm \
-  --alarm-name "LowRIUtilization" \
-  --alarm-description "Reserved Instance utilization below 80%" \
-  --metric-name "UtilizationPercentage" \
-  --namespace "AWS/Billing" \
-  --statistic Average \
-  --period 86400 \
-  --threshold 80 \
-  --comparison-operator LessThanThreshold \
-  --evaluation-periods 7 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789012:finops-alerts
+aws budgets create-budget \
+  --account-id 123456789012 \
+  --budget '{
+    "BudgetName": "LowRIUtilization",
+    "BudgetType": "RI_UTILIZATION",
+    "TimeUnit": "DAILY"
+  }' \
+  --notifications-with-subscribers '[
+    {
+      "Notification": {
+        "NotificationType": "ACTUAL",
+        "ComparisonOperator": "LESS_THAN",
+        "Threshold": 80,
+        "ThresholdType": "PERCENTAGE"
+      },
+      "Subscribers": [
+        {
+          "SubscriptionType": "SNS",
+          "Address": "arn:aws:sns:us-east-1:123456789012:finops-alerts"
+        }
+      ]
+    }
+  ]'
 ```
 
 ### Regular Coverage Reviews
@@ -336,8 +351,7 @@ aws cloudwatch put-metric-alarm \
 # Monthly RI coverage and utilization report
 aws ce get-reservation-utilization \
   --time-period Start=2025-12-01,End=2026-01-01 \
-  --granularity MONTHLY \
-  --group-by Type=DIMENSION,Key=SUBSCRIPTION_ID
+  --granularity MONTHLY
 
 # Key metrics to track:
 # - Utilization %: Should be > 80% for healthy RIs
