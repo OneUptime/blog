@@ -41,7 +41,7 @@ kafka-topics.sh --describe \
 
 ## Partition Key Selection
 
-The partition key determines which partition receives each message. Messages with the same key always go to the same partition, guaranteeing ordering for that key.
+The partition key determines which partition receives each message. With the same partitioner and partition count, messages with the same key go to the same partition, guaranteeing ordering for that key.
 
 ```java
 // Java producer with partition key
@@ -118,6 +118,8 @@ The number of partitions directly impacts throughput and consumer parallelism. M
 
 ```python
 # Calculate partitions based on throughput requirements
+import math
+
 def calculate_partitions(
     target_throughput_mb_per_sec: float,
     single_partition_throughput_mb: float = 10.0,  # Conservative estimate
@@ -135,7 +137,7 @@ def calculate_partitions(
     """
 
     # Throughput-based calculation
-    partitions_for_throughput = int(
+    partitions_for_throughput = math.ceil(
         target_throughput_mb_per_sec / single_partition_throughput_mb
     )
 
@@ -160,7 +162,7 @@ partitions = calculate_partitions(
     consumer_count=8,
     future_growth_factor=2.0
 )
-print(f"Recommended partitions: {partitions}")  # Output: 12
+print(f"Recommended partitions: {partitions}")  # Output: 24
 ```
 
 Partition count guidelines:
@@ -178,7 +180,7 @@ Replication provides fault tolerance. The replication factor determines how many
 
 ```bash
 # Create topic with replication factor 3
-# Survives loss of 2 brokers (N-1 failures with factor N)
+# With min.insync.replicas=2, writes can continue after 1 broker failure
 kafka-topics.sh --create \
   --bootstrap-server localhost:9092 \
   --topic critical-events \
@@ -240,8 +242,8 @@ class OrderedEventProcessor:
             bootstrap_servers=bootstrap_servers,
             key_serializer=lambda k: k.encode('utf-8'),
             value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-            # max_in_flight_requests_per_connection=1 guarantees strict ordering
-            # but reduces throughput - use only when ordering is critical
+            # With idempotence enabled, values up to 5 preserve producer ordering.
+            # Without idempotence and with retries, use 1 to avoid reordering.
             max_in_flight_requests_per_connection=5,
             enable_idempotence=True  # Prevents duplicates, maintains order
         )
@@ -269,13 +271,13 @@ consumer = KafkaConsumer(
     group_id='event-processor',
     # auto_offset_reset='earliest' starts from beginning if no offset stored
     auto_offset_reset='earliest',
-    enable_auto_commit=False,  # Manual commit for exactly-once semantics
+    enable_auto_commit=False,  # Manual commit for at-least-once processing
     value_deserializer=lambda v: json.loads(v.decode('utf-8'))
 )
 
 for message in consumer:
     process_event(message.key, message.value)
-    # Commit after processing to prevent duplicates on restart
+    # Commit after processing so successful work is not reprocessed after restart
     consumer.commit()
 ```
 
@@ -467,6 +469,7 @@ class ConfigurationStore:
 
     def __init__(self, bootstrap_servers: list, topic: str = 'app-config'):
         self.topic = topic
+        self.bootstrap_servers = bootstrap_servers
         self.producer = KafkaProducer(
             bootstrap_servers=bootstrap_servers,
             key_serializer=lambda k: k.encode('utf-8'),
@@ -499,7 +502,7 @@ class ConfigurationStore:
         """
         consumer = KafkaConsumer(
             self.topic,
-            bootstrap_servers=['localhost:9092'],
+            bootstrap_servers=self.bootstrap_servers,
             auto_offset_reset='earliest',
             enable_auto_commit=False,
             consumer_timeout_ms=5000,
@@ -546,9 +549,8 @@ Monitor topic health and know when to scale partitions.
 
 ```python
 # Kafka monitoring metrics to track
-from kafka.admin import KafkaAdminClient, NewPartitions
+from kafka.admin import KafkaAdminClient
 from kafka import KafkaConsumer
-import time
 
 class TopicMonitor:
     """
@@ -607,8 +609,8 @@ class TopicMonitor:
 
         broker_partitions = {}
         for topic_metadata in metadata:
-            for partition in topic_metadata.partitions:
-                leader = partition.leader
+            for partition in topic_metadata['partitions']:
+                leader = partition['leader']
                 if leader not in broker_partitions:
                     broker_partitions[leader] = 0
                 broker_partitions[leader] += 1
@@ -618,10 +620,10 @@ class TopicMonitor:
     def increase_partitions(self, topic: str, new_count: int):
         """
         Increase partition count for a topic.
-        WARNING: This can break key-based ordering for existing keys.
-        New keys will hash to new partitions, old keys may move.
+        WARNING: This can break key-based ordering for future records.
+        Existing records do not move, but existing keys may hash to different partitions.
         """
-        new_partitions = {topic: NewPartitions(total_count=new_count)}
+        new_partitions = {topic: new_count}
         self.admin.create_partitions(new_partitions)
         print(f"Increased {topic} to {new_count} partitions")
 
