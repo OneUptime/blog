@@ -48,9 +48,9 @@ ALTER SYSTEM SET max_replication_slots = 4;
 -- Should be at least equal to max_replication_slots
 ALTER SYSTEM SET max_wal_senders = 4;
 
--- Keep WAL segments for logical replication subscribers
--- Prevents removal of WAL segments still needed by Debezium
-ALTER SYSTEM SET wal_keep_size = '1GB';
+-- Cap WAL retained by inactive or lagging replication slots
+-- Choose a value high enough for your recovery window and alert before it is reached
+ALTER SYSTEM SET max_slot_wal_keep_size = '10GB';
 ```
 
 ### Verify WAL Configuration
@@ -66,6 +66,9 @@ SHOW max_replication_slots;
 
 -- Check WAL sender processes available
 SHOW max_wal_senders;
+
+-- Check WAL retained by replication slots
+SHOW max_slot_wal_keep_size;
 ```
 
 ### Understanding WAL Segments
@@ -166,7 +169,7 @@ The Debezium PostgreSQL connector is deployed to Kafka Connect. Here is a produc
 
 ### Basic Connector Configuration
 
-```json
+```jsonc
 {
   "name": "postgres-connector",
   "config": {
@@ -180,7 +183,7 @@ The Debezium PostgreSQL connector is deployed to Kafka Connect. Here is a produc
     "database.hostname": "postgres.example.com",
     "database.port": "5432",
     "database.user": "debezium_user",
-    "database.password": "${file:/secrets/postgres-password.txt}",
+    "database.password": "${file:/secrets/postgres.properties:password}",
     "database.dbname": "your_database",
 
     // Logical prefix for Kafka topics
@@ -207,7 +210,7 @@ The Debezium PostgreSQL connector is deployed to Kafka Connect. Here is a produc
 
 ### Advanced Connector Configuration
 
-```json
+```jsonc
 {
   "name": "postgres-connector-advanced",
   "config": {
@@ -218,7 +221,7 @@ The Debezium PostgreSQL connector is deployed to Kafka Connect. Here is a produc
     "database.hostname": "postgres.example.com",
     "database.port": "5432",
     "database.user": "debezium_user",
-    "database.password": "${file:/secrets/postgres-password.txt}",
+    "database.password": "${file:/secrets/postgres.properties:password}",
     "database.dbname": "your_database",
     "topic.prefix": "dbserver1",
     "publication.name": "debezium_publication",
@@ -237,7 +240,7 @@ The Debezium PostgreSQL connector is deployed to Kafka Connect. Here is a produc
 
     // Snapshot configuration
     "snapshot.mode": "initial",
-    "snapshot.locking.mode": "minimal",
+    "snapshot.locking.mode": "shared",
 
     // Heartbeat to prevent WAL bloat during low activity
     "heartbeat.interval.ms": "10000",
@@ -253,8 +256,7 @@ The Debezium PostgreSQL connector is deployed to Kafka Connect. Here is a produc
     // Event flattening (simpler message format)
     "transforms": "unwrap",
     "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
-    "transforms.unwrap.drop.tombstones": "false",
-    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "transforms.unwrap.delete.tombstone.handling.mode": "rewrite-with-tombstone",
 
     // Error handling
     "errors.tolerance": "all",
@@ -270,6 +272,8 @@ The Debezium PostgreSQL connector is deployed to Kafka Connect. Here is a produc
 ```
 
 ### Deploy Connector to Kafka Connect
+
+The examples above use JSONC comments for readability. Remove the `//` comments before saving the connector file that you submit to the Kafka Connect REST API.
 
 ```bash
 # Deploy connector using Kafka Connect REST API
@@ -296,21 +300,9 @@ curl -X DELETE http://kafka-connect:8083/connectors/postgres-connector
 
 Debezium captures schema changes automatically, but proper configuration ensures smooth evolution.
 
-### Schema History Configuration
+### Schema Metadata Handling
 
-```json
-{
-  "config": {
-    // Store schema history in Kafka topic
-    "schema.history.internal.kafka.bootstrap.servers": "kafka:9092",
-    "schema.history.internal.kafka.topic": "schema-changes.your_database",
-
-    // Schema history retention
-    "schema.history.internal.store.only.captured.tables.ddl": "true",
-    "schema.history.internal.store.only.captured.databases.ddl": "true"
-  }
-}
-```
+The PostgreSQL connector does not require a separate schema history topic configuration. With `pgoutput`, Debezium refreshes table schema metadata from PostgreSQL when schema changes are detected during streaming. Avoid primary key changes while the connector is running; stop the connector, apply the primary key change, and restart it to prevent a temporary key mismatch between JDBC metadata and the logical decoding stream.
 
 ### Safe Schema Migration Patterns
 
@@ -337,7 +329,7 @@ UPDATE orders SET amount_decimal = amount::DECIMAL(10,2);
 
 Debezium publishes both the schema and data in each message:
 
-```json
+```jsonc
 {
   "schema": {
     "type": "struct",
@@ -369,26 +361,26 @@ Debezium can capture the initial state of tables before streaming changes.
 
 | Mode | Behavior | Use Case |
 |------|----------|----------|
+| always | Snapshot on every connector start, then stream | Recovering after lost WAL or failover scenarios |
 | initial | Snapshot all data on first start, then stream | New deployments |
 | initial_only | Snapshot only, no streaming | One-time data migration |
-| never | Skip snapshot, stream only | When initial data exists elsewhere |
+| no_data | Skip snapshot, stream only | When initial data exists elsewhere |
 | when_needed | Snapshot if no offset exists | Recovery scenarios |
-| no_data | Capture schema only, no data | Schema synchronization |
-| recovery | Re-snapshot after connector failure | Disaster recovery |
+| configuration_based | Control snapshot behavior with `snapshot.mode.configuration.based.*` properties | Advanced recovery or custom startup policies |
+| custom | Use a custom `Snapshotter` implementation | Specialized snapshot policies |
 
 ### Snapshot Configuration
 
-```json
+```jsonc
 {
   "config": {
     // Snapshot mode selection
     "snapshot.mode": "initial",
 
     // Locking strategy during snapshot
-    // minimal: Short lock for schema, then consistent read
-    // none: No locks (may have inconsistencies)
-    // extended: Hold lock during entire snapshot
-    "snapshot.locking.mode": "minimal",
+    // shared: Short lock while schemas and metadata are read
+    // none: No locks (avoid if schema changes might occur during snapshot)
+    "snapshot.locking.mode": "shared",
 
     // Query for selecting snapshot data
     // Use for filtering or ordering large tables
@@ -411,7 +403,7 @@ Debezium can capture the initial state of tables before streaming changes.
 
 Debezium 1.6+ supports incremental snapshots that run alongside streaming:
 
-```json
+```jsonc
 {
   "config": {
     // Enable signal table for triggering incremental snapshots
@@ -421,8 +413,8 @@ Debezium 1.6+ supports incremental snapshots that run alongside streaming:
     // Incremental snapshot chunk size
     "incremental.snapshot.chunk.size": "1024",
 
-    // Allow parallel incremental snapshots
-    "incremental.snapshot.allow.schema.changes": "true"
+    // Use read-only watermarking when the connector cannot write watermarks
+    "read.only": "false"
   }
 }
 ```
@@ -459,7 +451,7 @@ CREATE TABLE debezium_signals (
     -- Unique identifier for each signal
     id VARCHAR(42) PRIMARY KEY,
 
-    -- Signal type: execute-snapshot, stop-snapshot, pause-incremental, resume-incremental
+    -- Signal type: execute-snapshot, stop-snapshot, pause-snapshot, resume-snapshot
     type VARCHAR(32) NOT NULL,
 
     -- JSON payload with signal parameters
@@ -487,7 +479,7 @@ INSERT INTO debezium_signals (id, type, data) VALUES (
 INSERT INTO debezium_signals (id, type, data) VALUES (
     'snapshot-recent-orders',
     'execute-snapshot',
-    '{"data-collections": ["public.orders"], "type": "incremental", "additional-condition": "created_at > ''2024-01-01''"}'
+    '{"data-collections": ["public.orders"], "type": "incremental", "additional-conditions": [{"data-collection": "public.orders", "filter": "created_at > ''2024-01-01''"}]}'
 );
 
 -- Stop an ongoing incremental snapshot
@@ -500,14 +492,14 @@ INSERT INTO debezium_signals (id, type, data) VALUES (
 -- Pause incremental snapshot
 INSERT INTO debezium_signals (id, type, data) VALUES (
     'pause-1',
-    'pause-incremental',
+    'pause-snapshot',
     '{}'
 );
 
 -- Resume incremental snapshot
 INSERT INTO debezium_signals (id, type, data) VALUES (
     'resume-1',
-    'resume-incremental',
+    'resume-snapshot',
     '{}'
 );
 
@@ -521,7 +513,7 @@ INSERT INTO debezium_signals (id, type, data) VALUES (
 
 ### Connector Configuration for Signals
 
-```json
+```jsonc
 {
   "config": {
     // Enable signal table
@@ -549,7 +541,7 @@ When Debezium captures a table with infrequent updates, PostgreSQL cannot reclai
 
 ### Heartbeat Configuration
 
-```json
+```jsonc
 {
   "config": {
     // Send heartbeat every 10 seconds
@@ -574,8 +566,8 @@ CREATE TABLE debezium_heartbeat (
 -- Initialize with a single row
 INSERT INTO debezium_heartbeat (id, last_heartbeat) VALUES (1, NOW());
 
--- Grant update permission
-GRANT UPDATE ON debezium_heartbeat TO debezium_user;
+-- Grant permissions for the heartbeat UPDATE and its WHERE clause
+GRANT SELECT, UPDATE ON debezium_heartbeat TO debezium_user;
 
 -- Include in publication
 ALTER PUBLICATION debezium_publication ADD TABLE debezium_heartbeat;
@@ -606,7 +598,7 @@ WHERE pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) > 1073741824; -- 1GB
 Debezium publishes heartbeat events to a dedicated topic:
 
 ```text
-Topic: dbserver1.heartbeat
+Topic: __debezium-heartbeat.dbserver1
 ```
 
 Downstream consumers can use these events to detect connector liveness.
@@ -622,7 +614,7 @@ Downstream consumers can use these events to detect connector liveness.
 | wal_level | logical | Enable logical decoding |
 | max_replication_slots | >= number of connectors + 2 | Support failover |
 | max_wal_senders | >= max_replication_slots | Match slot capacity |
-| wal_keep_size | 1GB or higher | Prevent premature WAL removal |
+| max_slot_wal_keep_size | 10GB or higher | Cap WAL retained by inactive or lagging replication slots |
 
 ### Security Best Practices
 
@@ -693,7 +685,7 @@ curl -s http://kafka-connect:8083/ | jq .
 
 1. **Slot Lost**: If the replication slot is accidentally dropped, perform a new initial snapshot
 2. **WAL Bloat**: Enable heartbeats and monitor slot lag
-3. **Schema Mismatch**: Use schema history topic to recover schema state
+3. **Schema Mismatch**: Pause the connector, verify table metadata and publications, then restart after applying corrective DDL
 4. **Connector Failure**: Check logs, fix configuration, restart task
 
 ### Quick Reference
@@ -701,7 +693,7 @@ curl -s http://kafka-connect:8083/ | jq .
 ```text
 Minimum PostgreSQL version: 10 (for pgoutput plugin)
 Recommended PostgreSQL version: 14+ (improved logical replication)
-Debezium connector version: 2.x (latest stable)
+Debezium connector version: 3.x (current stable line; examples verified against 3.5)
 Required privileges: REPLICATION, SELECT on captured tables
 Default Kafka topic pattern: {topic.prefix}.{schema}.{table}
 ```
