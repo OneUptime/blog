@@ -157,12 +157,6 @@ frontend http_front
     # Stick table for general API rate limiting (per IP)
     stick-table type ip size 1m expire 60s store http_req_rate(60s),conn_cur,bytes_out_rate(60s)
 
-    # Stick table for authentication endpoints (stricter limits)
-    stick-table type ip size 500k expire 300s store http_req_rate(300s) name auth_table
-
-    # Stick table for API key based limiting
-    stick-table type string len 64 size 100k expire 3600s store http_req_rate(3600s) name apikey_table
-
     # Track all requests by source IP
     http-request track-sc0 src
 
@@ -196,6 +190,14 @@ frontend http_front
     use_backend api_servers if is_api
     use_backend static_servers if is_static
     default_backend web_servers
+
+# Stick table for authentication endpoints (stricter limits)
+backend auth_table
+    stick-table type ip size 500k expire 300s store http_req_rate(300s)
+
+# Stick table for API key based limiting
+backend apikey_table
+    stick-table type string len 64 size 100k expire 3600s store http_req_rate(3600s)
 
 backend api_servers
     balance leastconn
@@ -278,11 +280,6 @@ http {
         # Apply connection limit
         limit_conn conn_limit 20;
 
-        # Default rate limit for all requests
-        # burst=20: Allow up to 20 requests to queue
-        # nodelay: Process burst requests immediately (no queuing delay)
-        limit_req zone=general burst=20 nodelay;
-
         # Return 429 instead of default 503
         limit_req_status 429;
         limit_conn_status 429;
@@ -311,12 +308,16 @@ http {
 
         # Health check endpoint - no rate limiting
         location /health {
-            limit_req off;
+            default_type text/plain;
             return 200 'OK';
-            add_header Content-Type text/plain;
         }
 
         location / {
+            # Default rate limit for web requests
+            # burst=20: Allow up to 20 requests to queue
+            # nodelay: Process burst requests immediately (no queuing delay)
+            limit_req zone=general burst=20 nodelay;
+
             proxy_pass http://web_backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
@@ -543,10 +544,6 @@ resource "aws_wafv2_web_acl" "api_rate_limit" {
     name     = "auth-endpoint-rate-limit"
     priority = 1
 
-    override_action {
-      none {}
-    }
-
     statement {
       rate_based_statement {
         # 100 requests per 5-minute window per IP
@@ -611,10 +608,6 @@ resource "aws_wafv2_web_acl" "api_rate_limit" {
     name     = "api-general-rate-limit"
     priority = 2
 
-    override_action {
-      none {}
-    }
-
     statement {
       rate_based_statement {
         # 2000 requests per 5-minute window per IP
@@ -661,10 +654,6 @@ resource "aws_wafv2_web_acl" "api_rate_limit" {
   rule {
     name     = "forwarded-ip-rate-limit"
     priority = 3
-
-    override_action {
-      none {}
-    }
 
     statement {
       rate_based_statement {
@@ -970,40 +959,37 @@ const createRateLimitRule = async () => {
 
 // Terraform Cloudflare provider configuration
 /*
-resource "cloudflare_rate_limit" "api_rate_limit" {
-  zone_id   = var.cloudflare_zone_id
-  threshold = 1000
-  period    = 60
+resource "cloudflare_ruleset" "api_rate_limit" {
+  zone_id = var.cloudflare_zone_id
+  name    = "API Rate Limiting"
+  kind    = "zone"
+  phase   = "http_ratelimit"
 
-  match {
-    request {
-      url_pattern = "*api.example.com/api/*"
-      schemes     = ["HTTP", "HTTPS"]
-      methods     = ["GET", "POST", "PUT", "DELETE"]
+  rules {
+    ref         = "api_rate_limit"
+    description = "Rate limit API endpoints"
+    expression  = "(http.host eq \"api.example.com\" and http.request.uri.path matches \"^/api/\")"
+    action      = "block"
+
+    action_parameters {
+      response {
+        status_code  = 429
+        content_type = "application/json"
+        content      = jsonencode({
+          error       = "rate_limit_exceeded"
+          message     = "Too many requests"
+          retry_after = 300
+        })
+      }
     }
 
-    response {
-      statuses       = [200, 201, 202, 301, 429]
-      origin_traffic = true
+    ratelimit {
+      characteristics     = ["cf.colo.id", "ip.src"]
+      period              = 60
+      requests_per_period = 1000
+      mitigation_timeout  = 300
     }
   }
-
-  action {
-    mode    = "ban"
-    timeout = 300
-
-    response {
-      content_type = "application/json"
-      body         = jsonencode({
-        error       = "rate_limit_exceeded"
-        message     = "Too many requests"
-        retry_after = 300
-      })
-    }
-  }
-
-  disabled = false
-  description = "Rate limit API endpoints"
 }
 */
 ```
@@ -1111,9 +1097,11 @@ server {
                 return ngx.exit(500)
             end
 
-            -- Set remaining count header
-            local remaining = 100 - lim:uncommit(key)
-            ngx.header["X-RateLimit-Remaining"] = remaining > 0 and remaining or 0
+            if delay >= 0.001 then
+                ngx.sleep(delay)
+            end
+
+            ngx.header["X-RateLimit-Limit"] = "100"
         }
 
         proxy_pass http://api_backend;
