@@ -16,7 +16,7 @@ In distributed systems, messages get lost. Networks fail, services crash, and qu
 |-----------|----------|----------|
 | **At-most-once** | Fire and forget. No retries. | Metrics, logs where loss is acceptable |
 | **At-least-once** | Retry until acknowledged. May duplicate. | Payments, orders, notifications |
-| **Exactly-once** | Delivered once, no more, no less. | Financial transactions (requires idempotency) |
+| **Exactly-once** | Effectively processed once using transactions, deduplication, or idempotency. | Financial workflows where duplicate effects must be prevented |
 
 At-least-once is the practical middle ground. It prevents message loss while keeping implementation complexity manageable. The trade-off is handling duplicate messages on the consumer side.
 
@@ -43,7 +43,7 @@ sequenceDiagram
 
 ## Building a Message Queue with At-Least-Once Delivery
 
-This implementation stores messages in a persistent queue, tracks their state, and redelivers unacknowledged messages after a timeout. The visibility timeout prevents multiple consumers from processing the same message simultaneously.
+This implementation uses an in-memory queue to show the mechanics. In production, store messages durably, track their state, and redeliver unacknowledged messages after a timeout. The visibility timeout prevents multiple consumers from processing the same message simultaneously.
 
 ```typescript
 // message-queue.ts
@@ -278,13 +278,13 @@ async function handleMessageIdempotently(message: Message): Promise<void> {
 
 Not all failures are equal. Transient errors (network timeouts) should retry quickly. Persistent errors (invalid data) should not retry indefinitely. This strategy implements exponential backoff with configurable retry behavior.
 
-| Attempt | Delay | Total Wait |
-|---------|-------|------------|
-| 1 | 0s | 0s |
-| 2 | 1s | 1s |
-| 3 | 2s | 3s |
-| 4 | 4s | 7s |
-| 5 | 8s | 15s |
+| Failed Attempt | Delay Before Redelivery | Total Wait |
+|----------------|-------------------------|------------|
+| 1 | 1s | 1s |
+| 2 | 2s | 3s |
+| 3 | 4s | 7s |
+| 4 | 8s | 15s |
+| 5 | 16s | 31s |
 
 ```typescript
 // retry-strategy.ts
@@ -297,7 +297,7 @@ interface RetryConfig {
 }
 
 function calculateRetryDelay(attempt: number, config: RetryConfig): number {
-  // Exponential backoff: delay = initial * (multiplier ^ attempt)
+  // Exponential backoff after a failed attempt
   const delay = config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt - 1);
 
   // Add jitter to prevent thundering herd (random 0-25% variation)
@@ -315,17 +315,10 @@ class RetryAwareQueue extends AtLeastOnceQueue {
     backoffMultiplier: 2
   };
 
-  // Override receive to implement backoff
-  receive(): Message | null {
-    const message = super.receive();
-
-    if (message && message.attempts > 1) {
-      // Calculate when this message should next be visible
-      const delay = calculateRetryDelay(message.attempts, this.retryConfig);
-      this.extendVisibility(message.id, delay);
-    }
-
-    return message;
+  // Call after a failed processing attempt to delay the next delivery
+  releaseForRetry(message: Message): void {
+    const delay = calculateRetryDelay(message.attempts, this.retryConfig);
+    this.extendVisibility(message.id, delay);
   }
 }
 ```
