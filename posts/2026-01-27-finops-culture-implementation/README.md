@@ -242,7 +242,7 @@ Enforce tagging through policy as code:
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "RequireTags",
+            "Sid": "RequireTeamTag",
             "Effect": "Deny",
             "Action": [
                 "ec2:RunInstances",
@@ -252,8 +252,36 @@ Enforce tagging through policy as code:
             "Resource": "*",
             "Condition": {
                 "Null": {
-                    "aws:RequestTag/team": "true",
-                    "aws:RequestTag/environment": "true",
+                    "aws:RequestTag/team": "true"
+                }
+            }
+        },
+        {
+            "Sid": "RequireEnvironmentTag",
+            "Effect": "Deny",
+            "Action": [
+                "ec2:RunInstances",
+                "rds:CreateDBInstance",
+                "lambda:CreateFunction"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "Null": {
+                    "aws:RequestTag/environment": "true"
+                }
+            }
+        },
+        {
+            "Sid": "RequireServiceTag",
+            "Effect": "Deny",
+            "Action": [
+                "ec2:RunInstances",
+                "rds:CreateDBInstance",
+                "lambda:CreateFunction"
+            ],
+            "Resource": "*",
+            "Condition": {
+                "Null": {
                     "aws:RequestTag/service": "true"
                 }
             }
