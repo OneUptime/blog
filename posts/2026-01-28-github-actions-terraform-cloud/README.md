@@ -13,20 +13,20 @@ Terraform Cloud provides remote state, policy enforcement, and secure runs. GitH
 ## Step 1: Create a Terraform Cloud Workspace
 
 - Create a workspace in Terraform Cloud
-- Set the VCS provider or use API-driven runs
+- Use a CLI-driven or API-driven workspace if GitHub Actions will run `terraform apply`
 - Configure variables and secrets
 
 ## Step 2: Create a Terraform Cloud API Token
 
 In Terraform Cloud:
 
-1. Go to **User Settings → Tokens**
-2. Create a token
+1. Create a team token for CI, or a user token with access to the workspace
+2. Give the token permission to run plans and applies in the workspace
 3. Store it as a GitHub Actions secret, for example `TFC_TOKEN`
 
-## Step 3: Use the Terraform Cloud CLI
+## Step 3: Use the Terraform CLI
 
-The official CLI can trigger runs. Example GitHub Actions workflow:
+The Terraform CLI can trigger CLI-driven remote runs when your configuration is connected to Terraform Cloud. Example GitHub Actions workflow:
 
 ```yaml
 name: Terraform Cloud
@@ -54,7 +54,7 @@ jobs:
         run: terraform plan -out=tfplan
 
       - name: Apply
-        run: terraform apply -auto-approve tfplan
+        run: terraform apply tfplan
 ```
 
 If the workspace is configured for remote execution, Terraform Cloud handles the run.
