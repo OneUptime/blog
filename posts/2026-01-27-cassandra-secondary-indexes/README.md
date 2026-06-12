@@ -87,8 +87,8 @@ Secondary indexes are appropriate in specific scenarios. Using them incorrectly 
 ### Good Use Cases
 
 ```cql
--- Low-cardinality columns (few distinct values)
--- Example: status field with ~5 possible values
+-- Moderate-cardinality columns, where each indexed value maps to a manageable number of rows
+-- Example: status field with enough selectivity for your table size and query volume
 CREATE INDEX ON orders (status);
 
 -- Query pattern: already have partition key, filtering by indexed column
@@ -126,7 +126,7 @@ CREATE INDEX ON events (is_processed);  -- Anti-pattern!
 |----------|----------------|
 | Query by partition key + filter column | Secondary index acceptable |
 | High-throughput lookups by non-key column | Create materialized view or lookup table |
-| Low-cardinality column (<100 values) | Secondary index works well |
+| Moderate-cardinality column with selective values | Secondary index can work well |
 | High-cardinality column (>10K values) | Avoid index, denormalize instead |
 | Range queries on non-key columns | Use SASI or SAI |
 | Full-text search requirements | Use SASI with analyzed mode |
@@ -228,7 +228,7 @@ SELECT * FROM users WHERE department LIKE 'eng%';
 
 ## 4. SASI Indexes (SSTable Attached Secondary Indexes)
 
-SASI indexes were introduced in Cassandra 3.4 to address traditional index limitations. They attach directly to SSTables and support range queries, prefix searches, and tokenization.
+SASI indexes were introduced in Cassandra 3.4 to address traditional index limitations. They attach directly to SSTables and support range queries, prefix searches, and tokenization. In Cassandra 4.x, SASI is still experimental and not recommended for new production deployments.
 
 ### Enabling SASI
 
@@ -254,7 +254,8 @@ USING 'org.apache.cassandra.index.sasi.SASIIndex'
 WITH OPTIONS = {
     'mode': 'CONTAINS',
     'analyzer_class': 'org.apache.cassandra.index.sasi.analyzer.StandardAnalyzer',
-    'case_sensitive': 'false'
+    'analyzed': 'true',
+    'tokenization_normalize_lowercase': 'true'
 };
 
 -- SASI on numeric column for range queries
@@ -299,10 +300,11 @@ USING 'org.apache.cassandra.index.sasi.SASIIndex'
 WITH OPTIONS = {
     'mode': 'CONTAINS',
     'analyzer_class': 'org.apache.cassandra.index.sasi.analyzer.StandardAnalyzer',
+    'analyzed': 'true',
     'tokenization_enable_stemming': 'true',
     'tokenization_locale': 'en',
     'tokenization_skip_stop_words': 'true',
-    'case_sensitive': 'false'
+    'tokenization_normalize_lowercase': 'true'
 };
 
 -- NonTokenizing Analyzer: treats value as single token
@@ -353,37 +355,37 @@ flowchart TB
 
 ## 5. Storage-Attached Indexes (SAI)
 
-Storage-Attached Indexes (SAI) are the newest indexing technology, available in Cassandra 4.0+ and DataStax Enterprise. SAI combines the best aspects of traditional indexes and SASI while improving performance and reducing storage overhead.
+Storage-Attached Indexes (SAI) are the newest indexing technology, available in Apache Cassandra 5.0+ and in DataStax products such as DSE/Astra. SAI combines the best aspects of traditional indexes and SASI while improving performance and reducing storage overhead.
 
 ### Creating SAI Indexes
 
 ```cql
--- SAI must be enabled (default in Cassandra 5.0+)
--- In cassandra.yaml: sai_indexes_enabled: true
+-- SAI is available in Apache Cassandra 5.0+
+-- Apache Cassandra documents SAI creation with USING 'sai'
 
 -- Basic SAI index
-CREATE CUSTOM INDEX idx_users_dept_sai ON users (department)
-USING 'StorageAttachedIndex';
+CREATE INDEX idx_users_dept_sai ON users (department)
+USING 'sai';
 
 -- SAI with case-insensitive matching
-CREATE CUSTOM INDEX idx_users_name_sai ON users (name)
-USING 'StorageAttachedIndex'
+CREATE INDEX idx_users_name_sai ON users (name)
+USING 'sai'
 WITH OPTIONS = {
     'case_sensitive': 'false',
     'normalize': 'true'
 };
 
 -- SAI on numeric column (excellent for range queries)
-CREATE CUSTOM INDEX idx_orders_total_sai ON orders (total_amount)
-USING 'StorageAttachedIndex';
+CREATE INDEX idx_orders_total_sai ON orders (total_amount)
+USING 'sai';
 
 -- SAI on timestamp column
-CREATE CUSTOM INDEX idx_events_time_sai ON events (event_time)
-USING 'StorageAttachedIndex';
+CREATE INDEX idx_events_time_sai ON events (event_time)
+USING 'sai';
 
 -- SAI on collection columns
-CREATE CUSTOM INDEX idx_tags_sai ON articles (tags)
-USING 'StorageAttachedIndex';
+CREATE INDEX idx_tags_sai ON articles (tags)
+USING 'sai';
 ```
 
 ### SAI Query Examples
@@ -447,7 +449,7 @@ flowchart TB
     end
 
     subgraph Use_Cases[Best For]
-        Traditional --> UC1[Simple equality<br/>Low-cardinality]
+        Traditional --> UC1[Simple equality<br/>Selective values]
         SASI --> UC2[Text search<br/>Prefix/suffix matching]
         SAI --> UC3[Range queries<br/>Multiple conditions<br/>Modern deployments]
     end
@@ -485,14 +487,14 @@ Understanding the performance characteristics of each index type is critical for
 flowchart LR
     subgraph Write_Path[Write Operation]
         W1[Client Write]
-        W2[Memtable Insert]
+        W2[Commit Log Append]
         W3[Index Update]
-        W4[Commit Log]
+        W4[Memtable Insert]
     end
 
     W1 --> W2
-    W2 --> W3
     W2 --> W4
+    W4 --> W3
 
     subgraph Index_Overhead[Index Write Overhead]
         direction TB
@@ -514,7 +516,7 @@ flowchart LR
 # Traditional Secondary Index (2i)
 
 # - Scatter-gather to all nodes
-# - Good: low-cardinality + partition key
+# - Good: selective values + partition key
 # - Bad: high-cardinality standalone queries
 performance_2i = {
     "equality_with_partition_key": "O(1) - single partition",
@@ -550,29 +552,30 @@ performance_sai = {
 ### Memory and Storage Overhead
 
 ```cql
--- Check index sizes
+-- Check SAI index sizes
 SELECT index_name,
-       space_used_total,
-       mean_partition_size
-FROM system.size_estimates
+       table_name,
+       per_column_disk_size,
+       per_table_disk_size
+FROM system_views.indexes
 WHERE keyspace_name = 'my_keyspace';
 
 -- SASI memory considerations:
 -- - CONTAINS mode builds full in-memory trie during compaction
 -- - Can cause OOM on large datasets
--- - Consider max_memory_mb option:
+-- - Consider max_compaction_flush_memory_in_mb option:
 CREATE CUSTOM INDEX ON large_table (column)
 USING 'org.apache.cassandra.index.sasi.SASIIndex'
 WITH OPTIONS = {
     'mode': 'PREFIX',
-    'max_memory_mb': '256'
+    'max_compaction_flush_memory_in_mb': '256'
 };
 
 -- SAI is more memory-efficient:
 -- - Uses on-disk structures with memory-mapped access
 -- - Better for large datasets
 -- - Configurable in cassandra.yaml:
--- sai_max_rows_per_segment: 10000
+-- segment_write_buffer_space_mb: 1024
 ```
 
 ### Query Performance Comparison
@@ -629,7 +632,7 @@ flowchart TD
     E -->|Low<br/><100 values| H[Traditional 2i<br/>or SAI]
     E -->|High<br/>>1000 values| I[Avoid index<br/>Denormalize]
 
-    F -->|4.0+ / DSE 6.8+| J[Use SAI Index]
+    F -->|Cassandra 5.0+ / DSE 6.8+| J[Use SAI Index]
     F -->|3.x| K[Use SASI Index]
 
     G --> G1{Pattern type?}
@@ -658,16 +661,19 @@ flowchart TD
 CREATE INDEX IF NOT EXISTS idx_orders_status
 ON orders (status);
 
--- 3. Monitor index build progress
-SELECT * FROM system.index_build_status;
+-- 3. Monitor SAI index build progress
+SELECT index_name, is_queryable, is_building
+FROM system_views.indexes
+WHERE keyspace_name = 'my_keyspace'
+  AND table_name = 'orders';
 
--- 4. For large tables, consider streaming index build
+-- 4. For large tables, tune concurrent index builders carefully
 -- In cassandra.yaml:
 -- concurrent_index_builders: 2
 
 -- 5. Set appropriate index options for your workload
 CREATE CUSTOM INDEX idx_logs_level ON logs (level)
-USING 'StorageAttachedIndex'
+USING 'sai'
 WITH OPTIONS = {
     'case_sensitive': 'true'  -- Avoid unnecessary case conversion
 };
@@ -784,15 +790,25 @@ Effective monitoring is essential for maintaining healthy indexes in production.
 ### Key Metrics to Track
 
 ```cql
--- Query latency by index
-SELECT * FROM system_views.local_read_latency
-WHERE table_name = 'my_table';
+-- SAI index state and disk usage
+SELECT index_name,
+       is_queryable,
+       is_building,
+       per_column_disk_size,
+       per_table_disk_size
+FROM system_views.indexes
+WHERE keyspace_name = 'my_keyspace'
+  AND table_name = 'my_table';
 
--- Index-specific metrics (DSE/Cassandra 4.0+)
+-- Table-level read latency and index metrics
 nodetool tablestats my_keyspace.my_table
 
--- Check for index build status
-SELECT * FROM system.index_build_status;
+-- Check SAI index build status
+SELECT is_queryable, is_building
+FROM system_views.indexes
+WHERE keyspace_name = 'my_keyspace'
+  AND table_name = 'my_table'
+  AND index_name = 'my_index';
 
 -- SASI-specific: memory pressure during compaction
 nodetool tpstats | grep -i index
@@ -866,9 +882,9 @@ For comprehensive monitoring of your Cassandra cluster and indexes, consider usi
 
 | Index Type | Best For | Avoid When |
 |------------|----------|------------|
-| Traditional 2i | Low-cardinality equality queries with partition key | High-cardinality, standalone queries, range queries |
+| Traditional 2i | Selective equality queries with partition key | High-cardinality, standalone queries, range queries |
 | SASI | Text search, prefix matching, range queries (legacy) | Large CONTAINS indexes, memory-constrained environments |
-| SAI | Range queries, multi-column conditions, modern deployments | Cassandra < 4.0 (not available) |
+| SAI | Range queries, multi-column conditions, modern deployments | Cassandra < 5.0 (not available in Apache Cassandra) |
 
 Key takeaways:
 
@@ -882,9 +898,9 @@ Key takeaways:
 
 ## Further Reading
 
-- [Apache Cassandra Documentation - Secondary Indexes](https://cassandra.apache.org/doc/latest/cassandra/cql/indexes.html)
-- [DataStax SAI Documentation](https://docs.datastax.com/en/dse/6.8/cql/cql/cql_using/cql_indexing/saiUsing.html)
-- [Cassandra Data Modeling Best Practices](https://cassandra.apache.org/doc/latest/cassandra/data_modeling/)
+- [Apache Cassandra Documentation - Secondary Indexes](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/indexes.html)
+- [Apache Cassandra Documentation - SAI Overview](https://cassandra.apache.org/doc/latest/cassandra/developing/cql/indexing/sai/sai-overview.html)
+- [Cassandra Data Modeling Best Practices](https://cassandra.apache.org/doc/latest/cassandra/developing/data-modeling/index.html)
 
 ---
 
