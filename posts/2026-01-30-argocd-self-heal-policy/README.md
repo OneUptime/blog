@@ -32,7 +32,7 @@ flowchart TB
 
 ## Why Use Self-Heal?
 
-Without self-heal, your cluster can drift from Git without anyone knowing. This causes several problems:
+Without self-heal, ArgoCD can detect drift and mark the application OutOfSync, but it will not automatically correct live cluster changes. This causes several problems:
 
 1. **Configuration inconsistency** - Production differs from what is documented in Git
 2. **Debugging difficulty** - The actual state does not match expected state
@@ -142,7 +142,7 @@ ArgoCD uses a reconciliation loop that:
 3. Compares the two states using a diff algorithm
 4. If drift is detected and self-heal is enabled, triggers a sync
 
-The default reconciliation interval is 3 minutes, configurable via `timeout.reconciliation` in the ArgoCD ConfigMap.
+The default reconciliation interval is up to 3 minutes, typically `timeout.reconciliation: 120s` plus up to `timeout.reconciliation.jitter: 60s`, configurable in the ArgoCD ConfigMap.
 
 ## Configuring Self-Heal Behavior
 
@@ -238,6 +238,8 @@ metadata:
   name: myapp-environments
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
@@ -249,16 +251,16 @@ spec:
             selfHeal: "true"
   template:
     metadata:
-      name: 'myapp-{{env}}'
+      name: 'myapp-{{.env}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/myapp.git
         targetRevision: HEAD
-        path: 'k8s/overlays/{{env}}'
+        path: 'k8s/overlays/{{.env}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{env}}'
+        namespace: '{{.env}}'
       syncPolicy:
         automated:
           selfHeal: true
@@ -276,6 +278,8 @@ metadata:
   name: myapp-environments
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
@@ -287,16 +291,16 @@ spec:
             selfHeal: "true"
   template:
     metadata:
-      name: 'myapp-{{env}}'
+      name: 'myapp-{{.env}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/myapp.git
         targetRevision: HEAD
-        path: 'k8s/overlays/{{env}}'
+        path: 'k8s/overlays/{{.env}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{env}}'
+        namespace: '{{.env}}'
   templatePatch: |
     {{- if eq .selfHeal "true" }}
     spec:
@@ -307,9 +311,9 @@ spec:
     {{- end }}
 ```
 
-## Self-Heal Policy in Projects
+## Sync Controls in Projects
 
-Apply self-heal policies at the project level to enforce consistency across all applications in a project.
+Use project-level sync windows to control when automated syncs, including self-heal syncs, can run for applications in a project.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -396,7 +400,7 @@ data:
     - description: Self-heal sync occurred
       send:
         - self-heal-triggered
-      when: app.status.operationState.message contains 'self-heal'
+      when: (app.status?.operationState?.message ?? '') contains 'self-heal'
 ```
 
 Subscribe your application to the notification.
@@ -462,21 +466,26 @@ syncPolicy:
 
 ### 2. Use Sync Windows for Controlled Self-Heal
 
-Restrict when self-heal can occur to avoid disruption during critical periods.
+Restrict when self-heal can occur to avoid disruption during critical periods by defining sync windows in the AppProject.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
-kind: Application
+kind: AppProject
 metadata:
-  name: myapp
+  name: production-apps
+  namespace: argocd
 spec:
-  syncPolicy:
-    automated:
-      selfHeal: true
+  sourceRepos:
+    - '*'
+  destinations:
+    - namespace: '*'
+      server: https://kubernetes.default.svc
   syncWindows:
     - kind: deny
       schedule: '0 0-6 * * *'
       duration: 6h
+      applications:
+        - '*'
 ```
 
 ### 3. Document Ignored Fields
