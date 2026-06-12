@@ -14,11 +14,11 @@ ArgoCD knows when Deployments and Services are healthy out of the box. But what 
 
 ```mermaid
 flowchart TD
-    A[Resource Synced] --> B{Built-in Health Check?}
-    B -->|Yes| C[Execute Built-in Logic]
-    B -->|No| D{Custom Health Script?}
-    D -->|Yes| E[Execute Lua Script]
-    D -->|No| F[Return Healthy by Default]
+    A[Resource Synced] --> B{Custom Health Script?}
+    B -->|Yes| E[Execute Lua Script]
+    B -->|No| D{Built-in Health Check?}
+    D -->|Yes| C[Execute Built-in Logic]
+    D -->|No| F[No Resource Health Assessment]
 
     C --> G{Evaluate Status}
     E --> G
@@ -41,7 +41,7 @@ flowchart TD
 ArgoCD evaluates health in this order:
 1. Check if a custom health script exists for the resource type
 2. Fall back to built-in health checks for standard Kubernetes resources
-3. Mark as healthy if no health check is defined
+3. Skip resource-specific health assessment if no health check is defined
 
 ## Health Status Types
 
@@ -69,6 +69,8 @@ metadata:
 data:
   resource.customizations.health.argoproj.io_Application: |
     hs = {}
+    hs.status = "Progressing"
+    hs.message = ""
     if obj.status ~= nil then
       if obj.status.health ~= nil then
         hs.status = obj.status.health.status
@@ -101,7 +103,7 @@ For core API resources (no group), use an empty prefix:
 ### Script Structure
 
 Every health script must return a table with:
-- `status` (required): One of Healthy, Progressing, Degraded, Suspended, Missing, Unknown
+- `status` (required): One of Healthy, Progressing, Degraded, Suspended
 - `message` (optional): Human-readable status message
 
 ```lua
@@ -136,7 +138,7 @@ obj.status.phase
 
 ### Example 1: CronJob Health Check
 
-CronJobs should be healthy if they have run successfully recently and are not suspended:
+CronJobs should be healthy if they have scheduled at least once and are not suspended:
 
 ```yaml
 apiVersion: v1
@@ -234,8 +236,12 @@ data:
              obj.status.PostgresClusterStatus == "CreateFailed" then
         hs.status = "Degraded"
         hs.message = "PostgreSQL cluster failed: " .. obj.status.PostgresClusterStatus
+      elseif obj.status.PostgresClusterStatus == "UpdateFailed" or
+             obj.status.PostgresClusterStatus == "Invalid" then
+        hs.status = "Degraded"
+        hs.message = "PostgreSQL cluster failed: " .. obj.status.PostgresClusterStatus
       else
-        hs.status = "Unknown"
+        hs.status = "Progressing"
         hs.message = "Unknown status: " .. tostring(obj.status.PostgresClusterStatus)
       end
     else
@@ -272,7 +278,7 @@ data:
         hs.status = "Degraded"
         hs.message = obj.status.message or "Rollout is degraded"
       else
-        hs.status = "Unknown"
+        hs.status = "Progressing"
         hs.message = "Unknown phase: " .. tostring(obj.status.phase)
       end
     else
@@ -349,7 +355,7 @@ flowchart TD
         P -->|Yes| G
         P -->|No| I
 
-        N -->|No| Q[Return Unknown]
+        N -->|No| Q[Return Progressing]
     end
 ```
 
@@ -453,13 +459,13 @@ data:
       elseif obj.status.phase == "Failed" or obj.status.phase == "Error" then
         hs.status = "Degraded"
       else
-        hs.status = "Unknown"
+        hs.status = "Progressing"
       end
       hs.message = obj.status.phase
       return hs
     end
 
-    hs.status = "Unknown"
+    hs.status = "Progressing"
     hs.message = "Unable to determine health"
     return hs
 ```
@@ -643,7 +649,7 @@ kubectl api-resources | grep certificate
 Check the application-controller logs:
 
 ```bash
-kubectl logs -n argocd deployment/argocd-application-controller | grep -i "lua\|error"
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller | grep -i "lua\|error"
 ```
 
 **3. Nil access errors**
@@ -726,7 +732,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 ---
-# Wave 1: Database (waits for namespace to be healthy)
+# Wave 1: Database (starts after wave 0 is applied)
 apiVersion: acid.zalan.do/v1
 kind: postgresql
 metadata:
@@ -736,7 +742,7 @@ metadata:
 spec:
   numberOfInstances: 2
 ---
-# Wave 2: Application (waits for database to be healthy)
+# Wave 2: Application (waits for database health if the database resource has a health check)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
