@@ -27,11 +27,7 @@ import { check, sleep } from 'k6';
 
 // Configuration options for the test
 export const options = {
-  // Define virtual users (VUs) and duration
-  vus: 10,              // Number of virtual users
-  duration: '30s',      // Test duration
-
-  // Or use stages for ramping patterns
+  // Define stages for ramping patterns
   stages: [
     { duration: '1m', target: 20 },   // Ramp up to 20 users over 1 minute
     { duration: '3m', target: 20 },   // Stay at 20 users for 3 minutes
@@ -164,6 +160,8 @@ export default function () {
 import http from 'k6/http';
 import { FormData } from 'https://jslib.k6.io/formdata/0.0.2/index.js';
 
+const testFile = open('./test-file.pdf', 'b');
+
 export default function () {
   // URL-encoded form data
   const formResponse = http.post('https://api.example.com/login', {
@@ -174,7 +172,7 @@ export default function () {
   // Multipart form data with file upload
   const fd = new FormData();
   fd.append('name', 'test-file');
-  fd.append('file', http.file(open('./test-file.pdf', 'b'), 'document.pdf'));
+  fd.append('file', http.file(testFile, 'document.pdf'));
 
   const uploadResponse = http.post('https://api.example.com/upload', fd.body(), {
     headers: { 'Content-Type': 'multipart/form-data; boundary=' + fd.boundary },
@@ -320,6 +318,7 @@ k6 allows you to create custom metrics to track application-specific measurement
 ```javascript
 import http from 'k6/http';
 import { check, sleep } from 'k6';
+import exec from 'k6/execution';
 import { Counter, Gauge, Rate, Trend } from 'k6/metrics';
 
 // Define custom metrics
@@ -341,7 +340,7 @@ export const options = {
 
 export default function () {
   // Track active users
-  activeUsers.add(__VU);
+  activeUsers.add(exec.instance.vusActive);
 
   // Simulate order creation
   const orderPayload = JSON.stringify({
@@ -530,16 +529,17 @@ export default function () {
 
 ## Lifecycle Hooks
 
-k6 provides lifecycle hooks for setup, teardown, and scenario-specific initialization.
+k6 provides lifecycle hooks for setup, teardown, and custom end-of-test summaries.
 
 ```javascript
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import exec from 'k6/execution';
+import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
 
 export const options = {
   scenarios: {
-    // Scenario with per-VU setup/teardown
+    // Scenario with ramping VUs
     load_test: {
       executor: 'ramping-vus',
       startVUs: 0,
@@ -607,15 +607,14 @@ export default function (data) {
   sleep(1);
 }
 
-// Handle VU initialization (runs once per VU)
+// Generate a custom summary after the test finishes
 export function handleSummary(data) {
   // Generate custom summary report
-  const duration = Date.now() - data.setup_data.startTime;
+  const duration = data.state.testRunDurationMs;
 
   return {
     'stdout': textSummary(data, { indent: ' ', enableColors: true }),
     './summary.json': JSON.stringify({
-      testRunId: data.setup_data.testRunId,
       duration: duration,
       metrics: {
         http_reqs: data.metrics.http_reqs.values.count,
@@ -626,8 +625,6 @@ export function handleSummary(data) {
     }, null, 2),
   };
 }
-
-import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
 
 // Global teardown - runs once at the end
 export function teardown(data) {
@@ -893,7 +890,7 @@ Writing effective k6 tests requires attention to both technical correctness and 
 
 **Performance and Efficiency**
 - Use http.batch() for parallel requests when appropriate
-- Avoid loading large files in the default function; use setup() instead
+- Avoid loading files in the default function; load them in the init context, preferably with SharedArray for large datasets
 - Use SharedArray for test data to minimize memory usage
 - Keep the default function lightweight; move heavy logic to setup
 
