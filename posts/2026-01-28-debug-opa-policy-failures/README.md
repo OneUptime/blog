@@ -77,12 +77,14 @@ allow if {
 Run with print output enabled:
 
 ```bash
-# Enable print statements in server mode
-opa run --server --set=decision_logs.console=true
-
-# Or run a single evaluation with prints
+# Print output is on by default in `opa eval` and the REPL (written to stderr)
 echo '{"user": {"roles": ["viewer"]}, "action": "read", "resource": "docs"}' | \
   opa eval -b ./policy -I -f pretty 'data.authz.allow'
+
+# In server mode, print output goes through OPA's logger - ensure
+# the log level is info (the default) or lower, and use text format
+# for readability
+opa run --server --log-level=info --log-format=text
 ```
 
 ### Conditional Printing
@@ -124,7 +126,7 @@ Tracing shows exactly how OPA evaluates your policy.
 ### Enable Tracing via API
 
 ```bash
-curl -X POST http://localhost:8181/v1/data/authz/allow \
+curl -X POST 'http://localhost:8181/v1/data/authz/allow?explain=full' \
   -H "Content-Type: application/json" \
   -d '{
     "input": {
@@ -132,8 +134,7 @@ curl -X POST http://localhost:8181/v1/data/authz/allow \
       "action": "delete",
       "resource": "documents"
     }
-  }' \
-  --url-query 'explain=full'
+  }'
 ```
 
 ### Trace Output Example
@@ -187,12 +188,11 @@ Interactive debugging is powerful for exploring policy behavior.
 ### Start the REPL
 
 ```bash
-# Load policies and data
+# Load policies and data into an interactive REPL
 opa run ./policies ./data
 
-# Or connect to a running server
-opa run --server &
-opa run -s http://localhost:8181
+# The REPL runs locally - to interact with a remote OPA server,
+# use its HTTP API directly (see the curl examples above)
 ```
 
 ### REPL Debugging Session
