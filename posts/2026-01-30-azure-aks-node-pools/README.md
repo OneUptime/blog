@@ -63,12 +63,13 @@ az aks create \
     --resource-group myResourceGroup \
     --name myAKSCluster \
     --node-count 2 \
-    --node-vm-size Standard_DS2_v2 \
+    --node-vm-size Standard_D4s_v5 \
     --nodepool-name systempool \
-    --nodepool-mode System \
+    --nodepool-taints CriticalAddonsOnly=true:NoSchedule \
     --generate-ssh-keys
 
-# The system node pool automatically gets the following taint:
+# The system node pool automatically gets the kubernetes.azure.com/mode=system label.
+# Use the following taint to keep application workloads off system nodes:
 # CriticalAddonsOnly=true:NoSchedule
 # This prevents non-critical workloads from being scheduled on system nodes
 ```
@@ -107,6 +108,9 @@ az aks nodepool add \
     --node-count 1 \
     --node-vm-size Standard_NC6s_v3 \
     --labels workload=gpu accelerator=nvidia
+
+# Install the NVIDIA device plugin or GPU Operator before scheduling pods
+# that request nvidia.com/gpu resources on this node pool.
 ```
 
 ## Node Pool Autoscaling Setup
@@ -127,7 +131,7 @@ az aks nodepool update \
 az aks nodepool add \
     --resource-group myResourceGroup \
     --cluster-name myAKSCluster \
-    --name autoscalepool \
+    --name autoscale \
     --mode User \
     --node-count 3 \
     --node-vm-size Standard_DS2_v2 \
@@ -460,6 +464,7 @@ spec:
             periodSeconds: 10
 ---
 # Pod Disruption Budget to maintain availability during evictions
+# PDBs apply to voluntary disruptions; spot VM evictions can still interrupt pods.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -495,13 +500,13 @@ az aks create \
     --resource-group $RESOURCE_GROUP \
     --name $CLUSTER_NAME \
     --node-count 3 \
-    --node-vm-size Standard_DS2_v2 \
+    --node-vm-size Standard_D4s_v5 \
     --nodepool-name system \
-    --nodepool-mode System \
+    --nodepool-taints CriticalAddonsOnly=true:NoSchedule \
     --zones 1 2 3 \
     --enable-managed-identity \
     --network-plugin azure \
-    --network-policy azure \
+    --network-dataplane cilium \
     --generate-ssh-keys
 
 # Add general purpose user node pool for standard workloads
@@ -562,6 +567,9 @@ az aks nodepool add \
     --max-count 5 \
     --labels tier=gpu accelerator=nvidia \
     --node-taints nvidia.com/gpu=present:NoSchedule
+
+# Install the NVIDIA device plugin or GPU Operator before scheduling pods
+# that request nvidia.com/gpu resources on this node pool.
 
 echo "Cluster setup complete!"
 az aks get-credentials --resource-group $RESOURCE_GROUP --name $CLUSTER_NAME
