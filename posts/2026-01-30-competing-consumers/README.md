@@ -12,7 +12,7 @@ Message queues are fundamental building blocks for distributed systems. As your 
 
 ## What is the Competing Consumers Pattern?
 
-The Competing Consumers pattern allows multiple consumer instances to read from the same message queue concurrently. Each message is processed by exactly one consumer, enabling horizontal scaling of message processing workloads.
+The Competing Consumers pattern allows multiple consumer instances to read from the same message queue concurrently. Each message is delivered to one consumer at a time, enabling horizontal scaling of message processing workloads. Because most brokers provide at-least-once delivery, a message can still be redelivered after failures.
 
 ```mermaid
 flowchart LR
@@ -34,7 +34,7 @@ Before diving into implementation, let us understand the core concepts that make
 
 ### 1. Consumer Groups
 
-A consumer group is a collection of consumer instances that work together to process messages from a queue or topic. The message broker ensures that each message is delivered to only one consumer within the group.
+A consumer group is a collection of consumer instances that work together to process messages from a queue or topic. In brokers that support consumer groups, such as Kafka, the broker assigns partitions so each partition is consumed by only one consumer within the group at a time.
 
 ```mermaid
 flowchart TB
@@ -72,7 +72,7 @@ Message acknowledgment (or "acking") is how consumers tell the broker that a mes
 
 ### 3. Visibility Timeout
 
-Visibility timeout (also called "invisibility period" or "delivery timeout") is the time window during which a message is hidden from other consumers while being processed. If the consumer fails to acknowledge the message within this period, the message becomes visible again for redelivery.
+In queue systems such as Amazon SQS, visibility timeout (also called an "invisibility period") is the time window during which a message is hidden from other consumers while being processed. If the consumer fails to acknowledge or delete the message within this period, the message becomes visible again for redelivery.
 
 ```mermaid
 sequenceDiagram
@@ -160,7 +160,7 @@ class RabbitMQCompetingConsumer:
 
         Args:
             callback: Function to process each message.
-                     Should accept (channel, method, properties, body) parameters.
+                     Should accept the decoded message as its only parameter.
         """
         def wrapper_callback(channel, method, properties, body):
             try:
@@ -230,7 +230,7 @@ Kafka uses consumer groups natively. Consumers in the same group automatically c
 # kafka_consumer.py
 # Competing consumers implementation with Apache Kafka
 
-from kafka import KafkaConsumer, OffsetAndMetadata
+from kafka import KafkaConsumer, OffsetAndMetadata, TopicPartition
 from kafka.errors import KafkaError
 import json
 from typing import Callable, Optional
@@ -271,7 +271,7 @@ class KafkaCompetingConsumer:
             value_deserializer=lambda m: json.loads(m.decode('utf-8')),
             # Manual offset management for reliable processing
             enable_auto_commit=auto_commit,
-            # Start from earliest unprocessed message when joining group
+            # Start from earliest available message if no committed offset exists
             auto_offset_reset='earliest',
             # Session timeout for consumer group coordination
             # If consumer fails to heartbeat within this period,
@@ -296,6 +296,8 @@ class KafkaCompetingConsumer:
         try:
             # Main consumption loop
             for message in self.consumer:
+                topic_partition = TopicPartition(message.topic, message.partition)
+
                 try:
                     print(f"[Consumer] Received message from partition "
                           f"{message.partition}, offset {message.offset}")
@@ -307,7 +309,7 @@ class KafkaCompetingConsumer:
                     # This acts as the acknowledgment in Kafka
                     # Only committed offsets are considered "processed"
                     self.consumer.commit({
-                        message.topic_partition: OffsetAndMetadata(
+                        topic_partition: OffsetAndMetadata(
                             message.offset + 1,  # Commit the next offset
                             None
                         )
@@ -317,8 +319,9 @@ class KafkaCompetingConsumer:
                 except Exception as e:
                     print(f"[Consumer] Error processing message: {e}")
                     # In Kafka, not committing the offset means the message
-                    # will be redelivered when the consumer restarts or
-                    # when a rebalance occurs
+                    # will be redelivered when this consumer seeks back,
+                    # restarts, or when a rebalance occurs
+                    self.consumer.seek(topic_partition, message.offset)
                     # You may want to implement a dead letter queue here
 
         except KafkaError as e:
@@ -505,7 +508,8 @@ class SQSCompetingConsumer:
             except Exception as e:
                 print(f"[Consumer] Error processing message {message_id}: {e}")
                 # Do not delete - message will become visible again after timeout
-                # SQS will automatically retry up to the redrive policy limit
+                # If a dead-letter queue redrive policy is configured, SQS moves
+                # the message after it exceeds maxReceiveCount
 
         # Use thread pool for concurrent processing
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -524,7 +528,7 @@ class SQSCompetingConsumer:
                     time.sleep(5)  # Back off on errors
 
 
-# Example: Running with visibility timeout extension for long operations
+# Example: Running with a visibility timeout long enough for the operation
 if __name__ == "__main__":
     def process_video(message):
         """Example: Process a video transcoding job."""
@@ -559,7 +563,7 @@ Since messages can be delivered more than once (at-least-once delivery), your pr
 
 class IdempotentProcessor:
     """
-    Ensures messages are processed exactly once using deduplication.
+    Helps avoid duplicate processing using deduplication.
     """
 
     def __init__(self, redis_client):
