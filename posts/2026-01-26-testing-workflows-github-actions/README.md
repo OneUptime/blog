@@ -95,7 +95,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npm test -- --testPathPattern="unit"
+      - run: npm test -- --testPathPatterns "unit"
 
   integration-tests:
     runs-on: ubuntu-latest
@@ -122,7 +122,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npm test -- --testPathPattern="integration"
+      - run: npm test -- --testPathPatterns "integration"
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/test
           REDIS_URL: redis://localhost:6379
@@ -196,7 +196,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: test-results-*
-          merge-multiple: true
 
       - name: Merge test results
         run: |
@@ -299,8 +298,9 @@ jobs:
             --junitxml=junit.xml
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
           fail_ci_if_error: true
 ```
