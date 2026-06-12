@@ -15,38 +15,29 @@ MinIO implements AWS S3-compatible bucket policies, giving you the same powerful
 ## Understanding Policy Syntax
 
 MinIO bucket policies follow the AWS IAM policy language. Every policy is a JSON document with a specific structure.
+For MinIO bucket policies, the principal is typically `*` for anonymous access. For authenticated users and groups, create IAM policies without a `Principal` element and attach them with `mc admin policy attach`.
 
 ### Basic Policy Structure
 
 ```json
 {
-  // Version must always be "2012-10-17" for compatibility
   "Version": "2012-10-17",
 
-  // Statement array contains one or more access rules
   "Statement": [
     {
-      // Unique identifier for this statement (optional but recommended)
       "Sid": "AllowReadAccess",
 
-      // Effect: either "Allow" or "Deny"
       "Effect": "Allow",
 
-      // Principal: who this policy applies to
-      // Use "*" for anonymous access or specify users/groups
       "Principal": {
         "AWS": ["*"]
       },
 
-      // Action: what operations are permitted or denied
-      // Use "s3:*" for all actions or specify individual ones
       "Action": [
         "s3:GetObject",
         "s3:GetObjectVersion"
       ],
 
-      // Resource: which buckets/objects this applies to
-      // Format: arn:aws:s3:::bucket-name/optional-prefix/*
       "Resource": [
         "arn:aws:s3:::my-bucket/*"
       ]
@@ -68,22 +59,19 @@ Here are the most frequently used actions in bucket policies:
       "Effect": "Allow",
       "Principal": {"AWS": ["*"]},
       "Action": [
-        // Bucket-level actions
-        "s3:ListBucket",           // List objects in bucket
-        "s3:ListBucketVersions",   // List object versions
-        "s3:GetBucketLocation",    // Get bucket region
-        "s3:GetBucketPolicy",      // Read bucket policy
-        "s3:PutBucketPolicy",      // Write bucket policy
-        "s3:DeleteBucketPolicy",   // Remove bucket policy
+        "s3:ListBucket",
+        "s3:ListBucketVersions",
+        "s3:GetBucketLocation",
+        "s3:GetBucketPolicy",
+        "s3:PutBucketPolicy",
+        "s3:DeleteBucketPolicy",
 
-        // Object-level actions
-        "s3:GetObject",            // Download objects
-        "s3:PutObject",            // Upload objects
-        "s3:DeleteObject",         // Remove objects
-        "s3:GetObjectVersion",     // Get specific version
-        "s3:DeleteObjectVersion",  // Delete specific version
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:GetObjectVersion",
+        "s3:DeleteObjectVersion",
 
-        // Multipart upload actions
         "s3:AbortMultipartUpload",
         "s3:ListMultipartUploadParts"
       ],
@@ -98,7 +86,7 @@ Here are the most frequently used actions in bucket policies:
 
 ## Implementing Bucket Policies
 
-Bucket policies attach directly to a bucket and control access for all principals (users, services, anonymous requests).
+Bucket policies attach directly to a bucket and control anonymous access. Use IAM policies for authenticated MinIO users, groups, and services.
 
 ### Read-Only Public Bucket
 
@@ -109,7 +97,6 @@ This policy allows anyone to read objects but prevents modifications.
   "Version": "2012-10-17",
   "Statement": [
     {
-      // Allow public read access to all objects
       "Sid": "PublicReadOnly",
       "Effect": "Allow",
       "Principal": {
@@ -124,7 +111,6 @@ This policy allows anyone to read objects but prevents modifications.
       ]
     },
     {
-      // Allow listing bucket contents publicly
       "Sid": "PublicListBucket",
       "Effect": "Allow",
       "Principal": {
@@ -161,8 +147,8 @@ cat > public-read-policy.json << 'EOF'
 }
 EOF
 
-# Apply policy to bucket
-mc admin policy attach myminio public-read-policy.json --bucket public-assets
+# Apply JSON anonymous policy to bucket
+mc anonymous set-json public-read-policy.json myminio/public-assets
 
 # Or use anonymous policy shorthand
 mc anonymous set download myminio/public-assets
@@ -170,14 +156,13 @@ mc anonymous set download myminio/public-assets
 
 ### Write-Only Upload Bucket
 
-Allow uploads but prevent reading - useful for log collection or user submissions.
+Allow unauthenticated uploads but prevent reading - useful for log collection or user submissions.
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      // Allow uploads from any authenticated user
       "Sid": "WriteOnlyUploads",
       "Effect": "Allow",
       "Principal": {
@@ -193,7 +178,6 @@ Allow uploads but prevent reading - useful for log collection or user submission
       ]
     },
     {
-      // Explicitly deny read operations
       "Sid": "DenyReadAccess",
       "Effect": "Deny",
       "Principal": {
@@ -313,10 +297,9 @@ Conditions add fine-grained control based on request context like IP address, ti
       "Sid": "ConditionOperatorsExample",
       "Effect": "Allow",
       "Principal": {"AWS": ["*"]},
-      "Action": ["s3:GetObject"],
-      "Resource": ["arn:aws:s3:::example/*"],
+      "Action": ["s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::example"],
       "Condition": {
-        // String conditions
         "StringEquals": {
           "s3:prefix": "public/"
         },
@@ -327,7 +310,6 @@ Conditions add fine-grained control based on request context like IP address, ti
           "s3:prefix": "private/"
         },
 
-        // IP address conditions
         "IpAddress": {
           "aws:SourceIp": "192.168.1.0/24"
         },
@@ -335,7 +317,6 @@ Conditions add fine-grained control based on request context like IP address, ti
           "aws:SourceIp": "10.0.0.0/8"
         },
 
-        // Date/time conditions
         "DateGreaterThan": {
           "aws:CurrentTime": "2024-01-01T00:00:00Z"
         },
@@ -343,7 +324,6 @@ Conditions add fine-grained control based on request context like IP address, ti
           "aws:CurrentTime": "2025-12-31T23:59:59Z"
         },
 
-        // Numeric conditions
         "NumericLessThanEquals": {
           "s3:max-keys": "100"
         }
@@ -363,27 +343,27 @@ Conditions add fine-grained control based on request context like IP address, ti
       "Sid": "ConditionKeysReference",
       "Effect": "Allow",
       "Principal": {"AWS": ["*"]},
-      "Action": ["s3:*"],
-      "Resource": ["arn:aws:s3:::example/*"],
+      "Action": ["s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::example"],
       "Condition": {
-        // AWS global condition keys
-        "StringEquals": {
-          "aws:username": "specific-user",      // Username making request
-          "aws:userid": "user-id-value",        // User ID
-          "aws:SourceIp": "203.0.113.0/24",     // Client IP address
-          "aws:CurrentTime": "2024-06-15T12:00:00Z", // Request timestamp
-          "aws:SecureTransport": "true",        // HTTPS required
-          "aws:UserAgent": "my-app/1.0"         // Client user agent
-        },
-
-        // S3-specific condition keys
         "StringLike": {
-          "s3:prefix": "folder/*",              // Object key prefix
-          "s3:delimiter": "/",                  // Listing delimiter
-          "s3:x-amz-content-sha256": "*"        // Content hash
+          "aws:username": "specific-user",
+          "aws:userid": "user-id-value",
+          "aws:UserAgent": "my-app/1.0",
+          "s3:prefix": "folder/*",
+          "s3:delimiter": "/"
+        },
+        "IpAddress": {
+          "aws:SourceIp": "203.0.113.0/24"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "2024-06-15T12:00:00Z"
+        },
+        "Bool": {
+          "aws:SecureTransport": "true"
         },
         "NumericLessThanEquals": {
-          "s3:max-keys": "1000"                 // Max listing results
+          "s3:max-keys": "1000"
         }
       }
     }
@@ -402,7 +382,6 @@ Public access should be carefully controlled. Here are patterns for different pu
   "Version": "2012-10-17",
   "Statement": [
     {
-      // Allow public access to website files
       "Sid": "StaticWebsiteAccess",
       "Effect": "Allow",
       "Principal": {
@@ -416,7 +395,6 @@ Public access should be carefully controlled. Here are patterns for different pu
       ]
     },
     {
-      // Block access to configuration files
       "Sid": "DenyConfigAccess",
       "Effect": "Deny",
       "Principal": {
@@ -444,7 +422,6 @@ Allow a CDN to access objects but block direct public access.
   "Version": "2012-10-17",
   "Statement": [
     {
-      // Allow access only from CDN IP ranges
       "Sid": "CDNOriginAccess",
       "Effect": "Allow",
       "Principal": {
@@ -457,7 +434,6 @@ Allow a CDN to access objects but block direct public access.
         "arn:aws:s3:::cdn-origin/*"
       ],
       "Condition": {
-        // Cloudflare IP ranges (example)
         "IpAddress": {
           "aws:SourceIp": [
             "173.245.48.0/20",
@@ -475,7 +451,6 @@ Allow a CDN to access objects but block direct public access.
       }
     },
     {
-      // Deny all other public access
       "Sid": "DenyDirectAccess",
       "Effect": "Deny",
       "Principal": {
@@ -507,59 +482,16 @@ Organize access by object key prefixes to create virtual directories with differ
 
 ### Multi-Tenant Bucket
 
+Attach this policy to users whose usernames match their tenant prefix.
+
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      // Tenant A can only access their prefix
-      "Sid": "TenantAAccess",
+      "Sid": "TenantListAccess",
       "Effect": "Allow",
-      "Principal": {
-        "AWS": ["arn:aws:iam::account:user/tenant-a"]
-      },
       "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:ListBucket"
-      ],
-      "Resource": [
-        "arn:aws:s3:::multi-tenant-bucket"
-      ],
-      "Condition": {
-        // Restrict listing to their prefix only
-        "StringLike": {
-          "s3:prefix": ["tenant-a/*"]
-        }
-      }
-    },
-    {
-      "Sid": "TenantAObjectAccess",
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": ["arn:aws:iam::account:user/tenant-a"]
-      },
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::multi-tenant-bucket/tenant-a/*"
-      ]
-    },
-    {
-      // Tenant B can only access their prefix
-      "Sid": "TenantBAccess",
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": ["arn:aws:iam::account:user/tenant-b"]
-      },
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
         "s3:ListBucket"
       ],
       "Resource": [
@@ -567,23 +499,20 @@ Organize access by object key prefixes to create virtual directories with differ
       ],
       "Condition": {
         "StringLike": {
-          "s3:prefix": ["tenant-b/*"]
+          "s3:prefix": ["${aws:username}/*"]
         }
       }
     },
     {
-      "Sid": "TenantBObjectAccess",
+      "Sid": "TenantObjectAccess",
       "Effect": "Allow",
-      "Principal": {
-        "AWS": ["arn:aws:iam::account:user/tenant-b"]
-      },
       "Action": [
         "s3:GetObject",
         "s3:PutObject",
         "s3:DeleteObject"
       ],
       "Resource": [
-        "arn:aws:s3:::multi-tenant-bucket/tenant-b/*"
+        "arn:aws:s3:::multi-tenant-bucket/${aws:username}/*"
       ]
     }
   ]
@@ -597,12 +526,8 @@ Organize access by object key prefixes to create virtual directories with differ
   "Version": "2012-10-17",
   "Statement": [
     {
-      // Developers can read/write to dev prefix
       "Sid": "DevEnvironmentAccess",
       "Effect": "Allow",
-      "Principal": {
-        "AWS": ["arn:aws:iam::account:group/developers"]
-      },
       "Action": [
         "s3:GetObject",
         "s3:PutObject",
@@ -610,50 +535,58 @@ Organize access by object key prefixes to create virtual directories with differ
       ],
       "Resource": [
         "arn:aws:s3:::app-data/dev/*"
-      ]
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:groups": "developers"
+        }
+      }
     },
     {
-      // Developers can only read staging
       "Sid": "StagingReadOnly",
       "Effect": "Allow",
-      "Principal": {
-        "AWS": ["arn:aws:iam::account:group/developers"]
-      },
       "Action": [
         "s3:GetObject"
       ],
       "Resource": [
         "arn:aws:s3:::app-data/staging/*"
-      ]
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:groups": "developers"
+        }
+      }
     },
     {
-      // Only ops team can access production
       "Sid": "ProductionAccess",
       "Effect": "Allow",
-      "Principal": {
-        "AWS": ["arn:aws:iam::account:group/operations"]
-      },
       "Action": [
         "s3:GetObject",
         "s3:PutObject"
       ],
       "Resource": [
         "arn:aws:s3:::app-data/prod/*"
-      ]
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:groups": "operations"
+        }
+      }
     },
     {
-      // Explicitly deny developers from production
       "Sid": "DenyDevProduction",
       "Effect": "Deny",
-      "Principal": {
-        "AWS": ["arn:aws:iam::account:group/developers"]
-      },
       "Action": [
         "s3:*"
       ],
       "Resource": [
         "arn:aws:s3:::app-data/prod/*"
-      ]
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:groups": "developers"
+        }
+      }
     }
   ]
 }
@@ -661,21 +594,17 @@ Organize access by object key prefixes to create virtual directories with differ
 
 ## Time-Based Access Control
 
-Restrict access based on time windows for compliance, maintenance, or temporary access grants.
+Restrict access based on absolute time windows for compliance, maintenance, or temporary access grants.
 
-### Business Hours Only Access
+### Project Window Access
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      // Allow access only during business hours (UTC)
-      "Sid": "BusinessHoursAccess",
+      "Sid": "ProjectWindowAccess",
       "Effect": "Allow",
-      "Principal": {
-        "AWS": ["arn:aws:iam::account:user/contractor"]
-      },
       "Action": [
         "s3:GetObject",
         "s3:PutObject"
@@ -684,7 +613,6 @@ Restrict access based on time windows for compliance, maintenance, or temporary 
         "arn:aws:s3:::project-files/*"
       ],
       "Condition": {
-        // Access allowed Monday-Friday, 9 AM - 6 PM UTC
         "DateGreaterThan": {
           "aws:CurrentTime": "2024-01-01T09:00:00Z"
         },
@@ -704,12 +632,8 @@ Restrict access based on time windows for compliance, maintenance, or temporary 
   "Version": "2012-10-17",
   "Statement": [
     {
-      // Grant temporary access for a specific time window
       "Sid": "TemporaryAuditAccess",
       "Effect": "Allow",
-      "Principal": {
-        "AWS": ["arn:aws:iam::account:user/external-auditor"]
-      },
       "Action": [
         "s3:GetObject",
         "s3:ListBucket"
@@ -719,7 +643,6 @@ Restrict access based on time windows for compliance, maintenance, or temporary 
         "arn:aws:s3:::financial-records/2023/*"
       ],
       "Condition": {
-        // Valid from January 15 to January 31, 2024
         "DateGreaterThan": {
           "aws:CurrentTime": "2024-01-15T00:00:00Z"
         },
@@ -732,19 +655,15 @@ Restrict access based on time windows for compliance, maintenance, or temporary 
 }
 ```
 
-### Maintenance Window Lockdown
+### One-Time Maintenance Window Lockdown
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      // Deny all access during maintenance window
       "Sid": "MaintenanceWindowDeny",
       "Effect": "Deny",
-      "Principal": {
-        "AWS": ["*"]
-      },
       "Action": [
         "s3:*"
       ],
@@ -753,7 +672,6 @@ Restrict access based on time windows for compliance, maintenance, or temporary 
         "arn:aws:s3:::critical-data/*"
       ],
       "Condition": {
-        // Maintenance window: Sundays 2-4 AM UTC
         "DateGreaterThan": {
           "aws:CurrentTime": "2024-01-01T02:00:00Z"
         },
@@ -763,12 +681,8 @@ Restrict access based on time windows for compliance, maintenance, or temporary 
       }
     },
     {
-      // Allow normal access outside maintenance window
       "Sid": "NormalAccess",
       "Effect": "Allow",
-      "Principal": {
-        "AWS": ["arn:aws:iam::account:group/app-services"]
-      },
       "Action": [
         "s3:GetObject",
         "s3:PutObject"
@@ -787,12 +701,12 @@ Restrict access based on time windows for compliance, maintenance, or temporary 
 - Start with deny-all, then add specific allows
 - Use the principle of least privilege - grant only what is needed
 - Prefer user/group policies over bucket policies for internal access control
-- Use bucket policies for cross-account access and public access rules
+- Use bucket policies for public and anonymous access rules
 
 **Security**
 - Never use wildcards in Principal for Allow statements on sensitive buckets
 - Always require HTTPS using the `aws:SecureTransport` condition
-- Regularly audit policies using `mc admin policy list` and `mc admin user info`
+- Regularly audit policies using `mc admin policy ls` and `mc admin user info`
 - Use IP restrictions for administrative operations
 
 **Organization**
@@ -811,7 +725,7 @@ Restrict access based on time windows for compliance, maintenance, or temporary 
 - Forgetting that Deny always overrides Allow
 - Not including both bucket ARN and object ARN (`bucket` and `bucket/*`)
 - Using `s3:*` when specific actions would suffice
-- Ignoring the order of policy evaluation in complex setups
+- Ignoring policy evaluation precedence in complex setups
 
 ---
 
