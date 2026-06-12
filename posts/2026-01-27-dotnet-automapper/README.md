@@ -20,22 +20,23 @@ Benefits of using AutoMapper:
 
 - **Reduces boilerplate code** - No more writing dozens of property assignments
 - **Centralizes mapping logic** - All mappings are defined in profiles, not scattered across services
-- **Type-safe configuration** - Compile-time checking catches misconfigurations early
+- **Configuration validation** - Unit tests can catch misconfigurations early
 - **Testable** - Mapping configurations can be validated in unit tests
 - **Flexible** - Supports complex scenarios like nested objects, collections, and conditional mapping
 
 ## Installing and Configuring AutoMapper
 
-Install the NuGet packages:
+Install the NuGet package:
 
 ```bash
 # Core AutoMapper package
+dotnet package add AutoMapper
 
-dotnet add package AutoMapper
-
-# Dependency injection extensions for ASP.NET Core
-dotnet add package AutoMapper.Extensions.Microsoft.DependencyInjection
+# If you are using the .NET 9 SDK or earlier, use:
+# dotnet add package AutoMapper
 ```
+
+Starting with AutoMapper 13, `AddAutoMapper` is part of the core package and the separate `AutoMapper.Extensions.Microsoft.DependencyInjection` package is discontinued. AutoMapper 15 also requires a license key.
 
 Register AutoMapper in your `Program.cs`:
 
@@ -45,10 +46,13 @@ using AutoMapper;
 var builder = WebApplication.CreateBuilder(args);
 
 // Register AutoMapper and scan the assembly for profiles
-builder.Services.AddAutoMapper(typeof(Program).Assembly);
+builder.Services.AddAutoMapper(cfg =>
+{
+    cfg.LicenseKey = builder.Configuration["AutoMapper:LicenseKey"]!;
+}, typeof(Program).Assembly);
 
 // For multiple assemblies, pass them all
-// builder.Services.AddAutoMapper(typeof(Program).Assembly, typeof(SomeProfile).Assembly);
+// builder.Services.AddAutoMapper(cfg => cfg.LicenseKey = builder.Configuration["AutoMapper:LicenseKey"]!, typeof(Program).Assembly, typeof(SomeProfile).Assembly);
 
 var app = builder.Build();
 ```
@@ -191,9 +195,9 @@ Sometimes you want to skip certain properties:
 ```csharp
 CreateMap<User, UserDto>()
     // Ignore a property entirely
-    .ForMember(dest => dest.SensitiveField, opt => opt.Ignore())
+    .ForMember(dest => dest.Email, opt => opt.Ignore())
 
-    // Ignore all unmapped properties (use with caution)
+    // Skip assigning null source values
     .ForAllMembers(opt => opt.Condition((src, dest, srcMember) => srcMember != null));
 ```
 
@@ -406,6 +410,7 @@ Always validate your AutoMapper configuration in tests.
 
 ```csharp
 using AutoMapper;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 public class MappingTests
@@ -417,10 +422,11 @@ public class MappingTests
         // Create a mapper configuration with all profiles
         var config = new MapperConfiguration(cfg =>
         {
+            cfg.LicenseKey = "<License Key Here>";
             cfg.AddProfile<UserProfile>();
             cfg.AddProfile<OrderProfile>();
             cfg.AddProfile<ProductProfile>();
-        });
+        }, NullLoggerFactory.Instance);
 
         _mapper = config.CreateMapper();
     }
@@ -431,10 +437,11 @@ public class MappingTests
         // This validates that all mappings are correctly configured
         var config = new MapperConfiguration(cfg =>
         {
+            cfg.LicenseKey = "<License Key Here>";
             cfg.AddProfile<UserProfile>();
             cfg.AddProfile<OrderProfile>();
             cfg.AddProfile<ProductProfile>();
-        });
+        }, NullLoggerFactory.Instance);
 
         // Throws if any mappings are invalid
         config.AssertConfigurationIsValid();
@@ -513,6 +520,8 @@ var dtos = _mapper.Map<List<UserDto>>(users);
 When using Entity Framework, `ProjectTo` translates mappings into SQL projections:
 
 ```csharp
+using AutoMapper.QueryableExtensions;
+
 public class UserRepository
 {
     private readonly DbContext _context;
@@ -528,7 +537,7 @@ public class UserRepository
     {
         // ProjectTo creates a SELECT with only the needed columns
         // No need to load full entities into memory
-        return await _context.Users
+        return await _context.Set<User>()
             .Where(u => u.IsActive)
             .ProjectTo<UserDto>(_mapper.ConfigurationProvider)
             .ToListAsync();
@@ -539,10 +548,13 @@ public class UserRepository
 ### 3. Compile Mappings at Startup
 
 ```csharp
+using Microsoft.Extensions.Logging.Abstractions;
+
 var config = new MapperConfiguration(cfg =>
 {
+    cfg.LicenseKey = "<License Key Here>";
     cfg.AddProfile<UserProfile>();
-});
+}, NullLoggerFactory.Instance);
 
 // Compile all mappings upfront to avoid runtime compilation
 config.CompileMappings();
