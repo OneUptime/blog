@@ -410,12 +410,13 @@ class InformationDensityScorer:
         if not tokens:
             return 0.0
 
+        sentence_terms = Counter(tokens)
         score = 0.0
         for token in tokens:
             if token in self.stopwords:
                 continue
 
-            tf = term_freq.get(token, 0)
+            tf = sentence_terms.get(token, 0)
             df = doc_freq.get(token, 1)
 
             # TF-IDF formula
@@ -496,7 +497,7 @@ class InformationDensityScorer:
             return []
 
         # Build term statistics from context
-        all_docs = context_documents or []
+        all_docs = list(context_documents) if context_documents is not None else []
         all_docs.append(text)
 
         term_freq, doc_freq = self._compute_term_frequencies(all_docs)
@@ -850,25 +851,31 @@ class TokenBudgetAllocator:
     ) -> Dict[str, int]:
         """Allocate tokens to each source."""
 
-        # Calculate total weights
-        total_weight = sum(
-            self._priority_weight(s.priority)
-            for s in sources
-        )
-
-        # Initial allocation based on weights
         allocations = {}
         remaining_budget = self.available_budget
 
         # First pass - allocate minimum requirements
         for source in sources:
             if source.min_tokens > 0:
-                allocations[source.name] = source.min_tokens
-                remaining_budget -= source.min_tokens
+                allocation = min(source.min_tokens, max(remaining_budget, 0))
+                allocations[source.name] = allocation
+                remaining_budget -= allocation
+
+        remaining_sources = [
+            source for source in sources
+            if source.name not in allocations
+        ]
+
+        # Calculate weights for sources that can still receive budget
+        total_weight = sum(
+            self._priority_weight(s.priority)
+            for s in remaining_sources
+        )
 
         # Second pass - distribute remaining budget by weight
-        for source in sources:
-            if source.name in allocations:
+        for source in remaining_sources:
+            if remaining_budget <= 0 or total_weight == 0:
+                allocations[source.name] = 0
                 continue
 
             weight = self._priority_weight(source.priority)
@@ -1207,7 +1214,7 @@ class BatchedRelevanceFilter(RelevanceFilter):
 Cache embeddings to avoid recomputing for frequently accessed content.
 
 ```python
-from functools import lru_cache
+from collections import OrderedDict
 import hashlib
 
 class CachedEmbedder:
@@ -1220,7 +1227,7 @@ class CachedEmbedder:
     ):
         self.model = SentenceTransformer(model_name)
         self.cache_size = cache_size
-        self._cache = {}
+        self._cache = OrderedDict()
 
     def _hash_text(self, text: str) -> str:
         """Create hash key for text."""
@@ -1236,7 +1243,9 @@ class CachedEmbedder:
         for i, text in enumerate(texts):
             key = self._hash_text(text)
             if key in self._cache:
-                results.append((i, self._cache[key]))
+                embedding = self._cache.pop(key)
+                self._cache[key] = embedding
+                results.append((i, embedding))
             else:
                 texts_to_encode.append(text)
                 indices_to_encode.append(i)
@@ -1257,10 +1266,9 @@ class CachedEmbedder:
                 self._cache[key] = embedding
                 results.append((idx, embedding))
 
-                # Evict oldest if cache is full
+                # Evict least recently used if cache is full
                 if len(self._cache) > self.cache_size:
-                    oldest_key = next(iter(self._cache))
-                    del self._cache[oldest_key]
+                    self._cache.popitem(last=False)
 
         # Sort by original index and return
         results.sort(key=lambda x: x[0])
