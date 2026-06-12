@@ -42,10 +42,10 @@ flowchart TB
 
 ### Syntax Errors
 
-k6 uses JavaScript ES6 syntax. Common mistakes include:
+k6 supports ES modules and a custom CommonJS `require()` implementation, but it doesn't support Node.js module resolution. Common mistakes include:
 
 ```javascript
-// Bad: CommonJS require (not supported)
+// Works for built-in k6 modules, but doesn't use Node.js module resolution
 const http = require('k6/http');
 
 // Good: ES6 import
@@ -321,8 +321,6 @@ import { check } from 'k6';
 export const options = {
   vus: 5,
   duration: '1m',
-  // Increase timeouts for debugging
-  timeout: '60s',
 };
 
 export default function () {
@@ -366,7 +364,7 @@ nslookup api.example.com
 curl -v https://api.example.com/health
 
 # Run k6 with specific DNS resolver
-K6_DNS="prefer_ipv4" k6 run script.js
+K6_DNS="policy=preferIPv4" k6 run script.js
 ```
 
 ### TLS/SSL Errors
@@ -472,6 +470,7 @@ When tests fail in CI, add diagnostic output:
 ```yaml
 # GitHub Actions example
 - name: Run k6 test
+  id: k6
   run: |
     k6 run \
       --out json=results.json \
@@ -480,7 +479,7 @@ When tests fail in CI, add diagnostic output:
   continue-on-error: true
 
 - name: Upload debug artifacts
-  if: failure()
+  if: ${{ steps.k6.outcome == 'failure' }}
   uses: actions/upload-artifact@v4
   with:
     name: k6-debug
@@ -490,7 +489,7 @@ When tests fail in CI, add diagnostic output:
       screenshots/
 
 - name: Analyze failure
-  if: failure()
+  if: ${{ steps.k6.outcome == 'failure' }}
   run: |
     echo "=== Last 50 console lines ==="
     tail -50 console.log
@@ -505,8 +504,10 @@ When tests fail in CI, add diagnostic output:
 
 ```javascript
 // Increase timeout for slow endpoints
+import http from 'k6/http';
+
 const response = http.get('https://api.example.com/slow-endpoint', {
-  timeout: '60s',  // Default is 60s, adjust as needed
+  timeout: '120s',  // Default is 60s, adjust as needed
 });
 ```
 
@@ -524,6 +525,7 @@ export const options = {
 
 ```javascript
 // Add delays to avoid rate limiting
+import http from 'k6/http';
 import { sleep } from 'k6';
 
 export default function () {
@@ -536,6 +538,8 @@ export default function () {
 
 ```javascript
 // Refresh tokens periodically
+import http from 'k6/http';
+
 let token = null;
 let tokenExpiry = 0;
 

@@ -47,9 +47,9 @@ flowchart LR
 
 The most direct integration uses k6's experimental Prometheus remote write output.
 
-### Enable the Extension
+### Enable the Output
 
-k6 includes experimental Prometheus remote write support. Enable it with the `K6_PROMETHEUS_RW_SERVER_URL` environment variable or command line flag.
+k6 includes experimental Prometheus remote write support. Enable it with the `K6_PROMETHEUS_RW_SERVER_URL` system environment variable.
 
 ```bash
 # Set Prometheus remote write endpoint
@@ -67,7 +67,7 @@ import { check, sleep } from 'k6';
 import { Counter, Gauge, Rate, Trend } from 'k6/metrics';
 
 // Custom metrics that will be exported to Prometheus
-const orderCount = new Counter('orders_total');
+const orderCount = new Counter('orders');
 const activeUsers = new Gauge('active_users');
 const errorRate = new Rate('error_rate');
 const checkoutDuration = new Trend('checkout_duration_ms');
@@ -113,10 +113,9 @@ export default function () {
 
   if (success) {
     orderCount.add(1);
-  } else {
-    errorRate.add(1);
   }
 
+  errorRate.add(!success);
   activeUsers.add(-1);
   sleep(Math.random() * 3);
 }
@@ -125,10 +124,10 @@ export default function () {
 Run with remote write:
 
 ```bash
+K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write \
+K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true \
 k6 run \
   --out experimental-prometheus-rw \
-  -e K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write \
-  -e K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true \
   prometheus-test.js
 ```
 
@@ -142,14 +141,15 @@ export K6_PROMETHEUS_RW_PUSH_INTERVAL=5s
 export K6_PROMETHEUS_RW_STALE_MARKERS=true
 
 # Add custom labels to all metrics
-export K6_PROMETHEUS_RW_EXTRA_LABELS="environment=staging,team=platform"
-
-k6 run --out experimental-prometheus-rw script.js
+k6 run --out experimental-prometheus-rw \
+  --tag environment=staging \
+  --tag team=platform \
+  script.js
 ```
 
 ## Method 2: StatsD to Prometheus
 
-For environments without remote write support, use StatsD as an intermediary.
+For environments without remote write support, use StatsD as an intermediary. The built-in k6 StatsD output was deprecated in k6 v0.47.0 and removed in k6 v0.55.0, so current k6 versions need the `xk6-output-statsd` extension.
 
 ### Architecture
 
@@ -189,12 +189,15 @@ services:
 
 ```yaml
 # statsd-mapping.yml
+defaults:
+  timer_type: histogram
+  buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+
 mappings:
   # Map k6 HTTP request duration
-  - match: "k6.http_req_duration.*"
-    name: "k6_http_req_duration"
-    labels:
-      quantile: "$1"
+  - match: "k6.http_req_duration"
+    name: "k6_http_req_duration_seconds"
+    timer_type: histogram
 
   # Map k6 HTTP request count
   - match: "k6.http_reqs"
@@ -218,7 +221,11 @@ mappings:
 ### Run k6 with StatsD Output
 
 ```bash
-k6 run --out statsd=localhost:9125 script.js
+# Install xk6 and build k6 with the StatsD output extension
+go install go.k6.io/xk6/cmd/xk6@latest
+xk6 build --with github.com/LeonAdato/xk6-output-statsd
+
+K6_STATSD_ADDR=localhost:9125 ./k6 run --out output-statsd script.js
 ```
 
 ### Prometheus Scrape Configuration
@@ -254,20 +261,24 @@ k6 run --out json=- script.js | ./process-metrics.sh
 # process_k6_metrics.py
 import json
 import sys
-from prometheus_client import Counter, Gauge, Histogram, push_to_gateway
+from prometheus_client import CollectorRegistry, Counter, Histogram, push_to_gateway
 
 # Initialize Prometheus metrics
+registry = CollectorRegistry()
+
 http_duration = Histogram(
     'k6_http_req_duration_seconds',
     'HTTP request duration',
     ['method', 'status', 'name'],
-    buckets=[0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+    buckets=[0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+    registry=registry
 )
 
 http_requests = Counter(
     'k6_http_reqs_total',
     'Total HTTP requests',
-    ['method', 'status', 'name']
+    ['method', 'status', 'name'],
+    registry=registry
 )
 
 # Process k6 JSON stream
@@ -275,19 +286,32 @@ for line in sys.stdin:
     try:
         data = json.loads(line)
 
-        if data['type'] == 'Point' and data['metric'] == 'http_req_duration':
-            labels = data.get('data', {}).get('tags', {})
+        if data['type'] != 'Point':
+            continue
+
+        labels = data.get('data', {}).get('tags', {})
+        metric = data.get('metric')
+
+        if metric == 'http_req_duration':
             http_duration.labels(
                 method=labels.get('method', 'GET'),
                 status=labels.get('status', '200'),
                 name=labels.get('name', 'default')
             ).observe(data['data']['value'] / 1000)  # Convert ms to seconds
 
-    except json.JSONDecodeError:
+        if metric == 'http_reqs':
+            labels = data.get('data', {}).get('tags', {})
+            http_requests.labels(
+                method=labels.get('method', 'GET'),
+                status=labels.get('status', '200'),
+                name=labels.get('name', 'default')
+            ).inc(data['data']['value'])
+
+    except (json.JSONDecodeError, KeyError):
         continue
 
 # Push to Prometheus Pushgateway
-push_to_gateway('localhost:9091', job='k6_load_test', registry=None)
+push_to_gateway('localhost:9091', job='k6_load_test', registry=registry)
 ```
 
 ## Custom Metrics for Prometheus
@@ -301,8 +325,8 @@ import { Counter, Gauge, Rate, Trend } from 'k6/metrics';
 
 // Counter - monotonically increasing value
 // Maps to Prometheus counter type
-const totalRequests = new Counter('business_requests_total');
-const totalRevenue = new Counter('business_revenue_total');
+const totalRequests = new Counter('business_requests');
+const totalRevenue = new Counter('business_revenue');
 
 // Gauge - value that can go up and down
 // Maps to Prometheus gauge type
@@ -384,15 +408,15 @@ Create a comprehensive dashboard for k6 metrics.
       "type": "timeseries",
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, rate(k6_http_req_duration_seconds_bucket[1m]))",
+          "expr": "histogram_quantile(0.50, rate(k6_http_req_duration_seconds[1m]))",
           "legendFormat": "p50"
         },
         {
-          "expr": "histogram_quantile(0.95, rate(k6_http_req_duration_seconds_bucket[1m]))",
+          "expr": "histogram_quantile(0.95, rate(k6_http_req_duration_seconds[1m]))",
           "legendFormat": "p95"
         },
         {
-          "expr": "histogram_quantile(0.99, rate(k6_http_req_duration_seconds_bucket[1m]))",
+          "expr": "histogram_quantile(0.99, rate(k6_http_req_duration_seconds[1m]))",
           "legendFormat": "p99"
         }
       ]
@@ -412,7 +436,7 @@ Create a comprehensive dashboard for k6 metrics.
       "type": "gauge",
       "targets": [
         {
-          "expr": "rate(k6_http_req_failed_total[5m])",
+          "expr": "avg_over_time(k6_http_req_failed_rate[5m])",
           "legendFormat": "Error Rate"
         }
       ]
@@ -428,13 +452,13 @@ Create a comprehensive dashboard for k6 metrics.
 rate(k6_http_reqs_total{name!=""}[1m])
 
 # Average response time
-rate(k6_http_req_duration_seconds_sum[1m]) / rate(k6_http_req_duration_seconds_count[1m])
+histogram_avg(rate(k6_http_req_duration_seconds[1m]))
 
 # 95th percentile response time
-histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds_bucket[1m])) by (le))
+histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds[1m])))
 
 # Error rate percentage
-100 * rate(k6_http_req_failed_total[1m]) / rate(k6_http_reqs_total[1m])
+100 * avg_over_time(k6_http_req_failed_rate[1m])
 
 # Active virtual users
 k6_vus
@@ -456,7 +480,7 @@ groups:
   - name: k6-load-test-alerts
     rules:
       - alert: K6HighErrorRate
-        expr: rate(k6_http_req_failed_total[5m]) / rate(k6_http_reqs_total[5m]) > 0.05
+        expr: avg_over_time(k6_http_req_failed_rate[5m]) > 0.05
         for: 2m
         labels:
           severity: critical
@@ -465,7 +489,7 @@ groups:
           description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
 
       - alert: K6SlowResponseTime
-        expr: histogram_quantile(0.95, rate(k6_http_req_duration_seconds_bucket[5m])) > 1
+        expr: histogram_quantile(0.95, rate(k6_http_req_duration_seconds[5m])) > 1
         for: 5m
         labels:
           severity: warning
@@ -522,7 +546,7 @@ rate(k6_http_reqs_total[1m])
 
 # k6 response time vs database query time
 # Panel 1: k6 p95 latency
-histogram_quantile(0.95, rate(k6_http_req_duration_seconds_bucket[1m]))
+histogram_quantile(0.95, rate(k6_http_req_duration_seconds[1m]))
 
 # Panel 2: Database query p95 latency
 histogram_quantile(0.95, rate(db_query_duration_seconds_bucket[1m]))
@@ -548,6 +572,7 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--web.enable-remote-write-receiver'
+      - '--enable-feature=native-histograms'
       - '--storage.tsdb.retention.time=30d'
 
   grafana:
@@ -571,8 +596,8 @@ volumes:
 global:
   scrape_interval: 15s
 
-remote_write:
-  - url: "http://prometheus:9090/api/v1/write"
+rule_files:
+  - /etc/prometheus/alerts.yml
 
 scrape_configs:
   - job_name: 'prometheus'
@@ -583,11 +608,12 @@ scrape_configs:
 Run k6 against this stack:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 
+K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write \
+K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true \
 k6 run \
   --out experimental-prometheus-rw \
-  -e K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write \
   script.js
 ```
 
