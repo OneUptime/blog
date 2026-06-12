@@ -40,8 +40,8 @@ Setting up clients correctly is the foundation of a working SSO implementation. 
 
 ### Creating an OIDC Client
 
-```json
-// Keycloak client configuration (JSON export format)
+```jsonc
+// Keycloak client configuration (JSON-style export excerpt; remove comments before importing)
 {
   "clientId": "my-web-application",
   "name": "My Web Application",
@@ -310,7 +310,7 @@ def saml_logout():
 | Feature | OIDC | SAML |
 |---------|------|------|
 | Token Format | JWT (JSON) | XML Assertion |
-| Transport | REST/JSON | SOAP/XML |
+| Transport | HTTPS redirects and JSON endpoints | HTTP Redirect/POST, HTTP Artifact, or SOAP bindings |
 | Mobile Support | Excellent | Limited |
 | API Authorization | Built-in (OAuth 2.0) | Requires additional work |
 | Implementation Complexity | Lower | Higher |
@@ -325,7 +325,7 @@ Identity brokering allows Keycloak to delegate authentication to external identi
 
 ### Configuring an External OIDC Provider
 
-```json
+```jsonc
 // Identity Provider configuration for Google
 {
   "alias": "google",
@@ -354,7 +354,7 @@ Identity brokering allows Keycloak to delegate authentication to external identi
 
 ### Configuring an External SAML Provider
 
-```json
+```jsonc
 // Identity Provider configuration for corporate ADFS
 {
   "alias": "corporate-adfs",
@@ -389,7 +389,7 @@ Identity brokering allows Keycloak to delegate authentication to external identi
 
 When users authenticate via external providers, you need to map their attributes to Keycloak user attributes.
 
-```json
+```jsonc
 // Mapper configuration for external provider
 {
   "name": "email-mapper",
@@ -430,12 +430,18 @@ public String linkAccount(@PathVariable String provider,
     KeycloakSecurityContext context = getKeycloakSecurityContext(request);
 
     // Build the account link URL
+    // Legacy client-initiated account linking requires a hash generated from:
+    // nonce + token.getSessionState() + token.getIssuedFor() + provider
+    String nonce = generateNonce();
+    String hash = generateAccountLinkHash(context.getToken(), nonce, provider);
+
     String linkUrl = KeycloakUriBuilder
         .fromUri(context.getDeployment().getAuthServerBaseUrl())
         .path("/realms/{realm}/broker/{provider}/link")
         .queryParam("client_id", context.getDeployment().getResourceName())
         .queryParam("redirect_uri", getRedirectUri(request))
-        .queryParam("nonce", generateNonce())
+        .queryParam("nonce", nonce)
+        .queryParam("hash", hash)
         .build(context.getRealm(), provider)
         .toString();
 
@@ -451,7 +457,7 @@ Proper session management is critical for security and user experience in SSO im
 
 ### Session Configuration
 
-```json
+```jsonc
 // Realm session settings
 {
   "ssoSessionIdleTimeout": 1800,
@@ -580,6 +586,16 @@ public class SessionAuditEventListener implements EventListenerProvider {
         }
     }
 
+    @Override
+    public void onEvent(AdminEvent event, boolean includeRepresentation) {
+        // Ignore admin events for this listener.
+    }
+
+    @Override
+    public void close() {
+        // Nothing to close.
+    }
+
     private void checkBruteForce(Event event) {
         // Implementation for brute force detection
     }
@@ -619,11 +635,16 @@ app.post('/backchannel-logout', express.urlencoded({ extended: true }), (req, re
       issuer: 'https://keycloak.example.com/realms/my-realm'
     });
 
-    // Extract session ID from the token
-    const sessionId = decoded.sid;
+    // Extract the OIDC session ID from the token
+    const oidcSessionId = decoded.sid;
 
-    // Invalidate the local session
-    sessionStore.destroy(sessionId, (err) => {
+    // Look up and invalidate the local application session associated with this OIDC session
+    const localSessionId = sessionIndex.get(oidcSessionId);
+    if (!localSessionId) {
+      return res.status(200).send();
+    }
+
+    sessionStore.destroy(localSessionId, (err) => {
       if (err) {
         console.error('Failed to destroy session:', err);
         return res.status(500).send();
@@ -767,7 +788,7 @@ class LogoutCoordinator:
 
 ### Development Best Practices
 
-1. **Use official adapters** - Leverage Keycloak adapters instead of building custom solutions
+1. **Use supported libraries** - Leverage maintained OIDC/SAML libraries or supported Keycloak adapters instead of building custom protocol implementations
 2. **Implement silent token refresh** - Prevent session interruptions for users
 3. **Handle token expiration gracefully** - Show appropriate UI when re-authentication is needed
 4. **Test with multiple identity providers** - Verify your flows work with all configured IdPs
