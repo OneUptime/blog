@@ -54,10 +54,13 @@ Key metrics exposed by Velero:
 
 ```text
 # Backup metrics
-velero_backup_total                    # Total number of backups
+velero_backup_total                    # Current number of existing backups
+velero_backup_attempt_total            # Total attempted backups
 velero_backup_success_total            # Successful backups
 velero_backup_partial_failure_total    # Partially failed backups
 velero_backup_failure_total            # Failed backups
+velero_backup_last_status              # Last backup status by schedule
+velero_backup_last_successful_timestamp # Last successful backup time by schedule
 velero_backup_duration_seconds         # Backup duration histogram
 velero_backup_items_total              # Items backed up per backup
 velero_backup_tarball_size_bytes       # Size of backup tarball
@@ -73,7 +76,7 @@ velero_volume_snapshot_success_total   # Successful volume snapshots
 velero_volume_snapshot_failure_total   # Failed volume snapshots
 
 # Storage location metrics
-velero_backup_storage_location_available  # BSL availability status
+velero_backup_location_status_gauge    # BSL availability status
 ```
 
 ## Configuring Prometheus to Scrape Velero
@@ -160,7 +163,7 @@ Create a comprehensive Grafana dashboard for Velero monitoring.
         "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
         "targets": [
           {
-            "expr": "sum(increase(velero_backup_success_total[24h])) / sum(increase(velero_backup_total[24h])) * 100",
+            "expr": "sum(increase(velero_backup_success_total[24h])) / sum(increase(velero_backup_attempt_total[24h])) * 100",
             "legendFormat": "Success Rate"
           }
         ],
@@ -207,11 +210,11 @@ Create a comprehensive Grafana dashboard for Velero monitoring.
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
         "targets": [
           {
-            "expr": "increase(velero_backup_failure_total[1d])",
+            "expr": "increase(velero_backup_failure_total[7d])",
             "legendFormat": "Failures"
           },
           {
-            "expr": "increase(velero_backup_partial_failure_total[1d])",
+            "expr": "increase(velero_backup_partial_failure_total[7d])",
             "legendFormat": "Partial Failures"
           }
         ]
@@ -222,8 +225,8 @@ Create a comprehensive Grafana dashboard for Velero monitoring.
         "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
         "targets": [
           {
-            "expr": "velero_backup_storage_location_available",
-            "legendFormat": "{{name}}"
+            "expr": "velero_backup_location_status_gauge",
+            "legendFormat": "{{backup_location_name}}"
           }
         ],
         "fieldConfig": {
@@ -244,19 +247,19 @@ Create a comprehensive Grafana dashboard for Velero monitoring.
 
 ```mermaid
 graph TB
-    subgraph Row 1 - Overview
+    subgraph "Row 1 - Overview"
         A[Backup Success Rate]
         B[BSL Status]
         C[Active Backups]
         D[Storage Used]
     end
 
-    subgraph Row 2 - Trends
+    subgraph "Row 2 - Trends"
         E[Backup Duration Over Time]
         F[Backup Size Over Time]
     end
 
-    subgraph Row 3 - Details
+    subgraph "Row 3 - Details"
         G[Recent Backup Status Table]
         H[Failed Backup Logs]
     end
@@ -281,13 +284,13 @@ spec:
       rules:
         # Alert when backup storage location is unavailable
         - alert: VeleroBackupStorageLocationUnavailable
-          expr: velero_backup_storage_location_available == 0
+          expr: velero_backup_location_status_gauge == 0
           for: 5m
           labels:
             severity: critical
           annotations:
             summary: "Velero backup storage location unavailable"
-            description: "Backup storage location {{ $labels.name }} has been unavailable for 5 minutes. Backups cannot be stored."
+            description: "Backup storage location {{ $labels.backup_location_name }} has been unavailable for 5 minutes. Backups cannot be stored."
 
         # Alert when no successful backups in 24 hours
         - alert: VeleroNoRecentBackup
@@ -336,7 +339,7 @@ spec:
           expr: |
             (
               sum(increase(velero_backup_success_total[24h])) /
-              sum(increase(velero_backup_total[24h]))
+              sum(increase(velero_backup_attempt_total[24h]))
             ) < 0.9
           for: 1h
           labels:
@@ -366,7 +369,7 @@ spec:
         - record: velero:backup_success_rate:24h
           expr: |
             sum(increase(velero_backup_success_total[24h])) /
-            sum(increase(velero_backup_total[24h]))
+            sum(increase(velero_backup_attempt_total[24h]))
 
         # Track backup duration by schedule
         - record: velero:backup_duration_seconds:p95_1h
@@ -449,12 +452,12 @@ route:
   group_by: ['alertname']
   receiver: 'velero-slack'
   routes:
-    - match:
-        alertname: VeleroBackupFailed
+    - matchers:
+        - alertname="VeleroBackupFailed"
       receiver: 'velero-slack'
       repeat_interval: 1h
-    - match:
-        alertname: VeleroBackupStorageLocationUnavailable
+    - matchers:
+        - alertname="VeleroBackupStorageLocationUnavailable"
       receiver: 'velero-slack'
       repeat_interval: 15m
 ```
@@ -527,8 +530,8 @@ velero backup-location get
 # View backup schedules and their last run
 velero schedule get
 
-# Quick metrics check
-kubectl exec -n velero deployment/velero -- wget -qO- http://localhost:8085/metrics | grep velero_backup_success_total
+# Quick metrics check after starting the port-forward shown earlier
+curl http://localhost:8085/metrics | grep velero_backup_success_total
 
 # Check for any failed backups in last 24h
 velero backup get --selector velero.io/schedule-name=daily-backup | grep -E "Failed|PartiallyFailed"
