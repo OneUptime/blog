@@ -8,9 +8,9 @@ Description: A comprehensive guide to Rust's memory safety guarantees, covering 
 
 ---
 
-> "Memory safety bugs are responsible for approximately 70% of all security vulnerabilities in systems software. Rust eliminates entire classes of these bugs at compile time, not runtime." - Microsoft Security Response Center
+> Microsoft Security Response Center has reported that roughly 70% of the security issues it assigns CVEs to are memory safety issues, and that Rust can prevent many of these issues in safe code.
 
-Rust's memory safety guarantees are revolutionary. Unlike C and C++ where memory bugs lurk in production for years, Rust catches them before your code even compiles. This guide covers how Rust's ownership system works and how to leverage it for writing safe, concurrent, high-performance code.
+Rust's memory safety guarantees are revolutionary. Unlike C and C++ where memory bugs can lurk in production for years, Rust catches many of them before your code even compiles. This guide covers how Rust's ownership system works and how to leverage it for writing safe, concurrent, high-performance code.
 
 ## Understanding Rust's Memory Model
 
@@ -249,11 +249,11 @@ struct ImportantExcerpt<'a> {
 }
 
 impl<'a> ImportantExcerpt<'a> {
-    // This method returns a reference with the same lifetime as self
+    // This method returns a reference tied to the borrow of self
     // Lifetime elision Rule 3 applies here
     fn announce_and_return_part(&self, announcement: &str) -> &str {
         println!("Attention please: {}", announcement);
-        self.part // Returns reference with lifetime 'a
+        self.part
     }
 }
 
@@ -276,19 +276,35 @@ fn main() {
 // static_lifetime.rs
 // 'static lifetime means the reference lives for the entire program
 
-// String literals have 'static lifetime - they're stored in the binary
-let s: &'static str = "I have a static lifetime.";
+fn string_literal_example() {
+    // String literals have 'static lifetime - they're stored in the binary
+    let s: &'static str = "I have a static lifetime.";
+    println!("{}", s);
+}
 
 // Be careful with 'static - it's often not what you want
 // This is a common mistake:
 fn bad_idea() -> &'static str {
-    let s = String::from("hello");
+    let _s = String::from("hello");
     // &s // ERROR: cannot return reference to local variable
     "Use string literal instead" // This works - it's truly 'static
 }
 
 // When 'static is appropriate: global configuration
 use std::sync::LazyLock;
+
+struct Config {
+    database_url: String,
+}
+
+impl Config {
+    fn load_from_env() -> Config {
+        Config {
+            database_url: std::env::var("DATABASE_URL")
+                .unwrap_or_else(|_| String::from("postgres://localhost/mydb")),
+        }
+    }
+}
 
 static CONFIG: LazyLock<Config> = LazyLock::new(|| {
     Config::load_from_env()
@@ -347,7 +363,7 @@ fn process_large_data() {
     // Without Box: 1MB on the stack (might cause stack overflow)
     // let big_array = [0u8; 1_000_000];
 
-    // With Box: 1MB on the heap, only 8-byte pointer on stack
+    // With Box: 1MB on the heap, only a pointer-sized value on stack
     let big_array: Box<[u8; 1_000_000]> = Box::new([0u8; 1_000_000]);
 
     println!("First byte: {}", big_array[0]);
@@ -410,7 +426,7 @@ fn main() {
     println!("Via clone1: {:?}", data_clone1);
     println!("Via clone2: {:?}", data_clone2);
 
-    // When data_clone2 goes out of scope, count decrements to 2
+    // When data_clone2 is dropped, count decrements to 2
     drop(data_clone2);
     println!("After drop: {}", Rc::strong_count(&data)); // Prints: 2
 } // When all Rc pointers drop, reference count hits 0 and data is deallocated
@@ -568,11 +584,9 @@ graph TB
 // Rust prevents use-after-free at compile time
 
 fn use_after_free_prevented() {
-    let reference;
-
     {
         let data = String::from("hello");
-        // reference = &data; // ERROR: `data` does not live long enough
+        // let reference = &data; // ERROR: `data` does not live long enough
     } // data is freed here
 
     // If the above compiled, reference would point to freed memory
@@ -620,11 +634,11 @@ fn with_clone() {
 }
 ```
 
-### Null Pointer Dereferencing Prevention
+### Null Reference Dereferencing Prevention
 
 ```rust
 // null_prevention.rs
-// Rust has no null - uses Option<T> instead
+// Safe Rust references are non-null - use Option<T> for optional values
 
 fn null_prevented() {
     // In C/C++: int* ptr = NULL; *ptr; // Segfault!
@@ -695,9 +709,9 @@ fn buffer_overflow_prevented() {
         println!("Index out of bounds - handled safely");
     }
 
-    // Direct indexing panics on out-of-bounds (controlled crash, not UB!)
+    // Direct indexing panics on out-of-bounds (controlled failure, not UB!)
     // let value = buffer[10]; // PANIC: index out of bounds
-    // Panic is safe - no memory corruption, no security vulnerability
+    // Panic is memory safe - no memory corruption occurs
 
     // Safe iteration - can't go out of bounds
     for value in &buffer {
@@ -1041,7 +1055,7 @@ flowchart TD
 
 Rust's memory safety guarantees come from its ownership system, not a garbage collector. This approach provides:
 
-- **Zero-cost abstractions** - Safety without runtime overhead
+- **Zero-cost ownership abstractions** - Many safety guarantees without a garbage collector
 - **No null pointer exceptions** - Option type makes absence explicit
 - **No data races** - Compiler prevents concurrent mutation bugs
 - **Predictable resource management** - RAII with Drop trait ensures cleanup
