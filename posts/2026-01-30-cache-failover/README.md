@@ -22,7 +22,7 @@ A well-designed cache failover strategy ensures your application continues servi
 | --- | --- | --- | --- |
 | **Fallback to Source** | Simple applications with fast backends | Immediate | Low |
 | **Multi-tier Caching** | Read-heavy workloads needing low latency | Sub-second | Medium |
-| **Cache Replication** | Mission-critical data requiring zero downtime | Zero | High |
+| **Cache Replication** | Mission-critical data requiring near-zero downtime with automatic failover | Near-zero | High |
 | **Circuit Breaker** | Protecting backends from thundering herd | Configurable | Medium |
 | **Local + Remote** | Distributed systems with variable latency | Sub-second | Medium |
 
@@ -36,7 +36,8 @@ flowchart TD
     B -->|Hit| A
     B -->|Miss| C{L2 Cache\nRedis Primary}
     C -->|Hit| B
-    C -->|Miss/Failure| D{Redis Replica}
+    C -->|Failure| D{Redis Replica}
+    C -->|Miss| E[Database]
     D -->|Hit| B
     D -->|Miss/Failure| E[Database]
     E --> B
@@ -54,11 +55,10 @@ The simplest failover pattern catches cache errors and falls back directly to th
 The following TypeScript implementation wraps cache operations in try-catch blocks and logs failures for monitoring.
 
 ```typescript
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 class CacheWithFallback {
   private redis: Redis;
-  private fallbackEnabled: boolean = true;
 
   constructor(redisUrl: string) {
     this.redis = new Redis(redisUrl);
@@ -101,7 +101,7 @@ class CacheWithFallback {
     ttlSeconds: number
   ): Promise<void> {
     try {
-      await this.redis.setex(key, ttlSeconds, JSON.stringify(data));
+      await this.redis.set(key, JSON.stringify(data), 'EX', ttlSeconds);
     } catch (error) {
       console.warn(`Cache write failed for key ${key}:`, error);
     }
@@ -124,13 +124,12 @@ stateDiagram-v2
     HalfOpen --> Open: Probe fails
 ```
 
-This Python implementation provides a reusable circuit breaker decorator that wraps any cache operation.
+This Python implementation provides a reusable circuit breaker helper that wraps any cache operation.
 
 ```python
 import time
 from enum import Enum
-from functools import wraps
-from typing import Callable, TypeVar, Any
+from typing import Callable, TypeVar
 
 T = TypeVar('T')
 
@@ -169,7 +168,7 @@ class CircuitBreaker:
             result = func()
             self._on_success()
             return result
-        except Exception as e:
+        except Exception:
             self._on_failure()
             return fallback()
 
@@ -180,6 +179,8 @@ class CircuitBreaker:
                 # Enough successful probes, close circuit
                 self.state = CircuitState.CLOSED
                 self.failure_count = 0
+        else:
+            self.failure_count = 0
 
     def _on_failure(self) -> None:
         self.failure_count += 1
@@ -200,7 +201,7 @@ For high-traffic applications, combining local in-memory caching with distribute
 The following implementation layers a local LRU cache in front of Redis, with automatic failover between cache tiers.
 
 ```typescript
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { LRUCache } from 'lru-cache';
 
 interface CacheConfig {
@@ -214,6 +215,7 @@ class MultiTierCache {
   private localCache: LRUCache<string, string>;
   private remoteCaches: Redis[];
   private activeRemoteIndex: number = 0;
+  private defaultRemoteTtlSeconds: number;
 
   constructor(config: CacheConfig) {
     // L1: In-process LRU cache
@@ -221,6 +223,7 @@ class MultiTierCache {
       max: config.localMaxSize,
       ttl: config.localTtlMs,
     });
+    this.defaultRemoteTtlSeconds = config.remoteTtlSeconds;
 
     // L2: Multiple Redis instances for failover
     this.remoteCaches = config.remoteUrls.map(url => {
@@ -259,8 +262,9 @@ class MultiTierCache {
     return null;
   }
 
-  async set<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
+  async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
     const serialized = JSON.stringify(value);
+    const remoteTtlSeconds = ttlSeconds ?? this.defaultRemoteTtlSeconds;
 
     // Always update L1
     this.localCache.set(key, serialized);
@@ -268,14 +272,19 @@ class MultiTierCache {
     // Update L2 with best-effort writes to all replicas
     const writePromises = this.remoteCaches.map(async (cache, index) => {
       try {
-        await cache.setex(key, ttlSeconds, serialized);
+        await cache.set(key, serialized, 'EX', remoteTtlSeconds);
       } catch (error) {
         console.warn(`Failed to write to remote cache ${index}`);
+        throw error;
       }
     });
 
     // Wait for at least one write to succeed
-    await Promise.race(writePromises);
+    try {
+      await Promise.any(writePromises);
+    } catch (error) {
+      console.warn('Failed to write to any remote cache');
+    }
   }
 }
 ```
