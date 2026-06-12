@@ -49,7 +49,7 @@ graph TB
     AM1 --> EMAIL
 ```
 
-The cluster elects a leader for each alert group, and only that leader sends notifications. If the leader fails, another instance takes over automatically.
+Each peer in the cluster has a position determined by the sorted order of peer names. When a notification needs to be sent, peers stagger their sends based on this position (the peer at position 0 sends first, others wait proportionally). After sending, the peer gossips this state to its neighbors so they don't send duplicates. If the first peer fails or is slow, the next peer in position order sends instead.
 
 ## 1. Configure the First Alertmanager Instance
 
@@ -377,19 +377,19 @@ curl -X POST http://alertmanager-2.example.com:9093/api/v2/alerts \
 For geographically distributed clusters or high-latency networks, adjust these settings:
 
 ```bash
+# Tune cluster settings for high-latency / WAN networks:
+#   --cluster.gossip-interval   (default 200ms) - increase for high-latency networks
+#   --cluster.pushpull-interval (default 1m)    - increase for WAN clusters
+#   --cluster.probe-timeout     (default 500ms) - increase for slower networks
+#   --cluster.probe-interval    (default 1s)    - how often to probe peers
+#   --cluster.tcp-timeout       (default 10s)   - TCP timeout for peer connections
 alertmanager \
   --config.file=/etc/alertmanager/alertmanager.yml \
-  # Increase gossip interval for high-latency networks
   --cluster.gossip-interval=500ms \
-  # Increase pushpull interval for WAN clusters
   --cluster.pushpull-interval=2m \
-  # Increase probe timeout for slower networks
   --cluster.probe-timeout=1s \
-  # Increase probe interval
   --cluster.probe-interval=2s \
-  # Set TCP timeout for peer connections
   --cluster.tcp-timeout=15s \
-  # Other standard flags...
   --cluster.listen-address="0.0.0.0:9094" \
   --cluster.peer="alertmanager-1.example.com:9094"
 ```
