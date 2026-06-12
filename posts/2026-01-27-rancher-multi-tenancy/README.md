@@ -51,7 +51,7 @@ Projects are Rancher-specific constructs that group multiple Kubernetes namespac
 
 ### Creating a Project
 
-Use the Rancher API or UI to create projects. Here is an example using kubectl with the Rancher CRD:
+Use the Rancher API or UI to create projects. Here is an example using `kubectl create` with the Rancher CRD:
 
 ```yaml
 # project.yaml
@@ -72,7 +72,7 @@ spec:
   description: "Production workloads for Team Alpha"
   # Cluster ID where this project will be created
   clusterName: c-m-xxxxxxxx
-  # Enable project network isolation (requires compatible CNI)
+  # Enable project monitoring for this project
   enableProjectMonitoring: true
   # Container default resource limit (applied to pods without limits)
   containerDefaultResourceLimit:
@@ -147,7 +147,7 @@ done
 echo "Namespaces created successfully for tenant: $TENANT_NAME"
 ```
 
-Resource Quotas
+## Resource Quotas
 
 Resource quotas ensure fair resource distribution among tenants and prevent any single tenant from consuming all cluster resources.
 
@@ -265,7 +265,7 @@ spec:
         storage: "1Gi"          # Minimum PVC size
 ```
 
-Resource Quota Monitoring Dashboard
+### Resource Quota Monitoring Dashboard
 
 ```mermaid
 flowchart LR
@@ -369,26 +369,7 @@ spec:
 
 ### Project-Level Network Isolation
 
-Rancher can automatically create network policies for project isolation:
-
-```yaml
-# project-network-policy.yaml
-# Rancher's project network isolation feature
-# Automatically isolates projects from each other
-apiVersion: management.cattle.io/v3
-kind: Project
-metadata:
-  name: p-team-alpha
-  namespace: c-m-xxxxxxxx
-spec:
-  displayName: "Team Alpha"
-  # Enable automatic network policy generation
-  # This creates policies that only allow traffic within the project
-  resourceQuota:
-    limit:
-      limitsCpu: "8000m"
-      limitsMemory: "16Gi"
-```
+Rancher can automatically create network policies for project isolation when Project Network Isolation is enabled at the cluster level. Enable this option from the Rancher cluster configuration for clusters whose CNI supports Kubernetes NetworkPolicy enforcement, such as Canal. This is not configured on the `Project` resource itself.
 
 ### Cross-Project Communication Policy
 
@@ -465,23 +446,22 @@ apiVersion: management.cattle.io/v3
 kind: GlobalRole
 metadata:
   name: tenant-admin
-spec:
-  displayName: "Tenant Administrator"
-  description: "Can manage assigned projects and users within those projects"
-  # Rules define what actions are permitted
-  rules:
-    # Allow managing projects
-    - apiGroups: ["management.cattle.io"]
-      resources: ["projects"]
-      verbs: ["get", "list", "watch", "create", "update", "delete"]
-    # Allow managing project members
-    - apiGroups: ["management.cattle.io"]
-      resources: ["projectroletemplatebindings"]
-      verbs: ["get", "list", "watch", "create", "update", "delete"]
-    # Allow viewing clusters (read-only)
-    - apiGroups: ["management.cattle.io"]
-      resources: ["clusters"]
-      verbs: ["get", "list", "watch"]
+displayName: "Tenant Administrator"
+description: "Can manage assigned projects and users within those projects"
+# Rules define what actions are permitted
+rules:
+  # Allow managing projects
+  - apiGroups: ["management.cattle.io"]
+    resources: ["projects"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  # Allow managing project members
+  - apiGroups: ["management.cattle.io"]
+    resources: ["projectroletemplatebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  # Allow viewing clusters (read-only)
+  - apiGroups: ["management.cattle.io"]
+    resources: ["clusters"]
+    verbs: ["get", "list", "watch"]
 ```
 
 ### Project Role Templates
@@ -493,29 +473,28 @@ apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: project-developer
-spec:
-  displayName: "Project Developer"
-  description: "Can deploy and manage applications within the project"
-  # Context determines where this role can be applied
-  context: project
-  # Rules specify permitted actions
-  rules:
-    # Full access to deployments
-    - apiGroups: ["apps"]
-      resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
-      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-    # Full access to core resources
-    - apiGroups: [""]
-      resources: ["pods", "services", "configmaps", "secrets", "persistentvolumeclaims"]
-      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-    # Read-only access to events and logs
-    - apiGroups: [""]
-      resources: ["events", "pods/log"]
-      verbs: ["get", "list", "watch"]
-    # Access to ingresses
-    - apiGroups: ["networking.k8s.io"]
-      resources: ["ingresses"]
-      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+displayName: "Project Developer"
+description: "Can deploy and manage applications within the project"
+# Context determines where this role can be applied
+context: project
+# Rules specify permitted actions
+rules:
+  # Full access to deployments
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Full access to core resources
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Read-only access to events and logs
+  - apiGroups: [""]
+    resources: ["events", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  # Access to ingresses
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ```
 
 ### Project Role Bindings
@@ -528,17 +507,17 @@ kind: ProjectRoleTemplateBinding
 metadata:
   # Generate unique name
   generateName: prtb-
-  namespace: p-team-alpha
-spec:
-  # Reference to the project
-  projectName: "c-m-xxxxxxxx:p-team-alpha"
-  # Role template to assign
-  roleTemplateName: project-developer
-  # User or group to bind (choose one)
-  # For individual user:
-  userPrincipalName: "local://user-xxxxx"
-  # For group (from external auth provider):
-  # groupPrincipalName: "github_org://myorg/team-alpha-devs"
+  # Use the project's backing namespace from status.backingNamespace
+  namespace: c-m-xxxxxxxx-p-team-alpha
+# Reference to the project
+projectName: "c-m-xxxxxxxx:p-team-alpha"
+# Role template to assign
+roleTemplateName: project-developer
+# User or group to bind (choose one)
+# For individual user:
+userPrincipalName: "local://user-xxxxx"
+# For group (from external auth provider):
+# groupPrincipalName: "github_org://myorg/team-alpha-devs"
 ```
 
 ### Authentication Provider Integration
@@ -550,13 +529,16 @@ apiVersion: management.cattle.io/v3
 kind: AuthConfig
 metadata:
   name: github
-spec:
-  enabled: true
-  # GitHub organization for access control
-  allowedPrincipalIds:
-    - "github_org://mycompany"
-  # Map GitHub teams to Rancher roles
-  # This is typically done via the UI or additional CRDs
+enabled: true
+type: githubConfig
+hostname: github.com
+clientId: "<github-oauth-app-client-id>"
+clientSecret: "<github-oauth-app-client-secret>"
+# GitHub organization for access control
+allowedPrincipalIds:
+  - "github_org://mycompany"
+# Map GitHub teams to Rancher roles
+# This is typically done via the UI or additional CRDs
 ```
 
 ### User Access Flow
@@ -627,7 +609,7 @@ Here is a complete example that brings all components together for a new tenant:
 apiVersion: management.cattle.io/v3
 kind: Project
 metadata:
-  generateName: p-
+  name: p-acme-corporation
   namespace: c-m-xxxxxxxx
 spec:
   displayName: "Acme Corporation"
@@ -662,18 +644,24 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: acme-production
+  annotations:
+    field.cattle.io/projectId: "c-m-xxxxxxxx:p-acme-corporation"
   labels:
     tenant: acme
     environment: production
+    field.cattle.io/projectId: "p-acme-corporation"
 ---
 # 3. Create Staging Namespace
 apiVersion: v1
 kind: Namespace
 metadata:
   name: acme-staging
+  annotations:
+    field.cattle.io/projectId: "c-m-xxxxxxxx:p-acme-corporation"
   labels:
     tenant: acme
     environment: staging
+    field.cattle.io/projectId: "p-acme-corporation"
 ---
 # 4. Default Deny Network Policy for Production
 apiVersion: networking.k8s.io/v1
@@ -790,7 +778,7 @@ EOF
 
 # Create the project
 echo "Creating project..."
-kubectl apply -f /tmp/${TENANT_NAME}-project.yaml
+kubectl create -f /tmp/${TENANT_NAME}-project.yaml
 
 # Wait for project to be ready
 sleep 5
