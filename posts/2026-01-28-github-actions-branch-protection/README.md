@@ -65,7 +65,7 @@ Enable **Do not allow bypassing the above settings** if you want admins to follo
 ## Common Pitfalls
 
 - Workflow name changes can break required checks.
-- Skipped jobs can fail required status checks.
+- Workflows skipped by path filters, branch filters, or commit messages can leave required checks pending.
 - Checks must run on `pull_request`, not only on `push`.
 
 ## Best Practices
