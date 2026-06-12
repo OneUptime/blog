@@ -39,8 +39,6 @@ stateDiagram-v2
     Pending --> Inactive: Condition False
     Pending --> Firing: For Duration Elapsed
     Firing --> Inactive: Condition False
-    Firing --> Resolved: Condition False (with resolve delay)
-    Resolved --> [*]
 
     note right of Pending
         Alert waits here for
@@ -95,7 +93,7 @@ global:
   evaluation_interval: 15s
 
   # How often Prometheus scrapes metrics from targets
-  # This should be <= evaluation_interval
+  # This is often set equal to or shorter than evaluation_interval
   scrape_interval: 15s
 ```
 
@@ -215,7 +213,7 @@ groups:
             sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
             /
             sum(rate(http_requests_total[5m])) by (service)
-          ) > 0.05
+          ) * 100 > 5
         # 5 minutes filters deployment-related errors
         # while still catching persistent issues quickly
         for: 5m
@@ -307,9 +305,7 @@ groups:
       # This helps identify flapping conditions
       - alert: AlertPendingTooLong
         expr: |
-          (
-            time() - ALERTS_FOR_STATE{alertstate="pending"}
-          ) > 3600
+          min_over_time(ALERTS{alertstate="pending"}[1h]) == 1
         for: 5m
         labels:
           severity: info
@@ -393,8 +389,8 @@ groups:
         expr: |
           (
             # Outside business hours
-            not (hour() >= 9 and hour() < 18
-                 and day_of_week() >= 1 and day_of_week() <= 5)
+            hour() < 9 or hour() >= 18
+            or day_of_week() == 0 or day_of_week() == 6
           )
           and
           (
@@ -452,8 +448,8 @@ Configure Alertmanager to handle alerts based on their duration and severity:
 ```yaml
 # alertmanager.yml
 global:
-  # How long to wait before sending a notification
-  # after an alert starts firing
+  # How long to wait before resolving alerts from clients that do not send EndsAt.
+  # This has no impact on alerts from Prometheus, which include EndsAt.
   resolve_timeout: 5m
 
   smtp_smarthost: 'smtp.example.com:587'
@@ -475,8 +471,8 @@ route:
 
   routes:
     # Critical alerts: Notify immediately
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'pagerduty-critical'
       # Shorter group wait for critical alerts
       group_wait: 10s
@@ -484,8 +480,8 @@ route:
       repeat_interval: 1h
 
     # Warning alerts: Batch and send less frequently
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'slack-warnings'
       group_wait: 1m
       group_interval: 10m
@@ -498,7 +494,7 @@ receivers:
 
   - name: 'pagerduty-critical'
     pagerduty_configs:
-      - service_key: '<your-pagerduty-key>'
+      - routing_key: '<your-pagerduty-integration-key>'
         severity: critical
 
   - name: 'slack-warnings'
@@ -557,16 +553,16 @@ groups:
       # Out of memory
       - alert: OutOfMemory
         expr: |
-          (
+          100 * (
             node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
-          ) < 0.05
+          ) < 5
         for: 2m
         labels:
           severity: critical
           team: infrastructure
         annotations:
           summary: "Out of memory on {{ $labels.instance }}"
-          description: "Less than 5% memory available for {{ $value | printf \"%.0f\" }} seconds"
+          description: "Only {{ $value | printf \"%.2f\" }}% memory available"
 
   # Medium-priority infrastructure alerts
   - name: infrastructure_warning
@@ -587,11 +583,11 @@ groups:
       # Disk space warning
       - alert: DiskSpaceLow
         expr: |
-          (
+          100 * (
             node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}
             /
             node_filesystem_size_bytes
-          ) < 0.15
+          ) < 15
         for: 15m
         labels:
           severity: warning
@@ -611,11 +607,11 @@ groups:
       # Service error rate
       - alert: HighErrorRate
         expr: |
-          (
+          100 * (
             sum by(service) (rate(http_requests_total{status=~"5.."}[5m]))
             /
             sum by(service) (rate(http_requests_total[5m]))
-          ) > 0.01
+          ) > 1
         for: 5m
         labels:
           severity: warning
@@ -730,9 +726,13 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: critical
+              team: infrastructure
+              job: node
               instance: server1:9100
             exp_annotations:
               summary: "Node server1:9100 is down"
+              description: "Node has been unreachable for more than 1 minute"
+              runbook_url: "https://wiki.example.com/runbooks/node-down"
 ```
 
 ---
@@ -777,16 +777,16 @@ groups:
     rules:
       - alert: QuickAlert
         expr: some_metric > 100
-        for: 1m  # Can never fire! Checked only every 5m
+        for: 1m  # May not fire until the next 5m evaluation
 
-# GOOD: Evaluation interval shorter than for duration
+# GOOD: Evaluation interval aligned with the desired detection time
 groups:
   - name: good_config
     interval: 15s  # Frequent evaluation
     rules:
       - alert: QuickAlert
         expr: some_metric > 100
-        for: 1m  # Will fire after 4+ evaluations
+        for: 1m  # Will fire shortly after the condition is true for 1m
 ```
 
 ---
