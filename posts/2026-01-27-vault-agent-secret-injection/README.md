@@ -632,7 +632,7 @@ def get_static_secret():
 # Generate and render PKI certificates
 
 {{- with pkiCert "pki/issue/webapp" "common_name=webapp.example.com" "ttl=24h" -}}
-# Certificate (valid until {{ .Cert.NotAfter }})
+# Certificate (PEM)
 {{ .Cert }}
 # Private Key
 {{ .Key }}
@@ -705,7 +705,8 @@ DATABASE_URL=postgresql://{{ .Data.data.username }}:{{ .Data.data.password }}@st
 
 {
   "api_keys": {
-{{- range $i, $service := slice "stripe" "twilio" "sendgrid" }}
+{{- $services := split "," "stripe,twilio,sendgrid" -}}
+{{- range $i, $service := $services }}
 {{- with secret (printf "secret/data/api-keys/%s" $service) }}
     "{{ $service }}": "{{ .Data.data.api_key }}"{{ if lt $i 2 }},{{ end }}
 {{- end }}
