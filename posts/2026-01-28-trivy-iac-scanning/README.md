@@ -46,9 +46,9 @@ brew install trivy
 
 ```bash
 # Install via apt (Debian/Ubuntu)
-sudo apt-get install wget apt-transport-https gnupg lsb-release
-wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+sudo apt-get install wget apt-transport-https gnupg
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
 sudo apt-get update
 sudo apt-get install trivy
 ```
@@ -81,10 +81,18 @@ trivy config main.tf
 ```hcl
 # main.tf - Example with security issues that Trivy will catch
 
-# Issue: S3 bucket without encryption
+# Issue: S3 bucket without public access block
 resource "aws_s3_bucket" "data" {
   bucket = "my-application-data"
-  acl    = "public-read"  # Trivy flags this - public access is risky
+}
+
+resource "aws_s3_bucket_public_access_block" "data" {
+  bucket = aws_s3_bucket.data.id
+
+  block_public_acls       = false  # Trivy flags this - public access is risky
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
 }
 
 # Issue: Security group with overly permissive ingress
@@ -125,11 +133,14 @@ S3 buckets should not be publicly accessible.
 See https://avd.aquasec.com/misconfig/avd-aws-0086
 
 ────────────────────────────────────────────
- main.tf:5
+ main.tf:8
 ────────────────────────────────────────────
    3 │ resource "aws_s3_bucket" "data" {
    4 │   bucket = "my-application-data"
-   5 │   acl    = "public-read"
+   5 │ }
+   6 │
+   7 │ resource "aws_s3_bucket_public_access_block" "data" {
+   8 │   block_public_acls = false
 ────────────────────────────────────────────
 ```
 
@@ -173,7 +184,7 @@ spec:
         image: nginx:latest  # Trivy flags: avoid 'latest' tag
         securityContext:
           privileged: true   # Trivy flags: privileged containers are risky
-          runAsRoot: true    # Trivy flags: running as root is dangerous
+          runAsUser: 0       # Trivy flags: running as root is dangerous
         ports:
         - containerPort: 80
 ```
@@ -290,21 +301,25 @@ on:
 jobs:
   trivy-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Run Trivy IaC scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'config'
           scan-ref: '.'
           severity: 'CRITICAL,HIGH'
           exit-code: '1'  # Fail the build on findings
-          format: 'table'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
 
       - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -354,15 +369,22 @@ format: table
 
 # Misconfiguration scanning options
 misconfiguration:
-  # File patterns to scan
+  # Include passed checks in the output
   include-non-failures: false
 
-  # Skip specific checks by ID
-  skip-checks:
-    - AVD-KSV-0001  # Skip specific check if needed
+  # Misconfiguration scanners to use
+  scanners:
+    - terraform
+    - kubernetes
+    - cloudformation
+    - helm
 
-# Ignore unfixed vulnerabilities
-ignore-unfixed: true
+# Ignore specific check IDs listed in this file
+ignorefile: ".trivyignore"
+
+# Ignore unfixed vulnerabilities when vulnerability scanning is enabled
+vulnerability:
+  ignore-unfixed: true
 ```
 
 Run Trivy with the configuration file:
@@ -399,29 +421,38 @@ Trivy supports custom policies written in Rego for organization-specific require
 
 ```rego
 # policy/custom-checks.rego
-# Custom policy: Require specific tags on all resources
+# Custom policy: Require specific labels on Kubernetes resources
 
-package custom.terraform.required_tags
+# METADATA
+# title: Required application labels
+# description: Kubernetes resources should define required application labels.
+# custom:
+#   id: CUSTOM-KSV-0001
+#   severity: MEDIUM
+#   input:
+#     selector:
+#     - type: kubernetes
+package custom.kubernetes.CUSTOM_KSV_0001
 
-import future.keywords.in
+import data.lib.result
 
-deny[msg] {
-    resource := input.resource[_]
-    not resource.tags.environment
-    msg := sprintf("Resource %s is missing required 'environment' tag", [resource.name])
+deny[res] {
+    not input.metadata.labels.environment
+    msg := sprintf("Resource %s is missing required 'environment' label", [input.metadata.name])
+    res := result.new(msg, input.metadata)
 }
 
-deny[msg] {
-    resource := input.resource[_]
-    not resource.tags.owner
-    msg := sprintf("Resource %s is missing required 'owner' tag", [resource.name])
+deny[res] {
+    not input.metadata.labels.owner
+    msg := sprintf("Resource %s is missing required 'owner' label", [input.metadata.name])
+    res := result.new(msg, input.metadata)
 }
 ```
 
 Run Trivy with custom policies:
 
 ```bash
-trivy config --policy ./policy/ --namespaces custom ./terraform/
+trivy config --config-check ./policy/ --check-namespaces custom ./k8s/
 ```
 
 ---
