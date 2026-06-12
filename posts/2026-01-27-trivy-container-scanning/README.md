@@ -32,12 +32,14 @@ trivy --version
 ### Linux (APT/Debian/Ubuntu)
 
 ```bash
-# Add the Trivy repository GPG key
-sudo apt-get install wget apt-transport-https gnupg lsb-release
-wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+# Install prerequisites
+sudo apt-get install wget gnupg
 
-# Add the Trivy repository to sources list
-echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+# Download the Trivy GPG key and store it as a keyring (apt-key is deprecated)
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+
+# Add the Trivy repository to sources list (use "generic" codename)
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
 
 # Update package list and install Trivy
 sudo apt-get update
@@ -182,7 +184,7 @@ trivy image --ignorefile /path/to/my-ignores.txt my-app:latest
 ### Advanced Ignore Configuration with YAML
 
 ```yaml
-# .trivy.yaml - More powerful ignore configuration
+# .trivyignore.yaml - More powerful ignore configuration
 vulnerabilities:
   - id: CVE-2024-12345
     paths:
@@ -195,8 +197,9 @@ vulnerabilities:
 ```
 
 ```bash
-# Use the YAML configuration file
-trivy image --config .trivy.yaml my-app:latest
+# Use the YAML ignore file via --ignorefile (the YAML format is an experimental
+# alternative to the plain .trivyignore file)
+trivy image --ignorefile .trivyignore.yaml my-app:latest
 ```
 
 ## CI/CD Integration
@@ -324,7 +327,7 @@ pipeline {
                         -v \$PWD:/output \
                         aquasec/trivy:latest image \
                         --format template \
-                        --template "@contrib/html.tpl" \
+                        --template "@/contrib/html.tpl" \
                         --output /output/trivy-report.html \
                         --severity HIGH,CRITICAL \
                         --exit-code 1 \
@@ -470,19 +473,32 @@ trivy image registry.example.com/my-app:latest
 trivy image --username myuser --password mypassword registry.example.com/my-app:latest
 ```
 
-### Using Registry Credentials File
+### Using a Trivy Config File for Registry Credentials
 
 ```bash
-# Create a config file for multiple registries
-# ~/.trivy/config.yaml
+# Trivy reads trivy.yaml from the current working directory by default
+# (or use --config <path> to point at another file)
+# trivy.yaml
 registry:
-  credentials:
-    - registry: "registry.example.com"
-      username: "user1"
-      password: "pass1"
-    - registry: "gcr.io"
-      token: "ya29.example-token"
+  username:
+    - "user1"
+    - "user2"
+  password:
+    - "pass1"
+    - "pass2"
+  token: ""
 ```
+
+```bash
+# Run a scan using the config file in the current directory
+trivy image registry.example.com/my-app:latest
+
+# Or explicitly point at a config file
+trivy image --config ./trivy.yaml registry.example.com/my-app:latest
+```
+
+For per-registry credential pairs, prefer `trivy registry login`, which writes
+credentials to `~/.docker/config.json` and is then picked up automatically.
 
 ## Best Practices Summary
 
