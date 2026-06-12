@@ -65,7 +65,7 @@ In this trace, `payment.process` (150ms) is the largest contributor to latency. 
 
 ## 2. Understanding the Critical Path
 
-The critical path is the longest chain of dependent operations from trace start to end. Optimizing spans off the critical path does not reduce overall latency.
+The critical path is the longest chain of dependent operations from trace start to end. Optimizing spans off the critical path does not reduce overall latency. In real trace data, parent-child relationships tell you nesting, but they do not always prove that sibling spans depend on each other. For precise critical-path analysis, use explicit dependency edges from instrumentation when you have them; otherwise, treat timing-based analysis as an approximation.
 
 ```mermaid
 flowchart LR
@@ -85,13 +85,13 @@ The critical path here is: Auth -> Inventory -> Payment -> Notification = 300ms
 
 Cache Lookup (15ms) runs in parallel with Inventory, so optimizing it to 5ms saves nothing. But cutting Inventory from 80ms to 40ms saves 40ms from the total.
 
-### Critical Path Algorithm
+### Critical Path Approximation
 
-To find the critical path programmatically:
+To approximate the critical path from parent-child span data:
 
 ```typescript
 // critical-path.ts
-// Finds the critical path through a trace by analyzing span dependencies
+// Approximates the critical path through a trace by analyzing span nesting
 
 interface Span {
     spanId: string;
@@ -107,17 +107,11 @@ interface CriticalPathResult {
 }
 
 /**
- * Calculates the critical path through a trace.
- * The critical path is the longest chain of dependent spans
- * that determines the minimum possible trace duration.
+ * Approximates the critical path through a trace tree.
+ * Parent-child span links encode nesting, not every dependency between siblings,
+ * so use this with sequential-chain detection for sibling bottlenecks.
  */
 function findCriticalPath(spans: Span[]): CriticalPathResult {
-    // Build a map for quick span lookup by ID
-    const spanMap = new Map<string, Span>();
-    for (const span of spans) {
-        spanMap.set(span.spanId, span);
-    }
-
     // Build adjacency list: parent -> children
     const children = new Map<string, Span[]>();
     let rootSpan: Span | null = null;
@@ -147,16 +141,16 @@ function findCriticalPath(spans: Span[]): CriticalPathResult {
             return [span];
         }
 
-        // Find child with latest end time (critical child)
-        let criticalChild: Span | null = null;
+        // Find child path with latest end time (critical child branch)
+        let latestPathEndTime = Number.NEGATIVE_INFINITY;
         let criticalPath: Span[] = [];
 
         for (const child of childSpans) {
             const childPath = longestPathFrom(child);
             const pathEndTime = childPath[childPath.length - 1].endTime;
 
-            if (!criticalChild || pathEndTime > criticalChild.endTime) {
-                criticalChild = child;
+            if (pathEndTime > latestPathEndTime) {
+                latestPathEndTime = pathEndTime;
                 criticalPath = childPath;
             }
         }
@@ -188,7 +182,9 @@ const traceSpans: Span[] = [
 const result = findCriticalPath(traceSpans);
 console.log('Critical path spans:', result.path.map(s => s.name));
 // Output: ['HTTP POST /order', 'notification.send']
-// (last span to end determines the critical path leaf)
+// With only parent-child data, this approximation follows the child branch
+// that keeps the parent span open the longest. Detect sequential siblings
+// separately with the sequential-chain detector below.
 ```
 
 ---
@@ -273,7 +269,7 @@ class SpanBaselineTracker {
         }
 
         const sorted = [...samples].sort((a, b) => a - b);
-        const p99Index = Math.floor(sorted.length * 0.99);
+        const p99Index = Math.ceil(sorted.length * 0.99) - 1;
         return sorted[p99Index];
     }
 
@@ -627,7 +623,7 @@ function analyzeBottlenecks(
     config: BottleneckConfig = defaultConfig
 ): BottleneckAnalysis[] {
     // Pre-compute trace-level metrics
-    const traceDuration = computeTraceDuration(spans);
+    const traceDuration = Math.max(computeTraceDuration(spans), 1);
     const criticalPathSpans = new Set(
         findCriticalPath(spans).path.map(s => s.spanId)
     );
@@ -738,8 +734,6 @@ Let's put it all together into a production-ready bottleneck detector class.
 // bottleneck-detector.ts
 // Complete bottleneck detection system for distributed traces
 
-import { trace, context, Span as OtelSpan } from '@opentelemetry/api';
-
 interface TraceData {
     traceId: string;
     spans: Span[];
@@ -762,9 +756,18 @@ class BottleneckDetector {
     private baselineTracker: SpanBaselineTracker;
     private config: BottleneckConfig;
 
-    constructor(config?: Partial<BottleneckConfig>) {
+    constructor(config?: Partial<BottleneckConfig> & {
+        weights?: Partial<BottleneckConfig['weights']>;
+    }) {
         this.baselineTracker = new SpanBaselineTracker();
-        this.config = { ...defaultConfig, ...config };
+        this.config = {
+            ...defaultConfig,
+            ...config,
+            weights: {
+                ...defaultConfig.weights,
+                ...config?.weights
+            }
+        };
     }
 
     /**
