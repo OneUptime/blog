@@ -137,7 +137,7 @@ transport_socket:
 
 ## Certificate Rotation with SDS (Secret Discovery Service)
 
-Static certificates require Envoy restarts for rotation. SDS enables dynamic certificate updates without downtime.
+Static `CommonTlsContext` certificate references do not reload automatically; they require a proxy restart, hot restart, or reloading the listener/cluster that references them. SDS enables dynamic certificate updates without downtime.
 
 ```mermaid
 flowchart LR
@@ -210,7 +210,7 @@ static_resources:
                         grpc_services:
                           - envoy_grpc:
                               cluster_name: sds_cluster
-                      # How often to check for updates
+                      # Use v3 resource type URLs for SDS resources
                       resource_api_version: V3
 
   clusters:
@@ -265,7 +265,7 @@ transport_socket:
             # Path-based config source watches files for changes
             path_config_source:
               path: /etc/envoy/sds/server_cert.yaml
-              # Watch for changes every 5 seconds
+              # Trigger reloads from updates in this directory
               watched_directory:
                 path: /etc/envoy/sds
 ```
@@ -370,7 +370,7 @@ static_resources:
 
 ### mTLS with Certificate Revocation
 
-Add CRL or OCSP checking for revoked certificates.
+Add CRL checking for revoked client certificates. OCSP stapling is configured on the certificate Envoy presents to clients.
 
 ```yaml
 # mTLS with CRL checking
@@ -380,7 +380,6 @@ validation_context:
   # Certificate Revocation List
   crl:
     filename: /etc/envoy/certs/ca.crl
-  # Or use OCSP stapling
   only_verify_leaf_cert_crl: false
 ```
 
@@ -828,7 +827,7 @@ spec:
     spec:
       containers:
         - name: envoy
-          image: envoyproxy/envoy:v1.28-latest
+          image: envoyproxy/envoy:v1.38.2
           ports:
             - containerPort: 443
               name: https
