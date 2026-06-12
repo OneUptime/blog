@@ -90,6 +90,7 @@ ListenPort = 51820
 SaveConfig = false
 
 # Enable NAT for client traffic to reach internal network
+# Replace eth0 with your server's LAN/WAN interface
 PostUp = iptables -t nat -A POSTROUTING -s 10.10.0.0/24 -o eth0 -j MASQUERADE
 PostUp = iptables -A FORWARD -i wg0 -j ACCEPT
 PostUp = iptables -A FORWARD -o wg0 -j ACCEPT
@@ -313,12 +314,12 @@ Choose based on your security requirements.
 
 ### Full Tunnel (All Traffic)
 
-All client traffic goes through the VPN.
+All IPv4 client traffic goes through the VPN.
 
 ```ini
 # In client configuration
 [Peer]
-AllowedIPs = 0.0.0.0/0, ::/0
+AllowedIPs = 0.0.0.0/0
 ```
 
 Pros:
@@ -461,7 +462,7 @@ sudo iptables -A INPUT -p udp --dport 51820 -m state --state NEW -m recent --upd
 
 Add an extra layer of security with pre-shared keys.
 
-```bash
+```text
 # Generate pre-shared key
 wg genpsk > preshared.key
 
