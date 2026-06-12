@@ -14,19 +14,19 @@ Backup storage costs can spiral out of control. You're paying premium prices to 
 
 ```mermaid
 flowchart TB
-    subgraph Hot["Hot Tier (0-7 days)"]
+    subgraph Hot["Hot Tier (0-30 days)"]
         H1[Latest Backups]
         H2[Instant Access]
         H3[Highest Cost]
     end
 
-    subgraph Warm["Warm Tier (7-30 days)"]
+    subgraph Warm["Warm Tier (30-90 days)"]
         W1[Recent Backups]
         W2[Minutes to Access]
         W3[Medium Cost]
     end
 
-    subgraph Cold["Cold Tier (30-365 days)"]
+    subgraph Cold["Cold Tier (90-365 days)"]
         C1[Monthly Backups]
         C2[Hours to Access]
         C3[Lower Cost]
@@ -38,8 +38,8 @@ flowchart TB
         A3[Lowest Cost]
     end
 
-    Hot -->|After 7 days| Warm
-    Warm -->|After 30 days| Cold
+    Hot -->|After 30 days| Warm
+    Warm -->|After 90 days| Cold
     Cold -->|After 365 days| Archive
 ```
 
@@ -52,19 +52,19 @@ Hot storage is for backups you need immediately. This includes the most recent d
 | Characteristic | Value |
 |----------------|-------|
 | Access Time | Milliseconds |
-| Typical Retention | 1-7 days |
+| Typical Retention | 1-30 days |
 | Use Case | Recent backups, instant recovery |
 | Cost | $0.023/GB/month (S3 Standard) |
 | Retrieval Cost | None |
 
 ### Warm Storage
 
-Warm storage balances cost with reasonable access times. Perfect for backups older than a week but still potentially needed.
+Warm storage balances cost with reasonable access times. Perfect for backups older than a month but still potentially needed.
 
 | Characteristic | Value |
 |----------------|-------|
 | Access Time | Milliseconds to minutes |
-| Typical Retention | 7-30 days |
+| Typical Retention | 30-90 days |
 | Use Case | Point-in-time recovery, compliance |
 | Cost | $0.0125/GB/month (S3 IA) |
 | Retrieval Cost | $0.01/GB |
@@ -76,10 +76,10 @@ Cold storage is for backups you rarely access but must retain. Monthly or quarte
 | Characteristic | Value |
 |----------------|-------|
 | Access Time | Minutes to hours |
-| Typical Retention | 30-365 days |
+| Typical Retention | 90-365 days |
 | Use Case | Regulatory compliance, disaster recovery |
-| Cost | $0.004/GB/month (S3 Glacier IR) |
-| Retrieval Cost | $0.03/GB |
+| Cost | $0.0036/GB/month (S3 Glacier Flexible Retrieval) |
+| Retrieval Cost | Varies by retrieval option |
 
 ### Archive Storage
 
@@ -91,7 +91,7 @@ Archive storage is the cheapest tier for data you almost never need but must kee
 | Typical Retention | 1-7+ years |
 | Use Case | Legal holds, long-term compliance |
 | Cost | $0.00099/GB/month (S3 Glacier Deep Archive) |
-| Retrieval Cost | $0.02/GB (48h) - $0.10/GB (12h) |
+| Retrieval Cost | Varies by retrieval option |
 
 ## Hot/Warm/Cold Storage Mapping
 
@@ -109,7 +109,7 @@ flowchart LR
     subgraph AWS["AWS S3"]
         S1[S3 Standard]
         S2[S3 Infrequent Access]
-        S3[Glacier Instant Retrieval]
+        S3[Glacier Flexible Retrieval]
         S4[Glacier Deep Archive]
     end
 
@@ -141,7 +141,7 @@ flowchart LR
 aws:
   hot: $0.023      # S3 Standard
   warm: $0.0125    # S3 Infrequent Access
-  cold: $0.004     # Glacier Instant Retrieval
+  cold: $0.0036    # Glacier Flexible Retrieval
   archive: $0.00099 # Glacier Deep Archive
 
 gcp:
@@ -174,12 +174,12 @@ Lifecycle policies automate the movement of backups between tiers. Set them once
       },
       "Transitions": [
         {
-          "Days": 7,
+          "Days": 30,
           "StorageClass": "STANDARD_IA"
         },
         {
-          "Days": 30,
-          "StorageClass": "GLACIER_IR"
+          "Days": 90,
+          "StorageClass": "GLACIER"
         },
         {
           "Days": 365,
@@ -221,13 +221,13 @@ resource "aws_s3_bucket_lifecycle_configuration" "backup_tiering" {
     }
 
     transition {
-      days          = 7
+      days          = 30
       storage_class = "STANDARD_IA"
     }
 
     transition {
-      days          = 30
-      storage_class = "GLACIER_IR"
+      days          = 90
+      storage_class = "GLACIER"
     }
 
     transition {
@@ -249,17 +249,17 @@ resource "aws_s3_bucket_lifecycle_configuration" "backup_tiering" {
     }
 
     transition {
-      days          = 3
+      days          = 30
       storage_class = "STANDARD_IA"
     }
 
     transition {
-      days          = 14
-      storage_class = "GLACIER_IR"
+      days          = 60
+      storage_class = "GLACIER"
     }
 
     expiration {
-      days = 90  # 3 months
+      days = 180  # 6 months
     }
   }
 
@@ -274,7 +274,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "backup_tiering" {
     # Keep in hot storage for 30 days
     transition {
       days          = 30
-      storage_class = "GLACIER_IR"
+      storage_class = "GLACIER"
     }
 
     transition {
@@ -292,43 +292,58 @@ resource "aws_s3_bucket_lifecycle_configuration" "backup_tiering" {
 
 ### Google Cloud Storage Lifecycle
 
-```yaml
-# gcs-lifecycle.yaml
-lifecycle:
-  rule:
-    - action:
-        type: SetStorageClass
-        storageClass: NEARLINE
-      condition:
-        age: 7
-        matchesPrefix:
-          - "backups/"
-    - action:
-        type: SetStorageClass
-        storageClass: COLDLINE
-      condition:
-        age: 30
-        matchesPrefix:
-          - "backups/"
-    - action:
-        type: SetStorageClass
-        storageClass: ARCHIVE
-      condition:
-        age: 365
-        matchesPrefix:
-          - "backups/"
-    - action:
-        type: Delete
-      condition:
-        age: 2555
-        matchesPrefix:
-          - "backups/"
+```json
+{
+  "lifecycle": {
+    "rule": [
+      {
+        "action": {
+          "type": "SetStorageClass",
+          "storageClass": "NEARLINE"
+        },
+        "condition": {
+          "age": 30,
+          "matchesPrefix": ["backups/"]
+        }
+      },
+      {
+        "action": {
+          "type": "SetStorageClass",
+          "storageClass": "COLDLINE"
+        },
+        "condition": {
+          "age": 90,
+          "matchesPrefix": ["backups/"]
+        }
+      },
+      {
+        "action": {
+          "type": "SetStorageClass",
+          "storageClass": "ARCHIVE"
+        },
+        "condition": {
+          "age": 365,
+          "matchesPrefix": ["backups/"]
+        }
+      },
+      {
+        "action": {
+          "type": "Delete"
+        },
+        "condition": {
+          "age": 2555,
+          "matchesPrefix": ["backups/"]
+        }
+      }
+    ]
+  }
+}
 ```
 
 Apply with gsutil:
 
 ```bash
-gsutil lifecycle set gcs-lifecycle.yaml gs://my-backup-bucket
+gsutil lifecycle set gcs-lifecycle.json gs://my-backup-bucket
 ```
 
 ### Azure Blob Lifecycle Policy
@@ -344,10 +359,10 @@ gsutil lifecycle set gcs-lifecycle.yaml gs://my-backup-bucket
         "actions": {
           "baseBlob": {
             "tierToCool": {
-              "daysAfterModificationGreaterThan": 7
+              "daysAfterModificationGreaterThan": 30
             },
             "tierToCold": {
-              "daysAfterModificationGreaterThan": 30
+              "daysAfterModificationGreaterThan": 90
             },
             "tierToArchive": {
               "daysAfterModificationGreaterThan": 365
@@ -358,7 +373,7 @@ gsutil lifecycle set gcs-lifecycle.yaml gs://my-backup-bucket
           }
         },
         "filters": {
-          "prefixMatch": ["backups/"],
+          "prefixMatch": ["my-backup-container/backups/"],
           "blobTypes": ["blockBlob"]
         }
       }
@@ -410,7 +425,7 @@ Calculate backup tier based on RTO requirements
 
 def calculate_tier(rto_hours: float, data_size_gb: float) -> dict:
     """
-    Determine optimal backup tier based on RTO and data size
+    Determine lowest-cost backup tier based on RTO and data size
 
     Args:
         rto_hours: Recovery Time Objective in hours
@@ -423,34 +438,34 @@ def calculate_tier(rto_hours: float, data_size_gb: float) -> dict:
     tiers = {
         'hot': {
             'access_time_hours': 0,
-            'retrieval_gbps': 10,  # Fast retrieval
+            'retrieval_gb_per_second': 10,  # Fast retrieval
             'storage_cost_gb_month': 0.023,
             'retrieval_cost_gb': 0
         },
         'warm': {
             'access_time_hours': 0,
-            'retrieval_gbps': 1,  # Moderate retrieval
+            'retrieval_gb_per_second': 1,  # Moderate retrieval
             'storage_cost_gb_month': 0.0125,
             'retrieval_cost_gb': 0.01
         },
         'cold': {
-            'access_time_hours': 0.5,  # 30 min to initiate
-            'retrieval_gbps': 0.5,
-            'storage_cost_gb_month': 0.004,
-            'retrieval_cost_gb': 0.03
+            'access_time_hours': 3,  # Standard retrieval completes in hours
+            'retrieval_gb_per_second': 0.5,
+            'storage_cost_gb_month': 0.0036,
+            'retrieval_cost_gb': 0.01
         },
         'archive': {
             'access_time_hours': 12,  # 12 hour minimum
-            'retrieval_gbps': 0.1,
+            'retrieval_gb_per_second': 0.1,
             'storage_cost_gb_month': 0.00099,
             'retrieval_cost_gb': 0.02
         }
     }
 
-    for tier_name, tier_config in tiers.items():
+    for tier_name, tier_config in reversed(tiers.items()):
         # Calculate total recovery time
         access_time = tier_config['access_time_hours']
-        transfer_time = (data_size_gb / tier_config['retrieval_gbps'] / 3600)
+        transfer_time = (data_size_gb / tier_config['retrieval_gb_per_second'] / 3600)
         total_time = access_time + transfer_time
 
         if total_time <= rto_hours:
@@ -490,8 +505,8 @@ if __name__ == '__main__':
 Output:
 
 ```text
-Database backup (500GB, 1hr RTO): {'recommended_tier': 'hot', 'estimated_recovery_time_hours': 0.01, 'monthly_storage_cost': 11.5, 'retrieval_cost': 0, 'meets_rto': True}
-Application backup (100GB, 4hr RTO): {'recommended_tier': 'warm', 'estimated_recovery_time_hours': 0.03, 'monthly_storage_cost': 1.25, 'retrieval_cost': 1.0, 'meets_rto': True}
+Database backup (500GB, 1hr RTO): {'recommended_tier': 'warm', 'estimated_recovery_time_hours': 0.14, 'monthly_storage_cost': 6.25, 'retrieval_cost': 5.0, 'meets_rto': True}
+Application backup (100GB, 4hr RTO): {'recommended_tier': 'cold', 'estimated_recovery_time_hours': 3.06, 'monthly_storage_cost': 0.36, 'retrieval_cost': 1.0, 'meets_rto': True}
 Compliance archive (1TB, 24hr RTO): {'recommended_tier': 'archive', 'estimated_recovery_time_hours': 14.78, 'monthly_storage_cost': 0.99, 'retrieval_cost': 20.0, 'meets_rto': True}
 ```
 
@@ -509,12 +524,12 @@ flowchart LR
     subgraph After["With Tiering"]
         A1[100GB Hot: $27.60/year]
         A2[200GB Warm: $30/year]
-        A3[400GB Cold: $19.20/year]
+        A3[400GB Cold: $17.28/year]
         A4[300GB Archive: $3.56/year]
-        A5[Total: $80.36/year]
+        A5[Total: $78.44/year]
     end
 
-    Before -->|71% Savings| After
+    Before -->|72% Savings| After
 ```
 
 ### Cost Calculator
@@ -543,7 +558,7 @@ def calculate_tiering_savings(
     costs = {
         'hot': 0.023,
         'warm': 0.0125,
-        'cold': 0.004,
+        'cold': 0.0036,
         'archive': 0.00099
     }
 
@@ -552,14 +567,18 @@ def calculate_tiering_savings(
     no_tiering_yearly = no_tiering_monthly * 12
 
     # With tiering - distribute based on age
-    # Hot: Days 1-7 (7 days of backups)
-    hot_gb = min(daily_backup_gb * 7, total_backups_gb)
+    hot_days = min(retention_days, 30)
+    warm_days = max(0, min(retention_days, 90) - 30)
+    cold_days = max(0, min(retention_days, 365) - 90)
 
-    # Warm: Days 8-30 (23 days of backups)
-    warm_gb = min(daily_backup_gb * 23, max(0, total_backups_gb - hot_gb))
+    # Hot: Days 1-30
+    hot_gb = min(daily_backup_gb * hot_days, total_backups_gb)
 
-    # Cold: Days 31-365 (335 days of backups)
-    cold_gb = min(daily_backup_gb * 335, max(0, total_backups_gb - hot_gb - warm_gb))
+    # Warm: Days 31-90
+    warm_gb = min(daily_backup_gb * warm_days, max(0, total_backups_gb - hot_gb))
+
+    # Cold: Days 91-365
+    cold_gb = min(daily_backup_gb * cold_days, max(0, total_backups_gb - hot_gb - warm_gb))
 
     # Archive: Days 366+ (remaining backups)
     archive_gb = max(0, total_backups_gb - hot_gb - warm_gb - cold_gb)
@@ -638,18 +657,18 @@ Without Tiering:
   Yearly:  $2760.0
 
 With Tiering:
-  Monthly: $55.26
-  Yearly:  $663.12
+  Monthly: $91.8
+  Yearly:  $1101.6
 
   Distribution:
-    Hot:     350.0 GB
-    Warm:    1150.0 GB
-    Cold:    8500.0 GB
+    Hot:     1500 GB
+    Warm:    3000 GB
+    Cold:    5500 GB
     Archive: 0 GB
 
 Savings:
-  Yearly:  $2096.88
-  Percent: 76.0%
+  Yearly:  $1658.4
+  Percent: 60.1%
 ```
 
 ## Tier Transition Automation
@@ -697,26 +716,27 @@ spec:
                   # Get current date for age calculations
                   NOW=$(date +%s)
 
-                  # List all objects and their storage classes
-                  aws s3api list-objects-v2 \
-                    --bucket $BACKUP_BUCKET \
-                    --query 'Contents[].{Key: Key, LastModified: LastModified, StorageClass: StorageClass}' \
-                    --output json > /tmp/objects.json
-
                   # Process objects that need tier changes
                   # (This supplements lifecycle policies for edge cases)
 
-                  # Find objects older than 7 days still in STANDARD
-                  jq -r '.[] | select(.StorageClass == "STANDARD" or .StorageClass == null) | .Key' /tmp/objects.json | while read key; do
+                  # Find objects older than 30 days still in STANDARD
+                  aws s3api list-objects-v2 \
+                    --bucket "$BACKUP_BUCKET" \
+                    --query 'Contents[?StorageClass==`STANDARD` || StorageClass==null].Key' \
+                    --output text | tr '\t' '\n' | while read -r key; do
                     # Get object age
-                    MODIFIED=$(aws s3api head-object --bucket $BACKUP_BUCKET --key "$key" --query 'LastModified' --output text)
+                    MODIFIED=$(aws s3api head-object --bucket "$BACKUP_BUCKET" --key "$key" --query 'LastModified' --output text)
                     MOD_EPOCH=$(date -d "$MODIFIED" +%s)
                     AGE_DAYS=$(( (NOW - MOD_EPOCH) / 86400 ))
 
-                    if [ $AGE_DAYS -ge 7 ] && [ $AGE_DAYS -lt 30 ]; then
+                    if [ $AGE_DAYS -ge 30 ] && [ $AGE_DAYS -lt 90 ]; then
                       echo "Moving $key to STANDARD_IA (age: $AGE_DAYS days)"
-                      aws s3 cp "s3://$BACKUP_BUCKET/$key" "s3://$BACKUP_BUCKET/$key" \
-                        --storage-class STANDARD_IA
+                      aws s3api copy-object \
+                        --bucket "$BACKUP_BUCKET" \
+                        --key "$key" \
+                        --copy-source "$BACKUP_BUCKET/$key" \
+                        --storage-class STANDARD_IA \
+                        --metadata-directive COPY
                     fi
                   done
 
@@ -748,14 +768,14 @@ class BackupTierManager:
     TIER_CONFIG = {
         'hot': {
             'storage_class': 'STANDARD',
-            'max_age_days': 7
+            'max_age_days': 30
         },
         'warm': {
             'storage_class': 'STANDARD_IA',
-            'max_age_days': 30
+            'max_age_days': 90
         },
         'cold': {
-            'storage_class': 'GLACIER_IR',
+            'storage_class': 'GLACIER',
             'max_age_days': 365
         },
         'archive': {
@@ -838,7 +858,7 @@ class BackupTierManager:
 
             # Skip if current tier is more archived than recommended
             # (don't move from archive back to cold, etc.)
-            tier_order = ['STANDARD', 'STANDARD_IA', 'GLACIER_IR', 'DEEP_ARCHIVE']
+            tier_order = ['STANDARD', 'STANDARD_IA', 'GLACIER', 'DEEP_ARCHIVE']
             if tier_order.index(current_class) >= tier_order.index(recommended_class):
                 results['already_optimal'] += 1
                 continue
@@ -948,7 +968,7 @@ flowchart TB
     subgraph Primary["Primary Cloud (AWS)"]
         PH[Hot: S3 Standard]
         PW[Warm: S3 IA]
-        PC[Cold: Glacier IR]
+        PC[Cold: Glacier Flexible Retrieval]
     end
 
     subgraph Secondary["Secondary Cloud (GCP)"]
@@ -962,11 +982,11 @@ flowchart TB
     VM --> PH
 
     PH -->|Replicate| SH
-    PH -->|7 days| PW
-    PW -->|30 days| PC
+    PH -->|30 days| PW
+    PW -->|90 days| PC
 
-    SH -->|7 days| SW
-    SW -->|30 days| SC
+    SH -->|30 days| SW
+    SW -->|90 days| SC
 ```
 
 ### Cross-Cloud Replication Script
