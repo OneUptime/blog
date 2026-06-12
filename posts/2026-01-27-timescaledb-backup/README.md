@@ -73,6 +73,9 @@ pg_dump \
     --dbname="${DB_NAME}" \
     --format=custom \
     --compress=9 \
+    --no-tablespaces \
+    --no-owner \
+    --no-privileges \
     --verbose \
     --file="${BACKUP_FILE}.dump" \
     2>&1 | tee "${BACKUP_FILE}.log"
@@ -393,8 +396,8 @@ CHUNKS=$(psql -h "${DB_HOST}" -U "${DB_USER}" -d "${DB_NAME}" -t -A -F',' << EOF
 SELECT
     format('%I.%I', chunk_schema, chunk_name) as chunk_table
 FROM timescaledb_information.chunks
-WHERE created > '${LAST_BACKUP}'::timestamptz
-ORDER BY created;
+WHERE chunk_creation_time > '${LAST_BACKUP}'::timestamptz
+ORDER BY chunk_creation_time;
 EOF
 )
 
@@ -450,23 +453,19 @@ SELECT add_compression_policy('metrics', INTERVAL '7 days');
 
 -- Manually compress all eligible chunks before a backup
 -- This query compresses all uncompressed chunks older than the policy interval
-SELECT compress_chunk(chunk)
-FROM show_chunks('metrics', older_than => INTERVAL '7 days') AS chunk
-WHERE NOT EXISTS (
-    SELECT 1 FROM timescaledb_information.compressed_chunk_stats
-    WHERE hypertable_name = 'metrics'
-    AND chunk_name = split_part(chunk::text, '.', 2)
-);
+-- The if_not_compressed parameter skips chunks that are already compressed
+SELECT compress_chunk(chunk, if_not_compressed => true)
+FROM show_chunks('metrics', older_than => INTERVAL '7 days') AS chunk;
 
 -- Verify compression status before backup
 SELECT
     hypertable_name,
     total_chunks,
-    compressed_chunks,
-    pg_size_pretty(before_compression_bytes) as before_size,
-    pg_size_pretty(after_compression_bytes) as after_size,
-    round((1 - after_compression_bytes::numeric /
-           NULLIF(before_compression_bytes, 0)) * 100, 2) as compression_ratio
+    number_compressed_chunks,
+    pg_size_pretty(before_compression_total_bytes) as before_size,
+    pg_size_pretty(after_compression_total_bytes) as after_size,
+    round((1 - after_compression_total_bytes::numeric /
+           NULLIF(before_compression_total_bytes, 0)) * 100, 2) as compression_ratio
 FROM timescaledb_information.compression_stats;
 ```
 
@@ -546,8 +545,9 @@ psql -h "${DB_HOST}" -U "${DB_USER}" -d "${DB_NAME}" << EOF
 -- Enable TimescaleDB extension BEFORE restore
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
--- Set session parameters for faster restore
-SET timescaledb.restoring = 'on';
+-- Put the database into restore mode. This persists across sessions and
+-- disables background workers so pg_restore can rebuild hypertables safely.
+SELECT timescaledb_pre_restore();
 EOF
 
 # Restore the backup
@@ -570,8 +570,8 @@ pg_restore \
 
 # Re-enable TimescaleDB features after restore
 psql -h "${DB_HOST}" -U "${DB_USER}" -d "${DB_NAME}" << EOF
--- Turn off restore mode
-SET timescaledb.restoring = 'off';
+-- Return the database to normal operations (re-enables background workers)
+SELECT timescaledb_post_restore();
 
 -- Analyze tables to update statistics
 ANALYZE;
