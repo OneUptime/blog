@@ -55,27 +55,27 @@ return [
     ],
 
     // Path to your schema file
-    'schema' => [
-        'register' => base_path('graphql/schema.graphql'),
-    ],
+    'schema_path' => base_path('graphql/schema.graphql'),
 
     // Namespaces for auto-discovery
     'namespaces' => [
-        'models' => ['App\\Models'],
-        'queries' => ['App\\GraphQL\\Queries'],
-        'mutations' => ['App\\GraphQL\\Mutations'],
+        'models' => ['App', 'App\\Models'],
+        'queries' => 'App\\GraphQL\\Queries',
+        'mutations' => 'App\\GraphQL\\Mutations',
+        'subscriptions' => 'App\\GraphQL\\Subscriptions',
+        'directives' => 'App\\GraphQL\\Directives',
     ],
 ];
 ```
 
-### Install GraphQL Playground (Development)
+### Install GraphiQL (Development)
 
 ```bash
-# Install the playground for testing queries
-composer require mll-lab/laravel-graphql-playground --dev
+# Install GraphiQL for testing queries
+composer require mll-lab/laravel-graphiql --dev
 ```
 
-Visit `/graphql-playground` in your browser to test queries interactively.
+Visit `/graphiql` in your browser to test queries interactively.
 
 ## Defining Your GraphQL Schema
 
@@ -116,13 +116,13 @@ type Comment {
 # Root query type - entry points for reading data
 type Query {
     # Fetch a single user by ID
-    user(id: ID! @eq): User @find
+    user(id: ID! @whereKey): User @find
 
     # Fetch all users with pagination
     users: [User!]! @paginate(defaultCount: 10)
 
     # Fetch a single post
-    post(id: ID! @eq): Post @find
+    post(id: ID! @whereKey): Post @find
 
     # Fetch all posts with filtering
     posts(
@@ -139,6 +139,7 @@ type Mutation {
     # Create a new post
     createPost(input: CreatePostInput! @spread): Post!
         @guard
+        @inject(context: "user.id", name: "user_id")
         @create
 
     # Update an existing post
@@ -147,7 +148,7 @@ type Mutation {
         @update
 
     # Delete a post
-    deletePost(id: ID! @eq): Post
+    deletePost(id: ID! @whereKey): Post
         @guard
         @delete
 
@@ -208,7 +209,7 @@ type Post {
 ```graphql
 type Query {
     # Find a single record by a unique field
-    user(id: ID! @eq): User @find
+    user(id: ID! @whereKey): User @find
 
     # Find the first matching record
     activeUser(active: Boolean! @eq): User @first
@@ -219,7 +220,7 @@ type Query {
     # Paginated results
     users: [User!]! @paginate(defaultCount: 15)
 
-    # Cursor-based pagination (better for large datasets)
+    # Relay-style connection pagination
     posts: [Post!]! @paginate(type: CONNECTION)
 }
 ```
@@ -256,7 +257,7 @@ Most simple queries need no custom code:
 ```graphql
 type Query {
     # Lighthouse handles this automatically
-    post(id: ID! @eq): Post @find
+    post(id: ID! @whereKey): Post @find
 }
 ```
 
@@ -314,7 +315,7 @@ Lighthouse auto-discovers the resolver by matching the query name to the class n
 
 ```graphql
 type Mutation {
-    # Create uses mass assignment - ensure $fillable is set on model
+    # Create persists the input fields on the model
     createPost(input: CreatePostInput! @spread): Post! @create
 
     # Update finds by ID and updates
@@ -324,7 +325,7 @@ type Mutation {
     upsertPost(id: ID, input: CreatePostInput! @spread): Post! @upsert
 
     # Delete removes the record
-    deletePost(id: ID! @eq): Post @delete
+    deletePost(id: ID! @whereKey): Post @delete
 }
 ```
 
@@ -370,6 +371,12 @@ final class CreatePost
 ## Subscriptions
 
 Lighthouse supports GraphQL subscriptions for real-time updates.
+
+Before using subscriptions, register `Nuwave\Lighthouse\Subscriptions\SubscriptionServiceProvider`. If you use the Pusher broadcaster, install the Pusher PHP library:
+
+```bash
+composer require pusher/pusher-php-server
+```
 
 ### Configure Broadcasting
 
@@ -462,6 +469,7 @@ type Mutation {
     # Only authenticated users can create posts
     createPost(input: CreatePostInput! @spread): Post!
         @guard
+        @inject(context: "user.id", name: "user_id")
         @create
 }
 ```
@@ -473,13 +481,13 @@ type Mutation {
     # Check Laravel policy before updating
     updatePost(id: ID!, input: UpdatePostInput! @spread): Post
         @guard
-        @can(ability: "update", find: "id")
+        @canFind(ability: "update", find: "id")
         @update
 
     # Check policy for deletion
-    deletePost(id: ID! @eq): Post
+    deletePost(id: ID! @whereKey): Post
         @guard
-        @can(ability: "delete", find: "id")
+        @canFind(ability: "delete", find: "id")
         @delete
 }
 ```
@@ -523,9 +531,9 @@ class PostPolicy
 type User {
     id: ID!
     name: String!
-    email: String! @canAccess(ability: "viewEmail")
+    email: String! @canRoot(ability: "viewEmail")
     # Only visible to admins
-    internal_notes: String @can(ability: "viewInternalNotes")
+    internal_notes: String @canRoot(ability: "viewInternalNotes")
 }
 ```
 
@@ -538,7 +546,7 @@ type Query {
     # Offset-based pagination (simple, good for small datasets)
     posts: [Post!]! @paginate(defaultCount: 20, maxCount: 100)
 
-    # Cursor-based pagination (efficient for large datasets)
+    # Relay-style connection pagination
     allPosts: [Post!]! @paginate(type: CONNECTION, defaultCount: 20)
 
     # Simple pagination with page info
@@ -567,28 +575,29 @@ query GetPosts($page: Int, $first: Int) {
 
 ### Advanced Filtering
 
+The `@whereConditions` directive is an optional extension. Register `Nuwave\Lighthouse\WhereConditions\WhereConditionsServiceProvider` and install its scalar dependency before using it:
+
+```bash
+composer require mll-lab/graphql-php-scalars
+```
+
+The `@search` directive requires Laravel Scout and `Nuwave\Lighthouse\Scout\ScoutServiceProvider`.
+
 ```graphql
 type Query {
     posts(
         # Multiple conditions
-        where: PostWhereInput @whereConditions
+        where: _ @whereConditions(columns: ["published", "views", "created_at"])
 
         # Order by multiple columns
         orderBy: _ @orderBy(columns: ["created_at", "title", "views"])
-
-        # Search across fields
-        search: String @search
     ): [Post!]! @paginate
+
+    # Full-text search through Laravel Scout
+    searchPosts(search: String @search): [Post!]! @paginate
 }
 
-# Auto-generated input for whereConditions
-input PostWhereInput {
-    column: PostColumn!
-    operator: SQLOperator!
-    value: Mixed
-    AND: [PostWhereInput!]
-    OR: [PostWhereInput!]
-}
+# Lighthouse automatically generates the input type for @whereConditions
 ```
 
 Example query:
@@ -614,63 +623,39 @@ query FilteredPosts {
 }
 ```
 
-## Solving N+1 Queries with @batch
+## Solving N+1 Queries with Relationship Directives
 
-N+1 queries are a common performance problem. Lighthouse provides the `@batch` directive to batch load relationships.
+N+1 queries are a common performance problem. Lighthouse's relationship directives, such as `@belongsTo` and `@hasMany`, automatically combine relationship queries through batch loading.
 
 ### The Problem
 
 ```graphql
 # This query can cause N+1 issues
 query {
-    posts {
-        id
-        title
-        author {  # Each post triggers a separate query
-            name
+    posts(first: 10) {
+        data {
+            id
+            title
+            author {  # Each post can trigger a separate query without relationship directives
+                name
+            }
         }
     }
 }
 ```
 
-### Solution: Batch Loading
+### Solution: Relationship Batch Loading
 
 ```graphql
 type Post {
     id: ID!
     title: String!
-    # Batch load authors for all posts in one query
-    author: User! @belongsTo @batch
+    # Relationship directives batch load related models by default
+    author: User! @belongsTo
 }
 ```
 
-### Custom Batch Loader
-
-```php
-<?php
-// app/GraphQL/DataLoaders/PostAuthorLoader.php
-
-namespace App\GraphQL\DataLoaders;
-
-use App\Models\User;
-use Illuminate\Support\Collection;
-
-final class PostAuthorLoader
-{
-    /**
-     * Load authors for multiple posts in a single query.
-     *
-     * @param  Collection<int, int>  $userIds
-     * @return Collection<int, User>
-     */
-    public function __invoke(Collection $userIds): Collection
-    {
-        return User::whereIn('id', $userIds)
-            ->get()
-            ->keyBy('id');
-    }
-}
-```
+You can disable this behavior by setting `batchload_relations` to `false` in `config/lighthouse.php`, but the default is optimized for relationship fields.
 
 ### Eager Loading with @with
 
@@ -726,16 +711,16 @@ type Post {
 
 ```php
 <?php
-// app/GraphQL/Middleware/LogQuery.php
+// app/GraphQL/Directives/LogQueryDirective.php
 
-namespace App\GraphQL\Middleware;
+namespace App\GraphQL\Directives;
 
-use Closure;
-use GraphQL\Language\AST\FieldNode;
+use Nuwave\Lighthouse\Execution\ResolveInfo;
 use Illuminate\Support\Facades\Log;
 use Nuwave\Lighthouse\Schema\Directives\BaseDirective;
 use Nuwave\Lighthouse\Schema\Values\FieldValue;
 use Nuwave\Lighthouse\Support\Contracts\FieldMiddleware;
+use Nuwave\Lighthouse\Support\Contracts\GraphQLContext;
 
 final class LogQueryDirective extends BaseDirective implements FieldMiddleware
 {
@@ -748,15 +733,15 @@ GRAPHQL;
 
     public function handleField(FieldValue $fieldValue): void
     {
-        $fieldValue->wrapResolver(fn (callable $resolver) => function ($root, array $args, $context, $info) use ($resolver) {
+        $fieldValue->wrapResolver(fn (callable $resolver) => function (mixed $root, array $args, GraphQLContext $context, ResolveInfo $resolveInfo) use ($resolver) {
             $start = microtime(true);
 
-            $result = $resolver($root, $args, $context, $info);
+            $result = $resolver($root, $args, $context, $resolveInfo);
 
             $duration = round((microtime(true) - $start) * 1000, 2);
 
             Log::info('GraphQL Query', [
-                'field' => $info->fieldName,
+                'field' => $resolveInfo->fieldName,
                 'duration_ms' => $duration,
                 'args' => $args,
             ]);
@@ -945,11 +930,11 @@ public function test_can_filter_posts_by_status(): void
 | Practice | Description |
 |----------|-------------|
 | **Schema-first** | Define your schema, let Lighthouse wire it up |
-| **Use directives** | Leverage `@paginate`, `@guard`, `@can` to reduce boilerplate |
-| **Batch relationships** | Use `@batch` and `@with` to prevent N+1 queries |
+| **Use directives** | Leverage `@paginate`, `@guard`, and `@canFind` to reduce boilerplate |
+| **Batch relationships** | Use relationship directives and `@with` to prevent N+1 queries |
 | **Validate inputs** | Use `@rules` directive for validation |
 | **Test thoroughly** | Use `MakesGraphQLRequests` trait for feature tests |
-| **Policy authorization** | Use `@can` with Laravel policies for granular access control |
+| **Policy authorization** | Use `@canFind`, `@canRoot`, and related policy directives for granular access control |
 | **Paginate by default** | Always paginate list queries to prevent large result sets |
 | **Custom resolvers** | Create resolvers only when directives are insufficient |
 
