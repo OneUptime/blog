@@ -51,7 +51,7 @@ inputs:
   node-version:
     description: 'Node.js version to install'
     required: false
-    default: '20'
+    default: '24'
   working-directory:
     description: 'Directory containing package.json'
     required: false
@@ -69,7 +69,7 @@ runs:
   steps:
     # Step 1: Setup Node.js
     - name: Setup Node.js ${{ inputs.node-version }}
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.node-version }}
 
@@ -107,21 +107,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Use composite action from same repository
       - name: Setup project
         uses: ./.github/actions/setup-node-project
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Run tests
         run: npm test
 ```
 
-### Composite Action with Shell Scripts
+### Composite Action with Third-Party Actions
 
-For more complex logic, composite actions can run shell scripts:
+For more complex logic, composite actions can orchestrate third-party actions:
 
 ```yaml
 # .github/actions/docker-build-push/action.yml
@@ -159,7 +159,7 @@ runs:
     # Generate image metadata (tags, labels)
     - name: Docker meta
       id: meta
-      uses: docker/metadata-action@v5
+      uses: docker/metadata-action@v6
       with:
         images: ${{ inputs.registry }}/${{ inputs.image-name }}
         tags: |
@@ -170,7 +170,7 @@ runs:
     # Build and push the image
     - name: Build and push
       id: build
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: .
         file: ${{ inputs.dockerfile }}
@@ -207,10 +207,10 @@ runs:
       id: analyze
       shell: bash
       run: |
-        # Check commit messages for conventional commit prefixes
-        if git log --oneline origin/main..HEAD | grep -qE '^[a-f0-9]+ (BREAKING|!)'; then
+        # Check commit subjects for conventional commit prefixes
+        if git log --format=%s origin/main..HEAD | grep -qE '^[a-z]+(\([^)]+\))?!:'; then
           echo "bump=major" >> $GITHUB_OUTPUT
-        elif git log --oneline origin/main..HEAD | grep -qE '^[a-f0-9]+ feat'; then
+        elif git log --format=%s origin/main..HEAD | grep -qE '^feat(\([^)]+\))?:'; then
           echo "bump=minor" >> $GITHUB_OUTPUT
         else
           echo "bump=patch" >> $GITHUB_OUTPUT
@@ -284,7 +284,7 @@ on:
       node-version:
         description: 'Node.js version'
         type: string
-        default: '20'
+        default: '24'
       run-e2e:
         description: 'Run end-to-end tests'
         type: boolean
@@ -314,10 +314,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
           cache: 'npm'
@@ -334,10 +334,10 @@ jobs:
       coverage: ${{ steps.coverage.outputs.percent }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
           cache: 'npm'
@@ -365,10 +365,10 @@ jobs:
     needs: test
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
           cache: 'npm'
@@ -394,7 +394,7 @@ jobs:
   ci:
     uses: your-org/shared-workflows/.github/workflows/nodejs-ci.yml@v1
     with:
-      node-version: '20'
+      node-version: '24'
       run-e2e: ${{ github.event_name == 'push' }}
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -464,7 +464,7 @@ outputs:
     description: 'Total lines changed in the PR'
 
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'dist/index.js'
 ```
 
@@ -610,10 +610,11 @@ jobs:
   label:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Use the JavaScript action
       - name: Label PR by size
@@ -636,9 +637,9 @@ Make your actions discoverable by publishing to the GitHub Marketplace:
 ### Requirements
 
 1. Action must be in a public repository
-2. Repository must have only one action (or use subdirectories)
-3. `action.yml` must include `name`, `description`, and `author`
-4. Add branding for the Marketplace listing
+2. Repository must contain a single `action.yml` or `action.yaml` file at the root for the Marketplace listing
+3. `action.yml` must include a unique `name` and a `description`
+4. Add optional branding for the Marketplace listing
 
 ```yaml
 # action.yml with branding
@@ -718,7 +719,7 @@ try {
 
 // Validate numeric inputs
 const timeout = parseInt(core.getInput('timeout'), 10);
-if (isNaN(timeout) || timeout < 0) {
+if (isNaN(timeout) || timeout <= 0) {
   core.setFailed('timeout must be a positive number');
   return;
 }
