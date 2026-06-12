@@ -46,7 +46,7 @@ Unlike plain Ruby modules, concerns provide three key features:
 
 ## Creating Your First Concern
 
-Let's start with a practical example: a `Searchable` concern that adds full-text search capabilities to any model.
+Let's start with a practical example: a `Searchable` concern that adds case-insensitive search capabilities to any model.
 
 ```ruby
 # app/models/concerns/searchable.rb
@@ -66,8 +66,9 @@ module Searchable
       return all if query.blank?
 
       # Build a WHERE clause that checks each searchable column
-      columns = searchable_columns.map { |col| "#{col} ILIKE :query" }
-      where(columns.join(' OR '), query: "%#{query}%")
+      escaped_query = sanitize_sql_like(query.to_s)
+      columns = searchable_columns.map { |col| "#{connection.quote_column_name(col)} ILIKE :query" }
+      where(columns.join(' OR '), query: "%#{escaped_query}%")
     }
   end
 
@@ -195,17 +196,9 @@ module SoftDeletable
     deleted_at.present?
   end
 
-  # Override destroy to perform soft delete instead
-  # Call really_destroy! if you need actual deletion
-  def destroy
-    soft_delete
-  end
-
-  # Actually remove the record from the database
-  def really_destroy!
-    # Use unscoped to bypass the default scope
-    self.class.unscoped { super }
-  end
+  # Use soft_delete/soft_delete! when you want to keep the database row.
+  # The standard destroy method still performs a real destroy and runs
+  # Active Record callbacks and dependent association behavior.
 
   class_methods do
     # Soft delete multiple records at once
@@ -319,7 +312,7 @@ module Authenticatable
 
   # Find user from session (web) or token (API)
   def find_current_user
-    if session[:user_id]
+    if respond_to?(:session, true) && session[:user_id]
       User.find_by(id: session[:user_id])
     elsif request.headers['Authorization'].present?
       authenticate_with_token
@@ -401,6 +394,11 @@ Using controller concerns:
 module Api
   module V1
     class BaseController < ActionController::API
+      # ActionController::API is lightweight; include these modules when
+      # using respond_to and helper_method in API controllers.
+      include ActionController::MimeResponds
+      include ActionController::Helpers
+
       # Include shared functionality for all API controllers
       include Authenticatable
       include ApiErrorHandling
@@ -446,7 +444,7 @@ end
 
 ## Concern Dependencies and Load Order
 
-Sometimes concerns depend on other concerns. Rails handles this with the `included` block and proper module design.
+Sometimes concerns depend on other concerns. Rails handles this when dependent concerns are included inside another concern.
 
 ```mermaid
 graph LR
@@ -523,11 +521,9 @@ module FullyManaged
   # Include dependent concerns
   # Order matters - Trackable should run before Auditable
   # so the created_by/updated_by fields are set before audit
-  included do
-    include Trackable
-    include Auditable
-    include SoftDeletable
-  end
+  include Trackable
+  include Auditable
+  include SoftDeletable
 end
 ```
 
