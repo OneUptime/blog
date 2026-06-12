@@ -82,6 +82,7 @@ Custom fixtures allow you to extend Playwright Test with your own reusable setup
 ```typescript
 // fixtures.ts
 import { test as base, expect } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 
 // Define types for your custom fixtures
 type CustomFixtures = {
@@ -189,9 +190,6 @@ import { test as base } from '@playwright/test';
 type ScopedFixtures = {
   // Test-scoped fixture (default) - created for each test
   testData: { id: string };
-
-  // Worker-scoped fixture - shared across all tests in a worker
-  sharedDatabase: DatabaseConnection;
 };
 
 // Worker-scoped fixtures are defined separately
@@ -278,7 +276,7 @@ import { test as base } from '@playwright/test';
 export const test = base.extend<{
   // These fixtures will be available if requested
   logger: Logger;
-}, {
+
   // These fixtures run automatically for every test
   autoScreenshot: void;
   performanceMonitor: void;
@@ -370,18 +368,19 @@ test('user registration with logging', async ({ page, logger }) => {
 
 ## Fixture Options
 
-Fixture options allow you to configure fixture behavior from the command line or configuration file.
+Fixture options allow you to configure fixture behavior from your configuration file or with `test.use()`.
 
 ```typescript
 // option-fixtures.ts
 import { test as base } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 // Define option types
-type FixtureOptions = {
+export type FixtureOptions = {
   // Options are defined like fixtures but with default values
   baseURL: string;
   apiVersion: string;
-  slowMo: number;
+  defaultTimeout: number;
 };
 
 type CustomFixtures = {
@@ -393,7 +392,7 @@ export const test = base.extend<CustomFixtures & FixtureOptions>({
   // Define options with default values using array syntax
   baseURL: ['https://staging.example.com', { option: true }],
   apiVersion: ['v1', { option: true }],
-  slowMo: [0, { option: true }],
+  defaultTimeout: [30000, { option: true }],
 
   // Use options in other fixtures
   apiEndpoint: async ({ baseURL, apiVersion }, use) => {
@@ -402,11 +401,9 @@ export const test = base.extend<CustomFixtures & FixtureOptions>({
   },
 
   // Configure page based on options
-  configuredPage: async ({ page, baseURL, slowMo }, use) => {
-    // Apply slow motion if configured
-    if (slowMo > 0) {
-      await page.setDefaultTimeout(30000);
-    }
+  configuredPage: async ({ page, baseURL, defaultTimeout }, use) => {
+    // Apply the configured default timeout
+    await page.setDefaultTimeout(defaultTimeout);
 
     // Navigate to base URL
     await page.goto(baseURL);
@@ -421,13 +418,14 @@ Configure options in playwright.config.ts:
 ```typescript
 // playwright.config.ts
 import { defineConfig } from '@playwright/test';
+import type { FixtureOptions } from './option-fixtures';
 
-export default defineConfig({
+export default defineConfig<FixtureOptions>({
   use: {
     // Override fixture options
     baseURL: 'https://production.example.com',
     apiVersion: 'v2',
-    slowMo: 100,
+    defaultTimeout: 30000,
   },
 
   projects: [
@@ -601,7 +599,7 @@ type Credentials = {
   role: 'admin' | 'user' | 'guest';
 };
 
-type ParameterizedFixtures = {
+export type ParameterizedFixtures = {
   browserConfig: BrowserConfig;
   userCredentials: Credentials;
 };
@@ -630,8 +628,9 @@ Configure parameters in playwright.config.ts:
 ```typescript
 // playwright.config.ts
 import { defineConfig, devices } from '@playwright/test';
+import type { ParameterizedFixtures } from './parameterized-fixtures';
 
-export default defineConfig({
+export default defineConfig<ParameterizedFixtures>({
   projects: [
     // Desktop configurations
     {
