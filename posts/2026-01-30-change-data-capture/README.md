@@ -86,7 +86,7 @@ sequenceDiagram
 
 ### Advantages
 
-- **Zero impact on source database**: Reads logs asynchronously
+- **Minimal impact on source database**: Reads logs asynchronously
 - **Captures all changes**: Including intermediate states
 - **Preserves transaction order**: Changes are captured in commit order
 - **No schema modifications required**: Works with existing tables
@@ -114,17 +114,20 @@ PostgreSQL supports logical replication through its Write-Ahead Log (WAL). Here 
 -- Allow replication connections
 -- max_wal_senders = 4
 
--- Step 2: Create a publication for the tables you want to track
+-- Step 2: Create a publication for pgoutput-based streaming clients
+-- such as Debezium or a logical replication subscriber
 CREATE PUBLICATION cdc_publication FOR TABLE
     customers,
     orders,
     order_items;
 
--- Step 3: Create a replication slot for your CDC consumer
--- This slot will track the position in the WAL
+-- Step 3: Create a replication slot for SQL-based inspection
+-- pgoutput is consumed through PostgreSQL's logical replication protocol;
+-- test_decoding is a built-in textual plugin that works with
+-- pg_logical_slot_get_changes().
 SELECT pg_create_logical_replication_slot(
     'cdc_slot',           -- Slot name
-    'pgoutput'            -- Output plugin (built into PostgreSQL)
+    'test_decoding'       -- Text output plugin (built into PostgreSQL)
 );
 
 -- Step 4: Query changes from the replication slot
@@ -132,9 +135,7 @@ SELECT pg_create_logical_replication_slot(
 SELECT * FROM pg_logical_slot_get_changes(
     'cdc_slot',           -- Slot name
     NULL,                 -- Start LSN (NULL means from current position)
-    NULL,                 -- Max number of changes (NULL means all)
-    'proto_version', '1', -- Protocol version
-    'publication_names', 'cdc_publication'  -- Publication to read from
+    NULL                  -- Max number of changes (NULL means all)
 );
 ```
 
@@ -889,9 +890,10 @@ class TimestampBasedCDC:
                 self.forward_change(change_event)
 
             # Update sync timestamp to the latest updated_at
-            # Add small buffer to handle clock precision
+            # Keep a small overlap to avoid missing rows that share the
+            # same timestamp at the batch boundary.
             latest = max(row['updated_at'] for row in changes)
-            self.set_last_sync_time(table, latest)
+            self.set_last_sync_time(table, latest - timedelta(microseconds=1))
 
             return len(changes)
 
@@ -1016,8 +1018,6 @@ flowchart TB
 ```yaml
 # docker-compose.yml
 # Complete Debezium CDC stack with Kafka and PostgreSQL
-
-version: '3.8'
 
 services:
   # Zookeeper for Kafka coordination
@@ -1209,13 +1209,7 @@ CREATE PUBLICATION dbz_publication FOR ALL TABLES;
     "key.converter": "org.apache.kafka.connect.json.JsonConverter",
     "key.converter.schemas.enable": "false",
     "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-    "value.converter.schemas.enable": "false",
-
-    "transforms": "unwrap",
-    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
-    "transforms.unwrap.drop.tombstones": "false",
-    "transforms.unwrap.delete.handling.mode": "rewrite",
-    "transforms.unwrap.add.fields": "op,source.ts_ms"
+    "value.converter.schemas.enable": "false"
   }
 }
 ```
@@ -1283,8 +1277,8 @@ class CDCEvent:
         timestamp: When the change occurred
     """
     operation: Operation
-    before: Dict[str, Any]
-    after: Dict[str, Any]
+    before: Dict[str, Any] | None
+    after: Dict[str, Any] | None
     source: Dict[str, Any]
     timestamp: int
 
@@ -1326,14 +1320,17 @@ class DebeziumConsumer:
     def on_create(self, handler: Callable[[CDCEvent], None]):
         """Register handler for INSERT operations."""
         self.handlers[Operation.CREATE] = handler
+        return handler
 
     def on_update(self, handler: Callable[[CDCEvent], None]):
         """Register handler for UPDATE operations."""
         self.handlers[Operation.UPDATE] = handler
+        return handler
 
     def on_delete(self, handler: Callable[[CDCEvent], None]):
         """Register handler for DELETE operations."""
         self.handlers[Operation.DELETE] = handler
+        return handler
 
     def parse_event(self, message) -> CDCEvent:
         """
