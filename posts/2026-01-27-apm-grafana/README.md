@@ -41,7 +41,7 @@ graph LR
 
 **Python with Flask:**
 
-```python
+```text
 # requirements.txt
 
 opentelemetry-distro
@@ -77,13 +77,17 @@ def get_user(user_id):
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'api-service',
+  }),
   traceExporter: new OTLPTraceExporter({
     url: 'http://otel-collector:4317',
   }),
   instrumentations: [getNodeAutoInstrumentations()],
-  serviceName: 'api-service',
 });
 
 sdk.start();
@@ -92,25 +96,26 @@ sdk.start();
 ```javascript
 // app.js
 const express = require('express');
-const { trace } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 
 const app = express();
 const tracer = trace.getTracer('api-service');
 
 app.get('/api/orders/:id', async (req, res) => {
-  const span = tracer.startSpan('process_order');
-  span.setAttribute('order.id', req.params.id);
+  await tracer.startActiveSpan('process_order', async (span) => {
+    span.setAttribute('order.id', req.params.id);
 
-  try {
-    const order = await orderService.getOrder(req.params.id);
-    span.setStatus({ code: SpanStatusCode.OK });
-    res.json(order);
-  } catch (error) {
-    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
-    res.status(500).json({ error: 'Internal error' });
-  } finally {
-    span.end();
-  }
+    try {
+      const order = await orderService.getOrder(req.params.id);
+      span.setStatus({ code: SpanStatusCode.OK });
+      res.json(order);
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      res.status(500).json({ error: 'Internal error' });
+    } finally {
+      span.end();
+    }
+  });
 });
 ```
 
@@ -118,6 +123,18 @@ app.get('/api/orders/:id', async (req, res) => {
 
 ```xml
 <!-- pom.xml -->
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom</artifactId>
+            <version>2.28.1</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependency>
     <groupId>io.opentelemetry</groupId>
     <artifactId>opentelemetry-api</artifactId>
@@ -157,18 +174,23 @@ processors:
     timeout: 1s
     send_batch_size: 1024
 
+connectors:
   # Add service graph metrics
-  servicegraph:
-    metrics_exporter: prometheus
+  service_graph:
     latency_histogram_buckets: [1ms, 10ms, 100ms, 1s, 10s]
 
   # Generate span metrics
-  spanmetrics:
-    metrics_exporter: prometheus
-    latency_histogram_buckets: [1ms, 10ms, 100ms, 1s]
+  span_metrics:
+    histogram:
+      unit: s
+      explicit:
+        buckets: [1ms, 10ms, 100ms, 1s]
     dimensions:
       - name: http.method
       - name: http.status_code
+      - name: db.system
+      - name: server.address
+      - name: url.full
 
 exporters:
   otlp/tempo:
@@ -186,11 +208,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, servicegraph, spanmetrics]
-      exporters: [otlp/tempo]
+      processors: [batch]
+      exporters: [otlp/tempo, service_graph, span_metrics]
 
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, service_graph, span_metrics]
       processors: [batch]
       exporters: [prometheus]
 
@@ -211,25 +233,28 @@ apiVersion: 1
 datasources:
   - name: Tempo
     type: tempo
+    uid: tempo
     access: proxy
     url: http://tempo:3200
     jsonData:
       httpMethod: GET
-      tracesToLogs:
+      tracesToLogsV2:
         datasourceUid: loki
         filterByTraceID: true
         filterBySpanID: true
-        mapTagNamesEnabled: true
-        mappedTags:
+        tags:
           - key: service.name
             value: service
       tracesToMetrics:
         datasourceUid: prometheus
+        tags:
+          - key: service.name
+            value: service_name
         queries:
           - name: Request rate
-            query: sum(rate(traces_spanmetrics_calls_total{$$__tags}[5m]))
+            query: sum(rate(traces_span_metrics_calls_total{$$__tags}[5m]))
           - name: Error rate
-            query: sum(rate(traces_spanmetrics_calls_total{$$__tags, status_code="STATUS_CODE_ERROR"}[5m]))
+            query: sum(rate(traces_span_metrics_calls_total{$$__tags, status_code="STATUS_CODE_ERROR"}[5m]))
       serviceMap:
         datasourceUid: prometheus
       nodeGraph:
@@ -243,6 +268,7 @@ datasources:
 ```yaml
 - name: Prometheus
   type: prometheus
+  uid: prometheus
   access: proxy
   url: http://prometheus:9090
   jsonData:
@@ -257,17 +283,17 @@ datasources:
 
 ```promql
 # Request rate
-sum(rate(traces_spanmetrics_calls_total{service_name="$service"}[5m]))
+sum(rate(traces_span_metrics_calls_total{service_name="$service"}[5m]))
 
 # Error rate
-sum(rate(traces_spanmetrics_calls_total{service_name="$service", status_code="STATUS_CODE_ERROR"}[5m]))
+sum(rate(traces_span_metrics_calls_total{service_name="$service", status_code="STATUS_CODE_ERROR"}[5m]))
 /
-sum(rate(traces_spanmetrics_calls_total{service_name="$service"}[5m]))
+sum(rate(traces_span_metrics_calls_total{service_name="$service"}[5m]))
 
 # Latency percentiles
-histogram_quantile(0.50, sum(rate(traces_spanmetrics_latency_bucket{service_name="$service"}[5m])) by (le))
-histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket{service_name="$service"}[5m])) by (le))
-histogram_quantile(0.99, sum(rate(traces_spanmetrics_latency_bucket{service_name="$service"}[5m])) by (le))
+histogram_quantile(0.50, sum(rate(traces_span_metrics_duration_seconds_bucket{service_name="$service"}[5m])) by (le))
+histogram_quantile(0.95, sum(rate(traces_span_metrics_duration_seconds_bucket{service_name="$service"}[5m])) by (le))
+histogram_quantile(0.99, sum(rate(traces_span_metrics_duration_seconds_bucket{service_name="$service"}[5m])) by (le))
 ```
 
 ### Service Map
@@ -282,16 +308,16 @@ Enable the service graph in Tempo's data source settings. The service map visual
 
 ```promql
 # Top endpoints by request volume
-topk(10, sum(rate(traces_spanmetrics_calls_total{service_name="$service"}[5m])) by (span_name))
+topk(10, sum(rate(traces_span_metrics_calls_total{service_name="$service"}[5m])) by (span_name))
 
 # Slowest endpoints
-topk(10, histogram_quantile(0.99, sum(rate(traces_spanmetrics_latency_bucket{service_name="$service"}[5m])) by (span_name, le)))
+topk(10, histogram_quantile(0.99, sum(rate(traces_span_metrics_duration_seconds_bucket{service_name="$service"}[5m])) by (span_name, le)))
 
 # Highest error rate endpoints
 topk(10,
-  sum(rate(traces_spanmetrics_calls_total{service_name="$service", status_code="STATUS_CODE_ERROR"}[5m])) by (span_name)
+  sum(rate(traces_span_metrics_calls_total{service_name="$service", status_code="STATUS_CODE_ERROR"}[5m])) by (span_name)
   /
-  sum(rate(traces_spanmetrics_calls_total{service_name="$service"}[5m])) by (span_name)
+  sum(rate(traces_span_metrics_calls_total{service_name="$service"}[5m])) by (span_name)
 )
 ```
 
@@ -299,20 +325,20 @@ topk(10,
 
 ```promql
 # Database query duration
-histogram_quantile(0.99, sum(rate(traces_spanmetrics_latency_bucket{service_name="$service", span_kind="SPAN_KIND_CLIENT", db_system!=""}[5m])) by (le, db_system))
+histogram_quantile(0.99, sum(rate(traces_span_metrics_duration_seconds_bucket{service_name="$service", span_kind="SPAN_KIND_CLIENT", db_system!=""}[5m])) by (le, db_system))
 
 # Queries per second by database
-sum(rate(traces_spanmetrics_calls_total{service_name="$service", db_system!=""}[5m])) by (db_system)
+sum(rate(traces_span_metrics_calls_total{service_name="$service", db_system!=""}[5m])) by (db_system)
 ```
 
 ### External API Calls
 
 ```promql
 # External HTTP call latency
-histogram_quantile(0.99, sum(rate(traces_spanmetrics_latency_bucket{service_name="$service", span_kind="SPAN_KIND_CLIENT", http_url!=""}[5m])) by (le, http_host))
+histogram_quantile(0.99, sum(rate(traces_span_metrics_duration_seconds_bucket{service_name="$service", span_kind="SPAN_KIND_CLIENT", server_address!=""}[5m])) by (le, server_address))
 
 # External call error rate
-sum(rate(traces_spanmetrics_calls_total{service_name="$service", span_kind="SPAN_KIND_CLIENT", http_status_code=~"5.."}[5m])) by (http_host)
+sum(rate(traces_span_metrics_calls_total{service_name="$service", span_kind="SPAN_KIND_CLIENT", http_status_code=~"5.."}[5m])) by (server_address)
 ```
 
 ## Trace Analysis in Explore
@@ -323,16 +349,16 @@ Use TraceQL in Grafana Explore:
 
 ```traceql
 # Find slow traces
-{service.name="api-service"} | duration > 1s
+{resource.service.name="api-service" && trace:duration > 1s}
 
 # Find error traces
-{service.name="api-service" && status.code=error}
+{resource.service.name="api-service" && span:status=error}
 
 # Find traces with specific attributes
-{service.name="api-service" && http.status_code >= 500}
+{resource.service.name="api-service" && span.http.status_code >= 500}
 
 # Find traces touching specific endpoint
-{service.name="api-service" && name="GET /api/orders"}
+{resource.service.name="api-service" && span:name="GET /api/orders"}
 ```
 
 ### Correlating Traces with Logs
@@ -358,7 +384,7 @@ groups:
     rules:
       - alert: HighLatency
         expr: |
-          histogram_quantile(0.99, sum(rate(traces_spanmetrics_latency_bucket[5m])) by (le, service_name))
+          histogram_quantile(0.99, sum(rate(traces_span_metrics_duration_seconds_bucket[5m])) by (le, service_name))
           > 1
         for: 5m
         labels:
@@ -369,9 +395,9 @@ groups:
 
       - alert: HighErrorRate
         expr: |
-          sum(rate(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])) by (service_name)
+          sum(rate(traces_span_metrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])) by (service_name)
           /
-          sum(rate(traces_spanmetrics_calls_total[5m])) by (service_name)
+          sum(rate(traces_span_metrics_calls_total[5m])) by (service_name)
           > 0.05
         for: 5m
         labels:
@@ -464,7 +490,7 @@ span_name = f"GET /api/users/{user_id}"
 ### Broken Service Map
 
 - Ensure all services report to the same collector
-- Verify servicegraph processor is configured
+- Verify service graph connector is configured
 - Check that trace context headers propagate across service boundaries
 
 ### High Cardinality Issues
