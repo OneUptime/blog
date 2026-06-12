@@ -225,7 +225,7 @@ flowchart TB
     B -->|Direct/Native| D[Increase managed memory]
     B -->|Metaspace| E[Increase metaspace]
 
-    C --> F[taskmanager.memory.jvm-heap.size]
+    C --> F[taskmanager.memory.task.heap.size]
     D --> G[taskmanager.memory.managed.fraction]
     E --> H[taskmanager.memory.jvm-metaspace.size]
 ```
@@ -240,7 +240,7 @@ taskmanager.memory.process.size: 4096m
 
 # Adjust heap vs managed memory ratio
 # Heap for Java objects in user code
-taskmanager.memory.jvm-heap.size: 1024m
+taskmanager.memory.task.heap.size: 1024m
 
 # Managed memory for state backends and sorting
 taskmanager.memory.managed.fraction: 0.4
