@@ -94,6 +94,10 @@ module.exports = openapiSpecification;
 
 ```javascript
 // routes/users.js
+const express = require('express');
+const router = express.Router();
+const { authenticate, requireAdmin } = require('../middleware/auth');
+const userService = require('../services/user-service');
 
 /**
  * @openapi
@@ -342,6 +346,8 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
   const user = await userService.create(req.body);
   res.status(201).location(`/users/${user.id}`).json(user);
 });
+
+module.exports = router;
 ```
 
 ### Approach 2: FastAPI with Python Type Hints
@@ -351,7 +357,7 @@ Python's FastAPI generates OpenAPI specs automatically from type hints and Pydan
 ```python
 # models.py
 
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, ConfigDict, Field, EmailStr
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -365,14 +371,14 @@ class UserBase(BaseModel):
     email: EmailStr = Field(
         ...,
         description="User email address",
-        example="user@example.com"
+        json_schema_extra={"example": "user@example.com"}
     )
     name: str = Field(
         ...,
         min_length=1,
         max_length=100,
         description="Full name of the user",
-        example="Jane Smith"
+        json_schema_extra={"example": "Jane Smith"}
     )
     role: UserRole = Field(
         default=UserRole.user,
@@ -384,22 +390,22 @@ class UserCreate(UserBase):
         ...,
         min_length=8,
         description="Must contain uppercase, lowercase, and number",
-        example="SecurePass123"
+        json_schema_extra={"example": "SecurePass123"}
     )
 
 class User(UserBase):
     id: str = Field(
         ...,
         description="Unique user identifier",
-        example="550e8400-e29b-41d4-a716-446655440000"
+        json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"}
     )
     created_at: datetime = Field(
         ...,
         description="Account creation timestamp"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": "550e8400-e29b-41d4-a716-446655440000",
                 "email": "jane@example.com",
@@ -408,6 +414,7 @@ class User(UserBase):
                 "created_at": "2024-01-15T10:30:00Z"
             }
         }
+    )
 
 class PaginatedResponse(BaseModel):
     data: List[User]
@@ -419,9 +426,11 @@ class PaginatedResponse(BaseModel):
 
 ```python
 # routes.py
-from fastapi import FastAPI, Query, Path, HTTPException, Depends, status
+from fastapi import FastAPI, Query, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
+from models import PaginatedResponse, User, UserCreate, UserRole
+from services import user_service
 
 app = FastAPI(
     title="User Management API",
@@ -483,7 +492,7 @@ async def list_users(
     ),
     sort: str = Query(
         default="-created_at",
-        regex="^-?(created_at|name)$",
+        pattern="^-?(created_at|name)$",
         description="Sort order"
     ),
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -569,6 +578,7 @@ flowchart TD
 ```javascript
 // example-generator.js
 const { faker } = require('@faker-js/faker');
+const RandExp = require('randexp');
 
 class OpenAPIExampleGenerator {
   constructor(spec) {
@@ -576,12 +586,12 @@ class OpenAPIExampleGenerator {
     this.schemas = spec.components?.schemas || {};
   }
 
-  generateForSchema(schemaName) {
+  generateForSchema(schemaName, depth = 0) {
     const schema = this.schemas[schemaName];
     if (!schema) {
       throw new Error(`Schema '${schemaName}' not found`);
     }
-    return this.generateFromSchema(schema);
+    return this.generateFromSchema(schema, depth);
   }
 
   generateFromSchema(schema, depth = 0) {
@@ -591,7 +601,7 @@ class OpenAPIExampleGenerator {
     // Handle $ref
     if (schema.$ref) {
       const refName = schema.$ref.split('/').pop();
-      return this.generateForSchema(refName);
+      return this.generateForSchema(refName, depth + 1);
     }
 
     // Use existing example if provided
@@ -666,6 +676,10 @@ class OpenAPIExampleGenerator {
         const maxLength = schema.maxLength || 50;
         return faker.lorem.words(Math.ceil(maxLength / 10)).substring(0, maxLength);
     }
+  }
+
+  generateFromPattern(pattern) {
+    return new RandExp(pattern).gen();
   }
 
   generateNumber(schema) {
@@ -916,6 +930,20 @@ const versions = fs.readdirSync(specsDir)
 
 const latestVersion = versions[0];
 
+// Deprecation headers middleware
+app.use((req, res, next) => {
+  const versionMatch = req.path.match(/\/docs\/(v[^/]+)(?:\/|$)/);
+  if (versionMatch) {
+    const requestedVersion = versionMatch[1];
+    if (requestedVersion !== latestVersion) {
+      res.set('Deprecation', 'true');
+      res.set('Sunset', 'Sat, 31 Dec 2025 23:59:59 GMT');
+      res.set('Link', `</docs/${latestVersion}>; rel="successor-version"`);
+    }
+  }
+  next();
+});
+
 // Version selector middleware
 app.get('/docs', (req, res) => {
   res.send(`
@@ -976,28 +1004,13 @@ versions.forEach(version => {
 app.get('/docs/latest', (req, res) => {
   res.redirect(`/docs/${latestVersion}`);
 });
-
-// Deprecation headers middleware
-app.use((req, res, next) => {
-  const versionMatch = req.path.match(/\/v(\d+)\//);
-  if (versionMatch) {
-    const requestedVersion = `v${versionMatch[1]}`;
-    if (requestedVersion !== latestVersion) {
-      res.set('Deprecation', 'true');
-      res.set('Sunset', 'Sat, 31 Dec 2025 23:59:59 GMT');
-      res.set('Link', `</docs/${latestVersion}>; rel="successor-version"`);
-    }
-  }
-  next();
-});
 ```
 
 ### Changelog Generation
 
 ```javascript
 // changelog-generator.js
-const diff = require('deep-diff');
-const semver = require('semver');
+const { isDeepStrictEqual } = require('node:util');
 
 class ChangelogGenerator {
   constructor(oldSpec, newSpec) {
@@ -1089,7 +1102,8 @@ class ChangelogGenerator {
       const newParam = newParams.find(p => p.name === oldParam.name && p.in === oldParam.in);
 
       if (!newParam) {
-        this.changes.modifications.push({
+        const target = oldParam.required ? this.changes.breaking : this.changes.modifications;
+        target.push({
           type: 'parameter_removed',
           path,
           method: method.toUpperCase(),
@@ -1118,6 +1132,105 @@ class ChangelogGenerator {
           method: method.toUpperCase(),
           parameter: newParam.name,
           description: `New optional parameter '${newParam.name}' added to ${method.toUpperCase()} ${path}`,
+        });
+      }
+    }
+  }
+
+  compareResponses(path, method, oldOp, newOp) {
+    const oldResponses = oldOp.responses || {};
+    const newResponses = newOp.responses || {};
+
+    for (const status of Object.keys(oldResponses)) {
+      if (!newResponses[status]) {
+        this.changes.breaking.push({
+          type: 'response_removed',
+          path,
+          method: method.toUpperCase(),
+          status,
+          description: `Response ${status} removed from ${method.toUpperCase()} ${path}`,
+        });
+      }
+    }
+
+    for (const status of Object.keys(newResponses)) {
+      if (!oldResponses[status]) {
+        this.changes.additions.push({
+          type: 'response_added',
+          path,
+          method: method.toUpperCase(),
+          status,
+          description: `Response ${status} added to ${method.toUpperCase()} ${path}`,
+        });
+      } else if (!isDeepStrictEqual(oldResponses[status], newResponses[status])) {
+        this.changes.modifications.push({
+          type: 'response_changed',
+          path,
+          method: method.toUpperCase(),
+          status,
+          description: `Response ${status} changed for ${method.toUpperCase()} ${path}`,
+        });
+      }
+    }
+  }
+
+  compareSchemas() {
+    const oldSchemas = this.oldSpec.components?.schemas || {};
+    const newSchemas = this.newSpec.components?.schemas || {};
+
+    for (const schemaName of Object.keys(oldSchemas)) {
+      if (!newSchemas[schemaName]) {
+        this.changes.breaking.push({
+          type: 'schema_removed',
+          schema: schemaName,
+          description: `Schema ${schemaName} has been removed`,
+        });
+      }
+    }
+
+    for (const schemaName of Object.keys(newSchemas)) {
+      if (!oldSchemas[schemaName]) {
+        this.changes.additions.push({
+          type: 'schema_added',
+          schema: schemaName,
+          description: `Schema ${schemaName} has been added`,
+        });
+      } else if (!isDeepStrictEqual(oldSchemas[schemaName], newSchemas[schemaName])) {
+        this.changes.modifications.push({
+          type: 'schema_changed',
+          schema: schemaName,
+          description: `Schema ${schemaName} has changed`,
+        });
+      }
+    }
+  }
+
+  compareSecuritySchemes() {
+    const oldSchemes = this.oldSpec.components?.securitySchemes || {};
+    const newSchemes = this.newSpec.components?.securitySchemes || {};
+
+    for (const schemeName of Object.keys(oldSchemes)) {
+      if (!newSchemes[schemeName]) {
+        this.changes.breaking.push({
+          type: 'security_scheme_removed',
+          scheme: schemeName,
+          description: `Security scheme ${schemeName} has been removed`,
+        });
+      }
+    }
+
+    for (const schemeName of Object.keys(newSchemes)) {
+      if (!oldSchemes[schemeName]) {
+        this.changes.additions.push({
+          type: 'security_scheme_added',
+          scheme: schemeName,
+          description: `Security scheme ${schemeName} has been added`,
+        });
+      } else if (!isDeepStrictEqual(oldSchemes[schemeName], newSchemes[schemeName])) {
+        this.changes.modifications.push({
+          type: 'security_scheme_changed',
+          scheme: schemeName,
+          description: `Security scheme ${schemeName} has changed`,
         });
       }
     }
@@ -1209,7 +1322,7 @@ jobs:
         run: |
           git fetch origin main
           git show origin/main:openapi.json > openapi-main.json
-          npx oasdiff breaking openapi-main.json openapi.json
+          docker run --rm -v ${PWD}:/local tufin/oasdiff breaking /local/openapi-main.json /local/openapi.json
 
       - name: Generate changelog
         if: github.event_name == 'pull_request'
@@ -1272,6 +1385,29 @@ for (const [name, schema] of Object.entries(spec.components?.schemas || {})) {
 
 let hasErrors = false;
 
+function validateExample(schema, example, label) {
+  const validate = ajv.compile(schema);
+  if (!validate(example)) {
+    console.error(`Invalid example: ${label}`);
+    console.error(validate.errors);
+    hasErrors = true;
+  }
+}
+
+function validateMediaTypeExamples(content, label) {
+  if (!content?.schema) return;
+
+  if (content.example !== undefined) {
+    validateExample(content.schema, content.example, label);
+  }
+
+  for (const [name, exampleObject] of Object.entries(content.examples || {})) {
+    if (exampleObject.value !== undefined) {
+      validateExample(content.schema, exampleObject.value, `${label} example '${name}'`);
+    }
+  }
+}
+
 // Validate all examples
 for (const [path, methods] of Object.entries(spec.paths || {})) {
   for (const [method, operation] of Object.entries(methods)) {
@@ -1279,26 +1415,12 @@ for (const [path, methods] of Object.entries(spec.paths || {})) {
 
     // Validate request body examples
     const requestBody = operation.requestBody?.content?.['application/json'];
-    if (requestBody?.example && requestBody?.schema) {
-      const validate = ajv.compile(requestBody.schema);
-      if (!validate(requestBody.example)) {
-        console.error(`Invalid request example: ${method.toUpperCase()} ${path}`);
-        console.error(validate.errors);
-        hasErrors = true;
-      }
-    }
+    validateMediaTypeExamples(requestBody, `request ${method.toUpperCase()} ${path}`);
 
     // Validate response examples
     for (const [status, response] of Object.entries(operation.responses || {})) {
       const content = response.content?.['application/json'];
-      if (content?.example && content?.schema) {
-        const validate = ajv.compile(content.schema);
-        if (!validate(content.example)) {
-          console.error(`Invalid response example: ${method.toUpperCase()} ${path} (${status})`);
-          console.error(validate.errors);
-          hasErrors = true;
-        }
-      }
+      validateMediaTypeExamples(content, `response ${method.toUpperCase()} ${path} (${status})`);
     }
   }
 }
@@ -1341,12 +1463,13 @@ jobs:
 
       - name: Generate TypeScript SDK
         run: |
+          SDK_VERSION=${GITHUB_REF_NAME#v}
           docker run --rm \
             -v ${PWD}:/local openapitools/openapi-generator-cli generate \
             -i /local/openapi.json \
             -g typescript-fetch \
             -o /local/sdks/typescript \
-            --additional-properties=npmName=@myapi/client,npmVersion=${{ github.ref_name }}
+            --additional-properties=npmName=@myapi/client,npmVersion=${SDK_VERSION}
 
       - name: Publish to npm
         run: |
@@ -1362,12 +1485,13 @@ jobs:
 
       - name: Generate Python SDK
         run: |
+          SDK_VERSION=${GITHUB_REF_NAME#v}
           docker run --rm \
             -v ${PWD}:/local openapitools/openapi-generator-cli generate \
             -i /local/openapi.json \
             -g python \
             -o /local/sdks/python \
-            --additional-properties=packageName=myapi_client,packageVersion=${{ github.ref_name }}
+            --additional-properties=packageName=myapi_client,packageVersion=${SDK_VERSION}
 
       - name: Publish to PyPI
         run: |
