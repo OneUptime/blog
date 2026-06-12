@@ -241,9 +241,9 @@ beforeEach(() => {
 });
 ```
 
-## Flaky Test Detection with Cypress Dashboard
+## Flaky Test Detection with Cypress Cloud
 
-When using Cypress Dashboard, tests that fail on first attempt but pass on retry are automatically flagged as flaky. This helps you identify and fix underlying issues.
+When using Cypress Cloud (formerly known as Cypress Dashboard), tests that fail on first attempt but pass on retry are automatically flagged as flaky. This helps you identify and fix underlying issues.
 
 ```javascript
 // cypress.config.js
@@ -256,7 +256,7 @@ module.exports = defineConfig({
 });
 ```
 
-The Dashboard shows:
+Cypress Cloud shows:
 
 - Which tests are flaky
 - Flakiness rate over time
