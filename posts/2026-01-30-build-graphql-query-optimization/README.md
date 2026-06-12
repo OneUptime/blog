@@ -611,7 +611,7 @@ This depth limiter provides detailed error messages that help API consumers unde
 // Prevents deeply nested queries that could cause performance issues
 // Returns detailed error information to help clients fix their queries
 
-import { DocumentNode, FieldNode, Kind, visit } from 'graphql';
+import { DocumentNode, Kind } from 'graphql';
 
 interface DepthLimitResult {
   valid: boolean;
@@ -740,9 +740,7 @@ import {
   DocumentNode,
   FieldNode,
   Kind,
-  SelectionSetNode,
   print,
-  parse,
   visit,
 } from 'graphql';
 
@@ -961,7 +959,7 @@ This middleware class works with Express-based GraphQL servers and provides comp
 // Provides performance headers and detailed logging
 
 import { Request, Response, NextFunction } from 'express';
-import { parse, validate, GraphQLSchema, DocumentNode } from 'graphql';
+import { parse, print, validate, GraphQLSchema, DocumentNode } from 'graphql';
 import { ComplexityAnalyzer } from '../optimization/complexity-analyzer';
 import { CostCalculator } from '../optimization/cost-calculator';
 import { DepthLimiter } from '../optimization/depth-limiter';
@@ -1094,13 +1092,22 @@ export function createOptimizationMiddleware(options: OptimizationMiddlewareOpti
       if (enableRewriting) {
         const rewriteResult = queryRewriter.rewrite(document);
         if (rewriteResult.applied.length > 0) {
-          optimizedDocument = rewriteResult.document;
-          rewriteInfo = {
-            applied: rewriteResult.applied,
-            original: rewriteResult.original.slice(0, 500),
-            rewritten: rewriteResult.rewritten.slice(0, 500),
-          };
-          logger('Query rewritten', rewriteInfo);
+          const rewrittenValidationErrors = validate(schema, rewriteResult.document);
+
+          if (rewrittenValidationErrors.length === 0) {
+            optimizedDocument = rewriteResult.document;
+            req.body.query = print(optimizedDocument);
+            rewriteInfo = {
+              applied: rewriteResult.applied,
+              original: rewriteResult.original.slice(0, 500),
+              rewritten: rewriteResult.rewritten.slice(0, 500),
+            };
+            logger('Query rewritten', rewriteInfo);
+          } else {
+            logger('Query rewrite skipped because rewritten query is invalid', {
+              errors: rewrittenValidationErrors.map(e => e.message),
+            });
+          }
         }
       }
 
@@ -1196,17 +1203,18 @@ export function createMonitoringPlugin(
   store: MetricsStore = new InMemoryMetricsStore()
 ): ApolloServerPlugin {
   return {
-    async requestDidStart(requestContext): Promise<GraphQLRequestListener<any>> {
+    async requestDidStart(): Promise<GraphQLRequestListener<any>> {
       const startTime = Date.now();
 
       return {
-        async didResolveOperation(context) {
+        async didResolveOperation() {
           // Operation resolved, ready for execution
         },
 
         async willSendResponse(context) {
           // Get optimization data from context
           const optimization = (context.contextValue as any).graphqlOptimization;
+          const responseBody = context.response.body;
 
           const metrics: QueryMetrics = {
             operationName: context.operationName || null,
@@ -1216,8 +1224,11 @@ export function createMonitoringPlugin(
             actualDurationMs: Date.now() - startTime,
             timestamp: new Date(),
             clientId: context.request.http?.headers.get('x-client-id') || null,
-            wasRewritten: optimization?.rewrite !== null,
-            errors: context.response.body?.singleResult?.errors?.length || 0,
+            wasRewritten: Boolean(optimization?.rewrite),
+            errors:
+              responseBody?.kind === 'single'
+                ? responseBody.singleResult.errors?.length || 0
+                : 0,
           };
 
           store.record(metrics);
