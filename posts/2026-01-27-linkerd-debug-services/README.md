@@ -67,7 +67,7 @@ linkerd version
 ```bash
 # List all meshed pods and their proxy status
 # Look for pods where the proxy isn't running or is unhealthy
-linkerd stat deploy -n your-namespace
+linkerd viz stat deploy -n your-namespace
 
 # Verify a specific deployment is properly injected
 kubectl get pods -n your-namespace -l app=your-service -o jsonpath='{.items[*].spec.containers[*].name}' | tr ' ' '\n' | grep linkerd-proxy
@@ -117,7 +117,7 @@ Key components to understand:
 ```bash
 # Run comprehensive checks on your Linkerd installation
 # The --pre flag checks prerequisites before installation
-# The --proxy flag additionally checks data plane proxies
+# The --proxy flag runs data plane proxy checks
 linkerd check --proxy
 
 # Check a specific namespace for issues
@@ -199,8 +199,8 @@ linkerd viz tap deploy/your-service -n your-namespace
 
 ```bash
 # Tap only requests to a specific API endpoint
-# The --path flag supports regex patterns
-linkerd viz tap deploy/api-gateway -n production --path="/api/v1/orders.*"
+# The --path flag matches requests whose paths start with this prefix
+linkerd viz tap deploy/api-gateway -n production --path="/api/v1/orders"
 
 # Tap requests matching multiple criteria
 linkerd viz tap deploy/api-gateway -n production \
@@ -213,12 +213,10 @@ linkerd viz tap deploy/api-gateway -n production \
 ```bash
 # Find all failing requests (5xx errors)
 # Critical for debugging service errors in production
-linkerd viz tap deploy/payment-service -n production \
-  --path=".*" \
-  | grep ":status=5"
+linkerd viz tap deploy/payment-service -n production | grep ":status=5"
 
-# Tap only requests with specific status codes
-# Useful for tracking down 404s or 503s
+# Tap traffic to a specific destination, then filter for status codes
+# Useful for tracking down 404s or 503s between two workloads
 linkerd viz tap deploy/your-service -n your-namespace --to deploy/backend-service
 ```
 
@@ -230,7 +228,7 @@ linkerd viz tap deploy/your-service -n your-namespace --to deploy/backend-servic
 linkerd viz tap deploy/frontend -n production --to deploy/backend
 
 # Watch traffic from a specific source namespace
-linkerd viz tap deploy/backend -n production --from ns/staging
+linkerd viz tap ns/staging --to deploy/backend --to-namespace production
 ```
 
 ### Output Tap Data as JSON
@@ -242,7 +240,7 @@ linkerd viz tap deploy/your-service -n your-namespace -o json | jq '.'
 
 # Example: Extract slow requests (>100ms) using jq
 linkerd viz tap deploy/your-service -n your-namespace -o json \
-  | jq 'select(.responseEnd.sinceRequestInit.nanos > 100000000)'
+  | jq 'select(.http.response_end.since_request_init.nanos > 100000000)'
 ```
 
 ### Tap Request Flow Diagram
@@ -369,13 +367,13 @@ flowchart TB
 
 ## 6. Profile Analysis and Traffic Debugging
 
-Service Profiles define route-level behavior and enable advanced debugging features.
+Service Profiles define route-level behavior and enable advanced debugging features. In Linkerd 2.16 and later, Gateway API resources are the preferred path for new route metrics, retries, and timeout configuration; Service Profiles remain supported for backward compatibility.
 
 ### Create a Service Profile
 
 ```yaml
 # service-profile.yaml
-# Service Profiles enable per-route metrics, retries, and timeouts
+# Service Profiles enable per-route metrics, retries, and timeouts on older and backward-compatible Linkerd deployments
 apiVersion: linkerd.io/v1alpha2
 kind: ServiceProfile
 metadata:
@@ -418,7 +416,7 @@ linkerd profile --open-api swagger.json api-service -n production > service-prof
 
 # Generate a service profile by observing live traffic
 # Watches traffic for 30 seconds and infers routes
-linkerd viz profile --tap deploy/api-service -n production --tap-duration 30s api-service
+linkerd viz profile -n production api-service --tap deploy/api-service --tap-duration 30s
 ```
 
 ### Debug Route Configuration
@@ -493,8 +491,8 @@ spec:
 
 ```yaml
 # traffic-split.yaml
-# Split traffic between canary and stable versions
-apiVersion: split.smi-spec.io/v1alpha1
+# Split traffic between canary and stable versions with the deprecated Linkerd SMI extension
+apiVersion: split.smi-spec.io/v1alpha2
 kind: TrafficSplit
 metadata:
   name: api-service-split
@@ -555,8 +553,8 @@ linkerd viz routes deploy/your-service -n production
 
 # Tap slow requests to see details
 linkerd viz tap deploy/your-service -n production -o json \
-  | jq 'select(.responseEnd.sinceRequestInit.nanos > 500000000)' \
-  | jq '{method: .requestInit.method.registered, path: .requestInit.path, latency_ms: (.responseEnd.sinceRequestInit.nanos / 1000000)}'
+  | jq 'select(.http.response_end.since_request_init.nanos > 500000000)' \
+  | jq '{source: .source_meta, destination: .destination_meta, latency_ms: (.http.response_end.since_request_init.nanos / 1000000)}'
 
 # Check if downstream dependencies are slow
 linkerd viz stat deploy/your-service -n production --to svc/database
@@ -572,7 +570,7 @@ kubectl top pod -n your-namespace -l app=your-service
 
 ```bash
 # Find which endpoints are failing
-linkerd viz tap deploy/your-service -n production --path=".*" | grep ":status=5"
+linkerd viz tap deploy/your-service -n production | grep ":status=5"
 
 # Check endpoint availability
 linkerd diagnostics endpoints your-service.your-namespace.svc.cluster.local:8080
@@ -596,13 +594,10 @@ kubectl logs -n your-namespace deploy/your-service -c linkerd-proxy | grep -i er
 linkerd check --proxy
 
 # Verify certificates are valid
-linkerd identity -n your-namespace
+linkerd identity -n your-namespace -l app=your-service
 
-# Check certificate expiry
-kubectl get pods -n your-namespace -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | \
-  xargs -I {} kubectl exec {} -n your-namespace -c linkerd-proxy -- \
-  cat /var/run/linkerd/identity/end-entity/certificate.crt | \
-  openssl x509 -noout -dates
+# Check the certificate validity period in the identity output
+linkerd identity -n your-namespace -l app=your-service
 
 # If certificates are expired, restart the identity service
 kubectl rollout restart deploy/linkerd-identity -n linkerd
@@ -622,8 +617,8 @@ kubectl get pods -n your-namespace --show-labels | grep your-service
 # Check network policies that might block traffic
 kubectl get networkpolicies -n your-namespace
 
-# Test connectivity from proxy
-kubectl exec -it deploy/your-service -n your-namespace -c linkerd-proxy -- \
+# Test connectivity from a client application container
+kubectl exec -it deploy/client -n your-namespace -c app -- \
   wget -qO- http://target-service:8080/health
 ```
 
@@ -666,8 +661,8 @@ flowchart TD
 
 ### Performance Tips
 
-- Keep service profiles simple (10-20 routes max)
-- Use specific path patterns to avoid regex overhead
+- Keep legacy service profiles simple (10-20 routes max)
+- Use specific path patterns for service profiles to avoid regex overhead
 - Set appropriate timeouts to prevent resource exhaustion
 - Configure retry budgets to avoid cascade failures
 
