@@ -127,7 +127,7 @@ But achieving 99.99% might cost $200,000/year more in infrastructure and enginee
 
 ### 3. Technical Feasibility
 
-Your service cannot be more available than its least reliable hard dependency. If your payment provider has 99.9% availability, your checkout flow cannot exceed that without fallback mechanisms.
+Your service cannot be more available than its least reliable hard dependency. If your payment provider has 99.9% availability, your checkout flow cannot exceed that without fallback mechanisms, and may be lower once all required dependencies are included.
 
 ```mermaid
 flowchart TD
@@ -136,7 +136,7 @@ flowchart TD
     A --> D[CDN: 99.99%]
     A --> E[Auth Service: 99.95%]
 
-    C -->|Bottleneck| F[Max achievable without fallback: 99.9%]
+    C -->|Bottleneck| F[Upper bound without fallback: 99.9%]
 ```
 
 ### 4. Operational Capacity
