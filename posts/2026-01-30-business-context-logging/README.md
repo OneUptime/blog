@@ -55,7 +55,7 @@ interface BusinessEvent {
   entity_id: string;         // Primary identifier
 
   // Value metrics (when applicable)
-  monetary_value?: number;   // Revenue impact in cents
+  monetary_value_cents?: number; // Revenue impact in cents
   currency?: string;         // ISO currency code
 
   // User context
@@ -75,7 +75,7 @@ The business logger wraps your standard logging library and enforces the event s
 
 ```typescript
 // business-logger.ts - Core business logging implementation
-import { trace, context } from '@opentelemetry/api';
+import { trace } from '@opentelemetry/api';
 import winston from 'winston';
 
 export class BusinessLogger {
@@ -193,7 +193,7 @@ class ContextStore {
     return this.storage.run(ctx, fn);
   }
 
-  // Get current context (returns empty object if none set)
+  // Get current context
   get(): BusinessContext {
     return this.storage.getStore() || { correlation_id: 'unknown' };
   }
@@ -216,14 +216,30 @@ import { Request, Response, NextFunction } from 'express';
 import { contextStore } from '../context-store';
 import { randomUUID } from 'crypto';
 
+interface AuthenticatedUser {
+  id?: string;
+  tenantId?: string;
+  segment?: string;
+  subscriptionTier?: string;
+}
+
+interface AuthenticatedRequest extends Request {
+  user?: AuthenticatedUser;
+}
+
 export function businessContextMiddleware(
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): void {
+  const correlationHeader = req.headers['x-correlation-id'];
+  const correlationId = Array.isArray(correlationHeader)
+    ? correlationHeader[0]
+    : correlationHeader;
+
   // Extract business context from request
   const ctx = {
-    correlation_id: req.headers['x-correlation-id'] as string || randomUUID(),
+    correlation_id: correlationId || randomUUID(),
     user_id: req.user?.id,
     tenant_id: req.user?.tenantId,
     user_segment: req.user?.segment,
@@ -339,6 +355,12 @@ export class OrderService {
 
       return order;
     } catch (error) {
+      const failureReason = error instanceof Error ? error.message : 'unknown';
+      const failureCode =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code?: unknown }).code)
+          : undefined;
+
       // Log failed order with failure reason
       businessLogger.logBusinessEvent(
         'commerce',
@@ -346,8 +368,8 @@ export class OrderService {
         'order',
         'failed',
         {
-          failure_reason: error.message,
-          failure_code: error.code,
+          failure_reason: failureReason,
+          failure_code: failureCode,
           attempted_total_cents: total,
           payment_method: paymentMethod,
         }
@@ -418,8 +440,8 @@ SELECT
   entity_id,
   user_id,
   tenant_id,
-  attributes->>'failure_reason' as failure_reason,
-  attributes->>'attempted_total_cents' as amount
+  failure_reason,
+  attempted_total_cents as amount
 FROM logs
 WHERE event_domain = 'commerce'
   AND event_name = 'order_failed'
@@ -433,7 +455,7 @@ Calculate expansion revenue by customer segment:
 ```sql
 SELECT
   user_segment,
-  SUM(CAST(attributes->>'mrr_change_cents' AS INTEGER)) / 100.0 as expansion_revenue
+  SUM(mrr_change_cents) / 100.0 as expansion_revenue
 FROM logs
 WHERE event_domain = 'subscription'
   AND event_name = 'upgrade_completed'
