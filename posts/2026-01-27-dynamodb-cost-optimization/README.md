@@ -72,7 +72,7 @@ import boto3
 dynamodb = boto3.client('dynamodb')
 
 # Create table with on-demand (PAY_PER_REQUEST) billing mode
-# This eliminates capacity planning but costs ~6.5x more per unit
+# This eliminates capacity planning but costs ~3.5x more per unit
 # than well-utilized provisioned capacity
 response = dynamodb.create_table(
     TableName='UserSessions',
@@ -172,7 +172,7 @@ flowchart TD
     A[Analyze Your Workload] --> B{Traffic Pattern?}
 
     B -->|Unpredictable| C{New Application?}
-    B -->|Predictable| D{Utilization > 20%?}
+    B -->|Predictable| D{Utilization > 30%?}
     B -->|Spiky| E{Spike Duration?}
 
     C -->|Yes| F[Start On-Demand]
@@ -199,7 +199,7 @@ flowchart TD
 
 ## Reserved Capacity Planning
 
-For stable, predictable workloads, reserved capacity offers the deepest discounts - up to 77% off on-demand pricing.
+For stable, predictable provisioned workloads using the DynamoDB Standard table class, reserved capacity offers the deepest discounts - up to 77% off standard provisioned capacity pricing.
 
 ### Analyzing Usage for Reserved Capacity
 
@@ -293,7 +293,7 @@ def analyze_table_usage(table_name: str, days: int = 30) -> dict:
         # Aggressive: Reserve at P90, covers 90% of usage
         'aggressive_read_reservation': analysis['read_capacity']['p90_rcu'],
         'aggressive_write_reservation': analysis['write_capacity']['p90_wcu'],
-        # Savings estimate (reserved is ~77% cheaper than on-demand)
+        # Savings estimate (reserved is up to ~77% cheaper than standard provisioned capacity)
         'estimated_monthly_savings_conservative': calculate_savings(
             analysis['read_capacity']['avg_rcu'],
             analysis['write_capacity']['avg_wcu'],
@@ -311,27 +311,27 @@ def calculate_savings(avg_rcu: float, avg_wcu: float,
     Estimate monthly savings from reserved capacity.
 
     Pricing assumptions (us-east-1):
-    - On-demand: $0.25 per RCU-hour, $1.25 per WCU-hour
-    - Reserved: $0.06 per RCU-hour, $0.30 per WCU-hour (3-year)
+    - Standard provisioned: $0.00013 per RCU-hour, $0.00065 per WCU-hour
+    - Reserved effective rate: ~$0.00003 per RCU-hour, ~$0.00016 per WCU-hour (3-year)
     """
     hours_per_month = 730
 
-    # On-demand cost for average usage
-    on_demand_read = avg_rcu * 0.00013 * hours_per_month
-    on_demand_write = avg_wcu * 0.00065 * hours_per_month
-    on_demand_total = on_demand_read + on_demand_write
+    # Standard provisioned cost for average usage
+    standard_read = avg_rcu * 0.00013 * hours_per_month
+    standard_write = avg_wcu * 0.00065 * hours_per_month
+    standard_total = standard_read + standard_write
 
     # Reserved cost (portion covered by reservation)
     reserved_read = reserved_rcu * 0.00003 * hours_per_month
     reserved_write = reserved_wcu * 0.00016 * hours_per_month
 
-    # On-demand cost for capacity above reservation
+    # Standard provisioned cost for capacity above reservation
     excess_read = max(0, avg_rcu - reserved_rcu) * 0.00013 * hours_per_month
     excess_write = max(0, avg_wcu - reserved_wcu) * 0.00065 * hours_per_month
 
     mixed_total = reserved_read + reserved_write + excess_read + excess_write
 
-    return round(on_demand_total - mixed_total, 2)
+    return round(standard_total - mixed_total, 2)
 
 
 # Example usage
@@ -348,8 +348,8 @@ if __name__ == '__main__':
 ```mermaid
 graph LR
     subgraph "Cost per 100 WCU/month"
-        A[On-Demand<br/>$47.45] --> B[1-Year Reserved<br/>$24.27<br/>49% savings]
-        B --> C[3-Year Reserved<br/>$11.66<br/>77% savings]
+        A[Standard Provisioned<br/>$47.45] --> B[1-Year Reserved<br/>~$21.83<br/>up to 54% savings]
+        B --> C[3-Year Reserved<br/>~$10.91<br/>up to 77% savings]
     end
 
     style A fill:#ff6b6b,stroke:#333
@@ -549,6 +549,7 @@ import boto3
 import gzip
 import base64
 import json
+from datetime import datetime
 from typing import Any
 
 dynamodb = boto3.resource('dynamodb')
@@ -660,11 +661,12 @@ def retrieve_event_log(event_type: str, event_id: str) -> dict:
 
 ## TTL for Automatic Data Cleanup
 
-Time To Live (TTL) is a free feature that automatically deletes expired items, reducing storage costs without consuming write capacity.
+Time To Live (TTL) is a free feature that automatically deletes expired items, reducing storage costs without consuming write capacity in the source Region.
 
 ```python
 # TTL configuration and usage patterns for cost optimization
-# TTL deletes are FREE - they don't consume WCUs
+# TTL deletes are FREE in the source Region - they don't consume WCUs there.
+# For global tables, replicated TTL deletes in other Regions are charged.
 
 import boto3
 from datetime import datetime, timedelta
@@ -681,7 +683,7 @@ def enable_ttl(table_name: str, ttl_attribute: str = 'ttl'):
     1. Automatic deletion of expired items (no cron jobs needed)
     2. FREE - TTL deletes don't consume write capacity
     3. Reduces storage costs by removing old data
-    4. Items deleted within 48 hours of expiration
+    4. Items are typically deleted within a few days of expiration
 
     Args:
         table_name: Name of the DynamoDB table
@@ -707,13 +709,13 @@ class SessionManager:
 
     Without TTL (manual cleanup):
     - DeleteItem calls: 1M * 1 WCU = 1M WCUs
-    - Cost: ~$1,250/month (on-demand)
+    - Cost: ~$0.63/month (on-demand, DynamoDB Standard in us-east-1)
 
     With TTL:
     - TTL deletes: FREE
     - Cost: $0/month
 
-    Savings: $1,250/month = $15,000/year
+    Savings: ~$0.63/month = ~$7.50/year
     """
 
     def __init__(self, table_name: str):
@@ -728,7 +730,7 @@ class SessionManager:
 
         The TTL attribute must be a Unix timestamp (seconds since epoch).
         DynamoDB compares this value against current time and deletes
-        items within 48 hours after expiration.
+        items within a few days after expiration.
 
         Args:
             user_id: User identifier
@@ -860,8 +862,8 @@ sequenceDiagram
     App->>DDB: PutItem with ttl=1706400000
     Note over DDB: Item stored with<br/>expiration timestamp
 
-    loop Every ~48 hours
-        TTL->>DDB: Scan for expired items
+    loop Periodic background process
+        TTL->>DDB: Find expired items
         DDB-->>TTL: Items where ttl < now()
         TTL->>DDB: Delete expired items (FREE)
     end
@@ -869,7 +871,7 @@ sequenceDiagram
     DDB->>Stream: Emit delete event<br/>(if streams enabled)
     Stream-->>App: Optional: Archive to S3<br/>before permanent deletion
 
-    Note over App,Stream: TTL deletes don't consume WCUs<br/>Significant cost savings at scale
+    Note over App,Stream: TTL deletes don't consume WCUs in the source Region<br/>Replicated TTL deletes in global tables are charged
 ```
 
 ---
@@ -915,6 +917,7 @@ graph TD
 # Global Tables can be 2-3x more expensive if not optimized
 
 import boto3
+import math
 from datetime import datetime
 from typing import Optional
 
@@ -925,26 +928,31 @@ class GlobalTableCostOptimizer:
     Patterns for cost-effective Global Table usage.
 
     Cost breakdown for Global Tables:
-    1. Replicated WCUs: Each write costs WCUs in EVERY region
-    2. Cross-region data transfer: $0.02/GB between regions
+    1. Replicated write units: Each write is billed in EVERY replica Region
+    2. Cross-region data transfer: pricing varies by Region pair
     3. Storage: Charged in each region independently
 
-    A 3-region Global Table with 100 WCUs effectively costs 300 WCUs!
+    A 3-region Global Table with 100 writes/sec effectively consumes
+    write units in all 3 Regions.
     """
 
-    def __init__(self, table_name: str):
-        self.table = dynamodb.Table(table_name)
+    def __init__(self, global_table_name: str,
+                 regional_table_name: Optional[str] = None):
+        self.global_table = dynamodb.Table(global_table_name)
+        # Optional non-global table for data that should stay regional.
+        self.regional_table = dynamodb.Table(regional_table_name) if regional_table_name else self.global_table
 
     def write_with_region_awareness(self, item: dict,
                                      regions_needed: list[str]) -> dict:
         """
-        Pattern 1: Selective replication using attribute-based filtering.
+        Pattern 1: Selective replication using application-managed replication.
 
-        Not all data needs to exist in all regions. Use DynamoDB Streams
-        with Lambda to selectively replicate only necessary items.
+        DynamoDB Global Tables replicate every item. If only some data needs
+        to exist in other Regions, use regional tables with DynamoDB Streams
+        and Lambda to selectively replicate only necessary items.
 
         Cost savings: If only 30% of data needs global replication,
-        you save 70% on replicated WCUs and storage.
+        you save 70% on replicated write units and storage.
 
         Args:
             item: The item to write
@@ -955,7 +963,7 @@ class GlobalTableCostOptimizer:
         item['_write_region'] = boto3.session.Session().region_name
         item['_write_timestamp'] = datetime.utcnow().isoformat()
 
-        self.table.put_item(Item=item)
+        self.regional_table.put_item(Item=item)
         return item
 
     def write_summary_only(self, entity_id: str,
@@ -972,9 +980,9 @@ class GlobalTableCostOptimizer:
         - Details (regional): full description, images, reviews
 
         Cost savings:
-        - Full item: 5KB = 5 WCUs * 3 regions = 15 WCUs per write
-        - Summary only: 500B = 1 WCU * 3 regions = 3 WCUs per write
-        - Savings: 80% reduction in replicated WCUs
+        - Full item: 5KB = 5 write units * 3 regions = 15 write units per write
+        - Summary only: 500B = 1 write unit * 3 regions = 3 write units per write
+        - Savings: 80% reduction in replicated write units
         """
         # Write full data to regional table (not global)
         regional_item = {
@@ -993,8 +1001,8 @@ class GlobalTableCostOptimizer:
             '_detail_region': boto3.session.Session().region_name
         }
 
-        self.table.put_item(Item=regional_item)
-        self.table.put_item(Item=global_item)
+        self.regional_table.put_item(Item=regional_item)
+        self.global_table.put_item(Item=global_item)
 
         return regional_item, global_item
 
@@ -1005,15 +1013,15 @@ class GlobalTableCostOptimizer:
         Global Tables still support BatchWriteItem. Batching reduces
         the number of round trips and can improve throughput efficiency.
 
-        Note: Each item in the batch still incurs replicated WCU costs.
-        Batching helps with latency and request overhead, not WCU costs.
+        Note: Each item in the batch still incurs replicated write unit costs.
+        Batching helps with latency and request overhead, not write unit costs.
         """
         # DynamoDB batch limit is 25 items
         batch_size = 25
         total_items = len(items)
         processed = 0
 
-        with self.table.batch_writer() as batch:
+        with self.global_table.batch_writer() as batch:
             for item in items:
                 # Add write timestamp for conflict resolution
                 item['_last_modified'] = datetime.utcnow().isoformat()
@@ -1045,27 +1053,26 @@ def estimate_global_table_cost(writes_per_second: float,
     Returns:
         Cost breakdown by component
     """
-    # Pricing assumptions (us-east-1, on-demand)
-    wcu_price_per_million = 1.25  # $1.25 per million WCUs
-    rcu_price_per_million = 0.25  # $0.25 per million RCUs
+    # Pricing assumptions (us-east-1, on-demand, DynamoDB Standard)
+    replicated_wru_price_per_million = 0.625  # $0.625 per million rWRUs
     storage_price_per_gb = 0.25   # $0.25 per GB-month
-    transfer_price_per_gb = 0.02  # $0.02 per GB cross-region
+    transfer_price_per_gb = 0.02  # Example cross-region rate; verify for your Region pair
 
     hours_per_month = 730
     seconds_per_month = hours_per_month * 3600
 
-    # Calculate WCUs needed (1 WCU = 1KB write)
-    wcus_per_write = max(1, int(item_size_kb))
+    # Calculate write units needed (1 write unit = 1KB write)
+    wrus_per_write = max(1, math.ceil(item_size_kb))
 
     # Local writes
-    local_wcus = writes_per_second * wcus_per_write * seconds_per_month
+    local_wrus = writes_per_second * wrus_per_write * seconds_per_month
 
     # Replicated writes (to each other region)
-    replicated_wcus = local_wcus * (num_regions - 1)
+    replicated_wrus = local_wrus * (num_regions - 1)
 
-    # Total WCU cost
-    total_wcus = local_wcus + replicated_wcus
-    wcu_cost = (total_wcus / 1_000_000) * wcu_price_per_million * num_regions
+    # Total replicated write request unit cost across all Regions
+    total_wrus = local_wrus + replicated_wrus
+    write_cost = (total_wrus / 1_000_000) * replicated_wru_price_per_million
 
     # Storage cost (replicated in each region)
     storage_cost = storage_gb * storage_price_per_gb * num_regions
@@ -1075,26 +1082,26 @@ def estimate_global_table_cost(writes_per_second: float,
     data_transferred_gb = (writes_per_month * item_size_kb / 1024 / 1024) * (num_regions - 1)
     transfer_cost = data_transferred_gb * transfer_price_per_gb
 
-    total_cost = wcu_cost + storage_cost + transfer_cost
+    total_cost = write_cost + storage_cost + transfer_cost
 
     return {
         'monthly_estimate': {
-            'wcu_cost': round(wcu_cost, 2),
+            'write_cost': round(write_cost, 2),
             'storage_cost': round(storage_cost, 2),
             'transfer_cost': round(transfer_cost, 2),
             'total': round(total_cost, 2)
         },
         'details': {
-            'total_wcus_per_month': int(total_wcus),
-            'local_wcus': int(local_wcus),
-            'replicated_wcus': int(replicated_wcus),
+            'total_wrus_per_month': int(total_wrus),
+            'local_wrus': int(local_wrus),
+            'replicated_wrus': int(replicated_wrus),
             'data_transferred_gb': round(data_transferred_gb, 2)
         },
         'optimization_tips': [
-            'Consider reducing item size to minimize replicated WCUs',
+            'Consider reducing item size to minimize replicated write units',
             'Use TTL to automatically clean up old data in all regions',
-            'Evaluate if all regions need write capability (read replicas are cheaper)',
-            f'At {num_regions} regions, each write costs {num_regions}x WCUs'
+            'Evaluate whether all Regions need a full replica',
+            f'At {num_regions} Regions, each write is billed in {num_regions} Regions'
         ]
     }
 
@@ -1109,7 +1116,7 @@ if __name__ == '__main__':
     )
 
     print("Global Table Cost Estimate (Monthly)")
-    print(f"WCU Cost: ${estimate['monthly_estimate']['wcu_cost']}")
+    print(f"Write Cost: ${estimate['monthly_estimate']['write_cost']}")
     print(f"Storage Cost: ${estimate['monthly_estimate']['storage_cost']}")
     print(f"Transfer Cost: ${estimate['monthly_estimate']['transfer_cost']}")
     print(f"TOTAL: ${estimate['monthly_estimate']['total']}")
@@ -1129,7 +1136,7 @@ flowchart TD
     E -->|Need consistency| G[Application-level<br/>Coordination]
 
     D --> H{Read latency<br/>requirements?}
-    H -->|< 50ms globally| I[Global Tables<br/>for read replicas]
+    H -->|< 50ms globally| I[Global Tables<br/>for local reads]
     H -->|< 50ms not needed| J[Cross-region API<br/>calls cheaper]
 
     F --> K[Optimize item size<br/>Use TTL aggressively]
@@ -1166,16 +1173,16 @@ flowchart TD
 
 ### Global Table Efficiency
 
-12. **Calculate true cost** before enabling Global Tables - writes cost N x WCUs for N regions
+12. **Calculate true cost** before enabling Global Tables - writes are billed in each replica Region
 13. **Replicate summaries, not details** - keep large items regional
-14. **Consider read replicas** instead of Global Tables if writes are centralized
+14. **Consider regional caches or cross-region API calls** instead of Global Tables if writes are centralized
 
 ### Monitoring and Governance
 
-15. **Tag tables** for cost allocation and use AWS Cost Explorer DynamoDB lens
+15. **Tag tables** for cost allocation and analyze DynamoDB spend in AWS Cost Explorer
 16. **Set billing alarms** at 80% of budget to catch runaway costs early
 17. **Review unused tables** quarterly - empty tables still incur minimum charges
-18. **Use AWS Compute Optimizer** recommendations for provisioned capacity
+18. **Use AWS Cost Explorer** reserved capacity recommendations and AWS Compute Optimizer idle resource recommendations
 
 ---
 
