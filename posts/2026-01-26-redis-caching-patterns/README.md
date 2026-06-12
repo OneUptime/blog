@@ -85,7 +85,7 @@ Cache-aside is the most common caching pattern. The application is responsible f
 const Redis = require('ioredis');
 const { Pool } = require('pg');
 
-// Initialize Redis client with connection pooling
+// Initialize Redis client
 const redis = new Redis({
     host: process.env.REDIS_HOST || 'localhost',
     port: process.env.REDIS_PORT || 6379,
@@ -125,8 +125,8 @@ const CACHE_PREFIX = 'user:';
 async function getUserById(userId) {
     const cacheKey = `${CACHE_PREFIX}${userId}`;
 
+    // Step 1: Check cache first
     try {
-        // Step 1: Check cache first
         const cachedData = await redis.get(cacheKey);
 
         if (cachedData) {
@@ -134,10 +134,15 @@ async function getUserById(userId) {
             console.log(`Cache HIT for user ${userId}`);
             return JSON.parse(cachedData);
         }
+    } catch (error) {
+        // Redis is unavailable; continue to database fallback
+        console.warn(`Redis read failed for user ${userId}:`, error.message);
+    }
 
-        // Cache miss - fetch from database
-        console.log(`Cache MISS for user ${userId}`);
+    // Cache miss - fetch from database
+    console.log(`Cache MISS for user ${userId}`);
 
+    try {
         // Step 2: Query the database
         const result = await db.query(
             'SELECT id, name, email, created_at FROM users WHERE id = $1',
@@ -152,26 +157,21 @@ async function getUserById(userId) {
 
         // Step 3: Store in cache with TTL
         // Using EX flag for expiration in seconds
-        await redis.setex(
-            cacheKey,
-            CACHE_TTL,
-            JSON.stringify(user)
-        );
+        try {
+            await redis.setex(
+                cacheKey,
+                CACHE_TTL,
+                JSON.stringify(user)
+            );
+        } catch (error) {
+            // Cache write failed, but the database result is still usable
+            console.warn(`Redis write failed for user ${userId}:`, error.message);
+        }
 
         return user;
 
     } catch (error) {
         console.error(`Error fetching user ${userId}:`, error.message);
-
-        // Fallback: If Redis fails, still try database
-        if (error.message.includes('Redis')) {
-            const result = await db.query(
-                'SELECT id, name, email, created_at FROM users WHERE id = $1',
-                [userId]
-            );
-            return result.rows[0] || null;
-        }
-
         throw error;
     }
 }
@@ -400,7 +400,7 @@ def get_users_batch(user_ids: list) -> Dict[int, Dict[str, Any]]:
     Optimizes multiple lookups by:
     1. Checking cache for all keys in one call (MGET)
     2. Fetching missing users from database
-    3. Caching all fetched users in one call (MSET)
+    3. Caching fetched users with pipelined SETEX calls
     """
     if not user_ids:
         return {}
@@ -473,7 +473,7 @@ if __name__ == '__main__':
 
 ## Pattern 2: Write-Through
 
-Write-through caching writes data to both the cache and the database simultaneously. This ensures cache and database are always in sync, at the cost of higher write latency.
+Write-through caching writes data to both the cache and the database synchronously through the same write path. This keeps cache and database in sync for successful writes, at the cost of higher write latency.
 
 ### When to Use Write-Through
 
@@ -490,10 +490,10 @@ sequenceDiagram
     participant DB as Database
 
     App->>Cache: write(key, data)
-    Cache->>Redis: SET key data
-    Redis-->>Cache: OK
     Cache->>DB: INSERT/UPDATE data
     DB-->>Cache: Success
+    Cache->>Redis: SET key data
+    Redis-->>Cache: OK
     Cache-->>App: Write Complete
 
     Note over App,DB: Both cache and DB<br/>updated synchronously
@@ -540,14 +540,12 @@ class WriteThroughCache {
      * Create a new product with write-through caching
      *
      * Write flow:
-     * 1. Write to cache first (optimistic)
-     * 2. Write to database
-     * 3. If DB fails, rollback cache
-     * 4. Return result
+     * 1. Write to database first (source of truth)
+     * 2. Populate cache after the database write succeeds
+     * 3. Return result
      */
     async createProduct(product) {
         const { name, price, category, inventory } = product;
-        const cacheKey = `${this.prefix}product:pending:${Date.now()}`;
 
         try {
             // Step 1: Insert into database (source of truth)
@@ -592,13 +590,17 @@ class WriteThroughCache {
     async updateProduct(productId, updates) {
         const cacheKey = `${this.prefix}product:${productId}`;
 
-        // Build dynamic update query
+        // Build dynamic update query from an allowlist of column names
+        const allowedFields = new Set(['name', 'price', 'category', 'inventory']);
         const fields = [];
         const values = [];
         let paramIndex = 1;
 
         for (const [key, value] of Object.entries(updates)) {
             if (value !== undefined) {
+                if (!allowedFields.has(key)) {
+                    throw new Error(`Invalid product field: ${key}`);
+                }
                 fields.push(`${key} = $${paramIndex}`);
                 values.push(value);
                 paramIndex++;
@@ -738,7 +740,7 @@ sequenceDiagram
 
     App->>Redis: SET key data
     Redis-->>App: OK (immediate return)
-    Redis->>Queue: Add to write queue
+    App->>Queue: Add to write queue
 
     Note over App,Redis: Application continues<br/>immediately
 
@@ -787,6 +789,7 @@ class WriteBehindCache {
         this.db = db;
         this.ttl = options.ttl || 3600;
         this.prefix = options.prefix || '';
+        this.tableMap = options.tableMap || {};
         this.writeQueueKey = `${this.prefix}write_queue`;
         this.batchSize = options.batchSize || 100;
         this.flushInterval = options.flushInterval || 5000; // 5 seconds
@@ -968,11 +971,16 @@ class WriteBehindCache {
 
         // Extract entity type and ID from key (e.g., "session:abc123")
         const [entityType, entityId] = key.split(':');
+        const tableName = this.tableMap[entityType];
+
+        if (!tableName) {
+            throw new Error(`No database table configured for entity type: ${entityType}`);
+        }
 
         switch (operation) {
             case 'insert':
                 await client.query(
-                    `INSERT INTO ${entityType}s (id, data, created_at)
+                    `INSERT INTO ${tableName} (id, data, created_at)
                      VALUES ($1, $2, NOW())`,
                     [entityId, JSON.stringify(data)]
                 );
@@ -981,7 +989,7 @@ class WriteBehindCache {
             case 'update':
             case 'upsert':
                 await client.query(
-                    `INSERT INTO ${entityType}s (id, data, created_at, updated_at)
+                    `INSERT INTO ${tableName} (id, data, created_at, updated_at)
                      VALUES ($1, $2, NOW(), NOW())
                      ON CONFLICT (id) DO UPDATE
                      SET data = $2, updated_at = NOW()`,
@@ -991,7 +999,7 @@ class WriteBehindCache {
 
             case 'delete':
                 await client.query(
-                    `DELETE FROM ${entityType}s WHERE id = $1`,
+                    `DELETE FROM ${tableName} WHERE id = $1`,
                     [entityId]
                 );
                 break;
@@ -1013,6 +1021,9 @@ class WriteBehindCache {
 // Example usage for session management (high write frequency)
 const sessionCache = new WriteBehindCache(redis, db, {
     prefix: 'session:',
+    tableMap: {
+        session: 'sessions'
+    },
     ttl: 86400,        // 24 hours
     batchSize: 200,    // Flush 200 items at a time
     flushInterval: 10000 // Flush every 10 seconds
@@ -1292,11 +1303,11 @@ cache.registerLoader('product', productLoader);
 cache.registerLoader('order', async (orderId) => {
     const result = await db.query(
         `SELECT o.id, o.user_id, o.status, o.total, o.created_at,
-                json_agg(json_build_object(
+                COALESCE(json_agg(json_build_object(
                     'product_id', oi.product_id,
                     'quantity', oi.quantity,
                     'price', oi.price
-                )) as items
+                )) FILTER (WHERE oi.product_id IS NOT NULL), '[]'::json) as items
          FROM orders o
          LEFT JOIN order_items oi ON o.id = oi.order_id
          WHERE o.id = $1
@@ -1391,11 +1402,19 @@ class CacheInvalidator extends EventEmitter {
             await this.redis.del(`product:${productId}`);
             // Invalidate category listings that include this product
             await this.redis.del(`category:${categoryId}:products`);
-            // Invalidate search results (use pattern matching carefully)
-            const keys = await this.redis.keys('search:*');
-            if (keys.length > 0) {
-                await this.redis.del(...keys);
-            }
+            // Invalidate search results using SCAN instead of KEYS
+            let cursor = '0';
+            do {
+                const [nextCursor, keys] = await this.redis.scan(
+                    cursor,
+                    'MATCH', 'search:*',
+                    'COUNT', 100
+                );
+                cursor = nextCursor;
+                if (keys.length > 0) {
+                    await this.redis.del(...keys);
+                }
+            } while (cursor !== '0');
         });
 
         this.on('order:created', async ({ userId, productIds }) => {
@@ -1410,10 +1429,15 @@ class CacheInvalidator extends EventEmitter {
 
     // Helper to emit events after database operations
     async invalidateOnUpdate(entityType, entityId, metadata = {}) {
-        this.emit(`${entityType}:updated`, {
+        const eventName = `${entityType}:updated`;
+        const payload = {
             [`${entityType}Id`]: entityId,
             ...metadata
-        });
+        };
+
+        await Promise.all(
+            this.listeners(eventName).map(listener => listener(payload))
+        );
     }
 }
 
@@ -1422,13 +1446,24 @@ const invalidator = new CacheInvalidator(redis);
 // Usage in application code
 async function updateProduct(productId, updates) {
     // Update database
-    const product = await db.query(
-        'UPDATE products SET ... WHERE id = $1 RETURNING *',
-        [productId, ...]
+    const result = await db.query(
+        `UPDATE products
+         SET name = COALESCE($2, name),
+             price = COALESCE($3, price),
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, category_id`,
+        [productId, updates.name, updates.price]
     );
 
+    if (result.rows.length === 0) {
+        throw new Error(`Product ${productId} not found`);
+    }
+
+    const product = result.rows[0];
+
     // Emit event for cache invalidation
-    invalidator.invalidateOnUpdate('product', productId, {
+    await invalidator.invalidateOnUpdate('product', productId, {
         categoryId: product.category_id
     });
 
@@ -1682,8 +1717,8 @@ class ProbabilisticCache {
 
             // Probabilistic early expiration
             // As TTL decreases, probability of refresh increases
-            const delta = ttl - remainingTTL;
-            const probability = Math.exp(-delta * beta / ttl);
+            const ageRatio = 1 - (remainingTTL / ttl);
+            const probability = Math.pow(ageRatio, beta);
 
             if (Math.random() < probability) {
                 // Refresh cache in background (don't await)
@@ -1750,7 +1785,7 @@ class CacheMetrics {
     async recordLatency(cacheType, operation, durationMs) {
         const key = `${cacheType}:${operation}:latency`;
 
-        // Use sorted set for latency percentiles
+        // Use a sorted set to retain recent latency samples
         await this.redis.zadd(
             `${this.metricsKey}:${key}`,
             Date.now(),
@@ -1856,8 +1891,7 @@ function withMetrics(cache, metrics, cacheType) {
 
         const duration = Date.now() - startTime;
 
-        // Determine if it was a hit or miss based on duration
-        // (Misses take longer due to DB query)
+        // Approximate hit/miss based on duration when the cache does not expose this directly
         if (duration < 10) {
             await metrics.recordHit(cacheType);
         } else {
