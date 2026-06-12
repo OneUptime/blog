@@ -12,7 +12,7 @@ Backfilling is one of Airflow's most powerful features. When your data pipeline 
 
 ## Understanding Backfills
 
-A backfill runs your DAG for a range of historical dates. Each execution processes data for its logical date (previously called execution_date), not the current date.
+A backfill runs your DAG for a range of historical dates. Each run is identified by its logical date (previously called execution_date), not the current date. For scheduled DAGs, use the run's data interval when you need the exact time range to process.
 
 ```mermaid
 flowchart LR
@@ -40,49 +40,50 @@ The most common way to run backfills:
 ```bash
 # Backfill a date range
 
-airflow dags backfill \
-    --start-date 2024-01-01 \
-    --end-date 2024-01-31 \
-    my_dag_id
+airflow backfill create \
+    --dag-id my_dag_id \
+    --from-date 2024-01-01 \
+    --to-date 2024-01-31
 
-# Include the end date in the backfill
-airflow dags backfill \
-    --start-date 2024-01-01 \
-    --end-date 2024-01-31 \
-    --include-end-date \
-    my_dag_id
+# Limit concurrent runs for this backfill
+airflow backfill create \
+    --dag-id my_dag_id \
+    --from-date 2024-01-01 \
+    --to-date 2024-01-31 \
+    --max-active-runs 3
 ```
 
 ### Backfill Options
 
 ```bash
-# Run specific tasks only
-airflow dags backfill \
+# Clear specific tasks for existing runs
+airflow tasks clear \
     --start-date 2024-01-01 \
     --end-date 2024-01-07 \
     --task-regex "^extract_.*" \
+    --yes \
     my_dag_id
 
 # Dry run to see what would execute
-airflow dags backfill \
-    --start-date 2024-01-01 \
-    --end-date 2024-01-07 \
-    --dry-run \
-    my_dag_id
+airflow backfill create \
+    --dag-id my_dag_id \
+    --from-date 2024-01-01 \
+    --to-date 2024-01-07 \
+    --dry-run
 
-# Rerun failed tasks only
-airflow dags backfill \
-    --start-date 2024-01-01 \
-    --end-date 2024-01-07 \
-    --rerun-failed-tasks \
-    my_dag_id
+# Create new runs for failed dates only
+airflow backfill create \
+    --dag-id my_dag_id \
+    --from-date 2024-01-01 \
+    --to-date 2024-01-07 \
+    --reprocess-behavior failed
 
-# Reset state and rerun everything
-airflow dags backfill \
-    --start-date 2024-01-01 \
-    --end-date 2024-01-07 \
-    --reset-dagruns \
-    my_dag_id
+# Create new runs for completed or failed dates
+airflow backfill create \
+    --dag-id my_dag_id \
+    --from-date 2024-01-01 \
+    --to-date 2024-01-07 \
+    --reprocess-behavior completed
 ```
 
 ## Designing Backfill-Friendly DAGs
@@ -90,8 +91,8 @@ airflow dags backfill \
 ### Use Logical Date, Not Current Date
 
 ```python
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 def process_data(**context):
@@ -131,7 +132,7 @@ with DAG(
 Idempotent tasks produce the same result regardless of how many times they run:
 
 ```python
-from airflow.operators.python import PythonOperator
+from airflow.providers.standard.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
 def load_data(**context):
@@ -200,8 +201,8 @@ flowchart TB
 Process data in partitions to enable targeted reruns:
 
 ```python
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime
 
 def extract_partition(**context):
@@ -244,9 +245,9 @@ with DAG(
 Handle dependencies between DAGs during backfills:
 
 ```python
-from airflow import DAG
-from airflow.sensors.external_task import ExternalTaskSensor
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 with DAG(
@@ -278,10 +279,10 @@ When backfilling, run the upstream DAG first:
 
 ```bash
 # Step 1: Backfill upstream
-airflow dags backfill --start-date 2024-01-01 --end-date 2024-01-31 upstream_dag
+airflow backfill create --dag-id upstream_dag --from-date 2024-01-01 --to-date 2024-01-31
 
 # Step 2: Backfill downstream (sensors will find completed upstream runs)
-airflow dags backfill --start-date 2024-01-01 --end-date 2024-01-31 downstream_dag
+airflow backfill create --dag-id downstream_dag --from-date 2024-01-01 --to-date 2024-01-31
 ```
 
 ### Strategy 3: Incremental Backfill
@@ -298,7 +299,7 @@ DAG_ID="heavy_processing_dag"
 CHUNK_DAYS=7
 
 current="$START_DATE"
-while [[ "$current" < "$END_DATE" ]]; do
+while [[ "$current" < "$END_DATE" || "$current" == "$END_DATE" ]]; do
     chunk_end=$(date -d "$current + $CHUNK_DAYS days" +%Y-%m-%d)
 
     if [[ "$chunk_end" > "$END_DATE" ]]; then
@@ -306,10 +307,10 @@ while [[ "$current" < "$END_DATE" ]]; do
     fi
 
     echo "Backfilling $current to $chunk_end"
-    airflow dags backfill \
-        --start-date "$current" \
-        --end-date "$chunk_end" \
-        "$DAG_ID"
+    airflow backfill create \
+        --dag-id "$DAG_ID" \
+        --from-date "$current" \
+        --to-date "$chunk_end"
 
     # Wait between chunks to reduce load
     sleep 60
@@ -341,7 +342,7 @@ with DAG(
     start_date=datetime(2024, 1, 1),
     schedule='@daily',
     max_active_runs=4,  # Limit concurrent backfill runs
-    concurrency=8  # Limit total concurrent tasks
+    max_active_tasks=8  # Limit total concurrent tasks
 ) as dag:
 
     # Pool limits concurrent DB connections across all runs
@@ -364,9 +365,9 @@ airflow pools set database_pool 5 "Limit concurrent DB connections"
 ### Skipping Weekends
 
 ```python
-from airflow import DAG
-from airflow.operators.python import PythonOperator, BranchPythonOperator
-from airflow.operators.empty import EmptyOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator, BranchPythonOperator
+from airflow.providers.standard.operators.empty import EmptyOperator
 from datetime import datetime
 
 def check_weekday(**context):
@@ -407,11 +408,13 @@ with DAG(
 ### Dealing with Schema Changes
 
 ```python
+import pendulum
+
 def load_with_schema_version(**context):
     logical_date = context['logical_date']
 
     # Schema v1 was used before March 2024
-    schema_cutoff = datetime(2024, 3, 1)
+    schema_cutoff = pendulum.datetime(2024, 3, 1, tz='UTC')
 
     if logical_date < schema_cutoff:
         schema_version = 'v1'
@@ -427,8 +430,8 @@ def load_with_schema_version(**context):
 ### Late Data Handling
 
 ```python
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 def process_with_late_data(**context):
@@ -465,23 +468,27 @@ with DAG(
 ### Track Backfill Progress
 
 ```python
-from airflow.models import DagRun
-from airflow.utils.state import State
+import json
+import subprocess
 
 def get_backfill_progress(dag_id, start_date, end_date):
-    from airflow.models import DagRun
-    from sqlalchemy import and_
-
-    runs = DagRun.find(
-        dag_id=dag_id,
-        execution_start_date=start_date,
-        execution_end_date=end_date
+    result = subprocess.run(
+        [
+            'airflow', 'dags', 'list-runs', dag_id,
+            '--start-date', start_date,
+            '--end-date', end_date,
+            '--output', 'json',
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
     )
+    runs = json.loads(result.stdout)
 
     total = len(runs)
-    success = sum(1 for r in runs if r.state == State.SUCCESS)
-    failed = sum(1 for r in runs if r.state == State.FAILED)
-    running = sum(1 for r in runs if r.state == State.RUNNING)
+    success = sum(1 for r in runs if r['state'] == 'success')
+    failed = sum(1 for r in runs if r['state'] == 'failed')
+    running = sum(1 for r in runs if r['state'] == 'running')
 
     print(f"Backfill Progress: {success}/{total} complete")
     print(f"  Running: {running}")
@@ -504,12 +511,12 @@ echo "Backfill Status for $DAG_ID ($START_DATE to $END_DATE)"
 echo "================================================"
 
 # Get run counts by state
-airflow dags list-runs -d "$DAG_ID" -s "$START_DATE" -e "$END_DATE" -o table
+airflow dags list-runs "$DAG_ID" -s "$START_DATE" -e "$END_DATE" -o table
 
 # Count by state
 echo ""
 echo "Summary:"
-airflow dags list-runs -d "$DAG_ID" -s "$START_DATE" -e "$END_DATE" -o json | \
+airflow dags list-runs "$DAG_ID" -s "$START_DATE" -e "$END_DATE" -o json | \
     python3 -c "
 import json, sys
 runs = json.load(sys.stdin)
