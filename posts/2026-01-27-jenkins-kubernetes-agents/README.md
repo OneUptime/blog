@@ -83,13 +83,13 @@ jenkins:
         # Use the Kubernetes service DNS name
         jenkinsUrl: "http://jenkins.jenkins.svc.cluster.local:8080"
 
-        # Tunnel for JNLP agents (required for inbound agents)
+        # Tunnel for TCP inbound agents when not using WebSocket
         jenkinsTunnel: "jenkins-agent.jenkins.svc.cluster.local:50000"
 
         # Maximum number of concurrent agent pods
         containerCapStr: "10"
 
-        # How long to keep idle agents before termination (seconds)
+        # Retention timeout for idle/disconnected agents (minutes)
         retentionTimeout: 5
 
         # Connection timeout to Kubernetes API (seconds)
@@ -142,7 +142,7 @@ jenkins:
             # Label used in Jenkinsfile to select this template
             label: "jenkins-agent"
 
-            # Number of executors per pod
+            # Maximum number of concurrently running pods from this template
             instanceCap: 10
 
             # Idle timeout before pod termination (minutes)
@@ -175,15 +175,15 @@ jenkins:
           - name: "full-stack"
             label: "full-stack"
             containers:
-              # JNLP container for Jenkins communication (required)
+              # Jenkins agent container for Jenkins communication
               - name: "jnlp"
                 image: "jenkins/inbound-agent:latest"
-                # Always include JNLP container first
+                # This container runs the Jenkins agent process
                 args: '${computer.jnlpmac} ${computer.name}'
 
               # Container for building Node.js applications
               - name: "nodejs"
-                image: "node:20-alpine"
+                image: "node:24-alpine"
                 # Keep container running so we can exec into it
                 command: "sleep"
                 args: "infinity"
@@ -304,8 +304,8 @@ Kubernetes agents are created on-demand when builds start and destroyed when com
 pipeline {
     agent {
         kubernetes {
-            // Reference pod template by label
-            label 'maven'
+            // Inherit from the globally configured pod template named "maven"
+            inheritFrom 'maven'
         }
     }
 
@@ -339,13 +339,13 @@ metadata:
     app: jenkins-build
 spec:
   containers:
-  # JNLP agent container - required for Jenkins communication
+  # Jenkins agent container for Jenkins communication
   - name: jnlp
     image: jenkins/inbound-agent:latest
 
   # Custom build container
   - name: golang
-    image: golang:1.22
+    image: golang:1.26
     command:
     - sleep
     args:
@@ -401,7 +401,7 @@ pipeline {
                 stage('Build Backend') {
                     agent {
                         kubernetes {
-                            label 'maven'
+                            inheritFrom 'maven'
                         }
                     }
                     steps {
@@ -414,7 +414,7 @@ pipeline {
                 stage('Build Frontend') {
                     agent {
                         kubernetes {
-                            label 'nodejs'
+                            inheritFrom 'nodejs'
                         }
                     }
                     steps {
@@ -430,7 +430,7 @@ pipeline {
                 stage('Build Mobile') {
                     agent {
                         kubernetes {
-                            label 'android'
+                            inheritFrom 'android'
                         }
                     }
                     steps {
@@ -499,11 +499,10 @@ jenkins:
             yaml: |
               apiVersion: v1
               kind: Pod
-              metadata:
-                annotations:
-                  # Priority class for build pods
-                  scheduler.alpha.kubernetes.io/priorityClassName: "build-priority"
               spec:
+                # Priority class for build pods
+                priorityClassName: "build-priority"
+
                 # Tolerate dedicated build nodes
                 tolerations:
                 - key: "dedicated"
@@ -523,7 +522,7 @@ jenkins:
                           values:
                           - build
 
-                # Set resource limits at pod level
+                # Set resource limits on the agent container
                 containers:
                 - name: jnlp
                   resources:
@@ -655,7 +654,7 @@ jenkins:
                 command: "sleep"
                 args: "infinity"
               - name: "nodejs"
-                image: "node:20"
+                image: "node:24"
                 command: "sleep"
                 args: "infinity"
 ```
@@ -859,7 +858,7 @@ spec:
 
 ```groovy
 // Jenkinsfile for Node.js with matrix builds
-// Tests against multiple Node.js versions in parallel
+// Tests against supported Node.js versions in parallel
 pipeline {
     agent none
 
@@ -869,7 +868,7 @@ pipeline {
                 axes {
                     axis {
                         name 'NODE_VERSION'
-                        values '18', '20', '22'
+                        values '22', '24'
                     }
                 }
 
@@ -933,7 +932,8 @@ spec:
     image: jenkins/inbound-agent:latest
 
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:debug
+    # Use a maintained Kaniko fork image; the original GoogleContainerTools image is archived
+    image: your-registry.example.com/kaniko:debug
     command: ["sleep", "infinity"]
     volumeMounts:
     - name: docker-config
@@ -970,7 +970,7 @@ spec:
                 container('kaniko') {
                     sh '''
                         /kaniko/executor \
-                          --context=dir://. \
+                          --context=dir://${WORKSPACE} \
                           --destination=${IMAGE}:${TAG} \
                           --cache=true \
                           --cache-repo=${REGISTRY}/cache
@@ -1038,7 +1038,7 @@ spec:
 
 ### Pod Template Best Practices
 
-- Always include a JNLP container for Jenkins communication
+- Include a Jenkins agent container or configure agent injection for Jenkins communication
 - Use specific image tags instead of `latest` for reproducibility
 - Set resource requests and limits on all containers
 - Use read-only root filesystems where possible
@@ -1056,8 +1056,8 @@ Resource Management Best Practices
 
 - Create dedicated service accounts for Jenkins agents
 - Use RBAC to limit agent permissions to required operations
-- Avoid mounting the Docker socket when possible (use Kaniko instead)
-- Store secrets in Kubernetes Secrets, not Jenkins credentials
+- Avoid mounting the Docker socket when possible (use BuildKit, Buildah, or a maintained Kaniko fork instead)
+- Store pod runtime secrets in Kubernetes Secrets or Jenkins credentials, not plaintext Pipeline code
 - Enable Pod Security Standards to enforce security policies
 
 ### Performance Best Practices
@@ -1065,7 +1065,7 @@ Resource Management Best Practices
 - Use persistent volumes for dependency caches
 - Configure appropriate idle timeouts to balance cost and availability
 - Use node selectors or taints to run builds on dedicated nodes
-- Enable pod templates caching to speed up pod creation
+- Use dependency caches and pre-pulled images where practical to speed up builds
 - Use parallel stages to maximize cluster utilization
 
 ### Reliability Best Practices
