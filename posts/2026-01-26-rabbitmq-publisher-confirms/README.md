@@ -8,7 +8,7 @@ Description: Learn how to implement publisher confirms in RabbitMQ to guarantee 
 
 ---
 
-Publishing a message without confirmation is like sending a letter without tracking. You hope it arrives, but you have no proof. Publisher confirms give you acknowledgment from RabbitMQ that your message was received and persisted. This is essential for applications where losing a message is not acceptable.
+Publishing a message without confirmation is like sending a letter without tracking. You hope it arrives, but you have no proof. Publisher confirms give you acknowledgment from RabbitMQ that your message was accepted by the broker. For persistent messages routed to durable queues, that confirmation is sent after the message has been persisted. This is essential for applications where losing a message is not acceptable.
 
 ## The Problem Without Confirms
 
@@ -21,7 +21,7 @@ channel.basic_publish(exchange='', routing_key='orders', body=message)
 # Message might be lost if:
 # - Network fails
 # - Broker crashes before persisting
-# - No route to queue exists
+# - No route to queue exists and mandatory=False
 ```
 
 ## How Publisher Confirms Work
@@ -41,7 +41,8 @@ sequenceDiagram
 
     P->>B: Publish message (delivery_tag=2)
     Note over B: No matching queue
-    B->>P: Nack (delivery_tag=2)
+    B->>P: Return (NO_ROUTE, if mandatory=True)
+    B->>P: Ack (delivery_tag=2)
 ```
 
 ## Enabling Publisher Confirms
@@ -67,7 +68,7 @@ def publish_with_confirm(message):
     channel.queue_declare(queue='orders', durable=True)
 
     try:
-        # basic_publish returns True if confirmed, raises exception if nacked
+        # basic_publish returns after confirmation, raises exception if returned or nacked
         channel.basic_publish(
             exchange='',
             routing_key='orders',
@@ -101,59 +102,48 @@ publish_with_confirm({'order_id': '12345', 'total': 99.99})
 For higher throughput, use asynchronous confirms:
 
 ```python
-import pika
+import asyncio
+import aio_pika
 import json
-import threading
-from collections import defaultdict
 
 class AsyncPublisher:
     def __init__(self, host='localhost'):
-        self.connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host)
+        self.host = host
+        self.connection = None
+        self.channel = None
+
+    async def connect(self):
+        self.connection = await aio_pika.connect_robust(
+            f'amqp://{self.host}'
         )
-        self.channel = self.connection.channel()
+        self.channel = await self.connection.channel(
+            publisher_confirms=True,  # This is the default
+            on_return_raises=True
+        )
+        await self.channel.declare_queue('orders', durable=True)
 
-        # Enable confirms
-        self.channel.confirm_delivery()
-
-        # Track pending confirms
-        self.pending = {}
-        self.lock = threading.Lock()
-        self.delivery_tag = 0
-
-    def publish(self, routing_key, message, on_confirm=None):
+    async def publish(self, routing_key, message, on_confirm=None):
         """Publish with async confirmation tracking"""
-
-        with self.lock:
-            self.delivery_tag += 1
-            tag = self.delivery_tag
-
-            if on_confirm:
-                self.pending[tag] = {
-                    'message': message,
-                    'callback': on_confirm
-                }
+        msg = aio_pika.Message(
+            body=json.dumps(message).encode(),
+            delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+        )
 
         try:
-            self.channel.basic_publish(
-                exchange='',
+            await self.channel.default_exchange.publish(
+                msg,
                 routing_key=routing_key,
-                body=json.dumps(message),
-                properties=pika.BasicProperties(delivery_mode=2),
                 mandatory=True
             )
-
-            # For synchronous confirmation in blocking mode
             if on_confirm:
                 on_confirm(True, message)
-
         except Exception as e:
             if on_confirm:
                 on_confirm(False, message)
             raise
 
-    def close(self):
-        self.connection.close()
+    async def close(self):
+        await self.connection.close()
 
 # Usage
 def handle_confirm(success, message):
@@ -162,16 +152,23 @@ def handle_confirm(success, message):
     else:
         print(f"Failed: {message}")
 
-publisher = AsyncPublisher()
+async def main():
+    publisher = AsyncPublisher()
+    await publisher.connect()
 
-for i in range(100):
-    publisher.publish(
-        'orders',
-        {'order_id': str(i), 'total': 99.99},
-        on_confirm=handle_confirm
-    )
+    tasks = [
+        publisher.publish(
+            'orders',
+            {'order_id': str(i), 'total': 99.99},
+            on_confirm=handle_confirm
+        )
+        for i in range(100)
+    ]
 
-publisher.close()
+    await asyncio.gather(*tasks)
+    await publisher.close()
+
+asyncio.run(main())
 ```
 
 ### Node.js with amqplib - Confirms
@@ -315,15 +312,11 @@ class ReliablePublisher:
                 mandatory=True  # Return if unroutable
             )
 
-            # Process events to receive any returns
-            self.connection.process_data_events(time_limit=0.1)
-
-            if self.returns:
-                returned = self.returns.pop()
-                print(f"Message was unroutable!")
-                return False
-
             return True
+
+        except pika.exceptions.UnroutableError:
+            print(f"Message was unroutable!")
+            return False
 
         except Exception as e:
             print(f"Publish error: {e}")
@@ -349,6 +342,9 @@ publisher.close()
 Simple but slow. Wait for each confirm before publishing the next message:
 
 ```python
+import pika
+import json
+
 def publish_one_at_a_time(messages):
     connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
     channel = connection.channel()
@@ -375,48 +371,65 @@ def publish_one_at_a_time(messages):
 Publish multiple messages, then wait for all confirms:
 
 ```python
-def publish_batch(messages, batch_size=100):
-    connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
-    channel = connection.channel()
-    channel.confirm_delivery()
+import asyncio
+import aio_pika
+import json
 
-    for i in range(0, len(messages), batch_size):
-        batch = messages[i:i + batch_size]
+async def publish_batch(messages, batch_size=100):
+    connection = await aio_pika.connect_robust('amqp://localhost')
 
-        for message in batch:
-            channel.basic_publish(
-                exchange='',
-                routing_key='orders',
-                body=json.dumps(message),
-                properties=pika.BasicProperties(delivery_mode=2)
+    async with connection:
+        channel = await connection.channel(
+            publisher_confirms=True,
+            on_return_raises=True
+        )
+        await channel.declare_queue('orders', durable=True)
+
+        pending = []
+
+        for message in messages:
+            msg = aio_pika.Message(
+                body=json.dumps(message).encode(),
+                delivery_mode=aio_pika.DeliveryMode.PERSISTENT
             )
+            pending.append(asyncio.create_task(
+                channel.default_exchange.publish(
+                    msg,
+                    routing_key='orders'
+                )
+            ))
 
-        # Wait for batch confirmation
-        # In pika, confirms are synchronous with confirm_delivery()
-        print(f"Batch {i // batch_size + 1} confirmed")
+            if len(pending) == batch_size:
+                await asyncio.gather(*pending)
+                pending.clear()
 
-    connection.close()
+        if pending:
+            await asyncio.gather(*pending)
+
+    print(f"All {len(messages)} messages confirmed")
 ```
 
 **Best for**: Moderate volume, balanced performance
 **Throughput**: ~5,000 msg/sec
 
-### Strategy 3: Async Confirms with Callbacks
+### Strategy 3: Async Confirms with Awaitables
 
 Highest throughput using async I/O:
 
 ```python
 import asyncio
 import aio_pika
+import json
 
 async def publish_async(messages):
     connection = await aio_pika.connect_robust('amqp://localhost')
 
     async with connection:
-        channel = await connection.channel()
-
-        # Enable publisher confirms
-        await channel.set_qos(prefetch_count=0)
+        channel = await connection.channel(
+            publisher_confirms=True,
+            on_return_raises=True
+        )
+        await channel.declare_queue('orders', durable=True)
 
         tasks = []
         for message in messages:
@@ -425,7 +438,7 @@ async def publish_async(messages):
                 delivery_mode=aio_pika.DeliveryMode.PERSISTENT
             )
 
-            # Publish returns awaitable confirmation
+            # Publish returns an awaitable confirmation
             task = channel.default_exchange.publish(
                 msg,
                 routing_key='orders'
@@ -446,6 +459,8 @@ asyncio.run(publish_async(messages))
 ## Retry Logic for Failed Publishes
 
 ```python
+import pika
+import json
 import time
 import random
 
@@ -510,6 +525,8 @@ publisher.close()
 Track confirm latency and success rates:
 
 ```python
+import pika
+import json
 import time
 from collections import deque
 import statistics
@@ -583,4 +600,4 @@ print(f"P99 confirm time: {metrics['p99_confirm_time_ms']:.2f}ms")
 
 ## Conclusion
 
-Publisher confirms are essential for reliable messaging. They give you proof that RabbitMQ received and persisted your messages. Choose the right confirm strategy based on your throughput requirements, implement proper retry logic, and always handle unroutable messages. The small performance cost is worth the guarantee that your messages will not silently disappear.
+Publisher confirms are essential for reliable messaging. They give you proof that RabbitMQ accepted your messages, and for persistent messages routed to durable queues, persisted them. Choose the right confirm strategy based on your throughput requirements, implement proper retry logic, and always handle unroutable messages. The small performance cost is worth the guarantee that your messages will not silently disappear.
