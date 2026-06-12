@@ -17,8 +17,8 @@ Before diving into backup strategies, it is essential to understand how Cassandr
 ```mermaid
 flowchart TB
     subgraph "Write Path"
-        Client[Client Write] --> ML[MemTable]
-        ML --> CL[Commit Log]
+        Client[Client Write] --> CL[Commit Log]
+        Client --> ML[MemTable]
         ML -->|Flush| SST[SSTables]
     end
 
@@ -31,7 +31,7 @@ flowchart TB
 
     subgraph "Backup Targets"
         Data --> Snapshot[Snapshot Backup]
-        CL --> Incremental[Incremental Backup]
+        SST --> Incremental[Incremental Backup]
     end
 ```
 
@@ -100,8 +100,9 @@ TABLES="users orders transactions"
 SNAPSHOT_NAME="critical-tables-$(date +%Y%m%d-%H%M%S)"
 
 # Snapshot multiple specific tables
-# The -cf flag specifies column families (tables) to snapshot
-nodetool snapshot -t "$SNAPSHOT_NAME" -cf "$TABLES" -- "$KEYSPACE"
+# --kt-list takes comma-separated keyspace.table names
+KT_LIST=$(printf "%s\n" $TABLES | sed "s|^|$KEYSPACE.|" | paste -sd, -)
+nodetool snapshot -t "$SNAPSHOT_NAME" --kt-list "$KT_LIST"
 
 echo "Snapshot created for tables: $TABLES"
 ```
@@ -134,7 +135,7 @@ Snapshots are stored at:
 
 SNAPSHOT_NAME=$1
 DATA_DIR="/var/lib/cassandra/data"
-BACKUP_DIR="/backup/cassandra"
+BACKUP_DIR="${2:-/backup/cassandra}"
 HOSTNAME=$(hostname)
 DATE=$(date +%Y%m%d)
 
@@ -162,11 +163,12 @@ for keyspace_dir in "$DATA_DIR"/*/; do
         snapshot_path="$table_dir/snapshots/$SNAPSHOT_NAME"
 
         if [ -d "$snapshot_path" ]; then
-            table=$(basename "$table_dir")
+            table_id=$(basename "$table_dir")
+            table=${table_id%-*}
 
             # Create tar archive preserving directory structure
             # Use gzip for compression to reduce storage requirements
-            tar -czf "$BACKUP_DIR/$DATE/$HOSTNAME/${keyspace}_${table}.tar.gz" \
+            tar -czf "$BACKUP_DIR/$DATE/$HOSTNAME/${keyspace}__${table}.tar.gz" \
                 -C "$table_dir/snapshots" "$SNAPSHOT_NAME"
 
             echo "Exported: $keyspace.$table"
@@ -203,7 +205,7 @@ incremental_backups: true
 sudo systemctl restart cassandra
 
 # Verify the setting is active
-nodetool getconfig incremental_backups
+nodetool statusbackup
 ```
 
 ### Managing Incremental Backup Files
@@ -238,7 +240,7 @@ process_incremental_backups() {
         fi
 
         # Archive the incremental files
-        tar -czf "$ARCHIVE_DIR/$date_dir/$hostname/${keyspace}_${table}_incr.tar.gz" \
+        tar -czf "$ARCHIVE_DIR/$date_dir/$hostname/${keyspace}__${table}_incr.tar.gz" \
             -C "$backup_dir" .
 
         # Clear processed files to prevent disk space issues
@@ -307,7 +309,7 @@ nodetool netstats | grep -i "mode"
 
 # Step 2: Flush all memtables to disk
 # This ensures all committed data is in SSTables
-# Without this, recent writes may not be included in snapshot
+# nodetool snapshot flushes by default, but an explicit flush makes the step visible
 echo "=== Flushing memtables ==="
 nodetool flush
 
@@ -515,11 +517,18 @@ fi
 echo "=== Restoring data with sstableloader ==="
 
 for table_dir in "$DATA_DIR/$KEYSPACE"/*/; do
-    table=$(basename "$table_dir")
+    table_id=$(basename "$table_dir")
+    table=${table_id%-*}
     snapshot_path="$table_dir/snapshots/$SNAPSHOT_NAME"
 
     if [ -d "$snapshot_path" ]; then
         echo "Restoring: $KEYSPACE.$table"
+
+        # sstableloader uses parent directory names as keyspace/table names
+        temp_dir=$(mktemp -d)
+        load_dir="$temp_dir/$KEYSPACE/$table"
+        mkdir -p "$load_dir"
+        cp "$snapshot_path"/* "$load_dir/"
 
         # sstableloader streams data back into the cluster
         # -d specifies the contact point (any node in the cluster)
@@ -527,7 +536,9 @@ for table_dir in "$DATA_DIR/$KEYSPACE"/*/; do
             -d $(hostname) \
             -u cassandra \
             -pw cassandra \
-            "$snapshot_path"
+            "$load_dir"
+
+        rm -rf "$temp_dir"
 
         echo "Restored: $KEYSPACE.$table"
     fi
@@ -574,8 +585,9 @@ echo "=== Restoring Data ==="
 for archive in "$BACKUP_ARCHIVE"/*.tar.gz; do
     # Extract keyspace and table from filename
     filename=$(basename "$archive")
-    keyspace=$(echo "$filename" | cut -d'_' -f1)
-    table=$(echo "$filename" | cut -d'_' -f2 | sed 's/.tar.gz//')
+    keyspace=${filename%%__*}
+    table=${filename#*__}
+    table=${table%.tar.gz}
 
     # Create temp directory for extraction
     temp_dir=$(mktemp -d)
@@ -589,6 +601,11 @@ for archive in "$BACKUP_ARCHIVE"/*.tar.gz; do
     if [ -n "$sstable_dir" ]; then
         echo "Loading: $keyspace.$table"
 
+        # sstableloader requires SSTables under keyspace/table parent directories
+        load_dir="$temp_dir/load/$keyspace/$table"
+        mkdir -p "$load_dir"
+        cp "$sstable_dir"/* "$load_dir/"
+
         # Use sstableloader to stream data to cluster
         # The tool handles token-aware data distribution
         sstableloader \
@@ -596,7 +613,7 @@ for archive in "$BACKUP_ARCHIVE"/*.tar.gz; do
             -u "$CASSANDRA_USER" \
             -pw "$CASSANDRA_PASS" \
             --no-progress \
-            "$sstable_dir"
+            "$load_dir"
     fi
 
     # Cleanup temp directory
@@ -619,7 +636,7 @@ nodetool repair -pr
 
 SNAPSHOT_NAME=$1
 COMMITLOG_DIR=$2
-RECOVERY_TIME=$3  # Format: "2024-01-15 14:30:00"
+RECOVERY_TIME=$3  # Format: "2024:01:15 14:30:00" in GMT
 DATA_DIR="/var/lib/cassandra/data"
 COMMITLOG_ARCHIVE="/var/lib/cassandra/commitlog_archive"
 
@@ -654,13 +671,17 @@ mkdir -p "$COMMITLOG_ARCHIVE"
 cp "$COMMITLOG_DIR"/* "$COMMITLOG_ARCHIVE/"
 
 # Step 5: Configure commit log replay settings
-# Edit cassandra.yaml to set commitlog_archiving if using time-based recovery
+# Set restore options in commitlog_archiving.properties
+echo "Configuring commit log restore..."
+cat > /etc/cassandra/commitlog_archiving.properties << EOF
+restore_command=cp -f %from %to
+restore_directories=$COMMITLOG_ARCHIVE
+EOF
+
 if [ -n "$RECOVERY_TIME" ]; then
     echo "Configuring time-based recovery..."
     # Set restore point in commitlog_archiving.properties
-    cat > /etc/cassandra/commitlog_archiving.properties << EOF
-restore_command=cp -f %from %to
-restore_directories=$COMMITLOG_ARCHIVE
+    cat >> /etc/cassandra/commitlog_archiving.properties << EOF
 restore_point_in_time=$RECOVERY_TIME
 EOF
 fi
@@ -941,7 +962,7 @@ export_snapshots() {
 
         # Copy snapshot data
         rsync -avz --progress \
-            "$SSH_USER@$node:/var/lib/cassandra/data/*/snapshots/$SNAPSHOT_NAME/" \
+            "$SSH_USER@$node:/var/lib/cassandra/data/*/*/snapshots/$SNAPSHOT_NAME/" \
             "$node_backup_dir/"
 
         # Export schema from this node (only need once, but good for verification)
