@@ -8,15 +8,15 @@ Description: Learn to create cache replication for high availability and read sc
 
 ---
 
-A single cache node is a single point of failure. When that node goes down, every request slams into your database, turning a minor outage into a cascading disaster. Cache replication solves this by keeping multiple copies of your cached data across nodes, so reads continue even when individual instances fail.
+A single cache node is a single point of failure. When that node goes down, every request slams into your database, turning a minor outage into a cascading disaster. Cache replication solves this by keeping multiple copies of your cached data across nodes, so reads can continue even when individual instances fail.
 
-This guide walks through the architecture, implementation patterns, and practical code for building replicated caches using Redis. The same principles apply whether you run Redis, Memcached, or custom in-memory stores.
+This guide walks through the architecture, implementation patterns, and practical code for building replicated caches using Redis. The same principles apply whether you run Redis, Memcached behind a replication layer, or custom in-memory stores.
 
 ## Why Replicate Your Cache?
 
 | Goal | How Replication Helps |
 | --- | --- |
-| **High Availability** | If the primary fails, a replica promotes to primary. Reads never stop. |
+| **High Availability** | If the primary fails, a replica can be promoted to primary. Reads can continue through healthy replicas or resume after failover. |
 | **Read Scaling** | Distribute read traffic across replicas. One primary handles writes; many replicas handle reads. |
 | **Geographic Distribution** | Place replicas near users to reduce latency. A replica in Frankfurt serves European users faster than one in Virginia. |
 | **Disaster Recovery** | Replicas in separate availability zones survive zone failures. |
@@ -97,8 +97,6 @@ Create a Docker Compose file that defines the primary and replica services with 
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   redis-primary:
     image: redis:7-alpine
@@ -125,10 +123,10 @@ Start the stack and verify replication status by checking the primary node's inf
 
 ```bash
 # Launch all three Redis nodes
-docker-compose up -d
+docker compose up -d
 
 # Connect to primary and check replication info
-docker exec -it redis-primary redis-cli INFO replication
+docker compose exec redis-primary redis-cli INFO replication
 ```
 
 You should see `connected_slaves:2` in the output, confirming both replicas are receiving data.
@@ -148,7 +146,9 @@ const primary = new Redis({
   host: 'redis-primary',
   port: 6379,
   // Retry connection on failure with exponential backoff
-  retryDelayOnFailover: 100,
+  retryStrategy(times) {
+    return Math.min(times * 50, 2000);
+  },
   maxRetriesPerRequest: 3
 });
 
@@ -200,6 +200,7 @@ The WAIT command is useful when you need confirmation that replicas received cri
 
 ```javascript
 // wait-for-replication.js
+const { primary } = require('./cache-client');
 
 // Write data and wait for at least one replica to acknowledge
 async function setWithReplication(key, value) {
@@ -246,16 +247,25 @@ Connect your application to Sentinel instead of directly to Redis nodes. The cli
 // sentinel-client.js
 const Redis = require('ioredis');
 
-// Connect through Sentinel for automatic failover handling
-const redis = new Redis({
-  sentinels: [
-    { host: 'sentinel-1', port: 26379 },
-    { host: 'sentinel-2', port: 26379 },
-    { host: 'sentinel-3', port: 26379 }
-  ],
+const sentinels = [
+  { host: 'sentinel-1', port: 26379 },
+  { host: 'sentinel-2', port: 26379 },
+  { host: 'sentinel-3', port: 26379 }
+];
+
+// Connect through Sentinel for automatic failover handling of writes
+const primary = new Redis({
+  sentinels,
   // Name must match sentinel.conf monitor name
+  name: 'mymaster'
+});
+
+// Connect through Sentinel to a replica for read operations
+const replica = new Redis({
+  sentinels,
   name: 'mymaster',
-  // Read from replicas when possible
+  role: 'slave',
+  // Prefer these replicas when Sentinel reports them as available
   preferredSlaves: [
     { ip: 'redis-replica-1', port: 6379, prio: 1 },
     { ip: 'redis-replica-2', port: 6379, prio: 2 }
@@ -263,11 +273,27 @@ const redis = new Redis({
 });
 
 // Client automatically reconnects to new primary after failover
-redis.on('reconnecting', () => {
-  console.log('Reconnecting to Redis cluster...');
+primary.on('reconnecting', () => {
+  console.log('Reconnecting to Redis primary...');
 });
 
-module.exports = redis;
+module.exports = { primary, replica };
+```
+
+The primary connection is for writes. The replica connection is for reads and reconnects to another replica if the selected replica is promoted during failover.
+
+```javascript
+// sentinel-cache-client.js
+const { primary, replica } = require('./sentinel-client');
+
+async function set(key, value, ttlSeconds = 3600) {
+  return primary.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+}
+
+async function get(key) {
+  const value = await replica.get(key);
+  return value ? JSON.parse(value) : null;
+}
 ```
 
 ## Monitoring Replication Health
@@ -278,10 +304,11 @@ Track these metrics to catch replication problems before they cause outages.
 | --- | --- | --- |
 | `master_link_status` | up | down for > 30s |
 | `master_link_down_since_seconds` | 0 | > 60 |
-| `repl_backlog_size` | matches config | near zero |
+| `repl_backlog_active` | 1 | 0 |
+| `repl_backlog_histlen` | sized for expected disconnects | consistently near `repl_backlog_size` |
 | `connected_slaves` | expected count | fewer than expected |
 
-Expose these metrics to your monitoring system. Here is a simple health check endpoint that reports replication status.
+Expose these metrics to your monitoring system. Here is a simple health check function that reports replication status.
 
 ```javascript
 // health-check.js
@@ -304,7 +331,8 @@ async function checkReplicationHealth() {
     role: metrics.role,
     connectedSlaves: parseInt(metrics.connected_slaves) || 0,
     replBacklogActive: metrics.repl_backlog_active === '1',
-    replBacklogSize: parseInt(metrics.repl_backlog_size) || 0
+    replBacklogSize: parseInt(metrics.repl_backlog_size) || 0,
+    replBacklogHistoryLength: parseInt(metrics.repl_backlog_histlen) || 0
   };
 }
 ```
