@@ -39,7 +39,8 @@ flowchart TD
 Debezium stores schema history to track changes over time. Configure storage location:
 
 ```properties
-# For PostgreSQL connector
+# For MySQL, SQL Server, and Oracle connectors
+# (the PostgreSQL connector does not use a schema history topic)
 
 schema.history.internal.kafka.bootstrap.servers=kafka:9092
 schema.history.internal.kafka.topic=schema-changes.inventory
@@ -76,8 +77,8 @@ key.converter.schema.registry.url=http://schema-registry:8081
 value.converter=io.confluent.connect.avro.AvroConverter
 value.converter.schema.registry.url=http://schema-registry:8081
 
-# Allow schemas to evolve
-value.converter.schemas.enable=true
+# Auto-register evolving schemas with the registry
+value.converter.auto.register.schemas=true
 ```
 
 Configure schema compatibility mode:
@@ -306,8 +307,9 @@ Handle DDL events in your consumer:
 ```python
 # ddl_handler.py
 def process_message(message):
-    # Check if this is a schema change event
-    if message.get('__debezium_op') == 'r':
+    # Check if this is a snapshot read event (op == 'r')
+    # The 'op' field is part of the Debezium envelope payload
+    if message.get('op') == 'r':
         # This is a read during snapshot, skip DDL
         return process_data_event(message)
 
@@ -527,7 +529,7 @@ cat << 'EOF' > /tmp/connector-config.json
 {
   "name": "inventory-connector",
   "config": {
-    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "connector.class": "io.debezium.connector.mysql.MySqlConnector",
     "snapshot.mode": "schema_only_recovery",
     "schema.history.internal.kafka.bootstrap.servers": "kafka:9092",
     "schema.history.internal.kafka.topic": "schema-changes.inventory"
