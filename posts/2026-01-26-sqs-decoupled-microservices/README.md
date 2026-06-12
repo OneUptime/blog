@@ -191,7 +191,7 @@ async function publishOrder(order) {
   const command = new SendMessageCommand({
     QueueUrl: ORDER_QUEUE_URL,
     MessageBody: JSON.stringify(message),
-    // Message attributes for filtering and routing
+    // Message attributes for metadata that consumers can inspect for routing
     MessageAttributes: {
       'EventType': {
         DataType: 'String',
@@ -300,7 +300,7 @@ module.exports = { publishOrder, publishOrderBatch, createOrderHandler };
 import boto3
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 
 # Initialize SQS client
@@ -324,7 +324,7 @@ def publish_order(order: Dict[str, Any]) -> str:
         'customer_id': order['customer_id'],
         'items': order['items'],
         'total_amount': order['total_amount'],
-        'created_at': datetime.utcnow().isoformat(),
+        'created_at': datetime.now(timezone.utc).isoformat(),
         'version': '1.0'
     }
 
@@ -380,7 +380,7 @@ def publish_order_batch(orders: List[Dict[str, Any]]) -> Dict[str, List]:
                     'customer_id': order['customer_id'],
                     'items': order['items'],
                     'total_amount': order['total_amount'],
-                    'created_at': datetime.utcnow().isoformat()
+                    'created_at': datetime.now(timezone.utc).isoformat()
                 }),
                 'MessageAttributes': {
                     'EventType': {
@@ -443,12 +443,13 @@ async function processMessage(message) {
 
     if (receiveCount < 3 && isRetryableError(error)) {
       // Extend visibility timeout to delay retry
+      const retryDelay = Math.min(60 * 2 ** (receiveCount - 1), 900);
       await sqs.send(new ChangeMessageVisibilityCommand({
         QueueUrl: QUEUE_URL,
         ReceiptHandle: message.ReceiptHandle,
-        VisibilityTimeout: 60 * receiveCount  // Exponential backoff
+        VisibilityTimeout: retryDelay  // Exponential backoff, max 15 minutes
       }));
-      console.log(`Message will retry in ${60 * receiveCount} seconds`);
+      console.log(`Message will retry in ${retryDelay} seconds`);
     }
 
     return false;
@@ -555,13 +556,10 @@ pollMessages();
 ### Lambda Consumer for Serverless Processing
 
 ```javascript
-const { SQSClient, DeleteMessageCommand } = require('@aws-sdk/client-sqs');
-
-const sqs = new SQSClient({});
-
 /**
  * Lambda handler for SQS events
- * Supports partial batch failure reporting
+ * Supports partial batch failure reporting when the event source mapping
+ * has FunctionResponseTypes set to ReportBatchItemFailures.
  */
 exports.handler = async (event) => {
   console.log(`Processing ${event.Records.length} messages`);
@@ -673,7 +671,7 @@ flowchart TD
 ### Implementing Retry with Exponential Backoff
 
 ```javascript
-const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
+const { SQSClient, SendMessageCommand, DeleteMessageCommand } = require('@aws-sdk/client-sqs');
 
 const sqs = new SQSClient({});
 
@@ -682,8 +680,8 @@ const sqs = new SQSClient({});
  */
 async function publishWithRetrySupport(queueUrl, message, retryCount = 0) {
   // Calculate delay based on retry count (exponential backoff)
-  // 0 retries = 0s, 1 retry = 30s, 2 retries = 60s, etc.
-  const delaySeconds = Math.min(retryCount * 30, 900);  // Max 15 minutes
+  // 0 retries = 0s, 1 retry = 30s, 2 retries = 60s, 3 retries = 120s, etc.
+  const delaySeconds = retryCount === 0 ? 0 : Math.min(30 * 2 ** (retryCount - 1), 900);  // Max 15 minutes
 
   const command = new SendMessageCommand({
     QueueUrl: queueUrl,
@@ -714,6 +712,10 @@ async function processWithManualRetry(message, queueUrl, dlqUrl) {
 
   try {
     await processOrder(body);
+    await sqs.send(new DeleteMessageCommand({
+      QueueUrl: queueUrl,
+      ReceiptHandle: message.ReceiptHandle
+    }));
     return { success: true };
 
   } catch (error) {
@@ -725,6 +727,11 @@ async function processWithManualRetry(message, queueUrl, dlqUrl) {
         ...body,
         originalTimestamp: body.originalTimestamp || message.MessageAttributes?.OriginalTimestamp?.StringValue
       }, retryCount + 1);
+
+      await sqs.send(new DeleteMessageCommand({
+        QueueUrl: queueUrl,
+        ReceiptHandle: message.ReceiptHandle
+      }));
 
       console.log(`Message requeued for retry ${retryCount + 1}`);
       return { success: false, retried: true };
@@ -743,6 +750,11 @@ async function processWithManualRetry(message, queueUrl, dlqUrl) {
           retryCount,
           failedAt: new Date().toISOString()
         })
+      }));
+
+      await sqs.send(new DeleteMessageCommand({
+        QueueUrl: queueUrl,
+        ReceiptHandle: message.ReceiptHandle
       }));
 
       console.log('Message sent to DLQ');
