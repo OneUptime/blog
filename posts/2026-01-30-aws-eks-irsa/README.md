@@ -51,7 +51,7 @@ Here is a visual representation of the IRSA flow:
 
 Before implementing IRSA, ensure you have:
 
-- An existing EKS cluster (version 1.14 or later)
+- An existing supported EKS cluster
 - `kubectl` configured to access your cluster
 - AWS CLI v2 installed and configured
 - `eksctl` installed (optional but recommended)
@@ -117,20 +117,11 @@ The output will look similar to:
 OIDC URL: https://oidc.eks.us-west-2.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE
 ```
 
-Next, get the OIDC provider thumbprint. AWS requires this to verify the OIDC provider certificate:
+Next, extract the OIDC ID from the URL. When you create the IAM OIDC provider with the AWS CLI, the thumbprint list is optional. If you omit it, IAM retrieves the top intermediate CA thumbprint for the OIDC provider. If you choose to provide `--thumbprint-list` manually, follow the IAM documentation to select the top intermediate CA certificate and verify the value after creation.
 
 ```bash
 # Extract the OIDC ID from the URL
 OIDC_ID=$(echo ${OIDC_URL} | cut -d '/' -f 5)
-
-# Get the thumbprint (this gets the root CA thumbprint)
-THUMBPRINT=$(echo | openssl s_client -servername oidc.eks.${AWS_REGION}.amazonaws.com \
-    -showcerts -connect oidc.eks.${AWS_REGION}.amazonaws.com:443 2>/dev/null \
-    | openssl x509 -fingerprint -sha1 -noout \
-    | sed 's/://g' \
-    | awk -F= '{print tolower($2)}')
-
-echo "Thumbprint: ${THUMBPRINT}"
 ```
 
 Now create the OIDC identity provider in IAM:
@@ -139,9 +130,7 @@ Now create the OIDC identity provider in IAM:
 # Create the OIDC provider
 aws iam create-open-id-connect-provider \
     --url ${OIDC_URL} \
-    --client-id-list sts.amazonaws.com \
-    --thumbprint-list ${THUMBPRINT} \
-    --region ${AWS_REGION}
+    --client-id-list sts.amazonaws.com
 ```
 
 ### Verify the OIDC Provider
@@ -366,7 +355,7 @@ metadata:
   namespace: my-app
   annotations:
     # This annotation links the service account to the IAM role
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:eks-my-app-role
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/eks-my-app-role
   labels:
     app: my-app
 ```
@@ -387,7 +376,7 @@ The output should show the annotation:
 Name:                my-app-sa
 Namespace:           my-app
 Labels:              app=my-app
-Annotations:         eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:eks-my-app-role
+Annotations:         eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/eks-my-app-role
 Image pull secrets:  <none>
 Mountable secrets:   <none>
 Tokens:              <none>
@@ -629,7 +618,6 @@ if __name__ == "__main__":
 
 ```javascript
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
-import { fromWebToken } from "@aws-sdk/credential-providers";
 
 /**
  * Create an S3 client that uses IRSA credentials.
@@ -875,7 +863,9 @@ kubectl exec -it my-app-pod -n my-app -- cat /var/run/secrets/eks.amazonaws.com/
 
 # Decode the token to see its claims (requires jq)
 kubectl exec -it my-app-pod -n my-app -- cat /var/run/secrets/eks.amazonaws.com/serviceaccount/token | \
-    cut -d '.' -f 2 | base64 -d 2>/dev/null | jq .
+    cut -d '.' -f 2 | tr '_-' '/+' | \
+    awk '{ l=length($0)%4; if (l==2) print $0 "=="; else if (l==3) print $0 "="; else print $0; }' | \
+    base64 -d 2>/dev/null | jq .
 ```
 
 The decoded token should show claims like:
@@ -914,14 +904,15 @@ kubectl exec -it my-app-pod -n my-app -- sh -c '
 
 ### Check Pod Identity Webhook
 
-Verify the webhook is functioning:
+The IRSA mutating webhook runs as part of the EKS control plane, so you normally will not see a `pod-identity-webhook` pod in `kube-system`. If the expected environment variables are missing, recreate the pod after confirming the service account annotation and then check whether the pod was mutated:
 
 ```bash
-# Check if the pod identity webhook is running
-kubectl get pods -n kube-system | grep pod-identity-webhook
+# Recreate the pod after fixing the service account annotation
+kubectl delete pod my-app-pod -n my-app
+kubectl apply -f pod.yaml
 
-# View webhook logs
-kubectl logs -n kube-system -l app=pod-identity-webhook
+# Check for the injected role ARN
+kubectl describe pod my-app-pod -n my-app | grep AWS_ROLE_ARN
 ```
 
 ## Security Best Practices
@@ -1040,7 +1031,7 @@ spec:
 | IRSA | High - pod-level isolation | Medium | Production workloads |
 | Node IAM Role | Low - shared across all pods | Low | Development/testing only |
 | Static Credentials (Secrets) | Low - manual rotation needed | Low | Legacy applications |
-| EKS Pod Identity | High - simplified setup | Low | New clusters (EKS 1.24+) |
+| EKS Pod Identity | High - simplified setup | Low | Supported EKS clusters with compatible platform versions and Linux EC2 worker nodes |
 | kiam/kube2iam | Medium - network-based | High | Older clusters without IRSA |
 
 ## Conclusion
@@ -1053,7 +1044,7 @@ IRSA provides a secure and scalable way to grant AWS permissions to Kubernetes w
 4. Test your configuration thoroughly before deploying to production
 5. Monitor IRSA usage through CloudTrail for security auditing
 
-For clusters running EKS 1.24 or later, also consider EKS Pod Identity as a newer alternative that simplifies the setup process while providing similar security benefits.
+For supported clusters with compatible platform versions and Linux EC2 worker nodes, also consider EKS Pod Identity as a newer alternative that simplifies the setup process while providing similar security benefits.
 
 ## Additional Resources
 
