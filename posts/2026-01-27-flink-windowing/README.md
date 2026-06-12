@@ -51,12 +51,12 @@ Windows can be keyed or non-keyed:
 // Keyed window - partitions by key, then applies window
 stream
     .keyBy(event -> event.getUserId())
-    .window(TumblingEventTimeWindows.of(Time.minutes(5)))
+    .window(TumblingEventTimeWindows.of(Duration.ofMinutes(5)))
     .sum("amount");
 
 // Non-keyed window - all elements go to single window (parallelism = 1)
 stream
-    .windowAll(TumblingEventTimeWindows.of(Time.minutes(5)))
+    .windowAll(TumblingEventTimeWindows.of(Duration.ofMinutes(5)))
     .sum("amount");
 ```
 
@@ -77,22 +77,23 @@ Window:  [   W1    ][   W2    ][   W3    ][   W4   ]
 
 ```java
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
-import org.apache.flink.streaming.api.windowing.time.Time;
+import java.time.Duration;
 
 // Define the data stream with timestamps and watermarks
 DataStream<SensorReading> readings = env
-    .addSource(new SensorSource())
-    .assignTimestampsAndWatermarks(
+    .fromSource(
+        new SensorSource(),
         WatermarkStrategy
             .<SensorReading>forBoundedOutOfOrderness(Duration.ofSeconds(5))
-            .withTimestampAssigner((event, timestamp) -> event.getTimestamp())
+            .withTimestampAssigner((event, timestamp) -> event.getTimestamp()),
+        "sensor-source"
     );
 
 // Apply 1-minute tumbling window
 DataStream<SensorReading> avgReadings = readings
     .keyBy(SensorReading::getSensorId)
     // Creates non-overlapping 1-minute windows based on event time
-    .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+    .window(TumblingEventTimeWindows.of(Duration.ofMinutes(1)))
     .aggregate(new AverageAggregate());
 ```
 
@@ -100,12 +101,13 @@ DataStream<SensorReading> avgReadings = readings
 
 ```java
 import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
+import java.time.Duration;
 
 // Processing time uses wall-clock time of the Flink operator
 DataStream<Transaction> hourlyTotals = transactions
     .keyBy(Transaction::getAccountId)
     // Window based on when Flink processes the event, not when it occurred
-    .window(TumblingProcessingTimeWindows.of(Time.hours(1)))
+    .window(TumblingProcessingTimeWindows.of(Duration.ofHours(1)))
     .sum("amount");
 ```
 
@@ -119,8 +121,8 @@ Align windows to custom boundaries (e.g., start at 15 minutes past the hour):
 DataStream<Stats> aligned = stream
     .keyBy(Event::getRegion)
     .window(TumblingEventTimeWindows.of(
-        Time.hours(1),           // window size
-        Time.minutes(15)         // offset from epoch
+        Duration.ofHours(1),     // window size
+        Duration.ofMinutes(15)   // offset from epoch
     ))
     .process(new StatsFunction());
 ```
@@ -143,14 +145,15 @@ Slide: 1
 
 ```java
 import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
+import java.time.Duration;
 
 // Calculate rolling 5-minute average, updated every 1 minute
 // Each event will be assigned to 5 different windows
 DataStream<MetricAvg> rollingAvg = metrics
     .keyBy(Metric::getServiceName)
     .window(SlidingEventTimeWindows.of(
-        Time.minutes(5),    // window size
-        Time.minutes(1)     // slide interval
+        Duration.ofMinutes(5),    // window size
+        Duration.ofMinutes(1)     // slide interval
     ))
     .aggregate(new AverageAggregate());
 ```
@@ -163,8 +166,8 @@ DataStream<MetricAvg> rollingAvg = metrics
 DataStream<Alert> alerts = errorEvents
     .keyBy(ErrorEvent::getServiceId)
     .window(SlidingEventTimeWindows.of(
-        Time.seconds(10),   // look at last 10 seconds
-        Time.seconds(1)     // check every second
+        Duration.ofSeconds(10),   // look at last 10 seconds
+        Duration.ofSeconds(1)     // check every second
     ))
     .aggregate(new ErrorRateAggregate())
     .filter(rate -> rate.getErrorRate() > 0.05)  // >5% error rate
@@ -189,12 +192,13 @@ Sessions: [  S1   ]  [    S2    ]        [ S3  ]
 
 ```java
 import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows;
+import java.time.Duration;
 
 // Group user clickstream into sessions
 // Session ends after 30 minutes of inactivity
 DataStream<UserSession> sessions = clicks
     .keyBy(ClickEvent::getUserId)
-    .window(EventTimeSessionWindows.withGap(Time.minutes(30)))
+    .window(EventTimeSessionWindows.withGap(Duration.ofMinutes(30)))
     .process(new SessionAggregator());
 ```
 
@@ -205,6 +209,7 @@ Different keys can have different session timeouts:
 ```java
 import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows;
 import org.apache.flink.streaming.api.windowing.assigners.SessionWindowTimeGapExtractor;
+import java.time.Duration;
 
 // Premium users get longer session timeout
 DataStream<UserSession> sessions = clicks
@@ -215,9 +220,9 @@ DataStream<UserSession> sessions = clicks
             public long extract(ClickEvent event) {
                 // Return gap in milliseconds
                 if (event.isPremiumUser()) {
-                    return Time.hours(1).toMilliseconds();
+                    return Duration.ofHours(1).toMillis();
                 }
-                return Time.minutes(30).toMilliseconds();
+                return Duration.ofMinutes(30).toMillis();
             }
         }
     ))
@@ -267,17 +272,18 @@ public class SessionAggregator
 
 ## 5. Global Windows
 
-Global windows assign all elements to a single, never-ending window. You must define a custom trigger; otherwise, no computation ever fires.
+Global windows assign all elements to a single, never-ending window. You must define a non-default trigger; otherwise, no computation ever fires.
 
 ```java
 import org.apache.flink.streaming.api.windowing.assigners.GlobalWindows;
 import org.apache.flink.streaming.api.windowing.triggers.CountTrigger;
+import org.apache.flink.streaming.api.windowing.triggers.PurgingTrigger;
 
 // Trigger computation every 100 elements per key
 DataStream<BatchResult> batched = events
     .keyBy(Event::getCategory)
     .window(GlobalWindows.create())
-    .trigger(CountTrigger.of(100))  // Required: without trigger, window never fires
+    .trigger(PurgingTrigger.of(CountTrigger.of(100)))  // Required: without trigger, window never fires
     .process(new BatchProcessor());
 ```
 
@@ -291,6 +297,8 @@ public class CountOrTimeoutTrigger<T> extends Trigger<T, GlobalWindow> {
     private final long timeoutMs;
     private final ValueStateDescriptor<Long> countDesc =
         new ValueStateDescriptor<>("count", Long.class);
+    private final ValueStateDescriptor<Long> timerDesc =
+        new ValueStateDescriptor<>("timer", Long.class);
 
     public CountOrTimeoutTrigger(long maxCount, long timeoutMs) {
         this.maxCount = maxCount;
@@ -309,14 +317,20 @@ public class CountOrTimeoutTrigger<T> extends Trigger<T, GlobalWindow> {
 
         // Register timeout timer on first element
         if (count == 1) {
-            ctx.registerProcessingTimeTimer(
-                ctx.getCurrentProcessingTime() + timeoutMs
-            );
+            long timeout = ctx.getCurrentProcessingTime() + timeoutMs;
+            ctx.registerProcessingTimeTimer(timeout);
+            ctx.getPartitionedState(timerDesc).update(timeout);
         }
 
         // Fire if count threshold reached
         if (count >= maxCount) {
             countState.clear();
+            ValueState<Long> timerState = ctx.getPartitionedState(timerDesc);
+            Long timeout = timerState.value();
+            if (timeout != null) {
+                ctx.deleteProcessingTimeTimer(timeout);
+                timerState.clear();
+            }
             return TriggerResult.FIRE_AND_PURGE;
         }
 
@@ -328,6 +342,7 @@ public class CountOrTimeoutTrigger<T> extends Trigger<T, GlobalWindow> {
             GlobalWindow window, TriggerContext ctx) throws Exception {
         // Fire on timeout
         ctx.getPartitionedState(countDesc).clear();
+        ctx.getPartitionedState(timerDesc).clear();
         return TriggerResult.FIRE_AND_PURGE;
     }
 
@@ -340,6 +355,12 @@ public class CountOrTimeoutTrigger<T> extends Trigger<T, GlobalWindow> {
     @Override
     public void clear(GlobalWindow window, TriggerContext ctx) throws Exception {
         ctx.getPartitionedState(countDesc).clear();
+        ValueState<Long> timerState = ctx.getPartitionedState(timerDesc);
+        Long timeout = timerState.value();
+        if (timeout != null) {
+            ctx.deleteProcessingTimeTimer(timeout);
+            timerState.clear();
+        }
     }
 }
 ```
@@ -364,7 +385,7 @@ Most efficient for simple reductions with same input/output type:
 // Sum transaction amounts per account
 DataStream<Transaction> totals = transactions
     .keyBy(Transaction::getAccountId)
-    .window(TumblingEventTimeWindows.of(Time.hours(1)))
+    .window(TumblingEventTimeWindows.of(Duration.ofHours(1)))
     .reduce(new ReduceFunction<Transaction>() {
         @Override
         public Transaction reduce(Transaction t1, Transaction t2) {
@@ -421,7 +442,7 @@ public class AverageAggregate
 // Usage
 DataStream<Double> averages = readings
     .keyBy(SensorReading::getSensorId)
-    .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+    .window(TumblingEventTimeWindows.of(Duration.ofMinutes(1)))
     .aggregate(new AverageAggregate());
 ```
 
@@ -471,7 +492,7 @@ Get both incremental aggregation efficiency and window metadata:
 // Incremental aggregation + window metadata access
 DataStream<EnrichedResult> results = readings
     .keyBy(SensorReading::getSensorId)
-    .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+    .window(TumblingEventTimeWindows.of(Duration.ofMinutes(1)))
     .aggregate(
         new AverageAggregate(),  // Incremental pre-aggregation
         new ProcessWindowFunction<Double, EnrichedResult, String, TimeWindow>() {
@@ -552,7 +573,7 @@ public class ImportantEventTrigger extends Trigger<Event, TimeWindow> {
 // Usage
 DataStream<Alert> alerts = events
     .keyBy(Event::getDeviceId)
-    .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+    .window(TumblingEventTimeWindows.of(Duration.ofMinutes(1)))
     .trigger(new ImportantEventTrigger())
     .process(new AlertGenerator());
 ```
@@ -576,11 +597,12 @@ Evictors remove elements from a window before (pre-eviction) or after (post-evic
 
 ```java
 import org.apache.flink.streaming.api.windowing.evictors.*;
+import java.time.Duration;
 
 // Keep only recent elements by count
 DataStream<Result> countEvicted = stream
     .keyBy(Event::getKey)
-    .window(TumblingEventTimeWindows.of(Time.minutes(5)))
+    .window(TumblingEventTimeWindows.of(Duration.ofMinutes(5)))
     .evictor(CountEvictor.of(1000))  // Keep max 1000 elements
     .process(new WindowProcessor());
 
@@ -589,13 +611,13 @@ DataStream<Result> timeEvicted = stream
     .keyBy(Event::getKey)
     .window(GlobalWindows.create())
     .trigger(CountTrigger.of(100))
-    .evictor(TimeEvictor.of(Time.minutes(5)))  // Keep only last 5 minutes
+    .evictor(TimeEvictor.of(Duration.ofMinutes(5)))  // Keep only last 5 minutes
     .process(new WindowProcessor());
 
 // Remove elements above threshold
 DataStream<Result> deltaEvicted = stream
     .keyBy(Event::getKey)
-    .window(TumblingEventTimeWindows.of(Time.hours(1)))
+    .window(TumblingEventTimeWindows.of(Duration.ofHours(1)))
     .evictor(DeltaEvictor.of(
         100.0,  // threshold
         new DeltaFunction<Event>() {
@@ -663,7 +685,7 @@ public class OutlierEvictor implements Evictor<SensorReading, TimeWindow> {
 
 ## 9. Watermarks and Windows
 
-Watermarks are the mechanism that tracks event-time progress. They tell Flink that no more events with timestamp less than the watermark should arrive.
+Watermarks are the mechanism that tracks event-time progress. They tell Flink that no more events with a timestamp less than or equal to the watermark should arrive.
 
 ### Watermark Strategies
 
@@ -694,8 +716,8 @@ WatermarkStrategy<Event> custom = WatermarkStrategy
 public class CustomWatermarkGenerator
     implements WatermarkGenerator<Event> {
 
-    private long maxTimestamp = Long.MIN_VALUE;
     private final long maxOutOfOrderness = 5000; // 5 seconds
+    private long maxTimestamp = Long.MIN_VALUE + maxOutOfOrderness + 1;
 
     @Override
     public void onEvent(Event event, long eventTimestamp,
@@ -704,19 +726,19 @@ public class CustomWatermarkGenerator
         maxTimestamp = Math.max(maxTimestamp, eventTimestamp);
 
         // Optionally emit watermark on every event
-        // output.emitWatermark(new Watermark(maxTimestamp - maxOutOfOrderness));
+        // output.emitWatermark(new Watermark(maxTimestamp - maxOutOfOrderness - 1));
     }
 
     @Override
     public void onPeriodicEmit(WatermarkOutput output) {
         // Called periodically (default: every 200ms)
         // Emit watermark based on max timestamp seen
-        output.emitWatermark(new Watermark(maxTimestamp - maxOutOfOrderness));
+        output.emitWatermark(new Watermark(maxTimestamp - maxOutOfOrderness - 1));
     }
 }
 ```
 
-### Watermark Alignment Across Sources
+### Handling Idle Sources
 
 ```java
 // Handle idle sources that stop emitting
@@ -750,8 +772,8 @@ Even with watermarks, data can arrive late. Flink provides mechanisms to handle 
 // Allow late events up to 1 minute after window closes
 DataStream<Result> results = events
     .keyBy(Event::getKey)
-    .window(TumblingEventTimeWindows.of(Time.minutes(5)))
-    .allowedLateness(Time.minutes(1))  // Accept late data
+    .window(TumblingEventTimeWindows.of(Duration.ofMinutes(5)))
+    .allowedLateness(Duration.ofMinutes(1))  // Accept late data
     .aggregate(new SumAggregate());
 ```
 
@@ -769,8 +791,8 @@ final OutputTag<Event> lateTag = new OutputTag<Event>("late-events"){};
 
 SingleOutputStreamOperator<Result> results = events
     .keyBy(Event::getKey)
-    .window(TumblingEventTimeWindows.of(Time.minutes(5)))
-    .allowedLateness(Time.minutes(1))
+    .window(TumblingEventTimeWindows.of(Duration.ofMinutes(5)))
+    .allowedLateness(Duration.ofMinutes(1))
     .sideOutputLateData(lateTag)  // Route late events to side output
     .process(new WindowProcessor());
 
@@ -793,19 +815,20 @@ public class RobustWindowingPipeline {
 
         // Source with watermarks
         DataStream<Transaction> transactions = env
-            .addSource(new TransactionSource())
-            .assignTimestampsAndWatermarks(
+            .fromSource(
+                new TransactionSource(),
                 WatermarkStrategy
                     .<Transaction>forBoundedOutOfOrderness(Duration.ofSeconds(10))
                     .withTimestampAssigner((tx, ts) -> tx.getTimestamp())
-                    .withIdleness(Duration.ofMinutes(5))
+                    .withIdleness(Duration.ofMinutes(5)),
+                "transaction-source"
             );
 
         // Windowed aggregation with late data handling
         SingleOutputStreamOperator<HourlyTotal> totals = transactions
             .keyBy(Transaction::getAccountId)
-            .window(TumblingEventTimeWindows.of(Time.hours(1)))
-            .allowedLateness(Time.minutes(30))  // 30-minute grace period
+            .window(TumblingEventTimeWindows.of(Duration.ofHours(1)))
+            .allowedLateness(Duration.ofMinutes(30))  // 30-minute grace period
             .sideOutputLateData(LATE_DATA)
             .aggregate(
                 new TotalAmountAggregate(),
@@ -874,7 +897,7 @@ public class RobustWindowingPipeline {
 // Good: Separate concerns, reusable components
 public class TransactionPipeline {
 
-    private static final Time WINDOW_SIZE = Time.hours(1);
+    private static final Duration WINDOW_SIZE = Duration.ofHours(1);
     private static final Duration MAX_LATENESS = Duration.ofMinutes(30);
     private static final Duration WATERMARK_DELAY = Duration.ofSeconds(10);
 
@@ -884,7 +907,7 @@ public class TransactionPipeline {
             .assignTimestampsAndWatermarks(createWatermarkStrategy())
             .keyBy(Transaction::getAccountId)
             .window(TumblingEventTimeWindows.of(WINDOW_SIZE))
-            .allowedLateness(Time.milliseconds(MAX_LATENESS.toMillis()))
+            .allowedLateness(MAX_LATENESS)
             .aggregate(new TotalAggregate(), new WindowEnricher());
     }
 
@@ -905,11 +928,10 @@ public class TransactionPipeline {
 public void testTumblingWindow() throws Exception {
     StreamExecutionEnvironment env =
         StreamExecutionEnvironment.getExecutionEnvironment();
-    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
     // Use test harness for unit testing window functions
     TumblingEventTimeWindows assigner =
-        TumblingEventTimeWindows.of(Time.seconds(5));
+        TumblingEventTimeWindows.of(Duration.ofSeconds(5));
 
     // Create test events with timestamps
     List<Event> testEvents = Arrays.asList(
