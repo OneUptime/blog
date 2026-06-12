@@ -93,7 +93,7 @@ groups:
         annotations:
           summary: "{{ $labels.service }} error rate exceeds 1%"
           description: |
-            Users are experiencing errors. Current error rate: {{ printf "%.2f" $value | float64 | mulf 100 }}%
+            Users are experiencing errors. Current error rate: {{ $value | humanizePercentage }}
           runbook: "https://wiki.example.com/runbooks/high-error-rate"
 
       # Alert when latency exceeds SLO threshold
@@ -169,15 +169,15 @@ route:
 
   routes:
     # Critical alerts go to PagerDuty with shorter intervals
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'pagerduty-critical'
       group_wait: 10s
       repeat_interval: 1h
 
     # High severity alerts during business hours only
-    - match:
-        severity: high
+    - matchers:
+        - severity="high"
       receiver: 'slack-oncall'
       group_wait: 30s
       repeat_interval: 2h
@@ -187,8 +187,8 @@ route:
         - outside-business-hours
 
     # Warning alerts create tickets, no paging
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'ticket-system'
       group_wait: 5m
       repeat_interval: 24h
@@ -200,7 +200,7 @@ receivers:
 
   - name: 'pagerduty-critical'
     pagerduty_configs:
-      - service_key: '${PAGERDUTY_KEY}'
+      - routing_key: '${PAGERDUTY_KEY}'
         severity: critical
 
   - name: 'slack-oncall'
@@ -281,7 +281,15 @@ groups:
             sum(rate(http_requests_total[6h])) by (service)
           ) / 0.001
 
-      # Critical: Fast burn - exhausts monthly budget in 5 days
+      - record: slo:burn_rate:30m
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[30m])) by (service)
+            /
+            sum(rate(http_requests_total[30m])) by (service)
+          ) / 0.001
+
+      # Critical: Fast burn - exhausts monthly budget in about 2 days
       # Requires BOTH windows to exceed threshold
       - alert: SLOFastBurn
         expr: |
@@ -295,15 +303,14 @@ groups:
           summary: "Fast SLO burn detected for {{ $labels.service }}"
           description: |
             Error budget being consumed rapidly.
-            1h burn rate: {{ printf "%.1f" (query "slo:burn_rate:1h") }}x
-            5m burn rate: {{ printf "%.1f" (query "slo:burn_rate:5m") }}x
+            Current burn rate: {{ printf "%.1f" $value }}x
 
-      # High: Slow burn - exhausts budget in 12.5 days
+      # High: Slow burn - exhausts monthly budget in about 5 days
       - alert: SLOSlowBurn
         expr: |
           slo:burn_rate:6h > 6
           and
-          slo:burn_rate:1h > 6
+          slo:burn_rate:30m > 6
         for: 5m
         labels:
           severity: high
@@ -337,7 +344,7 @@ flowchart TD
 Define clear escalation paths based on severity and time:
 
 ```yaml
-# oneuptime/escalation-policy.yaml
+# example/escalation-policy.yaml
 # Escalation policy that respects on-call sanity
 
 policies:
@@ -632,33 +639,33 @@ Some alerts should be temporarily silenced during known conditions. Build suppre
 inhibit_rules:
   # When database is down, suppress all service alerts that depend on it
   # This prevents alert storms from cascading failures
-  - source_match:
-      alertname: 'DatabaseDown'
-      severity: 'critical'
-    target_match:
-      depends_on: 'database'
+  - source_matchers:
+      - alertname="DatabaseDown"
+      - severity="critical"
+    target_matchers:
+      - depends_on="database"
     equal: ['environment']
 
   # When a node is down, suppress all pod alerts on that node
-  - source_match:
-      alertname: 'NodeDown'
-    target_match:
-      alertname: 'PodNotReady'
+  - source_matchers:
+      - alertname="NodeDown"
+    target_matchers:
+      - alertname="PodNotReady"
     equal: ['node']
 
   # Suppress warning when critical of same type is firing
   # Avoids duplicate notifications at different severity levels
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname', 'service']
 
   # During maintenance windows, suppress non-critical alerts
-  - source_match:
-      alertname: 'MaintenanceActive'
-    target_match_re:
-      severity: 'warning|info'
+  - source_matchers:
+      - alertname="MaintenanceActive"
+    target_matchers:
+      - severity=~"warning|info"
     equal: ['service']
 ```
 
@@ -678,7 +685,7 @@ Alerts without runbooks create confusion and delay response. Every alert should 
   annotations:
     summary: "Container {{ $labels.container }} memory above 90%"
     description: |
-      Memory usage is at {{ printf "%.1f" $value | mulf 100 }}% of limit.
+      Memory usage is at {{ $value | humanizePercentage }} of limit.
       This may lead to OOM kills if not addressed.
     runbook_url: "https://wiki.example.com/runbooks/high-memory"
     dashboard_url: "https://grafana.example.com/d/memory?var-container={{ $labels.container }}"
@@ -689,7 +696,7 @@ Alerts without runbooks create confusion and delay response. Every alert should 
 
 Every runbook should follow a consistent structure:
 
-```markdown
+````markdown
 # Alert: HighMemoryUsage
 
 ## Overview
@@ -705,7 +712,7 @@ This alert fires when a container's memory usage exceeds 90% of its limit.
 1. Check current memory usage:
    ```bash
    kubectl top pods -l app=<service-name>
-   ```bash
+   ```
 
 2. Review memory trends in Grafana:
    - [Memory Dashboard](https://grafana.example.com/d/memory)
@@ -713,19 +720,19 @@ This alert fires when a container's memory usage exceeds 90% of its limit.
 3. Check for memory leaks:
    ```bash
    kubectl exec -it <pod-name> -- pprof -http=:8080 /debug/pprof/heap
-   ```bash
+   ```
 
 4. Review recent deployments:
    ```bash
    kubectl rollout history deployment/<service-name>
-   ```bash
+   ```
 
 ## Resolution
 
 ### Option 1: Scale horizontally
 ```bash
 kubectl scale deployment/<service-name> --replicas=<new-count>
-```bash
+```
 
 ### Option 2: Increase memory limit
 Update the deployment manifest and apply:
@@ -733,16 +740,16 @@ Update the deployment manifest and apply:
 resources:
   limits:
     memory: "2Gi"  # Increase from current
-```bash
+```
 
 ### Option 3: Rollback recent deployment
 ```bash
 kubectl rollout undo deployment/<service-name>
-```bash
+```
 
 ## Escalation
 If unresolved after 30 minutes, escalate to: platform-oncall
-```text
+````
 
 ## Putting It All Together: Alert Fatigue Prevention Checklist
 
