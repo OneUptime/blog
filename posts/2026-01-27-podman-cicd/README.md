@@ -59,6 +59,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       # Checkout the repository code
@@ -83,12 +86,16 @@ jobs:
       # Run security scan on the built image
       - name: Scan image for vulnerabilities
         run: |
-          podman run --rm \
-            -v /var/run/podman/podman.sock:/var/run/docker.sock:ro \
-            aquasec/trivy:latest image \
-            --severity HIGH,CRITICAL \
-            --exit-code 1 \
+          podman save --format docker-archive \
+            --output image.tar \
             ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+          podman run --rm \
+            -v ${{ github.workspace }}:/workspace:ro \
+            aquasec/trivy:latest image \
+            --input /workspace/image.tar \
+            --severity HIGH,CRITICAL \
+            --exit-code 1
 
       # Push to GitHub Container Registry (only on main branch)
       - name: Push to GHCR
@@ -117,6 +124,9 @@ on:
 jobs:
   build-multiarch:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout code
@@ -137,20 +147,15 @@ jobs:
             --username ${{ github.actor }} \
             --password-stdin
 
-          # Build AMD64 image
+          # Build AMD64 and ARM64 images into the manifest list
           podman build \
-            --platform linux/amd64 \
-            --manifest ghcr.io/${{ github.repository }}:${{ github.ref_name }} \
-            .
-
-          # Build ARM64 image and add to manifest
-          podman build \
-            --platform linux/arm64 \
+            --platform linux/amd64,linux/arm64 \
             --manifest ghcr.io/${{ github.repository }}:${{ github.ref_name }} \
             .
 
           # Push the manifest list (includes both architectures)
           podman manifest push \
+            --all \
             ghcr.io/${{ github.repository }}:${{ github.ref_name }} \
             docker://ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 ```
@@ -286,9 +291,9 @@ security-scan:
       podman run --rm \
         -v $(pwd):/workspace:ro \
         aquasec/trivy:latest image \
+        --input /workspace/image.tar \
         --severity HIGH,CRITICAL \
-        --exit-code 1 \
-        $IMAGE_NAME:$IMAGE_TAG
+        --exit-code 1
   allow_failure: true  # Don't block pipeline on scan failures
 
 # Push stage - push to GitLab Container Registry
@@ -431,15 +436,10 @@ sudo apt-get install -y amazon-ecr-credential-helper
 # Configure Podman to use the helper
 mkdir -p ~/.config/containers
 cat > ~/.config/containers/registries.conf << 'EOF'
-[registries.search]
-registries = ['docker.io', 'quay.io', 'ghcr.io']
+unqualified-search-registries = ["docker.io", "quay.io", "ghcr.io"]
 
 [[registry]]
-prefix = "*.dkr.ecr.*.amazonaws.com"
-location = "*.dkr.ecr.*.amazonaws.com"
-
-[registry.mirror]
-# No mirrors needed for ECR
+location = "123456789012.dkr.ecr.us-east-1.amazonaws.com"
 EOF
 
 # Configure credential helper
@@ -447,7 +447,7 @@ cat > ~/.config/containers/auth.json << 'EOF'
 {
   "credHelpers": {
     "public.ecr.aws": "ecr-login",
-    "*.dkr.ecr.*.amazonaws.com": "ecr-login"
+    "123456789012.dkr.ecr.us-east-1.amazonaws.com": "ecr-login"
   }
 }
 EOF
@@ -515,6 +515,7 @@ jobs:
 
           # Build using the previous image layers as cache
           podman build \
+            --layers \
             --cache-from ghcr.io/${{ github.repository }}:latest \
             --tag ghcr.io/${{ github.repository }}:${{ github.sha }} \
             .
@@ -528,7 +529,7 @@ Use container registries to store and retrieve cached layers.
 # Build with inline cache metadata
 - name: Build with registry cache
   run: |
-    # Enable BuildKit-style caching (Podman 4.0+)
+    # Enable remote layer caching
     podman build \
       --layers \
       --cache-from ghcr.io/${{ github.repository }}:buildcache \
@@ -554,9 +555,15 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Install dependencies - cached if package files unchanged
-RUN npm ci --only=production
+RUN npm ci
 
-# Stage 2: Build (cached unless source code changes)
+# Stage 2: Production dependencies
+FROM node:20-alpine AS prod-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# Stage 3: Build (cached unless source code changes)
 FROM node:20-alpine AS builder
 WORKDIR /app
 
@@ -571,7 +578,7 @@ COPY tsconfig.json ./
 # Build the application
 RUN npm run build
 
-# Stage 3: Production (minimal final image)
+# Stage 4: Production (minimal final image)
 FROM node:20-alpine AS runner
 WORKDIR /app
 
@@ -580,7 +587,7 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 appuser
 
 # Copy only production artifacts
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package.json ./
 
@@ -602,24 +609,23 @@ variables:
 build:
   stage: build
   script:
-    # Pull cache image if it exists
-    - podman pull $CACHE_IMAGE:latest || true
+    # Authenticate to GitLab Container Registry
+    - |
+      echo "$CI_REGISTRY_PASSWORD" | podman login $CI_REGISTRY \
+        --username $CI_REGISTRY_USER \
+        --password-stdin
 
     # Build using cache
     - |
       podman build \
-        --cache-from $CACHE_IMAGE:latest \
+        --layers \
+        --cache-from $CACHE_IMAGE \
+        --cache-to $CACHE_IMAGE \
         --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA \
-        --tag $CACHE_IMAGE:latest \
         .
 
-    # Push cache image for future builds
-    - podman push $CACHE_IMAGE:latest
+    # Push image for deployment
     - podman push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-  cache:
-    key: podman-storage-$CI_COMMIT_REF_SLUG
-    paths:
-      - .podman-cache/
 ```
 
 ## Complete CI/CD Pipeline Architecture
@@ -746,17 +752,18 @@ jobs:
         with:
           name: container-image
 
-      - name: Load image
-        run: gunzip -c image.tar.gz | podman load
+      - name: Prepare image archive
+        run: gunzip -c image.tar.gz > image.tar
 
       # Scan for vulnerabilities
       - name: Run Trivy scan
         run: |
           podman run --rm \
+            -v ${{ github.workspace }}:/workspace:ro \
             aquasec/trivy:latest image \
+            --input /workspace/image.tar \
             --severity HIGH,CRITICAL \
-            --exit-code 1 \
-            ${{ needs.build.outputs.image-tag }}
+            --exit-code 1
 
   # Push to registry on main branch
   push:
@@ -793,7 +800,7 @@ jobs:
 
   # Deploy to production (manual approval required)
   deploy:
-    needs: push
+    needs: [build, push]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     environment:
@@ -813,13 +820,36 @@ jobs:
       # Notify OneUptime of deployment
       - name: Notify monitoring
         run: |
-          curl -X POST "https://oneuptime.com/api/deployment" \
-            -H "Authorization: Bearer ${{ secrets.ONEUPTIME_API_KEY }}" \
+          timestamp_nano="$(date +%s%N)"
+          curl -X POST "https://oneuptime.com/otlp/v1/logs" \
+            -H "x-oneuptime-token: ${{ secrets.ONEUPTIME_INGESTION_KEY }}" \
             -H "Content-Type: application/json" \
             -d '{
-              "service": "myapp",
-              "version": "${{ github.ref_name }}",
-              "commit": "${{ github.sha }}"
+              "resourceLogs": [{
+                "resource": {
+                  "attributes": [{
+                    "key": "service.name",
+                    "value": { "stringValue": "myapp" }
+                  }]
+                },
+                "scopeLogs": [{
+                  "logRecords": [{
+                    "timeUnixNano": "'"$timestamp_nano"'",
+                    "severityText": "INFO",
+                    "body": { "stringValue": "Deployment completed" },
+                    "attributes": [
+                      {
+                        "key": "deployment.version",
+                        "value": { "stringValue": "${{ github.ref_name }}" }
+                      },
+                      {
+                        "key": "vcs.revision",
+                        "value": { "stringValue": "${{ github.sha }}" }
+                      }
+                    ]
+                  }]
+                }]
+              }]
             }'
 ```
 
@@ -830,22 +860,52 @@ Integrate your Podman CI/CD pipeline with [OneUptime](https://oneuptime.com) to 
 ### Track Build Metrics
 
 ```yaml
-# Add to your workflow
+# Add near the start of your job
+- name: Start build timer
+  run: echo "BUILD_START=$(date +%s)" >> $GITHUB_ENV
+
+# Add after your build steps
 - name: Report build metrics to OneUptime
   if: always()
   run: |
-    curl -X POST "https://oneuptime.com/api/ingest/metrics" \
-      -H "Authorization: Bearer ${{ secrets.ONEUPTIME_API_KEY }}" \
+    duration_seconds=$(($(date +%s) - BUILD_START))
+    timestamp_nano="$(date +%s%N)"
+    curl -X POST "https://oneuptime.com/otlp/v1/metrics" \
+      -H "x-oneuptime-token: ${{ secrets.ONEUPTIME_INGESTION_KEY }}" \
       -H "Content-Type: application/json" \
       -d '{
-        "metrics": [{
-          "name": "ci.build.duration",
-          "value": ${{ job.duration }},
-          "tags": {
-            "repository": "${{ github.repository }}",
-            "status": "${{ job.status }}",
-            "branch": "${{ github.ref_name }}"
-          }
+        "resourceMetrics": [{
+          "resource": {
+            "attributes": [{
+              "key": "service.name",
+              "value": { "stringValue": "github-actions" }
+            }]
+          },
+          "scopeMetrics": [{
+            "metrics": [{
+              "name": "ci.build.duration",
+              "gauge": {
+                "dataPoints": [{
+                  "timeUnixNano": "'"$timestamp_nano"'",
+                  "asDouble": '"$duration_seconds"',
+                  "attributes": [
+                    {
+                      "key": "repository",
+                      "value": { "stringValue": "${{ github.repository }}" }
+                    },
+                    {
+                      "key": "status",
+                      "value": { "stringValue": "${{ job.status }}" }
+                    },
+                    {
+                      "key": "branch",
+                      "value": { "stringValue": "${{ github.ref_name }}" }
+                    }
+                  ]
+                }]
+              }
+            }]
+          }]
         }]
       }'
 ```
