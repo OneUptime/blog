@@ -54,20 +54,14 @@ sequenceDiagram
 
 ## Standard Deprecation Headers
 
-Two HTTP headers form the backbone of API deprecation communication: `Deprecation` and `Sunset`. Both are defined in RFC 8594.
+Two HTTP headers form the backbone of API deprecation communication: `Deprecation` and `Sunset`. The `Deprecation` header is defined in RFC 9745, and the `Sunset` header is defined in RFC 8594.
 
 ### The Deprecation Header
 
-The `Deprecation` header indicates that an endpoint is deprecated. It can contain either a boolean value or a timestamp indicating when the deprecation was announced.
+The `Deprecation` header indicates that an endpoint is deprecated. Its value is a structured field date indicating when the deprecation takes effect.
 
 ```text
-Deprecation: true
-```
-
-Or with a timestamp:
-
-```text
-Deprecation: Sun, 01 Jan 2026 00:00:00 GMT
+Deprecation: @1767225600
 ```
 
 ### The Sunset Header
@@ -75,7 +69,7 @@ Deprecation: Sun, 01 Jan 2026 00:00:00 GMT
 The `Sunset` header specifies when the endpoint will stop working. This gives clients a concrete deadline for migration.
 
 ```text
-Sunset: Sun, 01 Jun 2026 00:00:00 GMT
+Sunset: Tue, 01 Jun 2027 00:00:00 GMT
 ```
 
 ### The Link Header
@@ -104,14 +98,14 @@ const deprecationConfig = {
     '/api/v1/users': {
         deprecated: true,
         deprecatedAt: '2026-01-01T00:00:00Z',
-        sunsetAt: '2026-06-01T00:00:00Z',
+        sunsetAt: '2027-06-01T00:00:00Z',
         successor: '/api/v2/users',
         migrationDoc: '/docs/migration/users-v1-to-v2'
     },
     '/api/v1/orders': {
         deprecated: true,
         deprecatedAt: '2025-12-01T00:00:00Z',
-        sunsetAt: '2026-03-01T00:00:00Z',
+        sunsetAt: '2027-03-01T00:00:00Z',
         successor: '/api/v2/orders',
         migrationDoc: '/docs/migration/orders-v1-to-v2'
     }
@@ -126,11 +120,14 @@ function deprecationMiddleware(req, res, next) {
         const config = findDeprecationConfig(req.path);
 
         if (config) {
-            // Add the Deprecation header with the timestamp
-            res.set('Deprecation', formatHttpDate(config.deprecatedAt));
+            // Add the Deprecation header with a structured field date
+            res.set('Deprecation', formatDeprecationDate(config.deprecatedAt));
 
             // Add the Sunset header to indicate removal date
             res.set('Sunset', formatHttpDate(config.sunsetAt));
+
+            // Expose these headers to browser clients making cross-origin requests
+            res.set('Access-Control-Expose-Headers', 'Deprecation, Sunset, Link');
 
             // Add Link headers for documentation and successor
             const links = [];
@@ -171,8 +168,15 @@ function findDeprecationConfig(path) {
     return null;
 }
 
-// Format a date string as HTTP-date format (RFC 7231)
-// Example output: "Sun, 01 Jun 2026 00:00:00 GMT"
+// Format a date string as a structured field date (RFC 9745)
+// Example output: "@1767225600"
+function formatDeprecationDate(isoDate) {
+    const date = new Date(isoDate);
+    return `@${Math.floor(date.getTime() / 1000)}`;
+}
+
+// Format a date string as HTTP-date format
+// Example output: "Tue, 01 Jun 2027 00:00:00 GMT"
 function formatHttpDate(isoDate) {
     const date = new Date(isoDate);
     return date.toUTCString();
@@ -237,11 +241,9 @@ Here is the same pattern implemented in Python using Flask.
 
 # Flask extension for adding deprecation headers to API responses
 
-from flask import Flask, request, g
-from functools import wraps
-from datetime import datetime
-from email.utils import formatdate
-from time import mktime
+from flask import request
+from datetime import datetime, timezone
+from email.utils import format_datetime
 
 # Configuration for deprecated endpoints
 # In production, load this from a database or config file
@@ -249,27 +251,38 @@ DEPRECATION_CONFIG = {
     '/api/v1/users': {
         'deprecated': True,
         'deprecated_at': datetime(2026, 1, 1),
-        'sunset_at': datetime(2026, 6, 1),
+        'sunset_at': datetime(2027, 6, 1, tzinfo=timezone.utc),
         'successor': '/api/v2/users',
         'migration_doc': '/docs/migration/users-v1-to-v2'
     },
     '/api/v1/products': {
         'deprecated': True,
         'deprecated_at': datetime(2025, 11, 1),
-        'sunset_at': datetime(2026, 2, 1),
+        'sunset_at': datetime(2027, 2, 1, tzinfo=timezone.utc),
         'successor': '/api/v2/products',
         'migration_doc': '/docs/migration/products-v1-to-v2'
     }
 }
 
 
+def format_deprecation_date(dt):
+    """
+    Convert a datetime object to a structured field date for Deprecation.
+    Example output: "@1767225600"
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return f'@{int(dt.timestamp())}'
+
+
 def format_http_date(dt):
     """
     Convert a datetime object to HTTP-date format.
-    HTTP-date format: "Sun, 01 Jun 2026 00:00:00 GMT"
+    HTTP-date format: "Tue, 01 Jun 2027 00:00:00 GMT"
     """
-    stamp = mktime(dt.timetuple())
-    return formatdate(timeval=stamp, localtime=False, usegmt=True)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return format_datetime(dt, usegmt=True)
 
 
 def find_deprecation_config(path):
@@ -297,11 +310,14 @@ def add_deprecation_headers(response):
     config = find_deprecation_config(request.path)
 
     if config and config.get('deprecated'):
-        # Add Deprecation header with the announcement date
-        response.headers['Deprecation'] = format_http_date(config['deprecated_at'])
+        # Add Deprecation header with a structured field date
+        response.headers['Deprecation'] = format_deprecation_date(config['deprecated_at'])
 
         # Add Sunset header with the removal date
         response.headers['Sunset'] = format_http_date(config['sunset_at'])
+
+        # Expose these headers to browser clients making cross-origin requests
+        response.headers['Access-Control-Expose-Headers'] = 'Deprecation, Sunset, Link'
 
         # Build Link header with successor and documentation
         links = []
@@ -379,6 +395,7 @@ package main
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -433,11 +450,14 @@ func (r *DeprecationRegistry) Middleware(next http.Handler) http.Handler {
 		config := r.FindConfig(req.URL.Path)
 
 		if config != nil && config.Deprecated {
-			// Add Deprecation header with HTTP-date format
-			w.Header().Set("Deprecation", config.DeprecatedAt.UTC().Format(http.TimeFormat))
+			// Add Deprecation header with a structured field date
+			w.Header().Set("Deprecation", "@"+strconv.FormatInt(config.DeprecatedAt.UTC().Unix(), 10))
 
 			// Add Sunset header
 			w.Header().Set("Sunset", config.SunsetAt.UTC().Format(http.TimeFormat))
+
+			// Expose these headers to browser clients making cross-origin requests
+			w.Header().Set("Access-Control-Expose-Headers", "Deprecation, Sunset, Link")
 
 			// Build Link header
 			var links []string
@@ -478,7 +498,7 @@ func main() {
 	registry.Register("/api/v1/users", &DeprecationConfig{
 		Deprecated:   true,
 		DeprecatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		SunsetAt:     time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		SunsetAt:     time.Date(2027, 6, 1, 0, 0, 0, 0, time.UTC),
 		Successor:    "/api/v2/users",
 		MigrationDoc: "/docs/migration/users-v1-to-v2",
 	})
@@ -696,8 +716,8 @@ The response will look like this:
     "_meta": {
         "deprecated": true,
         "deprecatedAt": "2026-01-01T00:00:00Z",
-        "sunsetAt": "2026-06-01T00:00:00Z",
-        "message": "This endpoint is deprecated and will be removed on 2026-06-01T00:00:00Z. Please migrate to /api/v2/users.",
+        "sunsetAt": "2027-06-01T00:00:00Z",
+        "message": "This endpoint is deprecated and will be removed on 2027-06-01T00:00:00Z. Please migrate to /api/v2/users.",
         "links": {
             "successor": "/api/v2/users",
             "documentation": "/docs/migration/users-v1-to-v2"
@@ -799,11 +819,11 @@ gantt
     section V1 API
     Active Development     :done, v1-active, 2025-01-01, 2025-12-31
     Deprecation Announced  :milestone, v1-announce, 2026-01-01, 0d
-    Deprecated (Headers)   :active, v1-deprecated, 2026-01-01, 2026-05-31
-    Sunset (Removed)       :milestone, v1-sunset, 2026-06-01, 0d
+    Deprecated (Headers)   :active, v1-deprecated, 2026-01-01, 2027-05-31
+    Sunset (Removed)       :milestone, v1-sunset, 2027-06-01, 0d
     section V2 API
     Beta                   :done, v2-beta, 2025-10-01, 2025-12-31
-    Active                 :active, v2-active, 2026-01-01, 2027-01-01
+    Active                 :active, v2-active, 2026-01-01, 2028-01-01
 ```
 
 Here is how to implement timeline-based deprecation status.
@@ -812,7 +832,7 @@ Here is how to implement timeline-based deprecation status.
 # timeline_deprecation.py
 # Time-aware deprecation configuration
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -837,7 +857,7 @@ class TimelineDeprecation:
         Determine current deprecation status based on timeline.
         Returns ACTIVE, DEPRECATED, or SUNSET.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Check if past sunset date
         if self.sunset_at and now >= self.sunset_at:
@@ -854,7 +874,7 @@ class TimelineDeprecation:
         if not self.sunset_at:
             return None
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if now >= self.sunset_at:
             return 0
 
@@ -864,12 +884,12 @@ class TimelineDeprecation:
 # Configuration with timeline
 ENDPOINT_TIMELINE = {
     '/api/v1/users': TimelineDeprecation(
-        deprecated_at=datetime(2026, 1, 1),
-        sunset_at=datetime(2026, 6, 1)
+        deprecated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        sunset_at=datetime(2027, 6, 1, tzinfo=timezone.utc)
     ),
     '/api/v1/orders': TimelineDeprecation(
-        deprecated_at=datetime(2025, 12, 1),
-        sunset_at=datetime(2026, 3, 1)
+        deprecated_at=datetime(2025, 12, 1, tzinfo=timezone.utc),
+        sunset_at=datetime(2027, 3, 1, tzinfo=timezone.utc)
     )
 }
 
@@ -939,7 +959,7 @@ Automated tests should verify deprecation headers are present and correct.
 # pytest tests for deprecation headers
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from app import app
 
 
@@ -969,7 +989,7 @@ class TestDeprecationHeaders:
 
         # Verify sunset date is in the future
         sunset_date = parse_http_date(response.headers['Sunset'])
-        assert sunset_date > datetime.utcnow()
+        assert sunset_date > datetime.now(timezone.utc)
 
     def test_deprecated_endpoint_has_link_header(self, client):
         """Deprecated endpoints should include Link header with successor."""
@@ -1007,7 +1027,7 @@ def parse_http_date(date_string):
 
 1. **Announce deprecation early.** Give clients at least 6 months notice before sunset. For major APIs, 12 months is better.
 
-2. **Use standard headers.** Stick to `Deprecation`, `Sunset`, and `Link` headers as defined in RFC 8594. Clients may already have tooling for these.
+2. **Use standard headers.** Stick to `Deprecation`, `Sunset`, and `Link` headers as defined in RFC 9745, RFC 8594, and RFC 8288. Clients may already have tooling for these.
 
 3. **Include body warnings.** Not all clients inspect headers. Add deprecation metadata to response bodies as well.
 
