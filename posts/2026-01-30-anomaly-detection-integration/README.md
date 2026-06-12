@@ -385,7 +385,7 @@ class IFResult:
     """Result from Isolation Forest detection."""
     timestamp: float
     features: List[float]
-    anomaly_score: float  # -1 to 1, higher = more anomalous
+    anomaly_score: float  # Higher = more anomalous; not bounded to 0-1
     is_anomaly: bool
 
 
@@ -470,7 +470,7 @@ class IsolationForestDetector:
         X = np.array([features])
         raw_score = self.model.score_samples(X)[0]
 
-        # Normalize to -1 to 1 range (approximately)
+        # Invert because lower score_samples values are more abnormal
         anomaly_score = -raw_score
 
         # Predict returns -1 for anomalies, 1 for normal
@@ -529,7 +529,7 @@ class LSTMAutoencoder:
     decoder reconstructs. High reconstruction error = anomaly.
 
     Best for: Complex temporal patterns, long-range dependencies.
-    Limitations: Requires GPU for training, needs careful tuning.
+    Limitations: GPU recommended for larger training jobs, needs careful tuning.
     """
 
     def __init__(
@@ -710,11 +710,14 @@ Expose anomaly detection results as Prometheus metrics:
 # Allows Prometheus to scrape anomaly scores like any other metric
 
 from prometheus_client import start_http_server, Gauge, Counter
-from prometheus_client.core import GaugeMetricFamily, REGISTRY
 import time
 import requests
 from typing import Dict, List
 from dataclasses import dataclass
+
+from z_score_detector import ZScoreDetector
+from ema_detector import EMADetector
+from seasonal_detector import SeasonalDetector
 
 
 # Define metrics
@@ -817,8 +820,16 @@ class AnomalyExporter:
                 result = detector.detect(value, timestamp)
 
                 # Update Prometheus metrics
-                score = getattr(result, 'z_score', None) or \
-                        getattr(result, 'anomaly_score', 0.0)
+                if hasattr(result, 'z_score'):
+                    score = result.z_score
+                elif hasattr(result, 'seasonal_z_score'):
+                    score = result.seasonal_z_score
+                elif hasattr(result, 'anomaly_score'):
+                    score = result.anomaly_score
+                elif hasattr(result, 'deviation'):
+                    score = result.deviation
+                else:
+                    score = 0.0
 
                 # Normalize score to 0-1 range
                 normalized_score = min(1.0, score / 10.0)
@@ -859,13 +870,13 @@ if __name__ == "__main__":
     metrics = [
         MetricConfig(
             name="api_latency_p99",
-            query='histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))',
+            query='histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))',
             detector_type="zscore",
             threshold=3.0
         ),
         MetricConfig(
             name="error_rate",
-            query='rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])',
+            query='sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))',
             detector_type="ema",
             threshold=3.0
         ),
@@ -900,16 +911,16 @@ groups:
     rules:
       # Rolling averages for baseline comparison
       - record: metric:http_latency_p99:avg_1h
-        expr: avg_over_time(histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))[1h:1m])
+        expr: avg_over_time(histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))[1h:1m])
 
       - record: metric:http_latency_p99:stddev_1h
-        expr: stddev_over_time(histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))[1h:1m])
+        expr: stddev_over_time(histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))[1h:1m])
 
       # Z-score calculation directly in Prometheus
       - record: metric:http_latency_p99:zscore
         expr: |
           (
-            histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
+            histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
             - metric:http_latency_p99:avg_1h
           ) / metric:http_latency_p99:stddev_1h
 
@@ -917,14 +928,29 @@ groups:
       - record: metric:error_rate:avg_1h
         expr: |
           avg_over_time(
-            (rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]))[1h:1m]
+            (
+              sum(rate(http_requests_total{status=~"5.."}[5m]))
+              / sum(rate(http_requests_total[5m]))
+            )[1h:1m]
           )
 
-      # Request volume by hour of day (for seasonal detection)
-      - record: metric:request_volume:by_hour
+      # Request volume baseline
+      - record: metric:request_volume:avg_1h
+        expr: avg_over_time(sum(rate(http_requests_total[5m]))[1h:1m])
+
+      - record: metric:request_volume:stddev_1h
+        expr: stddev_over_time(sum(rate(http_requests_total[5m]))[1h:1m])
+
+      - record: metric:request_volume:zscore
+        expr: |
+          (
+            sum(rate(http_requests_total[5m]))
+            - metric:request_volume:avg_1h
+          ) / metric:request_volume:stddev_1h
+
+      # Current request volume for seasonal detection in the exporter
+      - record: metric:request_volume:current
         expr: sum(rate(http_requests_total[5m]))
-        labels:
-          hour: '{{ printf "%02d" (now | date "15") }}'
 ```
 
 ---
@@ -952,22 +978,22 @@ route:
 
   routes:
     # High confidence anomalies go to on-call immediately
-    - match:
-        severity: critical
-        anomaly_confidence: high
+    - matchers:
+        - severity="critical"
+        - anomaly_confidence="high"
       receiver: 'oncall-pagerduty'
       group_wait: 10s
       repeat_interval: 1h
 
     # Medium confidence gets Slack notification
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'slack-alerts'
       group_wait: 1m
 
     # Low confidence goes to daily digest
-    - match:
-        anomaly_confidence: low
+    - matchers:
+        - anomaly_confidence="low"
       receiver: 'daily-digest'
       group_wait: 1h
       group_interval: 6h
@@ -1005,17 +1031,17 @@ receivers:
 # Inhibition rules to prevent alert storms
 inhibit_rules:
   # If a critical anomaly fires, suppress warnings for same metric
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname', 'service']
 
   # Suppress anomaly alerts during known maintenance
-  - source_match:
-      alertname: 'MaintenanceWindow'
-    target_match_re:
-      alertname: 'Anomaly.*'
+  - source_matchers:
+      - alertname="MaintenanceWindow"
+    target_matchers:
+      - alertname=~"Anomaly.*"
     equal: ['service']
 ```
 
@@ -1414,13 +1440,13 @@ spec:
               memory: "4Gi"
           livenessProbe:
             httpGet:
-              path: /health
+              path: /metrics
               port: 9091
             initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /metrics
               port: 9091
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -1464,7 +1490,7 @@ data:
   metrics.yaml: |
     metrics:
       - name: api_latency_p99
-        query: 'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))'
+        query: 'histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))'
         detector_type: ensemble
         detectors:
           - type: zscore
@@ -1473,7 +1499,7 @@ data:
             period: hour_of_week
             threshold: 2.5
       - name: error_rate
-        query: 'rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])'
+        query: 'sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))'
         detector_type: ema
         threshold: 3.0
       - name: request_volume
