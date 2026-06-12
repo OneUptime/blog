@@ -855,20 +855,27 @@ app.post('/api/restaurants', async (req, res) => {
   try {
     const { name, longitude, latitude, cuisine, rating, priceRange } = req.body;
 
-    if (!name || !longitude || !latitude) {
+    if (!name || longitude === undefined || longitude === null || latitude === undefined || latitude === null) {
       return res.status(400).json({ error: 'name, longitude, and latitude are required' });
     }
 
+    const longitudeNum = parseFloat(longitude);
+    const latitudeNum = parseFloat(latitude);
+
+    if (isNaN(longitudeNum) || isNaN(latitudeNum)) {
+      return res.status(400).json({ error: 'Invalid coordinates' });
+    }
+
     // Add to geospatial index
-    await redis.geoadd('restaurants', longitude, latitude, name);
+    await redis.geoadd('restaurants', longitudeNum, latitudeNum, name);
 
     // Store metadata
     await redis.hset(`restaurant:${name}`, {
       cuisine: cuisine || '',
       rating: (rating || 0).toString(),
       priceRange: (priceRange || 0).toString(),
-      longitude: longitude.toString(),
-      latitude: latitude.toString()
+      longitude: longitudeNum.toString(),
+      latitude: latitudeNum.toString()
     });
 
     res.status(201).json({ message: 'Restaurant added', name });
@@ -986,8 +993,9 @@ function estimateETA(distanceKm) {
 async function updateDriverLocation(driverId, longitude, latitude) {
   await redis.geoadd('drivers:available', longitude, latitude, driverId);
 
-  // Set a TTL on driver presence (auto-remove if no updates)
-  await redis.expire(`driver:${driverId}:active`, 60);
+  // Track liveness separately; a cleanup job should ZREM inactive drivers
+  // from drivers:available after this marker expires.
+  await redis.set(`driver:${driverId}:active`, '1', 'EX', 60);
 }
 ```
 
