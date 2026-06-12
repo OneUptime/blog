@@ -127,7 +127,7 @@ static_resources:
 
   clusters:
     - name: opa_authz
-      type: STRICT_DNS
+      type: STATIC
       connect_timeout: 1s
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
@@ -145,7 +145,7 @@ static_resources:
                       port_value: 9191
 
     - name: backend_service
-      type: STRICT_DNS
+      type: STATIC
       connect_timeout: 1s
       load_assignment:
         cluster_name: backend_service
@@ -270,14 +270,13 @@ bearer_token := token if {
 
 # JWT verification
 verify_jwt(token) := claims if {
-    [header, payload, signature] := io.jwt.decode(token)
-    claims := payload
+    [valid, _, claims] := io.jwt.decode_verify(token, {
+        "cert": data.config.jwt_public_key,
+        "iss": data.config.jwt_issuer,
+        "time": time.now_ns(),
+    })
 
-    # Verify expiration
-    claims.exp > time.now_ns() / 1000000000
-
-    # Verify issuer
-    claims.iss == data.config.jwt_issuer
+    valid
 }
 
 # Permission check
@@ -297,7 +296,8 @@ has_permission(claims, method, path) if {
 ```json
 {
   "config": {
-    "jwt_issuer": "https://auth.example.com"
+    "jwt_issuer": "https://auth.example.com",
+    "jwt_public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
   },
   "permissions": {
     "admin": [
@@ -308,7 +308,7 @@ has_permission(claims, method, path) if {
     ],
     "user": [
       {
-        "path_pattern": "/api/users/{id}",
+        "path_pattern": "/api/users/*",
         "methods": ["GET", "PUT"]
       },
       {
@@ -387,7 +387,7 @@ allowed_service(service, path) if {
 
 ### Response Headers
 
-OPA can instruct Envoy to add headers to responses:
+OPA can instruct Envoy to add headers to responses. Using the helper rules from earlier:
 
 ```rego
 package envoy.authz
@@ -404,7 +404,9 @@ default allow := {
 
 allow := response if {
     # Authorization logic
-    verify_request
+    token := bearer_token
+    claims := verify_jwt(token)
+    has_permission(claims, input.attributes.request.http.method, input.attributes.request.http.path)
 
     response := {
         "allowed": true,
@@ -523,7 +525,31 @@ For Istio service mesh, configure external authorization:
 
 ```yaml
 # istio-ext-authz.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: opa-authz-grpc-local
+  namespace: istio-system
+spec:
+  hosts:
+    - opa-authz-grpc.local
+  endpoints:
+    - address: 127.0.0.1
+  ports:
+    - name: grpc
+      number: 9191
+      protocol: GRPC
+  resolution: STATIC
+---
+# Add this provider under meshConfig.extensionProviders in your Istio install or istio ConfigMap.
+extensionProviders:
+  - name: opa-authz
+    envoyExtAuthzGrpc:
+      service: opa-authz-grpc.local
+      port: 9191
+      timeout: 0.5s
+---
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: opa-authz
@@ -539,42 +565,13 @@ spec:
     - to:
         - operation:
             paths: ["/api/*"]
----
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: opa-authz-provider
-  namespace: istio-system
-spec:
-  configPatches:
-    - applyTo: CLUSTER
-      match:
-        context: ANY
-      patch:
-        operation: ADD
-        value:
-          name: opa-authz
-          type: STRICT_DNS
-          connect_timeout: 1s
-          typed_extension_protocol_options:
-            envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
-              "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-              explicit_http_config:
-                http2_protocol_options: {}
-          load_assignment:
-            cluster_name: opa-authz
-            endpoints:
-              - lb_endpoints:
-                  - endpoint:
-                      address:
-                        socket_address:
-                          address: opa.opa-system.svc.cluster.local
-                          port_value: 9191
 ```
 
 ## Testing the Integration
 
 ### Local Testing with Docker Compose
+
+For Docker Compose, update the Envoy cluster addresses from the sidecar example to `opa:9191` and `backend:5678` so Envoy can reach the other containers on the Compose network.
 
 ```yaml
 # docker-compose.yaml
@@ -599,7 +596,7 @@ services:
     volumes:
       - ./policies:/policies
       - ./opa-config.yaml:/config.yaml
-    command: run --server --config-file=/config.yaml /policies
+    command: run --server --addr=0.0.0.0:8181 --config-file=/config.yaml /policies
 
   backend:
     image: hashicorp/http-echo
@@ -624,9 +621,9 @@ curl -i http://localhost:8080/health
 
 ## Performance Considerations
 
-### Caching Decisions
+### Keep Authorization Checks Fast
 
-Enable decision caching in Envoy:
+Keep the authorization request small and include only the data OPA needs:
 
 ```yaml
 http_filters:
@@ -636,7 +633,9 @@ http_filters:
       grpc_service:
         envoy_grpc:
           cluster_name: opa_authz
-      # Cache successful decisions for 60 seconds
+      with_request_body:
+        max_request_bytes: 1024
+        allow_partial_message: true
       stat_prefix: ext_authz
       include_peer_certificate: true
 ```
@@ -674,10 +673,10 @@ flowchart TB
 ```
 
 Monitor these key metrics:
-- `envoy_ext_authz_ok`: Successful authorizations
-- `envoy_ext_authz_denied`: Denied requests
-- `envoy_ext_authz_error`: OPA errors
-- `envoy_ext_authz_timeout`: Request timeouts
+- `cluster.<route target cluster>.ext_authz.ok`: Successful authorizations
+- `cluster.<route target cluster>.ext_authz.denied`: Denied requests
+- `cluster.<route target cluster>.ext_authz.error`: OPA errors
+- `cluster.<route target cluster>.ext_authz.failure_mode_allowed`: Requests allowed because `failure_mode_allow` is enabled
 
 ---
 
