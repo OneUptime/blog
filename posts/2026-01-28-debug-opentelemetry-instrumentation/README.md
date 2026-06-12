@@ -113,7 +113,7 @@ Always add a console exporter during debugging:
 
 ```javascript
 // Node.js: Add console exporter
-const { ConsoleSpanExporter } = require('@opentelemetry/sdk-trace-base');
+const { ConsoleSpanExporter, SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter(),
@@ -378,10 +378,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp, logging]  # Add logging exporter
+      exporters: [otlphttp, debug]  # Add debug exporter
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed  # See full span data
 ```
 
@@ -557,14 +557,14 @@ processors:
 
 # Add debug output
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
   pipelines:
     traces:
       processors: [tail_sampling]
-      exporters: [otlphttp, logging]  # See what gets through
+      exporters: [otlphttp, debug]  # See what gets through
 ```
 
 ## Issue 6: Attribute and Resource Problems
@@ -574,14 +574,18 @@ Spans appear but are missing expected attributes or have wrong values.
 ### Debug Resource Attributes
 
 ```javascript
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME
+} = require('@opentelemetry/semantic-conventions');
 
 // Verify resource is set correctly
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production'
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'my-service',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: 'production'
 });
 
 console.log('Resource attributes:', resource.attributes);
