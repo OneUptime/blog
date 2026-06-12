@@ -242,13 +242,15 @@ az group create \
   --location eastus
 
 # Create an Azure Key Vault with premium SKU for HSM-backed keys
+# Soft delete is enabled by default and cannot be disabled
+# RBAC authorization is required for role-based access (used below)
 az keyvault create \
   --name vault-unseal-kv \
   --resource-group vault-unseal-rg \
   --location eastus \
   --sku premium \
-  --enable-soft-delete true \
-  --enable-purge-protection true
+  --enable-purge-protection true \
+  --enable-rbac-authorization true
 
 # Create a key for auto-unseal operations
 az keyvault key create \
@@ -631,7 +633,8 @@ seal "transit" {
   tls_ca_cert = "/opt/vault/tls/primary-vault-ca.crt"
 
   # Optionally skip TLS verification (NOT recommended for production)
-  # tls_skip_verify = false
+  # The default is false (verify enabled); set to true to skip verification
+  # tls_skip_verify = true
 
   # Transit secrets engine mount path (default is "transit")
   mount_path = "transit"
@@ -642,8 +645,10 @@ seal "transit" {
   # Namespace if using Vault Enterprise (optional)
   # namespace = "admin"
 
-  # Disable token renewal (not recommended)
-  # disable_renewal = false
+  # Disable automatic token renewal by Vault (not recommended unless an
+  # external process such as Vault Agent owns the token lifecycle).
+  # The default is false (Vault auto-renews); set to true to opt out.
+  # disable_renewal = true
 }
 
 api_addr = "https://secondary-vault.example.com:8200"
@@ -762,15 +767,16 @@ sudo systemctl stop vault
 # Verify Vault has stopped
 ps aux | grep vault
 
-# Start Vault with the -migrate flag
-# This tells Vault to migrate from Shamir to auto-unseal
-vault server -config=/etc/vault.d/vault.hcl -migrate
+# Start Vault normally with the updated configuration that includes
+# both the new auto-unseal stanza and access to the Shamir keys.
+# (Vault detects the seal change and waits for a migration unseal.)
+sudo systemctl start vault
 
-# In a separate terminal, unseal Vault with the existing Shamir keys
-# You need to provide the threshold number of keys
-vault operator unseal <shamir-key-1>
-vault operator unseal <shamir-key-2>
-vault operator unseal <shamir-key-3>
+# Provide the existing Shamir keys with the -migrate flag.
+# Pass -migrate on EACH unseal call until the threshold is reached.
+vault operator unseal -migrate <shamir-key-1>
+vault operator unseal -migrate <shamir-key-2>
+vault operator unseal -migrate <shamir-key-3>
 
 # Vault will output recovery keys after migration completes
 # CRITICAL: Store these recovery keys securely!
@@ -961,15 +967,17 @@ groups:
           summary: "Vault is sealed"
           description: "Vault instance {{ $labels.instance }} is sealed and cannot serve requests."
 
-      # Alert on auto-unseal errors
-      - alert: VaultAutoUnsealError
-        expr: increase(vault_seal_unwrap_error[5m]) > 0
-        for: 1m
+      # Alert on slow seal decrypt operations, which often indicates
+      # latency or transient failures talking to the external KMS.
+      # vault.seal.decrypt.time is a Vault telemetry metric.
+      - alert: VaultSealDecryptSlow
+        expr: vault_seal_decrypt_time{quantile="0.99"} > 1000
+        for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Vault auto-unseal errors detected"
-          description: "Vault is experiencing errors communicating with the KMS provider."
+          summary: "Vault seal decrypt operations are slow"
+          description: "p99 of vault.seal.decrypt.time on {{ $labels.instance }} is above 1s, which may indicate KMS connectivity or throttling issues."
 
       # Alert if Vault has been sealed for extended period
       - alert: VaultSealedExtended
