@@ -109,7 +109,7 @@ public class StripeWebhookProcessor : IStripeWebhookProcessor
         _logger = logger;
     }
 
-    public async Task<StripeEvent> ProcessAsync(string payload, IHeaderDictionary headers)
+    public Stripe.Event Process(string payload, IHeaderDictionary headers)
     {
         var signature = headers["Stripe-Signature"].FirstOrDefault()
             ?? throw new WebhookSignatureException("Missing Stripe-Signature header");
@@ -154,18 +154,34 @@ public class HmacSignatureVerifier
 
         var payloadBytes = Encoding.UTF8.GetBytes(payload);
         var computedHash = hmac.ComputeHash(payloadBytes);
-        var computedSignature = Convert.ToHexString(computedHash).ToLowerInvariant();
+        var prefix = algorithm switch
+        {
+            "HMACSHA256" => "sha256=",
+            "HMACSHA512" => "sha512=",
+            _ => throw new ArgumentException($"Unsupported algorithm: {algorithm}")
+        };
 
-        // Handle different signature formats
-        var providedSignature = signature
-            .Replace("sha256=", "")
-            .Replace("sha512=", "")
-            .ToLowerInvariant();
+        var providedSignature = signature.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? signature[prefix.Length..]
+            : signature;
+
+        if (providedSignature.Length != computedHash.Length * 2)
+            return false;
+
+        byte[] providedHash;
+        try
+        {
+            providedHash = Convert.FromHexString(providedSignature);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
 
         // Use constant-time comparison to prevent timing attacks
         return CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(computedSignature),
-            Encoding.UTF8.GetBytes(providedSignature));
+            computedHash,
+            providedHash);
     }
 }
 
@@ -179,7 +195,8 @@ public async Task<IActionResult> HandleGitHubWebhook()
     if (string.IsNullOrEmpty(signature))
         return Unauthorized("Missing signature");
 
-    var secret = _configuration["GitHub:WebhookSecret"];
+    var secret = _configuration["GitHub:WebhookSecret"]
+        ?? throw new InvalidOperationException("GitHub webhook secret not configured");
 
     if (!_signatureVerifier.Verify(payload, signature, secret))
         return Unauthorized("Invalid signature");
@@ -200,33 +217,30 @@ Webhooks may be delivered multiple times. Implement idempotency to handle duplic
 // IdempotencyService.cs
 public class IdempotencyService : IIdempotencyService
 {
-    private readonly IDistributedCache _cache;
+    private readonly IDatabase _redis;
     private readonly TimeSpan _lockDuration = TimeSpan.FromHours(24);
 
-    public IdempotencyService(IDistributedCache cache)
+    public IdempotencyService(IConnectionMultiplexer redis)
     {
-        _cache = cache;
+        _redis = redis.GetDatabase();
     }
 
-    public async Task<bool> TryAcquireLockAsync(string eventId)
+    public async Task<bool> TryBeginProcessingAsync(string eventId)
     {
-        var key = $"webhook:processed:{eventId}";
-
-        // Try to set the key only if it does not exist
-        var options = new DistributedCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = _lockDuration
-        };
+        var processedKey = $"webhook:processed:{eventId}";
+        var lockKey = $"webhook:processing:{eventId}";
 
         try
         {
-            // Use Redis SET NX pattern or similar
-            var existing = await _cache.GetStringAsync(key);
-            if (existing != null)
+            if (await _redis.KeyExistsAsync(processedKey))
                 return false; // Already processed
 
-            await _cache.SetStringAsync(key, DateTime.UtcNow.ToString("O"), options);
-            return true;
+            // Redis SET NX prevents concurrent workers from processing the same event.
+            return await _redis.StringSetAsync(
+                lockKey,
+                DateTime.UtcNow.ToString("O"),
+                _lockDuration,
+                When.NotExists);
         }
         catch
         {
@@ -237,13 +251,20 @@ public class IdempotencyService : IIdempotencyService
 
     public async Task MarkAsProcessedAsync(string eventId)
     {
-        var key = $"webhook:processed:{eventId}";
-        var options = new DistributedCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = _lockDuration
-        };
+        var processedKey = $"webhook:processed:{eventId}";
+        var lockKey = $"webhook:processing:{eventId}";
 
-        await _cache.SetStringAsync(key, DateTime.UtcNow.ToString("O"), options);
+        await _redis.StringSetAsync(
+            processedKey,
+            DateTime.UtcNow.ToString("O"),
+            _lockDuration);
+        await _redis.KeyDeleteAsync(lockKey);
+    }
+
+    public async Task ReleaseProcessingLockAsync(string eventId)
+    {
+        var lockKey = $"webhook:processing:{eventId}";
+        await _redis.KeyDeleteAsync(lockKey);
     }
 }
 
@@ -256,7 +277,7 @@ public class WebhookProcessor : IWebhookProcessor
     public async Task ProcessAsync(WebhookEvent webhookEvent)
     {
         // Check if already processed
-        if (!await _idempotency.TryAcquireLockAsync(webhookEvent.Id))
+        if (!await _idempotency.TryBeginProcessingAsync(webhookEvent.Id))
         {
             throw new DuplicateEventException(webhookEvent.Id);
         }
@@ -268,7 +289,8 @@ public class WebhookProcessor : IWebhookProcessor
         }
         catch
         {
-            // On failure, allow retry by not marking as processed
+            // On failure, remove the processing lock so the event can be retried.
+            await _idempotency.ReleaseProcessingLockAsync(webhookEvent.Id);
             throw;
         }
     }
@@ -359,8 +381,25 @@ public async Task<IActionResult> HandleStripeWebhook()
     var json = await new StreamReader(Request.Body).ReadToEndAsync();
     var signature = Request.Headers["Stripe-Signature"].FirstOrDefault();
 
-    // Verify signature synchronously
-    var webhookEvent = _signatureVerifier.Verify(json, signature);
+    if (string.IsNullOrEmpty(signature))
+        return Unauthorized("Missing signature");
+
+    Stripe.Event stripeEvent;
+    try
+    {
+        // Verify signature synchronously and convert the Stripe event to your domain event.
+        stripeEvent = EventUtility.ConstructEvent(
+            json,
+            signature,
+            _webhookSecret,
+            throwOnApiVersionMismatch: false);
+    }
+    catch (StripeException)
+    {
+        return Unauthorized("Invalid signature");
+    }
+
+    var webhookEvent = WebhookEvent.FromStripeEvent(stripeEvent);
 
     // Queue for async processing
     await _queue.EnqueueAsync(webhookEvent, HttpContext.RequestAborted);
@@ -381,28 +420,32 @@ public class RabbitMQWebhookPublisher : IWebhookPublisher
 
     public async Task PublishAsync(WebhookEvent webhookEvent)
     {
-        using var channel = _connection.CreateModel();
+        await using var channel = await _connection.CreateChannelAsync();
 
-        channel.QueueDeclare(
+        await channel.QueueDeclareAsync(
             queue: "webhooks",
             durable: true,
             exclusive: false,
-            autoDelete: false);
+            autoDelete: false,
+            arguments: null);
 
-        var properties = channel.CreateBasicProperties();
-        properties.Persistent = true;
-        properties.Headers = new Dictionary<string, object>
+        var properties = new BasicProperties
         {
-            ["event-type"] = webhookEvent.Type,
-            ["event-id"] = webhookEvent.Id,
-            ["source"] = webhookEvent.Source
+            Persistent = true,
+            Headers = new Dictionary<string, object?>
+            {
+                ["event-type"] = webhookEvent.Type,
+                ["event-id"] = webhookEvent.Id,
+                ["source"] = webhookEvent.Source
+            }
         };
 
         var body = JsonSerializer.SerializeToUtf8Bytes(webhookEvent);
 
-        channel.BasicPublish(
+        await channel.BasicPublishAsync(
             exchange: "",
             routingKey: "webhooks",
+            mandatory: false,
             basicProperties: properties,
             body: body);
 
@@ -696,7 +739,7 @@ public class WebhookIntegrationTests : IClassFixture<WebApplicationFactory<Progr
 | Aspect | Implementation |
 |--------|----------------|
 | **Signature Verification** | HMAC comparison with constant-time check |
-| **Idempotency** | Distributed cache for event deduplication |
+| **Idempotency** | Redis `SET NX` for event deduplication |
 | **Async Processing** | Channels or message broker for queuing |
 | **Routing** | Handler interface with event type dispatch |
 | **Retry** | Exponential backoff with jitter |
