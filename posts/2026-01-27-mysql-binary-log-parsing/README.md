@@ -8,7 +8,7 @@ Description: A comprehensive guide to implementing MySQL binary log parsing for 
 
 ---
 
-> "The binary log contains a record of all changes to the databases, both data and structure. It is the source of truth for replication and point-in-time recovery." - MySQL Documentation
+> "The binary log serves as a written record of all events that modify database structure or content." - MySQL Documentation
 
 MySQL binary logs are one of the most powerful yet underutilized features for building robust data pipelines. Whether you need to replicate data across systems, build audit trails, or implement real-time streaming architectures, understanding how to parse binary logs is essential. This guide walks you through everything from basic concepts to production-ready implementations.
 
@@ -32,7 +32,7 @@ MySQL binary logs are one of the most powerful yet underutilized features for bu
 
 Binary logs (binlogs) record all changes made to MySQL databases. They serve three primary purposes:
 
-1. **Replication**: Streaming changes from master to replica servers
+1. **Replication**: Streaming changes from source to replica servers
 2. **Point-in-time Recovery**: Replaying changes after restoring from a backup
 3. **Change Data Capture**: Capturing database changes for downstream systems
 
@@ -91,7 +91,7 @@ SHOW VARIABLES LIKE 'log_bin';
 SHOW BINARY LOGS;
 
 -- Show the current binary log position
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 ```
 
 ---
@@ -114,7 +114,7 @@ UPDATE users SET last_login = NOW() WHERE user_id = 123;
 - Human-readable when decoded
 
 **Cons:**
-- Non-deterministic functions (NOW(), RAND()) can cause replica drift
+- Non-deterministic or unsafe statements can cause replica drift
 - Requires execution context (variables, session state)
 
 ### Row-Based Replication (RBR)
@@ -210,7 +210,6 @@ mysqlbinlog --database=orders /var/lib/mysql/mysql-bin.000001
 
 # Output SQL that can be replayed
 mysqlbinlog --database=orders \
-            --base64-output=DECODE-ROWS \
             /var/lib/mysql/mysql-bin.000001 | mysql -u admin -p
 ```
 
@@ -275,7 +274,7 @@ def process_binlog_events():
     # Create a binary log stream reader
     # only_events: Filter for row change events only
     # blocking: Wait for new events when caught up
-    # resume_stream: Continue from last position on reconnect
+    # resume_stream: Start from the current server position when no position is supplied
     stream = BinLogStreamReader(
         connection_settings=MYSQL_SETTINGS,
         server_id=100,  # Unique ID for this consumer
@@ -339,7 +338,6 @@ This implementation includes:
 
 import json
 import signal
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -643,13 +641,13 @@ type CDCHandler struct {
 }
 
 // OnRow handles row change events (INSERT, UPDATE, DELETE)
-func (h *CDCHandler) OnRow(e *replication.RowsEvent) error {
+func (h *CDCHandler) OnRow(eventType replication.EventType, e *replication.RowsEvent) error {
 	// Get table metadata
 	schema := string(e.Table.Schema)
 	table := string(e.Table.Table)
 
 	// Process based on event type
-	switch e.Header.EventType {
+	switch eventType {
 	case replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
 		// INSERT event
 		for _, row := range e.Rows {
@@ -745,7 +743,7 @@ func main() {
 		// Process based on event type
 		switch e := ev.Event.(type) {
 		case *replication.RowsEvent:
-			if err := handler.OnRow(e); err != nil {
+			if err := handler.OnRow(ev.Header.EventType, e); err != nil {
 				log.Printf("Error handling row event: %v", err)
 			}
 
@@ -770,8 +768,8 @@ func main() {
 // batch_processor.go
 // High-performance batch processor for MySQL binary logs
 //
-// This implementation uses channels and worker pools for
-// efficient parallel processing of CDC events.
+// This implementation uses channels and a processing goroutine for
+// efficient batching of CDC events.
 
 package main
 
@@ -1042,7 +1040,7 @@ import hashlib
 import json
 from datetime import datetime
 from typing import Any, Dict, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 import sqlite3  # Using SQLite for audit storage (use PostgreSQL in production)
 
 from pymysqlreplication import BinLogStreamReader
@@ -1301,11 +1299,10 @@ SELECT * FROM audit_log
 WHERE operation = 'DELETE'
   AND timestamp > datetime('now', '-1 day');
 
--- Verify audit record integrity
-SELECT id, checksum,
-       CASE WHEN checksum = expected_checksum
-            THEN 'VALID' ELSE 'TAMPERED' END as status
-FROM audit_log;
+-- Fetch audit records for application-level checksum verification
+SELECT id, checksum, old_values, new_values
+FROM audit_log
+WHERE id = 'audit_record_id';
 
 -- Find all changes by a specific table
 SELECT database_name, table_name, operation, COUNT(*) as change_count
@@ -1409,7 +1406,7 @@ class SchemaAwareCDC:
 
     def handle_ddl(self, query_event: QueryEvent) -> None:
         """Handle DDL events by updating schema cache."""
-        query = query_event.query.decode("utf-8")
+        query = query_event.query
         ddl_info = extract_ddl_info(query)
 
         print(f"Schema change detected: {ddl_info}")
@@ -1717,7 +1714,7 @@ metrics.set_meter_provider(provider)
 MySQL binary log parsing is a powerful technique for building real-time data pipelines. Key takeaways:
 
 1. **Use ROW format** for CDC and auditing - it provides complete visibility into data changes
-2. **Track your position** for crash recovery and exactly-once processing
+2. **Track your position** for crash recovery and at-least-once processing
 3. **Handle schema changes** gracefully to avoid pipeline failures
 4. **Monitor everything** - replication lag, error rates, and throughput
 5. **Use appropriate tools** - `mysql-replication` for Python, `go-mysql` for Go
