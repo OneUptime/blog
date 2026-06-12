@@ -265,8 +265,8 @@ velero backup create backup-with-fs \
     --include-namespaces application \
     --default-volumes-to-fs-backup
 
-# Opt specific PVCs into file system backup via annotation
-kubectl annotate pvc data-pvc backup.velero.io/backup-volumes=data-pvc -n application
+# Opt specific pod volumes into file system backup via annotation
+kubectl annotate pod app-pod backup.velero.io/backup-volumes=data -n application
 ```
 
 ### Handling Stuck Snapshots
@@ -315,8 +315,9 @@ HOOK_CMD=$(kubectl get pod database-pod -n database \
 
 echo "Hook command: $HOOK_CMD"
 
-# Test the hook command directly
-kubectl exec -n database database-pod -- /bin/sh -c "$HOOK_CMD"
+# Test the hook command directly, matching the JSON-array command format
+# For example: ["/bin/sh","-c","pg_dump ..."]
+kubectl exec -n database database-pod -- /bin/sh -c "pg_dump ..."
 
 # Check exit code
 echo "Exit code: $?"
@@ -376,7 +377,7 @@ spec:
         args:
           - server
           - --features=EnableCSI
-          # Increase default timeout for large backups
+          # Adjust default retention and timeouts for large backups
           - --default-backup-ttl=720h
           - --resource-timeout=10m
           - --default-item-operation-timeout=4h
