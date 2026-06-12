@@ -36,7 +36,7 @@ flowchart LR
 MongoDB must meet these requirements for Debezium:
 
 1. **Replica Set or Sharded Cluster** - standalone MongoDB does not support change streams
-2. **MongoDB 4.0+** - change streams require this version minimum
+2. **MongoDB 4.4+** - the minimum version supported by Debezium 2.5; MongoDB 5.0+ is recommended
 3. **WiredTiger storage engine** - the default since MongoDB 3.2
 
 Check your MongoDB configuration:
@@ -190,9 +190,9 @@ The recommended mode for most use cases:
 
 This mode includes the full document after updates, not just the changed fields.
 
-### Change Streams with Update Lookup
+### Change Streams with Pre-Image
 
-For backward compatibility:
+To capture both the document state before and after an update:
 
 ```json
 {
@@ -646,7 +646,7 @@ Monitor these MongoDB connector metrics:
 ```yaml
 # JMX metrics to watch
 debezium.mongodb:
-  - NumberOfChangeEventsReceived
+  - TotalNumberOfEventsSeen
   - MilliSecondsBehindSource
   - SourceEventPosition
   - NumberOfEventsFiltered
