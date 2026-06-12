@@ -10,7 +10,7 @@ Description: Learn to build batch transactions for ensuring data consistency and
 
 > Batch processing without proper transaction management is like building a house without a foundation. Everything might look fine until a storm hits.
 
-When processing millions of records, a single failure can leave your data in an inconsistent state. Transactions provide the safety net that ensures your batch jobs either complete fully or roll back cleanly. This guide walks you through building robust batch transactions, from basic concepts to distributed systems.
+When processing millions of records, a single failure can leave your data in an inconsistent state. Transactions provide the safety net that ensures each transaction boundary either commits or rolls back cleanly. This guide walks you through building robust batch transactions, from basic concepts to distributed systems.
 
 ---
 
@@ -110,7 +110,8 @@ public class BatchConfig {
         return new StepBuilder("orderProcessingStep", jobRepository)
             // Process 100 records per transaction
             // This is the "chunk size" - tune based on your data and resources
-            .<Order, ProcessedOrder>chunk(100, transactionManager)
+            .<Order, ProcessedOrder>chunk(100)
+            .transactionManager(transactionManager)
             .reader(reader)
             .processor(processor)
             .writer(writer)
@@ -204,7 +205,8 @@ public class PaymentBatchConfig {
             StepExecutionListener stepListener) {
 
         return new StepBuilder("paymentStep", jobRepository)
-            .<Payment, PaymentResult>chunk(CHUNK_SIZE, transactionManager)
+            .<Payment, PaymentResult>chunk(CHUNK_SIZE)
+            .transactionManager(transactionManager)
             .reader(reader)
             .processor(processor)
             .writer(writer)
@@ -259,8 +261,8 @@ public class PaymentProcessor implements ItemProcessor<Payment, PaymentResult> {
         // Check for fraud
         FraudScore score = fraudService.evaluate(payment);
         if (score.isHighRisk()) {
-            // Returning null tells Spring Batch to skip this record
-            // The record is not written but also does not cause rollback
+            // Returning null tells Spring Batch to filter this record
+            // The record is not written and does not count as a skip
             return null;
         }
 
@@ -306,7 +308,8 @@ public Step resilientStep(
         PlatformTransactionManager transactionManager) {
 
     return new StepBuilder("resilientStep", jobRepository)
-        .<InputRecord, OutputRecord>chunk(100, transactionManager)
+        .<InputRecord, OutputRecord>chunk(100)
+        .transactionManager(transactionManager)
         .reader(reader())
         .processor(processor())
         .writer(writer())
@@ -688,16 +691,15 @@ public class CheckpointProcessor {
 @Bean
 public Job restartableJob(JobRepository jobRepository, Step step) {
     return new JobBuilder("restartableJob", jobRepository)
-        .incrementer(new RunIdIncrementer())
-        // Job can be restarted if it fails
-        .preventRestart()  // Remove this line to enable restart
+        // Jobs are restartable by default after failure when relaunched
+        // with the same identifying JobParameters
         .start(step)
         .build();
 }
 
 // The reader must support restart by using ItemStreamReader
 @Bean
-public JdbcPagingItemReader<Order> reader(DataSource dataSource) {
+public JdbcPagingItemReader<Order> reader(DataSource dataSource) throws Exception {
     JdbcPagingItemReader<Order> reader = new JdbcPagingItemReader<>();
     reader.setDataSource(dataSource);
     reader.setPageSize(100);
@@ -740,6 +742,8 @@ public class BatchMetricsListener implements StepExecutionListener, ChunkListene
     private Counter recordsFailed;
     private Counter transactionsCommitted;
     private Counter transactionsRolledBack;
+    private long lastWriteCount;
+    private long lastSkipCount;
 
     @PostConstruct
     public void init() {
@@ -769,7 +773,9 @@ public class BatchMetricsListener implements StepExecutionListener, ChunkListene
 
         // Record processed count
         StepExecution stepExecution = context.getStepContext().getStepExecution();
-        recordsProcessed.increment(stepExecution.getWriteCount());
+        long currentWriteCount = stepExecution.getWriteCount();
+        recordsProcessed.increment(currentWriteCount - lastWriteCount);
+        lastWriteCount = currentWriteCount;
     }
 
     @Override
@@ -779,11 +785,16 @@ public class BatchMetricsListener implements StepExecutionListener, ChunkListene
 
         // Record failed count
         StepExecution stepExecution = context.getStepContext().getStepExecution();
-        recordsFailed.increment(stepExecution.getSkipCount());
+        long currentSkipCount = stepExecution.getSkipCount();
+        recordsFailed.increment(currentSkipCount - lastSkipCount);
+        lastSkipCount = currentSkipCount;
     }
 
     @Override
     public void beforeStep(StepExecution stepExecution) {
+        lastWriteCount = 0;
+        lastSkipCount = 0;
+
         log.info("Starting step: {} with {} items to process",
             stepExecution.getStepName(),
             stepExecution.getExecutionContext().get("item.count"));
@@ -799,8 +810,8 @@ public class BatchMetricsListener implements StepExecutionListener, ChunkListene
             stepExecution.getSkipCount());
 
         // Check for concerning patterns
-        double skipRate = (double) stepExecution.getSkipCount() /
-            stepExecution.getReadCount();
+        double skipRate = stepExecution.getReadCount() == 0 ? 0.0 :
+            (double) stepExecution.getSkipCount() / stepExecution.getReadCount();
         if (skipRate > 0.05) {
             log.warn("High skip rate detected: {}%", skipRate * 100);
         }
