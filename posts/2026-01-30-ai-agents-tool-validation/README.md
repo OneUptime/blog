@@ -74,10 +74,10 @@ The foundation of tool validation is a well-defined schema. We will use JSON Sch
 // tool-schema.ts
 // This module defines the schema structure for AI agent tools
 
-import Ajv, { JSONSchemaType } from 'ajv';
+import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 
-// Initialize the JSON Schema validator with strict mode
+// Initialize the JSON Schema validator with validation and data-modification options
 const ajv = new Ajv({
   allErrors: true,      // Collect all validation errors, not just the first
   coerceTypes: true,    // Automatically convert types when possible
@@ -564,6 +564,8 @@ Different AI agents may have different permission levels:
 // permission-guard.ts
 // Controls what tools and operations each agent can access
 
+import * as path from 'path';
+
 // Permission levels from least to most privileged
 enum PermissionLevel {
   READ_ONLY = 1,
@@ -711,6 +713,14 @@ class PermissionGuard {
       };
     }
 
+    // Check if the agent's explicit allowlist includes this category
+    if (!permissions.allowedCategories.includes(toolCategory)) {
+      return {
+        allowed: false,
+        reason: `Category ${toolCategory} is not in this agent's allowed categories`
+      };
+    }
+
     // Check path permissions for file operations
     if (this.isFileOperation(toolCategory)) {
       const pathCheck = this.checkPathPermission(params, permissions.allowedPaths);
@@ -777,10 +787,15 @@ class PermissionGuard {
       return { allowed: true };  // No path to check
     }
 
-    // Check if the path starts with any allowed path
-    const isAllowed = allowedPaths.some(allowed =>
-      pathValue.startsWith(allowed)
-    );
+    // Resolve paths before comparing so sibling directories with similar prefixes do not match
+    const requestedPath = path.resolve(pathValue);
+    const isAllowed = allowedPaths.some(allowed => {
+      const allowedPath = path.resolve(allowed);
+      const relativePath = path.relative(allowedPath, requestedPath);
+
+      return relativePath === '' ||
+        (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+    });
 
     if (!isAllowed) {
       return {
@@ -809,6 +824,7 @@ import { parameterValidator } from './parameter-validator';
 import { safetyChecker } from './safety-constraints';
 import { permissionGuard } from './permission-guard';
 import { schemaRegistry } from './schema-registry';
+import { runCustomValidators } from './custom-validators';
 
 // Complete result of the validation pipeline
 interface PipelineResult {
@@ -888,7 +904,16 @@ class ToolValidationPipeline {
         }
       }
 
-      // Stage 4: Permission check
+      // Stage 4: Custom validators
+      const customResult = runCustomValidators(toolName, validatedParams);
+      if (!customResult.valid) {
+        return this.failure('custom_validation', customResult.errors.map(error => ({
+          code: 'CUSTOM_VALIDATION_ERROR',
+          message: error
+        })));
+      }
+
+      // Stage 5: Permission check
       if (!options.skipPermissionCheck) {
         const permResult = permissionGuard.checkPermission(
           agentId,
@@ -978,6 +1003,9 @@ Sometimes you need validation logic specific to certain tools:
 // custom-validators.ts
 // Tool-specific validation logic that goes beyond schema validation
 
+import * as net from 'net';
+import { Buffer } from 'buffer';
+
 // Type for custom validator functions
 type CustomValidator = (
   params: Record<string, unknown>
@@ -1032,8 +1060,8 @@ registerCustomValidator('query_database', (params) => {
     /DROP\s+TABLE/i,
     /DROP\s+DATABASE/i,
     /TRUNCATE/i,
-    /DELETE\s+FROM\s+\w+\s*$/i,  // DELETE without WHERE
-    /UPDATE\s+\w+\s+SET\s+.*$/i, // UPDATE without WHERE
+    /\bDELETE\s+FROM\s+\w+\b(?![\s\S]*\bWHERE\b)/i,  // DELETE without WHERE
+    /\bUPDATE\s+\w+\s+SET\b(?![\s\S]*\bWHERE\b)/i,   // UPDATE without WHERE
     /--/,                         // SQL comments (potential injection)
     /\/\*/                        // Block comments
   ];
@@ -1058,24 +1086,11 @@ registerCustomValidator('http_request', (params) => {
   try {
     const parsed = new URL(url);
 
-    // Block requests to internal networks
-    const blockedHosts = [
-      'localhost',
-      '127.0.0.1',
-      '0.0.0.0',
-      '169.254.',      // Link-local
-      '10.',           // Private network
-      '172.16.',       // Private network
-      '192.168.'       // Private network
-    ];
-
-    for (const blocked of blockedHosts) {
-      if (parsed.hostname.startsWith(blocked) || parsed.hostname === blocked) {
-        return {
-          valid: false,
-          error: `Requests to internal/private networks are not allowed: ${parsed.hostname}`
-        };
-      }
+    if (isInternalHostname(parsed.hostname)) {
+      return {
+        valid: false,
+        error: `Requests to internal/private networks are not allowed: ${parsed.hostname}`
+      };
     }
 
     // Block dangerous protocols
@@ -1092,6 +1107,35 @@ registerCustomValidator('http_request', (params) => {
 
   return { valid: true };
 });
+
+function isInternalHostname(hostname: string): boolean {
+  const normalizedHost = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+
+  if (normalizedHost === 'localhost') {
+    return true;
+  }
+
+  const ipVersion = net.isIP(normalizedHost);
+  if (ipVersion === 4) {
+    const [first, second] = normalizedHost.split('.').map(Number);
+
+    return first === 10 ||
+      first === 127 ||
+      (first === 169 && second === 254) ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168) ||
+      normalizedHost === '0.0.0.0';
+  }
+
+  if (ipVersion === 6) {
+    return normalizedHost === '::1' ||
+      normalizedHost.startsWith('fc') ||
+      normalizedHost.startsWith('fd') ||
+      normalizedHost.startsWith('fe80:');
+  }
+
+  return false;
+}
 
 // Example: Custom validator for file write operations
 registerCustomValidator('write_file', (params) => {
@@ -1114,7 +1158,7 @@ registerCustomValidator('write_file', (params) => {
 
   // Limit file size
   const maxSizeBytes = 10 * 1024 * 1024; // 10MB
-  if (content.length > maxSizeBytes) {
+  if (Buffer.byteLength(content, 'utf8') > maxSizeBytes) {
     return {
       valid: false,
       error: `Content exceeds maximum size of ${maxSizeBytes} bytes`
