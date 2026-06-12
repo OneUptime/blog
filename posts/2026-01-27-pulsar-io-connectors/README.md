@@ -29,9 +29,9 @@ graph LR
     end
 
     subgraph Source Connectors
-        SC1[JDBC Source]
+        SC1[Debezium PostgreSQL Source]
         SC2[Kafka Source]
-        SC3[HTTP Source]
+        SC3[Netty HTTP Source]
     end
 
     subgraph Apache Pulsar
@@ -42,13 +42,13 @@ graph LR
 
     subgraph Sink Connectors
         SK1[Elasticsearch Sink]
-        SK2[S3 Sink]
+        SK2[HDFS Sink]
         SK3[JDBC Sink]
     end
 
     subgraph Destinations
         ES[(Elasticsearch)]
-        S3[(S3 Bucket)]
+        HDFS[(HDFS Cluster)]
         DW[(Data Warehouse)]
     end
 
@@ -57,7 +57,7 @@ graph LR
     API --> SC3 --> T3
 
     T1 --> SK1 --> ES
-    T2 --> SK2 --> S3
+    T2 --> SK2 --> HDFS
     T3 --> SK3 --> DW
 ```
 
@@ -69,16 +69,16 @@ Source connectors **pull data from external systems** and publish it to Pulsar t
 // Source connector data flow conceptually
 // External System -> Source Connector -> Pulsar Topic
 
-// Example: A JDBC source connector reads database changes
+// Example: A custom JDBC polling source connector reads new rows
 // and publishes them to a Pulsar topic
 public class JdbcSourceConnector implements Source<byte[]> {
 
     private Connection connection;
     private String tableName;
-    private String lastOffset;
+    private long lastOffset = 0;
 
     @Override
-    public void open(Map<String, Object> config, SourceContext sourceContext) {
+    public void open(Map<String, Object> config, SourceContext sourceContext) throws Exception {
         // Initialize database connection from config
         String jdbcUrl = (String) config.get("jdbcUrl");
         String username = (String) config.get("username");
@@ -91,28 +91,53 @@ public class JdbcSourceConnector implements Source<byte[]> {
 
     @Override
     public Record<byte[]> read() throws Exception {
-        // Query for new records since last offset
-        // Each record read becomes a Pulsar message
-        PreparedStatement stmt = connection.prepareStatement(
-            "SELECT * FROM " + tableName + " WHERE id > ? ORDER BY id LIMIT 100"
-        );
-        stmt.setString(1, lastOffset);
+        while (true) {
+            // Query for new records since last offset
+            // Each record read becomes a Pulsar message
+            try (PreparedStatement stmt = connection.prepareStatement(
+                    "SELECT * FROM " + tableName + " WHERE id > ? ORDER BY id LIMIT 100"
+                )) {
+                stmt.setLong(1, lastOffset);
 
-        ResultSet rs = stmt.executeQuery();
-        if (rs.next()) {
-            // Convert row to bytes and return as Record
-            byte[] data = convertRowToBytes(rs);
-            lastOffset = rs.getString("id");
-            return new SourceRecord<>(data, lastOffset);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        // Convert row to bytes and return as Record
+                        byte[] data = convertRowToBytes(rs);
+                        lastOffset = rs.getLong("id");
+                        return new SimpleRecord(data, String.valueOf(lastOffset));
+                    }
+                }
+            }
+
+            Thread.sleep(1000); // Source.read() should block until a record is available
         }
-        return null; // No new data available
     }
 
     @Override
-    public void close() {
+    public void close() throws Exception {
         // Clean up database connection
         if (connection != null) {
             connection.close();
+        }
+    }
+
+    private static class SimpleRecord implements Record<byte[]> {
+        private final byte[] value;
+        private final String key;
+
+        SimpleRecord(byte[] value, String key) {
+            this.value = value;
+            this.key = key;
+        }
+
+        @Override
+        public byte[] getValue() {
+            return value;
+        }
+
+        @Override
+        public Optional<String> getKey() {
+            return Optional.of(key);
         }
     }
 }
@@ -130,19 +155,20 @@ Sink connectors **consume messages from Pulsar topics** and write them to extern
 // and indexes documents into Elasticsearch
 public class ElasticsearchSinkConnector implements Sink<byte[]> {
 
-    private RestHighLevelClient elasticClient;
+    private ElasticsearchClient elasticClient;
+    private ElasticsearchTransport transport;
     private String indexName;
 
     @Override
-    public void open(Map<String, Object> config, SinkContext sinkContext) {
+    public void open(Map<String, Object> config, SinkContext sinkContext) throws Exception {
         // Initialize Elasticsearch client from config
         String elasticUrl = (String) config.get("elasticSearchUrl");
         this.indexName = (String) config.get("indexName");
 
         // Create Elasticsearch REST client
-        this.elasticClient = new RestHighLevelClient(
-            RestClient.builder(HttpHost.create(elasticUrl))
-        );
+        RestClient restClient = RestClient.builder(HttpHost.create(elasticUrl)).build();
+        this.transport = new RestClientTransport(restClient, new JacksonJsonpMapper());
+        this.elasticClient = new ElasticsearchClient(transport);
     }
 
     @Override
@@ -150,22 +176,21 @@ public class ElasticsearchSinkConnector implements Sink<byte[]> {
         // Each Pulsar message is written to Elasticsearch
         byte[] data = record.getValue();
 
-        // Create index request with the message data
-        IndexRequest request = new IndexRequest(indexName)
-            .source(data, XContentType.JSON);
-
         // Index the document
-        elasticClient.index(request, RequestOptions.DEFAULT);
+        elasticClient.index(request -> request
+            .index(indexName)
+            .withJson(new ByteArrayInputStream(data))
+        );
 
         // Acknowledge the message after successful write
         record.ack();
     }
 
     @Override
-    public void close() {
+    public void close() throws Exception {
         // Clean up Elasticsearch client
-        if (elasticClient != null) {
-            elasticClient.close();
+        if (transport != null) {
+            transport.close();
         }
     }
 }
@@ -181,7 +206,7 @@ Apache Pulsar ships with a rich set of built-in connectors for common use cases.
 graph TB
     subgraph "Built-in Source Connectors"
         S1[Kafka Source]
-        S2[JDBC/Debezium Source]
+        S2[Debezium Source]
         S3[Kinesis Source]
         S4[RabbitMQ Source]
         S5[File Source]
@@ -229,7 +254,7 @@ graph TB
 | Connector | Use Case | Key Features |
 |-----------|----------|--------------|
 | **Kafka** | Migrate from Kafka or bridge Kafka clusters | Topic mapping, consumer group support |
-| **JDBC/Debezium** | Database CDC (Change Data Capture) | Real-time database replication, schema support |
+| **Debezium** | Database CDC (Change Data Capture) | Real-time database replication, schema support |
 | **Kinesis** | AWS data stream ingestion | Shard management, checkpointing |
 | **RabbitMQ** | AMQP message ingestion | Queue binding, exchange support |
 | **MongoDB** | NoSQL change streams | Replica set support, resume tokens |
@@ -242,7 +267,7 @@ graph TB
 | **Elasticsearch** | Search and analytics | Bulk indexing, index templates |
 | **JDBC** | Relational database writes | Batch inserts, upsert support |
 | **Kafka** | Bridge to Kafka consumers | Topic routing, partitioning |
-| **HDFS/S3** | Data lake storage | Parquet/Avro formats, partitioning |
+| **HDFS** | Data lake storage | Parquet/Avro formats, partitioning |
 | **Redis** | Caching layer | Key mapping, TTL support |
 | **Cassandra** | Wide-column store writes | Batch writes, consistency levels |
 
@@ -252,48 +277,51 @@ graph TB
 
 Connectors are configured using YAML files or command-line arguments. Here's how to configure and deploy connectors:
 
-### Deploying a JDBC Source Connector
+### Deploying a Debezium PostgreSQL Source Connector
 
 ```yaml
-# jdbc-source-config.yaml
+# debezium-postgres-source-config.yaml
 
-# Configuration for ingesting data from PostgreSQL into Pulsar
+# Configuration for ingesting PostgreSQL changes into Pulsar
 
 # Connector metadata
 tenant: "public"
 namespace: "default"
-name: "postgres-users-source"
+name: "debezium-postgres-users-source"
 
-# Topic where data will be published
-topicName: "persistent://public/default/user-changes"
+# Logical topic name. Debezium also writes per-table topics such as
+# persistent://public/default/dbserver1.public.users
+topicName: "debezium-postgres-topic"
 
 # Archive containing the connector code
-archive: "connectors/pulsar-io-jdbc-postgres-3.0.0.nar"
+archive: "connectors/pulsar-io-debezium-postgres-3.0.17.nar"
 
 # Parallelism - number of connector instances
 parallelism: 1
 
 # Connector-specific configuration
 configs:
-  # JDBC connection settings
-  jdbcUrl: "jdbc:postgresql://postgres-host:5432/mydb"
-  userName: "pulsar_connector"
-  password: "${secrets:jdbc-password}"  # Reference to Pulsar secret
+  # PostgreSQL connection settings
+  database.hostname: "postgres-host"
+  database.port: "5432"
+  database.user: "pulsar_connector"
+  database.password: "${secrets:jdbc-password}"  # Reference to Pulsar secret
+  database.dbname: "mydb"
 
-  # Table and query configuration
-  tableName: "users"
+  # Debezium PostgreSQL configuration
+  database.server.name: "dbserver1"
+  plugin.name: "pgoutput"
+  schema.whitelist: "public"
+  table.whitelist: "public.users"
+  task.class: "io.debezium.connector.postgresql.PostgresConnectorTask"
+  value.converter: "org.apache.kafka.connect.json.JsonConverter"
+  key.converter: "org.apache.kafka.connect.json.JsonConverter"
+  typeClassName: "org.apache.pulsar.common.schema.KeyValue"
 
-  # Polling configuration
-  # How often to check for new records (in milliseconds)
-  batchSize: 100
-  mode: "incrementing"
-  incrementingColumnName: "id"
-
-  # Timestamp mode for CDC-like behavior
-  timestampColumnName: "updated_at"
-
-  # Schema configuration
-  outputFormat: "json"
+  # Pulsar database history topic configuration
+  database.history: "org.apache.pulsar.io.debezium.PulsarDatabaseHistory"
+  database.history.pulsar.topic: "debezium-postgres-source-history-topic"
+  database.history.pulsar.service.url: "pulsar://127.0.0.1:6650"
 ```
 
 ### Deploying an Elasticsearch Sink Connector
@@ -359,12 +387,12 @@ configs:
 # Deploy a source connector from a configuration file
 # This creates the connector and starts ingesting data
 pulsar-admin sources create \
-  --source-config-file jdbc-source-config.yaml
+  --source-config-file $PWD/debezium-postgres-source-config.yaml
 
 # Deploy a sink connector from a configuration file
 # This creates the connector and starts exporting data
 pulsar-admin sinks create \
-  --sink-config-file elasticsearch-sink-config.yaml
+  --sink-config-file $PWD/elasticsearch-sink-config.yaml
 
 # Alternatively, deploy with inline configuration
 # Useful for quick testing and automation
@@ -382,7 +410,7 @@ pulsar-admin sinks create \
 
 # Check connector status
 # Shows running instances, errors, and metrics
-pulsar-admin sources status --name postgres-users-source
+pulsar-admin sources status --name debezium-postgres-users-source
 pulsar-admin sinks status --name user-events-elasticsearch-sink
 
 # Update connector configuration
@@ -392,7 +420,7 @@ pulsar-admin sinks update \
   --parallelism 5
 
 # Stop and delete connectors
-pulsar-admin sources stop --name postgres-users-source
+pulsar-admin sources stop --name debezium-postgres-users-source
 pulsar-admin sinks delete --name user-events-elasticsearch-sink
 ```
 
@@ -409,17 +437,17 @@ pulsar-io-webhook/
 ├── pom.xml
 ├── src/
 │   └── main/
-│       └── java/
-│           └── com/
-│               └── example/
-│                   └── pulsar/
-│                       └── io/
-│                           ├── WebhookSink.java
-│                           └── WebhookSinkConfig.java
-└── resources/
-    └── META-INF/
-        └── services/
-            └── pulsar-io.yaml
+│       ├── java/
+│       │   └── com/
+│       │       └── example/
+│       │           └── pulsar/
+│       │               └── io/
+│       │                   ├── WebhookSink.java
+│       │                   └── WebhookSinkConfig.java
+│       └── resources/
+│           └── META-INF/
+│               └── services/
+│                   └── pulsar-io.yaml
 ```
 
 ### Maven Dependencies (pom.xml)
@@ -439,7 +467,7 @@ pulsar-io-webhook/
 
     <properties>
         <pulsar.version>3.0.0</pulsar.version>
-        <java.version>17</java.version>
+        <maven.compiler.release>17</maven.compiler.release>
     </properties>
 
     <dependencies>
@@ -976,11 +1004,12 @@ Monitoring your connectors is essential for production reliability. Pulsar expos
 |--------|-------------|-----------------|
 | `pulsar_sink_received_total` | Total messages received | - |
 | `pulsar_sink_written_total` | Messages successfully written | - |
-| `pulsar_sink_write_latency_ms` | Write latency distribution | P99 > 1000ms |
+| `pulsar_sink_last_invocation` | Timestamp of last sink activity | Stale > 5min |
 | `pulsar_source_received_total` | Records read from source | - |
 | `pulsar_source_written_total` | Messages published to Pulsar | - |
-| `pulsar_connector_exceptions_total` | Total exceptions | > 0 |
-| `pulsar_connector_last_invocation` | Timestamp of last activity | Stale > 5min |
+| `pulsar_source_last_invocation` | Timestamp of last source activity | Stale > 5min |
+| `pulsar_sink_sink_exceptions_total` | Total sink exceptions | > 0 |
+| `pulsar_source_source_exceptions_total` | Total source exceptions | > 0 |
 
 ### Connector Health Checks
 
@@ -1005,8 +1034,8 @@ pulsar-admin sinks status --name my-connector
 #   ]
 # }
 
-# Get detailed metrics
-pulsar-admin sinks stats --name my-connector
+# Get detailed connector status
+pulsar-admin sinks status --name my-connector
 
 # Restart a specific instance
 pulsar-admin sinks restart \
@@ -1054,20 +1083,8 @@ public class UserEvent {
     private Map<String, String> properties;
 }
 
-// Use Avro schema in connector configuration
-configs:
-  schemaType: AVRO
-  schemaDefinition: |
-    {
-      "type": "record",
-      "name": "UserEvent",
-      "fields": [
-        {"name": "userId", "type": "string"},
-        {"name": "eventType", "type": "string"},
-        {"name": "timestamp", "type": "long"},
-        {"name": "properties", "type": {"type": "map", "values": "string"}}
-      ]
-    }
+// Use an Avro schema type when creating a source connector
+schemaType: AVRO
 ```
 
 ### 2. Error Handling Strategy
@@ -1076,15 +1093,14 @@ Implement dead letter queues for failed messages:
 
 ```yaml
 # Sink configuration with dead letter topic
-configs:
-  # ... other configs ...
+# ... other sink configuration ...
 
-  # Dead letter configuration
-  deadLetterTopic: "persistent://public/default/connector-dlq"
-  maxRedeliveryCount: 3
+# Dead letter configuration
+deadLetterTopic: "persistent://public/default/connector-dlq"
+maxMessageRetries: 3
 
-  # Negative ack redelivery delay
-  negativeAckRedeliveryDelayMs: 60000
+# Negative ack redelivery delay
+negativeAckRedeliveryDelayMs: 60000
 ```
 
 ### 3. Scaling Connectors
@@ -1098,7 +1114,7 @@ pulsar-admin sinks update \
   --parallelism 5
 
 # Monitor lag to determine if scaling is needed
-pulsar-admin sinks stats --name high-throughput-sink | \
+pulsar-admin sinks status --name high-throughput-sink | \
   jq '.instances[].status.numReceivedFromSource -
       .instances[].status.numWrittenToSink'
 ```
