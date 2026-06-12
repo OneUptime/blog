@@ -34,19 +34,19 @@ Before optimizing anything, establish baselines. Measure response times at multi
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Define the service resource with identifying attributes
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'api-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  environment: process.env.NODE_ENV || 'development'
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'api-service',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
+  'deployment.environment.name': process.env.NODE_ENV || 'development'
 });
 
 // Configure the OTLP exporter to send traces to your observability backend
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://oneuptime.com/otlp'
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'https://oneuptime.com/otlp/v1/traces'
 });
 
 // Initialize the SDK with auto-instrumentation for common libraries
@@ -122,13 +122,13 @@ Database queries are often the largest contributor to API latency. A single unop
 SELECT
   query,
   calls,
-  total_time / 1000 as total_seconds,
-  mean_time as avg_ms,
-  max_time as max_ms,
+  total_exec_time / 1000 as total_seconds,
+  mean_exec_time as avg_ms,
+  max_exec_time as max_ms,
   rows
 FROM pg_stat_statements
-WHERE mean_time > 100  -- Queries averaging over 100ms
-ORDER BY mean_time DESC
+WHERE mean_exec_time > 100  -- Queries averaging over 100ms
+ORDER BY mean_exec_time DESC
 LIMIT 20;
 ```
 
@@ -185,13 +185,16 @@ class OrderRepository {
         o.created_at,
         o.status,
         o.total,
-        json_agg(
-          json_build_object(
-            'id', oi.id,
-            'product_name', oi.product_name,
-            'quantity', oi.quantity,
-            'price', oi.price
-          )
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', oi.id,
+              'product_name', oi.product_name,
+              'quantity', oi.quantity,
+              'price', oi.price
+            )
+          ) FILTER (WHERE oi.id IS NOT NULL),
+          '[]'::json
         ) as items
       FROM orders o
       LEFT JOIN order_items oi ON o.id = oi.order_id
@@ -404,12 +407,12 @@ function paginationMiddleware(defaultLimit = 20, maxLimit = 100) {
     req.pagination = { limit, cursor };
 
     // Helper to format paginated response
-    res.paginate = (data, nextCursor, totalCount = null) => {
+    res.paginate = (data, nextCursor, totalCount = null, hasMore = nextCursor !== null) => {
       const response = {
         data,
         pagination: {
           limit,
-          hasMore: data.length === limit,
+          hasMore,
           nextCursor
         }
       };
@@ -529,6 +532,7 @@ module.exports = emailQueue;
 const express = require('express');
 const router = express.Router();
 const emailQueue = require('../queues/emailQueue');
+const analyticsQueue = require('../queues/analyticsQueue');
 const orderService = require('../services/orderService');
 
 router.post('/', async (req, res, next) => {
@@ -662,7 +666,7 @@ function cacheControl(options = {}) {
     directives.push(isPrivate ? 'private' : 'public');
 
     // Browser cache duration
-    if (maxAge > 0) {
+    if (maxAge !== null) {
       directives.push(`max-age=${maxAge}`);
     }
 
@@ -785,8 +789,6 @@ module.exports = { startProfiling, stopProfiling, profileOperation };
 ```javascript
 // middleware/profiler.js
 // Conditional profiling for production debugging
-
-const { profileOperation } = require('../scripts/profile');
 
 function profilerMiddleware(req, res, next) {
   // Only profile if explicitly requested (use with caution in production)
