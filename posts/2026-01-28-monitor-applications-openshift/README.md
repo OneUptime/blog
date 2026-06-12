@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenShift, Monitoring, Observability, Prometheus, Grafana
+Tags: OpenShift, Monitoring, Observability, Prometheus
 
-Description: Learn how to monitor applications on OpenShift using built-in Prometheus and Grafana, custom metrics endpoints, and alerting for production workloads.
+Description: Learn how to monitor applications on OpenShift using built-in Prometheus, OpenShift console dashboards, custom metrics endpoints, and alerting for production workloads.
 
 ---
 
-OpenShift ships with a powerful monitoring stack based on Prometheus and Grafana. You can use it to monitor cluster health, and you can also hook in application metrics and alerts. This guide shows how to enable and consume app metrics safely.
+OpenShift ships with a powerful monitoring stack based on Prometheus. You can use it to monitor cluster health, and you can also hook in application metrics and alerts. This guide shows how to enable and consume app metrics safely.
 
 ## OpenShift Monitoring Overview
 
@@ -17,7 +17,7 @@ OpenShift provides:
 - **Cluster Monitoring**: Metrics for nodes, control plane, and platform components.
 - **User Workload Monitoring**: Metrics you expose from your apps.
 - **Alertmanager**: Built-in alerting and routing.
-- **Grafana**: Dashboards for system and application metrics.
+- **OpenShift console dashboards**: Dashboards for system and application metrics.
 
 User workload monitoring is the part you need for app-level metrics.
 
@@ -100,7 +100,7 @@ oc get servicemonitors
 oc -n openshift-user-workload-monitoring get pods
 ```
 
-You can also open the Prometheus UI in the OpenShift console and verify targets are up.
+You can also use Observe in the OpenShift console to verify that targets are up.
 
 ## Step 5: Build Alerts
 
@@ -125,9 +125,9 @@ spec:
             description: "API 5xx rate is above 1 req/sec for 10 minutes"
 ```
 
-## Step 6: Dashboards in Grafana
+## Step 6: Dashboards in the OpenShift Console
 
-Use Grafana to visualize app latency, errors, and throughput. A good dashboard includes:
+Use OpenShift console dashboards to visualize app latency, errors, and throughput. A good dashboard includes:
 
 - Requests per second
 - Error rate by status
@@ -144,4 +144,4 @@ If you want distributed tracing, integrate OpenTelemetry and export traces to yo
 
 ## Conclusion
 
-OpenShift makes application monitoring straightforward once user workload monitoring is enabled. Use ServiceMonitors for scraping, PrometheusRule for alerting, and Grafana for dashboards. For deeper visibility, add OpenTelemetry and send traces and metrics to OneUptime.
+OpenShift makes application monitoring straightforward once user workload monitoring is enabled. Use ServiceMonitors for scraping, PrometheusRule for alerting, and OpenShift console dashboards for visualization. For deeper visibility, add OpenTelemetry and send traces and metrics to OneUptime.
