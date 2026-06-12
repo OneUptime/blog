@@ -107,7 +107,8 @@ Properties props = new Properties();
 props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
 props.put(ConsumerConfig.GROUP_ID_CONFIG, "order-processor");
 
-// Default assignor uses eager protocol
+// RangeAssignor uses the eager protocol. In current Kafka clients, the default
+// assignor list is [RangeAssignor, CooperativeStickyAssignor], with RangeAssignor used first.
 props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
     "org.apache.kafka.clients.consumer.RangeAssignor");
 
@@ -175,7 +176,6 @@ props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
 
 KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
 
-// With cooperative rebalancing, the listener interface is extended
 consumer.subscribe(Arrays.asList("orders"), new ConsumerRebalanceListener() {
 
     @Override
@@ -193,8 +193,9 @@ consumer.subscribe(Arrays.asList("orders"), new ConsumerRebalanceListener() {
         initializePartitionState(partitions);
     }
 
-    // Cooperative protocol adds this callback
-    // Called for partitions that are NOT being revoked (continue processing)
+    // Called when partitions are lost without a graceful revocation, for example
+    // after a session timeout or fatal error.
+    @Override
     public void onPartitionsLost(Collection<TopicPartition> partitions) {
         // Partitions lost due to consumer failure (not graceful revocation)
         // State may be inconsistent - handle carefully
@@ -237,13 +238,13 @@ public class RebalancingComparison {
         // - All partitions revoked before reassignment
         // - Complete stop in processing during rebalance
         // - Simpler protocol, fewer edge cases
-        // - Rebalance duration: O(total partitions)
+        // - All consumers pause, even if only a few partitions move
 
         // Cooperative Rebalancing Characteristics:
         // - Only moved partitions are revoked
         // - Continuous processing for stable partitions
         // - More complex protocol, requires careful state management
-        // - Rebalance duration: O(moved partitions)
+        // - Lower processing impact when few partitions move
 
         // Choose cooperative for:
         // - High-throughput applications
@@ -272,6 +273,7 @@ props.put(ConsumerConfig.GROUP_INSTANCE_ID_CONFIG, "order-processor-instance-1")
 
 // Increase session timeout for static members
 // Allows time for restarts without triggering rebalance
+// Must be within the broker's group.min.session.timeout.ms and group.max.session.timeout.ms
 props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "300000"); // 5 minutes
 
 // Heartbeat interval should be much less than session timeout
@@ -533,6 +535,8 @@ For advanced use cases, you can implement a custom assignor:
 
 ```java
 // Custom partition assignor for locality-aware assignment
+// Production assignors should implement ConsumerPartitionAssignor directly; this
+// simplified example extends Kafka's helper base class to focus on assignment logic.
 public class LocalityAwareAssignor extends AbstractPartitionAssignor {
 
     @Override
@@ -755,7 +759,7 @@ const kafka = new Kafka({
   brokers: ['localhost:9092'],
 });
 
-// Create consumer with cooperative sticky assignment
+// Create consumer with KafkaJS's default round-robin assignment
 const consumer = kafka.consumer({
   groupId: 'order-processor-group',
 
@@ -766,10 +770,8 @@ const consumer = kafka.consumer({
   // Rebalance timeout - time to complete rebalance
   rebalanceTimeout: 60000,      // 60 seconds
 
-  // Use cooperative sticky assignment (KafkaJS default)
-  partitionAssigners: [
-    // KafkaJS uses its own cooperative sticky assignor by default
-  ],
+  // KafkaJS defaults to PartitionAssigners.roundRobin. Add a custom assigner here
+  // only if every consumer in the group supports the same assignment protocol.
 });
 
 // Track partition state
@@ -793,7 +795,6 @@ consumer.on(consumer.events.REBALANCING, async ({ payload }) => {
   });
 
   // Pause processing during rebalance if needed
-  // This is optional with cooperative rebalancing
 });
 
 // Run consumer with partition-aware processing
@@ -886,24 +887,19 @@ async function processOrder(order) {
 ### Static Group Membership in Node.js
 
 ```javascript
-// Static membership configuration for KafkaJS
+// KafkaJS does not currently expose Kafka's group.instance.id static membership
+// setting in its documented consumer options. Use a client that supports
+// group.instance.id if static membership is required from Node.js, or keep using
+// dynamic membership with appropriate timeout and graceful shutdown settings.
 const consumer = kafka.consumer({
   groupId: 'order-processor-group',
 
-  // Static membership: provide consistent instance ID
-  // This should be unique per consumer instance and persist across restarts
-  // In Kubernetes, use the pod name from the downward API
-  groupInstance: process.env.KAFKA_GROUP_INSTANCE_ID || `instance-${process.env.HOSTNAME}`,
-
-  // Longer session timeout for static members
-  // Consumer can restart within this window without triggering rebalance
-  sessionTimeout: 300000,  // 5 minutes
-
-  // Heartbeat should be much shorter than session timeout
-  heartbeatInterval: 10000, // 10 seconds
+  // Dynamic membership settings
+  sessionTimeout: 30000,
+  heartbeatInterval: 3000,
 });
 
-console.log(`Consumer starting with static instance ID: ${consumer.groupInstance}`);
+console.log('Consumer starting with dynamic group membership');
 ```
 
 ## Monitoring Rebalancing
@@ -918,23 +914,28 @@ public class RebalanceMetrics {
 
     // 1. Rebalance frequency
     // High frequency indicates instability (consumer crashes, network issues)
-    // Metric: kafka.consumer.coordinator-rebalance-rate
+    // MBean: kafka.consumer:type=consumer-coordinator-metrics,client-id={clientId}
+    // Attribute: rebalance-rate-per-hour
 
     // 2. Rebalance latency
     // Time spent in rebalancing state
-    // Metric: kafka.consumer.coordinator-rebalance-latency-avg/max
+    // MBean: kafka.consumer:type=consumer-coordinator-metrics,client-id={clientId}
+    // Attributes: rebalance-latency-avg, rebalance-latency-max
 
     // 3. Assigned partitions
     // Monitor for balanced distribution
-    // Metric: kafka.consumer.assigned-partitions
+    // MBean: kafka.consumer:type=consumer-coordinator-metrics,client-id={clientId}
+    // Attribute: assigned-partitions
 
     // 4. Commit latency
     // Slow commits can delay rebalancing
-    // Metric: kafka.consumer.commit-latency-avg/max
+    // MBean: kafka.consumer:type=consumer-coordinator-metrics,client-id={clientId}
+    // Attributes: commit-latency-avg, commit-latency-max
 
     // 5. Consumer lag during rebalance
     // Lag increases during stop-the-world rebalance
-    // Metric: kafka.consumer.records-lag-max
+    // MBean: kafka.consumer:type=consumer-fetch-manager-metrics,client-id={clientId}
+    // Attribute: records-lag-max
 }
 ```
 
@@ -949,6 +950,8 @@ scrape_configs:
     metrics_path: /metrics
 
 # Alert rules for rebalancing issues
+# Metric names vary by JMX exporter or instrumentation pipeline; adjust these
+# examples to match the names emitted in your Prometheus setup.
 groups:
   - name: kafka-consumer-rebalancing
     rules:
@@ -992,35 +995,39 @@ For comprehensive monitoring of your Kafka consumer groups and rebalancing event
 - Correlation with other infrastructure events
 
 ```javascript
-// Example: Send rebalancing metrics to OneUptime
-const { OneUptime } = require('@oneuptime/sdk');
+// Example: emit structured rebalancing events to your observability pipeline.
+// If your logs or metrics are collected by OneUptime, these events can be used
+// for dashboards and alert correlation.
+function emitRebalanceEvent(name, properties) {
+  console.log(JSON.stringify({
+    event: name,
+    ...properties,
+  }));
+}
 
-const oneuptime = new OneUptime({
-  apiKey: process.env.ONEUPTIME_API_KEY,
-});
+function countAssignedPartitions(memberAssignment = {}) {
+  return Object.values(memberAssignment).reduce(
+    (count, partitions) => count + (Array.isArray(partitions) ? partitions.length : 0),
+    0
+  );
+}
 
 consumer.on(consumer.events.REBALANCING, async ({ payload }) => {
   // Track rebalancing event
-  await oneuptime.trackEvent({
-    name: 'kafka.consumer.rebalancing',
-    properties: {
-      groupId: payload.groupId,
-      memberId: payload.memberId,
-      timestamp: new Date().toISOString(),
-    },
+  emitRebalanceEvent('kafka.consumer.rebalancing', {
+    groupId: payload.groupId,
+    memberId: payload.memberId,
+    timestamp: new Date().toISOString(),
   });
 });
 
 consumer.on(consumer.events.GROUP_JOIN, async ({ payload }) => {
   // Track successful group join
-  await oneuptime.trackEvent({
-    name: 'kafka.consumer.group_join',
-    properties: {
-      groupId: payload.groupId,
-      memberId: payload.memberId,
-      partitionsAssigned: payload.memberAssignment.length,
-      timestamp: new Date().toISOString(),
-    },
+  emitRebalanceEvent('kafka.consumer.group_join', {
+    groupId: payload.groupId,
+    memberId: payload.memberId,
+    partitionsAssigned: countAssignedPartitions(payload.memberAssignment),
+    timestamp: new Date().toISOString(),
   });
 });
 ```
