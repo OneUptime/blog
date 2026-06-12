@@ -76,7 +76,7 @@ class LookupModule(LookupBase):
 
 | Component | Description |
 |-----------|-------------|
-| `LookupBase` | Base class providing utility methods and caching |
+| `LookupBase` | Base class providing utility methods such as file lookup helpers |
 | `run()` | Main entry point, must return a list |
 | `terms` | List of arguments from the playbook |
 | `variables` | Dictionary of all available Ansible variables |
@@ -333,7 +333,7 @@ def run(self, terms, variables=None, **kwargs):
             - magic variables (playbook_dir, role_path, etc.)
 
         **kwargs: Options passed to the lookup, including:
-            - wantlist: If True, return a list even for single values
+            - wantlist: If True, Ansible returns the lookup result as a list
             - errors: Error handling mode ('strict', 'warn', 'ignore')
             - Any custom options defined in DOCUMENTATION
     """
@@ -362,22 +362,13 @@ def run(self, terms, variables=None, **kwargs):
 
 ### The wantlist Option
 
-When users call your lookup with `wantlist=True`, they want a list even if there's only one result. Handle this properly:
+When users call your lookup with `wantlist=True`, they want Ansible to return a list even if there's only one result. Your plugin should still return a list from `run()`; Ansible handles the final conversion for `lookup()` versus `query()`:
 
 ```python
 def run(self, terms, variables=None, **kwargs):
-    # Check if wantlist is requested
-    wantlist = kwargs.get('wantlist', False)
-
     results = []
     for term in terms:
-        value = self.lookup_value(term)
-
-        # If value is a list and wantlist is False, flatten it
-        if isinstance(value, list) and not wantlist:
-            results.extend(value)
-        else:
-            results.append(value)
+        results.append(self.lookup_value(term))
 
     return results
 ```
@@ -385,7 +376,7 @@ def run(self, terms, variables=None, **kwargs):
 Usage in playbooks:
 
 ```yaml
-# Without wantlist - returns first element if single value
+# Without wantlist - lookup() uses Ansible's default scalar conversion
 - set_fact:
     single_value: "{{ lookup('my_lookup', 'key') }}"
 
@@ -582,16 +573,16 @@ Ansible lookups support three error modes:
 | Mode | Behavior |
 |------|----------|
 | `strict` | Raise an exception and fail the task (default) |
-| `warn` | Log a warning and return an empty list |
-| `ignore` | Silently return an empty list |
+| `warn` | Log a warning and continue with an empty result |
+| `ignore` | Silently continue with an empty result |
 
 ### Implementing Error Modes
 
+Ansible applies `errors='strict'`, `errors='warn'`, and `errors='ignore'` when the lookup plugin raises an Ansible error. In your plugin, raise `AnsibleError` with useful context and let the lookup engine apply the requested mode:
+
 ```python
 from ansible.errors import AnsibleError
-from ansible.utils.display import Display
-
-display = Display()
+from ansible.plugins.lookup import LookupBase
 
 
 class LookupModule(LookupBase):
@@ -599,43 +590,15 @@ class LookupModule(LookupBase):
     def run(self, terms, variables=None, **kwargs):
         self.set_options(var_options=variables, direct=kwargs)
 
-        # Get error handling mode from kwargs
-        errors = kwargs.get('errors', 'strict')
-
         results = []
         for term in terms:
             try:
                 value = self._lookup_value(term)
                 results.append(value)
             except Exception as e:
-                results.append(self._handle_error(term, e, errors))
+                raise AnsibleError(f"Error looking up '{term}': {e}")
 
         return results
-
-    def _handle_error(self, term, error, error_mode):
-        """
-        Handle errors according to the specified mode.
-
-        Args:
-            term: The term that caused the error
-            error: The exception that was raised
-            error_mode: One of 'strict', 'warn', or 'ignore'
-
-        Returns:
-            None for warn/ignore modes
-
-        Raises:
-            AnsibleError for strict mode
-        """
-        error_msg = f"Error looking up '{term}': {error}"
-
-        if error_mode == 'strict':
-            raise AnsibleError(error_msg)
-        elif error_mode == 'warn':
-            display.warning(error_msg)
-            return None
-        else:  # ignore
-            return None
 
     def _lookup_value(self, term):
         """Implement your lookup logic here."""
@@ -652,11 +615,11 @@ class LookupModule(LookupBase):
 
 # Warn mode - logs warning and continues
 - debug:
-    msg: "{{ lookup('my_lookup', 'missing_key', errors='warn') | default('fallback') }}"
+    msg: "{{ lookup('my_lookup', 'missing_key', errors='warn') | default('fallback', true) }}"
 
 # Ignore mode - silently continues
 - debug:
-    msg: "{{ lookup('my_lookup', 'missing_key', errors='ignore') | default('fallback') }}"
+    msg: "{{ lookup('my_lookup', 'missing_key', errors='ignore') | default('fallback', true) }}"
 ```
 
 ## Implementing Caching
@@ -1204,6 +1167,8 @@ namespace: myorg
 name: mytools
 version: 1.0.0
 readme: README.md
+authors:
+  - Your Name <you@example.com>
 
 build_ignore:
   - '*.tar.gz'
@@ -1258,4 +1223,4 @@ lookup_plugins = ./lookup_plugins:/custom/path/lookup_plugins
 
 ---
 
-Lookup plugins give you the power to integrate Ansible with any data source. Start with the JSON config example, then adapt the patterns shown here for your specific needs. Focus on proper error handling, caching for performance, and comprehensive documentation to make your plugins production-ready. The key is to always return a list from the `run` method and handle the `wantlist` option appropriately for consistent behavior across playbooks.
+Lookup plugins give you the power to integrate Ansible with any data source. Start with the JSON config example, then adapt the patterns shown here for your specific needs. Focus on proper error handling, caching for performance, and comprehensive documentation to make your plugins production-ready. The key is to always return a list from the `run` method and understand how `lookup()`, `query()`, and `wantlist=True` affect results in playbooks.
