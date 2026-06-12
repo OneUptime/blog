@@ -24,7 +24,7 @@ Pundit stands out for several reasons:
 | **Convention Over Configuration** | Automatic policy lookup based on model names |
 | **Explicit** | You see exactly what's happening, no magic |
 | **Testable** | Policies are regular Ruby classes, easy to unit test |
-| **Minimal Dependencies** | Single gem with no transitive dependencies |
+| **Minimal Dependencies** | Small gem with a minimal runtime dependency footprint |
 
 ---
 
@@ -163,7 +163,7 @@ class PostsController < ApplicationController
 
   def new
     @post = Post.new
-    # authorize with the class checks create? permission
+    # authorize checks new?, which delegates to create? in ApplicationPolicy
     authorize @post
   end
 
@@ -266,7 +266,7 @@ class ApplicationPolicy
     end
 
     def resolve
-      raise NotImplementedError, "You must define #resolve in #{self.class}"
+      raise NoMethodError, "You must define #resolve in #{self.class}"
     end
   end
 end
@@ -293,7 +293,7 @@ First, set up roles on your User model:
 # app/models/user.rb
 class User < ApplicationRecord
   # Using an enum for roles
-  enum role: {
+  enum :role, {
     viewer: 0,
     author: 1,
     editor: 2,
@@ -632,8 +632,8 @@ RSpec.describe PostPolicy do
       expect(subject).to permit(author, published_post)
     end
 
-    it "grants access to admins" do
-      expect(subject).to permit(admin, published_post)
+    it "denies access to admins who are not the author" do
+      expect(subject).not_to permit(admin, published_post)
     end
   end
 
@@ -887,6 +887,8 @@ class TeamPolicy < ApplicationPolicy
 
   class Scope < ApplicationPolicy::Scope
     def resolve
+      return scope.none unless user
+
       # Users only see teams in their organization
       scope.where(organization_id: user.organization_id)
     end
