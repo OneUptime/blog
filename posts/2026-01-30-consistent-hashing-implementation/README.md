@@ -17,7 +17,7 @@ Consider a simple hash-based distribution where you assign keys to servers using
 | Servers | Key Movement on Add/Remove |
 |---------|---------------------------|
 | **Modulo hashing** | ~75% of keys move |
-| **Consistent hashing** | ~1/n keys move (only affected partition) |
+| **Consistent hashing** | ~1/n keys move when adding one node to n existing nodes (only affected partition) |
 
 ## How Consistent Hashing Works
 
@@ -25,7 +25,7 @@ Consistent hashing maps both keys and servers onto a circular ring using the sam
 
 ```mermaid
 flowchart LR
-    subgraph Ring["Hash Ring (0 to 2^32)"]
+    subgraph Ring["Hash Ring (0 to 2^32 - 1)"]
         direction TB
         A["Server A\n(position 1000)"]
         B["Server B\n(position 5000)"]
@@ -41,7 +41,7 @@ When Server B fails, only the keys between A and B need to move to C. The rest o
 
 ## Basic Implementation
 
-This implementation creates a hash ring using a sorted map. Keys are assigned to servers by finding the first server position greater than or equal to the key's hash. The modular arithmetic handles wraparound at the end of the ring.
+This implementation creates a hash ring using a sorted array plus a map from ring positions to nodes. Keys are assigned to servers by finding the first server position greater than or equal to the key's hash. The lookup handles wraparound at the end of the ring.
 
 ```javascript
 const crypto = require('crypto');
@@ -117,6 +117,21 @@ class ConsistentHash {
     const index = left === this.ring.length ? 0 : left;
     return this.nodeMap.get(this.ring[index]);
   }
+
+  getDistribution() {
+    const distribution = {};
+    for (const node of this.nodes) {
+      distribution[node] = 0;
+    }
+
+    for (let i = 0; i < 10000; i++) {
+      const key = `test-key-${i}`;
+      const node = this.getNode(key);
+      distribution[node]++;
+    }
+
+    return distribution;
+  }
 }
 
 // Usage
@@ -126,8 +141,8 @@ ch.addNode('server-2');
 ch.addNode('server-3');
 
 console.log(ch.getNode('user:42'));     // server-2
-console.log(ch.getNode('session:99'));  // server-1
-console.log(ch.getNode('order:123'));   // server-3
+console.log(ch.getNode('session:99'));  // server-2
+console.log(ch.getNode('order:123'));   // server-2
 ```
 
 ## The Problem with Basic Consistent Hashing
@@ -225,7 +240,7 @@ class ConsistentHashWithVNodes {
       distribution[node] = 0;
     }
 
-    // Sample 10000 random keys and count distribution
+    // Sample 10000 deterministic keys and count distribution
     for (let i = 0; i < 10000; i++) {
       const key = `test-key-${i}`;
       const node = this.getNode(key);
@@ -246,10 +261,10 @@ const vnodes = new ConsistentHashWithVNodes({ replicaCount: 150 });
 });
 
 console.log('Basic distribution:', basic.getDistribution());
-// { 'server-1': 4521, 'server-2': 1203, 'server-3': 4276 }
+// { 'server-1': 2710, 'server-2': 5294, 'server-3': 1996 }
 
 console.log('VNode distribution:', vnodes.getDistribution());
-// { 'server-1': 3342, 'server-2': 3298, 'server-3': 3360 }
+// { 'server-1': 3388, 'server-2': 3427, 'server-3': 3185 }
 ```
 
 With 150 virtual nodes per server, the distribution becomes nearly uniform, typically within 5% deviation from the ideal.
@@ -365,7 +380,7 @@ rch.addNode('server-4');
 rch.addNode('server-5');
 
 console.log(rch.getNodes('user:42'));
-// ['server-3', 'server-1', 'server-5']
+// ['server-2', 'server-4', 'server-3']
 // Data should be stored on all three for redundancy
 ```
 
@@ -395,9 +410,6 @@ class ConsistentHashCluster {
     if (this.nodes.has(node)) {
       return { keysToFetch: [] };
     }
-
-    // Take a snapshot of current ownership for affected keys
-    const affectedKeys = [];
 
     for (let i = 0; i < this.replicaCount; i++) {
       const position = this.hashVNode(node, i);
@@ -651,7 +663,7 @@ console.log(wch.getDistribution());
 
 ## Complete Production Implementation
 
-Here is a full implementation combining all the features: virtual nodes, replication, weighted nodes, and rebalancing support with proper error handling.
+Here is a full implementation combining all the features: virtual nodes, replication, weighted nodes, and rebalancing support with basic error handling.
 
 ```javascript
 const crypto = require('crypto');
@@ -723,9 +735,6 @@ class ProductionConsistentHash extends EventEmitter {
       throw new Error(`Node ${nodeId} not found`);
     }
 
-    // Calculate rebalancing before removal
-    const rebalanceOps = this.calculateRebalance('remove', nodeId);
-
     // Remove from ring
     for (const position of nodeInfo.positions) {
       const idx = this.ring.indexOf(position);
@@ -736,6 +745,9 @@ class ProductionConsistentHash extends EventEmitter {
     }
 
     this.nodes.delete(nodeId);
+
+    // Calculate rebalancing after removal so new owners exclude the removed node
+    const rebalanceOps = this.calculateRebalance('remove', nodeId);
 
     this.emit('nodeRemoved', { nodeId, rebalanceOps });
 
@@ -980,12 +992,12 @@ class DistributedCache {
 
 | Operation | Time Complexity | Notes |
 |-----------|----------------|-------|
-| **Add node** | O(R log N) | R = replicas, N = ring size |
-| **Remove node** | O(R log N) | Requires ring reconstruction |
+| **Add node** | O(N log N) | This array implementation appends R virtual nodes, then sorts the ring |
+| **Remove node** | O(R * N) | This implementation removes each virtual node from the array |
 | **Get node** | O(log N) | Binary search on sorted ring |
-| **Rebalance** | O(K/N) | K = total keys, only affected keys move |
+| **Rebalance calculation** | O(K) | The sample scans tracked keys to find affected ownership changes |
 
-For a cluster with 10 nodes and 150 virtual nodes each, the ring has 1500 entries. Lookups are fast at O(log 1500), and adding or removing a node only affects about 10% of keys.
+For a cluster with 10 nodes and 150 virtual nodes each, the ring has 1500 entries. Lookups are fast at O(log 1500), and adding one equally weighted node moves about 1/11 of primary key ownership; removing one of 10 equally weighted nodes moves about 1/10.
 
 ## Summary
 
