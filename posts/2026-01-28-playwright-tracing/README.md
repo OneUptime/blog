@@ -185,16 +185,22 @@ test('multi-step workflow', async ({ page, context }) => {
     }},
   ];
 
-  for (const step of steps) {
-    await context.tracing.start({ screenshots: true, snapshots: true });
+  await context.tracing.start({ screenshots: true, snapshots: true });
 
-    try {
-      await step.fn();
-    } finally {
-      await context.tracing.stop({
-        path: `traces/${step.name}-${Date.now()}.zip`,
-      });
+  try {
+    for (const step of steps) {
+      await context.tracing.startChunk({ title: step.name });
+
+      try {
+        await step.fn();
+      } finally {
+        await context.tracing.stopChunk({
+          path: `traces/${step.name}-${Date.now()}.zip`,
+        });
+      }
     }
+  } finally {
+    await context.tracing.stop();
   }
 });
 ```
@@ -316,10 +322,8 @@ Create a custom fixture that automatically captures traces on failure.
 ```typescript
 // fixtures/traceFixture.ts
 import { test as base } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
 
-export const test = base.extend({
+export const test = base.extend<{ autoTrace: void }>({
   // Auto-tracing fixture
   autoTrace: [async ({ context }, use, testInfo) => {
     // Start tracing
@@ -332,24 +336,20 @@ export const test = base.extend({
     // Run the test
     await use();
 
-    // Determine trace path based on test outcome
-    const tracePath = path.join(
-      'traces',
-      testInfo.status === 'passed' ? 'passed' : 'failed',
-      `${testInfo.titlePath.join('-').replace(/\s+/g, '-')}.zip`
-    );
+    if (testInfo.status !== testInfo.expectedStatus) {
+      // outputPath() guarantees a unique file name for this test result
+      const tracePath = testInfo.outputPath('trace.zip');
 
-    // Ensure directory exists
-    fs.mkdirSync(path.dirname(tracePath), { recursive: true });
-
-    // Stop tracing and save
-    await context.tracing.stop({ path: tracePath });
-
-    // Attach trace to test report
-    await testInfo.attach('trace', {
-      path: tracePath,
-      contentType: 'application/zip',
-    });
+      // Stop tracing, save, and attach to the report
+      await context.tracing.stop({ path: tracePath });
+      await testInfo.attach('trace', {
+        path: tracePath,
+        contentType: 'application/zip',
+      });
+    } else {
+      // Stop tracing without writing a file for expected outcomes
+      await context.tracing.stop();
+    }
   }, { auto: true }],
 });
 
@@ -363,7 +363,7 @@ import { test, expect } from '../fixtures/traceFixture';
 test('automatically traced test', async ({ page }) => {
   await page.goto('/dashboard');
   await expect(page.getByText('Welcome')).toBeVisible();
-  // Trace is automatically captured and saved
+  // Trace is automatically saved if the test fails
 });
 ```
 
@@ -490,19 +490,5 @@ Add to your CI pipeline:
 - name: Cleanup old traces
   run: npx ts-node scripts/cleanup-traces.ts
 ```
-
-## Trace Viewer Keyboard Shortcuts
-
-Navigate traces efficiently with keyboard shortcuts:
-
-| Shortcut | Action |
-|----------|--------|
-| `Arrow Left/Right` | Navigate between actions |
-| `Ctrl/Cmd + F` | Search in trace |
-| `Ctrl/Cmd + G` | Go to specific time |
-| `Space` | Play/pause timeline |
-| `Escape` | Close dialogs |
-
----
 
 Playwright tracing transforms debugging from guesswork into investigation. Instead of adding console.log statements and re-running tests, you get a complete recording of what happened. Screenshots show exactly what the user saw, network logs reveal API issues, and DOM snapshots let you inspect elements at any point in time. Enable tracing in CI, download traces from failed runs, and debug with confidence.
