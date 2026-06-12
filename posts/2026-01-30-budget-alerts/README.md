@@ -14,7 +14,7 @@ Cloud costs can spiral out of control quickly if left unmonitored. Budget alerts
 
 Without proper alerting, organizations often discover cost overruns only at the end of the billing cycle when it is too late to take corrective action. Budget alerts enable you to:
 
-- Detect anomalies in real time
+- Detect cost spikes early, subject to cloud billing data delays
 - Prevent bill shock at month end
 - Enable faster incident response for cost spikes
 - Maintain accountability across teams
@@ -239,6 +239,8 @@ resource "aws_budgets_budget" "monthly_cost_budget" {
     subscriber_email_addresses = ["finops-team@example.com", "engineering-leads@example.com"]
     subscriber_sns_topic_arns  = [aws_sns_topic.budget_alerts.arn]
   }
+
+  depends_on = [aws_sns_topic_policy.budget_alerts]
 }
 
 # SNS topic for programmatic alert handling
@@ -246,11 +248,46 @@ resource "aws_sns_topic" "budget_alerts" {
   name = "budget-alerts"
 }
 
+resource "aws_sns_topic_policy" "budget_alerts" {
+  arn = aws_sns_topic.budget_alerts.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSBudgetsSNSPublishingPermissions"
+        Effect = "Allow"
+        Principal = {
+          Service = "budgets.amazonaws.com"
+        }
+        Action   = "SNS:Publish"
+        Resource = aws_sns_topic.budget_alerts.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = "123456789012"
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:budgets::123456789012:*"
+          }
+        }
+      }
+    ]
+  })
+}
+
 # Optional: Lambda subscription for automated responses
 resource "aws_sns_topic_subscription" "budget_lambda" {
   topic_arn = aws_sns_topic.budget_alerts.arn
   protocol  = "lambda"
   endpoint  = aws_lambda_function.budget_handler.arn
+}
+
+resource "aws_lambda_permission" "allow_sns_budget_alerts" {
+  statement_id  = "AllowExecutionFromBudgetAlertsSNS"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.budget_handler.function_name
+  principal     = "sns.amazonaws.com"
+  source_arn    = aws_sns_topic.budget_alerts.arn
 }
 ```
 
@@ -353,10 +390,10 @@ resource "google_billing_budget" "monthly_budget" {
 
   # Optional: Filter by specific projects, services, or labels
   budget_filter {
-    projects = ["projects/my-project-id"]
+    projects = ["projects/123456789012"]
 
     # Uncomment to filter by specific services
-    # services = ["services/24E6-581D-38E5"]  # Compute Engine service ID
+    # services = ["services/24E6-581D-38E5"]  # BigQuery service ID
 
     # Uncomment to filter by labels
     # labels = {
@@ -466,6 +503,7 @@ Setting up alerts is only half the battle. Here is how to create automated respo
 import json
 import boto3
 import os
+import re
 from datetime import datetime
 
 # Initialize AWS clients
@@ -480,7 +518,7 @@ def lambda_handler(event, context):
 
     # Parse the SNS message containing budget alert details
     for record in event['Records']:
-        sns_message = json.loads(record['Sns']['Message'])
+        sns_message = parse_budget_message(record['Sns']['Message'])
 
         # Extract budget alert information
         budget_name = sns_message.get('budgetName', 'Unknown')
@@ -508,13 +546,13 @@ def lambda_handler(event, context):
         if severity == 'CRITICAL':
             # Send to PagerDuty or on-call team
             send_pagerduty_alert(budget_name, actual_spend, budgeted_amount, threshold)
-            send_slack_alert(budget_name, actual_spend, budgeted_amount, threshold, '#finops-critical')
+            send_slack_alert(budget_name, actual_spend, budgeted_amount, threshold)
         elif severity == 'WARNING':
             # Send to Slack channel
-            send_slack_alert(budget_name, actual_spend, budgeted_amount, threshold, '#finops-alerts')
+            send_slack_alert(budget_name, actual_spend, budgeted_amount, threshold)
         else:
             # Log for awareness
-            send_slack_alert(budget_name, actual_spend, budgeted_amount, threshold, '#finops-info')
+            send_slack_alert(budget_name, actual_spend, budgeted_amount, threshold)
 
     return {
         'statusCode': 200,
@@ -532,7 +570,40 @@ def determine_severity(threshold):
     else:
         return 'INFO'
 
-def send_slack_alert(budget_name, actual_spend, budgeted_amount, threshold, channel):
+def parse_budget_message(message):
+    """
+    Parse the plain text message AWS Budgets publishes to SNS.
+    """
+    fields = {}
+
+    for line in message.splitlines():
+        if ':' in line:
+            key, value = line.split(':', 1)
+            normalized_key = key.strip().lower().replace(' ', '_')
+            fields[normalized_key] = value.strip()
+
+    threshold_value = fields.get('alert_threshold', '0')
+    threshold_match = re.search(r'([0-9]+(?:\.[0-9]+)?)', threshold_value)
+
+    actual_amount = fields.get('actual_amount') or fields.get('forecasted_amount') or '$0'
+    budgeted_amount = fields.get('budgeted_amount', '$0')
+
+    return {
+        'budgetName': fields.get('budget_name', 'Unknown'),
+        'notificationType': fields.get('alert_type', 'ACTUAL'),
+        'threshold': float(threshold_match.group(1)) if threshold_match else 0,
+        'actualSpend': {'amount': parse_currency(actual_amount)},
+        'budgetedAmount': {'amount': parse_currency(budgeted_amount)}
+    }
+
+def parse_currency(value):
+    """
+    Convert AWS Budgets currency strings like "$1,000.00" to a numeric string.
+    """
+    amount_match = re.search(r'([0-9,]+(?:\.[0-9]+)?)', value)
+    return amount_match.group(1).replace(',', '') if amount_match else '0'
+
+def send_slack_alert(budget_name, actual_spend, budgeted_amount, threshold):
     """
     Send formatted alert to Slack channel via webhook.
     """
@@ -545,9 +616,7 @@ def send_slack_alert(budget_name, actual_spend, budgeted_amount, threshold, chan
 
     # Format the Slack message with budget details
     message = {
-        "channel": channel,
-        "username": "Budget Alert Bot",
-        "icon_emoji": ":money_with_wings:",
+        "text": f"Budget Alert: {budget_name} exceeded {threshold}% threshold",
         "attachments": [
             {
                 "color": "#FF0000" if threshold >= 90 else "#FFA500" if threshold >= 75 else "#36A64F",
@@ -572,7 +641,7 @@ def send_slack_alert(budget_name, actual_spend, budgeted_amount, threshold, chan
 
     try:
         urllib.request.urlopen(req)
-        print(f"Slack alert sent to {channel}")
+        print("Slack alert sent")
     except Exception as e:
         print(f"Failed to send Slack alert: {e}")
 
