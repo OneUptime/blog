@@ -296,6 +296,7 @@ module Orders
 
       success(@order.reload)
     rescue InventoryError => e
+      release_inventory
       failure("Some items are no longer available: #{e.message}")
     rescue PaymentError => e
       release_inventory
@@ -397,8 +398,8 @@ Sometimes you need hooks for logging, metrics, or notifications. Here is a patte
 module ServiceCallbacks
   extend ActiveSupport::Concern
 
-  included do
-    # Store callback blocks at the class level
+  prepended do
+    # Store callback method names at the class level
     class_attribute :before_callbacks, default: []
     class_attribute :after_callbacks, default: []
   end
@@ -449,7 +450,7 @@ Using callbacks in a service:
 # Generates reports with timing metrics and notification callbacks.
 module Reports
   class GenerationService < ApplicationService
-    include ServiceCallbacks
+    prepend ServiceCallbacks
 
     before_call :log_start
     before_call :record_start_time
