@@ -73,7 +73,7 @@ In this diagram, `Write X=1 -> Read X` (through message passing), but `Write Y=2
 
 ## Vector Clocks: Tracking Causality
 
-Lamport timestamps give you a total order but lose concurrency information. Vector clocks preserve the full happens-before relationship by maintaining a counter for each process.
+Lamport timestamps can be extended to a total order by breaking ties with process IDs, but they lose concurrency information. Vector clocks preserve the full happens-before relationship by maintaining a counter for each process.
 
 ### How Vector Clocks Work
 
@@ -107,6 +107,15 @@ class VectorClock {
       this.clock.set(nodeId, Math.max(current, timestamp));
     }
     return this.tick(); // Increment after merge
+  }
+
+  // Observe another clock without creating a new local event
+  update(other: VectorClock): VectorClock {
+    for (const [nodeId, timestamp] of other.clock) {
+      const current = this.clock.get(nodeId) || 0;
+      this.clock.set(nodeId, Math.max(current, timestamp));
+    }
+    return this;
   }
 
   // Compare two vector clocks
@@ -219,9 +228,9 @@ class CausalDeliveryBuffer<T> {
           // Remove from buffer
           this.buffer.splice(i, 1);
 
-          // Merge clock and deliver
+          // Record delivered dependencies and deliver
           const msgClock = VectorClock.fromJSON(this.nodeId, msg.vectorClock);
-          this.clock.merge(msgClock);
+          this.clock.update(msgClock);
 
           this.onDeliver(msg);
           delivered = true;
@@ -284,6 +293,13 @@ Causal consistency at the system level is powerful, but users interact through s
 A client always sees its own writes. If I write X=5, my next read of X returns 5 (or a later value).
 
 ```typescript
+interface Replica {
+  write(key: string, value: any, sessionClock: Record<string, number>): Promise<{ clock: Record<string, number> }>;
+  read(key: string, minClock?: Record<string, number>): Promise<{ value: any; clock: Record<string, number> }>;
+}
+
+class StaleReadError extends Error {}
+
 class SessionClient {
   private sessionClock: VectorClock;
   private clientId: string;
@@ -298,7 +314,7 @@ class SessionClient {
     const result = await replica.write(key, value, this.sessionClock.toJSON());
 
     // Update session clock with server's response
-    this.sessionClock.merge(VectorClock.fromJSON(this.clientId, result.clock));
+    this.sessionClock.update(VectorClock.fromJSON(this.clientId, result.clock));
   }
 
   async read(key: string, replica: Replica): Promise<any> {
@@ -313,7 +329,7 @@ class SessionClient {
       throw new StaleReadError('Replica has not yet received our writes');
     }
 
-    this.sessionClock.merge(resultClock);
+    this.sessionClock.update(resultClock);
     return result.value;
   }
 }
@@ -392,7 +408,7 @@ Consider building a collaborative editor where multiple users edit the same docu
 
 1. If Alice types "Hello" and then ", world", everyone sees "Hello, world" (not "world, Hello")
 2. If Bob sees Alice's edit and responds, everyone who sees Bob's response sees Alice's edit first
-3. Independent edits (Alice on paragraph 1, Bob on paragraph 2) can be applied in any order
+3. Independent edits (Alice on paragraph 1, Bob on paragraph 2) can be delivered in any order, but production editors still need OT or CRDT logic to resolve concurrent position changes
 
 ```typescript
 interface DocumentOperation {
@@ -453,7 +469,7 @@ class CausalDocument {
       const ourTimestamp = this.clock['clock'].get(nodeId) || 0;
 
       if (nodeId === op.userId) {
-        if (timestamp > ourTimestamp + 1) return false;
+        if (timestamp !== ourTimestamp + 1) return false;
       } else {
         if (timestamp > ourTimestamp) return false;
       }
@@ -476,7 +492,7 @@ class CausalDocument {
 
     // Update clock
     const opClock = VectorClock.fromJSON(this.nodeId, op.clock);
-    this.clock.merge(opClock);
+    this.clock.update(opClock);
     this.appliedOps.add(op.operationId);
   }
 
@@ -516,6 +532,7 @@ class CausalShoppingCart {
   private clock: VectorClock;
   private userId: string;
   private opLog: CartOperation[] = [];
+  private pendingOps: CartOperation[] = [];
 
   constructor(userId: string) {
     this.userId = userId;
@@ -554,6 +571,10 @@ class CausalShoppingCart {
   }
 
   private applyOp(op: CartOperation): void {
+    if (this.opLog.find(existing => existing.opId === op.opId)) {
+      return;
+    }
+
     switch (op.type) {
       case 'add':
         const current = this.items.get(op.productId) || 0;
@@ -570,17 +591,51 @@ class CausalShoppingCart {
     }
 
     this.opLog.push(op);
+    this.clock.update(VectorClock.fromJSON(this.userId, op.clock));
   }
 
   // Merge with another cart (from sync)
   merge(otherOps: CartOperation[]): void {
     for (const op of otherOps) {
-      const opClock = VectorClock.fromJSON(this.userId, op.clock);
+      if (this.opLog.find(existing => existing.opId === op.opId)) {
+        continue;
+      }
 
-      // Only apply if this operation is new to us
-      if (!this.opLog.find(o => o.opId === op.opId)) {
-        this.clock.merge(opClock);
+      if (this.canApply(op)) {
         this.applyOp(op);
+        this.tryApplyPending();
+      } else {
+        this.pendingOps.push(op);
+      }
+    }
+  }
+
+  private canApply(op: CartOperation): boolean {
+    for (const [nodeId, timestamp] of Object.entries(op.clock)) {
+      const ourTimestamp = this.clock['clock'].get(nodeId) || 0;
+
+      if (nodeId === op.userId) {
+        if (timestamp !== ourTimestamp + 1) return false;
+      } else {
+        if (timestamp > ourTimestamp) return false;
+      }
+    }
+
+    return true;
+  }
+
+  private tryApplyPending(): void {
+    let applied = true;
+    while (applied) {
+      applied = false;
+      for (let i = 0; i < this.pendingOps.length; i++) {
+        const op = this.pendingOps[i];
+        if (this.canApply(op)) {
+          this.pendingOps.splice(i, 1);
+          this.applyOp(op);
+          applied = true;
+          break;
+        }
       }
     }
   }
@@ -614,7 +669,7 @@ graph TD
 |-------------------|--------------|---------|--------------|----------|
 | Eventual | Highest | Lowest | None | Metrics, analytics |
 | Causal | High | Low | Metadata only | Social feeds, collaboration |
-| Sequential | Medium | Medium | Partial | Bank transfers, ordering |
+| Sequential | Medium | Medium | Total order, but not real-time order | Ordered logs, deterministic replay |
 | Linearizable | Lower | Higher | Full consensus | Leader election, locks |
 
 ### When to Use Causal Consistency
