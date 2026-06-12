@@ -12,15 +12,15 @@ Description: A complete guide to configuring social login providers in Keycloak,
 
 ## Understanding Identity Providers in Keycloak
 
-Keycloak treats external authentication sources as Identity Providers (IdPs). When a user clicks "Login with Google," Keycloak redirects them to Google, receives an authentication token, and either creates a new local user or links to an existing one.
+Keycloak treats external authentication sources as Identity Providers (IdPs). When a user clicks "Login with Google," Keycloak redirects them to Google, receives an authorization response, exchanges it for tokens, and either creates a new local user or links to an existing one.
 
 The flow looks like this:
 
 1. User clicks social login button
 2. Keycloak redirects to the external provider
 3. User authenticates with the provider
-4. Provider redirects back to Keycloak with tokens
-5. Keycloak validates tokens and extracts user attributes
+4. Provider redirects back to Keycloak with an authorization response
+5. Keycloak exchanges the response for tokens, validates them, and extracts user attributes
 6. Keycloak creates or links a local user account
 7. User receives a Keycloak session
 
@@ -207,22 +207,23 @@ trust-email: false                     # Facebook emails may not be verified
 For production use, submit your app for Facebook review:
 
 ```bash
-# Required for production:
+# Required before making the app public:
 # 1. Privacy Policy URL
 # 2. Terms of Service URL
 # 3. App Icon
-# 4. Business Verification (for some permissions)
+# 4. Business Verification or App Review (for additional permissions)
 
-# Until approved, only test users can authenticate
+# For email and public_profile, production use usually requires
+# switching the app out of development mode rather than App Review.
 ```
 
 ## Configuring Account Linking
 
 Account linking allows users with existing accounts to connect their social identities. This prevents duplicate accounts when users sign up with email first, then try social login later.
 
-### Automatic Linking by Email
+### Linking by Email
 
-Configure Keycloak to automatically link accounts with matching email addresses:
+Configure Keycloak's first broker login flow to handle accounts with matching email addresses:
 
 ```yaml
 # Navigate to: Identity Providers > [Provider] > Advanced Settings
@@ -234,8 +235,8 @@ first-broker-login-flow-alias: first broker login
 # This flow controls what happens on first social login
 
 # Default behavior:
-# 1. If email exists and is verified, prompt to link accounts
-# 2. If email does not exist, create new account
+# 1. If the same email or username exists, prompt to link accounts
+# 2. If no matching account exists, create a new account
 ```
 
 ### Custom Linking Flow
@@ -253,8 +254,8 @@ Create a custom first broker login flow for more control:
 #    - Lets user review/edit profile from social provider
 # 2. Create User If Unique (ALTERNATIVE)
 #    - Creates user if email is not taken
-# 3. Automatically Link Brokered Account (ALTERNATIVE)
-#    - Links if email matches and is verified
+# 3. Handle Existing Account subflow
+#    - Confirms linking by email or re-authentication
 # 4. Confirm Link Existing Account (ALTERNATIVE)
 #    - Prompts user to confirm linking
 
@@ -264,18 +265,16 @@ Create a custom first broker login flow for more control:
 
 ### Handling Conflicts
 
-When a user tries to link an already-linked account:
+When a user tries to link an identity that is already linked to another account:
 
 ```yaml
 # Configure in: Authentication > Flows > first broker login
 
-# Add execution: Handle Existing Account
+# Add execution: Confirm Override Existing Link
 # Requirement: REQUIRED
 
-# Options:
-# - fail: Block the login attempt
-# - overwrite: Replace the existing link
-# - confirm: Ask user what to do
+# This detects the existing broker link and displays a confirmation page
+# before overriding it.
 ```
 
 ## Customizing First Login Flow
@@ -460,11 +459,11 @@ Here is a full realm export showing social login configuration:
     {
       "name": "google-profile-picture",
       "identityProviderAlias": "google",
-      "identityProviderMapper": "hardcoded-attribute-idp-mapper",
+      "identityProviderMapper": "google-user-attribute-mapper",
       "config": {
         "syncMode": "INHERIT",
-        "attribute": "picture",
-        "attribute.value": "profilePictureUrl"
+        "jsonField": "picture",
+        "userAttribute": "profilePictureUrl"
       }
     },
     {
