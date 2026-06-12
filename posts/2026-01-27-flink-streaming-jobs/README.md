@@ -91,6 +91,13 @@ Add Flink dependencies to your Maven project:
         <artifactId>flink-json</artifactId>
         <version>${flink.version}</version>
     </dependency>
+
+    <!-- Dropwizard metrics integration for histograms/meters -->
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>flink-metrics-dropwizard</artifactId>
+        <version>${flink.version}</version>
+    </dependency>
 </dependencies>
 ```
 
@@ -103,6 +110,7 @@ dependencies {
     compileOnly "org.apache.flink:flink-clients:1.18.0"
     implementation "org.apache.flink:flink-connector-kafka:3.0.0-1.18"
     implementation "org.apache.flink:flink-json:1.18.0"
+    implementation "org.apache.flink:flink-metrics-dropwizard:1.18.0"
 }
 ```
 
@@ -157,6 +165,7 @@ import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 
 public class KafkaSourceExample {
     public static void main(String[] args) throws Exception {
@@ -169,7 +178,7 @@ public class KafkaSourceExample {
             .setGroupId("flink-consumer-group")
             // Start from committed offsets, fall back to earliest
             .setStartingOffsets(OffsetsInitializer.committedOffsets(
-                OffsetsInitializer.OffsetsInitializerReset.EARLIEST))
+                OffsetResetStrategy.EARLIEST))
             .setValueOnlyDeserializer(new SimpleStringSchema())
             .build();
 
@@ -232,6 +241,7 @@ public class KafkaSinkExample {
 
 ```java
 import org.apache.flink.connector.file.sink.FileSink;
+import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.api.common.serialization.SimpleStringEncoder;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.DefaultRollingPolicy;
@@ -245,7 +255,7 @@ FileSink<String> fileSink = FileSink
             // Roll file after 15 minutes
             .withRolloverInterval(Duration.ofMinutes(15))
             // Or when file reaches 1GB
-            .withMaxPartSize(1024 * 1024 * 1024)
+            .withMaxPartSize(MemorySize.ofMebiBytes(1024))
             .build()
     )
     .build();
@@ -573,7 +583,8 @@ public class StatefulProcessor extends KeyedProcessFunction<String, Event, Alert
         // Update state
         lastEventTime.update(event.getTimestamp());
         recentEvents.add(event);
-        counters.put(event.getType(), counters.get(event.getType()) + 1);
+        Integer currentCount = counters.get(event.getType());
+        counters.put(event.getType(), currentCount == null ? 1 : currentCount + 1);
         sum.add(event.getValue());
 
         // Detect anomaly based on state
@@ -609,7 +620,7 @@ descriptor.enableTimeToLive(ttlConfig);
 Checkpoints enable exactly-once processing and recovery.
 
 ```java
-import org.apache.flink.streaming.api.CheckpointingMode;
+import org.apache.flink.core.execution.CheckpointingMode;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 
 StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -621,7 +632,7 @@ env.enableCheckpointing(60000);
 CheckpointConfig config = env.getCheckpointConfig();
 
 // Exactly-once guarantees - all operators see consistent state
-config.setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
+config.setCheckpointingConsistencyMode(CheckpointingMode.EXACTLY_ONCE);
 
 // Minimum time between checkpoints (prevents checkpoint storms)
 config.setMinPauseBetweenCheckpoints(30000);
@@ -909,6 +920,13 @@ EOF
 
 ```java
 // Example: Adding custom metrics
+import com.codahale.metrics.SlidingWindowReservoir;
+import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.dropwizard.metrics.DropwizardHistogramWrapper;
+import org.apache.flink.metrics.Counter;
+import org.apache.flink.metrics.Histogram;
+
 public class MetricProcessor extends RichMapFunction<Event, Event> {
     private transient Counter processedCounter;
     private transient Histogram processingTime;
@@ -919,9 +937,12 @@ public class MetricProcessor extends RichMapFunction<Event, Event> {
             .getMetricGroup()
             .counter("processed_events");
 
+        com.codahale.metrics.Histogram dropwizardHistogram =
+            new com.codahale.metrics.Histogram(new SlidingWindowReservoir(1000));
+
         processingTime = getRuntimeContext()
             .getMetricGroup()
-            .histogram("processing_time_ms", new DescriptiveStatisticsHistogram(1000));
+            .histogram("processing_time_ms", new DropwizardHistogramWrapper(dropwizardHistogram));
     }
 
     @Override
