@@ -34,11 +34,11 @@ Before deploying rules, validate them locally:
 
 falco --validate /path/to/rules.yaml
 
-# Validate with verbose output
+# Short form of --validate
 falco -V /path/to/rules.yaml
 
-# Validate custom rules against default rules
-falco --validate /etc/falco/falco_rules.yaml -r /path/to/custom_rules.yaml
+# Validate multiple rule files (repeat the flag)
+falco --validate /etc/falco/falco_rules.yaml --validate /path/to/custom_rules.yaml
 ```
 
 Common syntax errors:
@@ -67,13 +67,13 @@ Find the correct field names for your conditions:
 
 ```bash
 # List all available fields
-falco --list=fields
+falco --list
 
-# List fields for a specific source
-falco --list=fields --list-source-fields=syscall
+# List fields for a specific source (e.g., syscall)
+falco --list=syscall
 
 # Search for specific fields
-falco --list=fields | grep container
+falco --list | grep container
 ```
 
 Key field categories:
@@ -193,9 +193,9 @@ log_level: debug
 stdout_output:
   enabled: true
 
-# Enable rule tracing for specific rules
-rules_debug:
-  enabled: true
+# Increase log verbosity to see rule loading details
+log_stderr: true
+log_syslog: false
 ```
 
 ## Debugging False Positives
@@ -225,20 +225,24 @@ kubectl logs -n falco -l app.kubernetes.io/name=falco --since=1h | \
   output: "Shell in container"
   priority: WARNING
 
-# Add exception for known good behavior
+# Add exception for known good behavior (Falco 0.37+ override syntax)
 - rule: Terminal shell in container
-  append: true
+  override:
+    condition: append
   condition: and not (container.image.repository = "mycompany/admin-tools")
 
 # More specific exception
 - rule: Terminal shell in container
-  append: true
+  override:
+    condition: append
   condition: >
     and not (
       container.image.repository = "mycompany/admin-tools" or
       (container.name startswith "debug-" and user.name = "admin")
     )
 ```
+
+> Note: The older `append: true` syntax is deprecated since Falco 0.37 and slated for removal in Falco 1.0. Use the `override` mechanism above instead.
 
 ### Use Exception Lists
 
@@ -252,7 +256,8 @@ kubectl logs -n falco -l app.kubernetes.io/name=falco --since=1h | \
 
 # Use in rule exception
 - rule: Terminal shell in container
-  append: true
+  override:
+    condition: append
   condition: >
     and not (
       container.name in (allowed_shell_containers) or
@@ -359,8 +364,8 @@ kubectl describe pod -n falco -l app.kubernetes.io/name=falco
 # Stream Falco logs
 kubectl logs -n falco -l app.kubernetes.io/name=falco -f
 
-# Check driver status
-kubectl exec -n falco -it $(kubectl get pod -n falco -l app.kubernetes.io/name=falco -o jsonpath='{.items[0].metadata.name}') -- falco-driver-loader status
+# Check Falco driver/version info from inside the pod
+kubectl exec -n falco -it $(kubectl get pod -n falco -l app.kubernetes.io/name=falco -o jsonpath='{.items[0].metadata.name}') -- falco --version
 
 # Validate rules inside container
 kubectl exec -n falco -it $(kubectl get pod -n falco -l app.kubernetes.io/name=falco -o jsonpath='{.items[0].metadata.name}') -- falco --validate /etc/falco/falco_rules.yaml
