@@ -131,7 +131,6 @@ Noise is the enemy of effective alerting. A noisy alert trains engineers to igno
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import List, Dict
-import json
 
 @dataclass
 class Alert:
@@ -187,8 +186,11 @@ def calculate_noise_score(alerts: List[Alert]) -> float:
 def analyze_alerts(alerts: List[Alert], period_days: int = 30) -> List[NoiseReport]:
     """Group alerts by name and calculate noise metrics."""
     grouped: Dict[str, List[Alert]] = {}
+    cutoff = datetime.now() - timedelta(days=period_days)
 
     for alert in alerts:
+        if alert.fired_at < cutoff:
+            continue
         if alert.name not in grouped:
             grouped[alert.name] = []
         grouped[alert.name].append(alert)
@@ -284,7 +286,6 @@ Not all alerts are equal. Score each alert to prioritize review efforts.
 ```python
 # effectiveness_scorer.py
 from dataclasses import dataclass
-from typing import Optional
 from enum import Enum
 
 class AlertTier(Enum):
@@ -307,12 +308,10 @@ def calculate_effectiveness(
     fires_last_30_days: int,
     true_positives: int,
     false_positives: int,
-    mean_time_to_ack_minutes: float,
     has_runbook: bool,
     runbook_last_updated_days: int,
     has_owner: bool,
     linked_to_slo: bool,
-    led_to_incident: int,
     led_to_action: int
 ) -> AlertEffectivenessScore:
     """
@@ -425,12 +424,10 @@ if __name__ == "__main__":
         fires_last_30_days=8,
         true_positives=7,
         false_positives=1,
-        mean_time_to_ack_minutes=3.5,
         has_runbook=True,
         runbook_last_updated_days=45,
         has_owner=True,
         linked_to_slo=True,
-        led_to_incident=5,
         led_to_action=7
     )
     print_effectiveness_report(score)
@@ -554,6 +551,18 @@ class ShiftFeedback:
 
 def aggregate_feedback(feedback_list: List[ShiftFeedback]) -> Dict:
     """Aggregate feedback from multiple shifts into actionable insights."""
+    if not feedback_list:
+        return {
+            "summary": {
+                "total_shifts_reviewed": 0,
+                "avg_overall_rating": 0,
+                "avg_runbook_rating": 0,
+                "escalation_rate": 0,
+            },
+            "top_noisy_alerts": [],
+            "improvement_themes": [],
+            "missing_alert_reports": [],
+        }
 
     # Calculate averages
     overall_ratings = [f.overall_rating for f in feedback_list]
@@ -701,13 +710,13 @@ alerts:
 ```python
 # ownership_audit.py
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Optional
-import yaml
 
 @dataclass
 class AlertOwnership:
     name: str
+    tier: str
     primary_team: str
     primary_contact: Optional[str]
     has_escalation_path: bool
@@ -766,7 +775,7 @@ def audit_ownership(alerts: List[AlertOwnership]) -> List[OwnershipAuditResult]:
                 severity = "warning"
 
         # Check SLO alignment for critical alerts
-        if not alert.slo_linked:
+        if alert.tier == "critical" and not alert.slo_linked:
             issues.append("Not linked to SLO")
 
         if issues:
@@ -848,7 +857,7 @@ flowchart TD
 ```python
 # deprecation_workflow.py
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional, List
 
@@ -920,8 +929,8 @@ def soft_deprecate(alert_name: str, silence_days: int = 14) -> dict:
         "action": "silence",
         "alert": alert_name,
         "duration_days": silence_days,
-        "rollback_command": f"oneuptime alerts unsilence {alert_name}",
-        "removal_date": datetime.now().isoformat(),
+        "rollback_action": "Remove the silence in your alerting platform",
+        "removal_date": (datetime.now() + timedelta(days=silence_days)).isoformat(),
         "note": "Silenced for deprecation review period"
     }
 
@@ -935,7 +944,7 @@ def hard_deprecate(alert_name: str, archive: bool = True) -> dict:
         "alert": alert_name,
         "archive": archive,
         "archive_location": f"/alerts/archive/{alert_name}.yaml" if archive else None,
-        "restore_command": f"oneuptime alerts restore {alert_name}" if archive else None
+        "restore_action": "Restore the archived alert definition" if archive else None
     }
 
 # Example deprecation policy
@@ -975,19 +984,19 @@ review:
 
   pre_meeting:
     - task: "Generate noise report"
-      script: "python noise_detector.py --days 30"
+      helper: "noise_detector.py"
       output: "noise_report.md"
 
     - task: "Calculate effectiveness scores"
-      script: "python effectiveness_scorer.py --all"
+      helper: "effectiveness_scorer.py"
       output: "effectiveness_scores.csv"
 
     - task: "Aggregate feedback"
-      script: "python feedback_aggregator.py"
+      helper: "feedback_aggregator.py"
       output: "feedback_summary.md"
 
     - task: "Run ownership audit"
-      script: "python ownership_audit.py"
+      helper: "ownership_audit.py"
       output: "ownership_audit.md"
 
   meeting_agenda:
@@ -1049,13 +1058,13 @@ review:
 
 ## Integration with OneUptime
 
-OneUptime provides built-in support for alert review workflows:
+OneUptime can support alert review workflows through its alert, dashboard, runbook, workflow, and CLI features:
 
-1. **Alert Analytics Dashboard**: View fire counts, acknowledgment rates, and noise scores
-2. **Ownership Registry**: Track alert owners and review schedules
-3. **Runbook Integration**: Link runbooks directly to alerts
-4. **Feedback Collection**: Collect post-incident and post-shift feedback
-5. **Deprecation Workflow**: Propose, approve, silence, and remove alerts
+1. **Alert Dashboards**: View alert lists and telemetry context in dashboards
+2. **Alert Resource Management**: List, update, count, and delete alert resources through the CLI or API
+3. **Runbook Integration**: Attach runbooks to alerts with runbook rules
+4. **Workflow Automation**: Trigger workflows when alerts are opened, updated, or deleted
+5. **Integrations**: Ingest alerts from tools such as Grafana, Prometheus Alertmanager, Datadog, and PagerDuty
 
 ---
 
