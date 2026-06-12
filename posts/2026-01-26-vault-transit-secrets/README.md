@@ -75,7 +75,7 @@ vault write -f transit/keys/user-data
 
 # Create a key for encrypting payment information
 # Explicitly specify the key type
-vault write transit/keys/payment-data type=aes256-gcm256
+vault write transit/keys/payment-data type=aes256-gcm96
 
 # Create an RSA key for signing operations
 vault write transit/keys/signing-key type=rsa-4096
@@ -83,7 +83,7 @@ vault write transit/keys/signing-key type=rsa-4096
 # Create a key that supports convergent encryption
 # Same plaintext + context always produces same ciphertext
 vault write transit/keys/deterministic-key \
-    type=aes256-gcm256 \
+    type=aes256-gcm96 \
     convergent_encryption=true \
     derived=true
 ```
@@ -132,7 +132,6 @@ vault write transit/encrypt/user-data plaintext=$PLAINTEXT
 # Key           Value
 # ---           -----
 # ciphertext    vault:v1:8SDd3WHDOjf7mq69CyCqy...
-# key_version   1
 ```
 
 ### Decrypting Data
@@ -210,7 +209,6 @@ vault write transit/rewrap/user-data \
 # Key          Value
 # ---          -----
 # ciphertext   vault:v3:Jk2x9...
-# key_version  3
 ```
 
 ```mermaid
@@ -561,7 +559,7 @@ Here's a Go implementation using the official Vault client:
 
 ```go
 // vault_transit.go
-package vault
+package main
 
 import (
     "context"
@@ -888,10 +886,7 @@ path "transit/encrypt/payment-data" {
   capabilities = ["update"]
 }
 
-# Deny all other transit operations
-path "transit/*" {
-  capabilities = ["deny"]
-}
+# Vault denies access by default, so no catch-all deny rule is needed.
 ```
 
 ```hcl
@@ -1148,7 +1143,7 @@ Implement a background process to rotate keys and rewrap data:
 ```python
 # key_rotation.py
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Tuple
 from vault_transit import VaultTransit
 
@@ -1177,9 +1172,9 @@ class KeyRotationManager:
 
         # Get creation time of latest version
         keys = key_info["keys"]
-        latest_key = keys[str(latest_version)]
-        creation_time = datetime.fromisoformat(
-            latest_key["creation_time"].replace("Z", "+00:00")
+        creation_time = datetime.fromtimestamp(
+            int(keys[str(latest_version)]),
+            tz=timezone.utc
         )
 
         age = datetime.now(creation_time.tzinfo) - creation_time
