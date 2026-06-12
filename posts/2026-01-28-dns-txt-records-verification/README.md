@@ -104,28 +104,27 @@ google._domainkey.example.com.  TXT  "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEF
 
 ### DMARC (Domain-based Message Authentication)
 
-DMARC ties SPF and DKIM together and specifies what to do with failures:
+DMARC ties SPF and DKIM together and specifies what to do when neither check passes with alignment to the From domain:
 
 ```text
 # DMARC record
-_dmarc.example.com.  TXT  "v=DMARC1; p=reject; rua=mailto:dmarc@example.com; pct=100"
+_dmarc.example.com.  TXT  "v=DMARC1; p=reject; rua=mailto:dmarc@example.com"
 
 # Breakdown:
-# p=reject      - Policy: reject failing emails
+# p=reject      - Policy: request rejection of failing emails
 # rua=mailto:   - Send aggregate reports here
-# pct=100       - Apply to 100% of emails
 ```
 
 ```mermaid
 flowchart TD
-    A[Incoming Email] --> B{SPF Check}
-    B -->|Pass| C{DKIM Check}
-    B -->|Fail| D{DMARC Policy}
-    C -->|Pass| E[Deliver]
-    C -->|Fail| D
+    A[Incoming Email] --> B{SPF passes and aligns?}
+    B -->|Yes| E[DMARC Pass]
+    B -->|No| C{DKIM passes and aligns?}
+    C -->|Yes| E
+    C -->|No| D{DMARC Policy}
     D -->|p=none| F[Deliver + Report]
     D -->|p=quarantine| G[Spam Folder]
-    D -->|p=reject| H[Reject]
+    D -->|p=reject| H[Reject or quarantine]
 ```
 
 ---
@@ -159,7 +158,7 @@ class DomainVerifier {
       const records = await dns.resolveTxt(domain);
 
       // records is an array of arrays (each TXT record can have multiple strings)
-      const allRecords = records.flat();
+      const allRecords = records.map(chunks => chunks.join(''));
 
       // Check if any TXT record matches our token
       const verified = allRecords.some(record =>
@@ -311,6 +310,8 @@ Best practices for handling propagation:
 
 ```javascript
 // verification-with-propagation.js
+const { Resolver } = require('dns').promises;
+
 class RobustVerifier {
   constructor(options = {}) {
     this.maxAttempts = options.maxAttempts || 10;
@@ -363,6 +364,13 @@ class RobustVerifier {
     return { verified: false };
   }
 
+  async queryServer(domain, server) {
+    const resolver = new Resolver();
+    resolver.setServers([server]);
+    const records = await resolver.resolveTxt(domain);
+    return records.map(chunks => chunks.join(''));
+  }
+
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
@@ -382,7 +390,7 @@ Don't use predictable tokens that could be guessed:
 const token = `verify-${domain}`;
 
 // Good - includes randomness and is signed
-const token = crypto
+const secureToken = crypto
   .createHmac('sha256', process.env.SECRET_KEY)
   .update(`${domain}:${userId}:${crypto.randomBytes(16).toString('hex')}`)
   .digest('hex');
@@ -433,6 +441,7 @@ Watch out for subdomain attacks:
 async function verifyExactDomain(domain, token) {
   // Query the exact domain, not subdomains
   const records = await dns.resolveTxt(domain);
+  const txtValues = records.map(chunks => chunks.join(''));
 
   // Also verify no CNAME redirects
   try {
@@ -443,7 +452,7 @@ async function verifyExactDomain(domain, token) {
     // No CNAME, good
   }
 
-  return records.flat().includes(token);
+  return txtValues.includes(token);
 }
 ```
 
@@ -475,7 +484,7 @@ Common issues:
 | Problem | Symptom | Solution |
 |---------|---------|----------|
 | Quotes in record | Record appears wrong | Remove extra quotes when adding |
-| Record too long | Verification fails | Split into multiple strings (255 char limit per string) |
+| Record too long | Verification fails | Split one TXT record into multiple strings (255-octet limit per string) |
 | Propagation delay | Works from some locations | Wait for TTL to expire globally |
 | Wrong record type | Not found | Ensure you added TXT, not CNAME or other |
 
