@@ -130,7 +130,7 @@ Before implementing choreography, you need solid event infrastructure:
 
 **At-most-once:** Events delivered once or not at all. Possible data loss.
 
-**Exactly-once:** Theoretical ideal, practically achieved through at-least-once + idempotency.
+**Exactly-once:** Some brokers support this for specific workflows using transactions and idempotent producers, but once handlers update external services or databases, you still need idempotent processing at the application boundary.
 
 For choreography, at-least-once delivery with idempotent handlers is the standard approach.
 
@@ -279,9 +279,10 @@ class InventoryService {
   }
 
   private async handleOrderCreated(event: DomainEvent): Promise<void> {
-    const { orderId, items } = event.payload as {
+    const { orderId, items, totalAmount } = event.payload as {
       orderId: string;
       items: { sku: string; quantity: number }[];
+      totalAmount: number;
     };
 
     try {
@@ -296,7 +297,7 @@ class InventoryService {
           aggregateId: orderId,
           aggregateType: 'Order',
           timestamp: new Date().toISOString(),
-          payload: { orderId, items },
+          payload: { orderId, items, totalAmount },
           metadata: {
             correlationId: event.metadata.correlationId,
             causationId: event.eventId,
@@ -427,7 +428,7 @@ compensationRegistry.register({
   compensationAction: 'ReleaseInventory',
   handler: async (event) => {
     const { orderId } = event.payload as { orderId: string };
-    await inventoryRepository.release(orderId);
+    await inventoryRepository.release(orderId, event.eventId);
   },
 });
 
@@ -436,7 +437,7 @@ compensationRegistry.register({
   compensationAction: 'ReleaseInventory',
   handler: async (event) => {
     const { orderId } = event.payload as { orderId: string };
-    await inventoryRepository.release(orderId);
+    await inventoryRepository.release(orderId, event.eventId);
   },
 });
 ```
@@ -1028,17 +1029,16 @@ class EventHealthMonitor {
 **Solution:** Implement dead letter queues and monitoring for unprocessed events:
 
 ```typescript
-// Configure dead letter queue in Kafka
-const consumerConfig = {
+// Configure KafkaJS retries for broker calls
+const consumer = kafka.consumer({
   groupId: 'inventory-service',
   retry: {
-    maxRetries: 3,
     initialRetryTime: 300,
     retries: 3,
   },
-};
+});
 
-// After max retries, publish to dead letter topic
+// Publish handler failures to a dead letter topic
 async function handleWithDeadLetter(
   event: DomainEvent,
   handler: (e: DomainEvent) => Promise<void>
