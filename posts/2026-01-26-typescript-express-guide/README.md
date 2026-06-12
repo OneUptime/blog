@@ -163,8 +163,8 @@ Express provides generic types for Request and Response. You can type the reques
 
 ```typescript
 // src/controllers/userController.ts
-import { Request, Response, NextFunction } from 'express';
-import { User, CreateUserDTO, UpdateUserDTO, ApiResponse } from '../types';
+import { Request, Response } from 'express';
+import { User, CreateUserDTO, UpdateUserDTO, ApiResponse, UserRole } from '../types';
 
 // Type the request body
 type CreateUserRequest = Request<{}, ApiResponse<User>, CreateUserDTO>;
@@ -273,9 +273,6 @@ export const userController = {
         });
     }
 };
-
-// Import UserRole for the controller
-import { UserRole } from '../types';
 ```
 
 ## Typed Middleware
@@ -285,7 +282,7 @@ Middleware in Express can be tricky to type. Here are common patterns:
 ```typescript
 // src/middleware/auth.ts
 import { Request, Response, NextFunction } from 'express';
-import { User } from '../types';
+import { User, UserRole } from '../types';
 
 // Extend Express Request to include user
 declare global {
@@ -332,9 +329,6 @@ export const authenticate = (
         });
     }
 };
-
-// Import UserRole
-import { UserRole } from '../types';
 ```
 
 Role-based authorization middleware:
@@ -558,21 +552,31 @@ export const notFoundHandler = (req: Request, res: Response): void => {
 
 ## Async Handler Wrapper
 
-Wrap async route handlers to catch errors automatically:
+Express 5 catches rejected promises from route handlers automatically, but this wrapper is useful if you need Express 4 compatibility or a consistent pattern:
 
 ```typescript
 // src/utils/asyncHandler.ts
-import { Request, Response, NextFunction, RequestHandler } from 'express';
+import { RequestHandler } from 'express';
+import { ParamsDictionary, Query } from 'express-serve-static-core';
 
-type AsyncRequestHandler = (
-    req: Request,
-    res: Response,
-    next: NextFunction
-) => Promise<void>;
+type MaybePromise<T> = T | Promise<T>;
+type AsyncRequestHandler<
+    P = ParamsDictionary,
+    ResBody = any,
+    ReqBody = any,
+    ReqQuery = Query,
+    LocalsObj extends Record<string, any> = Record<string, any>
+> = RequestHandler<P, ResBody, ReqBody, ReqQuery, LocalsObj>;
 
-export const asyncHandler = (fn: AsyncRequestHandler): RequestHandler => {
-    return (req: Request, res: Response, next: NextFunction) => {
-        Promise.resolve(fn(req, res, next)).catch(next);
+export const asyncHandler = <
+    P = ParamsDictionary,
+    ResBody = any,
+    ReqBody = any,
+    ReqQuery = Query,
+    LocalsObj extends Record<string, any> = Record<string, any>
+>(fn: AsyncRequestHandler<P, ResBody, ReqBody, ReqQuery, LocalsObj>): RequestHandler<P, ResBody, ReqBody, ReqQuery, LocalsObj> => {
+    return (req, res, next) => {
+        Promise.resolve(fn(req, res, next) as MaybePromise<unknown>).catch(next);
     };
 };
 ```
@@ -794,7 +798,7 @@ A production Dockerfile:
 
 ```dockerfile
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -802,10 +806,10 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 USER node
 EXPOSE 3000
