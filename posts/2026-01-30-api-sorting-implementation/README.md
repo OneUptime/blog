@@ -280,28 +280,22 @@ interface CollationOptions {
  * Note: The collation must exist in the database.
  */
 function getPostgreSQLCollation(options: CollationOptions): string {
-  const { locale, caseSensitive = true } = options;
+  const { locale } = options;
 
   if (!locale) {
     return '';
   }
 
-  // PostgreSQL ICU collations support case/accent sensitivity modifiers
-  // Format: locale@colStrength=primary (case+accent insensitive)
-  //         locale@colStrength=secondary (accent sensitive, case insensitive)
-  //         locale (fully sensitive)
+  // The collation must be a trusted database collation name. Escape it as
+  // an identifier if it comes from a whitelist or configuration value.
+  const escapedLocale = locale.replace(/"/g, '""');
 
-  if (!caseSensitive) {
-    // Case-insensitive collation
-    return `COLLATE "${locale}"`;
-  }
-
-  return `COLLATE "${locale}"`;
+  return `COLLATE "${escapedLocale}"`;
 }
 
 /**
  * For case-insensitive sorting without collation support,
- * wrap the field in LOWER() or use ILIKE patterns.
+ * wrap the field in LOWER().
  */
 function getCaseInsensitiveSort(
   field: string,
@@ -425,69 +419,74 @@ function buildCursorWhereClause(
   sortFields: SortField[],
   primaryKey: string = 'id'
 ): { clause: string; params: any[] } {
+  const effectiveSortFields = sortFields.some(sf => sf.field === primaryKey)
+    ? sortFields
+    : [...sortFields, { field: primaryKey, direction: 'ASC' as const }];
   const conditions: string[] = [];
   const params: any[] = [];
   let paramIndex = 1;
 
+  const getCursorValue = (field: string) =>
+    field === primaryKey && cursor.values[field] === undefined
+      ? cursor.id
+      : cursor.values[field];
+
+  const addParam = (value: any): string => {
+    params.push(value);
+    return `$${paramIndex++}`;
+  };
+
+  const buildAfterCondition = (
+    field: string,
+    direction: 'ASC' | 'DESC',
+    value: any
+  ): string | null => {
+    // This implementation assumes NULLS LAST for both ASC and DESC.
+    if (value === null) {
+      return null;
+    }
+
+    const operator = direction === 'ASC' ? '>' : '<';
+    const comparison = `${field} ${operator} ${addParam(value)}`;
+
+    return `(${comparison} OR ${field} IS NULL)`;
+  };
+
   // Build OR conditions for each level of the sort
-  for (let i = 0; i < sortFields.length; i++) {
+  for (let i = 0; i < effectiveSortFields.length; i++) {
     const equalityConditions: string[] = [];
 
     // All previous fields must be equal
     for (let j = 0; j < i; j++) {
-      const { field } = sortFields[j];
-      const value = cursor.values[field];
+      const { field } = effectiveSortFields[j];
+      const value = getCursorValue(field);
 
       if (value === null) {
         equalityConditions.push(`${field} IS NULL`);
       } else {
-        equalityConditions.push(`${field} = $${paramIndex++}`);
-        params.push(value);
+        equalityConditions.push(`${field} = ${addParam(value)}`);
       }
     }
 
     // Current field must be "after" according to sort direction
-    const { field, direction } = sortFields[i];
-    const value = cursor.values[field];
-    const operator = direction === 'ASC' ? '>' : '<';
+    const { field, direction } = effectiveSortFields[i];
+    const value = getCursorValue(field);
+    const afterCondition = buildAfterCondition(field, direction, value);
 
-    if (value === null) {
-      // If cursor value is NULL, and we sort NULLS LAST:
-      // - For ASC NULLS LAST: no rows can come after NULL
-      // - For DESC NULLS LAST: all non-NULL rows come after
-      if (direction === 'DESC') {
-        equalityConditions.push(`${field} IS NOT NULL`);
-      } else {
-        // Skip this branch, nothing comes after NULL in ASC NULLS LAST
-        continue;
-      }
-    } else {
-      equalityConditions.push(`${field} ${operator} $${paramIndex++}`);
-      params.push(value);
+    if (!afterCondition) {
+      // With NULLS LAST, no rows come after a NULL value at this sort level.
+      continue;
     }
+
+    equalityConditions.push(afterCondition);
 
     if (equalityConditions.length > 0) {
       conditions.push(`(${equalityConditions.join(' AND ')})`);
     }
   }
 
-  // Tie-breaker: all sort fields equal, use primary key
-  const tieBreaker: string[] = [];
-  for (const { field } of sortFields) {
-    const value = cursor.values[field];
-    if (value === null) {
-      tieBreaker.push(`${field} IS NULL`);
-    } else {
-      tieBreaker.push(`${field} = $${paramIndex++}`);
-      params.push(value);
-    }
-  }
-  tieBreaker.push(`${primaryKey} > $${paramIndex++}`);
-  params.push(cursor.id);
-  conditions.push(`(${tieBreaker.join(' AND ')})`);
-
   return {
-    clause: conditions.join(' OR '),
+    clause: conditions.length > 0 ? conditions.join(' OR ') : 'FALSE',
     params,
   };
 }
@@ -564,7 +563,10 @@ router.get('/products', async (req, res) => {
     const { sort, cursor, limit: limitParam } = req.query as ProductsQueryParams;
 
     // Parse and validate limit
-    const limit = Math.min(100, Math.max(1, parseInt(limitParam || '20', 10)));
+    const parsedLimit = Number.parseInt(limitParam || '20', 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(100, Math.max(1, parsedLimit))
+      : 20;
 
     // Request one extra item to determine if there are more results
     const fetchLimit = limit + 1;
@@ -723,13 +725,13 @@ flowchart LR
 
 ## MongoDB Sorting Implementation
 
-For MongoDB users, here is an equivalent implementation using the aggregation framework:
+For MongoDB users, here is an equivalent implementation using a sorted `find()` query:
 
 ```typescript
 // sorting/mongodb.ts
 // MongoDB-specific sorting implementation
 
-import { Collection, Document, Sort, Filter } from 'mongodb';
+import { Collection, Document, Sort, Filter, ObjectId } from 'mongodb';
 import { SortField } from './parser';
 
 interface MongoSortOptions {
@@ -761,31 +763,39 @@ function buildMongoCursorFilter(
   cursor: { values: Record<string, any>; id: string },
   sortFields: SortField[]
 ): Filter<Document> {
+  const effectiveSortFields = sortFields.some(sf => sf.field === '_id')
+    ? sortFields
+    : [...sortFields, { field: '_id', direction: 'ASC' as const }];
   const orConditions: Filter<Document>[] = [];
 
-  for (let i = 0; i < sortFields.length; i++) {
+  const getCursorValue = (field: string) => {
+    const value = field === '_id' && cursor.values[field] === undefined
+      ? cursor.id
+      : cursor.values[field];
+
+    if (field === '_id' && typeof value === 'string' && ObjectId.isValid(value)) {
+      return new ObjectId(value);
+    }
+
+    return value;
+  };
+
+  for (let i = 0; i < effectiveSortFields.length; i++) {
     const andConditions: Filter<Document>[] = [];
 
     // Previous fields must be equal
     for (let j = 0; j < i; j++) {
-      const { field } = sortFields[j];
-      andConditions.push({ [field]: cursor.values[field] });
+      const { field } = effectiveSortFields[j];
+      andConditions.push({ [field]: getCursorValue(field) });
     }
 
     // Current field must be past cursor position
-    const { field, direction } = sortFields[i];
+    const { field, direction } = effectiveSortFields[i];
     const operator = direction === 'ASC' ? '$gt' : '$lt';
-    andConditions.push({ [field]: { [operator]: cursor.values[field] } });
+    andConditions.push({ [field]: { [operator]: getCursorValue(field) } });
 
     orConditions.push({ $and: andConditions });
   }
-
-  // Tie-breaker condition
-  const tieBreaker: Filter<Document>[] = sortFields.map(({ field }) => ({
-    [field]: cursor.values[field],
-  }));
-  tieBreaker.push({ _id: { $gt: cursor.id } });
-  orConditions.push({ $and: tieBreaker });
 
   return { $or: orConditions };
 }
@@ -878,7 +888,9 @@ import { z } from 'zod';
  * Ensures the sort string only contains allowed characters and fields.
  */
 function createSortSchema(allowedFields: string[]) {
-  const fieldPattern = allowedFields.join('|');
+  const fieldPattern = allowedFields
+    .map(field => field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
   const sortFieldRegex = new RegExp(`^-?(${fieldPattern})$`);
 
   return z.string()
@@ -908,7 +920,7 @@ function validateSortMiddleware(allowedFields: string[]) {
     if (!result.success) {
       return res.status(400).json({
         error: 'Invalid sort parameter',
-        message: result.error.errors[0].message,
+        message: result.error.issues[0]?.message || 'Invalid sort parameter',
         allowedFields,
       });
     }
