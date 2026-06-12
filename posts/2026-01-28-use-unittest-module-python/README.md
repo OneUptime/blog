@@ -343,19 +343,24 @@ class TestUserService(unittest.TestCase):
         # Assert return value
         self.assertEqual(result['id'], 1)
 
-    @patch('requests.get')
-    def test_with_patch_decorator(self, mock_get):
+    @patch('urllib.request.urlopen')
+    def test_with_patch_decorator(self, mock_urlopen):
         """Test using patch as a decorator."""
         # Configure the mock
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {'data': 'test'}
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.read.return_value = b'{"data": "test"}'
+        mock_urlopen.return_value.__enter__.return_value = mock_response
 
-        # Import and test the function that uses requests
-        import requests
-        response = requests.get('https://api.example.com/data')
+        # Import and test the function that uses urlopen
+        import json
+        from urllib.request import urlopen
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {'data': 'test'})
+        with urlopen('https://api.example.com/data') as response:
+            data = json.loads(response.read().decode('utf-8'))
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(data, {'data': 'test'})
 
     def test_with_patch_context_manager(self):
         """Test using patch as a context manager."""
@@ -432,6 +437,10 @@ class TestPalindrome(unittest.TestCase):
 import unittest
 import sys
 
+def get_config():
+    """Return test configuration."""
+    return {'feature_enabled': False}
+
 class TestSkipping(unittest.TestCase):
     """Examples of skipping tests."""
 
@@ -493,7 +502,9 @@ project/
 # tests/test_calculator.py
 import unittest
 import sys
-sys.path.insert(0, '../src')
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from calculator import Calculator
 
@@ -622,4 +633,3 @@ Write tests consistently, keep them fast and independent, and use mocking to iso
 ---
 
 *Building reliable Python applications? [OneUptime](https://oneuptime.com) helps you monitor your applications, track test coverage, and ensure code quality in production.*
-
