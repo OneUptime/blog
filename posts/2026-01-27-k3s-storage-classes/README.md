@@ -296,8 +296,8 @@ allowVolumeExpansion: true
 reclaimPolicy: Delete
 parameters:
   numberOfReplicas: "2"
-  dataLocality: "strict-local"  # Keep data on the same node as pod
-  fsType: "xfs"                  # XFS for better large file performance
+  dataLocality: "best-effort"  # Prefer a local replica when possible
+  fsType: "xfs"                # XFS for better large file performance
 ---
 # Budget storage with single replica for non-critical data
 apiVersion: storage.k8s.io/v1
@@ -410,7 +410,7 @@ parameters:
   # Base path on the NFS server
   share: /exports/k3s
   # Subdirectory pattern for each PVC
-  # ${pvc.metadata.namespace}-${pvc.metadata.name} creates unique paths
+  # ${pvc.metadata.namespace}/${pvc.metadata.name} creates unique paths
   subDir: "${pvc.metadata.namespace}/${pvc.metadata.name}"
   # Mount options for NFS
   mountPermissions: "0755"
@@ -479,6 +479,24 @@ If you do not have an external NFS server, you can run one inside K3s:
 ```yaml
 # in-cluster-nfs-server.yaml
 # NFS server running as a Kubernetes deployment
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: storage
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-backing-storage
+  namespace: storage
+spec:
+  storageClassName: longhorn-ha
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -703,7 +721,7 @@ spec:
         # Alert when replicas are degraded
         - alert: LonghornReplicaDegraded
           expr: |
-            longhorn_volume_robustness == 2
+            longhorn_volume_robustness{state="degraded"} == 1
           for: 5m
           labels:
             severity: critical
