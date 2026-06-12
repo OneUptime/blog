@@ -37,14 +37,14 @@ Without pooling, this entire sequence happens for every single query. With pooli
 
 | Metric | Without Pooling | With Pooling |
 |--------|----------------|--------------|
-| Connection setup time | 20-100ms per query | 0ms (reused) |
+| Connection setup time | 20-100ms per query | Near 0ms setup cost (reused) |
 | Database connections | Unbounded | Fixed pool size |
 | Memory usage | High (per connection) | Predictable |
 | Connection failures | Common under load | Rare |
 
 ## Core Pool Configuration Parameters
 
-Every connection pool implementation shares a set of fundamental parameters. Understanding these is critical to building an effective pooling strategy.
+Most connection pool implementations share a set of fundamental parameters. Understanding these is critical to building an effective pooling strategy.
 
 | Parameter | Purpose | Typical Range |
 |-----------|---------|---------------|
@@ -100,7 +100,7 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 
   // Pool sizing - adjust based on your workload
-  min: 2,              // Keep at least 2 connections warm
+  min: 2,              // Keep up to 2 idle connections once created
   max: 10,             // Maximum concurrent connections
 
   // Timeouts
@@ -219,6 +219,8 @@ HikariCP is the gold standard for JVM connection pooling. It delivers exceptiona
 ```java
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
 
 public class DatabasePool {
     private static HikariDataSource dataSource;
@@ -241,13 +243,12 @@ public class DatabasePool {
         config.setMaxLifetime(1800000);      // 30 minutes max lifetime
 
         // Connection validation
-        config.setConnectionTestQuery("SELECT 1");
         config.setValidationTimeout(5000);
 
-        // Performance optimizations
-        config.addDataSourceProperty("cachePrepStmts", "true");
-        config.addDataSourceProperty("prepStmtCacheSize", "250");
-        config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
+        // PostgreSQL JDBC driver optimizations
+        config.addDataSourceProperty("preparedStatementCacheQueries", "250");
+        config.addDataSourceProperty("preparedStatementCacheSizeMiB", "5");
+        config.addDataSourceProperty("reWriteBatchedInserts", "true");
 
         dataSource = new HikariDataSource(config);
     }
@@ -345,11 +346,16 @@ When your application shuts down, drain the connection pool properly to avoid le
 async function shutdown() {
   console.log('Shutting down connection pool...');
 
-  // Stop accepting new requests first
-  server.close();
-
-  // Wait for in-flight queries to complete
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  // Stop accepting new requests and wait for active requests to finish
+  await new Promise((resolve, reject) => {
+    server.close((err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
 
   // Close all pool connections
   await pool.end();
