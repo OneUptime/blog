@@ -48,7 +48,7 @@ Start with a basic template structure. Every Dev Container needs at minimum a `d
 {
   // Template name and description
   "name": "Node.js Development",
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:18",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
 
   // Features add pre-packaged tools
   "features": {
@@ -109,8 +109,8 @@ RUN pip install --no-cache-dir \
     seaborn
 
 # Configure Jupyter to run without token
-RUN jupyter notebook --generate-config && \
-    echo "c.NotebookApp.token = ''" >> /root/.jupyter/jupyter_notebook_config.py
+RUN jupyter server --generate-config && \
+    echo "c.IdentityProvider.token = ''" >> /root/.jupyter/jupyter_server_config.py
 ```
 
 ```json
@@ -158,15 +158,13 @@ flowchart TB
 ### docker-compose.yml
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ../..:/workspace:cached
+      - ..:/workspace:cached
     command: sleep infinity
     networks:
       - dev-network
@@ -209,8 +207,8 @@ networks:
   "workspaceFolder": "/workspace",
 
   "features": {
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "18"
+    "ghcr.io/devcontainers/features/node:2": {
+      "version": "22"
     }
   },
 
@@ -259,7 +257,7 @@ Features are reusable units of installation code. They save you from writing com
     },
 
     // Docker-in-Docker for container builds
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+    "ghcr.io/devcontainers/features/docker-in-docker:3": {
       "version": "latest",
       "moby": true
     },
@@ -320,8 +318,8 @@ devcontainer-templates/
   "options": {
     "nodeVersion": {
       "type": "string",
-      "proposals": ["18", "20", "22"],
-      "default": "20",
+      "proposals": ["20", "22", "24"],
+      "default": "22",
       "description": "Node.js version to use"
     },
     "installYarn": {
@@ -392,13 +390,13 @@ if [ -f .husky/install.mjs ]; then
 fi
 
 # Copy environment template if .env doesn't exist
-if [ ! -f .env ]; then
+if [ -f .env.example ] && [ ! -f .env ]; then
   cp .env.example .env
   echo "Created .env from template"
 fi
 
-# Generate SSL certificates for local HTTPS
-if [ ! -f .devcontainer/certs/localhost.pem ]; then
+# Generate SSL certificates for local HTTPS if mkcert is available
+if command -v mkcert >/dev/null 2>&1 && [ ! -f .devcontainer/certs/localhost.pem ]; then
   mkdir -p .devcontainer/certs
   mkcert -install
   mkcert -cert-file .devcontainer/certs/localhost.pem \
@@ -434,7 +432,7 @@ Handle configuration without exposing secrets in your repository.
 ```json
 {
   "runArgs": ["--env-file", ".devcontainer/.env.local"],
-  "postCreateCommand": "cp .env.example .env.local"
+  "initializeCommand": "test -f .devcontainer/.env.local || cp .env.example .devcontainer/.env.local"
 }
 ```
 
