@@ -56,10 +56,10 @@ First, install ChromaDB using pip:
 pip install chromadb
 ```
 
-For production deployments with additional features, you may want to install optional dependencies:
+For client-server deployments where you only need the lightweight HTTP client, install the thin client package instead:
 
 ```bash
-pip install chromadb[client]  # For client-server mode
+pip install chromadb-client  # For client-server mode
 ```
 
 ## Client Setup
@@ -103,7 +103,7 @@ print(f"Data will be stored at: ./chroma_db")
 
 ### HTTP Client (Client-Server Mode)
 
-For production deployments, use the HTTP client to connect to a ChromaDB server:
+For server-backed deployments, use the HTTP client to connect to a ChromaDB server:
 
 ```python
 import chromadb
@@ -569,19 +569,18 @@ from chromadb.config import Settings
 
 # Configure persistent storage with custom settings
 client = chromadb.PersistentClient(
-    path="./production_db",
+    path="./local_db",
     settings=Settings(
         anonymized_telemetry=False,
         allow_reset=False,  # Prevent accidental data deletion
-        is_persistent=True
     )
 )
 
 # Data is automatically persisted after each operation
-collection = client.get_or_create_collection("production_docs")
+collection = client.get_or_create_collection("local_docs")
 collection.add(
-    documents=["Important production data"],
-    ids=["prod_1"]
+    documents=["Important local data"],
+    ids=["local_1"]
 )
 # Data is now safely stored on disk
 ```
@@ -596,6 +595,7 @@ from datetime import datetime
 def backup_chromadb(source_path, backup_dir):
     """Create a backup of the ChromaDB database."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    os.makedirs(backup_dir, exist_ok=True)
     backup_path = os.path.join(backup_dir, f"chroma_backup_{timestamp}")
 
     shutil.copytree(source_path, backup_path)
@@ -668,7 +668,7 @@ class RAGSystem:
         self.collection = self.client.get_or_create_collection(
             name="knowledge_base",
             embedding_function=self.embedding_fn,
-            metadata={"hnsw:space": "cosine"}  # Use cosine similarity
+            configuration={"hnsw": {"space": "cosine"}}  # Use cosine similarity
         )
 
         self.openai_client = openai.OpenAI(api_key=openai_api_key) if openai_api_key else None
@@ -713,7 +713,7 @@ class RAGSystem:
         # Generate response with LLM
         if self.openai_client:
             response = self.openai_client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4.1",
                 messages=[
                     {
                         "role": "system",
@@ -815,11 +815,13 @@ multilingual_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
 # Configure HNSW index for better performance
 collection = client.get_or_create_collection(
     name="optimized_collection",
-    metadata={
-        "hnsw:space": "cosine",      # Distance metric
-        "hnsw:construction_ef": 200,  # Higher = better quality, slower indexing
-        "hnsw:search_ef": 100,        # Higher = better quality, slower search
-        "hnsw:M": 16                   # Connections per element
+    configuration={
+        "hnsw": {
+            "space": "cosine",       # Distance metric
+            "ef_construction": 200,  # Higher = better quality, slower indexing
+            "ef_search": 100,        # Higher = better quality, slower search
+            "max_neighbors": 16      # Connections per element
+        }
     }
 )
 ```
@@ -827,8 +829,6 @@ collection = client.get_or_create_collection(
 ### 3. Implement Proper Error Handling
 
 ```python
-from chromadb.errors import InvalidCollectionException
-
 def safe_query(collection, query_text, n_results=5):
     """Safely query a collection with error handling."""
     try:
@@ -837,7 +837,7 @@ def safe_query(collection, query_text, n_results=5):
             n_results=n_results
         )
         return {"success": True, "results": results}
-    except InvalidCollectionException as e:
+    except ValueError as e:
         return {"success": False, "error": f"Collection error: {e}"}
     except Exception as e:
         return {"success": False, "error": f"Query failed: {e}"}
@@ -870,11 +870,11 @@ print(f"Metadata fields: {stats['metadata_fields']}")
 
 ## Conclusion
 
-ChromaDB provides a powerful and flexible foundation for building AI applications that require vector storage and similarity search. Its simplicity in setup - whether using an ephemeral client for development or a persistent client for production - combined with its rich querying capabilities and metadata filtering make it an excellent choice for RAG systems and semantic search applications.
+ChromaDB provides a powerful and flexible foundation for building AI applications that require vector storage and similarity search. Its simplicity in setup - whether using an ephemeral client for development or a persistent client for local persistence - combined with its rich querying capabilities and metadata filtering make it an excellent choice for RAG systems and semantic search applications.
 
 Key takeaways:
 
-- Start with the ephemeral client for rapid prototyping, then move to persistent storage for production
+- Start with the ephemeral client for rapid prototyping, then move to persistent storage for local persistence or a server-backed Chroma instance for production
 - Choose embedding models based on your specific needs - local models for privacy, API-based for quality
 - Use metadata filtering to narrow down search results and improve relevance
 - Implement batch operations for large-scale data ingestion
