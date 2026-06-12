@@ -96,7 +96,7 @@ spec:
     prefix: primary-cluster
   config:
     region: us-east-1
-    # Use path-style URLs for MinIO or other S3-compatible storage
+    # Set to "true" only for MinIO or other S3-compatible stores that require path-style URLs
     s3ForcePathStyle: "false"
   # Mark as read-only on DR cluster to prevent accidental deletions
   accessMode: ReadOnly
@@ -106,13 +106,13 @@ spec:
 
 ```bash
 # On the DR cluster, list available backups from primary
-velero backup get --all-namespaces
+velero backup get
 
 # Restore specific namespaces from primary cluster backup
 velero restore create dr-restore-production \
     --from-backup production-daily-20260127 \
     --include-namespaces production,monitoring \
-    --restore-pvs=true
+    --restore-volumes=true
 
 # Monitor the restore progress
 velero restore describe dr-restore-production --details
@@ -128,13 +128,13 @@ velero restore logs dr-restore-production
 velero restore create test-restore \
     --from-backup production-daily-20260127 \
     --namespace-mappings production:production-dr-test \
-    --restore-pvs=true
+    --restore-volumes=true
 
 # Restore with label selector to restore specific resources only
 velero restore create selective-restore \
     --from-backup production-daily-20260127 \
     --selector app=critical-service \
-    --restore-pvs=true
+    --restore-volumes=true
 ```
 
 ## Cross-Region Backups
@@ -244,83 +244,65 @@ Kubernetes resources have dependencies. Restoring them in the wrong order causes
 
 ### Understanding Default Restore Order
 
-Velero restores resources in a specific order:
+Velero restores prioritized resources in a specific order (the default high-priority list in v1.13):
 
 1. Custom Resource Definitions (CRDs)
 2. Namespaces
 3. Storage Classes
-4. Persistent Volumes
-5. Persistent Volume Claims
-6. Secrets and ConfigMaps
+4. Volume Snapshot Classes, Contents, and Snapshots (CSI)
+5. Persistent Volumes
+6. Persistent Volume Claims
 7. Service Accounts
-8. Services
-9. Deployments, StatefulSets, DaemonSets
-10. Pods
+8. Secrets
+9. ConfigMaps
+10. Limit Ranges
+11. Pods
+12. ReplicaSets
+13. Endpoints
+14. Services
+
+Resources not in the prioritized list (for example Deployments, StatefulSets, DaemonSets, Jobs, CronJobs) are restored afterward in alphabetical order.
 
 ### Using Restore Hooks for Ordering
 
 ```yaml
-# deployment-with-restore-hooks.yaml
-apiVersion: apps/v1
-kind: Deployment
+# pod-with-restore-hooks.yaml
+apiVersion: v1
+kind: Pod
 metadata:
   name: application
   namespace: production
   annotations:
-    # Pre-restore hook - runs before the resource is restored
-    pre.hook.restore.velero.io/container: init-db
-    pre.hook.restore.velero.io/command: '["/bin/sh", "-c", "until pg_isready -h postgres; do sleep 2; done"]'
-    # Post-restore hook - runs after the resource is restored
+    # Init container hook - injected as an init container so it runs before the pod's main containers start
+    init.hook.restore.velero.io/container-name: wait-for-db
+    init.hook.restore.velero.io/container-image: busybox:1.36
+    init.hook.restore.velero.io/command: '["/bin/sh", "-c", "until nc -z postgres 5432; do sleep 2; done"]'
+    # Post-restore hook - executed inside a restored, running container
     post.hook.restore.velero.io/container: app
     post.hook.restore.velero.io/command: '["/bin/sh", "-c", "/app/post-restore-setup.sh"]'
     post.hook.restore.velero.io/wait-timeout: 5m
 spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: application
-  template:
-    spec:
-      containers:
-        - name: app
-          image: myapp:latest
+  containers:
+    - name: app
+      image: myapp:latest
 ```
 
-Resource Restore Priority
+### Customizing Restore Resource Priority
 
-```yaml
-# configmap-restore-priority.yaml
-# Velero ConfigMap to customize restore priority
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: velero-restore-resource-priorities
-  namespace: velero
-data:
-  # Define custom resource restore priorities
-  # Higher priority resources restore first
-  restoreResourcePriorities: |
-    - customresourcedefinitions
-    - namespaces
-    - storageclasses
-    - persistentvolumes
-    - persistentvolumeclaims
-    - secrets
-    - configmaps
-    - serviceaccounts
-    - roles
-    - rolebindings
-    - clusterroles
-    - clusterrolebindings
-    - services
-    - statefulsets
-    - deployments
-    - daemonsets
-    - replicasets
-    - pods
-    - jobs
-    - cronjobs
+Velero lets you override the default priority order via the `--restore-resource-priorities` flag on the Velero server. The flag takes a comma-separated list of resource types; any resource not listed is restored after the prioritized ones in alphabetical order.
+
+```bash
+# Patch the Velero server deployment to set custom restore resource priorities
+kubectl -n velero patch deployment velero --type=json -p='[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/args/-",
+    "value": "--restore-resource-priorities=customresourcedefinitions,namespaces,storageclasses,persistentvolumes,persistentvolumeclaims,serviceaccounts,secrets,configmaps,roles,rolebindings,clusterroles,clusterrolebindings,services,statefulsets,deployments,daemonsets,replicasets,pods,jobs,cronjobs"
+  }
+]'
 ```
+
+You can also pass the flag at install time using `velero install --restore-resource-priorities=...`.
 
 ### Handling Database Dependencies
 
@@ -357,15 +339,17 @@ Regular DR testing is critical. An untested backup is not a backup.
 
 ```yaml
 # dr-test-cronjob.yaml
-# Automated monthly DR test
+# Automated weekly DR test
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: dr-test-automation
   namespace: velero
 spec:
-  # Run on the first Sunday of each month at 3 AM
-  schedule: "0 3 1-7 * 0"
+  # Run every Sunday at 3 AM UTC
+  # Note: Kubernetes cron uses OR semantics when both day-of-month and day-of-week are
+  # restricted, so "0 3 1-7 * 0" would NOT restrict to the first Sunday of the month
+  schedule: "0 3 * * 0"
   jobTemplate:
     spec:
       template:
@@ -387,7 +371,7 @@ spec:
                   velero restore create dr-test-$(date +%Y%m%d) \
                     --from-backup $LATEST_BACKUP \
                     --namespace-mappings production:dr-test-production \
-                    --restore-pvs=false
+                    --restore-volumes=false
 
                   # Wait for restore to complete
                   sleep 300
@@ -430,7 +414,7 @@ echo "=== Step 1: Restoring backup ==="
 velero restore create $TEST_NAMESPACE \
     --from-backup $BACKUP_NAME \
     --namespace-mappings production:$TEST_NAMESPACE \
-    --restore-pvs=false \
+    --restore-volumes=false \
     --wait
 
 # Step 2: Validate restore status
@@ -501,24 +485,24 @@ data:
     - Find the most recent valid backup
 
     ## Step 2: Identify Latest Backup
-    ```bash
-    velero backup get --all-namespaces
+    ```
+    velero backup get
     velero backup describe <backup-name> --details
-    ```bash
+    ```
 
     ## Step 3: Initiate Restore
-    ```bash
+    ```
     velero restore create emergency-restore-$(date +%Y%m%d-%H%M%S) \
         --from-backup <backup-name> \
         --include-namespaces production,monitoring \
-        --restore-pvs=true
-    ```bash
+        --restore-volumes=true
+    ```
 
     ## Step 4: Monitor Progress
-    ```bash
+    ```
     velero restore describe <restore-name> --details
     watch kubectl get pods -n production
-    ```bash
+    ```
 
     ## Step 5: Validate Services
     - Check all deployments are running
@@ -530,7 +514,7 @@ data:
     - Point DNS to DR cluster
     - Update load balancer targets
     - Verify traffic routing
-```text
+```
 
 ## RTO/RPO Considerations
 
@@ -684,15 +668,15 @@ spec:
             summary: "Velero backup failed"
             description: "Backup failure detected, investigate immediately"
 
-        - alert: VeleroRestoreDurationHigh
+        - alert: VeleroBackupDurationHigh
           expr: |
-            velero_restore_duration_seconds > 1800
-          for: 5m
+            histogram_quantile(0.95, sum by (le, schedule) (rate(velero_backup_duration_seconds_bucket[1h]))) > 1800
+          for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Restore taking longer than expected"
-            description: "Restore {{ $labels.restore }} is taking more than 30 minutes"
+            summary: "Backup duration is high"
+            description: "p95 backup duration for schedule {{ $labels.schedule }} is over 30 minutes"
 ```
 
 ### RTO/RPO Planning Worksheet
