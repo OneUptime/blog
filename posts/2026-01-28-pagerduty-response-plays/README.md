@@ -10,7 +10,7 @@ Description: Learn how to create and use PagerDuty Response Plays to automate in
 
 ## What Are Response Plays?
 
-Response Plays are pre-configured sets of actions that can be triggered during an incident. They automate the repetitive steps of incident response: adding responders, starting conference calls, posting to status pages, and running custom webhooks. Instead of manually coordinating during a crisis, you activate a response play with one click.
+Response Plays are pre-configured sets of actions that can be triggered during an incident. They automate repetitive steps of incident response: adding responders, subscribing stakeholders, publishing incident status updates, and setting conference bridge details. Response Plays are a legacy PagerDuty feature; for new conditional automation, PagerDuty recommends Incident Workflows.
 
 ## Response Play Architecture
 
@@ -23,14 +23,14 @@ flowchart TD
     D --> E
     E --> F[Add Responders]
     E --> G[Start Conference Bridge]
-    E --> H[Post Status Update]
-    E --> I[Trigger Webhooks]
+    E --> H[Publish Status Update]
+    E --> I[Subscribe Stakeholders]
     E --> J[Send Notifications]
 ```
 
 ## Creating a Response Play
 
-Navigate to **Automation > Response Plays** or use the API:
+Navigate to **Automation > Response Plays** in accounts where Response Plays are still available, or use the API:
 
 ```python
 import requests
@@ -57,12 +57,12 @@ def create_response_play(api_key, name, description, actions):
             "type": "response_play",
             "name": name,
             "description": description,
-            "team": None,  # Available to all teams
+            "team": None,
             "subscribers": actions.get("subscribers", []),
             "subscribers_message": actions.get("message", ""),
             "responders": actions.get("responders", []),
             "responders_message": actions.get("responders_message", ""),
-            "runnability": "services",
+            "runnability": actions.get("runnability", "responders"),
             "conference_number": actions.get("conference_number"),
             "conference_url": actions.get("conference_url")
         }
@@ -89,6 +89,7 @@ create_response_play(
             {"type": "team_reference", "id": "PTEAM001"}  # Stakeholder team
         ],
         "message": "A major incident has been declared. Updates will be posted to this channel.",
+        "runnability": "responders",
         "conference_number": "+1-555-123-4567,,12345#",
         "conference_url": "https://meet.yourcompany.com/incident-bridge"
     }
@@ -188,6 +189,8 @@ sequenceDiagram
 ### Trigger via API
 
 ```python
+import requests
+
 def run_response_play(api_key, incident_id, response_play_id, from_email):
     """
     Run a response play on an existing incident
@@ -225,35 +228,16 @@ run_response_play(
 )
 ```
 
-### Auto-Trigger Based on Conditions
+### Conditional Automation
 
-Use Event Orchestration to automatically run response plays:
+For new conditional automation, use Incident Workflows with a conditional trigger. PagerDuty's current Event Orchestration automation actions trigger webhooks or Automation Actions, not Response Plays.
 
-```json
-{
-  "orchestration_rule": {
-    "condition": {
-      "and": [
-        {
-          "field": "incident.priority.name",
-          "op": "equals",
-          "value": "P1"
-        },
-        {
-          "field": "incident.service.name",
-          "op": "contains",
-          "value": "payment"
-        }
-      ]
-    },
-    "actions": {
-      "run_response_play": {
-        "response_play_id": "PPLAY_MAJOR_INCIDENT"
-      }
-    }
-  }
-}
-```
+To automate a P1 payment-service response in Incident Workflows:
+
+1. Create an Incident Workflow
+2. Add a Conditional trigger
+3. Set conditions for the priority and affected service
+4. Add workflow actions for responders, conference creation, and status updates
 
 ## Building Effective Response Plays
 
@@ -298,7 +282,7 @@ def create_tiered_response_plays(api_key):
             "name": "Tier 3 - All Hands",
             "description": "Full team mobilization",
             "responders": [
-                {"type": "team_reference", "id": "ENTIRE_ENGINEERING_TEAM"}
+                {"type": "escalation_policy_reference", "id": "ENGINEERING_ESCALATION_POLICY"}
             ],
             "subscribers": [
                 {"type": "team_reference", "id": "EXECUTIVE_TEAM"}
