@@ -53,12 +53,10 @@ For Docker deployments:
 # docker-compose.yml
 services:
   kafka-connect:
-    image: debezium/connect:2.5
+    image: quay.io/debezium/connect:3.5
     environment:
-      KAFKA_JMX_PORT: 9999
-      KAFKA_JMX_HOSTNAME: kafka-connect
-      JMXHOST: kafka-connect
       JMXPORT: 9999
+      JMXHOST: 0.0.0.0
     ports:
       - "8083:8083"
       - "9999:9999"
@@ -71,10 +69,10 @@ services:
 ### Connector Status Metrics
 
 ```text
-# Connector state (0=running, 1=paused, 2=failed)
+# Connector status (running, paused, or stopped)
 kafka.connect:type=connector-metrics,connector={connector}
 
-# Task status
+# Task status (unassigned, running, paused, failed, or destroyed)
 kafka.connect:type=connector-task-metrics,connector={connector},task={task}
 ```
 
@@ -135,18 +133,31 @@ lowercaseOutputLabelNames: true
 
 rules:
   # Kafka Connect worker metrics
-  - pattern: 'kafka.connect<type=connect-worker-metrics>([^:]+):'
+  - pattern: 'kafka.connect<type=connect-worker-metrics><>([^:]+)'
     name: kafka_connect_worker_$1
     type: GAUGE
 
-  # Connector metrics
-  - pattern: 'kafka.connect<type=connector-metrics, connector=([^,]+)><>([^:]+)'
+  # Connector status and metadata string metrics
+  - pattern: 'kafka.connect<type=connector-metrics, connector=([^,]+)><>(connector-class|connector-type|connector-version|status): (.+)'
     name: kafka_connect_connector_$2
+    value: 1
     type: GAUGE
     labels:
       connector: $1
+      attribute: $2
+      value: $3
 
-  # Task metrics
+  # Task status string metric
+  - pattern: 'kafka.connect<type=connector-task-metrics, connector=([^,]+), task=([^,]+)><>status: ([a-z-]+)'
+    name: kafka_connect_task_status
+    value: 1
+    type: GAUGE
+    labels:
+      connector: $1
+      task: $2
+      status: $3
+
+  # Numeric task metrics
   - pattern: 'kafka.connect<type=connector-task-metrics, connector=([^,]+), task=([^,]+)><>([^:]+)'
     name: kafka_connect_task_$3
     type: GAUGE
@@ -197,7 +208,7 @@ Docker Compose with JMX exporter:
 # docker-compose.yml
 services:
   kafka-connect:
-    image: debezium/connect:2.5
+    image: quay.io/debezium/connect:3.5
     environment:
       KAFKA_OPTS: "-javaagent:/kafka/jmx_prometheus_javaagent.jar=9404:/kafka/jmx-exporter-config.yml"
     ports:
@@ -231,11 +242,10 @@ scrape_configs:
         regex: '([^:]+):\d+'
         replacement: '${1}'
 
-  # Scrape Kafka Connect REST API for connector status
-  - job_name: 'kafka-connect-rest'
-    metrics_path: /connectors
+  # Scrape the custom REST API exporter shown below
+  - job_name: 'debezium-rest-exporter'
     static_configs:
-      - targets: ['kafka-connect:8083']
+      - targets: ['debezium-exporter:9405']
 ```
 
 ---
@@ -246,7 +256,7 @@ Build a custom collector for connector status using the REST API:
 
 ```python
 # debezium_exporter.py
-from prometheus_client import start_http_server, Gauge, Counter
+from prometheus_client import start_http_server, Gauge
 import requests
 import time
 import logging
@@ -276,12 +286,6 @@ connector_tasks_running = Gauge(
 connector_tasks_failed = Gauge(
     'debezium_connector_tasks_failed',
     'Number of failed tasks',
-    ['connector']
-)
-
-replication_lag_ms = Gauge(
-    'debezium_replication_lag_milliseconds',
-    'Replication lag in milliseconds',
     ['connector']
 )
 
@@ -399,18 +403,17 @@ groups:
 
       # Alert on high replication lag
       - alert: DebeziumHighReplicationLag
-        expr: debezium_streaming_millisecondsbehindSource > 60000
+        expr: debezium_streaming_millisecondsbehindsource > 60000
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "High replication lag for {{ $labels.server }}"
-          description: "Replication lag is {{ $value | humanizeDuration }} for {{ $labels.server }}"
+          description: "Replication lag is {{ $value }} ms for {{ $labels.server }}"
 
       # Alert when snapshot is taking too long
       - alert: DebeziumSnapshotStuck
-        expr: debezium_snapshot_snapshotrunning == 1 and
-              (time() - debezium_snapshot_snapshotstarted) > 3600
+        expr: debezium_snapshot_snapshotrunning == 1 and debezium_snapshot_snapshotdurationinseconds > 3600
         for: 10m
         labels:
           severity: warning
@@ -546,7 +549,7 @@ Create a comprehensive Debezium monitoring dashboard:
         "type": "timeseries",
         "targets": [
           {
-            "expr": "debezium_streaming_millisecondsbehindSource",
+            "expr": "debezium_streaming_millisecondsbehindsource",
             "legendFormat": "{{ server }}"
           }
         ],
@@ -639,8 +642,7 @@ Send Debezium metrics to OneUptime for centralized monitoring:
 ```python
 # oneuptime_exporter.py
 import requests
-import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 class OneUptimeExporter:
     def __init__(self, endpoint: str, api_key: str):
@@ -655,7 +657,7 @@ class OneUptimeExporter:
         }
 
         payload = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metrics": metrics
         }
 
