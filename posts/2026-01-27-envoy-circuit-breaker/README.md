@@ -14,7 +14,7 @@ Circuit breakers are essential for building resilient distributed systems. When 
 
 ## Understanding Circuit Breakers
 
-A circuit breaker monitors the health of downstream services and "trips" when failures exceed a threshold. Once tripped, requests are immediately rejected without attempting the downstream call, allowing the failing service time to recover.
+A circuit breaker limits calls to downstream services and "trips" when configured resource thresholds are exhausted. Once tripped, requests are immediately rejected without attempting the downstream call, allowing overloaded services time to recover.
 
 ```mermaid
 stateDiagram-v2
@@ -31,7 +31,7 @@ stateDiagram-v2
 
 ### Why Envoy for Circuit Breaking?
 
-Envoy operates as a sidecar proxy, handling all network traffic for your services. This position makes it ideal for implementing circuit breaking:
+Envoy often operates as a sidecar proxy in service meshes, handling network traffic for your services. This position makes it ideal for implementing circuit breaking:
 
 - **Language agnostic** - Works with any application regardless of programming language
 - **Transparent** - No code changes required in your services
@@ -92,7 +92,7 @@ static_resources:
 
 ### Priority-Based Thresholds
 
-Envoy supports different thresholds for high and default priority traffic, allowing critical requests to proceed even when normal traffic is being limited.
+Envoy supports different thresholds for high and default priority traffic. When routes assign critical requests to high priority, those requests use separate circuit breaker limits from normal traffic.
 
 ```yaml
 # envoy.yaml - Priority-based circuit breaker configuration
@@ -134,7 +134,7 @@ clusters:
 
         explicit_http_config:
           http_protocol_options:
-            # Enable connection keepalives
+            # Preserve proxied HTTP/1 trailers
             enable_trailers: true
 
     circuit_breakers:
@@ -282,9 +282,8 @@ clusters:
       # Prevents hosts from being ejected forever
       max_ejection_time: 300s
 
-      # Time interval for ejection time increase
-      # Ejection time grows with consecutive ejections
-      # up to max_ejection_time
+      # Allow successful active health checks to return
+      # ejected hosts to service
       successful_active_health_check_uneject_host: true
 ```
 
@@ -314,7 +313,7 @@ flowchart LR
     CN --> B3
 
     subgraph Limits["Pool Limits"]
-        L1[max_connections_per_host]
+        L1[per_host_thresholds.max_connections]
         L2[max_requests_per_connection]
         L3[idle_timeout]
     end
@@ -358,8 +357,7 @@ clusters:
           # Helps with load balancing and memory leaks
           max_requests_per_connection: 1000
 
-    # Per-host connection limits
-    # These apply to each upstream host individually
+    # TCP keepalive settings for upstream connections
     upstream_connection_options:
       tcp_keepalive:
         # Enable TCP keepalives to detect dead connections
@@ -377,7 +375,6 @@ clusters:
     connect_timeout: 5s
     type: STRICT_DNS
     lb_policy: ROUND_ROBIN
-    http2_protocol_options: {}
 
     circuit_breakers:
       thresholds:
@@ -423,7 +420,6 @@ clusters:
     connect_timeout: 5s
     type: STRICT_DNS
     lb_policy: ROUND_ROBIN
-    http2_protocol_options: {}
 
     # gRPC uses HTTP/2, so similar tuning applies
     circuit_breakers:
@@ -442,7 +438,7 @@ clusters:
           http2_protocol_options:
             max_concurrent_streams: 100
 
-            # Allow CONNECT for gRPC-Web
+            # Allow HTTP/2 CONNECT upgrades
             allow_connect: true
 
         common_http_protocol_options:
@@ -533,25 +529,25 @@ curl http://localhost:9901/stats | grep circuit
 # Key metrics to monitor:
 
 # Connection overflow - requests rejected due to max_connections
-envoy_cluster_upstream_cx_overflow{cluster_name="backend_service"}
+envoy_cluster_upstream_cx_overflow{envoy_cluster_name="backend_service"}
 
 # Pending request overflow - rejected due to max_pending_requests
-envoy_cluster_upstream_rq_pending_overflow{cluster_name="backend_service"}
+envoy_cluster_upstream_rq_pending_overflow{envoy_cluster_name="backend_service"}
 
 # Request overflow - rejected due to max_requests
-envoy_cluster_upstream_rq_retry_overflow{cluster_name="backend_service"}
+envoy_cluster_upstream_rq_active_overflow{envoy_cluster_name="backend_service"}
 
 # Retry overflow - retries rejected due to max_retries
-envoy_cluster_upstream_rq_retry_overflow{cluster_name="backend_service"}
+envoy_cluster_upstream_rq_retry_overflow{envoy_cluster_name="backend_service"}
 
 # Current number of active connections
-envoy_cluster_upstream_cx_active{cluster_name="backend_service"}
+envoy_cluster_upstream_cx_active{envoy_cluster_name="backend_service"}
 
 # Current pending requests
-envoy_cluster_upstream_rq_pending_active{cluster_name="backend_service"}
+envoy_cluster_upstream_rq_pending_active{envoy_cluster_name="backend_service"}
 
 # Current active requests
-envoy_cluster_upstream_rq_active{cluster_name="backend_service"}
+envoy_cluster_upstream_rq_active{envoy_cluster_name="backend_service"}
 ```
 
 ### Outlier Detection Metrics
@@ -561,53 +557,58 @@ envoy_cluster_upstream_rq_active{cluster_name="backend_service"}
 curl http://localhost:9901/stats | grep outlier
 
 # Currently ejected hosts
-envoy_cluster_outlier_detection_ejections_active{cluster_name="backend_service"}
+envoy_cluster_outlier_detection_ejections_active{envoy_cluster_name="backend_service"}
 
-# Total ejections (counter)
-envoy_cluster_outlier_detection_ejections_total{cluster_name="backend_service"}
+# Total enforced ejections (counter)
+envoy_cluster_outlier_detection_ejections_enforced_total{envoy_cluster_name="backend_service"}
 
 # Consecutive 5xx ejections
-envoy_cluster_outlier_detection_ejections_enforced_consecutive_5xx{cluster_name="backend_service"}
+envoy_cluster_outlier_detection_ejections_enforced_consecutive_5xx{envoy_cluster_name="backend_service"}
 
 # Success rate ejections
-envoy_cluster_outlier_detection_ejections_enforced_success_rate{cluster_name="backend_service"}
+envoy_cluster_outlier_detection_ejections_enforced_success_rate{envoy_cluster_name="backend_service"}
 
 # Failure percentage ejections
-envoy_cluster_outlier_detection_ejections_enforced_failure_percentage{cluster_name="backend_service"}
+envoy_cluster_outlier_detection_ejections_enforced_failure_percentage{envoy_cluster_name="backend_service"}
 
 # Local origin failure ejections
-envoy_cluster_outlier_detection_ejections_enforced_consecutive_local_origin_failure{cluster_name="backend_service"}
+envoy_cluster_outlier_detection_ejections_enforced_consecutive_local_origin_failure{envoy_cluster_name="backend_service"}
 ```
 
 ### Grafana Dashboard Queries
 
 ```promql
 # Circuit breaker overflow rate (requests rejected per second)
-sum(rate(envoy_cluster_upstream_cx_overflow{cluster_name="backend_service"}[5m]))
-+ sum(rate(envoy_cluster_upstream_rq_pending_overflow{cluster_name="backend_service"}[5m]))
+sum(rate(envoy_cluster_upstream_cx_overflow{envoy_cluster_name="backend_service"}[5m]))
++ sum(rate(envoy_cluster_upstream_rq_pending_overflow{envoy_cluster_name="backend_service"}[5m]))
++ sum(rate(envoy_cluster_upstream_rq_active_overflow{envoy_cluster_name="backend_service"}[5m]))
 
-# Connection pool utilization percentage
+# Connection circuit breaker utilization percentage
+# Requires track_remaining: true
 (
-  sum(envoy_cluster_upstream_cx_active{cluster_name="backend_service"})
+  sum(envoy_cluster_upstream_cx_active{envoy_cluster_name="backend_service"})
   /
-  sum(envoy_cluster_circuit_breakers_default_cx_open{cluster_name="backend_service"})
+  (
+    sum(envoy_cluster_upstream_cx_active{envoy_cluster_name="backend_service"})
+    + sum(envoy_cluster_circuit_breakers_default_remaining_cx{envoy_cluster_name="backend_service"})
+  )
 ) * 100
 
 # Outlier ejection rate
-sum(rate(envoy_cluster_outlier_detection_ejections_total{cluster_name="backend_service"}[5m]))
+sum(rate(envoy_cluster_outlier_detection_ejections_enforced_total{envoy_cluster_name="backend_service"}[5m]))
 
 # Percentage of hosts currently ejected
 (
-  sum(envoy_cluster_outlier_detection_ejections_active{cluster_name="backend_service"})
+  sum(envoy_cluster_outlier_detection_ejections_active{envoy_cluster_name="backend_service"})
   /
-  sum(envoy_cluster_membership_total{cluster_name="backend_service"})
+  sum(envoy_cluster_membership_total{envoy_cluster_name="backend_service"})
 ) * 100
 
 # Request success rate by cluster
 (
-  sum(rate(envoy_cluster_upstream_rq_xx{cluster_name="backend_service",response_code_class="2"}[5m]))
+  sum(rate(envoy_cluster_upstream_rq_2xx{envoy_cluster_name="backend_service"}[5m]))
   /
-  sum(rate(envoy_cluster_upstream_rq_total{cluster_name="backend_service"}[5m]))
+  sum(rate(envoy_cluster_upstream_rq_total{envoy_cluster_name="backend_service"}[5m]))
 ) * 100
 ```
 
@@ -621,40 +622,41 @@ groups:
       # Alert when circuit breaker is rejecting requests
       - alert: EnvoyCircuitBreakerTripped
         expr: |
-          sum(rate(envoy_cluster_upstream_cx_overflow[5m])) by (cluster_name) > 0
-          or sum(rate(envoy_cluster_upstream_rq_pending_overflow[5m])) by (cluster_name) > 0
+          sum(rate(envoy_cluster_upstream_cx_overflow[5m])) by (envoy_cluster_name) > 0
+          or sum(rate(envoy_cluster_upstream_rq_pending_overflow[5m])) by (envoy_cluster_name) > 0
+          or sum(rate(envoy_cluster_upstream_rq_active_overflow[5m])) by (envoy_cluster_name) > 0
         for: 1m
         labels:
           severity: warning
         annotations:
-          summary: "Circuit breaker tripped for {{ $labels.cluster_name }}"
-          description: "Envoy is rejecting requests to {{ $labels.cluster_name }} due to circuit breaker limits."
+          summary: "Circuit breaker tripped for {{ $labels.envoy_cluster_name }}"
+          description: "Envoy is rejecting requests to {{ $labels.envoy_cluster_name }} due to circuit breaker limits."
 
       # Alert when too many hosts are ejected
       - alert: EnvoyHighEjectionRate
         expr: |
           (
-            sum(envoy_cluster_outlier_detection_ejections_active) by (cluster_name)
+            sum(envoy_cluster_outlier_detection_ejections_active) by (envoy_cluster_name)
             /
-            sum(envoy_cluster_membership_total) by (cluster_name)
+            sum(envoy_cluster_membership_total) by (envoy_cluster_name)
           ) > 0.3
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "High host ejection rate for {{ $labels.cluster_name }}"
-          description: "More than 30% of hosts are ejected from {{ $labels.cluster_name }}. Service may be degraded."
+          summary: "High host ejection rate for {{ $labels.envoy_cluster_name }}"
+          description: "More than 30% of hosts are ejected from {{ $labels.envoy_cluster_name }}. Service may be degraded."
 
       # Alert on sustained retry overflow
       - alert: EnvoyRetryOverflow
         expr: |
-          sum(rate(envoy_cluster_upstream_rq_retry_overflow[5m])) by (cluster_name) > 10
+          sum(rate(envoy_cluster_upstream_rq_retry_overflow[5m])) by (envoy_cluster_name) > 10
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Retry overflow for {{ $labels.cluster_name }}"
-          description: "Retries are being rejected for {{ $labels.cluster_name }}. Consider increasing max_retries or investigating upstream issues."
+          summary: "Retry overflow for {{ $labels.envoy_cluster_name }}"
+          description: "Retries are being rejected for {{ $labels.envoy_cluster_name }}. Consider increasing max_retries or investigating upstream issues."
 ```
 
 ## Complete Configuration Example
@@ -702,6 +704,8 @@ static_resources:
                               per_try_timeout: 10s
                               retry_host_predicate:
                                 - name: envoy.retry_host_predicates.previous_hosts
+                                  typed_config:
+                                    "@type": type.googleapis.com/envoy.extensions.retry.host.previous_hosts.v3.PreviousHostsPredicate
                               host_selection_retry_max_attempts: 3
 
                 http_filters:
