@@ -95,17 +95,17 @@ MEDIUM: Specify version for base image
 
 ### Node.js Projects
 
-Trivy scans package.json and lock files for npm vulnerabilities.
+Trivy scans lock files for npm vulnerabilities and uses package.json for metadata in some cases.
 
 ```bash
 # Scan Node.js project
 trivy fs ./nodejs-app/
 
-# Files detected:
-# - package.json
+# Files commonly involved:
 # - package-lock.json
 # - yarn.lock
 # - pnpm-lock.yaml
+# - package.json
 ```
 
 Example vulnerable package.json:
@@ -131,7 +131,7 @@ trivy fs ./python-app/
 # - requirements.txt
 # - Pipfile.lock
 # - poetry.lock
-# - setup.py
+# - uv.lock
 ```
 
 Example vulnerable requirements.txt:
@@ -151,7 +151,6 @@ trivy fs ./go-app/
 
 # Files detected:
 # - go.mod
-# - go.sum
 ```
 
 ### Java Projects
@@ -162,8 +161,8 @@ trivy fs ./java-app/
 
 # Files detected:
 # - pom.xml
-# - build.gradle
-# - gradle.lockfile
+# - *gradle.lockfile
+# - *.sbt.lock
 ```
 
 ### Ruby Projects
@@ -174,7 +173,6 @@ trivy fs ./ruby-app/
 
 # Files detected:
 # - Gemfile.lock
-# - .gemspec files
 ```
 
 ---
@@ -191,7 +189,7 @@ trivy fs --scanners vuln,misconfig,secret .
 ### Individual Scanner Options
 
 ```bash
-# Vulnerabilities only (default)
+# Vulnerabilities only
 trivy fs --scanners vuln .
 
 # Misconfigurations only (Terraform, K8s, Dockerfile)
@@ -241,19 +239,19 @@ scan:
     - misconfig
     - secret
 
-# Directories to skip
-skip-dirs:
-  - node_modules
-  - vendor
-  - .git
-  - dist
-  - build
+  # Directories to skip
+  skip-dirs:
+    - node_modules
+    - vendor
+    - .git
+    - dist
+    - build
 
-# Files to skip
-skip-files:
-  - "**/*.test.js"
-  - "**/*.spec.ts"
-  - "**/test/**"
+  # Files to skip
+  skip-files:
+    - "**/*.test.js"
+    - "**/*.spec.ts"
+    - "**/test/**"
 
 # Severity filter
 severity:
@@ -320,7 +318,7 @@ repos:
         entry: trivy fs --severity CRITICAL,HIGH --exit-code 1 .
         language: system
         pass_filenames: false
-        stages: [commit]
+        stages: [pre-commit]
 ```
 
 Install and use:
@@ -397,7 +395,7 @@ trivy fs --format table .
 trivy fs --format json --output results.json .
 
 # Parse with jq
-cat results.json | jq '.Results[].Vulnerabilities[] | {id: .VulnerabilityID, pkg: .PkgName, severity: .Severity}'
+jq '.Results[].Vulnerabilities[]? | {id: .VulnerabilityID, pkg: .PkgName, severity: .Severity}' results.json
 ```
 
 ### SARIF Format (GitHub Security)
@@ -453,13 +451,13 @@ rules:
     category: CustomSecrets
     title: Custom API Key
     severity: HIGH
-    regex: 'MYCOMPANY_API_KEY[=:]\s*["\']?([A-Za-z0-9]{32})["\']?'
+    regex: "MYCOMPANY_API_KEY[=:]\\s*[\"']?([A-Za-z0-9]{32})[\"']?"
 
   - id: internal-token
     category: CustomSecrets
     title: Internal Service Token
     severity: CRITICAL
-    regex: 'INTERNAL_TOKEN[=:]\s*["\']?([A-Za-z0-9-]{36})["\']?'
+    regex: "INTERNAL_TOKEN[=:]\\s*[\"']?([A-Za-z0-9-]{36})[\"']?"
 ```
 
 Run with custom rules:
@@ -489,12 +487,12 @@ trivy fs --scanners license --format json . | jq '.Results[].Licenses'
 # License policy configuration
 
 license:
-  # Forbidden licenses (fail scan if found)
+  # Licenses classified as forbidden (CRITICAL)
   forbidden:
     - GPL-3.0
     - AGPL-3.0
 
-  # Restricted licenses (warning)
+  # Licenses classified as restricted (HIGH)
   restricted:
     - LGPL-2.1
     - MPL-2.0
@@ -568,8 +566,9 @@ trivy fs --timeout 10m .
 npm install  # Creates package-lock.json
 pip freeze > requirements.txt  # Creates pinned requirements
 
-# Update Trivy database
-trivy fs --reset .
+# Force Trivy to download a fresh vulnerability database
+trivy clean --vuln-db
+trivy fs .
 ```
 
 ### False Positives
