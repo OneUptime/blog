@@ -110,14 +110,15 @@ orbs:
 
 jobs:
   build-and-push:
-    # Use the Docker orb's executor which has Docker pre-installed
+    # Use the Docker orb's convenience executor
     executor: docker/docker
     steps:
+      # Enable a remote Docker engine for Docker build and push commands
+      - setup_remote_docker
       - checkout
       # Authenticate to Docker Hub using credentials stored in CircleCI
       # Requires DOCKER_LOGIN and DOCKER_PASSWORD environment variables
       - docker/check:
-          # Enable Docker layer caching for faster builds (requires paid plan)
           docker-password: DOCKER_PASSWORD
           docker-username: DOCKER_LOGIN
       # Build the Docker image from the Dockerfile in the current directory
@@ -510,7 +511,7 @@ circleci setup
 
 # Create a new orb namespace (one-time setup per organization)
 # Namespaces are globally unique identifiers for your orbs
-circleci namespace create myorg github myorg
+circleci namespace create myorg --org-id <your-organization-id>
 
 # Create the orb within your namespace
 # This registers the orb name but does not publish any code yet
