@@ -57,7 +57,7 @@ Create a JSON file in the `cypress/fixtures` folder. This example stores user da
 
 ## Loading Fixtures in Tests
 
-Use `cy.fixture()` to load fixture data. The command returns a promise, so chain it with `.then()` or use Cypress aliases.
+Use `cy.fixture()` to load fixture data. The command is a Cypress chainable that yields the file contents, so chain it with `.then()` or use Cypress aliases.
 
 ### Method 1: Using .then() Callback
 
@@ -293,17 +293,19 @@ cy.fixture('api/errors/validation-error').then((errorResponse) => {
 
 ## Using Non-JSON Fixtures
 
-Cypress supports multiple file formats. For images or other binary files, reference them directly.
+Cypress supports multiple file formats. For images or other binary files, pair `cy.fixture()` with the built-in `cy.selectFile()` command (available since Cypress 9.3.0).
 
 ```javascript
-// Attaching a file to an upload input
-cy.fixture('images/profile-photo.jpg', 'base64').then((fileContent) => {
-  cy.get('[data-cy="avatar-upload"]').attachFile({
-    fileContent,
-    fileName: 'profile-photo.jpg',
-    mimeType: 'image/jpeg',
-    encoding: 'base64'
-  });
+// Attaching a file to an upload input using a fixture alias
+// Pass null encoding to preserve binary content as a Cypress.Buffer
+cy.fixture('images/profile-photo.jpg', null).as('avatar');
+cy.get('[data-cy="avatar-upload"]').selectFile('@avatar');
+
+// Or pass the fixture path directly with custom file metadata
+cy.get('[data-cy="avatar-upload"]').selectFile({
+  contents: 'cypress/fixtures/images/profile-photo.jpg',
+  fileName: 'profile-photo.jpg',
+  mimeType: 'image/jpeg'
 });
 
 // For CSV or text files
