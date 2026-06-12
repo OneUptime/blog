@@ -1176,8 +1176,8 @@ const COMMON_TIMEOUTS = {
   nginx: 55000,
   // Cloudflare: 100 seconds
   cloudflare: 90000,
-  // Azure Application Gateway: 60 seconds
-  azureAppGateway: 55000,
+  // Azure Application Gateway: 240 seconds (4 minutes) TCP idle timeout
+  azureAppGateway: 220000,
   // Conservative default
   default: 30000
 };
