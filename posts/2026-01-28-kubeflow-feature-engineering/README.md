@@ -40,12 +40,12 @@ flowchart LR
 ### Install Required Components
 
 ```bash
-# Install Kubeflow Pipelines SDK
+# Install Kubeflow Pipelines SDK in a Python 3.10 or 3.11 environment
 
-pip install kfp==2.4.0
+python3.10 -m pip install kfp==2.4.0
 
 # Install feature engineering libraries
-pip install feast==0.34.0 great-expectations==0.18.0 pandas==2.1.0
+python3.10 -m pip install feast==0.34.0 great-expectations==0.18.21 pandas==2.1.0 s3fs gcsfs
 
 # Verify connection to Kubeflow
 kubectl get pods -n kubeflow | grep ml-pipeline
@@ -118,7 +118,7 @@ from kfp.dsl import Dataset, Output
 
 @dsl.component(
     base_image="python:3.10",
-    packages_to_install=["pandas", "pyarrow", "boto3"]
+    packages_to_install=["pandas", "pyarrow", "s3fs", "gcsfs"]
 )
 def ingest_data(
     source_path: str,
@@ -136,8 +136,6 @@ def ingest_data(
         end_date: Filter data until this date
     """
     import pandas as pd
-    import os
-
     # Read data from cloud storage
     df = pd.read_parquet(source_path)
 
@@ -169,7 +167,7 @@ from kfp.dsl import Dataset, Input, Output, Artifact
 
 @dsl.component(
     base_image="python:3.10",
-    packages_to_install=["pandas", "great-expectations", "pyarrow"]
+    packages_to_install=["pandas", "great-expectations==0.18.21", "pyarrow"]
 )
 def validate_data(
     input_data: Input[Dataset],
@@ -197,7 +195,10 @@ def validate_data(
     context = gx.get_context()
 
     # Define expectations
-    validator = context.sources.pandas_default.read_dataframe(df)
+    validator = context.sources.add_pandas("feature_validation").read_dataframe(
+        df,
+        asset_name="raw_features",
+    )
 
     # Column existence checks
     validator.expect_column_to_exist("user_id")
@@ -284,41 +285,33 @@ def transform_features(
     df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
     df['month'] = df['timestamp'].dt.month
 
-    # User aggregation features
-    user_stats = df.groupby('user_id').agg({
-        'amount': ['mean', 'std', 'min', 'max', 'count'],
-        'timestamp': ['min', 'max']
-    }).reset_index()
+    # Historical user aggregation features. Shifted calculations avoid using
+    # the current or future transactions when creating a row's features.
+    df = df.sort_values(['user_id', 'timestamp'])
+    grouped_amount = df.groupby('user_id')['amount']
+    df['user_transaction_count'] = grouped_amount.cumcount()
+    prior_sum = grouped_amount.cumsum() - df['amount']
+    prior_count = df['user_transaction_count'].replace(0, np.nan)
+    df['user_avg_amount'] = (prior_sum / prior_count).fillna(0)
 
-    # Flatten column names
-    user_stats.columns = [
-        'user_id', 'user_avg_amount', 'user_std_amount',
-        'user_min_amount', 'user_max_amount', 'user_transaction_count',
-        'user_first_transaction', 'user_last_transaction'
-    ]
+    prior_sq_sum = grouped_amount.transform(lambda x: (x ** 2).cumsum()) - (df['amount'] ** 2)
+    prior_variance = (prior_sq_sum / prior_count) - (df['user_avg_amount'] ** 2)
+    df['user_std_amount'] = np.sqrt(prior_variance.clip(lower=0)).fillna(0)
 
-    # Calculate user tenure
-    user_stats['user_tenure_days'] = (
-        user_stats['user_last_transaction'] -
-        user_stats['user_first_transaction']
-    ).dt.days
-
-    # Merge back to main dataframe
-    df = df.merge(user_stats[['user_id', 'user_avg_amount', 'user_std_amount',
-                               'user_transaction_count', 'user_tenure_days']],
-                  on='user_id')
+    first_transaction = df.groupby('user_id')['timestamp'].transform('min')
+    df['user_tenure_days'] = (df['timestamp'] - first_transaction).dt.days
 
     # Amount deviation from user average
     df['amount_deviation'] = (df['amount'] - df['user_avg_amount']) / (df['user_std_amount'] + 1e-6)
 
     # Rolling window features (last 7 transactions)
-    df = df.sort_values(['user_id', 'timestamp'])
     df['rolling_avg_amount'] = df.groupby('user_id')['amount'].transform(
-        lambda x: x.rolling(window=7, min_periods=1).mean()
-    )
+        lambda x: x.shift(1).rolling(window=7, min_periods=1).mean()
+    ).fillna(0)
     df['rolling_std_amount'] = df.groupby('user_id')['amount'].transform(
-        lambda x: x.rolling(window=7, min_periods=1).std().fillna(0)
+        lambda x: x.shift(1).rolling(window=7, min_periods=1).std()
     )
+    df['rolling_std_amount'] = df['rolling_std_amount'].fillna(0)
 
     # Log transform for skewed features
     df['log_amount'] = np.log1p(df['amount'])
@@ -518,7 +511,7 @@ from kfp.dsl import Dataset, Input
 
 @dsl.component(
     base_image="python:3.10",
-    packages_to_install=["pandas", "feast", "pyarrow"]
+    packages_to_install=["pandas", "feast==0.34.0", "pyarrow"]
 )
 def push_to_feast(
     input_features: Input[Dataset],
@@ -535,6 +528,7 @@ def push_to_feast(
     """
     import pandas as pd
     from feast import FeatureStore
+    from feast.data_source import PushMode
     from datetime import datetime
 
     # Load features
@@ -547,11 +541,11 @@ def push_to_feast(
     if 'event_timestamp' not in df.columns:
         df['event_timestamp'] = datetime.now()
 
-    # Push to offline store
+    # Push to the stores configured by the PushSource
     store.push(
         push_source_name=f"{feature_view_name}_push",
         df=df,
-        to="offline"
+        to=PushMode.ONLINE_AND_OFFLINE
     )
 
     print(f"Pushed {len(df)} records to feature store")
@@ -563,13 +557,13 @@ def push_to_feast(
 """feature_repo/features.py - Feast feature definitions."""
 
 from datetime import timedelta
-from feast import Entity, Feature, FeatureView, FileSource, ValueType
+from feast import Entity, FeatureView, Field, FileSource, PushSource
 from feast.types import Float32, Int64
 
 # Define entity
 user = Entity(
     name="user_id",
-    value_type=ValueType.INT64,
+    join_keys=["user_id"],
     description="User identifier"
 )
 
@@ -579,19 +573,24 @@ user_features_source = FileSource(
     timestamp_field="event_timestamp"
 )
 
+user_features_push_source = PushSource(
+    name="user_features_push",
+    batch_source=user_features_source
+)
+
 # Define feature view
 user_features = FeatureView(
     name="user_features",
     entities=[user],
     ttl=timedelta(days=7),
     schema=[
-        Feature(name="user_avg_amount", dtype=Float32),
-        Feature(name="user_transaction_count", dtype=Int64),
-        Feature(name="user_tenure_days", dtype=Int64),
-        Feature(name="amount_deviation", dtype=Float32),
-        Feature(name="rolling_avg_amount", dtype=Float32),
+        Field(name="user_avg_amount", dtype=Float32),
+        Field(name="user_transaction_count", dtype=Int64),
+        Field(name="user_tenure_days", dtype=Int64),
+        Field(name="amount_deviation", dtype=Float32),
+        Field(name="rolling_avg_amount", dtype=Float32),
     ],
-    source=user_features_source,
+    source=user_features_push_source,
     online=True,
     tags={"team": "ml-platform"}
 )
@@ -601,29 +600,29 @@ user_features = FeatureView(
 
 Run feature pipelines on a schedule:
 
-```yaml
-apiVersion: kubeflow.org/v1beta1
-kind: RecurringRun
-metadata:
-  name: daily-feature-pipeline
-  namespace: kubeflow
-spec:
-  maxConcurrency: 1
-  trigger:
-    cronSchedule:
-      cron: "0 2 * * *"  # Run at 2 AM daily
-      startTime: "2024-01-01T00:00:00Z"
-      endTime: "2025-12-31T23:59:59Z"
-  pipelineRef:
-    name: feature-engineering-pipeline
-  pipelineSpec:
-    parameters:
-      - name: source_path
-        value: "s3://my-bucket/raw-data/"
-      - name: start_date
-        value: "{{workflow.scheduledTime | date('2006-01-02', -1)}}"
-      - name: end_date
-        value: "{{workflow.scheduledTime | date('2006-01-02')}}"
+```python
+from kfp.client import Client
+
+client = Client()
+experiment = client.create_experiment(name="feature-engineering")
+
+recurring_run = client.create_recurring_run(
+    experiment_id=experiment.experiment_id,
+    job_name="daily-feature-pipeline",
+    cron_expression="0 0 2 * * *",  # Run at 2 AM daily
+    start_time="2024-01-01T00:00:00Z",
+    end_time="2025-12-31T23:59:59Z",
+    max_concurrency=1,
+    no_catchup=True,
+    pipeline_package_path="feature_pipeline.yaml",
+    params={
+        "source_path": "s3://my-bucket/raw-data/",
+        "start_date": "2024-01-01",
+        "end_date": "2024-01-02",
+    },
+)
+
+print(f"Recurring run ID: {recurring_run.recurring_run_id}")
 ```
 
 ## Monitoring Feature Quality
