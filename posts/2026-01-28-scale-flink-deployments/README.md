@@ -192,6 +192,8 @@ scheduler-mode: reactive
 
 # Job parallelism scales with TaskManager count
 # Add TMs = automatic parallelism increase
+# Supported for standalone application deployments, including
+# standalone Kubernetes application clusters, not native Kubernetes/YARN
 ```
 
 ```yaml
@@ -282,7 +284,7 @@ spec:
   flinkVersion: v1_17
   flinkConfiguration:
     taskmanager.numberOfTaskSlots: "2"
-    state.backend: rocksdb
+    state.backend.type: rocksdb
     state.checkpoints.dir: s3://bucket/checkpoints
   serviceAccount: flink
   jobManager:
@@ -308,13 +310,13 @@ spec:
   # ... base config ...
   flinkConfiguration:
     # Enable autoscaler
-    kubernetes.operator.job.autoscaler.enabled: "true"
-    kubernetes.operator.job.autoscaler.stabilization.interval: "1m"
-    kubernetes.operator.job.autoscaler.metrics.window: "5m"
+    job.autoscaler.enabled: "true"
+    job.autoscaler.stabilization.interval: "1m"
+    job.autoscaler.metrics.window: "5m"
     # Scale based on busy time
-    kubernetes.operator.job.autoscaler.target.utilization: "0.7"
-    kubernetes.operator.job.autoscaler.scale.up.grace.period: "2m"
-    kubernetes.operator.job.autoscaler.scale.down.grace.period: "10m"
+    job.autoscaler.utilization.target: "0.7"
+    job.autoscaler.scale-up.max-factor: "2.0"
+    job.autoscaler.scale-down.max-factor: "0.5"
   taskManager:
     resource:
       memory: "4096m"
@@ -454,8 +456,8 @@ KafkaSource<String> source = KafkaSource.<String>builder()
     .setValueOnlyDeserializer(new SimpleStringSchema())
     .build();
 
-// Parallelism should match or be multiple of partitions
-// 16 partitions -> parallelism of 16 or 32
+// Parallelism should generally match the partition count
+// 16 partitions -> parallelism of 16; higher values create idle readers
 DataStream<String> events = env.fromSource(
     source,
     WatermarkStrategy.noWatermarks(),
@@ -616,7 +618,7 @@ flink cancel <job-id>
 
 # Restart with new parallelism
 flink run -s s3://bucket/savepoints/pre-scale \
-    -p 32 \  # New parallelism
+    -p 32 \
     my-job.jar
 ```
 
