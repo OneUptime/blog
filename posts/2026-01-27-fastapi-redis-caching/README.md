@@ -47,7 +47,7 @@ async def close_redis():
     """Close the Redis connection"""
     global redis_client
     if redis_client:
-        await redis_client.close()
+        await redis_client.aclose()
 
 # FastAPI lifespan context manager
 @asynccontextmanager
@@ -111,7 +111,7 @@ async def get_redis() -> AsyncGenerator[redis.Redis, None]:
         yield client
     finally:
         # Connection returns to pool automatically
-        await client.close()
+        await client.aclose()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -136,7 +136,7 @@ async def get_item(
     data = f"Data for item {item_id}"
 
     # Store in cache with 5 minute TTL
-    await redis_conn.setex(f"item:{item_id}", 300, data)
+    await redis_conn.set(f"item:{item_id}", data, ex=300)
 
     return {"item_id": item_id, "data": data, "source": "database"}
 ```
@@ -218,10 +218,10 @@ def cache(
 
             # Store result in cache
             try:
-                await redis_client.setex(
+                await redis_client.set(
                     cache_key,
-                    ttl,
-                    json.dumps(result)
+                    json.dumps(result),
+                    ex=ttl
                 )
             except redis.ConnectionError:
                 # If Redis is down, proceed without caching
@@ -258,9 +258,10 @@ async def get_user_with_custom_key(user_id: int, include_details: bool = False) 
 # advanced_cache.py
 import redis.asyncio as redis
 import pickle
+import json
 import hashlib
 from functools import wraps
-from typing import Callable, Optional, Union
+from typing import Callable
 from enum import Enum
 
 class SerializationType(Enum):
@@ -315,7 +316,7 @@ def advanced_cache(
                     else:
                         serialized = pickle.dumps(result).decode("latin-1")
 
-                    await redis_client.setex(cache_key, ttl, serialized)
+                    await redis_client.set(cache_key, serialized, ex=ttl)
                 except Exception as e:
                     if not skip_cache_on_error:
                         raise
@@ -334,7 +335,8 @@ Choosing the right Time-To-Live (TTL) strategy is crucial for cache effectivenes
 ```python
 # ttl_strategies.py
 import redis.asyncio as redis
-from datetime import datetime, timedelta
+import json
+from datetime import datetime
 from typing import Optional
 
 class TTLStrategies:
@@ -366,7 +368,7 @@ class TTLStrategies:
         Set value with sliding expiration (extends on access).
         Useful for: User sessions, activity-based caching
         """
-        await self.redis.setex(key, ttl_seconds, value)
+        await self.redis.set(key, value, ex=ttl_seconds)
 
     async def get_and_extend(
         self,
@@ -393,9 +395,9 @@ class TTLStrategies:
         Useful for: High-traffic endpoints, API responses
         """
         # Store the actual value
-        await self.redis.setex(f"{key}:value", fresh_ttl + stale_ttl, value)
+        await self.redis.set(f"{key}:value", value, ex=fresh_ttl + stale_ttl)
         # Store the freshness marker
-        await self.redis.setex(f"{key}:fresh", fresh_ttl, "1")
+        await self.redis.set(f"{key}:fresh", "1", ex=fresh_ttl)
 
     async def get_with_stale_check(self, key: str) -> tuple[Optional[str], bool]:
         """
@@ -451,10 +453,10 @@ async def get_user(user_id: int):
     user = await fetch_user_from_db(user_id)
 
     # Cache with user profile TTL
-    await redis_client.setex(
+    await redis_client.set(
         cache_key,
-        CacheTTL.USER_PROFILE,
-        json.dumps(user)
+        json.dumps(user),
+        ex=CacheTTL.USER_PROFILE
     )
 
     return user
@@ -541,7 +543,7 @@ class CacheInvalidator:
         pipe = self.redis.pipeline()
 
         # Store the value
-        pipe.setex(key, ttl, value)
+        pipe.set(key, value, ex=ttl)
 
         # Associate key with each tag
         for tag in tags:
@@ -628,7 +630,10 @@ class CacheEventBus:
         """Start listening for invalidation events"""
         async for message in self.pubsub.listen():
             if message["type"] == "message":
-                event = message["channel"].split(":")[-1]
+                channel = message["channel"]
+                if isinstance(channel, bytes):
+                    channel = channel.decode()
+                event = channel.split(":")[-1]
                 data = message["data"]
 
                 handlers = self.handlers.get(event, [])
@@ -643,11 +648,13 @@ async def handle_user_update(user_id: str):
     await redis_client.delete(f"user:{user_id}")
     await redis_client.delete(f"user:{user_id}:profile")
 
-# Subscribe to events
-await event_bus.subscribe("user_updated", handle_user_update)
+async def setup_event_bus():
+    """Subscribe to events during application startup"""
+    await event_bus.subscribe("user_updated", handle_user_update)
 
-# Publish invalidation event from another service
-await event_bus.publish("user_updated", "123")
+async def publish_user_update():
+    """Publish invalidation event from another service"""
+    await event_bus.publish("user_updated", "123")
 ```
 
 ---
@@ -662,6 +669,7 @@ import redis.asyncio as redis
 from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+from functools import wraps
 import hashlib
 import json
 from typing import List, Optional
@@ -762,10 +770,10 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
                     "status_code": response.status_code,
                     "media_type": response.media_type
                 }
-                await self.redis.setex(
+                await self.redis.set(
                     cache_key,
-                    self.ttl,
-                    json.dumps(cache_data)
+                    json.dumps(cache_data),
+                    ex=self.ttl
                 )
             except redis.ConnectionError:
                 pass
@@ -813,7 +821,7 @@ def cache_response(ttl: int = 300):
             result = await func(request, *args, **kwargs)
 
             # Cache result
-            await redis_client.setex(cache_key, ttl, json.dumps(result))
+            await redis_client.set(cache_key, json.dumps(result), ex=ttl)
 
             return JSONResponse(
                 content=result,
@@ -842,7 +850,7 @@ from fastapi import FastAPI, Request, Response, Depends, HTTPException
 from fastapi.security import HTTPBearer
 import secrets
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
 
@@ -883,7 +891,7 @@ class RedisSessionManager:
     ) -> tuple[str, SessionData]:
         """Create a new session"""
         session_id = self._generate_session_id()
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         session = SessionData(
             user_id=user_id,
@@ -892,10 +900,10 @@ class RedisSessionManager:
             data=initial_data or {}
         )
 
-        await self.redis.setex(
+        await self.redis.set(
             self._session_key(session_id),
-            self.ttl,
-            session.model_dump_json()
+            session.model_dump_json(),
+            ex=self.ttl
         )
 
         return session_id, session
@@ -916,8 +924,8 @@ class RedisSessionManager:
 
         if extend_ttl:
             # Update last accessed and extend TTL
-            session.last_accessed = datetime.utcnow().isoformat()
-            await self.redis.setex(key, self.ttl, session.model_dump_json())
+            session.last_accessed = datetime.now(timezone.utc).isoformat()
+            await self.redis.set(key, session.model_dump_json(), ex=self.ttl)
 
         return session
 
@@ -932,12 +940,12 @@ class RedisSessionManager:
             return None
 
         session.data.update(data)
-        session.last_accessed = datetime.utcnow().isoformat()
+        session.last_accessed = datetime.now(timezone.utc).isoformat()
 
-        await self.redis.setex(
+        await self.redis.set(
             self._session_key(session_id),
-            self.ttl,
-            session.model_dump_json()
+            session.model_dump_json(),
+            ex=self.ttl
         )
 
         return session
@@ -1019,8 +1027,8 @@ async def login(response: Response, username: str, password: str):
 @app.post("/logout")
 async def logout(
     response: Response,
-    session: SessionData = Depends(get_current_session),
-    request: Request = None
+    request: Request,
+    session: SessionData = Depends(get_current_session)
 ):
     """Delete session on logout"""
     session_id = request.cookies.get("session_id")
