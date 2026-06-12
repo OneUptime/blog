@@ -42,7 +42,7 @@ flowchart TB
     Store --> Return
 ```
 
-The cache acts as a read-through layer. On a hit, the response comes directly from memory. On a miss, the system fetches from the database and populates the cache for future requests.
+The cache acts as a cache-aside layer. On a hit, the response comes directly from memory. On a miss, the system fetches from the database and populates the cache for future requests.
 
 ## Basic Cache Implementation
 
@@ -206,6 +206,10 @@ class LRUCache<T> {
   private maxSize: number;
 
   constructor(maxSize: number = 1000) {
+    if (maxSize < 1) {
+      throw new RangeError("maxSize must be at least 1");
+    }
+
     // Limit cache size to prevent memory exhaustion
     this.maxSize = maxSize;
   }
@@ -219,7 +223,7 @@ class LRUCache<T> {
     // Evict oldest entries if at capacity
     while (this.cache.size >= this.maxSize) {
       const oldestKey = this.cache.keys().next().value;
-      if (oldestKey) {
+      if (oldestKey !== undefined) {
         this.cache.delete(oldestKey);
       }
     }
