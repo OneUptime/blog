@@ -265,11 +265,10 @@ module.exports = { SchemaPerTenantManager };
 
 Row-level security uses a shared schema with tenant filtering at the database level.
 
-```javascript
-// row-level-security/setup.sql
-// Run this SQL to set up row-level security in PostgreSQL
+```sql
+-- row-level-security/setup.sql
+-- Run this SQL to set up row-level security in PostgreSQL
 
-/*
 -- Enable row-level security on tables
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
@@ -291,9 +290,10 @@ CREATE POLICY tenant_isolation ON users
   WITH CHECK (tenant_id = current_setting('app.current_tenant')::VARCHAR);
 
 -- Create application role
-CREATE ROLE app_user;
+CREATE ROLE app_user LOGIN;
+GRANT USAGE ON SCHEMA public TO app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON users TO app_user;
-*/
+GRANT USAGE ON SEQUENCE users_id_seq TO app_user;
 ```
 
 ```javascript
@@ -316,12 +316,12 @@ class RowLevelSecurityManager {
     const client = await this.pool.connect();
 
     try {
-      // SET LOCAL only works inside a transaction block
+      // Transaction-local settings require an active transaction
       await client.query('BEGIN');
 
       // Set tenant context for RLS policies
       await client.query(
-        `SET LOCAL app.current_tenant = $1`,
+        `SELECT set_config('app.current_tenant', $1, true)`,
         [tenantId]
       );
 
@@ -347,7 +347,7 @@ class RowLevelSecurityManager {
 
       // Set tenant context for entire transaction
       await client.query(
-        `SET LOCAL app.current_tenant = $1`,
+        `SELECT set_config('app.current_tenant', $1, true)`,
         [tenantId]
       );
 
@@ -480,8 +480,8 @@ Complete Express.js application with multi-tenancy support.
 ```javascript
 // express-example/app.js
 const express = require('express');
-const { tenantMiddleware, getCurrentTenant } = require('./middleware/tenant-context');
-const { RowLevelSecurityManager } = require('./row-level-security/rls-manager');
+const { tenantMiddleware, getCurrentTenant } = require('../middleware/tenant-context');
+const { RowLevelSecurityManager } = require('../row-level-security/rls-manager');
 
 const app = express();
 const db = new RowLevelSecurityManager();
@@ -668,10 +668,13 @@ export class TenantAwareRepository {
   async query<T>(text: string, params: any[] = []): Promise<T[]> {
     const client = await this.pool.connect();
     try {
-      // SET LOCAL only works inside a transaction block
+      // Transaction-local settings require an active transaction
       await client.query('BEGIN');
       // Set tenant context for RLS
-      await client.query('SET LOCAL app.current_tenant = $1', [this.tenantId]);
+      await client.query(
+        "SELECT set_config('app.current_tenant', $1, true)",
+        [this.tenantId],
+      );
       const result = await client.query(text, params);
       await client.query('COMMIT');
       return result.rows;
@@ -808,10 +811,23 @@ class TenantCache {
   // Delete all cache entries for a tenant
   async clearTenant(tenantId) {
     const pattern = this.key(tenantId, '*');
-    const keys = await this.redis.keys(pattern);
-    if (keys.length > 0) {
-      await this.redis.del(...keys);
-    }
+    let cursor = '0';
+
+    do {
+      const [nextCursor, keys] = await this.redis.scan(
+        cursor,
+        'MATCH',
+        pattern,
+        'COUNT',
+        100
+      );
+
+      cursor = nextCursor;
+
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+      }
+    } while (cursor !== '0');
   }
 }
 
