@@ -327,7 +327,7 @@ ip link show wg0 | grep mtu
 # Default WireGuard MTU is 1420 (1500 - 80 for WG overhead)
 
 # Test MTU with ping
-ping -M do -s 1392 10.10.0.1  # 1392 + 28 (ICMP header) = 1420
+ping -M do -s 1392 10.10.0.1  # 1392 + 28 (IP + ICMP headers) = 1420
 
 # If packets are dropped, reduce MTU
 sudo ip link set wg0 mtu 1380
