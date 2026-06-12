@@ -157,7 +157,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "SLO burn rate critical - budget exhausting in <2 hours"
+          summary: "SLO burn rate critical - budget burning 14x faster than sustainable"
 
       # Slow burn: consuming budget 3x faster than sustainable
       - alert: SLOSlowBurn
@@ -327,22 +327,22 @@ route:
 
   routes:
     # Critical alerts get immediate, individual attention
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       group_wait: 10s
       group_interval: 1m
       receiver: 'pagerduty-critical'
 
     # Group all warnings from the same service together
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       group_by: ['service']
       group_wait: 2m
       receiver: 'slack-warnings'
 
     # Info alerts batch together for daily digest
-    - match:
-        severity: info
+    - matchers:
+        - severity="info"
       group_by: ['team']
       group_wait: 1h
       receiver: 'email-digest'
@@ -350,7 +350,7 @@ route:
 receivers:
   - name: 'pagerduty-critical'
     pagerduty_configs:
-      - service_key: '<pagerduty-key>'
+      - routing_key: '<pagerduty-routing-key>'
 
   - name: 'slack-warnings'
     slack_configs:
@@ -425,21 +425,17 @@ Monitor these metrics to ensure your alerting system stays effective.
 groups:
   - name: alert-meta-metrics
     rules:
-      # Track how often each alert fires
-      - record: alert:firing_frequency:7d
+      # Track how many evaluation samples each alert spends firing
+      - record: alert:firing_samples:7d
         expr: |
           count_over_time(ALERTS{alertstate="firing"}[7d])
 
-      # Track alerts that fire but are never acknowledged
-      - record: alert:ignored_ratio:7d
+      # Track alert series that fired without a matching acknowledgement event
+      - record: alert:unacknowledged_firing:7d
         expr: |
-          (
-            count_over_time(ALERTS{alertstate="firing"}[7d])
-            -
-            count_over_time(alert_acknowledged_total[7d])
-          )
-          /
           count_over_time(ALERTS{alertstate="firing"}[7d])
+          unless on (alertname)
+          increase(alert_acknowledged_total[7d]) > 0
 
       # Track mean time to acknowledge per alert
       - record: alert:mtta_seconds:avg
@@ -471,7 +467,8 @@ This script validates that alerts fire correctly in a test environment.
 # Python script to validate alert rules fire correctly
 import requests
 import time
-from prometheus_client import CollectorRegistry, Counter, push_to_gateway
+from urllib.error import HTTPError, URLError
+from prometheus_client import CollectorRegistry, Counter, delete_from_gateway, push_to_gateway
 
 def test_error_rate_alert():
     """
@@ -492,6 +489,23 @@ def test_error_rate_alert():
         registry=registry
     )
 
+    # Start from a clean test job and push a zero baseline first.
+    # rate() needs at least two scraped samples with an increase between them.
+    try:
+        delete_from_gateway('localhost:9091', job='alert-test')
+    except (HTTPError, URLError):
+        pass
+    requests_total.labels(status='200').inc(0)
+    requests_total.labels(status='500').inc(0)
+    push_to_gateway(
+        'localhost:9091',
+        job='alert-test',
+        registry=registry
+    )
+
+    # Wait long enough for Prometheus to scrape the baseline.
+    time.sleep(30)
+
     # Simulate 10% error rate (above 5% threshold)
     requests_total.labels(status='200').inc(90)
     requests_total.labels(status='500').inc(10)
@@ -503,18 +517,20 @@ def test_error_rate_alert():
         registry=registry
     )
 
-    # Wait for alert evaluation (2 evaluation cycles)
+    # Wait for Prometheus to observe the increase and satisfy the alert's for: 5m.
     print("Waiting for alert evaluation...")
-    time.sleep(120)
+    time.sleep(360)
 
     # Check if alert is firing
-    response = requests.get(
-        'http://localhost:9090/api/v1/alerts',
-        params={'filter': 'alertname="HighErrorRate"'}
-    )
+    response = requests.get('http://localhost:9090/api/v1/alerts')
+    response.raise_for_status()
 
     alerts = response.json()['data']['alerts']
-    firing_alerts = [a for a in alerts if a['state'] == 'firing']
+    firing_alerts = [
+        a for a in alerts
+        if a['state'] == 'firing'
+        and a.get('labels', {}).get('alertname') == 'HighErrorRate'
+    ]
 
     if firing_alerts:
         print("SUCCESS: HighErrorRate alert is firing as expected")
@@ -527,7 +543,11 @@ def test_alert_has_required_labels():
     """
     Validate that all alerts have required labels and annotations.
     """
-    response = requests.get('http://localhost:9090/api/v1/rules')
+    response = requests.get(
+        'http://localhost:9090/api/v1/rules',
+        params={'type': 'alert'}
+    )
+    response.raise_for_status()
     rules = response.json()['data']['groups']
 
     required_labels = ['severity', 'team']
