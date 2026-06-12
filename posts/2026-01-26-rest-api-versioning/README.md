@@ -101,9 +101,9 @@ app.use('/api/v1/users', usersV1);
 app.use('/api/v2/users', usersV2);
 
 // routes/v1/users.js
-const router = express.Router();
+const usersV1Router = express.Router();
 
-router.get('/:id', async (req, res) => {
+usersV1Router.get('/:id', async (req, res) => {
     const user = await User.findById(req.params.id);
 
     // V1 response format - legacy structure that existing clients expect
@@ -114,12 +114,12 @@ router.get('/:id', async (req, res) => {
     });
 });
 
-module.exports = router;
+module.exports = usersV1Router;
 
 // routes/v2/users.js
-const router = express.Router();
+const usersV2Router = express.Router();
 
-router.get('/:id', async (req, res) => {
+usersV2Router.get('/:id', async (req, res) => {
     const user = await User.findById(req.params.id);
 
     // V2 response format - improved structure with additional metadata
@@ -134,7 +134,7 @@ router.get('/:id', async (req, res) => {
     });
 });
 
-module.exports = router;
+module.exports = usersV2Router;
 ```
 
 ### Advantages
@@ -231,13 +231,15 @@ type Profile struct {
 }
 
 func getUserHandler(w http.ResponseWriter, r *http.Request) {
+    // Register with: http.HandleFunc("GET /api/users/{id}", getUserHandler)
+
     // Get version from query parameter, default to "2" if not specified
     version := r.URL.Query().Get("version")
     if version == "" {
         version = "2"
     }
 
-    user := fetchUserFromDatabase(r.URL.Query().Get("id"))
+    user := fetchUserFromDatabase(r.PathValue("id"))
 
     w.Header().Set("Content-Type", "application/json")
 
@@ -455,10 +457,10 @@ flowchart TD
     G -->|Yes| I[Content Negotiation]
     G -->|No| H
 
-    C --> J[Examples: GitHub, Twitter, Stripe]
-    E --> K[Examples: Google APIs, Amazon]
-    H --> L[Examples: Azure, Microsoft Graph]
-    I --> M[Examples: GitHub also supports this]
+    C --> J[Examples: Microsoft Graph, Twitter/X API v2]
+    E --> K[Examples: Azure Resource Manager]
+    H --> L[Examples: GitHub REST API, Stripe]
+    I --> M[Examples: vendor media type APIs]
 ```
 
 ## Version Lifecycle Management
@@ -503,7 +505,8 @@ app = Flask(__name__)
 VERSION_CONFIG = {
     'v1': {
         'status': 'deprecated',
-        'sunset_date': '2026-06-01',
+        'deprecation_date': '@1780272000',
+        'sunset_date': 'Mon, 01 Jun 2026 00:00:00 GMT',
         'successor': 'v2'
     },
     'v2': {
@@ -516,13 +519,13 @@ VERSION_CONFIG = {
 def add_deprecation_headers(response, version):
     """
     Add standard deprecation headers to inform clients about version status.
-    Uses the Deprecation and Sunset HTTP headers (RFC 8594).
+    Uses the Deprecation (RFC 9745) and Sunset (RFC 8594) HTTP headers.
     """
     config = VERSION_CONFIG.get(version, {})
 
     if config.get('status') == 'deprecated':
-        # Deprecation header indicates the version is deprecated
-        response.headers['Deprecation'] = 'true'
+        # Deprecation header indicates when the version became deprecated
+        response.headers['Deprecation'] = config['deprecation_date']
 
         # Sunset header tells clients when the version will be removed
         if config.get('sunset_date'):
@@ -625,8 +628,7 @@ Here's a reusable pattern for managing multiple API versions:
 ```python
 # Python example of a version router pattern
 
-from flask import Flask, Blueprint, request, g
-from functools import wraps
+from flask import Flask, Blueprint, jsonify
 
 app = Flask(__name__)
 
@@ -747,7 +749,7 @@ class TestUserAPIVersions:
         response = client.get('/api/v1/users/1')
 
         # Check for deprecation headers
-        assert response.headers.get('Deprecation') == 'true'
+        assert response.headers.get('Deprecation') == '@1780272000'
         assert 'Sunset' in response.headers
 
     @pytest.mark.parametrize('version', ['v1', 'v2'])
