@@ -75,7 +75,8 @@ async function reliableConsumer() {
 
     } catch (error) {
       console.error('Processing failed:', error.message);
-      // Handle failure (covered in next section)
+      // Requeue or reject the message instead of leaving it unacknowledged
+      channel.nack(msg, false, true);
     }
   }, { noAck: false });
 }
@@ -177,6 +178,8 @@ async function setupWithDeadLetter() {
     } catch (error) {
       if (retryCount < maxRetries && isRetryable(error)) {
         // Republish with incremented retry count
+        // In production, use publisher confirms before acking the original
+        // so a publish failure cannot lose the retry message
         channel.publish('', 'tasks', msg.content, {
           headers: { 'x-retry-count': retryCount + 1 },
           persistent: true,
@@ -286,7 +289,7 @@ async function batchAcknowledgment() {
 
 ## Unacked Message Handling
 
-Unacknowledged messages remain in the queue and are redelivered when the consumer disconnects. Monitor and handle the `redelivered` flag to detect redeliveries.
+Unacknowledged messages remain tracked by the queue but are unavailable to other consumers until they are acknowledged, rejected, or requeued. They are redelivered when the consumer's channel or connection closes. Monitor and handle the `redelivered` flag to detect redeliveries.
 
 ```javascript
 channel.consume('tasks', async (msg) => {
@@ -318,7 +321,7 @@ channel.consume('tasks', async (msg) => {
 
 ## Consumer Timeouts
 
-RabbitMQ 3.12+ enforces consumer timeouts. If a consumer holds a message without acknowledging for too long, the connection is closed. Configure timeouts appropriately for long-running tasks.
+RabbitMQ enforces consumer delivery acknowledgment timeouts. If a consumer holds a message without acknowledging for too long, the channel is closed and its unacknowledged deliveries are requeued. RabbitMQ 3.12+ can configure this per queue, and RabbitMQ 4.3+ supports delivery acknowledgment timeouts for quorum queues. Configure timeouts appropriately for long-running tasks.
 
 ```javascript
 // RabbitMQ server configuration (rabbitmq.conf)
@@ -353,7 +356,8 @@ async function longRunningTaskConsumer() {
   }, { noAck: false });
 }
 
-// Alternative: heartbeat-style progress updates
+// External progress tracking does not acknowledge the RabbitMQ delivery;
+// use it together with an appropriate ack strategy or timeout configuration.
 async function taskWithProgress(task) {
   const progressInterval = setInterval(() => {
     console.log(`Task ${task.id} still processing...`);
@@ -431,6 +435,8 @@ class MessageProcessor {
       const delay = Math.pow(2, retryCount) * 1000;
 
       setTimeout(() => {
+        // In production, use publisher confirms before acking the original
+        // so a publish failure cannot lose the retry message
         this.channel.publish('', this.queue, msg.content, {
           headers: { 'x-retry-count': retryCount + 1 },
           persistent: true,
@@ -602,7 +608,7 @@ describe('Message Acknowledgments', () => {
 | **Idempotency** | Design consumers to handle duplicate deliveries |
 | **Monitoring** | Track ack rates, processing times, DLQ depth |
 
-Message acknowledgments are critical for building reliable message-driven systems. Manual acknowledgments with proper error handling, dead-letter queues, and retry strategies ensure messages are processed exactly once under normal conditions and at least once during failures.
+Message acknowledgments are critical for building reliable message-driven systems. Manual acknowledgments with proper error handling, dead-letter queues, retry strategies, and idempotent processing help ensure messages are processed at least once without being silently lost.
 
 ---
 
