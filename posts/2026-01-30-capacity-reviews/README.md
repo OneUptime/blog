@@ -16,7 +16,7 @@ This guide covers everything you need to implement effective capacity reviews: s
 
 ## Why Capacity Reviews Matter
 
-Most outages trace back to resource exhaustion. Database connections max out. Disk fills up. Memory pressure triggers OOM kills. CPU saturation causes request timeouts. These failures are predictable, which means they are preventable.
+Many outages trace back to resource exhaustion. Database connections max out. Disk fills up. Memory pressure triggers OOM kills. CPU saturation causes request timeouts. These failures are predictable, which means they are preventable.
 
 ```mermaid
 flowchart LR
@@ -721,7 +721,7 @@ const monthlyMetrics: CapacityMetric[] = [
   ...weeklyMetrics,
   {
     name: 'Storage Growth Rate',
-    query: 'deriv(node_filesystem_size_bytes[30d])',
+    query: 'deriv(node_filesystem_avail_bytes[30d]) * -86400',
     thresholds: { warning: 0, critical: 0 },
     unit: 'bytes/day',
     aggregation: 'avg',
@@ -1188,7 +1188,9 @@ class ActionItemTracker {
         completed: items.filter(i => i.status === 'completed').length,
       },
       overdue: this.getOverdueItems().length,
-      completionRate: items.filter(i => i.status === 'completed').length / items.length,
+      completionRate: items.length > 0
+        ? items.filter(i => i.status === 'completed').length / items.length
+        : 1,
       avgCompletionTime: this.calculateAvgCompletionTime(items),
     };
   }
@@ -1650,8 +1652,9 @@ async function analyzeReviewPatterns(
   );
 
   // Calculate average health score
-  const avgHealthScore = relevantRecords.reduce((sum, r) => sum + r.healthScore, 0)
-    / relevantRecords.length;
+  const avgHealthScore = relevantRecords.length > 0
+    ? relevantRecords.reduce((sum, r) => sum + r.healthScore, 0) / relevantRecords.length
+    : 0;
 
   // Calculate health trend (linear regression)
   const healthTrend = calculateTrendSlope(
@@ -1690,7 +1693,7 @@ async function analyzeReviewPatterns(
     healthTrend,
     commonIssues,
     actionCompletionRate,
-    avgActionsPerReview: totalActions / relevantRecords.length,
+    avgActionsPerReview: relevantRecords.length > 0 ? totalActions / relevantRecords.length : 0,
     recurringRisks,
     improvements,
   };
