@@ -307,6 +307,14 @@ class AdaptiveChunker:
 
 
 # Usage example with database inserts
+def transform_record(record: dict) -> dict:
+    """Transform a single record before insertion."""
+    return {
+        **record,
+        'processed': True
+    }
+
+
 def process_and_insert(records: List[dict]) -> bool:
     """
     Process records and insert into database.
@@ -332,6 +340,8 @@ chunker = AdaptiveChunker(AdaptiveChunkConfig(
     max_chunk_size=50000,
     target_memory_percent=75.0
 ))
+
+large_dataset = [{'id': i, 'value': i} for i in range(100000)]
 
 total_processed = 0
 for count in chunker.chunk_iterator(large_dataset, process_and_insert):
@@ -376,8 +386,8 @@ For tasks that spend most time waiting on I/O (database queries, API calls, file
 import concurrent.futures
 from typing import List, Callable, TypeVar, Iterator
 import threading
-import queue
 import time
+import os
 
 T = TypeVar('T')
 R = TypeVar('R')
@@ -405,7 +415,7 @@ class BatchProcessor:
             chunk_size: Records per chunk for processing.
         """
         # Python's default formula optimized for I/O-bound work
-        self.max_workers = max_workers or min(32, (threading.active_count() or 1) + 4)
+        self.max_workers = max_workers or min(32, (os.cpu_count() or 1) + 4)
         self.chunk_size = chunk_size
         self._stats = {'processed': 0, 'failed': 0, 'start_time': None}
         self._lock = threading.Lock()
@@ -971,9 +981,9 @@ def stream_aggregate(
 Creating and destroying objects repeatedly causes GC pressure. Object pools reuse objects, reducing allocation overhead.
 
 ```python
-from typing import TypeVar, Generic, Callable, List
+from typing import TypeVar, Generic, Callable, Iterator, List
 from threading import Lock
-from dataclasses import dataclass
+from contextlib import contextmanager
 import time
 
 T = TypeVar('T')
@@ -1056,25 +1066,14 @@ class ObjectPool(Generic[T]):
                 self._pool.append(obj)
             # If pool is full, object is discarded (GC will clean up)
 
-    def __enter__(self) -> 'PooledObject[T]':
-        """Context manager support for automatic release."""
-        return PooledObject(self, self.acquire())
-
-    def __exit__(self, *args):
-        pass  # Actual release handled by PooledObject
-
-
-@dataclass
-class PooledObject(Generic[T]):
-    """Wrapper that auto-releases object when done."""
-    pool: ObjectPool[T]
-    obj: T
-
-    def __enter__(self) -> T:
-        return self.obj
-
-    def __exit__(self, *args):
-        self.pool.release(self.obj)
+    @contextmanager
+    def get(self) -> Iterator[T]:
+        """Context manager that acquires and releases an object."""
+        obj = self.acquire()
+        try:
+            yield obj
+        finally:
+            self.release(obj)
 
 
 # Example: Buffer pool for I/O operations
@@ -1116,7 +1115,7 @@ def process_file_with_pooled_buffers(file_path: str) -> int:
     with open(file_path, 'rb') as f:
         while True:
             # Acquire buffer from pool
-            with buffer_pool as buf:
+            with buffer_pool.get() as buf:
                 bytes_read = f.readinto(buf.data)
 
                 if bytes_read == 0:
@@ -1169,7 +1168,7 @@ db_pool = ObjectPool(
 def execute_batch_with_pooled_connections(queries: List[str]) -> None:
     """Execute queries using pooled connections."""
     for query in queries:
-        with db_pool as conn:
+        with db_pool.get() as conn:
             # Connection automatically acquired and released
             # execute(conn, query)
             pass
@@ -1480,11 +1479,24 @@ class PostgresCopyWriter:
         cursor = self.connection.cursor()
         total_copied = 0
 
+        def format_copy_value(value: Any) -> str:
+            """Escape values for PostgreSQL COPY text format."""
+            if value is None:
+                return '\\N'
+
+            return (
+                str(value)
+                .replace('\\', '\\\\')
+                .replace('\t', '\\t')
+                .replace('\n', '\\n')
+                .replace('\r', '\\r')
+            )
+
         batch = []
         for record in records:
             # Format record as tab-separated values
             row = '\t'.join(
-                str(record.get(col, '\\N'))  # \N for NULL
+                format_copy_value(record.get(col))
                 for col in self.columns
             )
             batch.append(row)
@@ -1625,10 +1637,8 @@ from typing import List, Dict, Any, Callable, Iterator, Optional
 from pathlib import Path
 import time
 import logging
-import json
 import csv
-from queue import Queue
-from threading import Thread, Event
+from threading import Event
 
 # Configure logging
 logging.basicConfig(
@@ -1678,6 +1688,11 @@ class PipelineMetrics:
         return 0.0
 
 
+def default_validator(record: Dict[str, Any]) -> bool:
+    """Accept all records by default."""
+    return True
+
+
 class BatchPipeline:
     """
     Production-grade batch processing pipeline.
@@ -1706,7 +1721,7 @@ class BatchPipeline:
         """
         self.config = config
         self.transformer = transformer
-        self.validator = validator or (lambda x: True)
+        self.validator = validator or default_validator
         self.metrics = PipelineMetrics()
         self._should_stop = Event()
 
@@ -1811,14 +1826,7 @@ class BatchPipeline:
 
                         # Flush buffer when full
                         if len(buffer) >= self.config.buffer_size:
-                            self._flush_buffer(out_file, buffer, writer)
-                            if writer is None and buffer:
-                                writer = csv.DictWriter(
-                                    out_file,
-                                    fieldnames=buffer[0].keys()
-                                )
-                                writer.writeheader()
-                            writer.writerows(buffer)
+                            writer = self._flush_buffer(out_file, buffer, writer)
                             buffer = []
 
                         # Log progress
@@ -1831,10 +1839,7 @@ class BatchPipeline:
 
             # Flush remaining buffer
             if buffer:
-                if writer is None:
-                    writer = csv.DictWriter(out_file, fieldnames=buffer[0].keys())
-                    writer.writeheader()
-                writer.writerows(buffer)
+                self._flush_buffer(out_file, buffer, writer)
 
     def _flush_buffer(
         self,
