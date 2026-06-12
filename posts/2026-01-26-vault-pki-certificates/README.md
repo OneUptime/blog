@@ -19,7 +19,7 @@ Traditional certificate management has several pain points:
 - Tracking certificate expiration requires external tooling
 - Revoking compromised certificates is slow and incomplete
 
-Vault PKI addresses these issues by providing on-demand certificate generation with short TTLs, centralized management, and automatic revocation.
+Vault PKI addresses these issues by providing on-demand certificate generation with short TTLs, centralized management, and revocation support.
 
 ```mermaid
 flowchart TB
@@ -134,6 +134,7 @@ Sign the Intermediate CA certificate with the Root CA.
 # This creates the Intermediate CA certificate
 vault write -format=json pki_root/root/sign-intermediate \
     csr=@intermediate.csr \
+    common_name="My Organization Intermediate CA" \
     format=pem_bundle \
     ttl=26280h \
     | jq -r '.data.certificate' > intermediate.crt
@@ -320,7 +321,7 @@ class VaultPKICertManager:
 
         # Parse expiration time for renewal scheduling
         # Vault returns expiration as Unix timestamp
-        self.expiration = datetime.fromtimestamp(data["expiration"])
+        self.expiration = datetime.fromtimestamp(int(data["expiration"]))
 
         return {
             "certificate": self.certificate,
@@ -492,10 +493,9 @@ spec:
         role: cert-manager
         # Path to the Kubernetes auth mount in Vault
         mountPath: /v1/auth/kubernetes
-        # Service account used by cert-manager
-        secretRef:
-          name: cert-manager-vault-token
-          key: token
+        # Service account used by cert-manager to request a short-lived token
+        serviceAccountRef:
+          name: vault-issuer
 
     # CA bundle to verify Vault's TLS certificate
     caBundle: <base64-encoded-ca-cert>
@@ -547,6 +547,21 @@ vault write auth/kubernetes/config \
     kubernetes_host="https://kubernetes.default.svc:443" \
     kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
+# Create the service account that cert-manager will use for Vault authentication
+kubectl create serviceaccount vault-issuer -n cert-manager
+
+# Allow cert-manager to request a short-lived token for that service account
+kubectl create role vault-issuer-tokenrequest \
+    --verb=create \
+    --resource=serviceaccounts/token \
+    --resource-name=vault-issuer \
+    -n cert-manager
+
+kubectl create rolebinding vault-issuer-tokenrequest \
+    --role=vault-issuer-tokenrequest \
+    --serviceaccount=cert-manager:cert-manager \
+    -n cert-manager
+
 # Create a policy for cert-manager
 vault policy write cert-manager-policy -<<EOF
 # Allow cert-manager to issue certificates
@@ -561,8 +576,9 @@ EOF
 
 # Create a Kubernetes auth role for cert-manager
 vault write auth/kubernetes/role/cert-manager \
-    bound_service_account_names=cert-manager \
+    bound_service_account_names=vault-issuer \
     bound_service_account_namespaces=cert-manager \
+    audience="vault://vault-issuer" \
     policies=cert-manager-policy \
     ttl=1h
 ```
@@ -634,6 +650,7 @@ vault write -format=json pki_int/intermediate/generate/internal \
 # Sign with Root CA
 vault write -format=json pki_root/root/sign-intermediate \
     csr=@intermediate_v2.csr \
+    common_name="My Organization Intermediate CA v2" \
     format=pem_bundle \
     ttl=26280h \
     | jq -r '.data.certificate' > intermediate_v2.crt
