@@ -67,7 +67,7 @@ flowchart LR
 
 ## Basic Inhibition Rule Configuration
 
-Here is a fundamental inhibition rule that suppresses warning alerts when critical alerts fire for the same service:
+Here is a fundamental inhibition rule that suppresses warning alerts when critical alerts fire for the same alert name:
 
 ```yaml
 # alertmanager.yml
@@ -235,7 +235,7 @@ receivers:
 
   - name: pagerduty-critical
     pagerduty_configs:
-      - service_key: '<your-pagerduty-key>'
+      - routing_key: '<your-pagerduty-routing-key>'
 
   - name: slack-warnings
     slack_configs:
@@ -386,7 +386,7 @@ curl -X POST http://localhost:9093/api/v2/alerts \
       "alertname": "DatabaseDown",
       "severity": "critical",
       "environment": "test",
-      "cluster": "db-cluster-1"
+      "db_cluster": "db-cluster-1"
     },
     "annotations": {
       "summary": "Test database down alert"
@@ -404,7 +404,7 @@ curl -X POST http://localhost:9093/api/v2/alerts \
       "alertname": "APITimeout",
       "severity": "warning",
       "environment": "test",
-      "cluster": "db-cluster-1",
+      "db_cluster": "db-cluster-1",
       "depends_on": "database"
     },
     "annotations": {
@@ -414,7 +414,7 @@ curl -X POST http://localhost:9093/api/v2/alerts \
 
 # Check inhibited alerts
 echo "Checking inhibited alerts..."
-curl -s http://localhost:9093/api/v2/alerts | jq '.[] | select(.status.state == "suppressed")'
+curl -s http://localhost:9093/api/v2/alerts | jq '.[] | select(.status.inhibitedBy | length > 0)'
 ```
 
 ### 4. Monitor Inhibition Effectiveness
@@ -427,10 +427,10 @@ Track how often inhibition rules are triggered to validate their usefulness:
 groups:
   - name: inhibition_tracking
     rules:
-      # Count of currently inhibited alerts
-      - record: alertmanager_inhibited_alerts_total
+      # Count notifications suppressed by inhibition rules over the last 5 minutes
+      - record: alertmanager_inhibited_notifications_5m
         expr: |
-          count(ALERTS{alertstate="pending"}) by (alertname)
+          sum(increase(alertmanager_notifications_suppressed_total{reason="inhibition"}[5m]))
 ```
 
 ## Common Pitfalls to Avoid
