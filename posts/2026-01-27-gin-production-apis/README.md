@@ -16,7 +16,7 @@ Building production APIs requires more than just handling HTTP requests. You nee
 
 | Feature | Benefit |
 |---------|---------|
-| **Performance** | Fastest Go web framework with zero allocation router |
+| **Performance** | High-performance Go web framework with a zero-allocation router |
 | **Middleware** | Extensible middleware system for cross-cutting concerns |
 | **Validation** | Built-in request validation with go-playground/validator |
 | **Error Recovery** | Panic recovery middleware prevents crashes |
@@ -123,8 +123,8 @@ type Config struct {
 }
 
 // Load reads configuration from environment variables.
-// It provides sensible defaults for development while requiring
-// explicit configuration in production.
+// It provides sensible defaults for development; validate required
+// secrets separately before production use.
 func Load() *Config {
     return &Config{
         ServerPort:         getEnv("SERVER_PORT", "8080"),
@@ -442,7 +442,9 @@ Protect your API from abuse with rate limiting:
 package middleware
 
 import (
+    "math"
     "net/http"
+    "strconv"
     "sync"
     "time"
 
@@ -538,15 +540,19 @@ func RateLimitMiddleware(limiter *RateLimiter) gin.HandlerFunc {
         allowed, remaining, retryAfter := limiter.Allow(key)
 
         // Set rate limit headers
-        c.Header("X-RateLimit-Limit", string(rune(limiter.limit)))
-        c.Header("X-RateLimit-Remaining", string(rune(remaining)))
+        c.Header("X-RateLimit-Limit", strconv.Itoa(limiter.limit))
+        c.Header("X-RateLimit-Remaining", strconv.Itoa(remaining))
 
         if !allowed {
-            c.Header("Retry-After", retryAfter.String())
+            retryAfterSeconds := int(math.Ceil(retryAfter.Seconds()))
+            if retryAfterSeconds < 1 {
+                retryAfterSeconds = 1
+            }
+            c.Header("Retry-After", strconv.Itoa(retryAfterSeconds))
             c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
                 "error":       "Too Many Requests",
                 "message":     "Rate limit exceeded",
-                "retry_after": retryAfter.Seconds(),
+                "retry_after": retryAfterSeconds,
             })
             return
         }
@@ -1059,7 +1065,7 @@ func (h *HealthHandler) SetTerminating() {
 }
 
 // Liveness handles the liveness probe endpoint.
-// Returns 200 if the application is running, 500 otherwise.
+// Returns 200 if the application process is running.
 func (h *HealthHandler) Liveness(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{
         "status": "ok",
