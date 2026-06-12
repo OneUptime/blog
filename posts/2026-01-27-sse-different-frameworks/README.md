@@ -485,6 +485,7 @@ Go's standard library makes SSE straightforward. Gin adds routing convenience.
 package main
 
 import (
+    "encoding/json"
     "fmt"
     "net/http"
     "sync"
