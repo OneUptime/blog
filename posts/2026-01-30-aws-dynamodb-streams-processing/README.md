@@ -26,7 +26,7 @@ flowchart LR
     end
 
     subgraph Downstream
-        D --> E[ElasticSearch]
+        D --> E[OpenSearch]
         D --> F[S3 Data Lake]
         D --> G[SNS Notifications]
         D --> H[Another DynamoDB Table]
@@ -109,7 +109,9 @@ export class DynamoDbStreamsStack extends cdk.Stack {
       // Enable streams with full change information
       stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
       // Enable point-in-time recovery for data protection
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
     });
   }
 }
@@ -370,7 +372,7 @@ async function sendOrderNotification(
 }
 
 async function indexOrder(order: Order): Promise<void> {
-  // Implementation: Index in Elasticsearch or OpenSearch
+  // Implementation: Index in OpenSearch
   console.log(`Indexing order ${order.orderId}`);
 }
 
@@ -664,7 +666,7 @@ Resources:
                   - sqs:SendMessage
                 Resource: !GetAtt StreamProcessorDLQ.Arn
 
-  # Dead Letter Queue for failed records
+  # Destination queue for failed invocations
   StreamProcessorDLQ:
     Type: AWS::SQS::Queue
     Properties:
@@ -676,7 +678,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: order-stream-processor
-      Runtime: nodejs18.x
+      Runtime: nodejs24.x
       Handler: stream-processor.handler
       Code:
         S3Bucket: !Sub ${AWS::StackName}-lambda-code
@@ -706,6 +708,9 @@ Resources:
       MaximumRecordAgeInSeconds: 3600
       # Split batch on error to isolate problematic records
       BisectBatchOnFunctionError: true
+      # Enable partial batch failure responses from the function
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
       # Send failed records to DLQ
       DestinationConfig:
         OnFailure:
@@ -733,7 +738,7 @@ export class LambdaStreamStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: LambdaStreamStackProps) {
     super(scope, id, props);
 
-    // Dead Letter Queue for failed stream records
+    // Destination queue for failed stream invocations
     const dlq = new sqs.Queue(this, 'StreamProcessorDLQ', {
       queueName: 'stream-processor-dlq',
       retentionPeriod: cdk.Duration.days(14),
@@ -742,7 +747,7 @@ export class LambdaStreamStack extends cdk.Stack {
     // Lambda function for stream processing
     const streamProcessor = new lambda.Function(this, 'StreamProcessor', {
       functionName: 'order-stream-processor',
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'stream-processor.handler',
       code: lambda.Code.fromAsset('dist/handlers'),
       timeout: cdk.Duration.seconds(60),
@@ -765,6 +770,8 @@ export class LambdaStreamStack extends cdk.Stack {
         retryAttempts: 3,
         // Split batch on error to find problematic records
         bisectBatchOnError: true,
+        // Allow the handler to report partial batch failures
+        reportBatchItemFailures: true,
         // Send failures to DLQ
         onFailure: new lambdaEventSources.SqsDlq(dlq),
         // Process multiple batches in parallel
@@ -807,7 +814,7 @@ import {
   DynamoDBRecord,
 } from 'aws-lambda';
 
-// Enable partial batch failure reporting
+// Enable partial batch failure reporting in the event source mapping
 export const handler = async (
   event: DynamoDBStreamEvent
 ): Promise<DynamoDBBatchResponse> => {
@@ -819,18 +826,21 @@ export const handler = async (
     } catch (error) {
       console.error(`Failed to process record: ${record.eventID}`, error);
 
-      // Report this specific record as failed
-      // Lambda will retry only this record
-      if (record.eventID) {
-        batchItemFailures.push({
-          itemIdentifier: record.eventID,
-        });
+      // Report the failed stream sequence number as the checkpoint
+      // Lambda retries records starting from this sequence number
+      const sequenceNumber = record.dynamodb?.SequenceNumber;
+      if (!sequenceNumber) {
+        throw error;
       }
+
+      batchItemFailures.push({
+        itemIdentifier: sequenceNumber,
+      });
     }
   }
 
   // Return failures for retry
-  // Records not in this list are considered successful
+  // With DynamoDB streams, Lambda checkpoints before the lowest failed sequence number
   return { batchItemFailures };
 };
 
@@ -861,33 +871,37 @@ logger.setLevel(logging.INFO)
 
 # Initialize clients
 sns_client = boto3.client("sns")
-dynamodb = boto3.resource("dynamodb")
 
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    Process records from the Dead Letter Queue.
+    Process records from the on-failure destination queue.
 
-    This handler is triggered by SQS and processes failed stream records
-    for manual review or automated recovery.
+    For SQS on-failure destinations, Lambda sends an invocation record with
+    metadata about the failed batch. Use an S3 on-failure destination if you
+    need the full stream payload for automated replay.
     """
     processed = 0
 
     for sqs_record in event.get("Records", []):
         try:
-            # Parse the DynamoDB stream record from SQS message
+            # Parse the failed invocation record from SQS message
             body = json.loads(sqs_record["body"])
 
-            # Extract original DynamoDB record
-            dynamodb_record = body.get("DynamoDBStreamRecord", {})
+            request_context = body.get("requestContext", {})
+            condition = request_context.get("condition", "unknown")
+            approximate_invoke_count = request_context.get(
+                "approximateInvokeCount", "unknown"
+            )
 
-            logger.info(f"Processing DLQ record: {dynamodb_record}")
+            logger.info(
+                "Processing failed stream invocation: "
+                f"condition={condition}, "
+                f"approximateInvokeCount={approximate_invoke_count}"
+            )
 
-            # Attempt to recover or log for manual intervention
-            if can_auto_recover(dynamodb_record):
-                recover_record(dynamodb_record)
-            else:
-                alert_operations(dynamodb_record)
+            # Alert for manual review or replay from the stream if still retained
+            alert_operations(body)
 
             processed += 1
 
@@ -898,38 +912,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     return {"processed": processed}
 
 
-def can_auto_recover(record: Dict[str, Any]) -> bool:
-    """Determine if the record can be automatically recovered."""
-    # Example: Check if it's a transient error that can be retried
-    event_name = record.get("eventName")
-
-    # Only auto-recover INSERT and MODIFY events
-    # REMOVE events that failed might need manual review
-    return event_name in ["INSERT", "MODIFY"]
-
-
-def recover_record(record: Dict[str, Any]) -> None:
-    """Attempt to recover the failed record."""
-    event_name = record.get("eventName")
-    new_image = record.get("NewImage")
-
-    if event_name == "INSERT" and new_image:
-        # Re-process the insert logic
-        logger.info(f"Auto-recovering INSERT record")
-        # Add recovery logic here
-    elif event_name == "MODIFY" and new_image:
-        # Re-process the modify logic
-        logger.info(f"Auto-recovering MODIFY record")
-        # Add recovery logic here
-
-
-def alert_operations(record: Dict[str, Any]) -> None:
-    """Alert operations team about unrecoverable record."""
+def alert_operations(invocation_record: Dict[str, Any]) -> None:
+    """Alert operations team about unrecoverable invocation."""
     sns_topic_arn = "arn:aws:sns:us-east-1:123456789012:stream-alerts"
 
     message = {
         "alert": "DynamoDB Stream Processing Failure",
-        "record": record,
+        "invocation_record": invocation_record,
         "action_required": "Manual review needed",
     }
 
