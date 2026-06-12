@@ -22,7 +22,7 @@ Traditional consumer-driven contract testing puts consumers in control. The cons
 | **Scaling** | Gets harder with more consumers | Stays manageable |
 | **Breaking change detection** | Provider runs consumer tests | Central comparison |
 
-Bi-directional contract testing takes a different approach. Both consumers and providers publish their understanding of the API independently. A central broker compares these specifications to detect incompatibilities.
+Bi-directional contract testing takes a different approach. Both consumers and providers publish their understanding of the API independently. A broker with bi-directional contract testing support, such as PactFlow or Swagger Contract Testing, compares these specifications to detect incompatibilities.
 
 ## How Bi-Directional Contract Testing Works
 
@@ -56,7 +56,7 @@ flowchart TB
     end
 ```
 
-This flow shows the key difference from consumer-driven testing. The provider never needs to run consumer tests. They simply publish their OpenAPI specification, and the broker handles the comparison.
+This flow shows the key difference from consumer-driven testing. The provider never needs to run consumer tests. They publish their OpenAPI specification after validating that it matches the provider implementation, and the broker handles the comparison.
 
 ## Publishing Provider Specifications
 
@@ -180,18 +180,19 @@ components:
           type: string
 ```
 
-Publishing to Pact Broker (the most popular contract broker):
+Publishing to PactFlow or Swagger Contract Testing, which support provider contracts for bi-directional contract testing:
 
 ```bash
-# Publish provider spec to Pact Broker
+# Publish provider spec to PactFlow after verifying it matches the implementation
 # The provider version should match your deployment version
-pact-broker publish-provider-contract \
+pactflow publish-provider-contract \
   provider-api.yaml \
   --provider "OrderService" \
   --provider-app-version "1.2.0" \
   --branch "main" \
   --content-type "application/yaml" \
-  --broker-base-url https://your-pact-broker.example.com \
+  --verification-exit-code 0 \
+  --broker-base-url https://your-pactflow.example.com \
   --broker-token $PACT_BROKER_TOKEN
 ```
 
@@ -389,11 +390,11 @@ flowchart LR
     V4 --> |no| Fail
 ```
 
-The broker uses these rules for comparison:
+Conceptually, the comparison follows rules like these:
 
 ```javascript
 // schema-comparison.js
-// Example of how schema comparison logic works internally
+// Simplified example of how schema comparison logic can work
 
 // Check if provider schema satisfies consumer expectations
 function isCompatible(consumerExpectation, providerSchema) {
@@ -558,7 +559,7 @@ on:
     branches: [main]
 
 env:
-  PACT_BROKER_BASE_URL: ${{ secrets.PACT_BROKER_URL }}
+  PACT_BROKER_BASE_URL: ${{ secrets.PACTFLOW_URL }}
   PACT_BROKER_TOKEN: ${{ secrets.PACT_BROKER_TOKEN }}
 
 jobs:
@@ -655,12 +656,13 @@ jobs:
       # Publish provider spec to broker
       - name: Publish provider contract
         run: |
-          npx pact-broker publish-provider-contract \
+          npx pactflow publish-provider-contract \
             openapi.yaml \
             --provider OrderService \
             --provider-app-version ${{ github.sha }} \
             --branch ${{ github.ref_name }} \
-            --content-type application/yaml
+            --content-type application/yaml \
+            --verification-exit-code 0
 
       # Check compatibility with all consumers
       - name: Can I deploy?
@@ -692,17 +694,24 @@ When a breaking change is detected, the broker provides detailed information abo
 
 ```javascript
 // Example: Handling can-i-deploy failures programmatically
-const { PactBroker } = require('@pact-foundation/pact-node');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
+
+const execFileAsync = promisify(execFile);
 
 async function checkDeployability(service, version, environment) {
   try {
-    const result = await PactBroker.canDeploy({
-      pacticipants: [{ name: service, version }],
-      pactBroker: process.env.PACT_BROKER_BASE_URL,
-      pactBrokerToken: process.env.PACT_BROKER_TOKEN,
-      to: environment,
-      output: 'json',
-    });
+    const { stdout } = await execFileAsync('pact-broker', [
+      'can-i-deploy',
+      '--pacticipant', service,
+      '--version', version,
+      '--to-environment', environment,
+      '--broker-base-url', process.env.PACT_BROKER_BASE_URL,
+      '--broker-token', process.env.PACT_BROKER_TOKEN,
+      '--output', 'json',
+    ]);
+
+    const result = JSON.parse(stdout);
 
     if (result.summary.deployable) {
       console.log('Safe to deploy!');
@@ -712,9 +721,7 @@ async function checkDeployability(service, version, environment) {
     // Analyze what broke
     console.log('Deployment blocked due to contract issues:');
 
-    for (const reason of result.summary.reason) {
-      console.log(`\n${reason}`);
-    }
+    console.log(`\n${result.summary.reason}`);
 
     // Detailed breakdown of each verification result
     for (const matrix of result.matrix) {
@@ -732,6 +739,16 @@ async function checkDeployability(service, version, environment) {
 
     return false;
   } catch (error) {
+    if (error.stdout) {
+      const result = JSON.parse(error.stdout);
+
+      console.log('Deployment blocked due to contract issues:');
+
+      console.log(`\n${result.summary.reason}`);
+
+      return false;
+    }
+
     console.error('Error checking deployability:', error.message);
     throw error;
   }
@@ -871,7 +888,7 @@ async function validateDeploymentPath(service, version, targetEnv) {
 | Practice | Benefit |
 |----------|---------|
 | **Version contracts with code** | Contracts evolve with implementation |
-| **Use semantic versioning** | Clear compatibility expectations |
+| **Use unique application versions** | Accurate `can-i-deploy` results |
 | **Test error responses** | Consumers handle failures gracefully |
 | **Include authentication** | Catch auth contract issues |
 | **Automate publishing** | Contracts always up to date |
