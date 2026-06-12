@@ -46,7 +46,7 @@ Start with a base page class that provides common functionality all pages will n
 
 ```typescript
 // pages/BasePage.ts
-import { Page, Locator } from '@playwright/test';
+import { Page } from '@playwright/test';
 
 export class BasePage {
   readonly page: Page;
@@ -60,9 +60,9 @@ export class BasePage {
     await this.page.goto(path);
   }
 
-  // Wait for page to be fully loaded
+  // Wait for the page load event
   async waitForPageLoad(): Promise<void> {
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState();
   }
 
   // Get page title
@@ -189,8 +189,7 @@ export class DashboardPage extends BasePage {
   // Open user dropdown menu
   async openUserMenu(): Promise<void> {
     await this.userMenu.click();
-    // Wait for menu animation
-    await this.page.waitForTimeout(300);
+    await expect(this.logoutButton).toBeVisible();
   }
 
   // Perform logout
@@ -371,7 +370,7 @@ export class UsersPage extends BasePage {
   async searchUsers(query: string): Promise<void> {
     await this.searchInput.fill(query);
     await this.searchInput.press('Enter');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState();
   }
 
   async deleteUserByIndex(index: number): Promise<void> {
@@ -613,10 +612,10 @@ flowchart TD
 When implementing the Page Object Pattern, keep these principles in mind:
 
 1. **Single Responsibility**: Each page object should represent one page or component
-2. **No Assertions in Page Objects**: Keep assertions in test files, not page objects (except for wait conditions)
+2. **Focused Assertions**: Keep most business assertions in test files, but page objects can include readiness checks and navigation expectations
 3. **Meaningful Method Names**: Use action-oriented names like `login()`, `submitForm()`, `deleteUser()`
 4. **Return Types**: Methods that navigate should return the new page object
-5. **Lazy Initialization**: Initialize locators in the constructor, but interact with elements in methods
+5. **Locator Initialization**: Initialize locators in the constructor, but interact with elements in methods
 
 ```typescript
 // Example of returning new page object on navigation
