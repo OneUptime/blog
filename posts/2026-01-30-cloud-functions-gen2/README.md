@@ -266,6 +266,12 @@ gcloud functions deploy helloWorld \
 
 ### Concurrency Best Practices
 
+For the database example below, install the PostgreSQL client:
+
+```bash
+npm install pg
+```
+
 ```javascript
 // index.js
 // Example: Handling concurrent requests with shared resources
@@ -365,7 +371,7 @@ First, deploy your initial version:
 
 ```bash
 # Deploy the initial version
-gcloud functions deploy myFunction \
+gcloud functions deploy myfunction \
     --gen2 \
     --runtime=nodejs20 \
     --region=us-central1 \
@@ -385,7 +391,7 @@ Deploy a new version and split traffic:
 
 ```bash
 # Deploy a new version (creates a new revision)
-gcloud functions deploy myFunction \
+gcloud functions deploy myfunction \
     --gen2 \
     --runtime=nodejs20 \
     --region=us-central1 \
@@ -395,9 +401,9 @@ gcloud functions deploy myFunction \
 
 # Split traffic between revisions using Cloud Run
 # Send 90% to the previous revision and 10% to the new one
-gcloud run services update-traffic myFunction \
+gcloud run services update-traffic myfunction \
     --region=us-central1 \
-    --to-revisions=myFunction-00001-abc=90,myFunction-00002-xyz=10
+    --to-revisions=myfunction-00001-abc=90,myfunction-00002-xyz=10
 ```
 
 ### Gradual Rollout Strategy
@@ -407,10 +413,10 @@ gcloud run services update-traffic myFunction \
 # gradual-rollout.sh
 # Script to gradually increase traffic to a new revision
 
-SERVICE_NAME="myFunction"
+SERVICE_NAME="myfunction"
 REGION="us-central1"
-NEW_REVISION="myFunction-00002-xyz"
-OLD_REVISION="myFunction-00001-abc"
+NEW_REVISION="myfunction-00002-xyz"
+OLD_REVISION="myfunction-00001-abc"
 
 # Array of traffic percentages for gradual rollout
 TRAFFIC_STEPS=(10 25 50 75 100)
@@ -499,7 +505,7 @@ functions.cloudEvent('processUpload', async (cloudEvent) => {
     console.log(`Event type: ${cloudEvent.type}`);
 
     // Only process specific file types
-    if (!file.contentType.startsWith('image/')) {
+    if (!file.contentType || !file.contentType.startsWith('image/')) {
         console.log('Skipping non-image file');
         return;
     }
@@ -534,6 +540,9 @@ functions.cloudEvent('processUpload', async (cloudEvent) => {
 Deploy with a Cloud Storage trigger:
 
 ```bash
+# Install the Cloud Storage client
+npm install @google-cloud/storage
+
 # Deploy the function with a Cloud Storage trigger
 gcloud functions deploy processUpload \
     --gen2 \
@@ -541,8 +550,8 @@ gcloud functions deploy processUpload \
     --region=us-central1 \
     --source=. \
     --entry-point=processUpload \
-    --trigger-bucket=my-upload-bucket \
-    --trigger-event-filters="type=google.cloud.storage.object.v1.finalized"
+    --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
+    --trigger-event-filters="bucket=my-upload-bucket"
 ```
 
 ### Pub/Sub Trigger Example
@@ -713,7 +722,8 @@ gcloud functions deploy fetch_data \
     --allow-unauthenticated \
     --memory=512MB \
     --timeout=120s \
-    --concurrency=50
+    --concurrency=50 \
+    --set-env-vars="THREADS=50"
 ```
 
 ## Environment Variables and Secrets
@@ -754,7 +764,7 @@ functions.http('secureFunction', (req, res) => {
     const apiUrl = process.env.API_URL;
     const logLevel = process.env.LOG_LEVEL;
 
-    // Secrets mounted as environment variables work the same way
+    // Secrets exposed as environment variables work the same way
     // The secret value is automatically retrieved from Secret Manager
     const apiKey = process.env.API_KEY;
 
@@ -790,12 +800,9 @@ gcloud functions logs read myFunction \
     --region=us-central1 \
     --limit=50
 
-# Stream logs in real-time
-gcloud beta functions logs read myFunction \
-    --gen2 \
-    --region=us-central1 \
-    --limit=50 \
-    --follow
+# Stream logs in real-time with Cloud Logging live tail
+gcloud alpha logging tail \
+    'resource.type="cloud_run_revision" AND resource.labels.service_name="myfunction"'
 ```
 
 ### Structured Logging
