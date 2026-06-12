@@ -8,7 +8,7 @@ Description: Learn how to configure ArgoCD to ignore specific resource differenc
 
 ---
 
-ArgoCD constantly compares your Git repository with your Kubernetes cluster state. Sometimes this comparison flags differences you want to ignore. Resource ignoring tells ArgoCD which differences are acceptable, preventing false "OutOfSync" states and unnecessary reconciliation loops.
+ArgoCD constantly compares your Git repository with your Kubernetes cluster state. Sometimes this comparison flags differences you want to ignore. Resource ignoring tells ArgoCD which differences are acceptable, preventing false "OutOfSync" states and unnecessary sync attempts.
 
 ## Why Ignore Resource Differences?
 
@@ -29,7 +29,7 @@ Common scenarios where ignoring is necessary:
 
 1. **Autoscaling** - HPA modifies replica counts
 2. **Annotations** - Controllers add runtime metadata
-3. **Timestamps** - Kubernetes adds lastAppliedConfiguration
+3. **Apply metadata** - `kubectl apply` adds last-applied-configuration annotations
 4. **Mutating Webhooks** - Inject sidecars or modify resources
 5. **Operator-managed fields** - Operators update status and spec fields
 
@@ -110,6 +110,7 @@ metadata:
   name: webapp
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/webapp.git
     path: deploy
@@ -170,7 +171,6 @@ ignoreDifferences:
       - kube-scheduler
     jqPathExpressions:
       - .metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"]
-      - .metadata.managedFields
 ```
 
 ## Targeting Specific Resources
@@ -216,7 +216,7 @@ data:
       - .spec.replicas
   resource.customizations.ignoreDifferences.admissionregistration.k8s.io_MutatingWebhookConfiguration: |
     jqPathExpressions:
-      - .webhooks[].clientConfig.caBundle
+      - .webhooks[]?.clientConfig.caBundle
 ```
 
 The naming convention for resource-specific rules is: `resource.customizations.ignoreDifferences.GROUP_KIND`
@@ -266,6 +266,7 @@ metadata:
   name: myapp
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/myapp.git
     path: k8s
@@ -337,11 +338,11 @@ spec:
     - group: admissionregistration.k8s.io
       kind: MutatingWebhookConfiguration
       jqPathExpressions:
-        - .webhooks[].clientConfig.caBundle
+        - .webhooks[]?.clientConfig.caBundle
     - group: admissionregistration.k8s.io
       kind: ValidatingWebhookConfiguration
       jqPathExpressions:
-        - .webhooks[].clientConfig.caBundle
+        - .webhooks[]?.clientConfig.caBundle
   syncPolicy:
     automated:
       prune: true
