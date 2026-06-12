@@ -82,10 +82,10 @@ app.get('/api/public-data', (req, res) => {
   res.json({ data: 'This can be cached by anyone' });
 });
 
-// Private caching - only browser can cache
+// Private caching - only private client caches can store
 // Use for: user-specific data, personalized content, authenticated responses
 app.get('/api/user/profile', (req, res) => {
-  // private: only the end user's browser can cache, CDNs must not store
+  // private: only the end user's private cache can store, CDNs must not store
   // max-age: browser caches for 5 minutes
   // must-revalidate: after max-age expires, must check with server before using stale
   res.set('Cache-Control', 'private, max-age=300, must-revalidate');
@@ -104,10 +104,10 @@ app.get('/api/auth/token', (req, res) => {
   res.json({ token: generateToken() });
 });
 
-// Immutable content - never changes, cache forever
+// Immutable content - won't change during its freshness lifetime
 // Use for: versioned static assets, content-addressed resources
 app.get('/api/v1/assets/:hash', (req, res) => {
-  // immutable: tells browser this will NEVER change, don't even revalidate
+  // immutable: tells caches this won't change while fresh, don't revalidate during max-age
   // max-age set to 1 year (31536000 seconds) - effectively forever
   res.set('Cache-Control', 'public, max-age=31536000, immutable');
   res.sendFile(getAssetByHash(req.params.hash));
@@ -119,14 +119,14 @@ app.get('/api/v1/assets/:hash', (req, res) => {
 | Directive | Purpose | Use Case |
 |-----------|---------|----------|
 | `public` | Any cache can store | Static assets, public API data |
-| `private` | Only browser can store | User-specific content |
+| `private` | Only private caches can store | User-specific content |
 | `no-cache` | Must revalidate before use | Frequently updated content |
 | `no-store` | Never store anywhere | Sensitive data, tokens |
 | `max-age=N` | Fresh for N seconds (browser) | General TTL control |
 | `s-maxage=N` | Fresh for N seconds (CDN/proxy) | CDN-specific TTL |
 | `must-revalidate` | Must check after stale | Critical freshness |
 | `proxy-revalidate` | Proxies must revalidate | Proxy-specific control |
-| `immutable` | Never changes | Versioned assets |
+| `immutable` | Not updated while fresh | Versioned assets |
 | `stale-while-revalidate=N` | Serve stale while fetching fresh | Performance optimization |
 | `stale-if-error=N` | Serve stale if origin errors | Resilience |
 
@@ -208,6 +208,13 @@ function generateWeakETag(content, version) {
   return `W/"${version}-${content.lastModified}"`;
 }
 
+function etagMatches(ifNoneMatch, etag) {
+  return ifNoneMatch
+    .split(',')
+    .map(tag => tag.trim())
+    .some(tag => tag === '*' || tag.replace(/^W\//, '') === etag.replace(/^W\//, ''));
+}
+
 // Middleware to handle conditional requests
 function conditionalGet(generateContent) {
   return async (req, res, next) => {
@@ -224,19 +231,22 @@ function conditionalGet(generateContent) {
 
       // Check If-None-Match header (ETag validation)
       const clientETag = req.get('If-None-Match');
-      if (clientETag && clientETag === etag) {
-        // Content hasn't changed, return 304
-        // This saves bandwidth - no body sent
-        return res.status(304).end();
-      }
-
-      // Check If-Modified-Since header (time-based validation)
-      const clientModified = req.get('If-Modified-Since');
-      if (clientModified) {
-        const clientDate = new Date(clientModified);
-        if (lastModified <= clientDate) {
-          // Content hasn't been modified since client's copy
+      if (clientETag) {
+        // If-None-Match takes precedence over If-Modified-Since.
+        if (etagMatches(clientETag, etag)) {
+          // Content hasn't changed, return 304
+          // This saves bandwidth - no body sent
           return res.status(304).end();
+        }
+      } else {
+        // Check If-Modified-Since header (time-based validation)
+        const clientModified = req.get('If-Modified-Since');
+        if (clientModified) {
+          const clientDate = new Date(clientModified);
+          if (!Number.isNaN(clientDate.getTime()) && lastModified <= clientDate) {
+            // Content hasn't been modified since client's copy
+            return res.status(304).end();
+          }
         }
       }
 
@@ -269,10 +279,10 @@ sequenceDiagram
 
     Note over Client,Server: Initial Request
     Client->>Server: GET /api/articles/123
-    Server-->>Client: 200 OK<br/>ETag: "abc123"<br/>Last-Modified: Mon, 27 Jan 2026
+    Server-->>Client: 200 OK<br/>ETag: "abc123"<br/>Last-Modified: Tue, 27 Jan 2026 12:00:00 GMT
 
     Note over Client,Server: Subsequent Request (Validation)
-    Client->>Server: GET /api/articles/123<br/>If-None-Match: "abc123"<br/>If-Modified-Since: Mon, 27 Jan 2026
+    Client->>Server: GET /api/articles/123<br/>If-None-Match: "abc123"<br/>If-Modified-Since: Tue, 27 Jan 2026 12:00:00 GMT
 
     alt Content unchanged
         Server-->>Client: 304 Not Modified<br/>(no body, saves bandwidth)
@@ -303,8 +313,10 @@ app.put('/api/articles/:id', async (req, res) => {
   const currentArticle = await db.articles.findById(articleId);
   const currentETag = generateETag(currentArticle);
 
-  // Compare ETags - if they don't match, someone else modified the resource
-  if (clientETag !== currentETag) {
+  // Compare ETags - If-Match can contain "*" or a list of strong ETags
+  const etagList = clientETag.split(',').map(tag => tag.trim());
+  const hasMatch = clientETag === '*' || etagList.includes(currentETag);
+  if (!hasMatch) {
     return res.status(412).json({
       error: 'Precondition Failed',
       message: 'Resource has been modified by another client',
