@@ -307,7 +307,7 @@ end
 
 ## Building a Chat Room
 
-Chat rooms require multiple users subscribing to the same stream. Here is a complete implementation.
+Chat rooms require multiple users subscribing to the same stream. Here is a basic implementation.
 
 ### Server-Side Channel
 
@@ -364,7 +364,7 @@ class ChatChannel < ApplicationCable::Channel
   end
 
   def typing
-    # Broadcast typing indicator to others (not self)
+    # Broadcast typing indicator to subscribers
     ActionCable.server.broadcast(
       "chat_room:#{@room.id}",
       {
@@ -390,7 +390,8 @@ class ChatChannel < ApplicationCable::Channel
   end
 
   def online_users_in_room
-    # Get all connections subscribed to this room
+    # Get connected room members on this Action Cable server process.
+    # In multi-server production, store presence in Redis or your database instead.
     ActionCable.server.connections.map do |connection|
       connection.current_user
     end.compact.uniq.select do |user|
@@ -534,11 +535,11 @@ export default ChatRoom
 
 ## Scaling with Redis
 
-When you run multiple Rails servers (which you should in production), ActionCable needs a shared pub/sub backend. Redis is the standard choice.
+When you run multiple Rails servers (which you should in production), ActionCable needs a shared pub/sub backend. Redis is a common choice.
 
-### Why Redis is Required
+### Why a Shared Adapter is Required
 
-Without Redis, each Rails server maintains its own set of WebSocket connections. A broadcast from Server A only reaches clients connected to Server A. Redis acts as a message bus that relays broadcasts to all servers.
+Without a shared adapter, each Rails server maintains its own set of WebSocket connections. A broadcast from Server A only reaches clients connected to Server A. Redis acts as a message bus that relays broadcasts to all servers.
 
 ```mermaid
 flowchart TB
@@ -574,9 +575,6 @@ production:
   adapter: redis
   url: <%= ENV.fetch("REDIS_URL") %>
   channel_prefix: myapp_production
-
-  # Connection pool settings
-  pool_size: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
 ```
 
 For high-availability setups with Redis Sentinel:
@@ -767,8 +765,9 @@ threads threads_count, threads_count
 # Bind to socket for NGINX
 bind "unix:///var/run/puma.sock"
 
-# ActionCable requires a minimum thread pool
-# Each WebSocket connection uses one thread while active
+# Channel actions and connection callbacks run in the Action Cable worker pool.
+# Configure config.action_cable.worker_pool_size in your Rails environment,
+# and keep the database pool at least as large as that worker pool.
 ```
 
 ## Testing ActionCable
@@ -843,8 +842,8 @@ ActionCable provides a straightforward path to adding real-time features to Rail
 | Connection | Authenticates and identifies users |
 | Channels | Handle specific features (chat, notifications) |
 | Streams | Pub/sub channels for broadcasting |
-| Redis | Required for multi-server deployments |
+| Shared adapter | Redis, PostgreSQL, or Solid Cable for multi-server deployments |
 
 Start with simple features like notifications, then expand to more complex use cases like chat or collaborative editing. The same patterns apply regardless of the feature complexity.
 
-For production deployments, always use Redis as your adapter, configure NGINX properly for WebSocket connections, and monitor your connection counts to ensure you have adequate capacity. With these fundamentals in place, ActionCable can handle thousands of concurrent connections reliably.
+For production deployments, use a shared adapter such as Redis, configure NGINX properly for WebSocket connections, and monitor your connection counts to ensure you have adequate capacity. With these fundamentals in place, ActionCable can handle thousands of concurrent connections reliably.
