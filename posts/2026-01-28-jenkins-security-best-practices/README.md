@@ -10,11 +10,11 @@ Description: Learn how to harden Jenkins with RBAC, plugin hygiene, credential m
 
 Jenkins is powerful but easy to misconfigure. A secure Jenkins setup protects credentials, code, and build infrastructure. This guide covers the essentials.
 
-## 1. Enable Matrix-Based Security
+## 1. Enable Matrix-Based or Role-Based Security
 
-Use role-based access control and disable anonymous access.
+Use matrix-based authorization or a role-based authorization plugin, and disable anonymous access.
 
-- Create roles for admins, developers, and viewers
+- Define groups or roles for admins, developers, and viewers
 - Grant minimum permissions required
 
 ## 2. Use Credentials Manager
@@ -46,7 +46,7 @@ Terminate TLS at a trusted reverse proxy and enforce HTTPS.
 
 ## 8. Audit Logs and Monitoring
 
-Enable audit logging and monitor for changes in jobs, credentials, or plugins.
+Use an audit logging plugin and monitor for changes in jobs, credentials, or plugins.
 
 ## Conclusion
 
