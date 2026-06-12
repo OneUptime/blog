@@ -43,7 +43,7 @@ Editors inherit Viewer permissions plus:
 Admins have full control:
 - Manage users and teams
 - Configure data sources
-- Install plugins
+- Configure application plugins
 - Access all folders regardless of permissions
 
 ## Folder-Based Permissions
@@ -142,19 +142,18 @@ curl -X POST \
 
 ### Team Sync with External Providers
 
-If using LDAP, OAuth, or SAML, configure team sync to automatically manage team membership:
+If using LDAP, OAuth, or SAML, configure team sync to automatically manage team membership. For LDAP, map users to organization roles in `ldap.toml`, then synchronize Grafana teams with LDAP group DNs from the team's External group sync tab:
 
 ```ini
-# grafana.ini for LDAP team sync
+# grafana.ini for LDAP
 [auth.ldap]
 enabled = true
 config_file = /etc/grafana/ldap.toml
 
-# ldap.toml
+# ldap.toml role mapping
 [[servers.group_mappings]]
 group_dn = "cn=platform-engineers,ou=groups,dc=example,dc=com"
 org_role = "Editor"
-grafana_team_ids = [1]  # Maps to Platform Team
 ```
 
 ## Fine-Grained RBAC (Enterprise/Cloud)
@@ -236,7 +235,8 @@ curl -X POST \
      -H "Content-Type: application/json" \
      https://grafana.example.com/api/access-control/roles \
      -d '{
-       "name": "my-custom-role",
+       "uid": "my-custom-role",
+       "name": "custom:my-custom-role",
        "description": "Custom permissions for specific use case",
        "permissions": [
          {"action": "dashboards:read", "scope": "dashboards:*"},
@@ -273,17 +273,16 @@ This prevents accidental access to production metrics by development teams.
 
 ### Query-Level Restrictions
 
-Some data sources support additional restrictions:
+Grafana data source permissions control who can query a data source, but they do not enforce arbitrary PromQL patterns from `secureJsonData`. Use data-source-native authorization, a proxy, or Grafana's label-based access control (LBAC) where supported:
 
 ```yaml
-# Prometheus data source with query restrictions
+# Prometheus data source settings
 jsonData:
   queryTimeout: 30s
   httpMethod: POST
 
-secureJsonData:
-  # Some proxies can enforce query patterns
-  allowedQueries: "up|http_.*|node_.*"
+# Enforce query restrictions outside this data source block,
+# for example with LBAC rules or a policy-aware query proxy.
 ```
 
 ## Service Account Permissions
@@ -307,7 +306,7 @@ curl -X POST \
 curl -X POST \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
-     https://grafana.example.com/api/access-control/serviceaccounts/1/roles \
+     https://grafana.example.com/api/access-control/users/1/roles \
      -d '{"roleUid": "dashboard-creator"}'
 
 # Create token
@@ -326,11 +325,13 @@ Manage RBAC configuration as code for consistency across environments.
 
 ```yaml
 # provisioning/access-control/roles.yaml
-apiVersion: 1
+apiVersion: 2
 
 roles:
   - name: custom:dashboard-viewer
+    uid: customdashboardviewer
     description: View dashboards in specific folders
+    version: 1
     permissions:
       - action: dashboards:read
         scope: folders:uid:public-dashboards
@@ -338,7 +339,9 @@ roles:
         scope: folders:uid:public-dashboards
 
   - name: custom:alert-manager
+    uid: customalertmanager
     description: Manage alerts without dashboard edit
+    version: 1
     permissions:
       - action: alert.rules:read
         scope: "*"
@@ -352,18 +355,16 @@ roles:
 
 ```yaml
 # provisioning/access-control/assignments.yaml
-apiVersion: 1
+apiVersion: 2
 
-roleAssignments:
-  - role: custom:dashboard-viewer
-    teams:
-      - support-team
-    builtInRoles:
-      - Viewer
+teams:
+  - name: support-team
+    roles:
+      - uid: customdashboardviewer
 
-  - role: custom:alert-manager
-    teams:
-      - sre-team
+  - name: sre-team
+    roles:
+      - uid: customalertmanager
 ```
 
 ## Common RBAC Patterns
@@ -426,8 +427,8 @@ Monitor who accesses what in Grafana.
 # grafana.ini
 [auditing]
 enabled = true
-log_dashboard_access = true
-log_query_access = true
+loggers = file
+log_datasource_query_request_body = true
 ```
 
 ### Reviewing Access Patterns
