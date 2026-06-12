@@ -61,17 +61,24 @@ function parseAcceptEncoding(headerValue) {
     .split(',')
     .map((part) => {
       const trimmed = part.trim();
+      const [encodingPart, ...params] = trimmed.split(';');
+      const encoding = encodingPart.trim().toLowerCase();
 
-      // Check if there's a quality value
-      const qIndex = trimmed.indexOf(';q=');
-
-      if (qIndex === -1) {
-        // No quality value specified, default to 1.0
-        return { encoding: trimmed, quality: 1.0 };
+      if (!encoding) {
+        return null;
       }
 
-      const encoding = trimmed.substring(0, qIndex).trim();
-      const qualityStr = trimmed.substring(qIndex + 3).trim();
+      const qParam = params.find((param) => {
+        const [name] = param.split('=');
+        return name && name.trim().toLowerCase() === 'q';
+      });
+
+      if (!qParam) {
+        // No quality value specified, default to 1.0
+        return { encoding, quality: 1.0 };
+      }
+
+      const [, qualityStr = ''] = qParam.split('=');
       const quality = parseFloat(qualityStr);
 
       // Validate quality is between 0 and 1
@@ -79,6 +86,7 @@ function parseAcceptEncoding(headerValue) {
 
       return { encoding, quality: validQuality };
     })
+    .filter(Boolean)
     // Filter out encodings with quality 0 (client explicitly rejects)
     .filter((e) => e.quality > 0)
     // Sort by quality descending
@@ -118,29 +126,25 @@ const SUPPORTED_ENCODINGS = ['br', 'gzip', 'deflate'];
 function selectEncoding(acceptEncodingHeader) {
   const clientEncodings = parseAcceptEncoding(acceptEncodingHeader);
 
-  // No Accept-Encoding header means client accepts any encoding
+  // No Accept-Encoding header means the server may choose any content coding,
+  // but this middleware sends the response uncompressed by default.
   if (clientEncodings.length === 0) {
     return null; // Send uncompressed
   }
 
-  // Check for wildcard acceptance
-  const wildcardEntry = clientEncodings.find((e) => e.encoding === '*');
+  const qualityByEncoding = new Map(clientEncodings.map((e) => [e.encoding, e.quality]));
 
-  // Find the best match by iterating client preferences
-  for (const { encoding } of clientEncodings) {
-    if (encoding === '*') {
-      // Wildcard: return server's most preferred encoding
-      return SUPPORTED_ENCODINGS[0];
-    }
+  // Find the highest q-value among encodings the server can produce
+  const candidates = SUPPORTED_ENCODINGS
+    .map((encoding) => ({
+      encoding,
+      quality: qualityByEncoding.get(encoding) ?? qualityByEncoding.get('*') ?? 0,
+    }))
+    .filter((candidate) => candidate.quality > 0);
 
-    if (SUPPORTED_ENCODINGS.includes(encoding)) {
-      return encoding;
-    }
-  }
-
-  // If wildcard was present but no direct match found, use server preference
-  if (wildcardEntry) {
-    return SUPPORTED_ENCODINGS[0];
+  if (candidates.length > 0) {
+    const bestQuality = Math.max(...candidates.map((candidate) => candidate.quality));
+    return candidates.find((candidate) => candidate.quality === bestQuality).encoding;
   }
 
   // No acceptable encoding found
@@ -232,14 +236,39 @@ function isCompressible(contentType, compressibleTypes) {
   return compressibleTypes.some((type) => baseType.includes(type));
 }
 
+function appendVary(res, value) {
+  const current = res.getHeader('Vary');
+
+  if (!current) {
+    res.setHeader('Vary', value);
+    return;
+  }
+
+  const values = String(current)
+    .split(',')
+    .map((part) => part.trim().toLowerCase());
+
+  if (!values.includes(value.toLowerCase())) {
+    res.setHeader('Vary', `${current}, ${value}`);
+  }
+}
+
 // Select best encoding from client's Accept-Encoding header
 function selectEncoding(acceptEncoding) {
   const supported = ['br', 'gzip', 'deflate'];
   const parsed = parseAcceptEncoding(acceptEncoding);
+  const qualityByEncoding = new Map(parsed.map((e) => [e.encoding, e.quality]));
 
-  for (const { encoding } of parsed) {
-    if (encoding === '*') return supported[0];
-    if (supported.includes(encoding)) return encoding;
+  const candidates = supported
+    .map((encoding) => ({
+      encoding,
+      quality: qualityByEncoding.get(encoding) ?? qualityByEncoding.get('*') ?? 0,
+    }))
+    .filter((candidate) => candidate.quality > 0);
+
+  if (candidates.length > 0) {
+    const bestQuality = Math.max(...candidates.map((candidate) => candidate.quality));
+    return candidates.find((candidate) => candidate.quality === bestQuality).encoding;
   }
 
   return null;
@@ -258,15 +287,22 @@ function compressionMiddleware(userOptions = {}) {
     const selectedEncoding = selectEncoding(acceptEncoding);
 
     // Track if we should compress
-    let shouldCompress = !!selectedEncoding;
-    let compressor = null;
-    let headersSent = false;
+    const shouldCompress = !!selectedEncoding;
+    let passthrough = false;
 
     // Buffer to collect response body
     const chunks = [];
 
     // Override write to buffer content
     res.write = function (chunk, encoding, callback) {
+      if (res.getHeader('Content-Encoding')) {
+        passthrough = true;
+      }
+
+      if (passthrough) {
+        return originalWrite(chunk, encoding, callback);
+      }
+
       if (chunk) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding));
       }
@@ -281,6 +317,10 @@ function compressionMiddleware(userOptions = {}) {
 
     // Override end to handle compression
     res.end = function (chunk, encoding, callback) {
+      if (passthrough || res.getHeader('Content-Encoding')) {
+        return originalEnd(chunk, encoding, callback);
+      }
+
       if (chunk) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding));
       }
@@ -294,7 +334,7 @@ function compressionMiddleware(userOptions = {}) {
       const contentType = res.getHeader('Content-Type') || '';
 
       // Always set Vary header for caching
-      res.setHeader('Vary', 'Accept-Encoding');
+      appendVary(res, 'Accept-Encoding');
 
       // Decide whether to compress
       const compress =
@@ -456,21 +496,26 @@ def parse_accept_encoding(header_value):
         if not part:
             continue
 
+        encoding, *params = part.split(';')
+        encoding = encoding.strip().lower()
+        quality = 1.0
+
         # Check for quality value
-        if ';q=' in part:
-            encoding, q_str = part.split(';q=', 1)
+        q_str = None
+        for param in params:
+            name, _, value = param.partition('=')
+            if name.strip().lower() == 'q':
+                q_str = value
+                break
+
+        if q_str is not None:
             try:
                 quality = float(q_str.strip())
                 quality = max(0.0, min(1.0, quality))
             except ValueError:
                 quality = 1.0
-        else:
-            encoding = part
-            quality = 1.0
 
-        encoding = encoding.strip().lower()
-
-        if quality > 0:
+        if encoding and quality > 0:
             encodings.append((encoding, quality))
 
     # Sort by quality descending
@@ -486,12 +531,17 @@ def select_encoding(accept_encoding_header):
     """
     supported = ['br', 'gzip', 'deflate'] if BROTLI_AVAILABLE else ['gzip', 'deflate']
     encodings = parse_accept_encoding(accept_encoding_header)
+    quality_by_encoding = dict(encodings)
 
-    for encoding, quality in encodings:
-        if encoding == '*':
-            return supported[0]
-        if encoding in supported:
-            return encoding
+    candidates = [
+        (encoding, quality_by_encoding.get(encoding, quality_by_encoding.get('*', 0)))
+        for encoding in supported
+    ]
+    candidates = [(encoding, quality) for encoding, quality in candidates if quality > 0]
+
+    if candidates:
+        best_quality = max(quality for encoding, quality in candidates)
+        return next(encoding for encoding, quality in candidates if quality == best_quality)
 
     return None
 
@@ -525,6 +575,21 @@ def compress_data(data, encoding, level=6):
     return None
 
 
+def append_vary(response, value):
+    """
+    Add a Vary value without replacing existing Vary header values.
+    """
+    current = response.headers.get('Vary')
+
+    if not current:
+        response.headers['Vary'] = value
+        return
+
+    values = [part.strip().lower() for part in current.split(',')]
+    if value.lower() not in values:
+        response.headers['Vary'] = f'{current}, {value}'
+
+
 def compression_middleware(threshold=1024, level=6):
     """
     Decorator that adds compression to Flask route responses.
@@ -543,7 +608,7 @@ def compression_middleware(threshold=1024, level=6):
             response = make_response(f(*args, **kwargs))
 
             # Always set Vary header
-            response.headers['Vary'] = 'Accept-Encoding'
+            append_vary(response, 'Accept-Encoding')
 
             # Check if compression is needed
             accept_encoding = request.headers.get('Accept-Encoding', '')
@@ -625,7 +690,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/andybalholm/brotli"
 )
@@ -651,23 +715,27 @@ func ParseAcceptEncoding(header string) []EncodingQuality {
 			continue
 		}
 
-		encoding := part
+		params := strings.Split(part, ";")
+		encoding := strings.TrimSpace(params[0])
 		quality := 1.0
 
 		// Check for quality value
-		if idx := strings.Index(part, ";q="); idx != -1 {
-			encoding = strings.TrimSpace(part[:idx])
-			if q, err := strconv.ParseFloat(part[idx+3:], 64); err == nil {
-				quality = q
-				if quality < 0 {
-					quality = 0
-				} else if quality > 1 {
-					quality = 1
+		for _, param := range params[1:] {
+			name, value, found := strings.Cut(param, "=")
+			if found && strings.EqualFold(strings.TrimSpace(name), "q") {
+				if q, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err == nil {
+					quality = q
+					if quality < 0 {
+						quality = 0
+					} else if quality > 1 {
+						quality = 1
+					}
 				}
+				break
 			}
 		}
 
-		if quality > 0 {
+		if encoding != "" && quality > 0 {
 			encodings = append(encodings, EncodingQuality{
 				Encoding: strings.ToLower(encoding),
 				Quality:  quality,
@@ -691,19 +759,28 @@ func ParseAcceptEncoding(header string) []EncodingQuality {
 func SelectEncoding(acceptEncoding string) string {
 	supported := []string{"br", "gzip", "deflate"}
 	encodings := ParseAcceptEncoding(acceptEncoding)
+	qualityByEncoding := make(map[string]float64, len(encodings))
 
 	for _, eq := range encodings {
-		if eq.Encoding == "*" {
-			return supported[0]
+		qualityByEncoding[eq.Encoding] = eq.Quality
+	}
+
+	bestEncoding := ""
+	bestQuality := 0.0
+
+	for _, encoding := range supported {
+		quality, ok := qualityByEncoding[encoding]
+		if !ok {
+			quality = qualityByEncoding["*"]
 		}
-		for _, s := range supported {
-			if eq.Encoding == s {
-				return s
-			}
+
+		if quality > bestQuality {
+			bestEncoding = encoding
+			bestQuality = quality
 		}
 	}
 
-	return ""
+	return bestEncoding
 }
 
 // compressedResponseWriter wraps http.ResponseWriter to handle compression
@@ -712,18 +789,15 @@ type compressedResponseWriter struct {
 	writer      io.Writer
 	encoding    string
 	wroteHeader bool
+	statusCode  int
 	threshold   int
 	buffer      []byte
 }
 
 func (w *compressedResponseWriter) Write(b []byte) (int, error) {
 	// Buffer until we know the content type and size
-	if !w.wroteHeader {
-		w.buffer = append(w.buffer, b...)
-		return len(b), nil
-	}
-
-	return w.writer.Write(b)
+	w.buffer = append(w.buffer, b...)
+	return len(b), nil
 }
 
 func (w *compressedResponseWriter) WriteHeader(statusCode int) {
@@ -731,6 +805,25 @@ func (w *compressedResponseWriter) WriteHeader(statusCode int) {
 		return
 	}
 	w.wroteHeader = true
+	w.statusCode = statusCode
+}
+
+func (w *compressedResponseWriter) addVary(value string) {
+	for _, existing := range w.Header().Values("Vary") {
+		for _, part := range strings.Split(existing, ",") {
+			if strings.EqualFold(strings.TrimSpace(part), value) {
+				return
+			}
+		}
+	}
+
+	w.Header().Add("Vary", value)
+}
+
+func (w *compressedResponseWriter) sendHeaders() {
+	if w.statusCode == 0 {
+		w.statusCode = http.StatusOK
+	}
 
 	// Check if we should compress
 	contentType := w.Header().Get("Content-Type")
@@ -740,7 +833,7 @@ func (w *compressedResponseWriter) WriteHeader(statusCode int) {
 		w.Header().Get("Content-Encoding") == ""
 
 	// Always set Vary header
-	w.Header().Set("Vary", "Accept-Encoding")
+	w.addVary("Accept-Encoding")
 
 	if shouldCompress {
 		w.Header().Set("Content-Encoding", w.encoding)
@@ -761,20 +854,21 @@ func (w *compressedResponseWriter) WriteHeader(statusCode int) {
 		w.writer = w.ResponseWriter
 	}
 
-	w.ResponseWriter.WriteHeader(statusCode)
+	w.ResponseWriter.WriteHeader(w.statusCode)
 }
 
 func (w *compressedResponseWriter) Close() error {
+	w.sendHeaders()
+
 	// Flush any buffered data
 	if len(w.buffer) > 0 {
-		if !w.wroteHeader {
-			w.WriteHeader(http.StatusOK)
+		if _, err := w.writer.Write(w.buffer); err != nil {
+			return err
 		}
-		w.writer.Write(w.buffer)
 	}
 
 	// Close the compressor if it implements io.Closer
-	if closer, ok := w.writer.(io.Closer); ok && w.writer != w.ResponseWriter {
+	if closer, ok := w.writer.(io.Closer); ok {
 		return closer.Close()
 	}
 	return nil
@@ -978,7 +1072,7 @@ res.send(compressedData);
 
 // Correct: Always include Vary
 res.setHeader('Content-Encoding', 'gzip');
-res.setHeader('Vary', 'Accept-Encoding');
+res.vary('Accept-Encoding');
 res.send(compressedData);
 ```
 
