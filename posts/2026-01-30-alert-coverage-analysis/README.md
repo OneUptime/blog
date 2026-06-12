@@ -307,7 +307,7 @@ Track these metrics to verify your coverage analysis is working:
 **Coverage Debt:** Number of known gaps weighted by priority
 
 ```mermaid
-xychart-beta
+xychart
     title "Alert Coverage Improvement Over Time"
     x-axis [Jan, Feb, Mar, Apr, May, Jun]
     y-axis "Coverage %" 0 --> 100
