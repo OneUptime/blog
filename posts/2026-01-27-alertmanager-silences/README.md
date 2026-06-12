@@ -68,6 +68,7 @@ tar xvfz alertmanager-0.27.0.linux-amd64.tar.gz
 sudo mv alertmanager-0.27.0.linux-amd64/amtool /usr/local/bin/
 
 # Configure amtool to point to your Alertmanager
+mkdir -p ~/.config/amtool
 cat > ~/.config/amtool/config.yml << EOF
 alertmanager.url: http://alertmanager:9093
 EOF
@@ -85,7 +86,7 @@ amtool silence add service=database \
   --author="oncall@company.com" \
   --duration=2h
 
-# Output: Silence ID (e.g., "a]3f2b1c-4d5e-6f7a-8b9c-0d1e2f3a4b5c")
+# Output: Silence ID (e.g., "3f2b1c-4d5e-6f7a-8b9c-0d1e2f3a4b5c")
 ```
 
 ### Querying Existing Silences
@@ -113,7 +114,7 @@ amtool silence expire $(amtool silence query -q)
 
 ### Updating a Silence
 
-Alertmanager does not support updating silences directly. Instead, expire the existing silence and create a new one:
+`amtool` does not provide a dedicated update command for silences. Instead, expire the existing silence and create a new one:
 
 ```bash
 # Expire the old silence
@@ -260,7 +261,7 @@ For integration with deployment pipelines, incident management tools, or custom 
 ### API Endpoint Overview
 
 ```text
-POST   /api/v2/silences     - Create a new silence
+POST   /api/v2/silences     - Create a new silence, or update one when the payload includes an existing ID
 GET    /api/v2/silences     - List all silences
 GET    /api/v2/silence/{id} - Get a specific silence
 DELETE /api/v2/silence/{id} - Expire a silence
@@ -519,8 +520,8 @@ Proper auditing ensures accountability and helps identify patterns in alert supp
 Alertmanager retains expired silences for a configurable period. Query them via API:
 
 ```bash
-# Get all silences including expired ones
-curl "http://alertmanager:9093/api/v2/silences?silenced=false" | jq '.[] | select(.status.state == "expired")'
+# Get all retained silences and select the expired ones
+curl "http://alertmanager:9093/api/v2/silences" | jq '.[] | select(.status.state == "expired")'
 ```
 
 ### Building a Silence Audit Log
@@ -671,16 +672,15 @@ groups:
           summary: "High number of active silences"
           description: "There are {{ $value }} active silences. Review if all are necessary."
 
-      # Alert if a silence has been active for too long
-      - alert: SilenceRunningTooLong
-        expr: |
-          (time() - alertmanager_silence_start_timestamp_seconds{state="active"}) > 86400
+      # Alert if Alertmanager has trouble garbage-collecting expired silences
+      - alert: SilenceGarbageCollectionErrors
+        expr: increase(alertmanager_silences_gc_errors_total[15m]) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Silence running for more than 24 hours"
-          description: "A silence has been active for over 24 hours. Consider if it should be expired."
+          summary: "Alertmanager silence garbage collection errors"
+          description: "Alertmanager reported silence garbage collection errors in the last 15 minutes."
 ```
 
 ### Slack Notification for New Silences
