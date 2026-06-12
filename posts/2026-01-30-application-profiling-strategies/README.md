@@ -82,7 +82,7 @@ I/O profiling measures time spent waiting for external resources:
 - Message queue operations
 
 ```go
-// Example: I/O profiling in Go using pprof
+// Example: exposing Go pprof endpoints for runtime profiling
 package main
 
 import (
@@ -98,7 +98,7 @@ func main() {
     }()
 
     // Your application code
-    startServer()
+    // startServer()
 }
 ```
 
@@ -178,6 +178,10 @@ Instrumentation profilers inject measurement code at function entry and exit poi
 
 ```java
 // Example: Instrumentation in Java with AspectJ
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+
 @Aspect
 public class ProfilingAspect {
 
@@ -240,8 +244,10 @@ async function profileOperation(operation) {
 
     // Stop and save the profile
     return new Promise((resolve, reject) => {
-        session.post('Profiler.stop', (err, { profile }) => {
+        session.post('Profiler.stop', (err, params) => {
             if (err) return reject(err);
+
+            const { profile } = params;
 
             // Save as .cpuprofile for Chrome DevTools
             fs.writeFileSync(
@@ -314,9 +320,12 @@ def memory_intensive_function():
 package main
 
 import (
+    "net/http"
     "os"
     "runtime/pprof"
     "time"
+
+    _ "net/http/pprof"
 )
 
 func profileCPU(duration time.Duration) error {
@@ -351,12 +360,6 @@ func profileHeap() error {
     return pprof.WriteHeapProfile(f)
 }
 
-// HTTP endpoint for continuous profiling
-import (
-    "net/http"
-    _ "net/http/pprof"
-)
-
 func enableProfilingEndpoint() {
     // Exposes /debug/pprof/ endpoints
     go http.ListenAndServe("localhost:6060", nil)
@@ -372,8 +375,9 @@ func enableProfilingEndpoint() {
 
 ```java
 // Using JFR (Java Flight Recorder) programmatically
+import java.nio.file.Path;
+
 import jdk.jfr.*;
-import jdk.jfr.consumer.*;
 
 public class ProfilerExample {
 
