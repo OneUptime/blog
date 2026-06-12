@@ -15,7 +15,7 @@ Managing OPA policies across dozens of services and clusters becomes unwieldy fa
 Bundles are gzip-compressed tar archives containing:
 
 - Rego policy files
-- JSON/YAML data files
+- JSON/YAML data files named `data.json` or `data.yaml`
 - A manifest file
 
 OPA instances periodically fetch bundles from a server, enabling centralized policy updates without redeploying services.
@@ -53,8 +53,10 @@ bundle/
     kubernetes/
       admission.rego
   data/
-    roles.json
-    permissions.json
+    roles/
+      data.json
+    permissions/
+      data.json
 ```
 
 ### The Manifest File
@@ -75,7 +77,7 @@ The `.manifest` file defines bundle metadata:
 
 Key fields:
 - **revision**: Version identifier for tracking updates
-- **roots**: Namespaces this bundle owns (OPA rejects overlapping roots from multiple bundles)
+- **roots**: Namespaces this bundle owns (OPA rejects overlapping roots within a bundle manifest)
 
 ## Building Bundles
 
@@ -84,10 +86,10 @@ Key fields:
 ```bash
 # Create bundle directory structure
 
-mkdir -p bundle/policy bundle/data
+mkdir -p bundle/authz bundle/required_roles
 
 # Add policies
-cat > bundle/policy/authz.rego << 'EOF'
+cat > bundle/authz/authz.rego << 'EOF'
 package authz
 
 import rego.v1
@@ -104,14 +106,12 @@ allow if {
 EOF
 
 # Add data
-cat > bundle/data/required_roles.json << 'EOF'
+cat > bundle/required_roles/data.json << 'EOF'
 {
-  "required_roles": {
-    "documents": {
-      "read": ["viewer", "editor", "admin"],
-      "write": ["editor", "admin"],
-      "delete": ["admin"]
-    }
+  "documents": {
+    "read": ["viewer", "editor", "admin"],
+    "write": ["editor", "admin"],
+    "delete": ["admin"]
   }
 }
 EOF
@@ -136,8 +136,8 @@ OPA can build bundles directly:
 # Build bundle from directory
 opa build -b ./policy -o bundle.tar.gz
 
-# Build with optimization (partial evaluation)
-opa build -b ./policy -o bundle.tar.gz --optimize 1
+# Build with optimization (partial evaluation) for an entrypoint
+opa build -b ./policy -o bundle.tar.gz --optimize 1 -e authz/allow
 
 # Build with signing
 opa build -b ./policy -o bundle.tar.gz \
@@ -231,8 +231,10 @@ Push bundles to container registries:
 
 ```bash
 # Using ORAS
+echo '{}' > config.json
 oras push ghcr.io/myorg/opa-bundle:v1.0.0 \
-  bundle.tar.gz:application/vnd.opa.bundle.layer.v1+gzip
+  --config config.json:application/vnd.oci.image.config.v1+json \
+  bundle.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
 
 # Pull the bundle
 oras pull ghcr.io/myorg/opa-bundle:v1.0.0
@@ -456,7 +458,7 @@ keys:
 
 ```bash
 # Get bundle status via API
-curl http://localhost:8181/v1/status | jq '.bundles'
+curl http://localhost:8181/v1/status | jq '.result.bundles'
 ```
 
 Response:
@@ -490,14 +492,15 @@ OPA exposes bundle metrics:
 
 ```text
 # Bundle download duration
-opa_bundle_download_duration_seconds
+bundle_loading_duration_ns
 
 # Bundle activation success/failure
-opa_bundle_loaded_bytes
-opa_bundle_last_successful_activation
+bundle_loaded_counter
+bundle_failed_load_counter
+last_success_bundle_activation
 
 # Bundle request count
-opa_bundle_request_duration_seconds_count
+last_bundle_request
 ```
 
 ## Bundle Update Workflow
@@ -535,7 +538,7 @@ aws s3 ls s3://my-opa-bundles/
 # bundle-v1.2.0.tar.gz
 # bundle-latest.tar.gz
 
-# Rollback by updating latest symlink
+# Rollback by replacing the latest object
 aws s3 cp s3://my-opa-bundles/bundle-v1.1.0.tar.gz \
           s3://my-opa-bundles/bundle-latest.tar.gz
 ```
@@ -570,7 +573,8 @@ bundles/
   policies/        # Changes less frequently
     authz.rego
   data/            # Changes more frequently
-    roles.json
+    roles/
+      data.json
 ```
 
 ### 3. Test Before Publishing
