@@ -73,7 +73,7 @@ Start with a well-designed audit event structure that captures everything you ne
 # Core data models for batch audit events
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 import uuid
@@ -121,7 +121,7 @@ class AuditEvent:
     event_type: AuditEventType = AuditEventType.BATCH_START
 
     # When this event occurred
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # Source of the data (table, file, API endpoint)
     source: str = ""
@@ -183,7 +183,7 @@ class BatchRun:
     """
     batch_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     job_name: str = ""
-    start_time: datetime = field(default_factory=datetime.utcnow)
+    start_time: datetime = field(default_factory=lambda: datetime.now(UTC))
     end_time: Optional[datetime] = None
     status: str = "running"
     actor: str = ""
@@ -248,15 +248,14 @@ def compute_record_hash(record: Dict[str, Any]) -> str:
 
 ### 2. Audit Logger
 
-The audit logger is the heart of the system. It captures events asynchronously to minimize performance impact.
+The audit logger is the heart of the system. It captures events with a background flush thread to minimize performance impact.
 
 ```python
 # audit_logger.py
 # High-performance audit logging with batched writes
 
-import asyncio
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 from collections import deque
 import threading
@@ -274,7 +273,7 @@ from audit_models import (
 
 class AuditLogger:
     """
-    Asynchronous audit logger with batched writes.
+    Background audit logger with batched writes.
 
     Events are queued in memory and flushed to storage
     periodically or when the buffer reaches capacity.
@@ -292,7 +291,7 @@ class AuditLogger:
         self.flush_interval = flush_interval_seconds
 
         # Thread-safe event buffer
-        self._buffer: deque = deque(maxlen=buffer_size * 2)
+        self._buffer: deque[AuditEvent] = deque()
         self._lock = threading.Lock()
 
         # Current batch run context
@@ -342,7 +341,7 @@ class AuditLogger:
                 self._logger.error(f"Failed to flush audit events: {e}")
                 # Re-queue events on failure
                 with self._lock:
-                    for event in events_to_write:
+                    for event in reversed(events_to_write):
                         self._buffer.appendleft(event)
 
     def _enqueue(self, event: AuditEvent) -> None:
@@ -404,7 +403,7 @@ class AuditLogger:
             ))
             raise
         finally:
-            batch.end_time = datetime.utcnow()
+            batch.end_time = datetime.now(UTC)
 
             # Log batch end with summary
             self._enqueue(AuditEvent(
@@ -540,7 +539,7 @@ Change Data Capture identifies what changed between runs. This is critical for i
 # Change Data Capture for batch processing
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 import hashlib
 import json
@@ -813,8 +812,11 @@ class RedisHashStore(HashStore):
         self.redis.delete(self._key(key))
 
     def get_all_keys(self) -> Set[str]:
-        keys = self.redis.keys(f"{self.prefix}*")
-        return {k.decode().replace(self.prefix, "") for k in keys}
+        keys = self.redis.scan_iter(match=f"{self.prefix}*")
+        return {
+            (k.decode() if isinstance(k, bytes) else k).removeprefix(self.prefix)
+            for k in keys
+        }
 ```
 
 ## Data Lineage Tracking
@@ -861,7 +863,7 @@ flowchart LR
 # Data lineage tracking for batch processing
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 import uuid
 import json
@@ -875,7 +877,7 @@ class TransformationStep:
     step_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     step_name: str = ""
     step_type: str = ""  # e.g., "filter", "join", "aggregate", "map"
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     input_hash: str = ""
     output_hash: str = ""
     parameters: Dict[str, Any] = field(default_factory=dict)
@@ -913,7 +915,7 @@ class LineageTracker:
             source_system=source_system,
             source_table=source_table,
             source_record_id=source_record_id,
-            source_timestamp=datetime.utcnow(),
+            source_timestamp=datetime.now(UTC),
             source_hash=compute_record_hash(source_data),
         )
 
@@ -982,7 +984,7 @@ class LineageTracker:
         lineage.target_system = target_system
         lineage.target_table = target_table
         lineage.target_record_id = target_record_id
-        lineage.target_timestamp = datetime.utcnow()
+        lineage.target_timestamp = datetime.now(UTC)
         lineage.target_hash = compute_record_hash(target_data)
 
         # Store the completed lineage
@@ -1014,7 +1016,7 @@ class LineageTracker:
             "step_id": str(uuid.uuid4()),
             "step_name": "merge",
             "step_type": "join",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "parent_lineages": lineage_ids,
             "description": merge_description,
         })
@@ -1030,6 +1032,10 @@ class LineageTracker:
 
         self._active_lineages[new_lineage.lineage_id] = new_lineage
         return new_lineage.lineage_id
+
+    def discard_lineage(self, lineage_id: str) -> None:
+        """Stop tracking a lineage that will not produce an output record."""
+        self._active_lineages.pop(lineage_id, None)
 
 
 class LineageStorage:
@@ -1069,14 +1075,13 @@ Here is a complete example bringing all the pieces together.
 # Complete batch processor with integrated audit capabilities
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Callable, Dict, Iterator, List, Optional
 import logging
 
 from audit_logger import AuditLogger
-from change_detector import ChangeDetector, IncrementalChangeDetector, ChangeType
+from change_detector import IncrementalChangeDetector, ChangeType
 from lineage_tracker import LineageTracker
-from audit_models import compute_record_hash
 
 
 @dataclass
@@ -1113,7 +1118,7 @@ class AuditedBatchProcessor:
         self,
         audit_logger: AuditLogger,
         lineage_tracker: LineageTracker,
-        change_detector: Optional[ChangeDetector] = None,
+        change_detector: Optional[IncrementalChangeDetector] = None,
     ):
         self.audit = audit_logger
         self.lineage = lineage_tracker
@@ -1151,7 +1156,7 @@ class AuditedBatchProcessor:
         Returns:
             ProcessingResult with statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
 
         # Initialize counters
         inserted = 0
@@ -1166,6 +1171,7 @@ class AuditedBatchProcessor:
                 for record in reader():
                     processed += 1
                     record_id = str(record.get(record_id_field, processed))
+                    lineage_id: Optional[str] = None
 
                     try:
                         # Log the read
@@ -1194,6 +1200,7 @@ class AuditedBatchProcessor:
                                 record_id=record_id,
                                 reason="Filtered by transformer",
                             )
+                            self.lineage.discard_lineage(lineage_id)
                             skipped += 1
                             continue
 
@@ -1222,6 +1229,7 @@ class AuditedBatchProcessor:
                                     record_id=record_id,
                                     reason="No change detected",
                                 )
+                                self.lineage.discard_lineage(lineage_id)
                                 skipped += 1
                                 continue
 
@@ -1272,6 +1280,8 @@ class AuditedBatchProcessor:
                             )
 
                     except Exception as e:
+                        if lineage_id is not None:
+                            self.lineage.discard_lineage(lineage_id)
                         self.logger.error(
                             f"Error processing record {record_id}: {e}"
                         )
@@ -1291,7 +1301,7 @@ class AuditedBatchProcessor:
                 self.logger.error(f"Batch processing failed: {e}")
                 raise
 
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
 
         return ProcessingResult(
             batch_id=batch.batch_id,
@@ -1345,7 +1355,7 @@ flowchart TB
 # Compliance reporting for batch audit
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional
 import json
 
@@ -1457,9 +1467,9 @@ class ComplianceReporter:
         )
 
         return ComplianceReport(
-            report_id=f"sox_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+            report_id=f"sox_{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
             report_type="sox",
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(UTC),
             period_start=period_start,
             period_end=period_end,
             summary={
@@ -1559,9 +1569,9 @@ class ComplianceReporter:
         )
 
         return ComplianceReport(
-            report_id=f"gdpr_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+            report_id=f"gdpr_{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
             report_type="gdpr",
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(UTC),
             period_start=period_start,
             period_end=period_end,
             summary={
@@ -1982,7 +1992,7 @@ Here is a complete example showing how to use all the components together.
 # Complete example of batch processing with audit
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -2101,7 +2111,7 @@ def main():
             "customer_name": order["customer"].upper(),
             "total_amount": order["amount"],
             "status": "processed",
-            "processed_at": datetime.utcnow().isoformat(),
+            "processed_at": datetime.now(UTC).isoformat(),
         }
 
     # Define writer (mock)
@@ -2141,8 +2151,8 @@ def main():
     reporter = ComplianceReporter(audit_storage)
 
     report = reporter.generate_sox_report(
-        period_start=datetime.utcnow() - timedelta(days=1),
-        period_end=datetime.utcnow(),
+        period_start=datetime.now(UTC) - timedelta(days=1),
+        period_end=datetime.now(UTC),
     )
 
     logger.info(f"Compliance status: {report.compliance_status}")
@@ -2164,7 +2174,7 @@ if __name__ == "__main__":
 ### 1. Performance Optimization
 
 - **Buffer audit events**: Write in batches, not per record
-- **Use async writes**: Do not block processing for audit logging
+- **Use background writes**: Do not block processing for audit logging
 - **Partition audit tables**: By date for efficient querying and retention
 - **Index strategically**: Focus on common query patterns
 
@@ -2173,21 +2183,22 @@ if __name__ == "__main__":
 ```sql
 -- Example retention policy for PostgreSQL
 -- Keep detailed events for 90 days, summaries for 7 years
+-- This assumes audit_events was created with PARTITION BY RANGE (timestamp).
 
--- Partition by month
+-- Create a monthly partition
 CREATE TABLE audit_events_2026_01 PARTITION OF audit_events
     FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
 
 -- Archive old partitions
-CREATE TABLE audit_events_archive (LIKE audit_events);
+CREATE TABLE IF NOT EXISTS audit_events_archive
+    (LIKE audit_events INCLUDING ALL);
 
--- Move old data to archive
+-- Move an old partition to archive before dropping it
 INSERT INTO audit_events_archive
-SELECT * FROM audit_events
-WHERE timestamp < NOW() - INTERVAL '90 days';
+SELECT * FROM audit_events_2025_10;
 
 -- Drop old partitions
-DROP TABLE audit_events_2025_10;
+DROP TABLE IF EXISTS audit_events_2025_10;
 ```
 
 ### 3. Security Considerations
