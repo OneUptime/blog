@@ -87,7 +87,8 @@ class ContractNetManager:
             agent.receive_announcement(task)
             for agent in agents
         ]
-        await asyncio.gather(*announcement_tasks)
+        responses = await asyncio.gather(*announcement_tasks)
+        self.bids[task.id].extend(bid for bid in responses if bid is not None)
 
     async def collect_bids(self, task_id: str, timeout: float = 5.0) -> List[Bid]:
         """Collect bids from agents within a timeout period."""
@@ -176,7 +177,7 @@ The blackboard pattern uses a shared workspace where agents read problems and po
 
 ```python
 from dataclasses import dataclass, field
-from typing import Any, Callable, List, Dict
+from typing import Any, Callable, List, Dict, Optional
 from datetime import datetime
 import threading
 
@@ -330,9 +331,8 @@ In auction-based allocation, tasks are auctioned to agents who bid based on thei
 
 ```python
 from dataclasses import dataclass
-from typing import List, Dict, Tuple
+from typing import List, Dict, Optional
 from enum import Enum
-import heapq
 
 class AuctionType(Enum):
     FIRST_PRICE = "first_price"
@@ -380,7 +380,10 @@ class TaskAuctioneer:
                 winner, _ = task_bids[0]
             elif self.auction_type == AuctionType.SECOND_PRICE:
                 winner, _ = task_bids[0]
-                # Winner pays second-highest bid
+                # Winner pays the second-lowest bid in a cost-based auction
+            else:
+                # Combinatorial auctions need bundle-level bid evaluation
+                continue
 
             assignments[task.id] = winner
 
@@ -395,7 +398,7 @@ class WorkloadBalancer:
         """Allocate a task to the least loaded capable agent."""
         capable_agents = [
             agent for agent in self.agents.values()
-            if self._is_capable(agent, task)
+            if self._is_capable(agent, task) and agent.has_capacity()
         ]
 
         if not capable_agents:
@@ -403,8 +406,9 @@ class WorkloadBalancer:
 
         # Select agent with lowest current workload
         selected = min(capable_agents, key=lambda a: a.current_workload)
-        selected.assign_task(task)
-        return selected.agent_id
+        if selected.assign_task(task):
+            return selected.agent_id
+        return None
 
     def _is_capable(self, agent: 'WorkerAgent', task: Task) -> bool:
         """Check if an agent can handle a task."""
@@ -423,7 +427,13 @@ class WorkerAgent:
     @property
     def current_workload(self) -> float:
         """Calculate current workload as a fraction of capacity."""
+        if self.capacity <= 0:
+            return 1.0
         return len(self.assigned_tasks) / self.capacity
+
+    def has_capacity(self) -> bool:
+        """Check whether this agent can accept another task."""
+        return len(self.assigned_tasks) < self.capacity
 
     def assign_task(self, task: Task) -> bool:
         """Assign a task to this agent."""
@@ -470,7 +480,7 @@ flowchart TD
 
 ## Consensus Building
 
-When agents need to agree on a shared decision, consensus protocols ensure all agents reach the same conclusion.
+When agents need to agree on a shared decision, consensus protocols help agents reach the same conclusion.
 
 ### Voting-Based Consensus
 
@@ -558,14 +568,16 @@ class ConsensusManager:
             return choices.pop()
         return None
 
-    def _weighted_vote(self, votes: List[Vote]) -> str:
+    def _weighted_vote(self, votes: List[Vote]) -> Optional[str]:
         """Weighted voting based on agent weights."""
         weighted_counts: Dict[str, float] = {}
         for vote in votes:
             weighted_counts[vote.choice] = weighted_counts.get(vote.choice, 0) + vote.weight
+        if not weighted_counts:
+            return None
         return max(weighted_counts.items(), key=lambda x: x[1])[0]
 
-    def _ranked_choice_vote(self, votes: List[Vote], options: List[str]) -> str:
+    def _ranked_choice_vote(self, votes: List[Vote], options: List[str]) -> Optional[str]:
         """Instant runoff voting with ranked choices."""
         remaining_options = set(options)
         current_votes = votes.copy()
@@ -590,8 +602,10 @@ class ConsensusManager:
             if first_choices:
                 lowest = min(first_choices.items(), key=lambda x: x[1])[0]
                 remaining_options.remove(lowest)
+            else:
+                return None
 
-        return remaining_options.pop() if remaining_options else options[0]
+        return remaining_options.pop() if remaining_options else None
 
 
 class ConsensusAgent:
@@ -976,7 +990,7 @@ flowchart TD
 Deadlocks occur when agents wait indefinitely for resources held by each other. Prevention strategies include resource ordering and timeout mechanisms.
 
 ```python
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Set, Optional
 from enum import Enum
 import asyncio
@@ -991,11 +1005,7 @@ class ResourceLock:
     resource_id: str
     order: int  # For ordered locking
     holder: Optional[str] = None
-    waiters: List[str] = None
-
-    def __post_init__(self):
-        if self.waiters is None:
-            self.waiters = []
+    waiters: List[str] = field(default_factory=list)
 
 class DeadlockPrevention:
     def __init__(self):
@@ -1052,7 +1062,7 @@ class DeadlockPrevention:
 
                 # Remove from wait-for graph
                 if agent_id in self.wait_for_graph:
-                    self.wait_for_graph[agent_id].discard(lock.holder)
+                    del self.wait_for_graph[agent_id]
 
                 return True
 
@@ -1062,6 +1072,10 @@ class DeadlockPrevention:
                 # Timeout - remove from waiters
                 if agent_id in lock.waiters:
                     lock.waiters.remove(agent_id)
+                if agent_id in self.wait_for_graph:
+                    self.wait_for_graph[agent_id].discard(lock.holder)
+                    if not self.wait_for_graph[agent_id]:
+                        del self.wait_for_graph[agent_id]
                 return False
 
             # Add to waiters and wait-for graph
