@@ -37,12 +37,14 @@ webserver:
   enabled: true
   listen_port: 8765
   k8s_healthz_endpoint: /healthz
+  prometheus_metrics_enabled: true
   ssl_enabled: false
 
 metrics:
   enabled: true
   interval: 1h
   output_rule: true
+  rules_counters_enabled: true
   resource_utilization_enabled: true
   state_counters_enabled: true
   kernel_event_counters_enabled: true
@@ -53,11 +55,12 @@ If using Helm, add these values:
 
 ```yaml
 # values.yaml
-falco:
-  webserver:
-    enabled: true
-  metrics:
-    enabled: true
+metrics:
+  enabled: true
+  outputRule: true
+
+serviceMonitor:
+  create: true
 ```
 
 ## Key Metrics to Monitor
@@ -66,21 +69,19 @@ Falco exposes several important metrics categories:
 
 ```bash
 # Rules-related metrics
-falco_rules_matches_total          # Total rule matches by rule name
-falco_rules_loaded                 # Number of rules currently loaded
+falcosecurity_falco_rules_matches_total  # Total rule matches by rule name
 
 # Event processing metrics
-falco_kernel_events_total          # Total kernel events processed
-falco_kernel_events_dropped_total  # Events dropped due to buffer overflow
+falcosecurity_scap_n_evts_total          # Total kernel events processed
+falcosecurity_scap_n_drops_total         # Events dropped by the kernel-side capture path
 
 # Resource utilization
-falco_cpu_usage_ratio              # CPU usage percentage
-falco_memory_rss_bytes             # Resident memory size
-falco_memory_vsz_bytes             # Virtual memory size
+falcosecurity_falco_cpu_usage_ratio      # CPU usage ratio
+falcosecurity_falco_memory_rss_bytes     # Resident memory size
+falcosecurity_falco_memory_vsz_bytes     # Virtual memory size
 
 # Output metrics (when using Sidekick)
-falco_outputs_sent_total           # Alerts sent to outputs
-falco_outputs_failed_total         # Failed output deliveries
+falcosecurity_falcosidekick_outputs_total  # Alerts sent to outputs by destination and status
 ```
 
 ## Setting Up Prometheus Scraping
@@ -104,7 +105,7 @@ spec:
     matchNames:
       - falco
   endpoints:
-    - port: http-metrics
+    - port: metrics
       interval: 30s
       path: /metrics
 ```
@@ -126,11 +127,11 @@ Create a comprehensive Grafana dashboard to visualize Falco health and alert act
     "panels": [
       {
         "title": "Alert Rate",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
-            "expr": "sum(rate(falco_rules_matches_total[5m])) by (rule)",
-            "legendFormat": "{{ rule }}"
+            "expr": "sum(rate(falcosecurity_falco_rules_matches_total[5m])) by (rule_name)",
+            "legendFormat": "{{ rule_name }}"
           }
         ]
       },
@@ -139,17 +140,17 @@ Create a comprehensive Grafana dashboard to visualize Falco health and alert act
         "type": "stat",
         "targets": [
           {
-            "expr": "sum(rate(falco_kernel_events_total[1m]))",
+            "expr": "sum(rate(falcosecurity_scap_n_evts_total[1m]))",
             "legendFormat": "Events/sec"
           }
         ]
       },
       {
         "title": "Dropped Events",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
-            "expr": "sum(rate(falco_kernel_events_dropped_total[5m]))",
+            "expr": "sum(rate(falcosecurity_scap_n_drops_total[5m]))",
             "legendFormat": "Dropped/sec"
           }
         ]
@@ -188,7 +189,7 @@ spec:
       rules:
         # Alert when Falco is dropping events
         - alert: FalcoEventsDropped
-          expr: rate(falco_kernel_events_dropped_total[5m]) > 0
+          expr: rate(falcosecurity_scap_n_drops_total[5m]) > 0
           for: 5m
           labels:
             severity: warning
@@ -198,7 +199,7 @@ spec:
 
         # Alert when Falco stops processing events
         - alert: FalcoNotProcessingEvents
-          expr: rate(falco_kernel_events_total[5m]) == 0
+          expr: rate(falcosecurity_scap_n_evts_total[5m]) == 0
           for: 5m
           labels:
             severity: critical
@@ -208,17 +209,17 @@ spec:
 
         # Alert on high-priority security events
         - alert: FalcoCriticalAlert
-          expr: sum(increase(falco_rules_matches_total{priority="Critical"}[5m])) > 0
+          expr: sum(increase(falcosecurity_falco_rules_matches_total{priority="2"}[5m])) by (rule_name) > 0
           for: 0m
           labels:
             severity: critical
           annotations:
             summary: "Critical Falco security alert detected"
-            description: "A critical security rule was triggered: {{ $labels.rule }}"
+            description: "A critical security rule was triggered: {{ $labels.rule_name }}"
 
         # Alert when output delivery fails
         - alert: FalcoOutputFailure
-          expr: rate(falco_outputs_failed_total[5m]) > 0
+          expr: sum(rate(falcosecurity_falcosidekick_outputs_total{status!="ok"}[5m])) by (destination, status) > 0
           for: 5m
           labels:
             severity: warning
@@ -250,7 +251,7 @@ The UI provides:
 
 ## Log-Based Monitoring
 
-For environments without Prometheus, monitor Falco through logs:
+For environments without Prometheus, monitor Falco through logs. The following examples assume Falco is configured with `json_output: true`:
 
 ```bash
 # Stream Falco alerts in real-time
@@ -273,17 +274,17 @@ Avoid alert fatigue by aggregating similar alerts:
 # alertmanager-config.yaml
 route:
   receiver: 'default'
-  group_by: ['alertname', 'rule']
+  group_by: ['alertname', 'rule_name']
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'pagerduty'
       group_wait: 0s
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'slack'
 
 receivers:
