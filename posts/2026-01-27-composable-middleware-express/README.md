@@ -142,12 +142,13 @@ function compose(...middlewares: RequestHandler[]): RequestHandler {
       const middleware = middlewares[index++];
 
       try {
-        middleware(req, res, (err?: unknown) => {
+        const result = middleware(req, res, (err?: unknown) => {
           if (err) {
             return next(err);
           }
           dispatch();
         });
+        Promise.resolve(result).catch(next);
       } catch (error) {
         next(error);
       }
@@ -265,6 +266,7 @@ Use closure patterns to share state across middleware in the same request.
 ```typescript
 // shared-state-middleware.ts
 import { Request, Response, NextFunction, RequestHandler } from 'express';
+import { randomUUID } from 'node:crypto';
 
 // Extend Express Request type
 declare global {
@@ -287,7 +289,7 @@ interface RequestContext {
 function createContextMiddleware(): RequestHandler {
   return (req, res, next) => {
     req.context = {
-      requestId: req.headers['x-request-id'] as string || crypto.randomUUID(),
+      requestId: req.headers['x-request-id'] as string || randomUUID(),
       startTime: Date.now(),
     };
 
@@ -318,11 +320,15 @@ function loadUserMiddleware(): RequestHandler {
 
 function loadPermissionsMiddleware(): RequestHandler {
   return async (req, res, next) => {
-    if (req.context.user) {
-      req.context.permissions = await getPermissionsForUser(req.context.user.id);
-    }
+    try {
+      if (req.context.user) {
+        req.context.permissions = await getPermissionsForUser(req.context.user.id);
+      }
 
-    next();
+      next();
+    } catch (error) {
+      next(error);
+    }
   };
 }
 
@@ -357,7 +363,7 @@ Build error handlers that integrate with your middleware stack.
 
 ```typescript
 // error-middleware.ts
-import { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
+import { Request, Response, NextFunction, RequestHandler, ErrorRequestHandler } from 'express';
 
 // Custom error classes
 class AppError extends Error {
@@ -403,6 +409,10 @@ function createErrorHandler(options: {
   const { logErrors = true, includeStackTrace = false } = options;
 
   return (err: Error, req: Request, res: Response, _next: NextFunction) => {
+    if (res.headersSent) {
+      return _next(err);
+    }
+
     // Log error
     if (logErrors) {
       console.error({
@@ -463,7 +473,7 @@ Create a fluent API for building complex middleware pipelines.
 
 ```typescript
 // pipeline-builder.ts
-import { Request, Response, NextFunction, RequestHandler } from 'express';
+import express, { Request, Response, NextFunction, RequestHandler } from 'express';
 
 class MiddlewarePipeline {
   private middlewares: RequestHandler[] = [];
@@ -512,11 +522,22 @@ class MiddlewarePipeline {
         next(new Error(`Middleware timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
-      middleware(req, res, (err) => {
+      try {
+        const result = middleware(req, res, (err) => {
+          if (timedOut) return;
+          clearTimeout(timer);
+          next(err);
+        });
+        Promise.resolve(result).catch((err) => {
+          if (timedOut) return;
+          clearTimeout(timer);
+          next(err);
+        });
+      } catch (error) {
         if (timedOut) return;
         clearTimeout(timer);
-        next(err);
-      });
+        next(error);
+      }
     });
     return this;
   }
@@ -553,7 +574,8 @@ class MiddlewarePipeline {
         const middleware = middlewares[index++];
 
         try {
-          middleware(req, res, dispatch);
+          const result = middleware(req, res, dispatch);
+          Promise.resolve(result).catch(next);
         } catch (error) {
           next(error);
         }
@@ -594,7 +616,7 @@ Isolated, composable middleware is easy to test.
 
 ```typescript
 // middleware.test.ts
-import { Request, Response } from 'express';
+import { Request, Response, RequestHandler } from 'express';
 
 // Create mock request and response
 function createMockReq(overrides: Partial<Request> = {}): Partial<Request> {
