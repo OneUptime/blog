@@ -14,13 +14,13 @@ Description: A comprehensive guide to configuring PagerDuty on-call schedules, c
 
 ## Understanding Schedule Layers
 
-Schedule layers are the foundation of PagerDuty on-call configurations. Each layer represents a distinct rotation of users that can be stacked on top of each other. The topmost layer with an active user takes precedence.
+Schedule layers are the foundation of PagerDuty on-call configurations. Each layer represents a distinct rotation of users that can be stacked on top of each other. PagerDuty combines the layers into a single final schedule, and lower layers mask higher layers when their times overlap.
 
 ### Why Use Multiple Layers?
 
-- **Primary and backup coverage**: Layer 1 handles primary on-call, Layer 2 provides backup
+- **Different coverage windows**: One layer can cover weekdays while another covers weekends
 - **Business hours vs after-hours**: Different teams can cover different time windows
-- **Specialized coverage**: Database experts on one layer, application experts on another
+- **Specialized coverage windows**: Database experts can cover database hours, application experts can cover application hours
 
 ### Creating a Schedule Layer
 
@@ -29,22 +29,29 @@ Schedule layers are the foundation of PagerDuty on-call configurations. Each lay
 
 # Layer 1: Primary On-Call Rotation
 schedule:
+  type: "schedule"
   name: "Backend Team Primary"
   time_zone: "America/New_York"
-  layers:
+  schedule_layers:
     - name: "Primary"
       # Start date for this layer
-      start: "2026-01-01T00:00:00"
+      start: "2026-01-01T00:00:00-05:00"
       # Rotation interval
-      rotation_virtual_start: "2026-01-01T00:00:00"
+      rotation_virtual_start: "2026-01-01T00:00:00-05:00"
       rotation_turn_length_seconds: 604800  # 7 days
       users:
-        - id: "P123ABC"  # Alice
-        - id: "P456DEF"  # Bob
-        - id: "P789GHI"  # Charlie
+        - user:
+            id: "P123ABC"  # Alice
+            type: "user_reference"
+        - user:
+            id: "P456DEF"  # Bob
+            type: "user_reference"
+        - user:
+            id: "P789GHI"  # Charlie
+            type: "user_reference"
 ```
 
-Each layer operates independently. When you stack layers, PagerDuty evaluates from top to bottom and assigns the incident to the first layer with an available user during that time slot.
+Each layer operates independently. When you stack layers, PagerDuty computes a final schedule from the layer order, and the final on-call user for that time slot is the user who can receive notifications through an escalation policy.
 
 ---
 
@@ -58,11 +65,11 @@ Best for large teams where you want to spread the load evenly.
 
 ```yaml
 # Daily rotation: Each person covers one 24-hour period
-rotation:
-  type: "daily"
-  turn_length_seconds: 86400  # 24 hours
+schedule_layer:
+  start: "2026-01-01T09:00:00-05:00"
   # Rotation starts at 9 AM each day
-  handoff_time: "09:00:00"
+  rotation_virtual_start: "2026-01-01T09:00:00-05:00"
+  rotation_turn_length_seconds: 86400  # 24 hours
 ```
 
 ### Weekly Rotations
@@ -71,12 +78,11 @@ The most common pattern. One engineer owns the week, reducing context-switching.
 
 ```yaml
 # Weekly rotation: One week on-call per person
-rotation:
-  type: "weekly"
-  turn_length_seconds: 604800  # 7 days
+schedule_layer:
+  start: "2026-01-05T09:00:00-05:00"
   # Week starts Monday at 9 AM
-  handoff_time: "09:00:00"
-  start_day_of_week: 1  # Monday
+  rotation_virtual_start: "2026-01-05T09:00:00-05:00"
+  rotation_turn_length_seconds: 604800  # 7 days
 ```
 
 ### Custom Rotations
@@ -85,9 +91,10 @@ For follow-the-sun or split-shift models.
 
 ```yaml
 # Custom rotation: 12-hour shifts
-rotation:
-  type: "custom"
-  turn_length_seconds: 43200  # 12 hours
+schedule_layer:
+  start: "2026-01-01T06:00:00-05:00"
+  rotation_virtual_start: "2026-01-01T06:00:00-05:00"
+  rotation_turn_length_seconds: 43200  # 12 hours
   # Day shift: 6 AM to 6 PM
   # Night shift: 6 PM to 6 AM
   restrictions:
@@ -118,7 +125,7 @@ Handoff time determines when on-call responsibility transfers from one person to
 3. **Allow overlap**: Build in a 30-minute overlap window for knowledge transfer
 
 ```yaml
-# Recommended handoff configuration
+# Recommended handoff process configuration for your team's automation
 handoff:
   # Handoff at 10 AM - both shifts are awake and available
   time: "10:00:00"
@@ -163,11 +170,11 @@ Overrides allow temporary changes to the schedule without modifying the underlyi
 
 ```bash
 # Using PagerDuty CLI to create an override
-pd schedule override create \
-  --schedule-id "PSCHEDULE1" \
+pd schedule override add \
+  --id "PSCHEDULE1" \
   --start "2026-02-01T09:00:00-05:00" \
   --end "2026-02-08T09:00:00-05:00" \
-  --user-id "PUSER123"
+  --user_id "PUSER123"
 ```
 
 ### Override via API
@@ -175,7 +182,6 @@ pd schedule override create \
 ```python
 # Python example: Create a schedule override
 import requests
-from datetime import datetime, timedelta
 
 def create_override(schedule_id, user_id, start_time, end_time, api_key):
     """
@@ -189,7 +195,7 @@ def create_override(schedule_id, user_id, start_time, end_time, api_key):
         api_key: Your PagerDuty API key
 
     Returns:
-        The created override object
+        The created override result
     """
     url = f"https://api.pagerduty.com/schedules/{schedule_id}/overrides"
 
@@ -200,14 +206,16 @@ def create_override(schedule_id, user_id, start_time, end_time, api_key):
     }
 
     payload = {
-        "override": {
-            "start": start_time,
-            "end": end_time,
-            "user": {
-                "id": user_id,
-                "type": "user_reference"
+        "overrides": [
+            {
+                "start": start_time,
+                "end": end_time,
+                "user": {
+                    "id": user_id,
+                    "type": "user_reference"
+                }
             }
-        }
+        ]
     }
 
     response = requests.post(url, json=payload, headers=headers)
@@ -311,6 +319,8 @@ escalation_policy:
 
 ```python
 # Create a complete escalation policy
+import requests
+
 def create_escalation_policy(name, schedule_ids, manager_id, api_key):
     """
     Create a multi-tier escalation policy.
@@ -334,10 +344,11 @@ def create_escalation_policy(name, schedule_ids, manager_id, api_key):
 
     payload = {
         "escalation_policy": {
+            "type": "escalation_policy",
             "name": name,
             "escalation_rules": [
                 {
-                    # Primary on-call - immediate
+                    # Primary on-call - escalate after 5 minutes if unacknowledged
                     "escalation_delay_in_minutes": 5,
                     "targets": [{
                         "id": schedule_ids[0],
@@ -345,7 +356,7 @@ def create_escalation_policy(name, schedule_ids, manager_id, api_key):
                     }]
                 },
                 {
-                    # Secondary on-call - 5 minute delay
+                    # Secondary on-call - escalate after 10 more minutes if unacknowledged
                     "escalation_delay_in_minutes": 10,
                     "targets": [{
                         "id": schedule_ids[1],
@@ -353,7 +364,7 @@ def create_escalation_policy(name, schedule_ids, manager_id, api_key):
                     }]
                 },
                 {
-                    # Manager - 10 minute delay
+                    # Manager - escalate after 15 more minutes if unacknowledged
                     "escalation_delay_in_minutes": 15,
                     "targets": [{
                         "id": manager_id,
@@ -546,7 +557,7 @@ resource "pagerduty_escalation_policy" "backend" {
 - **Keep rotations predictable**: Publish schedules at least 4-6 weeks in advance
 - **Balance load fairly**: Track on-call hours per engineer monthly
 - **Provide adequate rest**: Minimum 7 days between on-call shifts for weekly rotations
-- **Use schedule layers**: Separate primary and backup coverage cleanly
+- **Use schedule layers**: Separate different coverage windows cleanly
 
 ### Handoffs and Overrides
 
