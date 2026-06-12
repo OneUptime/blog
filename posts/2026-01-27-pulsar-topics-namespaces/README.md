@@ -121,7 +121,7 @@ public class TenantManager {
             .build();
 
         // Create the tenant in the cluster
-        // This is idempotent - calling twice with same config is safe
+        // This fails if the tenant already exists; use getTenantInfo/updateTenant for idempotent provisioning
         admin.tenants().createTenant(tenantName, tenantInfo);
 
         System.out.println("Created tenant: " + tenantName);
@@ -317,6 +317,7 @@ graph LR
 
 import org.apache.pulsar.client.api.*;
 import org.apache.pulsar.client.admin.PulsarAdmin;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class PartitionedTopicManager {
 
@@ -350,10 +351,10 @@ public class PartitionedTopicManager {
                     // This ensures messages with same key go to same partition
                     String key = msg.getKey();
                     if (key != null) {
-                        return Math.abs(key.hashCode()) % metadata.numPartitions();
+                        return Math.floorMod(key.hashCode(), metadata.numPartitions());
                     }
-                    // Round-robin for keyless messages
-                    return (int) (System.nanoTime() % metadata.numPartitions());
+                    // Random routing for keyless messages
+                    return ThreadLocalRandom.current().nextInt(metadata.numPartitions());
                 }
             })
             .create();
@@ -407,7 +408,7 @@ import org.apache.pulsar.client.api.*;
 
 public class PersistentTopicExample {
 
-    public void produceToPeristent(PulsarClient client) throws Exception {
+    public void produceToPersistent(PulsarClient client) throws Exception {
         // Persistent topics guarantee message durability
         // Messages are written to BookKeeper before ack is sent
         Producer<String> producer = client.newProducer(Schema.STRING)
@@ -531,7 +532,7 @@ bin/pulsar-admin namespaces remove-retention company-a/orders
 
 ### Message TTL (Time-To-Live)
 
-Automatically acknowledges unprocessed messages after a timeout.
+Expires unacknowledged messages after a timeout.
 
 ```bash
 # Set TTL: unacknowledged messages expire after 1 hour
@@ -552,7 +553,7 @@ Limits the amount of unacknowledged messages to prevent unbounded growth.
 # When exceeded, either block producers or drop oldest messages
 bin/pulsar-admin namespaces set-backlog-quota company-a/orders \
     --limit 5G \
-    --limitTime -1 \
+    --type destination_storage \
     --policy producer_request_hold
 
 # Policy options:
@@ -795,14 +796,14 @@ echo "=== Creating Namespaces ==="
 $PULSAR_ADMIN namespaces create $TENANT/order-service
 $PULSAR_ADMIN namespaces set-retention $TENANT/order-service --time 30d --size 100G
 $PULSAR_ADMIN namespaces set-backlog-quota $TENANT/order-service \
-    --limit 20G --policy producer_request_hold
+    --limit 20G --type destination_storage --policy producer_request_hold
 $PULSAR_ADMIN namespaces set-deduplication $TENANT/order-service --enable
 
 # Inventory service namespace
 $PULSAR_ADMIN namespaces create $TENANT/inventory-service
 $PULSAR_ADMIN namespaces set-retention $TENANT/inventory-service --time 14d --size 50G
 $PULSAR_ADMIN namespaces set-backlog-quota $TENANT/inventory-service \
-    --limit 10G --policy producer_request_hold
+    --limit 10G --type destination_storage --policy producer_request_hold
 
 # Analytics namespace - high throughput, lower durability needs
 $PULSAR_ADMIN namespaces create $TENANT/analytics
@@ -847,14 +848,15 @@ Once your topics and namespaces are configured, monitoring becomes essential for
 ### Key Metrics to Track
 
 ```bash
-# Topic statistics - message rates, storage, backlog
-bin/pulsar-admin topics stats persistent://ecommerce-prod/order-service/order-created
+# Partitioned topic statistics - message rates, storage, backlog
+bin/pulsar-admin topics partitioned-stats persistent://ecommerce-prod/order-service/order-created
 
-# Namespace statistics - aggregate view
-bin/pulsar-admin namespaces stats ecommerce-prod/order-service
+# Namespace statistics - collect stats for each topic in the namespace
+bin/pulsar-admin topics list ecommerce-prod/order-service \
+    | while read topic; do bin/pulsar-admin topics stats "$topic"; done
 
 # Subscription backlog - critical for consumer health
-bin/pulsar-admin topics stats persistent://ecommerce-prod/order-service/order-created \
+bin/pulsar-admin topics partitioned-stats persistent://ecommerce-prod/order-service/order-created \
     | jq '.subscriptions[].msgBacklog'
 ```
 
