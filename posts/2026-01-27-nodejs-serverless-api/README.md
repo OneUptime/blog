@@ -18,7 +18,7 @@ Serverless does not mean there are no servers. It means you do not manage them. 
 |--------|-------------------|------------|
 | Scaling | Manual or auto-scaling rules | Automatic, per-request |
 | Cost | Pay for idle time | Pay per execution |
-| Maintenance | OS updates, patches | None |
+| Maintenance | OS updates, patches | Provider-managed runtime and OS updates |
 | Cold starts | None | Possible latency |
 | Complexity | Infrastructure setup | Function-level thinking |
 
@@ -31,7 +31,7 @@ Serverless does not mean there are no servers. It means you do not manage them. 
 
 **When to avoid serverless:**
 - Long-running processes (Lambda has 15-minute limit)
-- Applications requiring WebSocket connections for extended periods
+- Applications requiring a function invocation to hold WebSocket connections open for extended periods
 - Workloads with consistent high traffic (may be more cost-effective on containers)
 
 ## Project Structure for Serverless Node.js APIs
@@ -177,7 +177,6 @@ Create a response utility for consistent API responses:
 const headers = {
   'Content-Type': 'application/json',
   'Access-Control-Allow-Origin': '*',           // Configure for your domain in production
-  'Access-Control-Allow-Credentials': true,
 };
 
 // Success response (200 or custom status)
@@ -223,7 +222,7 @@ frameworkVersion: '3'
 
 provider:
   name: aws
-  runtime: nodejs18.x
+  runtime: nodejs22.x
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
 
@@ -437,7 +436,7 @@ Description: My Serverless API
 
 Globals:
   Function:
-    Runtime: nodejs18.x
+    Runtime: nodejs22.x
     Timeout: 30
     MemorySize: 256
 
@@ -575,10 +574,10 @@ Smaller bundles mean faster cold starts:
 // package.json
 {
   "devDependencies": {
-    "esbuild": "^0.19.0"
+    "esbuild": "^0.25.0"
   },
   "scripts": {
-    "build": "esbuild src/handlers/*.js --bundle --platform=node --target=node18 --outdir=dist"
+    "build": "esbuild src/handlers/*.js --bundle --platform=node --target=node22 --outdir=dist"
   }
 }
 ```
@@ -761,7 +760,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
       - run: npm ci
       - run: npm test
 
@@ -773,7 +772,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
       - run: npm ci
       - name: Deploy to staging
         env:
@@ -790,7 +789,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
       - run: npm ci
       - name: Deploy to production
         env:
