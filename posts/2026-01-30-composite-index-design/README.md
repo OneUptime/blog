@@ -47,16 +47,18 @@ The most important concept in composite index design is the leftmost prefix rule
 - The first, second, and third columns together
 - And so on for any leftmost prefix
 
-The following table shows which queries can use an index on (a, b, c):
+The following table shows which queries can efficiently use the leftmost prefix of an index on (a, b, c):
 
 | Query Condition | Index Used | Notes |
 |-----------------|------------|-------|
 | WHERE a = 1 | Yes | Uses first column |
 | WHERE a = 1 AND b = 2 | Yes | Uses first two columns |
 | WHERE a = 1 AND b = 2 AND c = 3 | Yes | Uses all three columns |
-| WHERE b = 2 | No | Missing leftmost column |
-| WHERE b = 2 AND c = 3 | No | Missing leftmost column |
+| WHERE b = 2 | Usually no | Missing leftmost column |
+| WHERE b = 2 AND c = 3 | Usually no | Missing leftmost column |
 | WHERE a = 1 AND c = 3 | Partial | Uses only first column |
+
+Some database engines can still use a composite index without the leftmost column in limited cases, such as skip scan optimizations, but this is planner-dependent and usually less efficient than a matching leftmost prefix.
 
 ---
 
@@ -68,7 +70,7 @@ This example creates a composite index on the orders table for queries that filt
 
 ```sql
 -- Create a composite index on customer_id and order_date
--- Column order matters: customer_id comes first because it has higher selectivity
+-- Column order matters: customer_id comes first because the query uses equality on customer_id
 CREATE INDEX idx_orders_customer_date
 ON orders (customer_id, order_date);
 
@@ -81,7 +83,7 @@ AND order_date >= '2024-01-01';
 SELECT * FROM orders
 WHERE customer_id = 12345;
 
--- This query cannot use the index (missing customer_id)
+-- This query usually cannot use this index efficiently (missing customer_id)
 SELECT * FROM orders
 WHERE order_date >= '2024-01-01';
 ```
@@ -94,7 +96,7 @@ The order of columns in a composite index determines its effectiveness. Follow t
 
 **1. Put equality conditions before range conditions**
 
-Columns used with = or IN should come before columns used with >, <, BETWEEN, or LIKE.
+Columns used with = or IN should generally come before columns used with >, <, BETWEEN, or prefix LIKE patterns.
 
 ```sql
 -- Good: equality column (status) first, range column (created_at) second
@@ -109,7 +111,7 @@ AND created_at >= '2024-01-01';
 
 **2. Consider selectivity for equality columns**
 
-When you have multiple equality conditions, place the most selective column (the one that filters out the most rows) first.
+When you have multiple equality conditions, consider both selectivity and which leftmost prefixes other queries can reuse. If one column filters out far more rows and is commonly queried by itself, it is often a good first column.
 
 ```sql
 -- Assuming user_id is more selective than status
@@ -117,7 +119,7 @@ When you have multiple equality conditions, place the most selective column (the
 CREATE INDEX idx_orders_user_status
 ON orders (user_id, status);
 
--- This query narrows down to one user first, then filters by status
+-- This index also supports queries that filter by user_id alone
 SELECT * FROM orders
 WHERE user_id = 42
 AND status = 'shipped';
@@ -170,13 +172,13 @@ AND created_at >= '2024-01-01';
 -- Expected output shows "Index Scan using idx_events_user_type_created"
 ```
 
-Look for "Index Scan" or "Index Only Scan" in the output. If you see "Seq Scan" (sequential scan), the index is not being used.
+Look for "Index Scan" or "Index Only Scan" in the output. If the relevant table is read with "Seq Scan" (sequential scan), this index is not being used for that table scan. That can be normal for small tables or queries that return a large fraction of the table.
 
 ---
 
 ## Covering Indexes
 
-A covering index includes all columns needed by a query, allowing the database to answer the query using only the index without accessing the table data.
+A covering index includes all columns needed by a query, allowing the database to potentially answer the query using only the index without accessing the table data.
 
 ```sql
 -- Covering index for a common reporting query
@@ -185,14 +187,14 @@ CREATE INDEX idx_orders_covering
 ON orders (user_id, status)
 INCLUDE (total, created_at);
 
--- This query can be answered entirely from the index
+-- This query can use an index-only scan when visibility and planner conditions allow
 SELECT user_id, status, total, created_at
 FROM orders
 WHERE user_id = 42
 AND status = 'completed';
 ```
 
-The INCLUDE clause (available in PostgreSQL 11+, SQL Server 2005+) adds columns to the leaf nodes of the index without including them in the sort order.
+The INCLUDE clause (available in PostgreSQL 11+ and SQL Server) adds non-key columns to the index without including them in the sort order. In PostgreSQL, index-only scans also depend on MVCC visibility information, so a covering index is a prerequisite rather than a guarantee.
 
 ---
 
@@ -200,7 +202,7 @@ The INCLUDE clause (available in PostgreSQL 11+, SQL Server 2005+) adds columns 
 
 ### Pattern 1: Multi-tenant Applications
 
-Multi-tenant applications always filter by tenant. Put tenant_id first in every composite index.
+Multi-tenant applications often filter by tenant. When your query patterns always include tenant_id, put tenant_id first in the composite indexes that serve those tenant-scoped queries.
 
 ```sql
 -- Tenant-first indexing strategy
