@@ -55,27 +55,27 @@ Before creating custom extensions, you need to understand where Ansible looks fo
 
 ### Plugin Search Paths
 
-Ansible searches for plugins in these locations (in order of precedence):
+Ansible can load local filter plugins from these common locations:
 
-1. `./filter_plugins/` - Adjacent to playbook
-2. `~/.ansible/plugins/filter/` - User directory
-3. `/usr/share/ansible/plugins/filter/` - System-wide
-4. Configured paths in `ansible.cfg`
+1. `filter_plugins/` - Adjacent to the playbook or inside a role
+2. `plugins/filter/` - Inside an installed collection
+3. Paths configured with `filter_plugins` in `ansible.cfg` or `ANSIBLE_FILTER_PLUGINS`
+4. Default filter plugin paths such as `~/.ansible/plugins/filter/` and `/usr/share/ansible/plugins/filter/`
 
 ```mermaid
 flowchart LR
-    subgraph Search["Plugin Search Order"]
+    subgraph Search["Plugin Search Locations"]
         direction TB
-        A[1. Playbook Directory]
-        B[2. Collection Plugins]
-        C[3. User Directory]
-        D[4. ansible.cfg Paths]
-        E[5. System Directory]
+        A[Playbook or Role Directory]
+        B[Collection Plugins]
+        C[ansible.cfg Paths]
+        D[User Directory]
+        E[System Directory]
     end
 
     A --> B --> C --> D --> E
 
-    subgraph Found["First Match Wins"]
+    subgraph Found["Plugin Loader"]
         Plugin[Plugin Loaded]
     end
 
@@ -95,8 +95,7 @@ ansible-project/
 ├── ansible.cfg
 ├── inventory/
 │   └── hosts.yml
-├── playbooks/
-│   └── deploy.yml
+├── deploy.yml
 ├── filter_plugins/
 │   ├── __init__.py
 │   └── custom_filters.py
@@ -254,7 +253,7 @@ class FilterModule:
     - name: Display masked API key
       ansible.builtin.debug:
         msg: "API Key: {{ api_key | mask_sensitive(4) }}"
-      # Output: API Key: **************cdef
+      # Output: API Key: ***************cdef
 
     - name: Generate environment variables
       ansible.builtin.debug:
@@ -276,6 +275,8 @@ class FilterModule:
 Let's create more sophisticated filters for real-world scenarios.
 
 ### Network and Infrastructure Filters
+
+Create a file at `filter_plugins/network_filters.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -373,7 +374,7 @@ class FilterModule:
         except ValueError as e:
             raise ValueError(f"Invalid CIDR notation: {cidr}") from e
 
-    def split_cidr(self, cidr: str) -> Dict[str, str]:
+    def split_cidr(self, cidr: str) -> Dict[str, Any]:
         """
         Split a CIDR into its components.
 
@@ -788,8 +789,8 @@ description:
     - This lookup retrieves configuration values from a local JSON/YAML store.
     - Supports nested key access using dot notation.
 options:
-    key:
-        description: The configuration key to look up.
+    _terms:
+        description: The configuration key or keys to look up.
         required: True
     default:
         description: Default value if key is not found.
@@ -960,12 +961,12 @@ repository: https://github.com/mycompany/ansible-collection-utils
 
 ### Using Collection Plugins
 
+Use the fully qualified collection name (FQCN) for filters and tests from collections:
+
 ```yaml
 ---
 - name: Use collection plugins
   hosts: all
-  collections:
-    - mycompany.utils
 
   tasks:
     - name: Use filter from collection
@@ -995,7 +996,6 @@ flowchart TD
     end
 
     subgraph Usage["Usage in Playbook"]
-        Import["collections:\n  - mycompany.utils"]
         Call["mycompany.utils.filter_name"]
     end
 
@@ -1003,7 +1003,6 @@ flowchart TD
     Plugins --> Filter
     Plugins --> Test
     Plugins --> Lookup
-    Import --> Call
     Collection --> Usage
 ```
 
@@ -1149,6 +1148,9 @@ Create `molecule/default/converge.yml`:
 Always provide meaningful error messages:
 
 ```python
+from ansible.errors import AnsibleFilterError, AnsibleTypeError
+
+
 def safe_filter(self, value: Any, parameter: str) -> Any:
     """Example filter with proper error handling."""
     if value is None:
@@ -1157,7 +1159,7 @@ def safe_filter(self, value: Any, parameter: str) -> Any:
         )
 
     if not isinstance(parameter, str):
-        raise AnsibleFilterTypeError(
+        raise AnsibleTypeError(
             f"parameter must be a string, got {type(parameter).__name__}"
         )
 
@@ -1416,7 +1418,7 @@ kind: Deployment
 metadata:
   name: {{ app_name | k8s_resource_name }}
   labels:
-    {{ app_name | k8s_labels(app_name | k8s_resource_name, app_version) | to_nice_yaml | indent(4) }}
+    {{ (app_name | k8s_resource_name) | k8s_labels(app_name | k8s_resource_name, app_version) | to_nice_yaml | indent(4) }}
   annotations:
     checksum/config: {{ config_data | k8s_config_hash }}
 spec:
@@ -1427,7 +1429,7 @@ spec:
   template:
     metadata:
       labels:
-        {{ app_name | k8s_labels(app_name | k8s_resource_name, app_version) | to_nice_yaml | indent(8) }}
+        {{ (app_name | k8s_resource_name) | k8s_labels(app_name | k8s_resource_name, app_version) | to_nice_yaml | indent(8) }}
     spec:
       containers:
         - name: {{ app_name | k8s_resource_name }}
@@ -1482,6 +1484,6 @@ By following the patterns and practices outlined in this guide, you can extend A
 
 ## Additional Resources
 
-- [Ansible Developer Guide - Developing Plugins](https://docs.ansible.com/ansible/latest/dev_guide/developing_plugins.html)
-- [Jinja2 Template Designer Documentation](https://jinja.palletsprojects.com/templates/)
-- [Ansible Collections Documentation](https://docs.ansible.com/ansible/latest/collections_guide/index.html)
+- [Ansible Developer Guide - Developing Plugins](https://docs.ansible.com/projects/ansible/latest/dev_guide/developing_plugins.html)
+- [Jinja2 Template Designer Documentation](https://jinja.palletsprojects.com/en/stable/templates/)
+- [Ansible Collections Documentation](https://docs.ansible.com/projects/ansible/latest/collections_guide/index.html)
