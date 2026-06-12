@@ -95,8 +95,10 @@ Object.entries(services).forEach(([name, target]) => {
     target,
     changeOrigin: true,
     pathRewrite: { [`^/api/${name}`]: '' },
-    onError: (err, req, res) => {
-      res.status(503).json({ error: `Service ${name} unavailable` });
+    on: {
+      error: (err, req, res) => {
+        res.status(503).json({ error: `Service ${name} unavailable` });
+      }
     }
   }));
 });
@@ -299,11 +301,11 @@ services:
           minute: 50
           policy: local
 
-      - name: request-transformer
+      - name: correlation-id
         config:
-          add:
-            headers:
-              - "X-Request-ID:$(uuid)"
+          header_name: X-Request-ID
+          generator: uuid
+          echo_downstream: true
 
   - name: product-service
     url: http://product-service:3003
@@ -453,7 +455,7 @@ Add custom spans for gateway-specific operations:
 
 ```javascript
 // Custom span for authentication
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('api-gateway');
 
