@@ -753,7 +753,8 @@ body {
     gap: 15px;
 }
 
-.panel.hidden {
+.hidden,
+#chat-panel.hidden {
     display: none;
 }
 
@@ -1536,7 +1537,10 @@ async function connectDB() {
 }
 
 async function saveMessage(message) {
-    return db.collection('messages').insertOne(message);
+    return db.collection('messages').insertOne({
+        ...message,
+        timestamp: new Date(message.timestamp)
+    });
 }
 
 async function getMessageHistory(room, limit = 50) {
