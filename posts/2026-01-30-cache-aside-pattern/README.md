@@ -85,7 +85,7 @@ class CacheAside {
 
       // Step 3: Store in cache for future requests
       if (data !== null && data !== undefined) {
-        await this.redis.setex(cacheKey, ttl, JSON.stringify(data));
+        await this.redis.set(cacheKey, JSON.stringify(data), 'EX', ttl);
       }
 
       return data;
@@ -104,9 +104,15 @@ class CacheAside {
 
   // Invalidate multiple keys matching a pattern
   async invalidatePattern(pattern) {
-    const keys = await this.redis.keys(`${this.prefix}${pattern}`);
-    if (keys.length > 0) {
-      await this.redis.del(...keys);
+    const stream = this.redis.scanStream({
+      match: `${this.prefix}${pattern}`,
+      count: 100,
+    });
+
+    for await (const keys of stream) {
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+      }
     }
   }
 }
@@ -168,7 +174,12 @@ const db = new Pool();
 const userService = new UserService(cache, db);
 
 // First call hits database, subsequent calls hit cache
-const user = await userService.getUserById(123);
+async function main() {
+  const user = await userService.getUserById(123);
+  console.log(user);
+}
+
+main().catch(console.error);
 ```
 
 ## Cache Invalidation Strategies
@@ -184,14 +195,14 @@ flowchart LR
     end
 
     B --> G[Most Common]
-    D --> H[Strong Consistency]
+    D --> H[Lower Staleness]
     F --> I[Eventual Consistency]
 ```
 
 | Strategy | Consistency | Complexity | Best For |
 |----------|-------------|------------|----------|
-| Write-Invalidate | Strong | Low | Most applications |
-| Write-Through | Strong | Medium | Critical data |
+| Write-Invalidate | High after invalidation | Low | Most applications |
+| Write-Through | High if both writes succeed | Medium | Critical data |
 | TTL Only | Eventual | Very Low | Read-heavy, tolerant of stale data |
 | Write-Behind | Eventual | High | Write-heavy workloads |
 
@@ -200,6 +211,8 @@ flowchart LR
 When a popular cache key expires, multiple requests may simultaneously try to rebuild it, overwhelming your database. This is called a cache stampede.
 
 ```javascript
+const crypto = require('crypto');
+
 class CacheAsideWithStampede {
   constructor(options = {}) {
     this.redis = new Redis(options.redisUrl);
@@ -219,14 +232,24 @@ class CacheAsideWithStampede {
   // Acquire a distributed lock to prevent stampede
   async acquireLock(key) {
     const lockKey = this.buildLockKey(key);
+    const token = crypto.randomBytes(16).toString('hex');
     // SET NX returns 'OK' if lock acquired, null otherwise
-    const result = await this.redis.set(lockKey, '1', 'EX', this.lockTTL, 'NX');
-    return result === 'OK';
+    const result = await this.redis.set(lockKey, token, 'EX', this.lockTTL, 'NX');
+    return result === 'OK' ? token : null;
   }
 
-  async releaseLock(key) {
+  async releaseLock(key, token) {
     const lockKey = this.buildLockKey(key);
-    await this.redis.del(lockKey);
+    await this.redis.eval(
+      `if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+      else
+        return 0
+      end`,
+      1,
+      lockKey,
+      token
+    );
   }
 
   async get(key, fetchFunction, options = {}) {
@@ -240,9 +263,9 @@ class CacheAsideWithStampede {
     }
 
     // Try to acquire lock for cache rebuild
-    const lockAcquired = await this.acquireLock(key);
+    const lockToken = await this.acquireLock(key);
 
-    if (lockAcquired) {
+    if (lockToken) {
       try {
         // Double-check cache after acquiring lock
         const rechecked = await this.redis.get(cacheKey);
@@ -254,12 +277,12 @@ class CacheAsideWithStampede {
         const data = await fetchFunction();
 
         if (data !== null && data !== undefined) {
-          await this.redis.setex(cacheKey, ttl, JSON.stringify(data));
+          await this.redis.set(cacheKey, JSON.stringify(data), 'EX', ttl);
         }
 
         return data;
       } finally {
-        await this.releaseLock(key);
+        await this.releaseLock(key, lockToken);
       }
     } else {
       // Another process is rebuilding - wait and retry
@@ -300,7 +323,7 @@ class CacheAsideWithEarlyRefresh {
       createdAt: Date.now(),
       ttl: ttl * 1000, // Convert to milliseconds
     };
-    await this.redis.setex(cacheKey, ttl, JSON.stringify(payload));
+    await this.redis.set(cacheKey, JSON.stringify(payload), 'EX', ttl);
   }
 
   // Determine if we should refresh based on remaining TTL
@@ -380,12 +403,12 @@ flowchart TD
 ```
 
 ```javascript
-const LRU = require('lru-cache');
+const { LRUCache } = require('lru-cache');
 
 class MultiLevelCache {
   constructor(options = {}) {
     // L1: In-memory LRU cache (fastest, limited size)
-    this.l1 = new LRU({
+    this.l1 = new LRUCache({
       max: options.l1MaxItems || 1000,
       ttl: (options.l1TTL || 60) * 1000, // 1 minute default
     });
@@ -430,7 +453,7 @@ class MultiLevelCache {
       // Store in both levels
       this.l1.set(cacheKey, data);
       try {
-        await this.l2.setex(cacheKey, l2TTL, JSON.stringify(data));
+        await this.l2.set(cacheKey, JSON.stringify(data), 'EX', l2TTL);
       } catch (error) {
         console.error('L2 cache write error:', error.message);
       }
@@ -519,7 +542,7 @@ class ObservableCacheAside {
       const data = await fetchFunction();
 
       if (data !== null && data !== undefined) {
-        await this.redis.setex(cacheKey, ttl, JSON.stringify(data));
+        await this.redis.set(cacheKey, JSON.stringify(data), 'EX', ttl);
       }
 
       this.metrics.latency.push(Date.now() - start);
@@ -614,7 +637,12 @@ class CacheWarmer {
 
 // Run on application startup
 const warmer = new CacheWarmer(cache, db);
-await warmer.warmUp();
+
+async function main() {
+  await warmer.warmUp();
+}
+
+main().catch(console.error);
 ```
 
 ## Summary
