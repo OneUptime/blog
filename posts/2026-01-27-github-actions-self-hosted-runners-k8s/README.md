@@ -37,55 +37,57 @@ Self-hosted runners on Kubernetes solve these problems:
 
 ## What Is Actions Runner Controller (ARC)?
 
-Actions Runner Controller is a Kubernetes operator that manages self-hosted runners. It watches for GitHub Actions jobs and automatically creates runner pods to execute them.
+Actions Runner Controller is a Kubernetes operator that orchestrates and scales self-hosted runners. In the current GitHub-supported ARC architecture, you create runner scale sets that listen for matching GitHub Actions jobs and create ephemeral runner pods to execute them.
 
 Key features:
 - **Autoscaling** - Scale runners based on workflow demand
 - **Ephemeral runners** - Fresh environment for each job
 - **Runner groups** - Organize runners by team or workload type
-- **Multi-repository support** - Single controller for entire organization
+- **Multi-repository support** - Deploy scale sets at repository, organization, or enterprise scope
 
 ## Prerequisites
 
 Before installing ARC, ensure you have:
 
 ```bash
-# Kubernetes cluster (1.23+)
-
+# Kubernetes cluster
 kubectl version --client
 
 # Helm 3.x
 helm version
 
 # GitHub Personal Access Token or GitHub App credentials
-# Token needs: repo, workflow, admin:org (for org runners)
+# Classic PAT scopes: repo for repository runners, admin:org for organization runners
 ```
 
 ## Installing Actions Runner Controller
 
-### Step 1: Add the Helm Repository
+### Step 1: Install the Controller Chart
 
 ```bash
-# Add the official ARC Helm repository
-helm repo add actions-runner-controller \
-  https://actions-runner-controller.github.io/actions-runner-controller
+# Install the ARC controller and CRDs from GitHub's OCI Helm chart
+NAMESPACE="arc-systems"
 
-# Update Helm repositories to fetch latest charts
-helm repo update
+helm install arc \
+  --namespace "${NAMESPACE}" \
+  --create-namespace \
+  oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller
 ```
 
-### Step 2: Create the Namespace
+### Step 2: Create the Runner Namespace
+
+GitHub recommends creating runner pods in a different namespace from the operator pods.
 
 ```yaml
 # namespace.yaml
-# Create a dedicated namespace for ARC components
+# Create a dedicated namespace for ARC runner scale sets
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: actions-runner-system
+  name: arc-runners
   labels:
     app.kubernetes.io/name: actions-runner-controller
-    app.kubernetes.io/component: controller
+    app.kubernetes.io/component: runners
 ```
 
 Apply it:
@@ -96,81 +98,61 @@ kubectl apply -f namespace.yaml
 
 ### Step 3: Configure Authentication
 
-You have two options for authentication: Personal Access Token (PAT) or GitHub App. GitHub App is recommended for production.
+You have three options for authentication: GitHub App, fine-grained PAT, or classic PAT. GitHub App is recommended for repository and organization runners. Enterprise-level runners require a classic PAT.
 
 #### Option A: Personal Access Token
 
-```yaml
-# github-secret-pat.yaml
-# Store GitHub PAT for runner authentication
-# Required scopes: repo, workflow, admin:org (for org-level runners)
-apiVersion: v1
-kind: Secret
-metadata:
-  name: controller-manager
-  namespace: actions-runner-system
-type: Opaque
-stringData:
-  # Replace with your actual GitHub Personal Access Token
-  github_token: ghp_your_token_here
+```bash
+# Store a classic or fine-grained PAT in the same namespace as the runner scale set
+kubectl create secret generic pre-defined-secret \
+  --namespace=arc-runners \
+  --from-literal=github_token='YOUR-PAT'
 ```
 
 #### Option B: GitHub App (Recommended)
 
 First, create a GitHub App in your organization settings with these permissions:
-- **Repository permissions**: Actions (read), Administration (read/write), Metadata (read)
-- **Organization permissions**: Self-hosted runners (read/write)
-
-```yaml
-# github-secret-app.yaml
-# Store GitHub App credentials for runner authentication
-# More secure than PAT and supports fine-grained permissions
-apiVersion: v1
-kind: Secret
-metadata:
-  name: controller-manager
-  namespace: actions-runner-system
-type: Opaque
-stringData:
-  # Your GitHub App ID (found in app settings)
-  github_app_id: "12345"
-  # Your GitHub App Installation ID
-  github_app_installation_id: "67890"
-  # Private key downloaded when creating the app (PEM format)
-  github_app_private_key: |
-    -----BEGIN RSA PRIVATE KEY-----
-    your-private-key-here
-    -----END RSA PRIVATE KEY-----
-```
-
-Apply the secret:
+- **Repository permissions**: Administration (read/write, required for repository runners), Metadata (read)
+- **Organization permissions**: Self-hosted runners (read/write, required for organization runners)
 
 ```bash
-kubectl apply -f github-secret-app.yaml
+# Store GitHub App credentials in the same namespace as the runner scale set
+kubectl create secret generic pre-defined-secret \
+  --namespace=arc-runners \
+  --from-literal=github_app_id=12345 \
+  --from-literal=github_app_installation_id=67890 \
+  --from-file=github_app_private_key=private-key.pem
 ```
 
-### Step 4: Install the Controller
+### Step 4: Install a Runner Scale Set
 
 ```bash
-# Install ARC with Helm
-# This deploys the controller that manages runner pods
-helm install actions-runner-controller \
-  actions-runner-controller/actions-runner-controller \
-  --namespace actions-runner-system \
-  --set authSecret.create=false \
-  --set authSecret.name=controller-manager \
-  --wait
+# Install a runner scale set for a repository, organization, or enterprise
+INSTALLATION_NAME="arc-runner-set"
+NAMESPACE="arc-runners"
+GITHUB_CONFIG_URL="https://github.com/myorg/myrepo"
+
+helm install "${INSTALLATION_NAME}" \
+  --namespace "${NAMESPACE}" \
+  --create-namespace \
+  --set githubConfigUrl="${GITHUB_CONFIG_URL}" \
+  --set githubConfigSecret=pre-defined-secret \
+  oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 ```
 
 Verify the installation:
 
 ```bash
-# Check that the controller pod is running
-kubectl get pods -n actions-runner-system
+# Check Helm releases
+helm list -A
 
-# Expected output:
-# NAME                                          READY   STATUS    RESTARTS   AGE
-# actions-runner-controller-xyz-abc             2/2     Running   0          1m
+# Check that the controller pod and listener pod are running
+kubectl get pods -n arc-systems
+kubectl get pods -n arc-runners
+
+# Expected output includes:
+# arc-gha-runner-scale-set-controller-xyz             1/1     Running   0          1m
+# arc-runner-set-xyz-listener                        1/1     Running   0          1m
 ```
 
 ## Deploying Runners
@@ -178,36 +160,30 @@ kubectl get pods -n actions-runner-system
 ### Basic Runner Deployment
 
 ```yaml
-# runner-deployment.yaml
-# Deploy a static set of runners for a specific repository
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: my-runners
-  namespace: actions-runner-system
-spec:
-  # Number of runner pods to maintain
-  replicas: 2
-  template:
-    spec:
-      # Target repository in format: owner/repo
-      repository: myorg/myrepo
-      # Labels that workflows can target with runs-on
-      labels:
-        - self-hosted
-        - linux
-        - x64
-      # Runner group (optional, for organization runners)
-      # group: my-runner-group
+# values.yaml
+# Deploy a runner scale set for a specific repository
+githubConfigUrl: "https://github.com/myorg/myrepo"
+githubConfigSecret: pre-defined-secret
+
+# Workflows can target this scale set with runs-on: arc-runner-set
+runnerScaleSetName: "arc-runner-set"
+
+# Keep two idle runners ready for jobs
+minRunners: 2
+maxRunners: 10
 ```
 
 Apply and verify:
 
 ```bash
-kubectl apply -f runner-deployment.yaml
+helm upgrade --install arc-runner-set \
+  --namespace arc-runners \
+  --create-namespace \
+  -f values.yaml \
+  oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 
-# Check runner pods
-kubectl get runners -n actions-runner-system
+# Check runner pods while jobs are running
+kubectl get pods -n arc-runners
 
 # Check in GitHub: Settings > Actions > Runners
 ```
@@ -215,157 +191,78 @@ kubectl get runners -n actions-runner-system
 ### Organization-Level Runners
 
 ```yaml
-# org-runner-deployment.yaml
-# Deploy runners available to all repos in an organization
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: org-runners
-  namespace: actions-runner-system
-spec:
-  replicas: 3
-  template:
-    spec:
-      # Target organization instead of specific repository
-      organization: myorg
-      labels:
-        - self-hosted
-        - linux
-        - x64
-        - org-runner
+# org-runner-values.yaml
+# Deploy runners available to repositories in an organization
+githubConfigUrl: "https://github.com/myorg"
+githubConfigSecret: pre-defined-secret
+runnerScaleSetName: "org-runners"
+
+minRunners: 3
+maxRunners: 20
 ```
 
 ## Autoscaling Runners
 
-Static replicas waste resources. Use HorizontalRunnerAutoscaler to scale based on demand.
+Static replicas waste resources. ARC runner scale sets use `minRunners` and `maxRunners` to keep idle capacity available and scale up when jobs are assigned to the scale set.
 
-### Percentage-Based Autoscaling
-
-```yaml
-# runner-autoscaler-percentage.yaml
-# Scale runners based on percentage of busy runners
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: autoscaled-runners
-  namespace: actions-runner-system
-spec:
-  # Template defines the runner pod specification
-  template:
-    spec:
-      repository: myorg/myrepo
-      labels:
-        - self-hosted
-        - linux
----
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: HorizontalRunnerAutoscaler
-metadata:
-  name: autoscaled-runners-hra
-  namespace: actions-runner-system
-spec:
-  # Reference to the RunnerDeployment to scale
-  scaleTargetRef:
-    kind: RunnerDeployment
-    name: autoscaled-runners
-  # Minimum number of runners to maintain
-  minReplicas: 1
-  # Maximum number of runners allowed
-  maxReplicas: 10
-  # Scaling metrics configuration
-  metrics:
-    - type: PercentageRunnersBusy
-      # Scale up when 75% of runners are busy
-      scaleUpThreshold: "0.75"
-      # Scale down when only 25% are busy
-      scaleDownThreshold: "0.25"
-      # Scale up by 2 runners at a time
-      scaleUpFactor: "2"
-      # Scale down by 1 runner at a time (slower scale-down)
-      scaleDownFactor: "1"
-```
-
-### Webhook-Based Autoscaling (Recommended)
-
-Webhook-based scaling is more responsive as it reacts to workflow events in real-time.
+### Minimum and Maximum Autoscaling
 
 ```yaml
-# runner-autoscaler-webhook.yaml
-# Scale runners based on GitHub webhook events
-# Reacts immediately when workflows are queued
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: webhook-runners
-  namespace: actions-runner-system
-spec:
-  template:
-    spec:
-      repository: myorg/myrepo
-      labels:
-        - self-hosted
-        - linux
----
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: HorizontalRunnerAutoscaler
-metadata:
-  name: webhook-runners-hra
-  namespace: actions-runner-system
-spec:
-  scaleTargetRef:
-    kind: RunnerDeployment
-    name: webhook-runners
-  minReplicas: 0
-  maxReplicas: 20
-  # Duration to wait before scaling down idle runners
-  scaleDownDelaySecondsAfterScaleOut: 300
-  # Webhook-driven scaling reacts to workflow_job events
-  scaleUpTriggers:
-    - githubEvent:
-        workflowJob: {}
-      # Scale up by 1 for each queued job
-      amount: 1
-      # How long to wait for job to be picked up
-      duration: "10m"
+# runner-autoscaler-values.yaml
+# Scale runners between 1 idle runner and 10 total runners
+githubConfigUrl: "https://github.com/myorg/myrepo"
+githubConfigSecret: pre-defined-secret
+runnerScaleSetName: "autoscaled-runners"
+
+# Minimum number of idle runners to maintain
+minRunners: 1
+
+# Maximum number of runners allowed
+maxRunners: 10
 ```
 
-Configure the webhook in GitHub:
+### Scale-to-Zero Autoscaling (Recommended)
 
-1. Go to Organization Settings > Webhooks
-2. Add webhook with URL: `https://your-controller/webhook`
-3. Content type: `application/json`
-4. Secret: Configure a webhook secret
-5. Events: Select "Workflow jobs"
+ARC runner scale sets listen for matching jobs from GitHub Actions and can scale down to zero runner pods when no jobs are assigned.
+
+```yaml
+# runner-autoscaler-scale-to-zero.yaml
+# Scale from zero idle runners up to 20 total runners
+githubConfigUrl: "https://github.com/myorg/myrepo"
+githubConfigSecret: pre-defined-secret
+runnerScaleSetName: "webhook-runners"
+
+# No idle runners when the queue is empty
+minRunners: 0
+
+# Maximum number of runners allowed
+maxRunners: 20
+```
+
+No separate GitHub webhook is required for the current ARC scale set listener. Jobs are assigned when a workflow's `runs-on` value matches the runner scale set name or configured scale set labels.
 
 ## Ephemeral Runners
 
-Ephemeral runners are destroyed after each job, providing a clean environment every time.
+Runner scale set runners are ephemeral. ARC creates runner pods for assigned jobs and removes them after the jobs complete, providing a clean environment every time.
 
 ```yaml
 # ephemeral-runners.yaml
-# Ephemeral runners are destroyed after completing one job
-# Ensures clean environment and prevents state leakage between jobs
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: ephemeral-runners
-  namespace: actions-runner-system
-spec:
-  template:
-    spec:
-      repository: myorg/myrepo
-      # Enable ephemeral mode - runner exits after one job
-      ephemeral: true
-      labels:
-        - self-hosted
-        - linux
-        - ephemeral
-      # Container mode runs jobs in separate containers
-      # Provides better isolation than default host mode
-      dockerEnabled: false
-      containerMode: kubernetes
-      # Work directory configuration
-      workDir: /runner/_work
+# Ephemeral scale set runners with Kubernetes container mode
+githubConfigUrl: "https://github.com/myorg/myrepo"
+githubConfigSecret: pre-defined-secret
+runnerScaleSetName: "ephemeral-runners"
+
+minRunners: 0
+maxRunners: 10
+
+# Container mode runs container jobs and services in Kubernetes pods
+containerMode:
+  type: "kubernetes"
+  kubernetesModeWorkVolumeClaim:
+    accessModes: ["ReadWriteOnce"]
+    resources:
+      requests:
+        storage: 1Gi
 ```
 
 ### Ephemeral Runners with Docker-in-Docker
@@ -373,41 +270,31 @@ spec:
 ```yaml
 # ephemeral-runners-dind.yaml
 # Ephemeral runners with Docker-in-Docker support
-# Allows workflows to build and run Docker containers
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: ephemeral-dind-runners
-  namespace: actions-runner-system
-spec:
-  template:
-    spec:
-      repository: myorg/myrepo
-      ephemeral: true
-      # Enable Docker support for container builds
-      dockerEnabled: true
-      # Mount Docker socket from DinD sidecar
-      dockerdWithinRunnerContainer: true
-      labels:
-        - self-hosted
-        - linux
-        - dind
-      # Resource limits for runner pod
-      resources:
-        limits:
-          cpu: "4"
-          memory: "8Gi"
-        requests:
-          cpu: "2"
-          memory: "4Gi"
-      # Docker daemon configuration
-      dockerdContainerResources:
-        limits:
-          cpu: "2"
-          memory: "4Gi"
-        requests:
-          cpu: "1"
-          memory: "2Gi"
+githubConfigUrl: "https://github.com/myorg/myrepo"
+githubConfigSecret: pre-defined-secret
+runnerScaleSetName: "ephemeral-dind-runners"
+
+minRunners: 0
+maxRunners: 10
+
+# Docker-in-Docker mode requires a privileged Docker daemon sidecar
+containerMode:
+  type: "dind"
+
+# Resource limits for the runner container
+template:
+  spec:
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        resources:
+          limits:
+            cpu: "4"
+            memory: "8Gi"
+          requests:
+            cpu: "2"
+            memory: "4Gi"
 ```
 
 ## Runner Groups
@@ -425,26 +312,23 @@ Runner groups let you control which repositories can use which runners.
 ```yaml
 # runner-group.yaml
 # Deploy runners to a specific runner group
-# Groups control which repositories can use these runners
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: production-runners
-  namespace: actions-runner-system
-spec:
-  replicas: 5
-  template:
-    spec:
-      organization: myorg
-      # Assign runners to a specific group
-      # Group must exist in GitHub organization settings
-      group: production-runners
-      labels:
-        - self-hosted
-        - linux
-        - production
-      # Use a custom runner image with additional tools
-      image: myorg/custom-runner:latest
+githubConfigUrl: "https://github.com/myorg"
+githubConfigSecret: pre-defined-secret
+runnerScaleSetName: "production-runners"
+
+# Group must exist in GitHub organization settings
+runnerGroup: "production-runners"
+
+minRunners: 2
+maxRunners: 20
+
+# Use a custom runner image with additional tools
+template:
+  spec:
+    containers:
+      - name: runner
+        image: myorg/custom-runner:latest
+        command: ["/home/runner/run.sh"]
 ```
 
 ### Using Runner Groups in Workflows
@@ -458,10 +342,8 @@ on:
 
 jobs:
   deploy:
-    # Target runners in the production group
-    runs-on:
-      group: production-runners
-      labels: [self-hosted, linux, production]
+    # Target the runner scale set by name
+    runs-on: production-runners
     steps:
       - uses: actions/checkout@v4
       - name: Deploy
@@ -475,40 +357,41 @@ Create custom runner images with your tools pre-installed.
 ```dockerfile
 # Dockerfile
 # Custom GitHub Actions runner image with additional tools
-FROM summerwind/actions-runner:latest
+FROM ghcr.io/actions/actions-runner:latest
 
 # Install additional tools as root
 USER root
 
 # Install common build dependencies
 RUN apt-get update && apt-get install -y \
-    # Build tools
     build-essential \
-    # Node.js for JavaScript projects
-    nodejs \
-    npm \
-    # Python for scripting
+    ca-certificates \
+    curl \
+    gnupg \
     python3 \
     python3-pip \
-    # Go for Go projects
-    golang-go \
-    # Docker CLI for container operations
-    docker.io \
-    # Kubernetes tools
-    kubectl \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Helm
-RUN curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+# Install kubectl
+RUN curl -fsSL -o /usr/local/bin/kubectl \
+    "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && chmod +x /usr/local/bin/kubectl
 
-# Install additional tools via pip
-RUN pip3 install awscli
+# Install Helm
+RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+# Install AWS CLI v2
+RUN curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
+    && unzip -q awscliv2.zip \
+    && ./aws/install \
+    && rm -rf aws awscliv2.zip
 
 # Switch back to runner user for security
 USER runner
 
 # Verify installations
-RUN node --version && python3 --version && go version
+RUN python3 --version && kubectl version --client=true && helm version && aws --version
 ```
 
 Build and push:
@@ -521,24 +404,23 @@ docker build -t myregistry/custom-runner:latest .
 docker push myregistry/custom-runner:latest
 ```
 
-Use in RunnerDeployment:
+Use in the runner scale set:
 
 ```yaml
 # custom-image-runner.yaml
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: custom-runners
-  namespace: actions-runner-system
-spec:
-  template:
-    spec:
-      repository: myorg/myrepo
-      # Use custom runner image with pre-installed tools
-      image: myregistry/custom-runner:latest
-      # Pull secret if using private registry
-      imagePullSecrets:
-        - name: registry-credentials
+githubConfigUrl: "https://github.com/myorg/myrepo"
+githubConfigSecret: pre-defined-secret
+runnerScaleSetName: "custom-runners"
+
+template:
+  spec:
+    containers:
+      - name: runner
+        image: myregistry/custom-runner:latest
+        imagePullPolicy: Always
+        command: ["/home/runner/run.sh"]
+    imagePullSecrets:
+      - name: registry-credentials
 ```
 
 ## Security Considerations
@@ -548,21 +430,19 @@ spec:
 ```yaml
 # network-policy.yaml
 # Restrict network access for runner pods
-# Limit egress to only necessary destinations
+# Add the matching label in template.metadata.labels for your runner scale set
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: runner-network-policy
-  namespace: actions-runner-system
+  namespace: arc-runners
 spec:
-  # Apply to all runner pods
   podSelector:
     matchLabels:
-      app.kubernetes.io/component: runner
+      app: arc-runner
   policyTypes:
     - Egress
     - Ingress
-  # Allow egress to specific destinations
   egress:
     # Allow DNS resolution
     - to:
@@ -570,7 +450,9 @@ spec:
       ports:
         - protocol: UDP
           port: 53
-    # Allow GitHub API access
+        - protocol: TCP
+          port: 53
+    # Allow required outbound HTTPS access
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -590,52 +472,50 @@ spec:
 
 ```yaml
 # pod-security.yaml
-# Apply Pod Security Standards to runner namespace
-# Restricts container capabilities and privileges
+# Apply Pod Security Standards to the runner namespace
+# Use baseline if you need Docker-in-Docker, because DinD requires privileged containers
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: actions-runner-system
+  name: arc-runners
   labels:
-    # Enforce restricted security standard
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/audit: restricted
-    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
 ```
 
 ### RBAC for Runners
 
 ```yaml
 # runner-rbac.yaml
-# Minimal RBAC permissions for runner service account
+# Minimal RBAC permissions for a runner service account
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: runner-sa
-  namespace: actions-runner-system
+  namespace: arc-runners
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: runner-role
-  namespace: actions-runner-system
+  namespace: arc-runners
 rules:
-  # Allow runners to read configmaps and secrets they need
+  # Allow runners to read only the configmap they need
   - apiGroups: [""]
-    resources: ["configmaps", "secrets"]
-    verbs: ["get", "list"]
-    # Restrict to specific resource names if possible
+    resources: ["configmaps"]
     resourceNames: ["runner-config"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: runner-rolebinding
-  namespace: actions-runner-system
+  namespace: arc-runners
 subjects:
   - kind: ServiceAccount
     name: runner-sa
-    namespace: actions-runner-system
+    namespace: arc-runners
 roleRef:
   kind: Role
   name: runner-role
@@ -647,46 +527,55 @@ roleRef:
 ```yaml
 # runner-with-secrets.yaml
 # Securely inject secrets into runner pods
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: secure-runners
-  namespace: actions-runner-system
-spec:
-  template:
-    spec:
-      repository: myorg/myrepo
-      # Use dedicated service account with limited permissions
-      serviceAccountName: runner-sa
-      # Environment variables from secrets
-      env:
-        - name: AWS_ACCESS_KEY_ID
-          valueFrom:
-            secretKeyRef:
-              name: aws-credentials
-              key: access-key-id
-        - name: AWS_SECRET_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: aws-credentials
-              key: secret-access-key
-      # Mount secrets as files
-      volumeMounts:
-        - name: ssh-key
-          mountPath: /home/runner/.ssh
-          readOnly: true
-      volumes:
-        - name: ssh-key
-          secret:
-            secretName: deploy-ssh-key
-            defaultMode: 0400
+githubConfigUrl: "https://github.com/myorg/myrepo"
+githubConfigSecret: pre-defined-secret
+runnerScaleSetName: "secure-runners"
+
+template:
+  spec:
+    serviceAccountName: runner-sa
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        env:
+          - name: AWS_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: aws-credentials
+                key: access-key-id
+          - name: AWS_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: aws-credentials
+                key: secret-access-key
+        volumeMounts:
+          - name: ssh-key
+            mountPath: /home/runner/.ssh
+            readOnly: true
+    volumes:
+      - name: ssh-key
+        secret:
+          secretName: deploy-ssh-key
+          defaultMode: 0400
 ```
 
 ## Monitoring Runners
 
 ### Prometheus Metrics
 
-ARC exposes Prometheus metrics for monitoring. Configure ServiceMonitor:
+ARC exposes Prometheus metrics for monitoring. Enable metrics in the `gha-runner-scale-set-controller` chart values:
+
+```yaml
+# controller-values.yaml
+# ARC controller metrics configuration
+metrics:
+  controllerManagerAddr: ":8080"
+  listenerAddr: ":8080"
+  listenerEndpoint: "/metrics"
+```
+
+Configure ServiceMonitor labels to match the Services created by your Helm release:
 
 ```yaml
 # servicemonitor.yaml
@@ -695,13 +584,21 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: actions-runner-controller
-  namespace: actions-runner-system
+  namespace: arc-systems
   labels:
     release: prometheus
 spec:
+  namespaceSelector:
+    matchNames:
+      - arc-systems
+      - arc-runners
   selector:
-    matchLabels:
-      app.kubernetes.io/name: actions-runner-controller
+    matchExpressions:
+      - key: app.kubernetes.io/instance
+        operator: In
+        values:
+          - arc
+          - arc-runner-set
   endpoints:
     - port: metrics
       interval: 30s
@@ -712,33 +609,33 @@ spec:
 
 ```yaml
 # prometheus-rules.yaml
-# Alerting rules for GitHub Actions runners
+# Alerting rules for GitHub Actions runner scale sets
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: runner-alerts
-  namespace: actions-runner-system
+  namespace: arc-systems
 spec:
   groups:
     - name: github-actions-runners
       rules:
-        # Alert when no runners are available
-        - alert: NoRunnersAvailable
+        # Alert when assigned jobs are not being picked up
+        - alert: RunnerJobsQueued
           expr: |
-            actions_runner_controller_runners{status="online"} == 0
-          for: 5m
+            gha_assigned_jobs > 0 and gha_running_jobs == 0
+          for: 10m
           labels:
-            severity: critical
+            severity: warning
           annotations:
-            summary: No GitHub Actions runners available
-            description: No runners are online to process jobs
+            summary: GitHub Actions jobs are assigned but not running
+            description: Jobs are waiting for runner scale set capacity
 
         # Alert when runners are stuck
         - alert: RunnerStuck
           expr: |
-            actions_runner_controller_runners{status="busy"} > 0
+            gha_busy_runners > 0
             and
-            increase(actions_runner_controller_runner_jobs_completed_total[30m]) == 0
+            increase(gha_completed_jobs_total[30m]) == 0
           for: 30m
           labels:
             severity: warning
@@ -746,16 +643,16 @@ spec:
             summary: GitHub Actions runner appears stuck
             description: Runner has been busy for 30m without completing jobs
 
-        # Alert on high queue time
-        - alert: HighQueueTime
+        # Alert on high startup time
+        - alert: HighRunnerStartupTime
           expr: |
-            actions_runner_controller_pending_runners > 5
+            histogram_quantile(0.95, rate(gha_job_startup_duration_seconds_bucket[10m])) > 300
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: High number of pending runners
-            description: Jobs are waiting for runners to become available
+            summary: High runner startup time
+            description: Jobs are waiting more than five minutes for runner startup
 ```
 
 ### Grafana Dashboard
@@ -767,12 +664,20 @@ Create a dashboard with these panels:
   "title": "GitHub Actions Runners",
   "panels": [
     {
-      "title": "Runners by Status",
+      "title": "Runners by State",
       "type": "gauge",
       "targets": [
         {
-          "expr": "actions_runner_controller_runners",
-          "legendFormat": "{{status}}"
+          "expr": "gha_registered_runners",
+          "legendFormat": "registered"
+        },
+        {
+          "expr": "gha_busy_runners",
+          "legendFormat": "busy"
+        },
+        {
+          "expr": "gha_idle_runners",
+          "legendFormat": "idle"
         }
       ]
     },
@@ -781,7 +686,7 @@ Create a dashboard with these panels:
       "type": "graph",
       "targets": [
         {
-          "expr": "rate(actions_runner_controller_runner_jobs_completed_total[5m])",
+          "expr": "rate(gha_completed_jobs_total[5m])",
           "legendFormat": "Jobs/s"
         }
       ]
@@ -791,7 +696,7 @@ Create a dashboard with these panels:
       "type": "graph",
       "targets": [
         {
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"actions-runner-system\"}[5m])) by (pod)",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"arc-runners\"}[5m])) by (pod)",
           "legendFormat": "{{pod}}"
         }
       ]
@@ -802,34 +707,26 @@ Create a dashboard with these panels:
 
 ### Logging
 
-Configure structured logging for troubleshooting:
+Collect and retain logs from the controller, listener, and ephemeral runner pods for troubleshooting:
 
-```yaml
-# controller-config.yaml
-# ARC controller logging configuration
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: controller-config
-  namespace: actions-runner-system
-data:
-  # Controller configuration
-  controller_config.yaml: |
-    # Log level: debug, info, warn, error
-    logLevel: info
-    # Log format: json for production, text for development
-    logFormat: json
-    # Enable sync period logging
-    syncPeriod: 10m
+```bash
+# Controller logs
+kubectl logs -n arc-systems deployment/arc-gha-runner-scale-set-controller
+
+# Find listener and runner pod names
+kubectl get pods -n arc-runners
+
+# Listener or runner pod logs
+kubectl logs -n arc-runners <pod-name>
 ```
 
 ## Best Practices Summary
 
 1. **Use GitHub App authentication** - More secure than PATs with fine-grained permissions
 
-2. **Enable ephemeral runners** - Clean environment for each job prevents state leakage
+2. **Use ephemeral runner scale sets** - Clean environment for each job prevents state leakage
 
-3. **Implement webhook-based autoscaling** - Faster response to demand than polling
+3. **Set minRunners and maxRunners** - Balance fast job pickup with cost and capacity limits
 
 4. **Set resource limits** - Prevent runaway jobs from consuming cluster resources
 
