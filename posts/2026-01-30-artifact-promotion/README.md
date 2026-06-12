@@ -86,6 +86,8 @@ echo "Promoting ${SOURCE} to ${TARGET}"
 
 # Copy the image using skopeo (no local pull needed)
 skopeo copy \
+    --all \
+    --preserve-digests \
     --src-creds="${REGISTRY_USER}:${REGISTRY_TOKEN}" \
     --dest-creds="${REGISTRY_USER}:${REGISTRY_TOKEN}" \
     "docker://${SOURCE}" \
@@ -107,7 +109,7 @@ fi
 
 For organizations with strict security requirements, separate registries provide better isolation. Each environment has its own registry with distinct access controls.
 
-This script promotes an image from a source registry to a target registry. It preserves the image digest and adds environment-specific tags.
+This script promotes an image from a source registry to a target registry. It preserves the image digest and verifies the promoted tag.
 
 ```bash
 #!/bin/bash
@@ -141,13 +143,17 @@ TARGET_REF="${TARGET_REGISTRY}/${IMAGE}:${TAG}"
 echo "Copying ${SOURCE_REF} to ${TARGET_REF}"
 
 skopeo copy \
+    --all \
+    --preserve-digests \
     "docker://${SOURCE_REF}" \
     "docker://${TARGET_REF}"
 
-# Also tag with the digest for immutable reference
-skopeo copy \
-    "docker://${SOURCE_REF}" \
-    "docker://${TARGET_REGISTRY}/${IMAGE}@${DIGEST}"
+TARGET_DIGEST=$(skopeo inspect "docker://${TARGET_REF}" | jq -r '.Digest')
+
+if [ "${DIGEST}" != "${TARGET_DIGEST}" ]; then
+    echo "ERROR: Digest mismatch after promotion"
+    exit 1
+fi
 
 echo "Promotion complete. Image available at:"
 echo "  - ${TARGET_REF}"
@@ -196,6 +202,8 @@ jobs:
       - name: Promote to staging
         run: |
           skopeo copy \
+            --all \
+            --preserve-digests \
             docker://ghcr.io/${{ github.repository }}:${{ inputs.image_tag }} \
             docker://ghcr.io/${{ github.repository }}:staging
 
@@ -231,12 +239,16 @@ jobs:
       - name: Promote to production
         run: |
           skopeo copy \
+            --all \
+            --preserve-digests \
             docker://ghcr.io/${{ github.repository }}:staging \
             docker://ghcr.io/${{ github.repository }}:production
 
           # Also create a timestamped release tag
           RELEASE_TAG="release-$(date +%Y%m%d-%H%M%S)"
           skopeo copy \
+            --all \
+            --preserve-digests \
             docker://ghcr.io/${{ github.repository }}:staging \
             docker://ghcr.io/${{ github.repository }}:${RELEASE_TAG}
 
@@ -256,6 +268,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -264,9 +280,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -275,7 +291,7 @@ jobs:
       # Build and push, capturing the digest
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
@@ -304,12 +320,24 @@ The promotion job then downloads this digest and uses it to reference the exact 
         with:
           name: image-digest
 
+      - name: Install skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+
+      - name: Login to registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+          skopeo login ghcr.io --username ${{ github.actor }} --password-stdin
+
       - name: Promote by digest
         run: |
           DIGEST=$(cat digest.txt)
           echo "Promoting image with digest: ${DIGEST}"
 
           skopeo copy \
+            --all \
+            --preserve-digests \
             docker://ghcr.io/${{ github.repository }}@${DIGEST} \
             docker://ghcr.io/${{ github.repository }}:production
 ```
