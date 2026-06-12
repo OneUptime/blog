@@ -76,21 +76,27 @@ flowchart TB
 
 # Install Gremlin agent on Ubuntu/Debian
 
-# Add Gremlin repository
-echo "deb https://deb.gremlin.com/ release non-free" | sudo tee /etc/apt/sources.list.d/gremlin.list
+# Add packages needed to install and verify Gremlin
+sudo apt-get update
+sudo apt-get install -y apt-transport-https dirmngr
 
-# Import GPG key
-sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 9CDB294B29A5B1E2E00C24C022E8EF3461A50EF6
+# Add Gremlin repository and import its GPG key
+echo "deb [signed-by=/usr/share/keyrings/gremlin.gpg] https://deb.gremlin.com/ release non-free" | sudo tee /etc/apt/sources.list.d/gremlin.list
+sudo gpg --no-default-keyring \
+  --keyring /usr/share/keyrings/gremlin.kbx \
+  --keyserver hkps://keyserver.ubuntu.com:443 \
+  --recv-keys 9CDB294B29A5B1E2E00C24C022E8EF3461A50EF6
+sudo gpg --no-default-keyring \
+  --keyring /usr/share/keyrings/gremlin.kbx \
+  --export 9CDB294B29A5B1E2E00C24C022E8EF3461A50EF6 | sudo tee /usr/share/keyrings/gremlin.gpg > /dev/null
 
 # Install agent and daemon
 sudo apt-get update
 sudo apt-get install -y gremlin gremlind
 
-# Configure with your team credentials
-sudo gremlin init \
-  --team-id "$GREMLIN_TEAM_ID" \
-  --team-secret "$GREMLIN_TEAM_SECRET" \
-  --identifier "$(hostname)"
+# Configure with the config.yaml downloaded from Gremlin Team Settings
+sudo cp config.yaml /etc/gremlin/config.yaml
+sudo systemctl restart gremlind
 ```
 
 ### Kubernetes Installation
@@ -102,21 +108,17 @@ Deploy Gremlin using Helm:
 helm repo add gremlin https://helm.gremlin.com
 helm repo update
 
-# Create namespace
-kubectl create namespace gremlin
-
-# Create secret with credentials
-kubectl create secret generic gremlin-team-cert \
-  --namespace=gremlin \
-  --from-literal=GREMLIN_TEAM_ID="$GREMLIN_TEAM_ID" \
-  --from-literal=GREMLIN_TEAM_SECRET="$GREMLIN_TEAM_SECRET"
-
 # Install Gremlin
 helm install gremlin gremlin/gremlin \
   --namespace gremlin \
+  --create-namespace \
   --set gremlin.secret.managed=true \
   --set gremlin.secret.type=secret \
-  --set gremlin.secret.name=gremlin-team-cert
+  --set gremlin.hostPID=true \
+  --set gremlin.hostNetwork=true \
+  --set gremlin.secret.teamID="$GREMLIN_TEAM_ID" \
+  --set gremlin.secret.clusterID="$GREMLIN_CLUSTER_ID" \
+  --set gremlin.secret.teamSecret="$GREMLIN_TEAM_SECRET"
 ```
 
 ### Verify Installation
@@ -173,12 +175,12 @@ def run_cpu_attack(target_tags, cpu_cores=1, duration_seconds=60):
         "target": {
             "type": "Random",
             "tags": target_tags,
-            "percent": 50  # Target 50% of matching hosts
+            "exact": 1  # Target one randomly selected matching host
         }
     }
 
     response = requests.post(
-        f"https://api.gremlin.com/v1/attacks/new",
+        f"https://api.gremlin.com/v1/attacks/new?teamId={GREMLIN_TEAM_ID}",
         headers=headers,
         json=payload
     )
@@ -211,6 +213,7 @@ import requests
 import os
 
 GREMLIN_API_KEY = os.environ["GREMLIN_API_KEY"]
+GREMLIN_TEAM_ID = os.environ["GREMLIN_TEAM_ID"]
 
 def run_latency_attack(target_tags, latency_ms=500, duration_seconds=60,
                         target_hosts=None, target_ports=None):
@@ -246,14 +249,14 @@ def run_latency_attack(target_tags, latency_ms=500, duration_seconds=60,
             "args": args
         },
         "target": {
-            "type": "Exact",
+            "type": "Random",
             "tags": target_tags,
             "exact": 1  # Target exactly 1 host
         }
     }
 
     response = requests.post(
-        "https://api.gremlin.com/v1/attacks/new",
+        f"https://api.gremlin.com/v1/attacks/new?teamId={GREMLIN_TEAM_ID}",
         headers=headers,
         json=payload
     )
@@ -277,6 +280,12 @@ Simulate complete network failures:
 ```python
 # gremlin_blackhole_attack.py
 # Drop all traffic to specific destinations
+
+import requests
+import os
+
+GREMLIN_API_KEY = os.environ["GREMLIN_API_KEY"]
+GREMLIN_TEAM_ID = os.environ["GREMLIN_TEAM_ID"]
 
 def run_blackhole_attack(target_tags, duration_seconds=30,
                           blocked_hosts=None, blocked_ports=None):
@@ -302,14 +311,14 @@ def run_blackhole_attack(target_tags, duration_seconds=30,
             "args": args
         },
         "target": {
-            "type": "Exact",
+            "type": "Random",
             "tags": target_tags,
             "exact": 1
         }
     }
 
     response = requests.post(
-        "https://api.gremlin.com/v1/attacks/new",
+        f"https://api.gremlin.com/v1/attacks/new?teamId={GREMLIN_TEAM_ID}",
         headers=headers,
         json=payload
     )
@@ -443,8 +452,8 @@ def configure_safety_controls():
             }
         ],
 
-        # Time-based restrictions
-        "blackout_windows": [
+        # Restricted Time Windows
+        "restricted_time_windows": [
             {
                 "name": "No chaos during deploys",
                 "calendar": "deploy-calendar",
@@ -502,12 +511,20 @@ jobs:
       - name: Run latency experiment
         env:
           GREMLIN_API_KEY: ${{ secrets.GREMLIN_API_KEY }}
+          GREMLIN_TEAM_ID: ${{ secrets.GREMLIN_TEAM_ID }}
         run: |
-          gremlin attack network latency \
-            --length 60 \
-            --delay 200 \
-            --target-tags "service=api,environment=staging" \
-            --percent 25
+          curl -f -X POST \
+            --header "Content-Type: application/json" \
+            --header "Authorization: Key ${GREMLIN_API_KEY}" \
+            "https://api.gremlin.com/v1/attacks/new?teamId=${GREMLIN_TEAM_ID}" \
+            --data '{
+              "command": { "type": "latency", "args": ["-l", "60", "-m", "200"] },
+              "target": {
+                "type": "Random",
+                "tags": { "service": "api", "environment": "staging" },
+                "exact": 1
+              }
+            }'
 
       - name: Wait for experiment
         run: sleep 70
@@ -523,12 +540,20 @@ jobs:
       - name: Run blackhole experiment
         env:
           GREMLIN_API_KEY: ${{ secrets.GREMLIN_API_KEY }}
+          GREMLIN_TEAM_ID: ${{ secrets.GREMLIN_TEAM_ID }}
         run: |
-          gremlin attack network blackhole \
-            --length 30 \
-            --target-tags "service=api,environment=staging" \
-            --hostnames "cache.internal" \
-            --exact 1
+          curl -f -X POST \
+            --header "Content-Type: application/json" \
+            --header "Authorization: Key ${GREMLIN_API_KEY}" \
+            "https://api.gremlin.com/v1/attacks/new?teamId=${GREMLIN_TEAM_ID}" \
+            --data '{
+              "command": { "type": "blackhole", "args": ["-l", "30", "-h", "cache.internal"] },
+              "target": {
+                "type": "Random",
+                "tags": { "service": "api", "environment": "staging" },
+                "exact": 1
+              }
+            }'
 
       - name: Validate degraded mode
         run: |
@@ -545,10 +570,11 @@ Track experiment outcomes in your observability platform:
 # Send Gremlin events to OneUptime
 
 import requests
+import os
 from datetime import datetime
 
 def send_experiment_to_oneuptime(experiment_data):
-    """Report Gremlin experiment to OneUptime for correlation."""
+    """Report Gremlin experiment to a OneUptime workflow webhook for correlation."""
 
     payload = {
         "eventType": "chaos_experiment",
@@ -570,10 +596,10 @@ def send_experiment_to_oneuptime(experiment_data):
     }
 
     response = requests.post(
-        "https://oneuptime.com/api/telemetry/events",
+        os.environ["ONEUPTIME_WORKFLOW_WEBHOOK_URL"],
         headers={
             "Content-Type": "application/json",
-            "X-OneUptime-Token": os.environ["ONEUPTIME_TOKEN"]
+            "X-Webhook-Token": os.environ["ONEUPTIME_WEBHOOK_TOKEN"]
         },
         json=payload
     )
