@@ -128,7 +128,7 @@ api_steady_state = SteadyStateHypothesis(
         SteadyStateMetric(
             name="P99 Latency",
             description="99th percentile response time",
-            query='histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[1m]))',
+            query='histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[1m])))',
             metric_type=MetricType.HISTOGRAM,
             comparison=Comparison.LESS_THAN,
             threshold=2.0,  # 2 seconds
@@ -170,7 +170,9 @@ Before running experiments, validate that your system actually achieves steady s
 import asyncio
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
-from datetime import datetime
+from datetime import UTC, datetime
+
+from steady_state import Comparison, SteadyStateHypothesis, SteadyStateMetric
 
 @dataclass
 class ValidationResult:
@@ -196,7 +198,7 @@ class SteadyStateValidator:
         """
         results = {
             "valid": True,
-            "start_time": datetime.utcnow().isoformat(),
+            "start_time": datetime.now(UTC).isoformat(),
             "duration_seconds": duration_seconds,
             "metrics": {}
         }
@@ -256,7 +258,7 @@ class SteadyStateValidator:
                 threshold=metric.threshold,
                 within_bounds=within_bounds,
                 variance_from_threshold=variance,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(UTC)
             )
             results.append(result)
 
@@ -332,6 +334,8 @@ sequenceDiagram
 # database_failover_hypothesis.py
 # Steady state for database failover experiments
 
+from steady_state import Comparison, MetricType, SteadyStateHypothesis, SteadyStateMetric
+
 database_failover_hypothesis = SteadyStateHypothesis(
     name="Database Failover Resilience",
     description=(
@@ -351,7 +355,7 @@ database_failover_hypothesis = SteadyStateHypothesis(
         SteadyStateMetric(
             name="Read Latency P95",
             description="95th percentile read latency",
-            query='histogram_quantile(0.95, rate(db_read_duration_seconds_bucket[1m]))',
+            query='histogram_quantile(0.95, sum by (le) (rate(db_read_duration_seconds_bucket[1m])))',
             metric_type=MetricType.HISTOGRAM,
             comparison=Comparison.LESS_THAN,
             threshold=0.5,  # 500ms
@@ -378,6 +382,8 @@ database_failover_hypothesis = SteadyStateHypothesis(
 # cache_degradation_hypothesis.py
 # Steady state when cache becomes unavailable
 
+from steady_state import Comparison, MetricType, SteadyStateHypothesis, SteadyStateMetric
+
 cache_degradation_hypothesis = SteadyStateHypothesis(
     name="Cache Degradation Graceful Fallback",
     description=(
@@ -397,7 +403,7 @@ cache_degradation_hypothesis = SteadyStateHypothesis(
         SteadyStateMetric(
             name="P99 Latency",
             description="99th percentile latency with degraded cache",
-            query='histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[1m]))',
+            query='histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[1m])))',
             metric_type=MetricType.HISTOGRAM,
             comparison=Comparison.LESS_THAN,
             threshold=5.0,  # 5 seconds - allow for DB fallback
@@ -428,7 +434,9 @@ Connect your steady state validator with chaos engineering tools:
 
 import asyncio
 from typing import Dict, Optional
-from datetime import datetime
+from datetime import UTC, datetime
+
+from steady_state_validator import SteadyStateValidator
 
 class ChaosExperimentRunner:
     """Run chaos experiments with integrated steady state validation."""
@@ -474,7 +482,7 @@ class ChaosExperimentRunner:
             return results
 
         # Step 2: Start experiment
-        results["start_time"] = datetime.utcnow().isoformat()
+        results["start_time"] = datetime.now(UTC).isoformat()
         print(f"Starting chaos experiment: {experiment_config['name']}")
 
         attack_id = await self.chaos.execute_attack(experiment_config)
@@ -523,7 +531,7 @@ class ChaosExperimentRunner:
             await self.chaos.ensure_attack_stopped(attack_id)
 
         # Step 4: Validate recovery
-        results["end_time"] = datetime.utcnow().isoformat()
+        results["end_time"] = datetime.now(UTC).isoformat()
         print("Experiment ended - validating recovery...")
 
         await asyncio.sleep(30)  # Allow recovery time
