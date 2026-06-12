@@ -194,9 +194,12 @@ git commit -m "Upgrade AWS provider to 5.40.x"
 
 ### Upgrade Single Provider
 
+There is no CLI flag to upgrade a single provider. Update only that provider's version constraint (or remove just its entry from `.terraform.lock.hcl`) and re-run init:
+
 ```bash
-# Upgrade only the AWS provider
-terraform init -upgrade=hashicorp/aws
+# After updating only the AWS constraint in versions.tf,
+# or after deleting its block from .terraform.lock.hcl:
+terraform init -upgrade
 ```
 
 ## Provider Configuration
@@ -270,19 +273,6 @@ terraform {
 
 # Place provider binary in:
 # ~/.terraform.d/plugins/example.com/mycompany/custom/1.0.0/darwin_amd64/
-```
-
-### GitHub Release
-
-```hcl
-terraform {
-  required_providers {
-    custom = {
-      source  = "github.com/mycompany/terraform-provider-custom"
-      version = "1.0.0"
-    }
-  }
-}
 ```
 
 ## Module Provider Requirements
