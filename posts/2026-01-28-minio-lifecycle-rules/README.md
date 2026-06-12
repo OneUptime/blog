@@ -41,7 +41,7 @@ Before configuring lifecycle rules, ensure you have:
 
 - MinIO server running (standalone or distributed)
 - MinIO Client (mc) installed
-- Admin credentials with policy management permissions
+- Credentials with `s3:PutLifecycleConfiguration` and `s3:GetLifecycleConfiguration` permissions, plus `admin:SetTier` and `admin:ListTier` if you configure remote tiers
 
 ```bash
 # Install MinIO Client
@@ -93,10 +93,10 @@ Apply the configuration:
 
 ```bash
 # Save as lifecycle.json, then apply
-mc ilm import myminio/my-bucket < lifecycle.json
+mc ilm rule import myminio/my-bucket < lifecycle.json
 
 # Export current rules to verify
-mc ilm export myminio/my-bucket
+mc ilm rule export myminio/my-bucket
 ```
 
 ## Prefix-Based Rules
@@ -213,14 +213,14 @@ First, set up the target tier:
 
 ```bash
 # Add a remote tier pointing to another MinIO or S3-compatible storage
-mc admin tier add minio myminio WARM-TIER \
+mc ilm tier add minio myminio WARM-TIER \
   --endpoint https://warm-storage.example.com \
   --access-key WARM_ACCESS_KEY \
   --secret-key WARM_SECRET_KEY \
   --bucket warm-bucket
 
 # List configured tiers
-mc admin tier ls myminio
+mc ilm tier ls myminio
 ```
 
 ### Transition Rule Configuration
@@ -423,9 +423,9 @@ Here is a comprehensive lifecycle configuration for a production environment:
 
 ```bash
 # List all rules and their status
-mc ilm rule ls myminio/my-bucket --json
+mc --json ilm rule ls myminio/my-bucket
 
-# Get detailed bucket info including lifecycle
+# Get bucket metadata, including whether ILM is enabled
 mc stat myminio/my-bucket
 ```
 
@@ -449,12 +449,12 @@ mc admin service restart myminio
 
 ## Common Pitfalls
 
-**Rule Overlap** - When multiple rules match the same object, MinIO applies the most restrictive action. Be careful with overlapping prefixes.
+**Rule Overlap** - When multiple rules match the same object on the same day, deletion takes precedence over transition, and transition takes precedence over creating delete markers. Be careful with overlapping prefixes.
 
 **Scanner Delay** - Lifecycle rules are processed by a background scanner. Objects may persist slightly beyond their expiration date. Configure scanner speed:
 
 ```bash
-# Increase scanner speed (higher values = faster scanning, more CPU)
+# Increase scanner speed (faster settings use more I/O)
 mc admin config set myminio scanner speed=fast
 ```
 
@@ -483,7 +483,7 @@ spec:
             - -c
             - |
               mc alias set myminio http://minio:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
-              mc ilm import myminio/logs-bucket < /config/lifecycle.json
+              mc ilm rule import myminio/logs-bucket < /config/lifecycle.json
           env:
             - name: MINIO_ACCESS_KEY
               valueFrom:
