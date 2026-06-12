@@ -76,7 +76,7 @@ Here is a breakdown of common directive combinations.
 
 | Directive Combination | Use Case |
 |----------------------|----------|
-| public, max-age=31536000, immutable | Versioned static assets (app.v2.js) |
+| public, max-age=31536000, immutable | Versioned static assets (app.a1b2c3d4.js) |
 | private, max-age=0, must-revalidate | User-specific dynamic content |
 | no-store | Authentication tokens, sensitive data |
 | public, max-age=86400 | Shared resources that change daily |
@@ -96,13 +96,14 @@ server {
 
     # Versioned static assets: cache for one year
     # These files include version hashes in their names
-    location ~* \.(js|css)$ {
+    location ~* "\.[0-9a-f]{8,}\.(js|css)$" {
         # Allow CDN and proxy caching
         add_header Cache-Control "public, max-age=31536000, immutable";
 
         # Enable gzip for text-based assets
         gzip on;
         gzip_types text/css application/javascript;
+        gzip_vary on;
     }
 
     # Images and fonts: cache for one month
@@ -118,9 +119,6 @@ server {
     # Ensures users get updated markup that references new assets
     location ~* \.html$ {
         add_header Cache-Control "no-cache, must-revalidate";
-
-        # Enable Last-Modified header
-        add_header Last-Modified $date_gmt;
     }
 
     # API responses: no caching
@@ -128,15 +126,14 @@ server {
     location /api/ {
         add_header Cache-Control "no-store";
 
-        # Prevent caching by proxies
-        add_header Pragma "no-cache";
+        # Cache-Control is the modern directive for browsers and shared caches
     }
 }
 ```
 
 ## Apache Configuration
 
-Apache uses mod_expires and mod_headers to control caching. Place this configuration in your virtual host or .htaccess file.
+Apache uses mod_expires and mod_headers to control caching. Place this configuration in your virtual host or server configuration.
 
 ```apache
 # Enable required modules
@@ -190,7 +187,7 @@ function cachingMiddleware(req, res, next) {
 
     // Versioned static assets with hash in filename
     // Example: /static/app.a1b2c3d4.js
-    if (path.match(/\.(js|css)$/) && path.includes('.')) {
+    if (path.match(/\.[a-f0-9]{8,}\.(js|css)$/i)) {
         res.set('Cache-Control', 'public, max-age=31536000, immutable');
         return next();
     }
@@ -204,7 +201,6 @@ function cachingMiddleware(req, res, next) {
     // API routes: never cache
     if (path.startsWith('/api/')) {
         res.set('Cache-Control', 'no-store');
-        res.set('Pragma', 'no-cache');
         return next();
     }
 
@@ -302,7 +298,7 @@ const fs = require('fs');
 
 // Generate ETag from file content
 function generateETag(content) {
-    return crypto.createHash('md5').update(content).digest('hex');
+    return `"${crypto.createHash('md5').update(content).digest('hex')}"`;
 }
 
 // ETag validation middleware
