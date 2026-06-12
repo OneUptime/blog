@@ -17,9 +17,9 @@ Working directly with RabbitMQ requires handling connections, channels, serializ
 | Feature | Raw RabbitMQ | MassTransit |
 |---------|--------------|-------------|
 | Connection management | Manual | Automatic |
-| Serialization | Manual | Built-in JSON/XML |
+| Serialization | Manual | Built-in JSON with optional serializer packages |
 | Retry policies | Custom code | Configurable |
-| Dead letter queues | Manual setup | Automatic |
+| Error queues | Manual setup | Automatic |
 | Dependency injection | Manual | Native support |
 
 ## Setting Up MassTransit
@@ -216,9 +216,6 @@ config.UsingRabbitMq((context, cfg) =>
         // Only retry on specific exceptions
         r.Handle<TimeoutException>();
         r.Handle<HttpRequestException>();
-
-        // Ignore certain exceptions
-        r.Ignore<ValidationException>();
     });
 
     cfg.ConfigureEndpoints(context);
@@ -245,7 +242,7 @@ cfg.ReceiveEndpoint("payment-processing", e =>
 });
 ```
 
-## Error Handling and Dead Letter Queues
+## Error Handling and Error Queues
 
 Handle errors gracefully in consumers:
 
@@ -304,20 +301,12 @@ public class PaymentProcessorConsumer : IConsumer<ProcessPayment>
 }
 ```
 
-Configure error queue handling:
+Use the default error queue handling:
 
 ```csharp
 cfg.ReceiveEndpoint("payment-processing", e =>
 {
-    // Messages that fail all retries go to _error queue
-    e.ConfigureError(error =>
-    {
-        // Custom error handling
-        error.UseFilter(new ErrorHandlerFilter<ProcessPayment>());
-    });
-
-    // Configure dead letter exchange
-    e.BindDeadLetterQueue("payment-dead-letter");
+    // Messages that fail all retries go to payment-processing_error by default
 
     e.ConfigureConsumer<PaymentProcessorConsumer>(context);
 });
@@ -487,7 +476,7 @@ public class LoggingFilter<T> : IFilter<ConsumeContext<T>> where T : class
 // Register the filter
 cfg.ReceiveEndpoint("order-processing", e =>
 {
-    e.UseFilter(new LoggingFilter<OrderSubmitted>(logger));
+    e.UseConsumeFilter(typeof(LoggingFilter<>), context);
     e.ConfigureConsumer<OrderSubmittedConsumer>(context);
 });
 ```
