@@ -76,13 +76,13 @@ Time-based indices are the standard approach for log data. They allow for effici
 // This template automatically applies to any index matching the pattern
 PUT _index_template/application-logs
 {
-  "index_patterns": ["logs-application-*"],
+  "index_patterns": ["logs-application-index-*"],
   "template": {
     "settings": {
       "number_of_shards": 3,
       "number_of_replicas": 1,
       "index.lifecycle.name": "logs-policy",
-      "index.lifecycle.rollover_alias": "logs-application",
+      "index.lifecycle.rollover_alias": "logs-application-index",
       "index.mapping.total_fields.limit": 2000,
       "index.refresh_interval": "5s"
     },
@@ -123,10 +123,19 @@ PUT _index_template/application-logs
     }
   },
   "priority": 200,
-  "composed_of": ["logs-mappings", "logs-settings"],
   "version": 1,
   "_meta": {
     "description": "Template for application log indices"
+  }
+}
+
+// Bootstrap the first write index for the rollover alias
+PUT logs-application-index-000001
+{
+  "aliases": {
+    "logs-application-index": {
+      "is_write_index": true
+    }
   }
 }
 ```
@@ -136,6 +145,59 @@ PUT _index_template/application-logs
 Data streams provide a simpler abstraction for time-series data like logs. They automatically manage backing indices and rollovers.
 
 ```json
+// Create an index template for the data stream backing indices
+// The data_stream object is required before creating a data stream
+PUT _index_template/application-logs-data-stream
+{
+  "index_patterns": ["logs-application-*"],
+  "data_stream": {},
+  "template": {
+    "settings": {
+      "number_of_shards": 3,
+      "number_of_replicas": 1,
+      "index.lifecycle.name": "logs-policy",
+      "index.mapping.total_fields.limit": 2000,
+      "index.refresh_interval": "5s"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": {
+          "type": "date",
+          "format": "strict_date_optional_time||epoch_millis"
+        },
+        "message": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 2048
+            }
+          }
+        },
+        "log.level": {
+          "type": "keyword"
+        },
+        "service.name": {
+          "type": "keyword"
+        },
+        "service.environment": {
+          "type": "keyword"
+        },
+        "host.name": {
+          "type": "keyword"
+        },
+        "trace.id": {
+          "type": "keyword"
+        },
+        "span.id": {
+          "type": "keyword"
+        }
+      }
+    }
+  },
+  "priority": 300
+}
+
 // Create a data stream for application logs
 // Data streams are ideal for append-only time-series data
 PUT _data_stream/logs-application-production
@@ -454,7 +516,7 @@ input {
   # Receive logs from Filebeat agents
   beats {
     port => 5044
-    ssl => true
+    ssl_enabled => true
     ssl_certificate => "/etc/logstash/certs/logstash.crt"
     ssl_key => "/etc/logstash/certs/logstash.key"
   }
@@ -597,37 +659,37 @@ filter {
 
   # Remove temporary fields and metadata
   mutate {
-    remove_field => ["@version", "agent", "input", "host.name"]
+    remove_field => ["@version", "agent", "input"]
   }
 }
 
 output {
-  # Send to Elasticsearch with index based on service name
+  # Send to Elasticsearch using a logs data stream
   elasticsearch {
     hosts => ["https://elasticsearch:9200"]
     user => "${ES_USER}"
     password => "${ES_PASSWORD}"
-    ssl => true
-    ssl_certificate_verification => true
-    cacert => "/etc/logstash/certs/ca.crt"
-
-    # Dynamic index based on service and date
-    index => "logs-%{[service][name]}-%{+YYYY.MM.dd}"
+    ssl_enabled => true
+    ssl_verification_mode => "full"
+    ssl_certificate_authorities => ["/etc/logstash/certs/ca.crt"]
+    ecs_compatibility => "v8"
 
     # Use data streams for better lifecycle management
     data_stream => true
     data_stream_type => "logs"
-    data_stream_dataset => "%{[service][name]}"
+    data_stream_dataset => "application"
     data_stream_namespace => "production"
   }
 
-  # Send errors to a dead letter queue for debugging
+  # Send parsing failures to a separate index for debugging
   if "_grokparsefailure" in [tags] or "_jsonparsefailure" in [tags] {
     elasticsearch {
       hosts => ["https://elasticsearch:9200"]
       user => "${ES_USER}"
       password => "${ES_PASSWORD}"
-      ssl => true
+      ssl_enabled => true
+      ssl_verification_mode => "full"
+      ssl_certificate_authorities => ["/etc/logstash/certs/ca.crt"]
       index => "logs-parse-failures-%{+YYYY.MM.dd}"
     }
   }
@@ -676,19 +738,20 @@ POST kbn:/api/data_views/data_view
 {
   "data_view": {
     "title": "logs-*",
+    "id": "logs-application",
     "name": "Application Logs",
     "timeFieldName": "@timestamp",
     "runtimeFieldMap": {
       "log.level.category": {
         "type": "keyword",
         "script": {
-          "source": "if (doc['log.level'].size() > 0) { def level = doc['log.level'].value; if (level == 'ERROR' || level == 'FATAL') { emit('error'); } else if (level == 'WARN') { emit('warning'); } else { emit('info'); } }"
+          "source": "if (doc.containsKey('log.level') && doc['log.level'].size() > 0) { def level = doc['log.level'].value; if (level == 'ERROR' || level == 'FATAL') { emit('error'); } else if (level == 'WARN') { emit('warning'); } else { emit('info'); } }"
         }
       },
       "response_time_category": {
         "type": "keyword",
         "script": {
-          "source": "if (doc['http.response.time'].size() > 0) { def time = doc['http.response.time'].value; if (time < 100) { emit('fast'); } else if (time < 500) { emit('normal'); } else if (time < 1000) { emit('slow'); } else { emit('very_slow'); } }"
+          "source": "if (doc.containsKey('event.duration') && doc['event.duration'].size() > 0) { def duration = doc['event.duration'].value; if (duration < 100000000) { emit('fast'); } else if (duration < 500000000) { emit('normal'); } else if (duration < 1000000000) { emit('slow'); } else { emit('very_slow'); } }"
         }
       }
     }
@@ -805,7 +868,7 @@ GET logs-*/_search
         },
         {
           "exists": {
-            "field": "http.response.time"
+            "field": "event.duration"
           }
         }
       ]
@@ -820,13 +883,13 @@ GET logs-*/_search
       "aggs": {
         "latency_percentiles": {
           "percentiles": {
-            "field": "http.response.time",
+            "field": "event.duration",
             "percents": [50, 90, 95, 99]
           }
         },
         "avg_latency": {
           "avg": {
-            "field": "http.response.time"
+            "field": "event.duration"
           }
         }
       }
@@ -858,7 +921,7 @@ flowchart TB
         A1["Total Logs<br/>Count"]
         A2["Error Rate<br/>Percentage"]
         A3["Unique Services<br/>Count"]
-        A4["Avg Response Time<br/>Milliseconds"]
+        A4["Avg Response Time<br/>Nanoseconds"]
     end
 
     subgraph Row2["Time Series"]
@@ -911,7 +974,7 @@ POST kbn:/api/saved_objects/search
   },
   "references": [
     {
-      "id": "logs-*",
+      "id": "logs-application",
       "name": "kibanaSavedObjectMeta.searchSourceJSON.index",
       "type": "index-pattern"
     }
@@ -930,7 +993,7 @@ Configure alerts to detect anomalies and critical issues in your logs.
 POST kbn:/api/alerting/rule
 {
   "name": "High Error Rate Alert",
-  "consumer": "logs",
+  "consumer": "alerts",
   "rule_type_id": ".es-query",
   "schedule": {
     "interval": "5m"
@@ -938,24 +1001,11 @@ POST kbn:/api/alerting/rule
   "params": {
     "index": ["logs-*"],
     "timeField": "@timestamp",
-    "esQuery": {
-      "bool": {
-        "filter": [
-          {
-            "range": {
-              "@timestamp": {
-                "gte": "now-5m"
-              }
-            }
-          },
-          {
-            "term": {
-              "log.level": "ERROR"
-            }
-          }
-        ]
-      }
-    },
+    "esQuery": "{\"query\":{\"bool\":{\"filter\":[{\"range\":{\"@timestamp\":{\"gte\":\"now-5m\"}}},{\"term\":{\"log.level\":\"ERROR\"}}]}}}",
+    "searchType": "esQuery",
+    "aggType": "count",
+    "groupBy": "all",
+    "size": 100,
     "threshold": [100],
     "thresholdComparator": ">",
     "timeWindowSize": 5,
@@ -963,7 +1013,7 @@ POST kbn:/api/alerting/rule
   },
   "actions": [
     {
-      "group": "threshold met",
+      "group": "query matched",
       "id": "slack-connector-id",
       "params": {
         "message": "High error rate detected: {{context.value}} errors in the last 5 minutes.\n\nTop services affected:\n{{#context.hits}}\n- {{_source.service.name}}: {{_source.message}}\n{{/context.hits}}"
@@ -983,31 +1033,33 @@ Optimize your Elasticsearch cluster for log analysis workloads.
 
 ```json
 // Optimized index settings for log ingestion
-PUT _template/logs-optimized
+PUT _index_template/logs-optimized
 {
   "index_patterns": ["logs-*"],
-  "settings": {
-    "index": {
-      "number_of_shards": 3,
-      "number_of_replicas": 1,
-      "refresh_interval": "30s",
-      "translog": {
-        "durability": "async",
-        "sync_interval": "30s",
-        "flush_threshold_size": "1gb"
-      },
-      "merge": {
-        "scheduler": {
-          "max_thread_count": 1
-        }
-      },
-      "codec": "best_compression",
-      "mapping": {
-        "total_fields": {
-          "limit": 2000
+  "template": {
+    "settings": {
+      "index": {
+        "number_of_shards": 3,
+        "number_of_replicas": 1,
+        "refresh_interval": "30s",
+        "translog": {
+          "durability": "async",
+          "sync_interval": "30s",
+          "flush_threshold_size": "1gb"
         },
-        "depth": {
-          "limit": 20
+        "merge": {
+          "scheduler": {
+            "max_thread_count": 1
+          }
+        },
+        "codec": "best_compression",
+        "mapping": {
+          "total_fields": {
+            "limit": 2000
+          },
+          "depth": {
+            "limit": 20
+          }
         }
       }
     }
