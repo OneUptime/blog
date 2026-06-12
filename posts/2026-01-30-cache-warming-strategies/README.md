@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Caching, Redis, Performance, DevOps
 
-Description: Learn practical cache warming strategies that eliminate cold start latency spikes and ensure your users always experience fast response times, even after deployments or cache failures.
+Description: Learn practical cache warming strategies that reduce cold start latency spikes and help your users experience fast response times, even after deployments or cache failures.
 
 ---
 
 > A cold cache is a slow cache. When your application starts fresh or recovers from a failure, the first users to arrive face the full weight of uncached database queries and API calls. Cache warming solves this by proactively loading frequently accessed data before traffic arrives.
 
-Production systems live and die by their cache hit rates. A 95% hit rate means only 5% of requests touch your slow backend. But after a deployment, cache flush, or node failure, that hit rate drops to zero. Your database suddenly handles 20x the normal load, latencies spike, and users experience timeouts. Cache warming prevents this scenario entirely.
+Production systems live and die by their cache hit rates. A 95% hit rate means only 5% of requests touch your slow backend. But after a cache flush or node failure, that hit rate can drop to zero. Your database suddenly handles 20x the normal load, latencies spike, and users experience timeouts. Cache warming helps prevent this scenario.
 
 ---
 
@@ -169,7 +169,7 @@ class CacheWarmer:
 
             # Batch set all loaded values
             for key, value in values_to_set:
-                pipe.setex(key, self.config.ttl_seconds, json.dumps(value))
+                pipe.set(key, json.dumps(value), ex=self.config.ttl_seconds)
                 stats["warmed"] += 1
 
             pipe.execute()
@@ -216,7 +216,7 @@ stats = warmer.warm_from_logs("/var/log/app/access.log")
 
 ## Event-Driven Cache Warming
 
-Instead of warming based on historical data, you can warm caches in real-time as data changes. This approach uses message queues to trigger warming operations immediately after database writes.
+Instead of warming based on historical data, you can warm caches in real-time as data changes. This example uses an in-process queue to trigger warming operations immediately after database writes.
 
 ```python
 # event_warmer.py
@@ -239,12 +239,11 @@ class ChangeEvent:
 class EventDrivenWarmer:
     """
     Warms cache immediately when data changes.
-    Subscribes to change events and updates cache in real-time.
+    Queues change events and updates cache in real-time.
     """
 
     def __init__(self, redis_url: str = "redis://localhost:6379"):
         self.redis = redis.from_url(redis_url)
-        self.pubsub = self.redis.pubsub()
         self.handlers: Dict[str, Callable] = {}
         self.event_queue = Queue()
         self.running = False
@@ -281,7 +280,7 @@ class EventDrivenWarmer:
             cache_entries = handler(event)
             pipe = self.redis.pipeline()
             for key, value, ttl in cache_entries:
-                pipe.setex(key, ttl, json.dumps(value))
+                pipe.set(key, json.dumps(value), ex=ttl)
             pipe.execute()
 
     def publish_event(self, event: ChangeEvent):
@@ -367,6 +366,7 @@ The most critical time for cache warming is during deployments. This script inte
 # deployment_warmer.py
 # Cache warming as part of deployment pipeline
 import redis
+import json
 import requests
 import time
 from typing import List, Dict
@@ -425,7 +425,7 @@ class DeploymentWarmer:
         for key, loader, ttl in keys_and_loaders:
             try:
                 value = loader()
-                pipe.setex(key, ttl, value)
+                pipe.set(key, json.dumps(value), ex=ttl)
                 stats["warmed"] += 1
             except Exception as e:
                 print(f"Failed to warm {key}: {e}")
@@ -523,7 +523,7 @@ Advanced cache warming uses traffic patterns to predict what data users will nee
 # Predict and warm cache based on traffic patterns and user behavior
 import redis
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict
 from collections import defaultdict
 
@@ -560,7 +560,7 @@ class PredictiveWarmer:
         pattern_key = f"access_pattern:{target_hour}"
 
         # Get top keys for the target hour
-        top_keys = self.redis.zrevrange(pattern_key, 0, count - 1)
+        top_keys = self.redis.zrange(pattern_key, 0, count - 1, desc=True)
         return [key.decode() for key in top_keys]
 
     def warm_predicted(self, loader_func, hours_ahead: int = 1):
@@ -580,7 +580,7 @@ class PredictiveWarmer:
 
             try:
                 value = loader_func(key)
-                pipe.setex(key, 3600, json.dumps(value))
+                pipe.set(key, json.dumps(value), ex=3600)
                 warmed += 1
             except Exception as e:
                 print(f"Failed to load {key}: {e}")
@@ -626,7 +626,7 @@ class TimeBasedWarmer:
             try:
                 keys_and_values = loader()
                 for key, value in keys_and_values:
-                    pipe.setex(key, ttl, json.dumps(value))
+                    pipe.set(key, json.dumps(value), ex=ttl)
             except Exception as e:
                 print(f"Failed to warm {key_pattern}: {e}")
 
@@ -684,10 +684,9 @@ When running Redis in cluster mode, cache warming needs to account for key distr
 ```python
 # cluster_warmer.py
 # Cache warming for Redis Cluster deployments
-from redis.cluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 import json
 from typing import List, Dict, Callable
-from concurrent.futures import ThreadPoolExecutor
 
 class ClusterCacheWarmer:
     """
@@ -695,7 +694,7 @@ class ClusterCacheWarmer:
     Distributes warming load evenly across cluster nodes.
     """
 
-    def __init__(self, startup_nodes: List[Dict]):
+    def __init__(self, startup_nodes: List[ClusterNode]):
         # Connect to Redis Cluster
         self.cluster = RedisCluster(
             startup_nodes=startup_nodes,
@@ -707,7 +706,7 @@ class ClusterCacheWarmer:
         """Register a loader function for keys with given prefix."""
         self.loaders[prefix] = loader
 
-    def _get_node_for_key(self, key: str) -> str:
+    def _get_node_for_key(self, key: str) -> ClusterNode:
         """Determine which cluster node owns a key."""
         slot = self.cluster.keyslot(key)
         return self.cluster.get_node_from_slot(slot)
@@ -717,7 +716,7 @@ class ClusterCacheWarmer:
         node_keys = {}
         for key in keys:
             node = self._get_node_for_key(key)
-            node_name = f"{node['host']}:{node['port']}"
+            node_name = f"{node.host}:{node.port}"
             if node_name not in node_keys:
                 node_keys[node_name] = []
             node_keys[node_name].append(key)
@@ -756,7 +755,7 @@ class ClusterCacheWarmer:
 
                 try:
                     value = loader(key)
-                    pipe.setex(key, 3600, json.dumps(value))
+                    pipe.set(key, json.dumps(value), ex=3600)
                     stats["warmed"] += 1
                 except Exception as e:
                     print(f"Failed to load {key}: {e}")
@@ -776,16 +775,16 @@ class ClusterCacheWarmer:
         for key_suffix, value, ttl in keys_and_values:
             # Use hash tag to co-locate keys: {tag}:key_suffix
             key = f"{{{tag}}}:{key_suffix}"
-            pipe.setex(key, ttl, json.dumps(value))
+            pipe.set(key, json.dumps(value), ex=ttl)
 
         pipe.execute()
 
 
 # Example: Warming user session data with co-location
 warmer = ClusterCacheWarmer([
-    {"host": "redis-node-1", "port": 6379},
-    {"host": "redis-node-2", "port": 6379},
-    {"host": "redis-node-3", "port": 6379},
+    ClusterNode("redis-node-1", 6379),
+    ClusterNode("redis-node-2", 6379),
+    ClusterNode("redis-node-3", 6379),
 ])
 
 def warm_user_session(user_id: str):
