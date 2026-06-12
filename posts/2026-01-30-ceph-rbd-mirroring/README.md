@@ -68,7 +68,7 @@ flowchart TB
 
 **rbd-mirror daemon:** The workhorse of replication. It runs on the secondary cluster and pulls changes from the primary. Each daemon can handle multiple pools and images.
 
-**Pools:** Mirroring is configured at the pool level. Both clusters must have pools with matching names and mirroring enabled.
+**Pools:** Mirroring is configured at the pool level. Both clusters must have pools with matching names and mirroring enabled. Pool mode mirrors journal-enabled images automatically; image mode lets you explicitly choose journal or snapshot mirroring per image.
 
 **Peers:** The trust relationship between clusters. Peers exchange authentication tokens and cluster configuration.
 
@@ -195,7 +195,7 @@ ceph version
 
 # Recommended: Both clusters on the same major version
 # Minimum: Secondary cluster >= Primary cluster version
-# Example output: ceph version 18.2.0 (quincy)
+# Example output: ceph version 18.2.0 (reef)
 
 # Install rbd-mirror package on secondary cluster
 # For Ubuntu/Debian:
@@ -233,18 +233,18 @@ ceph osd pool ls detail | grep rbd-mirror
 
 ### Enable Pool-Level Mirroring
 
-Enable mirroring on the pool. You can choose between pool mode (all images mirrored) or image mode (selective mirroring).
+Enable mirroring on the pool. You can choose between pool mode (all journal-enabled images mirrored) or image mode (selective mirroring).
 
 ```bash
-# Enable pool-level mirroring
-# Mode 'pool': All images in this pool are automatically mirrored
-# Mode 'image': Only explicitly enabled images are mirrored
-rbd mirror pool enable rbd-mirror pool
+# Enable pool-level mirroring configuration
+# Mode 'pool': All journal-enabled images in this pool are automatically mirrored
+# Mode 'image': Only explicitly enabled images are mirrored; use this for mixed journal and snapshot mirroring
+rbd mirror pool enable rbd-mirror image
 
 # Verify mirroring is enabled
 rbd mirror pool info rbd-mirror
 # Output should show:
-# Mode: pool
+# Mode: image
 # Site Name: <not set>
 ```
 
@@ -290,7 +290,7 @@ rbd pool init rbd-mirror
 ceph osd pool application enable rbd-mirror rbd
 
 # Enable mirroring in the same mode as primary
-rbd mirror pool enable rbd-mirror pool
+rbd mirror pool enable rbd-mirror image
 
 # Verify configuration
 rbd mirror pool info rbd-mirror
@@ -328,7 +328,7 @@ Confirm the clusters can communicate.
 rbd mirror pool info rbd-mirror
 
 # Expected output:
-# Mode: pool
+# Mode: image
 # Site Name: dc2-secondary
 # Peers:
 #   UUID: <unique-id>
@@ -451,7 +451,10 @@ rbd create rbd-mirror/database-primary \
 # Verify the image was created
 rbd info rbd-mirror/database-primary
 
-# Check mirroring status (should auto-enable in pool mode)
+# Enable journal-based mirroring for this image
+rbd mirror image enable rbd-mirror/database-primary journal
+
+# Check mirroring status
 rbd mirror image status rbd-mirror/database-primary
 ```
 
@@ -491,12 +494,10 @@ rbd mirror snapshot schedule add --pool rbd-mirror 1h
 
 # You can add multiple schedules for different intervals
 # Frequent during business hours
-rbd mirror snapshot schedule add --pool rbd-mirror 15m \
-    --start-time 08:00:00
+rbd mirror snapshot schedule add --pool rbd-mirror 15m 08:00:00
 
 # Less frequent overnight
-rbd mirror snapshot schedule add --pool rbd-mirror 4h \
-    --start-time 20:00:00
+rbd mirror snapshot schedule add --pool rbd-mirror 4h 20:00:00
 
 # View all schedules
 rbd mirror snapshot schedule ls --pool rbd-mirror --recursive
@@ -622,19 +623,20 @@ fi
 
 ### Prometheus Metrics Integration
 
-The rbd-mirror daemon exposes Prometheus metrics for integration with monitoring systems.
+Ceph exposes Prometheus metrics through the Ceph Manager Prometheus module. Use those metrics for cluster health and scrape `rbd mirror pool status --format json` when you need mirror-specific image state that is not available as a stable Prometheus metric in your Ceph version.
 
 ```bash
-# Check if metrics are exposed (default port 9283)
-curl -s http://localhost:9283/metrics | grep rbd_mirror
+# Enable the Prometheus manager module
+ceph mgr module enable prometheus
 
-# Key metrics to monitor:
-# ceph_rbd_mirror_image_state - Current state of each image
-# ceph_rbd_mirror_image_replay_bytes - Bytes replayed
-# ceph_rbd_mirror_image_replay_latency - Replication lag
+# Check if metrics are exposed by the active manager (default port 9283)
+curl -s http://localhost:9283/metrics | grep ceph_health_status
+
+# Keep mirror-specific checks based on the RBD CLI status output
+rbd mirror pool status rbd-mirror --format json | jq .
 ```
 
-Create Prometheus alerting rules for critical conditions.
+Create Prometheus alerting rules for critical cluster conditions and pair them with the CLI-based mirror health check above.
 
 ```yaml
 # prometheus-rbd-mirror-alerts.yaml
@@ -651,23 +653,14 @@ groups:
           summary: "RBD mirror daemon is down"
           description: "The rbd-mirror daemon has been unreachable for 2 minutes"
 
-      - alert: RBDMirrorImageError
-        expr: ceph_rbd_mirror_image_state{state="error"} > 0
+      - alert: CephHealthWarningOrError
+        expr: ceph_health_status > 0
         for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "RBD mirror image in error state"
-          description: "Image {{ $labels.image }} is in error state"
-
-      - alert: RBDMirrorHighLag
-        expr: ceph_rbd_mirror_image_replay_latency > 300
-        for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "High RBD mirror replication lag"
-          description: "Image {{ $labels.image }} has {{ $value }}s replication lag"
+          summary: "Ceph cluster health is not OK"
+          description: "Ceph health status is {{ $value }}. Check ceph health detail and RBD mirror status."
 ```
 
 ## Step 6: Test Your Setup
@@ -703,7 +696,8 @@ rbd mirror image status rbd-mirror/database-primary
 
 # On SECONDARY cluster
 # Map the image (read-only since it is being mirrored)
-rbd device map rbd-mirror/database-primary
+rbd device map --read-only rbd-mirror/database-primary
+mkdir -p /mnt/test-secondary
 mount -o ro /dev/rbd0 /mnt/test-secondary
 
 # Verify data
