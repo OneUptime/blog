@@ -12,7 +12,7 @@ Container security extends beyond image scanning and admission control. Runtime 
 
 ## What is Falco?
 
-Falco is a cloud-native runtime security tool that uses system call monitoring to detect anomalous behavior in containers and hosts. Originally created by Sysdig and now a CNCF incubating project, Falco acts as a security camera for your Kubernetes clusters.
+Falco is a cloud-native runtime security tool that uses system call monitoring to detect anomalous behavior in containers and hosts. Originally created by Sysdig and now a CNCF graduated project, Falco acts as a security camera for your Kubernetes clusters.
 
 ```mermaid
 flowchart TB
@@ -197,21 +197,53 @@ Enable Kubernetes audit log monitoring for API-level detection:
 
 ```yaml
 # Enable Kubernetes audit events
+driver:
+  enabled: false
+
+collectors:
+  enabled: false
+
+controller:
+  kind: deployment
+  deployment:
+    replicas: 1
+
+falcoctl:
+  artifact:
+    install:
+      enabled: true
+    follow:
+      enabled: true
+  config:
+    artifact:
+      install:
+        resolveDeps: true
+        refs: [k8saudit-rules:0.5]
+      follow:
+        refs: [k8saudit-rules:0.5]
+
+services:
+  - name: k8saudit-webhook
+    type: NodePort
+    ports:
+      - port: 9765
+        nodePort: 30007
+        protocol: TCP
+
 falco:
   rules_files:
-    - /etc/falco/falco_rules.yaml
-    - /etc/falco/falco_rules.local.yaml
     - /etc/falco/k8s_audit_rules.yaml
+    - /etc/falco/rules.d
 
   # Configure audit log input
   plugins:
     - name: k8saudit
       library_path: libk8saudit.so
-      init_config:
-        maxEventBytes: 1048576
+      init_config: ""
       open_params: "http://:9765/k8s-audit"
     - name: json
       library_path: libjson.so
+      init_config: ""
 
   load_plugins: [k8saudit, json]
 ```
@@ -226,6 +258,7 @@ customRules:
     - rule: K8s Secret Get
       desc: Detect any get operation on secrets
       condition: >
+        kevt and
         ka.verb=get and
         ka.target.resource=secrets
       output: >
@@ -240,9 +273,11 @@ customRules:
     - rule: ClusterRole with Wildcard Permissions
       desc: Detect ClusterRole with dangerous wildcard permissions
       condition: >
+        kevt and
         ka.verb=create and
         ka.target.resource=clusterroles and
-        ka.req.role.rules.resources intersects ("*")
+        (ka.req.role.rules.resources intersects ("*") or
+        ka.req.role.rules.verbs intersects ("*"))
       output: >
         ClusterRole with wildcard created (user=%ka.user.name role=%ka.target.name)
       priority: WARNING
@@ -261,10 +296,11 @@ flowchart TB
             B --> C[Kernel]
         end
         D[Kubernetes API Server] --> E[Audit Webhook]
-        E --> A
+        E --> K[Falco Audit Deployment]
     end
 
     A --> F[Falco Sidekick]
+    K --> F
     F --> G[Slack]
     F --> H[PagerDuty]
     F --> I[SIEM]
@@ -299,13 +335,14 @@ Expected output:
 Falco can impact system performance. Tune these settings for production:
 
 ```yaml
-falco:
-  # Increase buffer size to prevent drops
-  syscall_buf_size_preset: 6  # 8MB per CPU
+driver:
+  modernEbpf:
+    bufSizePreset: 5  # 16MB per buffer
 
+falco:
   # Reduce overhead by filtering early
   base_syscalls:
-    custom_set: [open, openat, close, read, write, connect, accept, execve, clone, fork]
+    custom_set: [open, openat, openat2, close, read, write, socket, bind, listen, connect, accept, accept4, execve, execveat, clone, clone3, fork, vfork]
     repair: true
 
 # Set appropriate resource limits
