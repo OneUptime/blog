@@ -23,7 +23,7 @@ flowchart TD
     A[Container Image] --> B[Trivy SBOM Scan]
     B --> C[OS Packages]
     B --> D[Language Libraries]
-    B --> E[Application Code]
+    B --> E[Application Metadata]
 
     C --> F[SBOM Document]
     D --> F
@@ -31,7 +31,7 @@ flowchart TD
 
     F --> G[CycloneDX Format]
     F --> H[SPDX Format]
-    F --> I[Trivy JSON Format]
+    F --> I[Trivy JSON Report]
 
     G --> J[Vulnerability Scanning]
     H --> J
@@ -45,13 +45,13 @@ flowchart TD
 
 ## SBOM Formats Supported
 
-Trivy supports three major SBOM formats:
+Trivy supports standard SBOM formats and a native JSON report format:
 
-| Format | Use Case | Standard Body |
-|--------|----------|---------------|
+| Format | Use Case | Maintainer |
+|--------|----------|------------|
 | CycloneDX | Security-focused, vulnerability tracking | OWASP |
 | SPDX | License compliance, legal requirements | Linux Foundation |
-| Trivy JSON | Trivy-native format for internal use | Aqua Security |
+| Trivy JSON | Trivy-native report format for internal use and conversion | Aqua Security |
 
 ---
 
@@ -315,14 +315,17 @@ This is useful for:
 
 ## Converting Between Formats
 
-Convert SBOMs between formats using Trivy's SBOM scanning capability.
+Convert Trivy JSON reports into SBOM formats using Trivy's conversion capability.
 
 ```bash
-# Convert CycloneDX to SPDX
-trivy sbom --format spdx-json --output sbom.spdx.json sbom.cdx.json
+# Generate a Trivy JSON report
+trivy image --format json --output result.json nginx:1.25
 
-# Convert SPDX to CycloneDX
-trivy sbom --format cyclonedx --output sbom.cdx.json sbom.spdx.json
+# Convert Trivy JSON to SPDX
+trivy convert --format spdx-json --output sbom.spdx.json result.json
+
+# Convert Trivy JSON to CycloneDX
+trivy convert --format cyclonedx --output sbom.cdx.json result.json
 ```
 
 ---
@@ -332,10 +335,10 @@ trivy sbom --format cyclonedx --output sbom.cdx.json sbom.spdx.json
 ### Store SBOMs with Images
 
 ```bash
-# Using cosign to attach SBOM to image
-cosign attach sbom --sbom sbom.cdx.json myregistry.io/myapp:v1.0.0
+# Using cosign to attest an SBOM for an image
+cosign attest --type cyclonedx --predicate sbom.cdx.json myregistry.io/myapp:v1.0.0
 
-# Verify SBOM attachment
+# Verify SBOM attestation
 cosign verify-attestation --type cyclonedx myregistry.io/myapp:v1.0.0
 ```
 
@@ -357,7 +360,7 @@ oras pull myregistry.io/myapp:v1.0.0-sbom
 # Store SBOM in database for tracking
 import json
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 
 def store_sbom(sbom_path: str, image_name: str, db_connection):
     """Store SBOM with metadata for later retrieval"""
@@ -369,8 +372,8 @@ def store_sbom(sbom_path: str, image_name: str, db_connection):
         json.dumps(sbom_data, sort_keys=True).encode()
     ).hexdigest()
 
-    # Extract component count
-    component_count = len(sbom_data.get('components', []))
+    # Extract component count for CycloneDX or SPDX JSON
+    component_count = len(sbom_data.get('components', sbom_data.get('packages', [])))
 
     # Store in database
     db_connection.execute("""
@@ -385,7 +388,7 @@ def store_sbom(sbom_path: str, image_name: str, db_connection):
         image_name,
         sbom_hash,
         component_count,
-        datetime.utcnow().isoformat(),
+        datetime.now(timezone.utc).isoformat(),
         json.dumps(sbom_data)
     ))
 
