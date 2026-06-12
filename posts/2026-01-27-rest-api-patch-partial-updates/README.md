@@ -115,10 +115,8 @@ function jsonMergePatch(target, patch) {
 
 // Express.js route handler
 app.patch('/users/:id', async (req, res) => {
-  const contentType = req.headers['content-type'];
-
   // Validate content type
-  if (contentType !== 'application/merge-patch+json') {
+  if (!req.is('application/merge-patch+json')) {
     return res.status(415).json({
       error: 'Unsupported Media Type',
       message: 'Use application/merge-patch+json'
@@ -137,7 +135,7 @@ app.patch('/users/:id', async (req, res) => {
     // Validate the result before saving
     const validated = await validateUser(updated);
 
-    await User.findByIdAndUpdate(req.params.id, validated);
+    await User.findByIdAndUpdate(req.params.id, validated, { runValidators: true });
 
     res.json(validated);
   } catch (error) {
@@ -314,8 +312,6 @@ function removeValueAtPath(obj, path) {
 const jsonpatch = require('fast-json-patch');
 
 app.patch('/users/:id', async (req, res) => {
-  const contentType = req.headers['content-type'];
-
   try {
     const user = await User.findById(req.params.id);
     if (!user) {
@@ -325,7 +321,7 @@ app.patch('/users/:id', async (req, res) => {
     let updated;
     const document = user.toObject();
 
-    if (contentType === 'application/json-patch+json') {
+    if (req.is('application/json-patch+json')) {
       // JSON Patch - array of operations
       const errors = jsonpatch.validate(req.body, document);
       if (errors) {
@@ -333,7 +329,7 @@ app.patch('/users/:id', async (req, res) => {
       }
       updated = jsonpatch.applyPatch(document, req.body).newDocument;
 
-    } else if (contentType === 'application/merge-patch+json') {
+    } else if (req.is('application/merge-patch+json')) {
       // JSON Merge Patch
       updated = jsonMergePatch(document, req.body);
 
@@ -346,7 +342,7 @@ app.patch('/users/:id', async (req, res) => {
 
     // Validate before saving
     const validated = await validateUser(updated);
-    await User.findByIdAndUpdate(req.params.id, validated);
+    await User.findByIdAndUpdate(req.params.id, validated, { runValidators: true });
 
     res.json(validated);
   } catch (error) {
@@ -397,11 +393,11 @@ app.patch('/users/:id', async (req, res) => {
     // Validate final result against full schema
     const validated = userSchema.parse(merged);
 
-    await User.findByIdAndUpdate(req.params.id, validated);
+    await User.findByIdAndUpdate(req.params.id, validated, { runValidators: true });
     res.json(validated);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ errors: error.errors });
+      return res.status(400).json({ errors: error.issues });
     }
     res.status(500).json({ error: error.message });
   }
@@ -467,7 +463,7 @@ app.patch('/users/:id', async (req, res) => {
 
   // Apply patch and save
   const updated = jsonMergePatch(user.toObject(), req.body);
-  await User.findByIdAndUpdate(req.params.id, updated);
+  await User.findByIdAndUpdate(req.params.id, updated, { runValidators: true });
 
   const newETag = generateETag(updated);
   res.set('ETag', newETag);
@@ -488,7 +484,7 @@ const patch = [
 ];
 
 // If version is not 5, the entire patch fails
-// This ensures atomic check-and-update
+// Persist the patch with an atomic version check in the database
 ```
 
 ## Response Format for PATCH
@@ -511,7 +507,7 @@ Return the updated resource in the response. Include the ETag for subsequent req
 
 // Headers
 // ETag: "abc123"
-// Last-Modified: Mon, 27 Jan 2026 10:30:00 GMT
+// Last-Modified: Tue, 27 Jan 2026 10:30:00 GMT
 
 // Alternative: Return 204 No Content if client does not need response body
 // Useful for bandwidth-constrained clients
@@ -554,19 +550,20 @@ Return the updated resource in the response. Include the ETag for subsequent req
 
 ```javascript
 // Build UPDATE query with only changed fields
-function buildPartialUpdate(tableName, id, changes) {
-  const fields = Object.keys(changes);
+function buildPartialUpdate(id, changes) {
+  const allowedFields = new Set(['name', 'email', 'age']);
+  const fields = Object.keys(changes).filter(field => allowedFields.has(field));
 
   if (fields.length === 0) {
     return null; // Nothing to update
   }
 
-  const setClauses = fields.map((field, i) => `${field} = $${i + 2}`);
+  const setClauses = fields.map((field, i) => `"${field}" = $${i + 2}`);
   const values = [id, ...fields.map(f => changes[f])];
 
   return {
     query: `
-      UPDATE ${tableName}
+      UPDATE users
       SET ${setClauses.join(', ')}, updated_at = NOW()
       WHERE id = $1
       RETURNING *
@@ -577,7 +574,12 @@ function buildPartialUpdate(tableName, id, changes) {
 
 // Usage with pg
 async function patchUser(id, changes) {
-  const { query, values } = buildPartialUpdate('users', id, changes);
+  const update = buildPartialUpdate(id, changes);
+  if (!update) {
+    return null;
+  }
+
+  const { query, values } = update;
   const result = await pool.query(query, values);
   return result.rows[0];
 }
@@ -588,15 +590,20 @@ async function patchUser(id, changes) {
 ```javascript
 // MongoDB $set for partial updates
 async function patchUser(id, changes) {
-  // Flatten nested objects for $set
-  const setOperations = flattenForMongo(changes);
+  // Flatten nested objects for $set and $unset
+  const { $set, $unset } = flattenForMongo(changes);
+  const update = { $currentDate: { updatedAt: true } };
+
+  if (Object.keys($set).length > 0) {
+    update.$set = $set;
+  }
+  if (Object.keys($unset).length > 0) {
+    update.$unset = $unset;
+  }
 
   const result = await User.findByIdAndUpdate(
     id,
-    {
-      $set: setOperations,
-      $currentDate: { updatedAt: true }
-    },
+    update,
     { new: true, runValidators: true }
   );
 
@@ -605,18 +612,19 @@ async function patchUser(id, changes) {
 
 // Flatten nested objects: { profile: { bio: "x" } } => { "profile.bio": "x" }
 function flattenForMongo(obj, prefix = '') {
-  const result = {};
+  const result = { $set: {}, $unset: {} };
 
   for (const [key, value] of Object.entries(obj)) {
     const path = prefix ? `${prefix}.${key}` : key;
 
     if (value === null) {
-      // Use $unset for null values if needed
-      result[path] = null;
+      result.$unset[path] = "";
     } else if (typeof value === 'object' && !Array.isArray(value)) {
-      Object.assign(result, flattenForMongo(value, path));
+      const nested = flattenForMongo(value, path);
+      Object.assign(result.$set, nested.$set);
+      Object.assign(result.$unset, nested.$unset);
     } else {
-      result[path] = value;
+      result.$set[path] = value;
     }
   }
 
@@ -628,7 +636,7 @@ function flattenForMongo(obj, prefix = '') {
 
 ```python
 from fastapi import FastAPI, HTTPException, Header, Response
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import Optional
 import hashlib
 import json
@@ -645,14 +653,12 @@ class UserBase(BaseModel):
     age: Optional[int] = None
 
 class UserPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     # All fields optional for PATCH
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     age: Optional[int] = None
-
-    class Config:
-        # Exclude unset fields from dict
-        extra = "forbid"
 
 def generate_etag(data: dict) -> str:
     content = json.dumps(data, sort_keys=True)
@@ -679,7 +685,7 @@ async def patch_user(
         )
 
     # Apply only the fields that were set
-    patch_data = patch.dict(exclude_unset=True)
+    patch_data = patch.model_dump(exclude_unset=True)
     updated = {**user, **patch_data}
 
     # Validate against full schema
