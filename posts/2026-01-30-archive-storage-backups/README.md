@@ -62,7 +62,7 @@ flowchart LR
 | Feature | Standard Storage | Archive Storage | Deep Archive |
 |---------|-----------------|-----------------|--------------|
 | Cost per GB/month | $0.023+ | $0.004-0.01 | $0.00099-0.002 |
-| Retrieval Time | Milliseconds | 1-5 hours | 12-48 hours |
+| Retrieval Time | Milliseconds | Minutes-12 hours | 12-48 hours |
 | Minimum Storage Duration | None | 90 days | 180 days |
 | Retrieval Cost | Free/Low | Moderate | Higher |
 | Use Case | Active data | Compliance | Long-term legal |
@@ -94,8 +94,8 @@ flowchart TB
     end
 
     subgraph Healthcare
-        HIPAA[HIPAA<br/>6 years]
-        HITECH[HITECH<br/>6 years]
+        HIPAA[HIPAA documentation<br/>6 years]
+        HITECH[HITECH/HIPAA controls<br/>Varies by record]
     end
 
     subgraph Legal
@@ -133,10 +133,10 @@ compliance_requirements:
   hipaa:
     retention_years: 6
     data_types:
-      - patient_records
-      - billing_records
+      - policies_and_procedures
+      - privacy_rule_documentation
       - authorization_forms
-    access_requirement: "Must be available for patient requests"
+    access_requirement: "Medical record retention is governed by state law, but HIPAA documentation must be retained"
 
   pci_dss:
     retention_years: 1
@@ -152,7 +152,7 @@ compliance_requirements:
       - personal_data
       - consent_records
       - processing_logs
-    access_requirement: "30 days for subject access requests"
+    access_requirement: "One month for subject access requests, with limited extensions for complex requests"
 ```
 
 ### Building a Compliance-Ready Archive
@@ -332,6 +332,7 @@ flowchart TB
 
 resource "aws_s3_bucket" "compliance_archive" {
   bucket = "company-compliance-archive"
+  object_lock_enabled = true
 
   # Prevent accidental deletion
   force_destroy = false
@@ -342,6 +343,8 @@ resource "aws_s3_bucket" "compliance_archive" {
     ManagedBy   = "terraform"
   }
 }
+
+data "aws_caller_identity" "current" {}
 
 # Enable versioning for compliance
 resource "aws_s3_bucket_versioning" "compliance_archive" {
@@ -397,11 +400,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "compliance_archive" {
   }
 
   rule {
-    id     = "archive-healthcare-records"
+    id     = "archive-healthcare-compliance-docs"
     status = "Enabled"
 
     filter {
-      prefix = "healthcare/"
+      prefix = "healthcare-compliance/"
     }
 
     transition {
@@ -409,7 +412,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "compliance_archive" {
       storage_class = "GLACIER"
     }
 
-    # HIPAA requires 6 years retention
+    # HIPAA-required documentation is commonly retained for 6 years;
+    # clinical record retention periods are governed by state law.
     expiration {
       days = 2190
     }
@@ -690,6 +694,12 @@ class ArchiveRetrievalManager:
         except self.s3.exceptions.ClientError as e:
             return {'error': f'Object not found: {object_key}'}
 
+        if storage_class not in ('GLACIER', 'DEEP_ARCHIVE'):
+            return {
+                'error': f'Object is not in an archive storage class: {storage_class}',
+                'suggestion': 'Restore requests are only needed for S3 Glacier Flexible Retrieval and S3 Glacier Deep Archive objects'
+            }
+
         # Validate retrieval tier for storage class
         if storage_class == 'DEEP_ARCHIVE' and retrieval_tier == 'Expedited':
             return {
@@ -755,7 +765,7 @@ class ArchiveRetrievalManager:
             'message': f'Retrieval initiated. Estimated completion: {eta_hours} hours'
         }
 
-    def _estimate_retrieval_time(self, storage_class: str, tier: str) -> int:
+    def _estimate_retrieval_time(self, storage_class: str, tier: str) -> float:
         """Estimate retrieval completion time in hours."""
         estimates = {
             'GLACIER': {
@@ -870,7 +880,7 @@ done < /tmp/archived_objects.txt
 echo "==============================="
 echo "Initiated $COUNT retrieval jobs"
 echo "Job list saved to: $OUTPUT_FILE"
-echo "Estimated completion: 48 hours for Bulk tier"
+echo "Estimated completion: up to 48 hours for Bulk tier"
 ```
 
 ---
@@ -1148,10 +1158,18 @@ Track archive storage operations for compliance and cost management.
 
 ### CloudWatch Metrics Dashboard
 
+This dashboard assumes S3 request metrics are enabled with a metrics configuration named `EntireBucket`.
+
 ```yaml
 # cloudformation/archive-monitoring.yaml
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Archive storage monitoring dashboard
+
+Parameters:
+  ArchiveBucket:
+    Type: String
+  AlertTopic:
+    Type: String
 
 Resources:
   ArchiveMonitoringDashboard:
@@ -1176,9 +1194,9 @@ Resources:
             {
               "type": "metric",
               "properties": {
-                "title": "Retrieval Requests",
+                "title": "POST Requests (includes restore-object)",
                 "metrics": [
-                  ["AWS/S3", "RestoreRequests", "BucketName", "${ArchiveBucket}"]
+                  ["AWS/S3", "PostRequests", "BucketName", "${ArchiveBucket}", "FilterId", "EntireBucket"]
                 ],
                 "period": 3600,
                 "stat": "Sum"
@@ -1187,12 +1205,12 @@ Resources:
             {
               "type": "metric",
               "properties": {
-                "title": "Archive Transition Operations",
+                "title": "Object Count",
                 "metrics": [
-                  ["AWS/S3", "LifecycleTransitionRequests", "BucketName", "${ArchiveBucket}"]
+                  ["AWS/S3", "NumberOfObjects", "BucketName", "${ArchiveBucket}", "StorageType", "AllStorageTypes"]
                 ],
                 "period": 86400,
-                "stat": "Sum"
+                "stat": "Average"
               }
             }
           ]
@@ -1202,12 +1220,14 @@ Resources:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmName: archive-retrieval-spike
-      AlarmDescription: Alert on unusual retrieval activity
-      MetricName: RestoreRequests
+      AlarmDescription: Alert on unusual POST activity, including restore-object requests
+      MetricName: PostRequests
       Namespace: AWS/S3
       Dimensions:
         - Name: BucketName
           Value: !Ref ArchiveBucket
+        - Name: FilterId
+          Value: EntireBucket
       Statistic: Sum
       Period: 3600
       EvaluationPeriods: 1
