@@ -30,9 +30,9 @@ vLLM is a fast and easy-to-use library for LLM inference and serving. Key advant
 ## Prerequisites
 
 Before we begin, ensure you have:
-- Python 3.8 or higher
-- CUDA 11.8 or higher (for GPU support)
-- A compatible NVIDIA GPU with sufficient VRAM
+- Python 3.10 or higher
+- CUDA 12.1 or higher (for GPU support)
+- A compatible NVIDIA GPU with compute capability 7.0 or higher (e.g., V100, T4, A100, L4, H100)
 - pip for package management
 
 ---
@@ -177,7 +177,7 @@ llm = LLM(
 # Chat-style prompts with system message
 def format_chat_prompt(system: str, user: str) -> str:
     """Format prompt for instruction-tuned models"""
-    return f"&lt;s&gt;[INST] {system}\n\n{user} [/INST]"
+    return f"<s>[INST] {system}\n\n{user} [/INST]"
 
 # Example usage with chat formatting
 system_prompt = "You are a helpful DevOps assistant."
@@ -394,8 +394,17 @@ python -m vllm.entrypoints.openai.api_server \
     --port 8000
 
 # For multi-node deployment (across multiple machines)
-# Node 0 (master)
-RAY_HEAD_ADDRESS=<node0-ip>:6379 python -m vllm.entrypoints.openai.api_server \
+# vLLM uses Ray to coordinate inference across nodes.
+
+# On the head node, start Ray and set VLLM_HOST_IP to this node's address:
+VLLM_HOST_IP=<head-node-ip> ray start --head --port=6379
+
+# On each worker node, join the Ray cluster:
+VLLM_HOST_IP=<worker-node-ip> ray start --address=<head-node-ip>:6379
+
+# Then launch vLLM on the head node — it will use the full Ray cluster.
+# Set tensor-parallel-size to GPUs per node, pipeline-parallel-size to number of nodes.
+python -m vllm.entrypoints.openai.api_server \
     --model meta-llama/Llama-2-70b-chat-hf \
     --tensor-parallel-size 8 \
     --pipeline-parallel-size 2
