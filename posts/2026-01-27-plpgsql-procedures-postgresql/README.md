@@ -25,16 +25,16 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 -- Usage in queries
-SELECT name, get_user_email(id) FROM orders;
+SELECT id, get_user_email(user_id) FROM orders;
 
--- PROCEDURE: Doesn't return a value, can manage transactions
+-- PROCEDURE: Called with CALL, can use OUT/INOUT parameters
 -- Use CALL to execute
 CREATE PROCEDURE archive_old_orders(days_old INTEGER)
 LANGUAGE plpgsql AS $$
 BEGIN
-    -- Can commit/rollback inside procedure
+    -- Can commit/rollback when called outside an explicit transaction block
     DELETE FROM orders WHERE created_at < NOW() - (days_old || ' days')::INTERVAL;
-    COMMIT;  -- Allowed in procedures
+    COMMIT;  -- Allowed in procedures called at the top level
 END;
 $$;
 
@@ -70,7 +70,7 @@ BEGIN
     -- Get discount from orders table
     SELECT discount_percent INTO discount
     FROM orders
-    WHERE id = order_id;
+    WHERE id = calculate_order_total.order_id;
 
     discount := COALESCE(discount, 0);
 
@@ -238,6 +238,16 @@ BEGIN
             USING ERRCODE = 'check_violation';
     END IF;
 
+    -- Check destination account
+    PERFORM 1
+    FROM accounts
+    WHERE id = to_account
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Destination account not found: %', to_account;
+    END IF;
+
     -- Perform transfer
     UPDATE accounts SET balance = balance - amount WHERE id = from_account;
     UPDATE accounts SET balance = balance + amount WHERE id = to_account;
@@ -306,7 +316,7 @@ SELECT * FROM get_user_details(123);
 ```sql
 CREATE FUNCTION search_products(
     search_term TEXT,
-    category_id INTEGER DEFAULT NULL,
+    p_category_id INTEGER DEFAULT NULL,
     min_price NUMERIC DEFAULT 0,
     max_price NUMERIC DEFAULT 999999
 )
@@ -327,7 +337,7 @@ BEGIN
     JOIN categories c ON c.id = p.category_id
     WHERE
         (search_term IS NULL OR p.name ILIKE '%' || search_term || '%')
-        AND (category_id IS NULL OR p.category_id = category_id)
+        AND (p_category_id IS NULL OR p.category_id = p_category_id)
         AND p.price BETWEEN min_price AND max_price
     ORDER BY p.name
     LIMIT 100;
@@ -335,7 +345,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Usage
-SELECT * FROM search_products('laptop', category_id => 5, max_price => 1000);
+SELECT * FROM search_products('laptop', p_category_id => 5, max_price => 1000);
 ```
 
 ### Return JSONB
@@ -387,6 +397,8 @@ $$ LANGUAGE plpgsql;
 ---
 
 ## Transaction Control in Procedures
+
+Transaction control in a procedure works only when the `CALL` is made at the top level, not inside an explicit transaction block.
 
 ```sql
 CREATE OR REPLACE PROCEDURE batch_process_orders(batch_size INTEGER DEFAULT 100)
@@ -486,10 +498,10 @@ RETURNS TRIGGER AS $$
 BEGIN
     -- Ensure total matches items
     IF (
-        SELECT SUM(quantity * price)
+        SELECT COALESCE(SUM(quantity * price), 0)
         FROM order_items
         WHERE order_id = NEW.id
-    ) != NEW.total THEN
+    ) IS DISTINCT FROM NEW.total THEN
         RAISE EXCEPTION 'Order total does not match items'
             USING HINT = 'Recalculate order total';
     END IF;
@@ -584,14 +596,35 @@ ALTER TABLE orders ADD COLUMN calculated_total NUMERIC;
 
 CREATE OR REPLACE FUNCTION update_order_total()
 RETURNS TRIGGER AS $$
+DECLARE
+    affected_order_id INTEGER;
 BEGIN
+    affected_order_id := CASE
+        WHEN TG_OP = 'DELETE' THEN OLD.order_id
+        ELSE NEW.order_id
+    END;
+
     UPDATE orders
-    SET calculated_total = (
+    SET calculated_total = COALESCE((
         SELECT SUM(quantity * price)
         FROM order_items
-        WHERE order_id = NEW.order_id
-    )
-    WHERE id = NEW.order_id;
+        WHERE order_id = affected_order_id
+    ), 0)
+    WHERE id = affected_order_id;
+
+    IF TG_OP = 'UPDATE' AND OLD.order_id IS DISTINCT FROM NEW.order_id THEN
+        UPDATE orders
+        SET calculated_total = COALESCE((
+            SELECT SUM(quantity * price)
+            FROM order_items
+            WHERE order_id = OLD.order_id
+        ), 0)
+        WHERE id = OLD.order_id;
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    END IF;
 
     RETURN NEW;
 END;
@@ -609,7 +642,7 @@ CREATE TRIGGER recalculate_order_total
 
 PL/pgSQL brings your business logic close to your data, reducing network round-trips and enabling powerful data transformations. Key takeaways:
 
-1. Use functions for queries, procedures for data modifications with transaction control
+1. Use functions for queryable return values, procedures for operations that need `CALL` or top-level transaction control
 2. Return TABLE for multiple rows, JSONB for complex structures
 3. Handle errors explicitly with EXCEPTION blocks
 4. Prefer set-based SQL over row-by-row PL/pgSQL loops
