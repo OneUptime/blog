@@ -56,7 +56,7 @@ with DAG(
     dag_id='etl_sales_daily',
     default_args=default_args,
     description='Daily ETL pipeline for sales data',
-    schedule_interval='0 6 * * *',  # Run at 6 AM daily
+    schedule='0 6 * * *',  # Run at 6 AM daily
     start_date=datetime(2026, 1, 1),
     catchup=False,  # Disable backfilling on DAG creation
     tags=['etl', 'sales', 'production'],
@@ -173,10 +173,10 @@ from airflow.operators.empty import EmptyOperator
 
 def choose_branch(**context):
     """Decide which branch to execute based on runtime conditions"""
-    execution_date = context['execution_date']
+    logical_date = context['logical_date']
 
     # Run full load on Mondays, incremental otherwise
-    if execution_date.weekday() == 0:
+    if logical_date.weekday() == 0:
         return 'full_load'
     return 'incremental_load'
 
@@ -224,11 +224,11 @@ from airflow.operators.python import PythonOperator
 def process_data(data_source, batch_size, **context):
     """Process data with configurable parameters"""
     # Access execution context
-    execution_date = context['execution_date']
+    logical_date = context['logical_date']
     task_instance = context['ti']
 
     print(f"Processing {data_source} with batch size {batch_size}")
-    print(f"Execution date: {execution_date}")
+    print(f"Logical date: {logical_date}")
 
     # Return value is automatically pushed to XCom
     return {"processed_records": 1000, "status": "success"}
@@ -522,7 +522,7 @@ with DAG(..., default_args=default_args) as dag:
 
 ```python
 from airflow.operators.python import PythonOperator
-from airflow.exceptions import AirflowException
+from airflow.exceptions import AirflowException, AirflowFailException
 
 def task_with_error_handling(**context):
     """Task with comprehensive error handling"""
@@ -544,7 +544,7 @@ def task_with_error_handling(**context):
     except ValueError as e:
         # Don't retry on validation errors
         context['ti'].xcom_push(key='error', value=str(e))
-        raise AirflowException(f"Validation error (no retry): {e}")
+        raise AirflowFailException(f"Validation error (no retry): {e}")
 
 def on_failure_callback(context):
     """Called when task fails after all retries"""
@@ -644,7 +644,7 @@ def create_etl_dag(table_name, schedule, source_conn, target_conn):
         dag_id=dag_id,
         default_args=default_args,
         description=f'ETL pipeline for {table_name}',
-        schedule_interval=schedule,
+        schedule=schedule,
         start_date=datetime(2026, 1, 1),
         catchup=False,
         tags=['etl', 'generated', table_name],
@@ -728,7 +728,7 @@ def create_dag_from_config(pipeline_config):
 
     dag = DAG(
         dag_id=dag_id,
-        schedule_interval=pipeline_config['schedule'],
+        schedule=pipeline_config['schedule'],
         start_date=datetime(2026, 1, 1),
         catchup=False,
         tags=['config-driven'],
@@ -906,7 +906,7 @@ class TestDagIntegration:
 
 Proper scheduling configuration prevents unexpected behavior and resource issues.
 
-### Schedule Interval Options
+### Schedule Options
 
 ```python
 from datetime import timedelta
@@ -915,21 +915,21 @@ from airflow import DAG
 # Cron expressions
 with DAG(
     dag_id='hourly_dag',
-    schedule_interval='0 * * * *',  # Every hour at minute 0
+    schedule='0 * * * *',  # Every hour at minute 0
     ...
 ) as dag:
     pass
 
 with DAG(
     dag_id='daily_dag',
-    schedule_interval='0 6 * * *',  # Daily at 6 AM
+    schedule='0 6 * * *',  # Daily at 6 AM
     ...
 ) as dag:
     pass
 
 with DAG(
     dag_id='weekly_dag',
-    schedule_interval='0 0 * * 0',  # Weekly on Sunday at midnight
+    schedule='0 0 * * 0',  # Weekly on Sunday at midnight
     ...
 ) as dag:
     pass
@@ -937,7 +937,7 @@ with DAG(
 # Timedelta for intervals
 with DAG(
     dag_id='every_30_minutes',
-    schedule_interval=timedelta(minutes=30),
+    schedule=timedelta(minutes=30),
     ...
 ) as dag:
     pass
@@ -945,7 +945,7 @@ with DAG(
 # Preset schedules
 with DAG(
     dag_id='preset_daily',
-    schedule_interval='@daily',  # Same as '0 0 * * *'
+    schedule='@daily',  # Same as '0 0 * * *'
     ...
 ) as dag:
     pass
@@ -963,7 +963,7 @@ from airflow import DAG
 # Use when historical data processing is required
 with DAG(
     dag_id='backfill_enabled_dag',
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=True,  # Default behavior
     max_active_runs=3,  # Limit concurrent backfill runs
@@ -975,7 +975,7 @@ with DAG(
 # Use for operational tasks that don't need backfilling
 with DAG(
     dag_id='no_backfill_dag',
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2026, 1, 1),
     catchup=False,  # Skip missed runs
     ...
@@ -1027,6 +1027,7 @@ Optimize DAGs for faster execution and efficient resource usage.
 ```python
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.operators.empty import EmptyOperator
 
 with DAG(
     dag_id='parallel_processing',
@@ -1035,6 +1036,9 @@ with DAG(
     max_active_runs=2,    # Max concurrent DAG runs
     ...
 ) as dag:
+
+    start = EmptyOperator(task_id='start')
+    end = EmptyOperator(task_id='end')
 
     # Tasks without dependencies run in parallel automatically
     tasks = []
@@ -1109,7 +1113,7 @@ with DAG(...) as dag:
         timeout=86400,  # 24 hours
     )
 
-    # Best: Use deferrable operators (Airflow 2.2+)
+    # Best: Use deferrable operators (FileSensor supports this in Airflow 2.10.4+)
     # These use the triggerer instead of workers
     from airflow.sensors.filesystem import FileSensor
 
