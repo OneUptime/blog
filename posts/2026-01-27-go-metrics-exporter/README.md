@@ -72,7 +72,7 @@ module github.com/yourorg/metrics-exporter
 
 go 1.21
 
-require github.com/prometheus/client_golang v1.19.0
+require github.com/prometheus/client_golang v1.23.2
 ```
 
 ---
@@ -88,6 +88,7 @@ package main
 import (
     "log"
     "net/http"
+    "strconv"
 
     // prometheus provides the core metric types and registry
     "github.com/prometheus/client_golang/prometheus"
@@ -124,8 +125,8 @@ func init() {
 
 func main() {
     // Create a simple HTTP server with instrumented handlers
-    http.HandleFunc("/api/users", instrumentHandler("GET", "/api/users", handleUsers))
-    http.HandleFunc("/api/orders", instrumentHandler("GET", "/api/orders", handleOrders))
+    http.HandleFunc("/api/users", instrumentHandler("/api/users", handleUsers))
+    http.HandleFunc("/api/orders", instrumentHandler("/api/orders", handleOrders))
 
     // Expose metrics at /metrics endpoint using promhttp handler
     http.Handle("/metrics", promhttp.Handler())
@@ -136,15 +137,32 @@ func main() {
 }
 
 // instrumentHandler wraps an HTTP handler to record metrics
-func instrumentHandler(method, endpoint string, handler http.HandlerFunc) http.HandlerFunc {
+func instrumentHandler(endpoint string, handler http.HandlerFunc) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
+        wrapped := &statusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+
         // Call the actual handler
-        handler(w, r)
+        handler(wrapped, r)
 
         // Increment the counter with appropriate labels
         // .Inc() adds 1 to the counter value
-        httpRequestsTotal.WithLabelValues(method, endpoint, "200").Inc()
+        httpRequestsTotal.WithLabelValues(r.Method, endpoint, strconv.Itoa(wrapped.statusCode)).Inc()
     }
+}
+
+type statusRecorder struct {
+    http.ResponseWriter
+    statusCode  int
+    wroteHeader bool
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+    if r.wroteHeader {
+        return
+    }
+    r.statusCode = code
+    r.wroteHeader = true
+    r.ResponseWriter.WriteHeader(code)
 }
 
 func handleUsers(w http.ResponseWriter, r *http.Request) {
@@ -260,7 +278,7 @@ var DatabaseQueryDuration = prometheus.NewHistogramVec(
         Name:      "query_duration_seconds",
         Help:      "Database query latency distribution in seconds",
         // Tighter buckets for faster expected operations
-        Buckets: prometheus.ExponentialBuckets(0.001, 2, 10), // 1ms to ~1s
+        Buckets: prometheus.ExponentialBuckets(0.001, 2, 11), // 1ms to ~1s
     },
     []string{"query_type", "table"},
 )
@@ -669,16 +687,24 @@ func NewHTTPMetrics(namespace, subsystem string) *HTTPMetrics {
 // responseWriter wraps http.ResponseWriter to capture status code and size.
 type responseWriter struct {
     http.ResponseWriter
-    statusCode int
-    size       int
+    statusCode  int
+    size        int
+    wroteHeader bool
 }
 
 func (rw *responseWriter) WriteHeader(code int) {
+    if rw.wroteHeader {
+        return
+    }
     rw.statusCode = code
+    rw.wroteHeader = true
     rw.ResponseWriter.WriteHeader(code)
 }
 
 func (rw *responseWriter) Write(b []byte) (int, error) {
+    if !rw.wroteHeader {
+        rw.WriteHeader(http.StatusOK)
+    }
     size, err := rw.ResponseWriter.Write(b)
     rw.size += size
     return size, err
@@ -697,8 +723,10 @@ func (m *HTTPMetrics) Middleware(next http.Handler) http.Handler {
         // Wrap response writer to capture status and size
         wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
-        // Record request size
-        m.requestSize.WithLabelValues(r.Method, r.URL.Path).Observe(float64(r.ContentLength))
+        // Record request size when the client provided a known Content-Length
+        if r.ContentLength >= 0 {
+            m.requestSize.WithLabelValues(r.Method, r.URL.Path).Observe(float64(r.ContentLength))
+        }
 
         // Call the next handler
         next.ServeHTTP(wrapped, r)
@@ -925,6 +953,7 @@ import (
     "net/http"
     "os"
     "os/signal"
+    "strconv"
     "sync"
     "syscall"
     "time"
@@ -1072,7 +1101,7 @@ func (app *Application) instrumentedHandler(path string, handler http.HandlerFun
 
         // Record metrics
         duration := time.Since(start).Seconds()
-        status := http.StatusText(wrapped.statusCode)
+        status := strconv.Itoa(wrapped.statusCode)
 
         app.metrics.HTTPRequestsTotal.WithLabelValues(r.Method, path, status).Inc()
         app.metrics.HTTPRequestDuration.WithLabelValues(r.Method, path).Observe(duration)
@@ -1081,11 +1110,16 @@ func (app *Application) instrumentedHandler(path string, handler http.HandlerFun
 
 type statusRecorder struct {
     http.ResponseWriter
-    statusCode int
+    statusCode  int
+    wroteHeader bool
 }
 
 func (r *statusRecorder) WriteHeader(code int) {
+    if r.wroteHeader {
+        return
+    }
     r.statusCode = code
+    r.wroteHeader = true
     r.ResponseWriter.WriteHeader(code)
 }
 
@@ -1212,7 +1246,7 @@ curl http://localhost:8080/metrics
 # Example output:
 # HELP myapp_http_requests_total Total number of HTTP requests by method, path, and status
 # TYPE myapp_http_requests_total counter
-# myapp_http_requests_total{method="GET",path="/api/orders",status="OK"} 5
+# myapp_http_requests_total{method="GET",path="/api/orders",status="200"} 5
 #
 # HELP myapp_orders_processed_total Total number of orders processed by status
 # TYPE myapp_orders_processed_total counter
