@@ -75,7 +75,7 @@ Each cluster must meet these requirements:
 
 ```yaml
 # Cilium configuration requirements for ClusterMesh
-# Each cluster needs unique identifiers and non-overlapping CIDRs
+# Each cluster needs unique identifiers and non-overlapping Pod CIDRs
 
 # Cluster 1 Configuration
 cluster:
@@ -84,7 +84,7 @@ cluster:
 
 networking:
   podCIDR: 10.0.0.0/16     # Must not overlap with other clusters
-  serviceCIDR: 10.96.0.0/12
+  serviceCIDR: 10.96.0.0/12 # May overlap for standard ClusterMesh services
 
 # Cluster 2 Configuration
 cluster:
@@ -93,7 +93,7 @@ cluster:
 
 networking:
   podCIDR: 10.1.0.0/16     # Different from cluster1
-  serviceCIDR: 10.112.0.0/12
+  serviceCIDR: 10.96.0.0/12
 ```
 
 ## Installing Cilium with ClusterMesh Support
@@ -176,12 +176,12 @@ flowchart TB
 
 ## Service Discovery Across Clusters
 
-Once ClusterMesh is connected, services can discover and communicate with pods in remote clusters automatically.
+Once ClusterMesh is connected, services can discover and communicate with pods in remote clusters through matching global Services.
 
 ### Automatic Service Discovery
 
 ```yaml
-# Deploy a service in cluster1
+# Deploy a service and backend pods in cluster1
 # services/backend-cluster1.yaml
 apiVersion: v1
 kind: Service
@@ -224,7 +224,23 @@ spec:
 # Apply to cluster1
 kubectl --context cluster1 apply -f services/backend-cluster1.yaml
 
-# The service is now discoverable from cluster2
+# Create a matching global Service in cluster2 so Kubernetes DNS resolves there
+kubectl --context cluster2 apply -f - <<'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: production
+  annotations:
+    service.cilium.io/global: "true"
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8080
+      targetPort: 8080
+EOF
+
 # Pods in cluster2 can reach it via: backend.production.svc.cluster.local
 ```
 
@@ -237,7 +253,7 @@ kubectl --context cluster2 run test-pod --rm -it --image=curlimages/curl -- \
 
 # Check Cilium endpoints to see remote services
 kubectl --context cluster2 exec -n kube-system ds/cilium -- \
-  cilium service list | grep backend
+  cilium-dbg service list | grep backend
 
 # Example output showing global service with endpoints from both clusters:
 # ID   Frontend            Service Type   Backend
@@ -348,8 +364,8 @@ sequenceDiagram
 ### Shared Services Pattern
 
 ```yaml
-# Deploy a shared database service that exists only in cluster1
-# but is accessible from all clusters
+# Deploy database pods only in cluster1, then create a matching global Service
+# in each cluster that needs to access them
 apiVersion: v1
 kind: Service
 metadata:
@@ -358,8 +374,6 @@ metadata:
   annotations:
     # Make this service globally accessible
     service.cilium.io/global: "true"
-    # Ensure all traffic goes to this cluster (no local fallback)
-    service.cilium.io/shared: "true"
 spec:
   selector:
     app: postgres
@@ -375,7 +389,7 @@ Cilium extends Kubernetes NetworkPolicies to work across cluster boundaries usin
 ### Cross-Cluster Network Policy
 
 ```yaml
-# Allow frontend pods in any cluster to access backend pods
+# Allow frontend pods in connected clusters to access backend pods
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -387,10 +401,14 @@ spec:
       app: backend
   ingress:
     - fromEndpoints:
-        - matchLabels:
+        - matchExpressions:
+            - key: io.cilium.k8s.policy.cluster
+              operator: Exists
+          matchLabels:
             app: frontend
-            # This allows frontend from ANY connected cluster
-            # Cilium automatically handles cross-cluster identity
+            # This explicitly allows frontend pods from connected clusters.
+            # In Cilium 1.19+, endpoint selectors match the local cluster by default
+            # unless a cluster label is specified.
       toPorts:
         - ports:
             - port: "8080"
@@ -427,6 +445,7 @@ spec:
 ```yaml
 # Default deny policy for cross-cluster traffic
 # Apply this to namespaces that should be isolated
+# Replace cluster1 with the local cluster name before applying this policy.
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
@@ -439,11 +458,11 @@ spec:
     - fromEndpoints:
         - matchLabels:
             # Only allow traffic from the same cluster
-            io.cilium.k8s.policy.cluster: "{{.ClusterName}}"
+            io.cilium.k8s.policy.cluster: cluster1
   egress:
     - toEndpoints:
         - matchLabels:
-            io.cilium.k8s.policy.cluster: "{{.ClusterName}}"
+            io.cilium.k8s.policy.cluster: cluster1
 ```
 
 ## Troubleshooting Connectivity
@@ -463,15 +482,15 @@ cilium clustermesh status --context cluster1
 # - cluster2: connected (last failure: never)
 
 # Step 2: Verify Cilium agent health
-kubectl --context cluster1 exec -n kube-system ds/cilium -- cilium status
+kubectl --context cluster1 exec -n kube-system ds/cilium -- cilium-dbg status
 
-# Step 3: Check if remote cluster endpoints are synced
+# Step 3: Check if remote cluster identities are synced
 kubectl --context cluster1 exec -n kube-system ds/cilium -- \
-  cilium endpoint list | grep -i cluster2
+  cilium-dbg identity list | grep io.cilium.k8s.policy.cluster=cluster2
 
 # Step 4: Inspect service backends
 kubectl --context cluster1 exec -n kube-system ds/cilium -- \
-  cilium service list --clustermesh-affinity
+  cilium-dbg service list
 ```
 
 ### Common Issues and Solutions
@@ -509,7 +528,7 @@ cilium hubble enable --context cluster2
 cilium hubble ui --context cluster1
 
 # Use Hubble CLI to observe cross-cluster flows
-hubble observe --context cluster1 \
+hubble observe -P \
   --from-label app=frontend \
   --to-label app=backend \
   --verdict DROPPED
@@ -572,39 +591,20 @@ flowchart TD
 ### Health Monitoring
 
 ```yaml
-# Deploy health check endpoints for ClusterMesh monitoring
-apiVersion: v1
-kind: Service
-metadata:
-  name: clustermesh-health
-  namespace: kube-system
-  labels:
-    app: clustermesh-health
-spec:
-  selector:
-    k8s-app: clustermesh-apiserver
-  ports:
-    - name: health
-      port: 9879
-      targetPort: 9879
----
-# ServiceMonitor for Prometheus (if using Prometheus Operator)
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: clustermesh-metrics
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      app: clustermesh-health
-  namespaceSelector:
-    matchNames:
-      - kube-system
-  endpoints:
-    - port: health
-      interval: 30s
-      path: /metrics
+# values-clustermesh-metrics.yaml
+# Enable ClusterMesh API server metrics and let the Cilium Helm chart
+# create the Prometheus Operator ServiceMonitor.
+clustermesh:
+  useAPIServer: true
+  apiserver:
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+      kvstoremesh:
+        enabled: true
+      etcd:
+        enabled: true
 ```
 
 ### Alerting Rules
@@ -620,29 +620,16 @@ spec:
   groups:
     - name: clustermesh
       rules:
-        # Alert when a cluster connection is lost
-        - alert: ClusterMeshConnectionLost
+        # Alert when the ClusterMesh metrics target is unavailable
+        - alert: ClusterMeshMetricsTargetDown
           expr: |
-            cilium_clustermesh_remote_clusters_connected <
-            cilium_clustermesh_remote_clusters_total
+            up{job=~".*clustermesh.*"} == 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "ClusterMesh connection lost"
-            description: "Cluster {{ $labels.cluster }} lost connection to remote cluster"
-
-        # Alert on high cross-cluster latency
-        - alert: ClusterMeshHighLatency
-          expr: |
-            histogram_quantile(0.99,
-              rate(cilium_clustermesh_remote_cluster_readiness_latency_seconds_bucket[5m])
-            ) > 5
-          for: 10m
-          labels:
-            severity: warning
-          annotations:
-            summary: "High ClusterMesh sync latency"
+            summary: "ClusterMesh metrics target is down"
+            description: "Prometheus cannot scrape a ClusterMesh metrics target"
 ```
 
 ## Monitoring with OneUptime
@@ -656,16 +643,18 @@ For comprehensive multi-cluster monitoring, integrate your Cilium ClusterMesh se
 
 ```yaml
 # Example: Monitor ClusterMesh health with OneUptime
-# Configure HTTP monitors for each cluster's ClusterMesh API server
+# Configure TCP monitors for each cluster's ClusterMesh API server
 monitors:
   - name: "Cluster1 ClusterMesh API"
-    type: http
-    url: "https://clustermesh.cluster1.example.com:2379/health"
+    type: tcp
+    host: "clustermesh.cluster1.example.com"
+    port: 2379
     interval: 60s
 
   - name: "Cluster2 ClusterMesh API"
-    type: http
-    url: "https://clustermesh.cluster2.example.com:2379/health"
+    type: tcp
+    host: "clustermesh.cluster2.example.com"
+    port: 2379
     interval: 60s
 
 # Monitor cross-cluster service connectivity
@@ -681,7 +670,7 @@ Cilium ClusterMesh transforms multi-cluster Kubernetes networking from a complex
 
 Key takeaways:
 
-1. **Plan your CIDRs**: Ensure non-overlapping pod and service CIDRs before deployment
+1. **Plan your CIDRs**: Ensure non-overlapping pod CIDRs before deployment
 2. **Use global services wisely**: Apply appropriate affinity settings based on your latency and availability requirements
 3. **Secure with network policies**: Extend your zero-trust security model across cluster boundaries
 4. **Monitor proactively**: Use Hubble and external monitoring tools like OneUptime to catch issues before they impact users
