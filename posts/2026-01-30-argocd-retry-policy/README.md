@@ -81,7 +81,7 @@ flowchart LR
     R4 --> R5[Retry 5<br/>Wait 80s]
 ```
 
-The formula is: `wait = min(duration * (factor ^ attempt), maxDuration)`
+The formula is: `wait = min(duration * (factor ^ attempt), maxDuration)`, where `attempt` starts at 0 for the first retry.
 
 ## Production-Ready Retry Policy
 
@@ -224,40 +224,45 @@ metadata:
   name: myapp-environments
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
           - env: development
-            retryLimit: "3"
+            retryLimit: 3
             maxDuration: "1m"
           - env: staging
-            retryLimit: "5"
+            retryLimit: 5
             maxDuration: "3m"
           - env: production
-            retryLimit: "10"
+            retryLimit: 10
             maxDuration: "5m"
   template:
     metadata:
-      name: 'myapp-{{env}}'
+      name: 'myapp-{{.env}}'
     spec:
-      project: '{{env}}'
+      project: '{{.env}}'
       source:
         repoURL: https://github.com/myorg/myapp.git
         targetRevision: HEAD
-        path: 'k8s/{{env}}'
+        path: 'k8s/{{.env}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{env}}'
+        namespace: '{{.env}}'
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
+  templatePatch: |
+    spec:
+      syncPolicy:
         retry:
-          limit: '{{retryLimit}}'
+          limit: {{.retryLimit}}
           backoff:
             duration: 5s
             factor: 2
-            maxDuration: '{{maxDuration}}'
+            maxDuration: '{{.maxDuration}}'
 ```
 
 ## Handling Specific Failure Scenarios
@@ -303,32 +308,32 @@ retry:
 
 ## Combining Retry Policy with Sync Waves
 
-Sync waves control deployment order. Retry policies apply to each wave independently.
+Sync waves control deployment order. Retry policies apply to the sync operation. When a retry runs, ArgoCD evaluates the ordered waves again and starts with the first wave that still has out-of-sync or unhealthy resources.
 
 Here is how sync waves and retries interact.
 
 ```mermaid
 sequenceDiagram
     participant ArgoCD
-    participant Wave -1 as Wave -1 (CRDs)
-    participant Wave 0 as Wave 0 (Namespace)
-    participant Wave 1 as Wave 1 (Config)
-    participant Wave 2 as Wave 2 (App)
+    participant WaveMinus1 as Wave -1 (CRDs)
+    participant Wave0 as Wave 0 (Namespace)
+    participant Wave1 as Wave 1 (Config)
+    participant Wave2 as Wave 2 (App)
 
-    ArgoCD->>Wave -1: Sync CRDs
-    Wave -1-->>ArgoCD: Failed
+    ArgoCD->>WaveMinus1: Sync CRDs
+    WaveMinus1-->>ArgoCD: Failed
     Note over ArgoCD: Retry with backoff
-    ArgoCD->>Wave -1: Retry CRDs
-    Wave -1-->>ArgoCD: Success
+    ArgoCD->>WaveMinus1: Retry CRDs
+    WaveMinus1-->>ArgoCD: Success
 
-    ArgoCD->>Wave 0: Sync Namespace
-    Wave 0-->>ArgoCD: Success
+    ArgoCD->>Wave0: Sync Namespace
+    Wave0-->>ArgoCD: Success
 
-    ArgoCD->>Wave 1: Sync ConfigMaps
-    Wave 1-->>ArgoCD: Success
+    ArgoCD->>Wave1: Sync ConfigMaps
+    Wave1-->>ArgoCD: Success
 
-    ArgoCD->>Wave 2: Sync Deployment
-    Wave 2-->>ArgoCD: Success
+    ArgoCD->>Wave2: Sync Deployment
+    Wave2-->>ArgoCD: Success
 ```
 
 This example shows a complete application with sync waves and retry policy.
@@ -440,11 +445,11 @@ ArgoCD exposes Prometheus metrics for retry monitoring. Here are the key metrics
 
 | Metric | Description |
 |--------|-------------|
-| `argocd_app_sync_total` | Total sync attempts including retries |
-| `argocd_app_reconcile_count` | Number of reconciliation attempts |
+| `argocd_app_sync_total` | Counter for application sync history, labeled by sync phase |
+| `argocd_app_reconcile` | Application reconciliation duration histogram |
 | `argocd_app_info` | Application status including sync state |
 
-This Prometheus alerting rule fires when an application exceeds retry limits.
+This Prometheus alerting rule fires when an application has repeated failed syncs.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -580,7 +585,7 @@ argocd app history myapp
 Manually trigger a sync when automatic retries are exhausted.
 
 ```bash
-# Force sync ignoring retry state
+# Force apply resources during sync
 argocd app sync myapp --force
 
 # Sync with specific revision
