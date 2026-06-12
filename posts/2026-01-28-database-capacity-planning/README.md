@@ -235,7 +235,7 @@ class ConnectionPoolCalculator:
 
         io_wait_ratio: portion of time queries spend waiting for I/O (0-1)
         """
-        # Base formula from PostgreSQL documentation
+        # Base formula popularized by the HikariCP wiki
         base_connections = (cpu_cores * 2) + 1
 
         # Adjust for I/O wait
