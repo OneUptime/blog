@@ -34,22 +34,22 @@ Both Pod Identity and IRSA solve the same problem, but they differ in implementa
 |---------|-------------|------|
 | OIDC Provider Required | No | Yes |
 | IAM Trust Policy Complexity | Simple | Complex with OIDC conditions |
-| Cross-Account Support | Native | Requires additional setup |
-| Setup Steps | 3 steps | 6+ steps |
-| AWS SDK Support | All modern SDKs | All modern SDKs |
-| EKS Add-on Required | Yes | No |
+| Cross-Account Support | Target IAM roles | Requires additional setup |
+| Setup Steps | Fewer steps | More setup steps |
+| AWS SDK Support | Supported AWS SDK versions | All modern SDKs |
+| EKS Add-on Required | Yes, unless using EKS Auto Mode | No |
 | Credential Refresh | Automatic | Automatic |
 
 ### When to Use Each
 
 **Choose Pod Identity when:**
-- Starting fresh on EKS 1.24+
+- Starting fresh on a supported EKS cluster and platform version
 - You want simpler IAM trust policies
 - Cross-account access is a requirement
 - You prefer managed add-ons
 
 **Choose IRSA when:**
-- Running older EKS versions (pre-1.24)
+- Running an EKS cluster or platform version that does not support Pod Identity
 - You already have IRSA working and do not want to migrate
 - You need fine-grained OIDC claim conditions
 
@@ -59,27 +59,28 @@ Both Pod Identity and IRSA solve the same problem, but they differ in implementa
 sequenceDiagram
     participant Pod as Pod with ServiceAccount
     participant Agent as Pod Identity Agent
-    participant STS as AWS STS
+    participant EKSAuth as EKS Auth API
+    participant IAM as IAM Role
     participant S3 as AWS S3
 
-    Pod->>Agent: Request credentials via mounted socket
+    Pod->>Agent: Request credentials via container credential provider
     Agent->>Agent: Verify pod identity and association
-    Agent->>STS: AssumeRoleForPodIdentity
-    STS->>STS: Validate trust policy
-    STS-->>Agent: Return temporary credentials
-    Agent-->>Pod: Inject credentials
+    Agent->>EKSAuth: AssumeRoleForPodIdentity
+    EKSAuth->>IAM: Validate IAM role trust policy
+    EKSAuth-->>Agent: Return temporary credentials
+    Agent-->>Pod: Provide credentials to SDK
     Pod->>S3: API call with temporary credentials
     S3-->>Pod: Response
 ```
 
-The Pod Identity Agent runs as a DaemonSet on every node. When a pod needs AWS credentials, the SDK contacts the agent through a mounted Unix socket. The agent verifies the pod's service account, calls STS to assume the configured IAM role, and returns temporary credentials to the pod.
+The Pod Identity Agent runs as a DaemonSet on supported Linux EC2 nodes. When a pod needs AWS credentials, Amazon EKS adds container credential provider environment variables and a projected service account token to the pod. The SDK uses those environment variables to contact the agent on the node. The agent uses the `AssumeRoleForPodIdentity` action in the EKS Auth API to retrieve temporary credentials for the configured IAM role and makes them available to the SDK.
 
 ## Prerequisites
 
 Before configuring Pod Identity, ensure you have:
 
 ```bash
-# Check your EKS cluster version (must be 1.24+)
+# Check your EKS cluster version and platform version
 
 aws eks describe-cluster \
   --name my-cluster \
@@ -358,7 +359,7 @@ flowchart TB
     end
 
     subgraph AWS["AWS"]
-        STS[AWS STS]
+        EKSAuth[EKS Auth API]
         IAMRole[IAM Role: my-app-pod-role]
         S3[S3 Bucket]
         SM[Secrets Manager]
@@ -368,9 +369,9 @@ flowchart TB
     SA --> Association
     Association --> IAMRole
 
-    Agent1 --> |AssumeRoleForPodIdentity| STS
-    Agent2 --> |AssumeRoleForPodIdentity| STS
-    STS --> IAMRole
+    Agent1 --> |AssumeRoleForPodIdentity| EKSAuth
+    Agent2 --> |AssumeRoleForPodIdentity| EKSAuth
+    EKSAuth --> IAMRole
 
     Pod1 --> |authenticated requests| S3
     Pod1 --> |authenticated requests| SM
@@ -393,12 +394,18 @@ Pod Identity simplifies cross-account scenarios. Your pods in Account A can assu
       "Principal": {
         "AWS": "arn:aws:iam::111111111111:root"
       },
-      "Action": "sts:AssumeRole",
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ],
       "Condition": {
         "StringEquals": {
-          "aws:PrincipalTag/eks-cluster-name": "my-cluster",
-          "aws:PrincipalTag/kubernetes-namespace": "production",
-          "aws:PrincipalTag/kubernetes-service-account": "my-app-sa"
+          "aws:RequestTag/eks-cluster-arn": "arn:aws:eks:us-west-2:111111111111:cluster/my-cluster",
+          "aws:RequestTag/kubernetes-namespace": "production",
+          "aws:RequestTag/kubernetes-service-account": "my-app-sa"
+        },
+        "ArnEquals": {
+          "aws:PrincipalARN": "arn:aws:iam::111111111111:role/my-app-pod-role"
         }
       }
     }
@@ -416,38 +423,28 @@ Add to your source account role's permissions policy:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": "sts:AssumeRole",
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ],
       "Resource": "arn:aws:iam::222222222222:role/cross-account-role"
     }
   ]
 }
 ```
 
-### Step 3: Use in Application Code
+### Step 3: Create the Association with a Target Role
 
-```python
-import boto3
-
-# First, get credentials via Pod Identity (automatic)
-sts_client = boto3.client('sts')
-
-# Assume the cross-account role
-response = sts_client.assume_role(
-    RoleArn='arn:aws:iam::222222222222:role/cross-account-role',
-    RoleSessionName='my-app-cross-account'
-)
-
-# Create a client with cross-account credentials
-s3_client = boto3.client(
-    's3',
-    aws_access_key_id=response['Credentials']['AccessKeyId'],
-    aws_secret_access_key=response['Credentials']['SecretAccessKey'],
-    aws_session_token=response['Credentials']['SessionToken']
-)
-
-# Access resources in Account B
-s3_client.list_buckets()
+```bash
+aws eks create-pod-identity-association \
+  --cluster-name my-cluster \
+  --namespace production \
+  --service-account my-app-sa \
+  --role-arn arn:aws:iam::111111111111:role/my-app-pod-role \
+  --target-role-arn arn:aws:iam::222222222222:role/cross-account-role
 ```
+
+With a target role, Pod Identity automatically performs the role chaining and injects credentials for the target role into the pod.
 
 ## Migrating from IRSA to Pod Identity
 
