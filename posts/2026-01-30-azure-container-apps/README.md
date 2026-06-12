@@ -12,7 +12,7 @@ Azure Container Apps is a serverless container platform built on Kubernetes. You
 
 ## What Is Azure Container Apps?
 
-Azure Container Apps runs on top of Kubernetes (AKS internally) but abstracts away all the cluster management. You deploy containers, define scaling rules, and Azure handles the rest.
+Azure Container Apps runs on top of Kubernetes but abstracts away all the cluster management. You deploy containers, define scaling rules, and Azure handles the rest.
 
 ```mermaid
 flowchart TB
@@ -196,7 +196,7 @@ az acr create \
   --name $REGISTRY_NAME \
   --resource-group $RESOURCE_GROUP \
   --sku Basic \
-  --admin-enabled true
+  --admin-enabled false
 ```
 
 ### Build and Push Your Image
@@ -264,7 +264,7 @@ az containerapp create \
 
 ## Scaling Configuration
 
-Container Apps offers three scaling triggers: HTTP traffic, Azure Service Bus queues, and custom metrics.
+Container Apps scale rules are implemented as HTTP, TCP, or custom rules. Custom rules can use KEDA scalers for metrics and event sources such as Azure Service Bus queues.
 
 ### HTTP Scaling
 
@@ -372,7 +372,25 @@ KEYVAULT_NAME="kv-containerapps-$(openssl rand -hex 4)"
 az keyvault create \
   --name $KEYVAULT_NAME \
   --resource-group $RESOURCE_GROUP \
-  --location $LOCATION
+  --location $LOCATION \
+  --enable-rbac-authorization true
+
+# Get the Key Vault resource ID
+KEYVAULT_ID=$(az keyvault show \
+  --name $KEYVAULT_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query id \
+  --output tsv)
+
+# Grant your signed-in user permission to create the demo secret
+CURRENT_USER_ID=$(az ad signed-in-user show \
+  --query id \
+  --output tsv)
+
+az role assignment create \
+  --assignee $CURRENT_USER_ID \
+  --role "Key Vault Secrets Officer" \
+  --scope $KEYVAULT_ID
 
 # Add a secret to Key Vault
 az keyvault secret set \
@@ -401,10 +419,10 @@ IDENTITY_ID=$(az containerapp show \
   --output tsv)
 
 # Grant Key Vault access to the container app identity
-az keyvault set-policy \
-  --name $KEYVAULT_NAME \
-  --object-id $IDENTITY_ID \
-  --secret-permissions get
+az role assignment create \
+  --assignee $IDENTITY_ID \
+  --role "Key Vault Secrets User" \
+  --scope $KEYVAULT_ID
 
 # Reference the Key Vault secret in your container app
 az containerapp secret set \
@@ -539,7 +557,7 @@ Publish and subscribe to events across services.
 
 ```yaml
 # pubsub-component.yaml
-componentType: pubsub.azure.servicebus
+componentType: pubsub.azure.servicebus.queues
 version: v1
 metadata:
   - name: connectionString
@@ -753,7 +771,7 @@ ContainerAppSystemLogs_CL
 
 ### OpenTelemetry Integration
 
-For comprehensive observability, export telemetry to OpenTelemetry-compatible backends.
+For comprehensive observability, instrument your application and export telemetry to OpenTelemetry-compatible backends.
 
 ```bash
 # Set OpenTelemetry endpoint
