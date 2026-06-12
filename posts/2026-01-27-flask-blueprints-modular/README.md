@@ -139,6 +139,9 @@ Blueprints can be bound to subdomains:
 
 ```python
 # app.py
+from flask import Flask
+
+app = Flask(__name__, subdomain_matching=True)
 app.config['SERVER_NAME'] = 'example.com'
 
 # Register Blueprint for api.example.com
@@ -165,9 +168,9 @@ def get_data():
 tenant_bp = Blueprint('tenant', __name__)
 
 @tenant_bp.route('/')
-def tenant_home():
-    # subdomain captured automatically
-    return f'Welcome to tenant'
+def tenant_home(tenant):
+    # subdomain captured as the tenant argument
+    return f'Welcome to {tenant}'
 
 # Registration with dynamic subdomain
 app.register_blueprint(tenant_bp, subdomain='<tenant>')
@@ -254,7 +257,7 @@ api_bp = Blueprint('api', __name__)
 
 @api_bp.errorhandler(404)
 def api_not_found(error):
-    """Handle 404 errors for API routes only"""
+    """Handle 404 errors raised by API routes"""
     return jsonify({
         'error': 'Resource not found',
         'status': 404
@@ -283,7 +286,7 @@ def api_server_error(error):
 # app.py
 @app.errorhandler(404)
 def not_found(error):
-    """Default 404 handler for non-API routes"""
+    """Default 404 handler for unmatched URLs and non-API routes"""
     return render_template('errors/404.html'), 404
 ```
 
@@ -512,6 +515,7 @@ from .resources import users, items
 # app/blueprints/api/resources/users.py
 from flask import request, jsonify
 from app.blueprints.api import api_bp
+from app.extensions import db
 from app.models.user import User
 from app.blueprints.api.schemas import UserSchema
 
