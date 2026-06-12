@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab CI, Compliance, Security, CI/CD, DevOps
 
-Description: Learn how to enforce compliance in GitLab CI using compliance pipelines, templates, and protected branches.
+Description: Learn how to enforce compliance in GitLab CI using compliance pipelines, compliance frameworks, and protected branches.
 
 ---
 
-Compliance pipelines ensure required security checks always run, even if teams customize their own `.gitlab-ci.yml`. This guide shows how to enforce them safely.
+Compliance pipelines ensure required security checks run for projects that have a compliance framework applied. Compliance pipelines are deprecated in GitLab 17.3 and planned for removal in GitLab 19.0, so use pipeline execution policies for new implementations.
 
 ## What Is a Compliance Pipeline
 
-GitLab compliance pipelines let administrators define a central pipeline that runs on selected projects. It is useful for:
+GitLab compliance pipelines let group owners define a central pipeline configuration that applies to projects through a compliance framework. By default, the compliance pipeline configuration replaces the labeled project's `.gitlab-ci.yml`, though it can include the project configuration if you want both to run. It is useful for:
 
 - Security scanning
 - License checks
@@ -38,13 +38,14 @@ sast:
 
 In GitLab:
 
-1. Go to **Group → Security & Compliance → Compliance pipelines**
-2. Select the compliance project
-3. Choose the target projects or group
+1. Go to **Group → Secure → Compliance center → Frameworks**.
+2. Create or edit a compliance framework.
+3. Add the compliance pipeline configuration path in the `path/file.yml@group-name/project-name` format.
+4. Apply the compliance framework to the target projects.
 
 ## Step 3: Use Protected Branches
 
-Require pipelines to succeed before merging. This prevents bypassing compliance checks.
+Protect the target branches and enable **Pipelines must succeed** in the project's merge request settings. This prevents merging when required compliance checks fail.
 
 ## Best Practices
 
