@@ -81,8 +81,8 @@ Verify outputs conform to expected structure and types.
 ```python
 # Schema validation for API responses
 
-from pydantic import BaseModel, Field, validator
-from typing import List, Optional
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import List
 from decimal import Decimal
 
 class OrderItem(BaseModel):
@@ -90,7 +90,8 @@ class OrderItem(BaseModel):
     quantity: int = Field(gt=0)  # Must be positive
     unit_price: Decimal = Field(ge=0)  # Non-negative price
 
-    @validator('product_id')
+    @field_validator('product_id')
+    @classmethod
     def product_id_format(cls, v):
         # Validate product ID matches expected pattern
         if not v.startswith('PROD-'):
@@ -104,13 +105,13 @@ class OrderResponse(BaseModel):
     tax: Decimal
     total: Decimal
 
-    @validator('total')
-    def validate_total(cls, v, values):
+    @model_validator(mode='after')
+    def validate_total(self) -> 'OrderResponse':
         # Verify total equals subtotal plus tax
-        expected = values.get('subtotal', 0) + values.get('tax', 0)
-        if abs(v - expected) > Decimal('0.01'):
-            raise ValueError(f'Total mismatch: {v} != {expected}')
-        return v
+        expected = self.subtotal + self.tax
+        if abs(self.total - expected) > Decimal('0.01'):
+            raise ValueError(f'Total mismatch: {self.total} != {expected}')
+        return self
 
 def validate_order_response(response_data: dict) -> bool:
     """
@@ -172,7 +173,7 @@ class CalculationVerifier:
             emit_correctness_metric(
                 check_type='tax_calculation',
                 is_correct=False,
-                error_magnitude=float(difference)
+                error_magnitude_value=float(difference)
             )
             return False
 
@@ -201,7 +202,7 @@ import hashlib
 import json
 from typing import Any, Dict, Tuple
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 @dataclass
 class ComparisonResult:
@@ -276,7 +277,7 @@ class CrossSystemVerifier:
             matches=matches,
             primary_hash=primary_hash,
             secondary_hash=secondary_hash,
-            checked_at=datetime.utcnow(),
+            checked_at=datetime.now(timezone.utc),
             differences=differences
         )
 
@@ -372,7 +373,7 @@ Increase sampling when errors are detected.
 ```python
 # Adaptive sampling that increases rate when errors occur
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import deque
 
 class AdaptiveSampler:
@@ -392,14 +393,14 @@ class AdaptiveSampler:
         """
         Record a correctness error, which increases sampling rate.
         """
-        self.recent_errors.append(datetime.utcnow())
+        self.recent_errors.append(datetime.now(timezone.utc))
         self.update_rate()
 
     def update_rate(self):
         """
         Adjust sampling rate based on recent error frequency.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cutoff = now - self.window
 
         # Remove old errors outside the window
@@ -474,7 +475,7 @@ Track and alert on correctness error budget consumption.
 ```python
 # Error budget tracker for correctness SLOs
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 @dataclass
@@ -500,14 +501,14 @@ class CorrectnessErrorBudget:
         """
         Record a correctness check result.
         """
-        self.events.append((datetime.utcnow(), is_correct))
+        self.events.append((datetime.now(timezone.utc), is_correct))
         self.prune_old_events()
 
     def prune_old_events(self):
         """
         Remove events outside the SLO window.
         """
-        cutoff = datetime.utcnow() - self.window
+        cutoff = datetime.now(timezone.utc) - self.window
         self.events = [
             (ts, correct) for ts, correct in self.events
             if ts >= cutoff
@@ -535,14 +536,14 @@ class CorrectnessErrorBudget:
 
         # Calculate burn rate (1.0 = consuming budget at expected rate)
         expected_rate = self.error_budget_percent / self.window.days
-        actual_rate = error_rate / max((datetime.utcnow() - self.events[0][0]).days, 1)
+        actual_rate = error_rate / max((datetime.now(timezone.utc) - self.events[0][0]).days, 1)
         burn_rate = actual_rate / expected_rate if expected_rate > 0 else 0
 
         # Estimate exhaustion time
         exhaustion = None
         if burn_rate > 1.0 and remaining > 0:
             days_remaining = remaining / (actual_rate - expected_rate)
-            exhaustion = datetime.utcnow() + timedelta(days=days_remaining)
+            exhaustion = datetime.now(timezone.utc) + timedelta(days=days_remaining)
 
         return ErrorBudgetStatus(
             total_budget=self.error_budget_percent,
@@ -601,9 +602,15 @@ Export correctness metrics for your observability platform.
 # OpenTelemetry metrics for correctness SLOs
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.export import (
+    ConsoleMetricExporter,
+    PeriodicExportingMetricReader,
+)
 
-# Initialize meter
+# Initialize meter provider and meter
+metric_reader = PeriodicExportingMetricReader(ConsoleMetricExporter())
+provider = MeterProvider(metric_readers=[metric_reader])
+metrics.set_meter_provider(provider)
 meter = metrics.get_meter("correctness_slo")
 
 # Counter for total correctness checks
@@ -680,12 +687,7 @@ Use these queries to build correctness dashboards.
   /
   sum(rate(correctness_checks_total[1h]))
 )
-/
-(
-  sum(rate(correctness_failures_total[30d]))
-  /
-  sum(rate(correctness_checks_total[30d]))
-)
+/ (1 - 0.9999) # Divide by error budget percentage
 ```
 
 ## Best Practices
