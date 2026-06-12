@@ -57,8 +57,7 @@ The browser module is included in k6 but requires Chrome or Chromium.
 brew install k6
 
 # Linux (Debian/Ubuntu)
-sudo gpg -k
-sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
 sudo apt-get update
 sudo apt-get install k6
@@ -125,7 +124,7 @@ k6 run browser-basic.js
 
 ## Measuring Core Web Vitals
 
-Core Web Vitals are Google's metrics for user experience. k6 browser can capture all of them.
+Core Web Vitals are Google's metrics for user experience. k6 browser emits metrics for the current Core Web Vitals: LCP, INP, and CLS.
 
 ```javascript
 // web-vitals.js
@@ -135,7 +134,7 @@ import { Trend } from 'k6/metrics';
 
 // Custom metrics for Web Vitals
 const lcpMetric = new Trend('web_vital_lcp');
-const fidMetric = new Trend('web_vital_fid');
+const inpMetric = new Trend('web_vital_inp');
 const clsMetric = new Trend('web_vital_cls');
 const ttfbMetric = new Trend('web_vital_ttfb');
 const fcpMetric = new Trend('web_vital_fcp');
@@ -155,7 +154,7 @@ export const options = {
   },
   thresholds: {
     'web_vital_lcp': ['p(75)<2500'],   // LCP should be under 2.5s
-    'web_vital_fid': ['p(75)<100'],    // FID should be under 100ms
+    'web_vital_inp': ['p(75)<200'],    // INP should be under 200ms
     'web_vital_cls': ['p(75)<0.1'],    // CLS should be under 0.1
   },
 };
@@ -168,20 +167,44 @@ export default async function () {
     await page.goto('https://example.com');
     await page.waitForLoadState('networkidle');
 
-    // Extract performance metrics using Performance API
+    // Extract performance metrics using PerformanceObserver and Performance API
     const performanceMetrics = await page.evaluate(() => {
       return new Promise((resolve) => {
-        // Wait a bit for LCP to stabilize
+        let lcp = 0;
+        let cls = 0;
+        let inp = 0;
+
+        try {
+          const lcpObserver = new PerformanceObserver((entryList) => {
+            const entries = entryList.getEntries();
+            const lastEntry = entries[entries.length - 1];
+            lcp = lastEntry.startTime;
+          });
+          lcpObserver.observe({ type: 'largest-contentful-paint', buffered: true });
+
+          const clsObserver = new PerformanceObserver((entryList) => {
+            for (const entry of entryList.getEntries()) {
+              if (!entry.hadRecentInput) {
+                cls += entry.value;
+              }
+            }
+          });
+          clsObserver.observe({ type: 'layout-shift', buffered: true });
+
+          const interactionObserver = new PerformanceObserver((entryList) => {
+            for (const entry of entryList.getEntries()) {
+              inp = Math.max(inp, entry.duration);
+            }
+          });
+          interactionObserver.observe({ type: 'event', durationThreshold: 40, buffered: true });
+        } catch (error) {
+          // Some browsers do not support every performance entry type.
+        }
+
+        // Wait a bit for entries to be reported
         setTimeout(() => {
           const navigation = performance.getEntriesByType('navigation')[0];
           const paint = performance.getEntriesByType('paint');
-
-          // Get LCP
-          let lcp = 0;
-          const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
-          if (lcpEntries.length > 0) {
-            lcp = lcpEntries[lcpEntries.length - 1].startTime;
-          }
 
           // Get FCP
           let fcp = 0;
@@ -190,19 +213,11 @@ export default async function () {
             fcp = fcpEntry.startTime;
           }
 
-          // Get CLS (simplified - real implementation needs PerformanceObserver)
-          let cls = 0;
-          const layoutShifts = performance.getEntriesByType('layout-shift');
-          layoutShifts.forEach(entry => {
-            if (!entry.hadRecentInput) {
-              cls += entry.value;
-            }
-          });
-
           resolve({
             ttfb: navigation.responseStart - navigation.requestStart,
             fcp: fcp,
             lcp: lcp,
+            inp: inp,
             cls: cls,
           });
         }, 3000);
@@ -213,15 +228,18 @@ export default async function () {
     ttfbMetric.add(performanceMetrics.ttfb);
     fcpMetric.add(performanceMetrics.fcp);
     lcpMetric.add(performanceMetrics.lcp);
+    inpMetric.add(performanceMetrics.inp);
     clsMetric.add(performanceMetrics.cls);
 
     console.log(`TTFB: ${performanceMetrics.ttfb}ms`);
     console.log(`FCP: ${performanceMetrics.fcp}ms`);
     console.log(`LCP: ${performanceMetrics.lcp}ms`);
+    console.log(`INP: ${performanceMetrics.inp}ms`);
     console.log(`CLS: ${performanceMetrics.cls}`);
 
     check(performanceMetrics, {
       'LCP under 2.5s': (m) => m.lcp < 2500,
+      'INP under 200ms': (m) => m.inp < 200,
       'FCP under 1.8s': (m) => m.fcp < 1800,
       'CLS under 0.1': (m) => m.cls < 0.1,
     });
@@ -288,11 +306,9 @@ export default async function () {
 
     loginDuration.add(Date.now() - loginStart);
 
-    check(page, {
-      'login successful': async (p) => {
-        const userMenu = await p.locator('[data-testid="user-menu"]').isVisible();
-        return userMenu;
-      },
+    const userMenuVisible = await page.locator('[data-testid="user-menu"]').isVisible();
+    check(userMenuVisible, {
+      'login successful': (visible) => visible,
     });
 
     // Step 3: Search for product
@@ -305,25 +321,23 @@ export default async function () {
     searchDuration.add(Date.now() - searchStart);
 
     // Step 4: Add to cart
-    await page.locator('[data-testid="product-card"]:first-child button').click();
-    await page.waitForSelector('[data-testid="cart-count"]:has-text("1")');
+    await page.locator('[data-testid="product-card"]').first().locator('button').click();
+    await page.locator('[data-testid="cart-count"]', { hasText: '1' }).waitFor();
 
     // Step 5: Checkout
     const checkoutStart = Date.now();
 
     await page.locator('[data-testid="cart-icon"]').click();
     await page.waitForSelector('[data-testid="cart-drawer"]');
-    await page.locator('button:has-text("Checkout")').click();
+    await page.getByText('Checkout', { exact: true }).click();
 
     await page.waitForSelector('[data-testid="checkout-form"]');
 
     checkoutDuration.add(Date.now() - checkoutStart);
 
-    check(page, {
-      'checkout page loaded': async (p) => {
-        const form = await p.locator('[data-testid="checkout-form"]').isVisible();
-        return form;
-      },
+    const checkoutFormVisible = await page.locator('[data-testid="checkout-form"]').isVisible();
+    check(checkoutFormVisible, {
+      'checkout page loaded': (visible) => visible,
     });
 
     // Simulate user reading the page
@@ -373,6 +387,8 @@ Persist login state across iterations to test authenticated user flows.
 import { browser } from 'k6/browser';
 import { check } from 'k6';
 
+let authCookies;
+
 export const options = {
   scenarios: {
     authenticated: {
@@ -388,9 +404,10 @@ export const options = {
   },
 };
 
-export async function setup() {
-  // Perform login once and save browser context
-  const page = await browser.newPage();
+async function loginAndGetCookies() {
+  // Perform login once per VU and save browser context cookies
+  const context = await browser.newContext();
+  const page = await context.newPage();
 
   await page.goto('https://app.example.com/login');
   await page.locator('#email').fill('test@example.com');
@@ -401,18 +418,23 @@ export async function setup() {
   await page.waitForSelector('[data-testid="dashboard"]');
 
   // Export cookies/storage state
-  const cookies = await page.context().cookies();
+  const cookies = await context.cookies();
 
   await page.close();
+  await context.close();
 
-  return { cookies };
+  return cookies;
 }
 
-export default async function (data) {
+export default async function () {
+  if (!authCookies) {
+    authCookies = await loginAndGetCookies();
+  }
+
   const context = await browser.newContext();
 
   // Restore authentication state
-  await context.addCookies(data.cookies);
+  await context.addCookies(authCookies);
 
   const page = await context.newPage();
 
@@ -421,11 +443,9 @@ export default async function (data) {
     await page.goto('https://app.example.com/dashboard');
     await page.waitForLoadState('networkidle');
 
-    check(page, {
-      'dashboard loaded': async (p) => {
-        const dashboard = await p.locator('[data-testid="dashboard"]').isVisible();
-        return dashboard;
-      },
+    const dashboardVisible = await page.locator('[data-testid="dashboard"]').isVisible();
+    check(dashboardVisible, {
+      'dashboard loaded': (visible) => visible,
     });
 
     // Perform authenticated actions
@@ -506,7 +526,7 @@ export async function browserTest() {
     });
 
     // Interact with the page
-    await page.locator('[data-testid="product-card"]:first-child').click();
+    await page.locator('[data-testid="product-card"]').first().click();
     await page.waitForSelector('[data-testid="product-detail"]');
 
   } finally {
@@ -517,40 +537,21 @@ export async function browserTest() {
 }
 ```
 
-## Network Throttling
+## Network Conditions
 
-Simulate various network conditions to test real-world performance.
+Simulate offline behavior in browser tests. For bandwidth and latency throttling, use operating-system network shaping or a proxy outside the k6 browser API.
 
 ```javascript
 // network-conditions.js
 import { browser } from 'k6/browser';
-import { Trend } from 'k6/metrics';
-
-const pageLoadTime = new Trend('page_load_time_ms');
-
-// Network condition presets
-const networkConditions = {
-  fast3G: {
-    downloadThroughput: 1.5 * 1024 * 1024 / 8,  // 1.5 Mbps
-    uploadThroughput: 750 * 1024 / 8,            // 750 Kbps
-    latency: 100,
-  },
-  slow3G: {
-    downloadThroughput: 500 * 1024 / 8,          // 500 Kbps
-    uploadThroughput: 250 * 1024 / 8,            // 250 Kbps
-    latency: 300,
-  },
-  offline: {
-    offline: true,
-  },
-};
+import { check } from 'k6';
 
 export const options = {
   scenarios: {
-    throttled_test: {
+    offline_test: {
       executor: 'shared-iterations',
       vus: 1,
-      iterations: 3,
+      iterations: 1,
       options: {
         browser: {
           type: 'chromium',
@@ -565,19 +566,25 @@ export default async function () {
   const page = await context.newPage();
 
   try {
-    // Apply network throttling
-    const cdp = await context.newCDPSession(page);
-    await cdp.send('Network.emulateNetworkConditions', networkConditions.fast3G);
-
-    const startTime = Date.now();
-
     await page.goto('https://example.com');
     await page.waitForLoadState('networkidle');
 
-    const loadTime = Date.now() - startTime;
-    pageLoadTime.add(loadTime);
+    // Simulate going offline
+    await context.setOffline(true);
 
-    console.log(`Page loaded in ${loadTime}ms on throttled connection`);
+    let offlineError = null;
+    try {
+      await page.goto('https://example.com/offline-check');
+    } catch (error) {
+      offlineError = error;
+    }
+
+    check(offlineError, {
+      'navigation fails while offline': (error) => error !== null,
+    });
+
+    // Restore connectivity before continuing or closing the context
+    await context.setOffline(false);
 
   } finally {
     await page.close();
@@ -603,8 +610,6 @@ export const options = {
       options: {
         browser: {
           type: 'chromium',
-          // Run with visible browser for debugging
-          headless: __ENV.HEADLESS !== 'false',
         },
       },
     },
@@ -641,10 +646,10 @@ Run in different modes:
 k6 run browser-modes.js
 
 # Headed for debugging
-k6 run -e HEADLESS=false -e DEBUG=true browser-modes.js
+K6_BROWSER_HEADLESS=false k6 run -e DEBUG=true browser-modes.js
 ```
 
-Resource Usage Considerations
+## Resource Usage Considerations
 
 Browser tests consume significantly more resources than protocol tests.
 
@@ -669,14 +674,6 @@ export const options = {
       options: {
         browser: {
           type: 'chromium',
-          // Reduce resource usage
-          args: [
-            '--disable-gpu',
-            '--disable-dev-shm-usage',
-            '--disable-extensions',
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-          ],
         },
       },
     },
@@ -714,6 +711,12 @@ export default async function () {
     await context.close();
   }
 }
+```
+
+Run with extra Chromium arguments only when your environment needs them:
+
+```bash
+K6_BROWSER_ARGS='disable-gpu,disable-dev-shm-usage,disable-extensions' k6 run resource-aware.js
 ```
 
 ---
