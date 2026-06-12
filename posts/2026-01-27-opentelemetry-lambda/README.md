@@ -36,7 +36,7 @@ OpenTelemetry addresses these by:
 
 ## Lambda Layers for OpenTelemetry
 
-AWS provides official OpenTelemetry Lambda layers that bundle the SDK, auto-instrumentation, and collector. Using layers avoids bloating your deployment package and simplifies updates.
+AWS provides official OpenTelemetry Lambda layers that bundle the SDK and auto-instrumentation. Using layers avoids bloating your deployment package and simplifies updates. If you need custom collector pipelines, add the separate OpenTelemetry Collector Lambda layer.
 
 ### Available Layers
 
@@ -44,12 +44,12 @@ AWS maintains layers for multiple runtimes:
 
 | Runtime | Layer ARN Pattern |
 |---------|-------------------|
-| Python 3.9+ | `arn:aws:lambda:{region}:901920570463:layer:aws-otel-python-{arch}-ver-1-25-0:1` |
-| Node.js 18+ | `arn:aws:lambda:{region}:901920570463:layer:aws-otel-nodejs-{arch}-ver-1-18-1:1` |
-| Java 11+ | `arn:aws:lambda:{region}:901920570463:layer:aws-otel-java-wrapper-{arch}-ver-1-32-0:1` |
-| Collector | `arn:aws:lambda:{region}:901920570463:layer:aws-otel-collector-{arch}-ver-0-98-0:1` |
+| Python 3.8+ | `arn:aws:lambda:{region}:{account}:layer:AWSOpenTelemetryDistroPython:{version}` |
+| Node.js 18+ | `arn:aws:lambda:{region}:{account}:layer:AWSOpenTelemetryDistroJs:{version}` |
+| Java 11+ | `arn:aws:lambda:{region}:{account}:layer:AWSOpenTelemetryDistroJava:{version}` |
+| Collector | Use the OpenTelemetry Collector Lambda layer release ARN for your region |
 
-Replace `{region}` with your AWS region and `{arch}` with `amd64` or `arm64`.
+Replace `{region}`, `{account}`, and `{version}` with the values published for your AWS region. For example, in `us-east-1`, current ARNs include `arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroPython:28` for Python and `arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroJs:14` for Node.js.
 
 ### Adding Layers via CloudFormation
 
@@ -66,9 +66,7 @@ Resources:
       # Attach OpenTelemetry layers for instrumentation
       Layers:
         # Python auto-instrumentation layer
-        - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-python-amd64-ver-1-25-0:1
-        # Collector layer for exporting telemetry
-        - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-collector-amd64-ver-0-98-0:1
+        - arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroPython:28
       Environment:
         Variables:
           # Enable the wrapper script that initializes OpenTelemetry
@@ -95,9 +93,7 @@ resource "aws_lambda_function" "traced_function" {
   # Attach OpenTelemetry layers
   layers = [
     # Node.js auto-instrumentation layer
-    "arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-18-1:1",
-    # Collector layer for exporting telemetry
-    "arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-collector-amd64-ver-0-98-0:1"
+    "arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroJs:14"
   ]
 
   environment {
@@ -128,7 +124,7 @@ When using the Python layer with `AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument`,
 - Lambda handler invocations
 - AWS SDK calls (DynamoDB, S3, SQS, SNS, etc.)
 - HTTP requests via `requests`, `urllib3`, `httpx`
-- Database calls via `psycopg2`, `pymysql`, `boto3`
+- Additional libraries such as database clients when their instrumentation is enabled and the libraries are present
 
 ```python
 # app.py
@@ -169,13 +165,13 @@ The Node.js layer automatically instruments:
 - Lambda handler invocations
 - AWS SDK v2 and v3 calls
 - HTTP/HTTPS requests
-- Express, Fastify (if bundled)
-- Database clients (pg, mysql2, mongodb)
+- Additional libraries such as Express, Fastify, and database clients when their instrumentation is enabled and the libraries are bundled
 
 ```javascript
 // index.js
 // No OpenTelemetry imports needed - auto-instrumentation handles everything
 
+const https = require('node:https');
 const { DynamoDBClient, GetItemCommand } = require('@aws-sdk/client-dynamodb');
 
 // Initialize client outside handler for connection reuse across invocations
@@ -193,9 +189,8 @@ exports.handler = async (event) => {
     Key: { user_id: { S: event.user_id } }
   }));
 
-  // This fetch call is automatically traced
-  const enrichment = await fetch(`https://api.example.com/enrich?id=${event.user_id}`);
-  const enrichmentData = await enrichment.json();
+  // This HTTPS request is automatically traced
+  const enrichmentData = await getJson(`https://api.example.com/enrich?id=${event.user_id}`);
 
   return {
     statusCode: 200,
@@ -205,6 +200,20 @@ exports.handler = async (event) => {
     })
   };
 };
+
+function getJson(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      let body = '';
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+      res.on('end', () => {
+        resolve(JSON.parse(body));
+      });
+    }).on('error', reject);
+  });
+}
 ```
 
 ---
@@ -406,7 +415,7 @@ async function calculatePricing(items) {
 
 ## Exporter Configuration
 
-Lambda functions need efficient exporters that minimize latency impact. The collector layer handles batching and export, but you control where traces go.
+Lambda functions need efficient exporters that minimize latency impact. The ADOT layer handles trace export, and a separate collector layer can handle batching and routing when you need collector pipelines.
 
 ### Environment Variables for Export
 
@@ -461,7 +470,7 @@ processors:
 
 exporters:
   # Export to OneUptime via OTLP
-  otlp:
+  otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
@@ -471,13 +480,13 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [otlp]
+      exporters: [otlphttp]
 ```
 
 Set the environment variable to use your custom config:
 
 ```bash
-OPENTELEMETRY_COLLECTOR_CONFIG_FILE=/var/task/collector.yaml
+OPENTELEMETRY_COLLECTOR_CONFIG_URI=/var/task/collector.yaml
 ```
 
 ---
@@ -667,22 +676,20 @@ receivers:
 
 exporters:
   # Send to OneUptime
-  otlp/oneuptime:
+  otlphttp/oneuptime:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
-  # Also send to X-Ray via AWS OTLP endpoint
-  otlp/xray:
-    endpoint: https://xray.${AWS_REGION}.amazonaws.com
-    headers:
-      # Uses Lambda execution role credentials automatically
+  # Also send to X-Ray using the AWS X-Ray exporter
+  awsxray:
+    region: ${AWS_REGION}
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlp/oneuptime, otlp/xray]
+      exporters: [otlphttp/oneuptime, awsxray]
 ```
 
 ### X-Ray ID Format Conversion
@@ -691,6 +698,8 @@ X-Ray uses a different trace ID format. The OpenTelemetry X-Ray ID generator cre
 
 ```python
 # telemetry.py
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.extension.aws.trace import AwsXRayIdGenerator
 
@@ -747,6 +756,9 @@ Resource Attributes
 Always set these resource attributes for Lambda functions:
 
 ```python
+import os
+from opentelemetry.sdk.resources import Resource
+
 resource = Resource.create({
     'service.name': 'order-service',          # Your service name
     'service.version': '1.2.3',               # Deployment version
@@ -776,7 +788,7 @@ OTEL_TRACES_SAMPLER_ARG=0.1
 
 1. Verify `AWS_LAMBDA_EXEC_WRAPPER` is set to `/opt/otel-instrument`
 2. Check OTLP endpoint and authentication headers
-3. Ensure layers are attached in the correct order (instrumentation, then collector)
+3. If you use a collector layer, ensure `OPENTELEMETRY_COLLECTOR_CONFIG_URI` points to a valid collector config
 4. Review CloudWatch logs for OpenTelemetry errors
 
 ### High Latency
