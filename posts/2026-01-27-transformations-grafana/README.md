@@ -82,7 +82,7 @@ Collapse multiple rows into a single summary.
 ```yaml
 Transformation: Reduce
 Configuration:
-  Mode: Reduce rows
+  Mode: Series to rows
   Calculations: [Last, Mean, Max, Min]
 ```
 
