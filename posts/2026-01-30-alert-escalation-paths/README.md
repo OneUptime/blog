@@ -190,11 +190,12 @@ def create_escalation_policy(api_key: str) -> dict:
     The policy has three levels:
     1. Primary on-call (5 min timeout)
     2. Secondary on-call (10 min timeout)
-    3. Engineering manager (no timeout - final level)
+    3. Engineering manager (15 min timeout before the policy loops or ends)
     """
 
     headers = {
         "Authorization": f"Token token={api_key}",
+        "Accept": "application/vnd.pagerduty+json;version=2",
         "Content-Type": "application/json"
     }
 
@@ -233,8 +234,8 @@ def create_escalation_policy(api_key: str) -> dict:
                 },
                 {
                     # Level 3: Engineering Manager
-                    # No delay needed as this is the final level
-                    "escalation_delay_in_minutes": 0,
+                    # Delay before the policy loops or stops
+                    "escalation_delay_in_minutes": 15,
                     "targets": [
                         {
                             "type": "user_reference",
@@ -261,6 +262,9 @@ def create_escalation_policy(api_key: str) -> dict:
 # Configure user notification rules for multi-channel alerting
 # This ensures responders are notified through multiple channels
 
+import requests
+import json
+
 def configure_user_notifications(
     api_key: str,
     user_id: str
@@ -276,6 +280,7 @@ def configure_user_notifications(
 
     headers = {
         "Authorization": f"Token token={api_key}",
+        "Accept": "application/vnd.pagerduty+json;version=2",
         "Content-Type": "application/json"
     }
 
@@ -408,9 +413,9 @@ resource "pagerduty_escalation_policy" "production" {
     }
   }
 
-  # Level 4: VP Engineering (final level)
+  # Level 4: VP Engineering
   rule {
-    escalation_delay_in_minutes = 0
+    escalation_delay_in_minutes = 15
 
     target {
       type = "user_reference"
@@ -561,15 +566,17 @@ Regular testing ensures your escalation paths work when you need them:
 
 # Configuration
 PAGERDUTY_API_KEY="${PAGERDUTY_API_KEY}"
+PAGERDUTY_FROM_EMAIL="${PAGERDUTY_FROM_EMAIL}"
 SERVICE_ID="YOUR_SERVICE_ID"
-TEST_ROUTING_KEY="YOUR_INTEGRATION_KEY"
 
 # Create a test incident
 echo "Creating test incident..."
 
 curl -X POST \
   -H "Authorization: Token token=${PAGERDUTY_API_KEY}" \
+  -H "Accept: application/vnd.pagerduty+json;version=2" \
   -H "Content-Type: application/json" \
+  -H "From: ${PAGERDUTY_FROM_EMAIL}" \
   -d '{
     "incident": {
       "type": "incident",
