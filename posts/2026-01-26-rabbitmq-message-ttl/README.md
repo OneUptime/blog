@@ -271,14 +271,14 @@ channel.basic_publish(
 
 ### Per-Message TTL Expiration Order
 
-Messages with per-message TTL only expire when they reach the head of the queue:
+Expired messages with per-message TTL are only removed or dead-lettered when they reach the head of the queue:
 
 ```python
 # Message A: 30s TTL, published first
 # Message B: 5s TTL, published second
 
-# Even though B's TTL is shorter, it won't expire until A is consumed or expires
-# This is because expiration is checked only at queue head
+# Even though B's TTL is shorter, it may remain in queue statistics
+# until A is consumed or expires, because removal happens at queue head
 
 # Solution: Use separate queues for different TTL ranges
 # Or use queue-level TTL for predictable expiration
@@ -286,10 +286,10 @@ Messages with per-message TTL only expire when they reach the head of the queue:
 
 ### Zero TTL
 
-A TTL of 0 means the message expires immediately if not consumed:
+A TTL of 0 means the message expires immediately unless it can be delivered to a consumer right away:
 
 ```python
-# Message will be dead-lettered or discarded immediately if queue is empty
+# Message will be dead-lettered or discarded immediately if it cannot be delivered right away
 channel.basic_publish(
     exchange='',
     routing_key='queue',
@@ -425,7 +425,10 @@ def monitor_expirations(host, user, password):
     """Monitor messages being dead-lettered due to TTL"""
 
     # Consume from dead letter queue
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host))
+    credentials = pika.PlainCredentials(user, password)
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters(host, credentials=credentials)
+    )
     channel = connection.channel()
 
     def on_expired(ch, method, properties, body):
@@ -456,7 +459,7 @@ Track message expirations:
 ```yaml
 # Alert on high expiration rate
 - alert: HighMessageExpirationRate
-  expr: rate(rabbitmq_queue_messages_expired_total[5m]) > 100
+  expr: rate(rabbitmq_global_messages_dead_lettered_expired_total[5m]) > 100
   for: 5m
   labels:
     severity: warning
