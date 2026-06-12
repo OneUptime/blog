@@ -566,6 +566,8 @@ flowchart LR
 ```
 
 ```scala
+import scala.util.chaining.*
+
 object EventPipeline {
 
   // Step 1: Validate events (pure function)
