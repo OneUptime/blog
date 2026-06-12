@@ -63,7 +63,7 @@ Not all metrics are useful for capacity planning. Focus on resource utilization 
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 class MetricType(Enum):
     UTILIZATION = "utilization"      # CPU, memory, disk usage
@@ -150,7 +150,7 @@ class HistoricalMetricsStore:
         self.data.append(MetricDataPoint(
             metric_name=metric_name,
             value=value,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             labels=labels or {},
         ))
 
@@ -445,7 +445,7 @@ flowchart TD
 # event_correlation.py - Track business events and their capacity impact
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import statistics
 
 @dataclass
@@ -563,7 +563,7 @@ Regular capacity reports keep stakeholders informed and drive proactive planning
 ```python
 # capacity_report.py - Generate automated capacity reports
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict
 import json
 
@@ -583,7 +583,7 @@ def generate_capacity_report(
     """Generate a comprehensive capacity report."""
 
     if report_date is None:
-        report_date = datetime.utcnow()
+        report_date = datetime.now(timezone.utc)
 
     sections = []
     overall_status = "healthy"
