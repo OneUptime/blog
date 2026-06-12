@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby On Rail, Devise, Authentication, Security, User Management, Web Development
+Tags: Ruby on Rails, Devise, Authentication, Security, User Management, Web Development
 
 Description: Learn how to implement robust user authentication in Rails using Devise. This guide covers installation, configuration, customization, and security best practices with practical code examples.
 
@@ -152,6 +152,10 @@ class AddDeviseColumnsToUsers < ActiveRecord::Migration[7.0]
 end
 ```
 
+```bash
+rails db:migrate
+```
+
 ---
 
 ## Setting Up Routes
@@ -161,24 +165,21 @@ Devise adds routes automatically, but you can customize them:
 ```ruby
 # config/routes.rb
 Rails.application.routes.draw do
-  # Basic Devise routes
-  devise_for :users
-
-  # Custom paths
-  devise_for :users, path: 'auth', path_names: {
-    sign_in: 'login',
-    sign_out: 'logout',
-    sign_up: 'register',
-    password: 'forgot-password'
-  }
-
-  # Scoped controllers for customization
-  devise_for :users, controllers: {
-    sessions: 'users/sessions',
-    registrations: 'users/registrations',
-    passwords: 'users/passwords',
-    confirmations: 'users/confirmations'
-  }
+  # Basic Devise routes with custom paths and scoped controllers
+  devise_for :users,
+             path: 'auth',
+             path_names: {
+               sign_in: 'login',
+               sign_out: 'logout',
+               sign_up: 'register',
+               password: 'forgot-password'
+             },
+             controllers: {
+               sessions: 'users/sessions',
+               registrations: 'users/registrations',
+               passwords: 'users/passwords',
+               confirmations: 'users/confirmations'
+             }
 
   root 'home#index'
 end
@@ -466,6 +467,11 @@ For API-only Rails apps or mixed apps, use token-based authentication:
 
 ### Option 1: Simple Token Authentication
 
+```bash
+rails generate migration AddAuthenticationTokenToUsers authentication_token:string:uniq
+rails db:migrate
+```
+
 ```ruby
 # app/models/user.rb
 class User < ApplicationRecord
@@ -490,15 +496,17 @@ end
 # app/controllers/api/base_controller.rb
 module Api
   class BaseController < ActionController::API
+    include ActionController::HttpAuthentication::Token::ControllerMethods
+
     before_action :authenticate_api_user!
 
     private
 
     def authenticate_api_user!
-      # Check for token in header
-      token = request.headers['Authorization']&.gsub('Bearer ', '')
-
-      @current_user = User.find_by(authentication_token: token)
+      # Check for a Bearer token in the Authorization header
+      @current_user = authenticate_with_http_token do |token, _options|
+        User.find_by(authentication_token: token)
+      end
 
       unless @current_user
         render json: { error: 'Unauthorized' }, status: :unauthorized
@@ -519,6 +527,29 @@ end
 gem 'devise-jwt'
 ```
 
+Add the `jti` column required by the `JTIMatcher` revocation strategy:
+
+```bash
+rails generate migration AddJtiToUsers
+```
+
+```ruby
+# db/migrate/xxx_add_jti_to_users.rb
+class AddJtiToUsers < ActiveRecord::Migration[7.0]
+  def change
+    add_column :users, :jti, :string
+    User.reset_column_information
+    User.find_each { |user| user.update_column(:jti, SecureRandom.uuid) }
+    change_column_null :users, :jti, false
+    add_index :users, :jti, unique: true
+  end
+end
+```
+
+```bash
+rails db:migrate
+```
+
 ```ruby
 # config/initializers/devise.rb
 Devise.setup do |config|
@@ -531,6 +562,9 @@ Devise.setup do |config|
     jwt.revocation_requests = [
       ['DELETE', %r{^/api/logout$}]
     ]
+    jwt.request_formats = {
+      user: [:json]
+    }
     jwt.expiration_time = 1.day.to_i
   end
 end
@@ -778,35 +812,18 @@ Add flash message rendering to your layout:
 
 ### Turbo/Hotwire Compatibility
 
-For Rails 7 with Turbo, add this configuration:
+For Rails 7 with Turbo, ensure Devise treats Turbo requests as navigational and uses Turbo-compatible response statuses. These response status settings require the `responders` gem version 3.1.0 or higher:
 
 ```ruby
 # config/initializers/devise.rb
 Devise.setup do |config|
-  # Turbo requires 303 redirects for non-GET requests
+  # Treat Turbo requests as navigational
   config.navigational_formats = ['*/*', :html, :turbo_stream]
-end
-```
 
-```ruby
-# app/controllers/turbo_devise_controller.rb
-class TurboDeviseController < ApplicationController
-  class Responder < ActionController::Responder
-    def to_turbo_stream
-      controller.render(options.merge(formats: :html))
-    rescue ActionView::MissingTemplate => e
-      if get?
-        raise e
-      elsif has_errors? && default_action
-        render rendering_options.merge(formats: :html, status: :unprocessable_entity)
-      else
-        redirect_to navigation_location
-      end
-    end
-  end
-
-  self.responder = Responder
-  respond_to :html, :turbo_stream
+  # Turbo expects 422 responses for validation errors and 303 redirects
+  config.responder.error_status = :unprocessable_content # Rack 3.1 or higher
+  # config.responder.error_status = :unprocessable_entity # Rack 3.0 or lower
+  config.responder.redirect_status = :see_other
 end
 ```
 
