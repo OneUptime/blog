@@ -95,7 +95,8 @@ Let's build a real application. We'll create a notification system where differe
 ```bash
 mkdir redis-pubsub-demo && cd redis-pubsub-demo
 npm init -y
-npm install redis
+npm pkg set type=module
+npm install redis ws
 ```
 
 ### The Publisher
@@ -390,6 +391,10 @@ await publisher.publish('users.created', JSON.stringify({
 
 Python developers often prefer the `redis-py` library. Here's the same pattern:
 
+```bash
+pip install redis
+```
+
 ```python
 # publisher.py
 # Publishes events to Redis channels
@@ -397,7 +402,7 @@ Python developers often prefer the `redis-py` library. Here's the same pattern:
 import redis
 import json
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 
 # Create Redis connection
 # Publishers can reuse the connection for other operations
@@ -412,7 +417,7 @@ def publish_event(channel: str, event: dict) -> int:
     Publish an event to a Redis channel.
     Returns the number of subscribers that received the message.
     """
-    event['timestamp'] = datetime.utcnow().isoformat()
+    event['timestamp'] = datetime.now(UTC).isoformat()
     message = json.dumps(event)
 
     subscriber_count = redis_client.publish(channel, message)
@@ -736,8 +741,7 @@ class ResilientSubscriber {
             this.isConnected = true;
             this.retryCount = 0;
 
-            // Resubscribe to all channels after reconnection
-            await this.resubscribeAll();
+            // node-redis automatically re-registers active listeners after reconnecting.
         });
 
         this.client.on('error', (err) => {
@@ -769,21 +773,6 @@ class ResilientSubscriber {
         if (this.isConnected) {
             await this.client.pSubscribe(pattern, handler);
             console.log(`Pattern subscribed to: ${pattern}`);
-        }
-    }
-
-    async resubscribeAll() {
-        // Restore all subscriptions after reconnection
-        console.log('Restoring subscriptions...');
-
-        for (const [key, value] of this.subscriptions) {
-            if (key.startsWith('pattern:')) {
-                await this.client.pSubscribe(value.pattern, value.handler);
-                console.log(`  Restored pattern: ${value.pattern}`);
-            } else {
-                await this.client.subscribe(key, value);
-                console.log(`  Restored channel: ${key}`);
-            }
         }
     }
 
