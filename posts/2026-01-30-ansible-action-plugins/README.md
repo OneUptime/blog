@@ -91,7 +91,7 @@ class ActionModule(ActionBase):
             dict: Result dictionary with keys like 'changed', 'failed', 'msg'
         """
         # Always call the parent run method first
-        # This handles common setup and returns a base result dict
+        # This handles common setup and returns the initial result dict
         result = super(ActionModule, self).run(tmp, task_vars)
 
         # Initialize task_vars if not provided
@@ -271,7 +271,7 @@ class ActionModule(ActionBase):
         # Execute the stat module on the remote host to get remote file info
         stat_result = self._execute_module(
             module_name='ansible.builtin.stat',
-            module_args={'path': dest, 'checksum_algorithm': 'sha256'},
+            module_args={'path': dest, 'checksum_algorithm': 'sha1'},
             task_vars=task_vars
         )
 
@@ -301,12 +301,12 @@ class ActionModule(ActionBase):
         return result
 
     def _calculate_checksum(self, path):
-        """Calculate SHA256 checksum of a local file."""
-        sha256_hash = hashlib.sha256()
+        """Calculate SHA1 checksum of a local file."""
+        sha1_hash = hashlib.sha1()
         with open(path, 'rb') as f:
             for chunk in iter(lambda: f.read(4096), b''):
-                sha256_hash.update(chunk)
-        return sha256_hash.hexdigest()
+                sha1_hash.update(chunk)
+        return sha1_hash.hexdigest()
 ```
 
 ## Transferring Files to Remote Hosts
@@ -414,6 +414,8 @@ class ActionModule(ActionBase):
     Deploys application with async support for long-running operations.
     """
 
+    _supports_async = True
+
     def run(self, tmp=None, task_vars=None):
         result = super(ActionModule, self).run(tmp, task_vars)
 
@@ -488,6 +490,7 @@ Action plugins interact with connection plugins through `self._connection`. This
 # action_plugins/connection_aware.py
 from ansible.plugins.action import ActionBase
 from ansible.errors import AnsibleError
+from ansible.module_utils.common.text.converters import to_text
 
 
 class ActionModule(ActionBase):
@@ -506,7 +509,7 @@ class ActionModule(ActionBase):
             task_vars = {}
 
         # Get connection type
-        connection_type = self._connection._shell.SHELL_FAMILY
+        connection_type = self._connection.transport
 
         # Check if connection is supported
         if connection_type not in self._VALID_CONNECTIONS:
@@ -523,8 +526,8 @@ class ActionModule(ActionBase):
         rc, stdout, stderr = self._connection.exec_command(cmd)
 
         result['rc'] = rc
-        result['stdout'] = stdout.read().decode('utf-8')
-        result['stderr'] = stderr.read().decode('utf-8')
+        result['stdout'] = to_text(stdout)
+        result['stderr'] = to_text(stderr)
         result['changed'] = False
 
         if rc != 0:
@@ -559,10 +562,10 @@ class ActionModule(ActionBase):
         updates = self._task.args.get('updates', {})
 
         # Check if running in check mode
-        check_mode = self._play_context.check_mode
+        check_mode = self._task.check_mode
 
         # Check if diff mode is enabled
-        diff_mode = self._play_context.diff
+        diff_mode = self._task.diff
 
         # Get current configuration from remote host
         current_config = self._get_remote_config(config_file, task_vars)
@@ -741,6 +744,7 @@ class TestMyAction:
 
         # Mock the connection
         connection = MagicMock()
+        connection.transport = 'local'
         connection._shell.SHELL_FAMILY = 'sh'
         connection._shell.join_path = lambda *args: '/'.join(args)
 
@@ -793,7 +797,7 @@ class TestMyAction:
 
     def test_check_mode(self, action_plugin):
         """Test check mode behavior."""
-        action_plugin._play_context.check_mode = True
+        action_plugin._task.check_mode = True
         action_plugin._task.args = {'param1': 'value1'}
 
         result = action_plugin.run(task_vars={})
@@ -860,7 +864,7 @@ class TestMyActionIntegration:
 
 ## Complete Example: Database Migration Action Plugin
 
-Here is a complete, production-ready action plugin that handles database migrations.
+Here is a larger illustrative action plugin that handles database migrations.
 
 ```python
 # action_plugins/db_migrate.py
@@ -884,7 +888,7 @@ short_description: Execute database migrations
 description:
     - Runs database migrations from the control node
     - Tracks migration state on remote hosts
-    - Supports rollback operations
+    - Includes a rollback placeholder for application-specific down migrations
 options:
     migrations_dir:
         description: Path to migrations directory
@@ -978,7 +982,7 @@ class ActionModule(ActionBase):
         result = self._execute_module(
             module_name='community.postgresql.postgresql_query',
             module_args={
-                'db': database,
+                'login_db': database,
                 'query': query
             },
             task_vars=task_vars
@@ -1005,7 +1009,7 @@ class ActionModule(ActionBase):
             }
 
         # Check mode
-        if self._play_context.check_mode:
+        if self._task.check_mode:
             return {
                 'changed': True,
                 'msg': f'{len(pending)} migrations would be applied',
@@ -1022,7 +1026,7 @@ class ActionModule(ActionBase):
             exec_result = self._execute_module(
                 module_name='community.postgresql.postgresql_query',
                 module_args={
-                    'db': database,
+                    'login_db': database,
                     'query': sql_content
                 },
                 task_vars=task_vars
@@ -1053,23 +1057,27 @@ class ActionModule(ActionBase):
         """Rollback specified number of migrations."""
         to_rollback = applied[-count:]
 
-        if self._play_context.check_mode:
+        if self._task.check_mode:
             return {
                 'changed': bool(to_rollback),
                 'msg': f'{len(to_rollback)} migrations would be rolled back',
                 'rollback': [m['name'] for m in to_rollback]
             }
 
-        rolled_back = []
-        for migration in reversed(to_rollback):
-            # Execute rollback
-            self._remove_migration_record(migration['name'], database, task_vars)
-            rolled_back.append(migration['name'])
+        if to_rollback:
+            return {
+                'failed': True,
+                'msg': (
+                    'Rollback SQL is application-specific. Execute the matching '
+                    'down migration before removing migration records.'
+                ),
+                'rollback': [m['name'] for m in to_rollback]
+            }
 
         return {
-            'changed': bool(rolled_back),
-            'msg': f'Rolled back {len(rolled_back)} migrations',
-            'rolled_back': rolled_back
+            'changed': False,
+            'msg': 'No migrations to roll back',
+            'rolled_back': []
         }
 
     def _record_migration(self, name, checksum, database, task_vars):
@@ -1081,7 +1089,7 @@ class ActionModule(ActionBase):
         self._execute_module(
             module_name='community.postgresql.postgresql_query',
             module_args={
-                'db': database,
+                'login_db': database,
                 'query': query,
                 'positional_args': [name, checksum]
             },
@@ -1094,7 +1102,7 @@ class ActionModule(ActionBase):
         self._execute_module(
             module_name='community.postgresql.postgresql_query',
             module_args={
-                'db': database,
+                'login_db': database,
                 'query': query,
                 'positional_args': [name]
             },
@@ -1138,10 +1146,10 @@ class ActionModule(ActionBase):
         # Debug specific variables
         display.vvv(f"Task args: {self._task.args}")
         display.vvv(f"Connection type: {self._connection.transport}")
-        display.vvv(f"Check mode: {self._play_context.check_mode}")
+        display.vvv(f"Check mode: {self._task.check_mode}")
 
         # Include debug info in result for inspection
-        if self._play_context.verbosity >= 3:
+        if display.verbosity >= 3:
             result['_debug'] = {
                 'task_args': dict(self._task.args),
                 'inventory_hostname': task_vars.get('inventory_hostname'),
