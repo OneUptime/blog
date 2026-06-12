@@ -84,7 +84,8 @@ kubectl create namespace cattle-resources-system
 # Install the backup operator chart
 # The operator handles backup/restore operations
 helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
-  -n cattle-resources-system
+  -n cattle-resources-system \
+  --create-namespace
 
 # Install the operator itself
 helm install rancher-backup rancher-charts/rancher-backup \
@@ -129,11 +130,9 @@ kind: Backup
 metadata:
   name: rancher-backup-local
 spec:
-  # Store backup in the default PVC created during operator installation
-  storageLocation:
-    s3: null
-  # ResourceSet defines what to backup (default includes all Rancher resources)
-  resourceSetName: rancher-resource-set
+  # Omit storageLocation to use the default PVC configured during operator installation
+  # rancher-resource-set-basic excludes secrets; use full when you need a complete Rancher restore
+  resourceSetName: rancher-resource-set-basic
   # Retention policy - keep backups for 7 days
   retentionCount: 7
 ```
@@ -181,13 +180,13 @@ spec:
       folder: rancher
       # AWS region where bucket is located
       region: us-east-1
-      # S3 endpoint - leave empty for AWS, set for MinIO/other
-      endpoint: ""
+      # S3 endpoint - set the AWS regional endpoint or your S3-compatible endpoint
+      endpoint: s3.us-east-1.amazonaws.com
       # Reference to the credentials secret
       credentialSecretName: s3-credentials
       credentialSecretNamespace: cattle-resources-system
-  # Include all Rancher resources in backup
-  resourceSetName: rancher-resource-set
+  # Include essential Rancher secrets and resources in backup
+  resourceSetName: rancher-resource-set-full
   # Keep the last 30 backups
   retentionCount: 30
 ```
@@ -209,15 +208,13 @@ spec:
     s3:
       bucketName: rancher-backups
       folder: production
-      # MinIO typically doesn't use regions, but field is required
-      region: us-east-1
       # MinIO service endpoint - use internal Kubernetes DNS
       endpoint: "minio.minio-system.svc.cluster.local:9000"
       # MinIO may use self-signed certs
       insecureTLSSkipVerify: true
       credentialSecretName: minio-credentials
       credentialSecretNamespace: cattle-resources-system
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 30
 ```
 
@@ -243,7 +240,7 @@ spec:
       region: us-east-1
       credentialSecretName: s3-credentials
       credentialSecretNamespace: cattle-resources-system
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   # Cron schedule: minute hour day month weekday
   # This runs at 02:00 UTC every day
   schedule: "0 2 * * *"
@@ -269,7 +266,7 @@ spec:
       region: us-east-1
       credentialSecretName: s3-credentials
       credentialSecretNamespace: cattle-resources-system
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   # Run every hour at minute 0
   schedule: "0 * * * *"
   # Keep 168 hourly backups (7 days worth)
@@ -294,7 +291,7 @@ spec:
       region: us-east-1
       credentialSecretName: s3-credentials
       credentialSecretNamespace: cattle-resources-system
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   # Run at 03:00 UTC every Sunday (day 0)
   schedule: "0 3 * * 0"
   # Keep 52 weekly backups (1 year)
@@ -348,7 +345,7 @@ spec:
       region: us-east-1
       credentialSecretName: s3-credentials
       credentialSecretNamespace: cattle-resources-system
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   # Reference to the encryption configuration secret
   encryptionConfigSecretName: backup-encryption-config
   schedule: "0 2 * * *"
@@ -413,7 +410,7 @@ metadata:
 spec:
   # Exact filename of the backup to restore
   # Find this by listing your S3 bucket
-  backupFilename: rancher-daily-backup-2026-01-27T02-00-00Z.tar.gz
+  backupFilename: rancher-daily-backup-752ecd87-d958-4d20-8350-072f8d090045-2026-01-27T02-00-00Z.tar.gz
   storageLocation:
     s3:
       bucketName: my-rancher-backups
@@ -512,6 +509,7 @@ If you lose the entire Rancher management cluster:
 # (Using your preferred method: RKE2, K3s, etc.)
 
 # 2. Install Rancher on the new cluster
+# Use the same Rancher version that created the backup.
 helm repo add rancher-latest https://releases.rancher.com/server-charts/latest
 helm install rancher rancher-latest/rancher \
   --namespace cattle-system \
@@ -520,6 +518,8 @@ helm install rancher rancher-latest/rancher \
   --set bootstrapPassword=admin
 
 # 3. Install the backup operator
+helm repo add rancher-charts https://charts.rancher.io
+helm repo update
 helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
   -n cattle-resources-system --create-namespace
 helm install rancher-backup rancher-charts/rancher-backup \
@@ -608,9 +608,40 @@ spec:
       region: us-east-1
       credentialSecretName: s3-credentials
       credentialSecretNamespace: cattle-resources-system
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   schedule: "0 2 * * *"
   retentionCount: 30
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-heartbeat
+  namespace: cattle-resources-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: backup-heartbeat
+rules:
+- apiGroups:
+  - resources.cattle.io
+  resources:
+  - backups
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: backup-heartbeat
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: backup-heartbeat
+subjects:
+- kind: ServiceAccount
+  name: backup-heartbeat
+  namespace: cattle-resources-system
 ---
 # CronJob to ping OneUptime after backup completes
 apiVersion: batch/v1
@@ -625,9 +656,10 @@ spec:
     spec:
       template:
         spec:
+          serviceAccountName: backup-heartbeat
           containers:
           - name: heartbeat
-            image: curlimages/curl:latest
+            image: alpine/k8s:1.30.2
             command:
             - /bin/sh
             - -c
