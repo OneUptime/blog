@@ -91,7 +91,12 @@ pulumi.runtime.setMocks({
 });
 
 // NOW import the infrastructure code after mocks are configured
-import { dataBucket, logBucket, bucketPolicy } from "../index";
+import {
+    dataBucketVersioning,
+    dataBucketPublicAccessBlock,
+    logBucketLifecycleConfiguration,
+    bucketPolicy,
+} from "../index";
 
 describe("S3 Infrastructure", () => {
     // Helper to extract values from Pulumi Outputs
@@ -102,19 +107,19 @@ describe("S3 Infrastructure", () => {
 
     test("data bucket has versioning enabled", async () => {
         // Verify versioning is configured for data integrity
-        const versioning = await getOutput(dataBucket.versioning);
-        expect(versioning?.enabled).toBe(true);
+        const versioning = await getOutput(dataBucketVersioning.versioningConfiguration);
+        expect(versioning?.status).toBe("Enabled");
     });
 
     test("data bucket blocks public access", async () => {
         // Security requirement: all buckets must block public access
-        const publicAccess = await getOutput(dataBucket.blockPublicAcls);
+        const publicAccess = await getOutput(dataBucketPublicAccessBlock.blockPublicAcls);
         expect(publicAccess).toBe(true);
     });
 
     test("log bucket has lifecycle rules for cost management", async () => {
         // Logs should expire after retention period to control costs
-        const lifecycleRules = await getOutput(logBucket.lifecycleRules);
+        const lifecycleRules = await getOutput(logBucketLifecycleConfiguration.rules);
         expect(lifecycleRules).toBeDefined();
         expect(lifecycleRules?.length).toBeGreaterThan(0);
 
@@ -306,6 +311,7 @@ if __name__ == "__main__":
 package main
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
@@ -389,6 +395,9 @@ func (m *mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 
 // TestS3BucketConfiguration validates S3 bucket settings
 func TestS3BucketConfiguration(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+
 	// Run infrastructure code with mocks
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		// Call your infrastructure function
@@ -399,31 +408,39 @@ func TestS3BucketConfiguration(t *testing.T) {
 
 		// Test versioning is enabled
 		// Use ApplyT to transform and test Output values
-		pulumi.All(infra.DataBucket.Versioning).ApplyT(
+		pulumi.All(infra.DataBucketVersioning.VersioningConfiguration).ApplyT(
 			func(args []interface{}) error {
 				versioning := args[0].(map[string]interface{})
-				assert.True(t, versioning["enabled"].(bool),
+				assert.Equal(t, "Enabled", versioning["status"].(string),
 					"Data bucket must have versioning enabled")
+				wg.Done()
 				return nil
 			})
 
 		// Test encryption is configured
-		pulumi.All(infra.DataBucket.ServerSideEncryptionConfiguration).ApplyT(
+		pulumi.All(infra.DataBucketEncryption.Rules).ApplyT(
 			func(args []interface{}) error {
 				encryption := args[0]
 				assert.NotNil(t, encryption,
 					"Data bucket must have server-side encryption")
+				wg.Done()
 				return nil
 			})
 
 		return nil
 	}, pulumi.WithMocks("project", "stack", &mocks{}))
 
+	if err == nil {
+		wg.Wait()
+	}
 	assert.NoError(t, err)
 }
 
 // TestDatabaseConfiguration validates RDS cluster settings
 func TestDatabaseConfiguration(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(3)
+
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		infra, err := NewInfrastructure(ctx, "test")
 		if err != nil {
@@ -434,6 +451,7 @@ func TestDatabaseConfiguration(t *testing.T) {
 		infra.Database.StorageEncrypted.ApplyT(func(encrypted bool) error {
 			assert.True(t, encrypted,
 				"Database must have storage encryption enabled")
+			wg.Done()
 			return nil
 		})
 
@@ -441,6 +459,7 @@ func TestDatabaseConfiguration(t *testing.T) {
 		infra.Database.BackupRetentionPeriod.ApplyT(func(days int) error {
 			assert.GreaterOrEqual(t, days, 7,
 				"Backup retention must be at least 7 days")
+			wg.Done()
 			return nil
 		})
 
@@ -449,17 +468,24 @@ func TestDatabaseConfiguration(t *testing.T) {
 			// This would be conditional based on stack name in real code
 			assert.True(t, protected,
 				"Production database must have deletion protection")
+			wg.Done()
 			return nil
 		})
 
 		return nil
 	}, pulumi.WithMocks("project", "prod", &mocks{}))
 
+	if err == nil {
+		wg.Wait()
+	}
 	assert.NoError(t, err)
 }
 
 // TestSecurityGroupRules validates security group configuration
 func TestSecurityGroupRules(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		infra, err := NewInfrastructure(ctx, "test")
 		if err != nil {
@@ -476,12 +502,16 @@ func TestSecurityGroupRules(t *testing.T) {
 						"Security group must not allow unrestricted ingress")
 				}
 			}
+			wg.Done()
 			return nil
 		})
 
 		return nil
 	}, pulumi.WithMocks("project", "stack", &mocks{}))
 
+	if err == nil {
+		wg.Wait()
+	}
 	assert.NoError(t, err)
 }
 ```
@@ -589,9 +619,9 @@ describe("Resource Property Tests", () => {
         const namingPattern = /^myapp-(dev|staging|prod)-[\w-]+$/;
 
         const resourceNames = [
-            await promiseFromOutput(infra.vpc.tags?.Name),
+            await promiseFromOutput(infra.vpc.tags).then((tags) => tags?.Name),
             await promiseFromOutput(infra.dataBucket.bucket),
-            await promiseFromOutput(infra.webServer.tags?.Name),
+            await promiseFromOutput(infra.webServer.tags).then((tags) => tags?.Name),
         ];
 
         for (const name of resourceNames) {
@@ -659,7 +689,7 @@ describe("Infrastructure Integration Tests", () => {
         console.log(`Creating test stack: ${stackName}`);
 
         // Create an ephemeral stack for testing
-        // Using inline program allows defining infrastructure in test file
+        // Using workDir runs the Pulumi program from an existing project directory
         stack = await pulumi.LocalWorkspace.createOrSelectStack({
             projectName,
             stackName,
@@ -848,19 +878,22 @@ const policies = new policy.PolicyPack("security-compliance", {
         // Severity: mandatory (blocks deployment if violated)
         {
             name: "s3-bucket-encryption",
-            description: "All S3 buckets must have server-side encryption enabled",
+            description: "S3 bucket encryption configurations must define a default rule",
             enforcementLevel: "mandatory",
             // validateResource runs for each resource of matching type
             validateResource: policy.validateResourceOfType(
-                aws.s3.Bucket,
-                (bucket, args, reportViolation) => {
+                aws.s3.BucketServerSideEncryptionConfiguration,
+                (encryptionConfig, args, reportViolation) => {
                     // Check if encryption is configured
-                    const encryption = bucket.serverSideEncryptionConfiguration;
+                    const rules = encryptionConfig.rules ?? [];
+                    const hasDefaultEncryption = rules.some(
+                        (rule) => rule.applyServerSideEncryptionByDefault
+                    );
 
-                    if (!encryption || !encryption.rule) {
+                    if (!hasDefaultEncryption) {
                         reportViolation(
-                            "S3 bucket must have server-side encryption enabled. " +
-                            "Add a serverSideEncryptionConfiguration block with AES256 or aws:kms."
+                            "S3 bucket encryption configuration must include an " +
+                            "applyServerSideEncryptionByDefault rule with AES256 or aws:kms."
                         );
                     }
                 }
@@ -1052,11 +1085,11 @@ pulumi preview --policy-pack ./policy
 # Run policies during deployment
 pulumi up --policy-pack ./policy
 
-# Test policy pack against existing stack
-pulumi policy validate ./policy --stack dev
+# Test policy pack against an existing stack's current state
+pulumi policy analyze --stack dev --policy-pack ./policy
 
 # Publish policy pack for organization-wide use
-pulumi policy publish ./policy
+pulumi policy publish --cwd ./policy
 ```
 
 ## Test Frameworks by Language
@@ -1116,6 +1149,7 @@ graph TB
 // Unit tests for Pulumi C# infrastructure
 
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading.Tasks;
 using Pulumi;
 using Pulumi.Testing;
@@ -1152,6 +1186,20 @@ namespace Infrastructure.Tests
         }
     }
 
+    public static class TestingExtensions
+    {
+        public static Task<T> GetValueAsync<T>(this Output<T> output)
+        {
+            var tcs = new TaskCompletionSource<T>();
+            output.Apply(value =>
+            {
+                tcs.SetResult(value);
+                return value;
+            });
+            return tcs.Task;
+        }
+    }
+
     public class InfrastructureTests
     {
         [Fact]
@@ -1163,15 +1211,15 @@ namespace Infrastructure.Tests
                 new TestOptions { IsPreview = false }
             );
 
-            // Find the S3 bucket resource
-            var bucket = resources.OfType<Pulumi.Aws.S3.Bucket>()
-                .FirstOrDefault(b => b.GetResourceName() == "data-bucket");
+            // Find the S3 bucket versioning resource
+            var versioningResource = resources.OfType<Pulumi.Aws.S3.BucketVersioning>()
+                .FirstOrDefault(v => v.GetResourceName() == "data-bucket-versioning");
 
-            Assert.NotNull(bucket);
+            Assert.NotNull(versioningResource);
 
             // Verify versioning is enabled
-            var versioning = await bucket.Versioning.GetValueAsync();
-            Assert.True(versioning?.Enabled ?? false,
+            var versioning = await versioningResource.VersioningConfiguration.GetValueAsync();
+            Assert.True(versioning?.Status == "Enabled",
                 "S3 bucket must have versioning enabled");
         }
 
@@ -1237,7 +1285,7 @@ jobs:
         run: npm test -- --coverage
 
       - name: Upload coverage report
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage/lcov.info
 
@@ -1254,7 +1302,7 @@ jobs:
           node-version: '20'
 
       - name: Install Pulumi CLI
-        uses: pulumi/setup-pulumi@v2
+        uses: pulumi/actions@v7
 
       - name: Install dependencies
         run: |
@@ -1283,7 +1331,7 @@ jobs:
           node-version: '20'
 
       - name: Install Pulumi CLI
-        uses: pulumi/setup-pulumi@v2
+        uses: pulumi/actions@v7
 
       - name: Install dependencies
         run: npm ci
