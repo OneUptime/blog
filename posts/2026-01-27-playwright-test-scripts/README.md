@@ -361,14 +361,12 @@ test('navigation', async ({ page }) => {
   await page.goto('/relative-path');  // Uses baseURL from config
 
   // Wait for navigation after click
-  await Promise.all([
-    page.waitForNavigation(),
-    page.getByRole('link', { name: 'Next Page' }).click()
-  ]);
+  await page.getByRole('link', { name: 'Next Page' }).click();
+  await page.waitForURL('**/next-page');
 
   // Or use waitForURL
   await page.getByRole('link', { name: 'Dashboard' }).click();
-  await page.waitForURL('/dashboard');
+  await page.waitForURL('**/dashboard');
 
   // Browser navigation
   await page.goBack();
@@ -632,16 +630,13 @@ Configure in `playwright.config.ts`:
 export default defineConfig({
   use: {
     // Record video for all tests
-    video: 'on',
-
-    // Or only on failure
-    video: 'retain-on-failure',
-
-    // Video options
     video: {
       mode: 'on',
       size: { width: 1280, height: 720 }
     },
+
+    // Or only on failure:
+    // video: 'retain-on-failure',
   },
 });
 ```
@@ -717,11 +712,11 @@ test.describe('User Management', () => {
 
 ```typescript
 // tests/fixtures/auth.ts
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 
 // Define custom fixture types
 type AuthFixtures = {
-  authenticatedPage: ReturnType<typeof base['page']>;
+  authenticatedPage: Page;
 };
 
 // Extend base test with custom fixtures
@@ -732,7 +727,7 @@ export const test = base.extend<AuthFixtures>({
     await page.getByLabel('Email').fill('test@example.com');
     await page.getByLabel('Password').fill('password123');
     await page.getByRole('button', { name: 'Login' }).click();
-    await page.waitForURL('/dashboard');
+    await page.waitForURL('**/dashboard');
 
     // Provide the authenticated page to the test
     await use(page);
@@ -875,7 +870,7 @@ test('view created order', async ({ page }) => {
 
 ```typescript
 // pages/LoginPage.ts
-import { Page, Locator } from '@playwright/test';
+import { expect, type Page, type Locator } from '@playwright/test';
 
 export class LoginPage {
   readonly page: Page;
