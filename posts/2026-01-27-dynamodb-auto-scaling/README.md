@@ -169,7 +169,9 @@ export class DynamoDBAutoScalingStack extends cdk.Stack {
       readCapacity: 10,
       writeCapacity: 10,
       // Enable point-in-time recovery for production tables
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
     });
 
     // Configure read capacity auto scaling
@@ -579,15 +581,44 @@ resource "aws_cloudwatch_metric_alarm" "high_read_utilization" {
   alarm_name          = "dynamodb-high-read-utilization"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "ConsumedReadCapacityUnits"
-  namespace           = "AWS/DynamoDB"
-  period              = 300  # 5 minutes
-  statistic           = "Sum"
   threshold           = 80   # 80% of provisioned capacity
   alarm_description   = "Read capacity utilization exceeds 80%"
 
-  dimensions = {
-    TableName = aws_dynamodb_table.orders.name
+  metric_query {
+    id = "consumed"
+
+    metric {
+      metric_name = "ConsumedReadCapacityUnits"
+      namespace   = "AWS/DynamoDB"
+      period      = 300  # 5 minutes
+      stat        = "Sum"
+
+      dimensions = {
+        TableName = aws_dynamodb_table.orders.name
+      }
+    }
+  }
+
+  metric_query {
+    id = "provisioned"
+
+    metric {
+      metric_name = "ProvisionedReadCapacityUnits"
+      namespace   = "AWS/DynamoDB"
+      period      = 300
+      stat        = "Average"
+
+      dimensions = {
+        TableName = aws_dynamodb_table.orders.name
+      }
+    }
+  }
+
+  metric_query {
+    id          = "utilization"
+    expression  = "(consumed / PERIOD(consumed)) / provisioned * 100"
+    label       = "Read capacity utilization"
+    return_data = true
   }
 
   alarm_actions = [aws_sns_topic.alerts.arn]
@@ -649,11 +680,12 @@ resource "aws_sns_topic" "alerts" {
       "properties": {
         "title": "Read Capacity - Provisioned vs Consumed",
         "metrics": [
-          ["AWS/DynamoDB", "ProvisionedReadCapacityUnits", "TableName", "orders"],
-          [".", "ConsumedReadCapacityUnits", ".", "."]
+          ["AWS/DynamoDB", "ProvisionedReadCapacityUnits", "TableName", "orders", { "id": "provisionedRead", "stat": "Average" }],
+          [".", "ConsumedReadCapacityUnits", ".", ".", { "id": "consumedRead", "stat": "Sum", "visible": false }],
+          [{ "expression": "consumedRead / PERIOD(consumedRead)", "label": "ConsumedReadCapacityUnits/second", "id": "consumedReadPerSecond" }]
         ],
         "period": 60,
-        "stat": "Average"
+        "stat": "Sum"
       }
     },
     {
@@ -661,11 +693,12 @@ resource "aws_sns_topic" "alerts" {
       "properties": {
         "title": "Write Capacity - Provisioned vs Consumed",
         "metrics": [
-          ["AWS/DynamoDB", "ProvisionedWriteCapacityUnits", "TableName", "orders"],
-          [".", "ConsumedWriteCapacityUnits", ".", "."]
+          ["AWS/DynamoDB", "ProvisionedWriteCapacityUnits", "TableName", "orders", { "id": "provisionedWrite", "stat": "Average" }],
+          [".", "ConsumedWriteCapacityUnits", ".", ".", { "id": "consumedWrite", "stat": "Sum", "visible": false }],
+          [{ "expression": "consumedWrite / PERIOD(consumedWrite)", "label": "ConsumedWriteCapacityUnits/second", "id": "consumedWritePerSecond" }]
         ],
         "period": 60,
-        "stat": "Average"
+        "stat": "Sum"
       }
     },
     {
@@ -677,17 +710,6 @@ resource "aws_sns_topic" "alerts" {
           [".", "WriteThrottleEvents", ".", "."]
         ],
         "period": 60,
-        "stat": "Sum"
-      }
-    },
-    {
-      "type": "metric",
-      "properties": {
-        "title": "Scaling Activities",
-        "metrics": [
-          ["AWS/ApplicationAutoScaling", "ScalingActivity", "ServiceNamespace", "dynamodb"]
-        ],
-        "period": 300,
         "stat": "Sum"
       }
     }
@@ -741,6 +763,9 @@ def get_scaling_activities(table_name: str, hours: int = 24):
         )
         activities.extend(response.get('ScalingActivities', []))
 
+    if not activities:
+        return []
+
     # Filter to recent activities
     cutoff = datetime.now(activities[0]['StartTime'].tzinfo) - timedelta(hours=hours)
     recent = [a for a in activities if a['StartTime'] > cutoff]
@@ -757,6 +782,7 @@ def get_capacity_metrics(table_name: str, hours: int = 24):
     metrics = {}
     for metric_name in ['ConsumedReadCapacityUnits', 'ConsumedWriteCapacityUnits',
                         'ProvisionedReadCapacityUnits', 'ProvisionedWriteCapacityUnits']:
+        statistics = ['Sum', 'Maximum'] if metric_name.startswith('Consumed') else ['Average', 'Maximum']
         response = cloudwatch.get_metric_statistics(
             Namespace='AWS/DynamoDB',
             MetricName=metric_name,
@@ -764,7 +790,7 @@ def get_capacity_metrics(table_name: str, hours: int = 24):
             StartTime=start_time,
             EndTime=end_time,
             Period=3600,  # 1 hour intervals
-            Statistics=['Average', 'Maximum']
+            Statistics=statistics
         )
         metrics[metric_name] = response['Datapoints']
 
