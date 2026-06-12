@@ -19,9 +19,9 @@ This design eliminates:
 - **Garbage collection pauses** - No JVM means no GC-induced latency spikes
 - **Lock contention** - Each core operates independently on its shard
 - **Context switching overhead** - Threads are pinned to cores
-- **Cross-core communication** - Data locality is maintained
+- **Unnecessary cross-core communication** - Shard-aware clients can route requests directly to the owning shard
 
-The result is tail latencies (p99, p999) that stay tight even during compaction, repair operations, or traffic spikes.
+The result is tail latencies (p99, p999) that can stay tight under load when compaction, repair operations, and traffic spikes are properly controlled.
 
 ```mermaid
 graph TD
@@ -50,7 +50,7 @@ graph TD
 
 ## Understanding Shard-per-Core Architecture
 
-ScyllaDB automatically partitions data across CPU cores. Each core owns a specific range of the token ring and handles all operations for that data independently.
+ScyllaDB automatically partitions data across CPU cores inside each node. Each shard owns a subset of that node's data and handles operations for that data independently.
 
 ### How Sharding Works
 
@@ -65,14 +65,16 @@ ScyllaDB automatically partitions data across CPU cores. Each core owns a specif
 def get_shard_for_key(partition_key: str, num_shards: int) -> int:
     """
     Simplified representation of ScyllaDB's sharding logic.
-    The actual implementation uses Murmur3 hash and token ranges.
+    The actual implementation uses the partitioner's token plus
+    ScyllaDB's shard-aware protocol metadata.
     """
     # Murmur3 hash produces a 64-bit token
     token = murmur3_hash(partition_key)
 
-    # Token range is divided evenly among shards
-    # Each shard owns: total_range / num_shards tokens
-    shard = token % num_shards
+    # Do not use token % num_shards in real client code.
+    # Use a ScyllaDB shard-aware driver, which gets the shard parameters
+    # from the server and routes requests to the correct connection.
+    shard = shard_from_token(token, num_shards)
 
     return shard
 
@@ -82,18 +84,18 @@ def get_shard_for_key(partition_key: str, num_shards: int) -> int:
 
 ### Verifying Shard Distribution
 
-Use `nodetool` to inspect how data is distributed across shards:
+Use ScyllaDB's tools and metrics to inspect how data is distributed across shards:
 
 ```bash
-# Check the number of shards (one per core by default)
-nodetool info | grep "Native Transport"
+# Check the CPUs/shards assigned to ScyllaDB
+cat /etc/scylla.d/cpuset.conf
 
-# View per-shard statistics
+# View table statistics
 # This helps identify hot shards that may need data model adjustments
-nodetool cfstats keyspace_name.table_name
+nodetool tablestats keyspace_name.table_name
 
-# Check shard-level metrics via the REST API
-curl -s http://localhost:10000/storage_service/load_map | jq .
+# Check shard-level metrics via the Prometheus endpoint
+curl -s http://localhost:9180/metrics | grep 'shard=' | head
 ```
 
 ## Configuring ScyllaDB for Optimal Latency
@@ -119,7 +121,7 @@ For low-latency workloads, hardware selection is critical:
 # ---------------------
 # NVMe SSDs are essential for low-latency
 # RAID0 for performance, rely on ScyllaDB replication for durability
-# Disable filesystem journaling on data directories
+# Use ScyllaDB-supported XFS data directories and avoid unsupported filesystem tweaks
 
 # Network Configuration
 # --------------------
@@ -157,10 +159,10 @@ compaction_throughput_mb_per_sec: 64
 
 # Commitlog settings
 # ------------------
-# Batch mode: lower latency, data batched before fsync
-# Periodic mode: higher throughput, fsync on timer
-commitlog_sync: batch
-commitlog_sync_batch_window_in_ms: 2
+# Periodic mode: acknowledges writes before the timed fsync
+# Batch mode: waits for fsync before acknowledging writes, with a batching window
+commitlog_sync: periodic
+commitlog_sync_period_in_ms: 1000
 
 # Memory allocation
 # -----------------
@@ -183,12 +185,13 @@ prometheus_port: 9180
 # Run the setup wizard to benchmark your storage
 sudo scylla_setup --no-raid-setup
 
-# Alternatively, manually configure I/O properties
+# Alternatively, re-run I/O tuning after changing data devices
 # Create an I/O configuration file based on disk benchmarks
-sudo scylla_io_setup --dev /dev/nvme0n1
+sudo scylla_io_setup
 
 # The resulting configuration is stored in:
 # /etc/scylla.d/io.conf
+# /etc/scylla.d/io_properties.yaml
 # Example output:
 # SEASTAR_IO="--max-io-requests=128 --num-io-queues=8"
 
@@ -210,24 +213,24 @@ ScyllaDB allows you to prioritize different types of workloads to ensure critica
 -- Higher shares = more CPU time allocated
 
 -- Critical real-time queries (highest priority)
-CREATE SERVICE LEVEL realtime WITH shares = 1000;
+CREATE SERVICE_LEVEL realtime WITH shares = 1000;
 
 -- Standard application queries
-CREATE SERVICE LEVEL standard WITH shares = 500;
+CREATE SERVICE_LEVEL standard WITH shares = 500;
 
 -- Background analytics queries (lowest priority)
-CREATE SERVICE LEVEL analytics WITH shares = 100;
+CREATE SERVICE_LEVEL analytics WITH shares = 100;
 
 -- Attach service levels to roles
 CREATE ROLE realtime_app WITH PASSWORD = 'secure_password' AND LOGIN = true;
-GRANT realtime TO realtime_app;
+ATTACH SERVICE_LEVEL realtime TO realtime_app;
 
 CREATE ROLE analytics_app WITH PASSWORD = 'secure_password' AND LOGIN = true;
-GRANT analytics TO analytics_app;
+ATTACH SERVICE_LEVEL analytics TO analytics_app;
 
 -- View service level assignments
-LIST ALL SERVICE LEVELS;
-SELECT * FROM system_auth.role_attributes;
+LIST ALL ATTACHED SERVICE_LEVELS;
+LIST EFFECTIVE SERVICE LEVEL OF realtime_app;
 ```
 
 ### Workload Prioritization in Action
@@ -272,63 +275,59 @@ Scheduling groups provide fine-grained control over how ScyllaDB allocates CPU t
 
 ```bash
 # ScyllaDB has several internal scheduling groups:
-# - main: CQL query processing
+# - statement: CQL query processing
 # - compaction: Background compaction tasks
 # - streaming: Data streaming for repair/bootstrap
-# - statement: Statement preparation
 # - memtable: Memtable flushes
 # - gossip: Cluster communication
 
-# View current scheduling group configuration
-curl -s http://localhost:10000/scheduling_groups | jq .
+# View scheduler metrics exposed by ScyllaDB
+curl -s http://localhost:9180/metrics | grep scylla_scheduler_queue_length
 ```
 
 ### Tuning Scheduling Group Shares
 
 ```bash
-# Adjust shares to prioritize query processing over background tasks
-# Use the ScyllaDB REST API to tune scheduling group shares at runtime
+# Adjust shares to prioritize query processing over background tasks.
+# Supported live-updatable settings can be changed through system.config
+# or the REST API; compaction shares can also be set in scylla.yaml.
 
-# For latency-sensitive workloads, prioritize main (queries) over compaction
+# For latency-sensitive workloads, prioritize statement processing over compaction
 # Reduce compaction shares to minimize latency impact
-curl -X POST http://localhost:10000/compaction_manager/compaction \
-  -d '{"compaction_static_shares": 200}'
+cqlsh -e "UPDATE system.config SET value = '200' WHERE name = 'compaction_static_shares';"
 
-# View current scheduling group shares
-curl -s http://localhost:10000/scheduling_groups | jq .
+# Verify scheduler queues and compaction backlog through metrics
+curl -s http://localhost:9180/metrics | grep -E 'scylla_scheduler_queue_length|scylla_compaction_manager_pending_compactions'
 ```
 
 ### Monitoring Scheduling Group Performance
 
 ```python
 # Python script to monitor scheduling group metrics
-# Uses ScyllaDB's REST API for real-time insights
+# Uses ScyllaDB's Prometheus endpoint for real-time insights
 
 import requests
 import time
 from datetime import datetime
 
-SCYLLA_API = "http://localhost:10000"
+SCYLLA_METRICS = "http://localhost:9180/metrics"
 
 def get_scheduling_metrics():
     """
-    Fetch scheduling group metrics from ScyllaDB's REST API.
+    Fetch scheduling group metrics from ScyllaDB's Prometheus endpoint.
     These metrics help identify if background tasks are impacting query latency.
     """
-    metrics = {}
+    response = requests.get(SCYLLA_METRICS, timeout=5)
+    response.raise_for_status()
 
-    # Get task queue length per scheduling group
-    # High queue lengths indicate the group is CPU-starved
-    response = requests.get(f"{SCYLLA_API}/task_manager/tasks")
-    if response.ok:
-        metrics['task_queues'] = response.json()
-
-    # Get per-shard CPU utilization
-    # This shows how evenly load is distributed
-    response = requests.get(f"{SCYLLA_API}/reactor/utilization")
-    if response.ok:
-        metrics['cpu_utilization'] = response.json()
-
+    metrics = {"scheduler_queue_length": [], "pending_compactions": []}
+    for line in response.text.splitlines():
+        if line.startswith("#"):
+            continue
+        if line.startswith("scylla_scheduler_queue_length"):
+            metrics["scheduler_queue_length"].append(line)
+        elif line.startswith("scylla_compaction_manager_pending_compactions"):
+            metrics["pending_compactions"].append(line)
     return metrics
 
 def analyze_latency_impact():
@@ -336,19 +335,13 @@ def analyze_latency_impact():
     Check if compaction is impacting query latency.
     Returns recommendations for scheduling adjustments.
     """
-    # Get compaction metrics
-    response = requests.get(f"{SCYLLA_API}/compaction_manager/metrics")
-    compaction_metrics = response.json() if response.ok else {}
-
-    # Get current query latencies
-    response = requests.get(f"{SCYLLA_API}/column_family/metrics/read_latency")
-    read_latency = response.json() if response.ok else {}
-
     recommendations = []
 
     # If p99 latency spikes correlate with compaction activity,
     # reduce compaction shares
-    if compaction_metrics.get('pending_tasks', 0) > 10:
+    metrics = get_scheduling_metrics()
+    pending = sum(float(line.rsplit(" ", 1)[1]) for line in metrics["pending_compactions"])
+    if pending > 10:
         recommendations.append(
             "High compaction backlog detected. "
             "Consider reducing compaction_throughput_mb_per_sec "
@@ -360,7 +353,7 @@ def analyze_latency_impact():
 if __name__ == "__main__":
     while True:
         metrics = get_scheduling_metrics()
-        print(f"[{datetime.now()}] CPU Utilization: {metrics.get('cpu_utilization', 'N/A')}")
+        print(f"[{datetime.now()}] Scheduler queues: {metrics['scheduler_queue_length']}")
 
         recommendations = analyze_latency_impact()
         for rec in recommendations:
@@ -398,13 +391,9 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards
       - ./grafana/provisioning:/etc/grafana/provisioning
 
-  # ScyllaDB Monitoring Stack (official)
-  scylla-monitoring:
-    image: scylladb/scylla-monitoring:latest
-    ports:
-      - "3001:3000"
-    volumes:
-      - ./scylla-servers.yml:/etc/scylla.d/prometheus/scylla_servers.yml
+  # For production dashboards, install the official ScyllaDB Monitoring Stack
+  # from https://github.com/scylladb/scylla-monitoring and configure
+  # scylla_servers.yml for your nodes.
 ```
 
 ### Prometheus Configuration for ScyllaDB
@@ -446,7 +435,7 @@ histogram_quantile(0.99,
 )
 
 # Compaction pending tasks - high values indicate compaction is falling behind
-scylla_compaction_manager_compactions_pending
+scylla_compaction_manager_pending_compactions
 
 # Cache hit rate - low hit rates increase latency
 scylla_cache_row_hits / (scylla_cache_row_hits + scylla_cache_row_misses)
@@ -495,7 +484,7 @@ flowchart TD
 
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
 ONEUPTIME_WEBHOOK = os.getenv("ONEUPTIME_WEBHOOK")
@@ -536,7 +525,7 @@ def check_latency():
                 ),
                 "severity": "warning" if latency_us < LATENCY_THRESHOLD_US * 2 else "critical",
                 "source": "scylla-latency-monitor",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
             if ONEUPTIME_WEBHOOK:
@@ -646,7 +635,7 @@ CREATE TABLE user_activity (
 
 3. **Plan for Compaction**: Schedule major compactions during low-traffic windows. Use `nodetool compactionstats` to track progress.
 
-4. **Repair Regularly**: Run incremental repairs weekly to maintain consistency without latency impact.
+4. **Repair Regularly**: Run incremental repairs on a schedule and monitor their latency impact.
 
 5. **Test Failure Scenarios**: Simulate node failures and verify latency stays within SLO during recovery.
 
