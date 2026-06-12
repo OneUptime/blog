@@ -519,11 +519,9 @@ sum by (region) (rate(business_revenue_cents_total[5m])) * 60
 
 # Average order value by product category
 # Helps identify high-value product lines
-histogram_quantile(0.5,
-    sum by (product_category, le) (
-        rate(business_order_value_cents_bucket[1h])
-    )
-)
+sum by (product_category) (rate(business_order_value_cents_sum[1h]))
+/
+sum by (product_category) (rate(business_order_value_cents_count[1h]))
 
 # Feature adoption rate for new users
 # Tracks how new users engage with specific features
@@ -709,7 +707,7 @@ groups:
       # Useful for detecting issues during peak hours
       - alert: RevenueBelowBaseline
         expr: |
-          sum(rate(business_revenue_cents_total[5m])) * 60 < 50000
+          sum(rate(business_revenue_cents_total[5m])) * 60 / 100 < 500
         for: 10m
         labels:
           severity: warning
@@ -854,6 +852,10 @@ class MetricCorrelationService {
     ): number {
         // Pearson correlation implementation
         const n = dataA.length;
+        if (n === 0 || dataB.length !== n) {
+            return 0;
+        }
+
         const sumA = dataA.reduce((a, b) => a + b, 0);
         const sumB = dataB.reduce((a, b) => a + b, 0);
         const sumAB = dataA.reduce((sum, a, i) => sum + a * dataB[i], 0);
