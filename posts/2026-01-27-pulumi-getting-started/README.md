@@ -126,7 +126,7 @@ flowchart TB
     ProdDB --> ProdAPI
 ```
 
-Resources
+### Resources
 
 Resources are the cloud components you create: VMs, databases, buckets, functions, etc. Each resource has:
 - A logical name (for Pulumi's tracking)
@@ -224,16 +224,21 @@ import * as aws from "@pulumi/aws";
 // First argument: logical name used by Pulumi for tracking
 // Second argument: configuration options for the resource
 const bucket = new aws.s3.Bucket("my-bucket", {
-    // Enable website hosting on this bucket
-    website: {
-        indexDocument: "index.html",
-        errorDocument: "error.html",
-    },
-
     // Add tags for resource organization
     tags: {
         Environment: pulumi.getStack(), // Returns current stack name (dev, staging, prod)
         ManagedBy: "Pulumi",
+    },
+});
+
+// Enable website hosting on this bucket
+const website = new aws.s3.BucketWebsiteConfiguration("my-bucket-website", {
+    bucket: bucket.id,
+    indexDocument: {
+        suffix: "index.html",
+    },
+    errorDocument: {
+        key: "error.html",
     },
 });
 
@@ -242,7 +247,7 @@ const bucket = new aws.s3.Bucket("my-bucket", {
 export const bucketName = bucket.id;
 
 // Export the website endpoint for easy access
-export const websiteUrl = bucket.websiteEndpoint;
+export const websiteUrl = pulumi.interpolate`http://${website.websiteEndpoint}`;
 ```
 
 ### Add More Resources
@@ -258,14 +263,30 @@ const environment = config.get("environment") || "dev";
 
 // Create an S3 bucket for static website hosting
 const bucket = new aws.s3.Bucket("website-bucket", {
-    website: {
-        indexDocument: "index.html",
-        errorDocument: "error.html",
-    },
     tags: {
         Environment: environment,
         ManagedBy: "Pulumi",
     },
+});
+
+// Enable website hosting on this bucket
+const website = new aws.s3.BucketWebsiteConfiguration("website-bucket-config", {
+    bucket: bucket.id,
+    indexDocument: {
+        suffix: "index.html",
+    },
+    errorDocument: {
+        key: "error.html",
+    },
+});
+
+// Allow this bucket to use a public-read bucket policy
+const publicAccessBlock = new aws.s3.BucketPublicAccessBlock("website-public-access", {
+    bucket: bucket.id,
+    blockPublicAcls: false,
+    blockPublicPolicy: false,
+    ignorePublicAcls: false,
+    restrictPublicBuckets: false,
 });
 
 // Create a bucket policy to allow public read access
@@ -281,10 +302,12 @@ const bucketPolicy = new aws.s3.BucketPolicy("website-bucket-policy", {
             "Resource": "arn:aws:s3:::${bucket.id}/*"
         }]
     }`,
+}, {
+    dependsOn: [publicAccessBlock],
 });
 
 // Upload an index.html file to the bucket
-const indexHtml = new aws.s3.BucketObject("index.html", {
+const indexHtml = new aws.s3.BucketObjectv2("index.html", {
     bucket: bucket.id,
     key: "index.html",
     content: `
@@ -303,7 +326,7 @@ const indexHtml = new aws.s3.BucketObject("index.html", {
 // Export outputs for use in CI/CD or other stacks
 export const bucketName = bucket.id;
 export const bucketArn = bucket.arn;
-export const websiteUrl = pulumi.interpolate`http://${bucket.websiteEndpoint}`;
+export const websiteUrl = pulumi.interpolate`http://${website.websiteEndpoint}`;
 ```
 
 ### Deploy the Stack
@@ -365,14 +388,32 @@ environment = config.get("environment") or "dev"
 # Keyword arguments: resource configuration
 bucket = aws.s3.Bucket(
     "website-bucket",
-    website=aws.s3.BucketWebsiteArgs(
-        index_document="index.html",
-        error_document="error.html",
-    ),
     tags={
         "Environment": environment,
         "ManagedBy": "Pulumi",
     },
+)
+
+# Enable website hosting on this bucket
+website = aws.s3.BucketWebsiteConfiguration(
+    "website-bucket-config",
+    bucket=bucket.id,
+    index_document={
+        "suffix": "index.html",
+    },
+    error_document={
+        "key": "error.html",
+    },
+)
+
+# Allow this bucket to use a public-read bucket policy
+public_access_block = aws.s3.BucketPublicAccessBlock(
+    "website-public-access",
+    bucket=bucket.id,
+    block_public_acls=False,
+    block_public_policy=False,
+    ignore_public_acls=False,
+    restrict_public_buckets=False,
 )
 
 # Create a bucket policy for public read access
@@ -389,10 +430,11 @@ bucket_policy = aws.s3.BucketPolicy(
             "Resource": pulumi.Output.concat("arn:aws:s3:::", bucket.id, "/*"),
         }],
     }),
+    opts=pulumi.ResourceOptions(depends_on=[public_access_block]),
 )
 
 # Upload an index.html file
-index_html = aws.s3.BucketObject(
+index_html = aws.s3.BucketObjectv2(
     "index.html",
     bucket=bucket.id,
     key="index.html",
@@ -413,7 +455,7 @@ index_html = aws.s3.BucketObject(
 # and can be accessed via `pulumi stack output`
 pulumi.export("bucket_name", bucket.id)
 pulumi.export("bucket_arn", bucket.arn)
-pulumi.export("website_url", pulumi.Output.concat("http://", bucket.website_endpoint))
+pulumi.export("website_url", pulumi.Output.concat("http://", website.website_endpoint))
 ```
 
 ### Using Functions and Loops in Python
@@ -440,34 +482,48 @@ def create_environment_bucket(env_name: str) -> aws.s3.Bucket:
     Returns:
         aws.s3.Bucket: The created S3 bucket resource
     """
-    return aws.s3.Bucket(
+    bucket = aws.s3.Bucket(
         f"data-bucket-{env_name}",
-        # Enable versioning for non-dev environments
-        versioning=aws.s3.BucketVersioningArgs(
-            enabled=env_name != "dev",
-        ),
-        # Lifecycle rules to manage storage costs
-        lifecycle_rules=[
-            aws.s3.BucketLifecycleRuleArgs(
-                enabled=True,
-                # Move to cheaper storage after 30 days
-                transitions=[
-                    aws.s3.BucketLifecycleRuleTransitionArgs(
-                        days=30,
-                        storage_class="STANDARD_IA",
-                    ),
-                ],
-                # Delete old versions after 90 days (non-dev only)
-                noncurrent_version_expiration=aws.s3.BucketLifecycleRuleNoncurrentVersionExpirationArgs(
-                    days=90,
-                ) if env_name != "dev" else None,
-            ),
-        ],
         tags={
             "Environment": env_name,
             "ManagedBy": "Pulumi",
         },
     )
+
+    # Enable versioning for non-dev environments
+    versioning = aws.s3.BucketVersioning(
+        f"data-bucket-{env_name}-versioning",
+        bucket=bucket.id,
+        versioning_configuration={
+            "status": "Enabled" if env_name != "dev" else "Disabled",
+        },
+    )
+
+    lifecycle_rule = {
+        "id": "manage-storage-costs",
+        "filter": {},
+        "status": "Enabled",
+        # Move to cheaper storage after 30 days
+        "transitions": [{
+            "days": 30,
+            "storage_class": "STANDARD_IA",
+        }],
+    }
+
+    # Delete old versions after 90 days (non-dev only)
+    if env_name != "dev":
+        lifecycle_rule["noncurrent_version_expiration"] = {
+            "noncurrent_days": 90,
+        }
+
+    aws.s3.BucketLifecycleConfiguration(
+        f"data-bucket-{env_name}-lifecycle",
+        bucket=bucket.id,
+        rules=[lifecycle_rule],
+        opts=pulumi.ResourceOptions(depends_on=[versioning]),
+    )
+
+    return bucket
 
 
 # Create buckets for all environments using list comprehension
@@ -533,7 +589,7 @@ pulumi login --local
 
 # Option 3: AWS S3 (self-managed, team-friendly)
 # - You manage the bucket
-# - State locking via DynamoDB
+# - State locking is handled by Pulumi using lock files in the bucket
 pulumi login s3://my-pulumi-state-bucket
 
 # Option 4: Azure Blob Storage
@@ -667,11 +723,20 @@ interface DatabaseConfig {
 }
 const dbConfig = config.requireObject<DatabaseConfig>("database");
 
+const latestAmazonLinux = aws.ec2.getAmiOutput({
+    mostRecent: true,
+    owners: ["amazon"],
+    filters: [
+        { name: "name", values: ["al2023-ami-*-x86_64"] },
+        { name: "architecture", values: ["x86_64"] },
+    ],
+});
+
 // Use configuration in resources
 const instances = [];
 for (let i = 0; i < instanceCount; i++) {
     instances.push(new aws.ec2.Instance(`web-server-${i}`, {
-        ami: "ami-0c55b159cbfafe1f0",
+        ami: latestAmazonLinux.id,
         instanceType: environment === "production" ? "t3.large" : "t3.micro",
         tags: {
             Name: `${appName}-${environment}-${i}`,
@@ -714,12 +779,21 @@ class DatabaseConfig:
 db_config_dict = config.require_object("database")
 db_config = DatabaseConfig(**db_config_dict)
 
+latest_amazon_linux = aws.ec2.get_ami(
+    most_recent=True,
+    owners=["amazon"],
+    filters=[
+        {"name": "name", "values": ["al2023-ami-*-x86_64"]},
+        {"name": "architecture", "values": ["x86_64"]},
+    ],
+)
+
 # Use configuration in resources
 instances = []
 for i in range(instance_count):
     instance = aws.ec2.Instance(
         f"web-server-{i}",
-        ami="ami-0c55b159cbfafe1f0",
+        ami=latest_amazon_linux.id,
         instance_type="t3.large" if environment == "production" else "t3.micro",
         tags={
             "Name": f"{app_name}-{environment}-{i}",
