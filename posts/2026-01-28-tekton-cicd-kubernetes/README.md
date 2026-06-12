@@ -18,11 +18,18 @@ kind: Task
 metadata:
   name: build-image
 spec:
+  params:
+    - name: revision
+      type: string
+  workspaces:
+    - name: source
   steps:
     - name: build
       image: gcr.io/kaniko-project/executor:latest
       args:
-        - --destination=registry.example.com/app:${REVISION}
+        - --context=$(workspaces.source.path)
+        - --dockerfile=$(workspaces.source.path)/Dockerfile
+        - --destination=registry.example.com/app:$(params.revision)
 ```
 
 ## Step 2: Define a Deployment Task
@@ -33,11 +40,14 @@ kind: Task
 metadata:
   name: deploy
 spec:
+  params:
+    - name: revision
+      type: string
   steps:
     - name: kubectl
       image: bitnami/kubectl:latest
       script: |
-        kubectl set image deployment/app app=registry.example.com/app:${REVISION}
+        kubectl set image deployment/app app=registry.example.com/app:$(params.revision)
 ```
 
 ## Step 3: Create a Pipeline
@@ -48,19 +58,33 @@ kind: Pipeline
 metadata:
   name: cicd
 spec:
+  params:
+    - name: revision
+      type: string
+  workspaces:
+    - name: source
   tasks:
     - name: build
       taskRef:
         name: build-image
+      params:
+        - name: revision
+          value: $(params.revision)
+      workspaces:
+        - name: source
+          workspace: source
     - name: deploy
       runAfter: ["build"]
       taskRef:
         name: deploy
+      params:
+        - name: revision
+          value: $(params.revision)
 ```
 
 ## Step 4: Trigger the Pipeline
 
-Use a PipelineRun or EventListener to trigger on Git events.
+Use a PipelineRun or EventListener to trigger on Git events, passing the revision parameter and binding the source workspace.
 
 ## Best Practices
 
