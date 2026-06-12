@@ -240,7 +240,7 @@ spec:
 
 ### Using Secrets for Certificates
 
-For better security and easier rotation, store certificates in Secrets.
+For better security and easier rotation, store certificates in Secrets. On current OpenShift releases, Routes can reference externally managed certificate Secrets by using `spec.tls.externalCertificate`. On older clusters, use an operator such as the Cert Utils Operator to copy Secret data into the Route certificate fields.
 
 ```yaml
 # tls-secret.yaml
@@ -256,16 +256,39 @@ data:
   tls.crt: <base64-encoded-certificate>
   tls.key: <base64-encoded-private-key>
 ---
+# Allow the router service account to read the Secret
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: my-app-tls-reader
+  namespace: production
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["my-app-tls"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: my-app-tls-reader
+  namespace: production
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: my-app-tls-reader
+subjects:
+  - kind: ServiceAccount
+    name: router
+    namespace: openshift-ingress
+---
 # route-with-secret.yaml
-# Reference the TLS secret in the Route
+# Reference the TLS secret in the Route using externally managed certificates
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: my-app-with-secret
   namespace: production
-  annotations:
-    # Tell the router to use the secret for TLS
-    cert-utils-operator.redhat-cop.io/certs-from-secret: my-app-tls
 spec:
   host: app.example.com
   to:
@@ -273,6 +296,8 @@ spec:
     name: my-app
   tls:
     termination: edge
+    externalCertificate:
+      name: my-app-tls
     insecureEdgeTerminationPolicy: Redirect
 ```
 
@@ -306,16 +331,17 @@ metadata:
     haproxy.router.openshift.io/rate-limit-connections.rate-tcp: "100"
     haproxy.router.openshift.io/rate-limit-connections.rate-http: "100"
 
-    # IP whitelisting - only allow specific source IPs
-    haproxy.router.openshift.io/ip_whitelist: "10.0.0.0/8 192.168.1.0/24"
+    # IP allowlisting - only allow specific source IPs
+    haproxy.router.openshift.io/ip_allowlist: "10.0.0.0/8 192.168.1.0/24"
 
-    # Custom HAProxy configuration snippet
+    # HSTS header for HTTPS responses
     haproxy.router.openshift.io/hsts_header: "max-age=31536000;includeSubDomains;preload"
 
     # Rewrite target path
     haproxy.router.openshift.io/rewrite-target: /api/v2
 spec:
   host: api.example.com
+  path: /api
   to:
     kind: Service
     name: api-service
@@ -410,7 +436,7 @@ metadata:
   namespace: production
 spec:
   # Wildcard subdomain - matches *.apps.example.com
-  host: "*.apps.example.com"
+  host: wildcard.apps.example.com
 
   # Wildcard policy must be set for subdomain matching
   wildcardPolicy: Subdomain
