@@ -6,7 +6,7 @@ Tags: Ceph, CephFS, Snapshot, Storage
 
 Description: A complete guide to implementing CephFS snapshots for point-in-time data protection. Learn how to create, manage, schedule, and restore snapshots in your Ceph distributed file system.
 
-> CephFS snapshots provide instant, space-efficient point-in-time copies of your data without impacting performance or requiring downtime.
+> CephFS snapshots provide instant, space-efficient point-in-time copies of your data with minimal immediate overhead and no required downtime.
 
 Data protection is non-negotiable in production environments. Whether you need to recover from accidental deletions, roll back failed deployments, or maintain compliance with data retention policies, snapshots are your first line of defense. CephFS, the POSIX-compliant distributed file system built on Ceph, offers native snapshot capabilities that integrate seamlessly with your existing storage infrastructure.
 
@@ -51,8 +51,8 @@ flowchart TB
 CephFS snapshots use a copy-on-write (COW) mechanism at the RADOS object level. When you create a snapshot:
 
 1. **Metadata capture**: The MDS (Metadata Server) records the current state of the directory tree
-2. **Object marking**: Data objects are marked as belonging to the snapshot
-3. **COW activation**: Future writes create new object versions rather than overwriting snapshot data
+2. **Snapshot context update**: The MDS allocates snapshot metadata and clients update the SnapContext used for future writes
+3. **COW activation**: Future writes preserve the snapshot view by creating new object versions rather than overwriting snapshot data
 
 This approach means snapshots are nearly instantaneous regardless of data size, and they only consume additional storage for data that changes after the snapshot is taken.
 
@@ -105,11 +105,14 @@ ceph fs get cephfs | grep allow_new_snaps
 ceph fs set cephfs allow_new_snaps true
 ```
 
-You can also control snapshot permissions at a more granular level using MDS configuration:
+You can also control snapshot permissions at a more granular level using CephX MDS capabilities. Clients need the `s` flag in addition to `rw` to create or delete snapshots:
 
 ```bash
-# Allow snapshots on the entire file system
-ceph config set mds mds_allow_snaps true
+# Allow a client to create and delete snapshots under /data/production
+ceph auth caps client.snapshotter \
+    mds "allow rw, allow rws path=/data/production" \
+    mon "allow r" \
+    osd "allow rw tag cephfs data=cephfs"
 ```
 
 ## Creating Your First Snapshot
@@ -120,8 +123,8 @@ CephFS snapshots are created through a special hidden directory called `.snap` t
 
 ```bash
 # Mount CephFS (if not already mounted)
-mount -t ceph mon1:6789,mon2:6789,mon3:6789:/ /mnt/cephfs \
-    -o name=admin,secret=AQBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+mount -t ceph admin@.cephfs=/ /mnt/cephfs \
+    -o mon_addr=mon1:6789/mon2:6789/mon3:6789,secretfile=/etc/ceph/admin.secret
 
 # Navigate to the directory you want to snapshot
 cd /mnt/cephfs/data/production
@@ -167,10 +170,8 @@ sequenceDiagram
 
     Admin->>Client: mkdir .snap/snapshot-name
     Client->>MDS: Create snapshot request
-    MDS->>MDS: Lock directory tree
-    MDS->>OSD: Mark objects for COW
-    OSD-->>MDS: Acknowledge marking
-    MDS->>MDS: Record snapshot metadata
+    MDS->>MDS: Allocate snapid and record snapshot metadata
+    MDS-->>Client: Notify clients to update SnapContext
     MDS-->>Client: Snapshot created
     Client-->>Admin: Success
 
@@ -179,7 +180,7 @@ sequenceDiagram
     Admin->>Client: Read .snap/snapshot-name/file
     Client->>MDS: Request snapshot inode
     MDS-->>Client: Return snapshot metadata
-    Client->>OSD: Read snapshot object version
+    Client->>OSD: Read data using snapshot context
     OSD-->>Client: Return original data
     Client-->>Admin: Original file contents
 ```
@@ -554,7 +555,11 @@ check_snapshot_count() {
     local snap_dir="${CEPHFS_MOUNT}/${dir}/.snap"
     local count
 
-    count=$(ls -1d "${snap_dir}"/* 2>/dev/null | wc -l || echo 0)
+    if [[ -d "${snap_dir}" ]]; then
+        count=$(find "${snap_dir}" -mindepth 1 -maxdepth 1 -type d | wc -l)
+    else
+        count=0
+    fi
     echo "Directory: ${dir}"
     echo "  Snapshot count: ${count}"
 
@@ -583,15 +588,12 @@ check_ceph_pool_usage() {
 
 check_mds_health() {
     local status
-    status=$(ceph mds stat -f json)
-
-    local active_count
-    active_count=$(echo "$status" | jq '.fsmap.up | length')
+    status=$(ceph mds stat)
 
     echo "MDS Status:"
-    echo "  Active MDS count: ${active_count}"
+    echo "  ${status}"
 
-    if [[ "$active_count" -lt 1 ]]; then
+    if ! grep -q "up:active" <<< "$status"; then
         echo "  ALERT: No active MDS daemons"
         return 1
     fi
@@ -627,14 +629,20 @@ For databases and applications requiring consistency, consider these approaches:
 #!/bin/bash
 # Application-consistent snapshot
 
-# Freeze application writes (example for PostgreSQL)
-psql -c "SELECT pg_start_backup('cephfs-snapshot', true);"
+SNAPSHOT_NAME="consistent-$(date +%Y%m%d-%H%M%S)"
+BACKUP_METADATA_DIR="/mnt/cephfs/data/postgresql-backup-metadata"
+
+mkdir -p "$BACKUP_METADATA_DIR"
+
+# Start an online backup checkpoint (example for PostgreSQL 15 and later)
+psql -c "SELECT pg_backup_start('cephfs-snapshot', true);"
 
 # Create the snapshot
-mkdir /mnt/cephfs/data/postgresql/.snap/consistent-$(date +%Y%m%d-%H%M%S)
+mkdir "/mnt/cephfs/data/postgresql/.snap/${SNAPSHOT_NAME}"
 
-# Resume application writes
-psql -c "SELECT pg_stop_backup();"
+# Finish the online backup and preserve the returned backup label data
+psql -At -F $'\t' -c "SELECT lsn, labelfile, spcmapfile FROM pg_backup_stop();" \
+    > "${BACKUP_METADATA_DIR}/${SNAPSHOT_NAME}.tsv"
 ```
 
 ### 2. Snapshot Testing
@@ -721,7 +729,7 @@ journalctl -u ceph-mds@$(hostname) --since "1 hour ago"
 
 ```bash
 # Check for ongoing operations
-ceph daemon mds.$(hostname) ops
+ceph daemon mds.$(hostname) dump_ops_in_flight
 
 # Force MDS to drop caches (use with caution)
 ceph daemon mds.$(hostname) cache drop
@@ -735,12 +743,16 @@ lsof +D /mnt/cephfs/data/production/.snap/snapshot-name
 ```bash
 # List snapshot count per directory
 for dir in /mnt/cephfs/data/*; do
-    count=$(ls -1d "${dir}/.snap"/* 2>/dev/null | wc -l)
+    if [[ -d "${dir}/.snap" ]]; then
+        count=$(find "${dir}/.snap" -mindepth 1 -maxdepth 1 -type d | wc -l)
+    else
+        count=0
+    fi
     echo "${dir}: ${count} snapshots"
 done
 
-# Consider consolidating old snapshots
-# Merge hourly into daily, daily into weekly, etc.
+# Consider pruning high-frequency snapshots as lower-frequency snapshots age in
+# Keep hourly, daily, weekly, and monthly tiers according to your retention policy
 ```
 
 ## Snapshot Architecture Deep Dive
