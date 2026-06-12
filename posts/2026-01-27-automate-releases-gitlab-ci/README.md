@@ -39,7 +39,7 @@ build:
 
 release:
   stage: release
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  image: registry.gitlab.com/gitlab-org/cli:latest
   script:
     - echo "Creating release for ${CI_COMMIT_TAG}"
   release:
@@ -83,9 +83,9 @@ stages:
 
 determine-version:
   stage: version
-  image: node:20
+  image: node:24
   script:
-    - npm install -g semantic-release @semantic-release/gitlab
+    - npm install -g semantic-release @semantic-release/commit-analyzer @semantic-release/release-notes-generator @semantic-release/changelog @semantic-release/gitlab
     # Dry run to get next version
     - |
       VERSION=$(npx semantic-release --dry-run 2>&1 | grep -oP 'next release version is \K[0-9]+\.[0-9]+\.[0-9]+' || echo "")
@@ -105,14 +105,20 @@ determine-version:
 
 create-release:
   stage: release
-  image: node:20
+  image: node:24
   script:
-    - npm install -g semantic-release @semantic-release/gitlab
+    - |
+      if [ "$SKIP_RELEASE" = "true" ]; then
+        echo "No release needed"
+        exit 0
+      fi
+    - npm install -g semantic-release @semantic-release/commit-analyzer @semantic-release/release-notes-generator @semantic-release/changelog @semantic-release/gitlab
     - npx semantic-release
   rules:
-    - if: $CI_COMMIT_BRANCH == "main" && $SKIP_RELEASE != "true"
+    - if: $CI_COMMIT_BRANCH == "main"
   needs:
-    - determine-version
+    - job: determine-version
+      artifacts: true
 ```
 
 Configure semantic-release in `.releaserc.json`:
@@ -136,9 +142,13 @@ Configure semantic-release in `.releaserc.json`:
 Generate changelogs from commit history.
 
 ```yaml
+stages:
+  - prepare
+  - release
+
 generate-changelog:
   stage: prepare
-  image: node:20
+  image: node:24
   script:
     - npm install -g conventional-changelog-cli
     # Generate changelog from commits since last tag
@@ -159,7 +169,7 @@ Use the generated notes in your release:
 ```yaml
 release:
   stage: release
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  image: registry.gitlab.com/gitlab-org/cli:latest
   script:
     - echo "Creating release ${CI_COMMIT_TAG}"
   release:
@@ -179,7 +189,7 @@ Upload build artifacts to the release.
 ```yaml
 release:
   stage: release
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  image: registry.gitlab.com/gitlab-org/cli:latest
   script:
     - echo "Releasing ${CI_COMMIT_TAG}"
   release:
@@ -189,15 +199,15 @@ release:
     assets:
       links:
         - name: 'Linux Binary'
-          url: '${CI_PROJECT_URL}/-/jobs/${BUILD_JOB_ID}/artifacts/raw/dist/app-linux'
+          url: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${CI_COMMIT_TAG}/raw/dist/app-linux?job=build'
           filepath: '/binaries/app-linux'
           link_type: 'package'
         - name: 'macOS Binary'
-          url: '${CI_PROJECT_URL}/-/jobs/${BUILD_JOB_ID}/artifacts/raw/dist/app-macos'
+          url: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${CI_COMMIT_TAG}/raw/dist/app-macos?job=build'
           filepath: '/binaries/app-macos'
           link_type: 'package'
         - name: 'Windows Binary'
-          url: '${CI_PROJECT_URL}/-/jobs/${BUILD_JOB_ID}/artifacts/raw/dist/app-windows.exe'
+          url: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${CI_COMMIT_TAG}/raw/dist/app-windows.exe?job=build'
           filepath: '/binaries/app-windows.exe'
           link_type: 'package'
 ```
@@ -214,6 +224,7 @@ stages:
 
 build:
   stage: build
+  image: golang:latest
   parallel:
     matrix:
       - GOOS: [linux, darwin, windows]
@@ -228,20 +239,24 @@ build:
   artifacts:
     paths:
       - dist/
+  rules:
+    - if: $CI_COMMIT_TAG
 
 package:
   stage: package
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache tar zip coreutils
   script:
     # Create checksums
     - cd dist && sha256sum * > checksums.txt
     # Create archives
     - |
       for file in app-*; do
-        if [[ "$file" != *.exe ]]; then
-          tar -czvf "${file}.tar.gz" "$file"
-        else
-          zip "${file%.exe}.zip" "$file"
-        fi
+        case "$file" in
+          *.exe) zip "${file%.exe}.zip" "$file" ;;
+          *) tar -czvf "${file}.tar.gz" "$file" ;;
+        esac
       done
   artifacts:
     paths:
@@ -251,7 +266,7 @@ package:
 
 release:
   stage: release
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  image: registry.gitlab.com/gitlab-org/cli:latest
   script:
     - echo "Releasing ${CI_COMMIT_TAG}"
   release:
@@ -261,17 +276,17 @@ release:
     assets:
       links:
         - name: 'Checksums'
-          url: '${CI_PROJECT_URL}/-/jobs/${PACKAGE_JOB_ID}/artifacts/file/dist/checksums.txt'
+          url: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${CI_COMMIT_TAG}/raw/dist/checksums.txt?job=package'
         - name: 'Linux AMD64'
-          url: '${CI_PROJECT_URL}/-/jobs/${PACKAGE_JOB_ID}/artifacts/file/dist/app-linux-amd64.tar.gz'
+          url: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${CI_COMMIT_TAG}/raw/dist/app-linux-amd64.tar.gz?job=package'
         - name: 'Linux ARM64'
-          url: '${CI_PROJECT_URL}/-/jobs/${PACKAGE_JOB_ID}/artifacts/file/dist/app-linux-arm64.tar.gz'
+          url: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${CI_COMMIT_TAG}/raw/dist/app-linux-arm64.tar.gz?job=package'
         - name: 'macOS AMD64'
-          url: '${CI_PROJECT_URL}/-/jobs/${PACKAGE_JOB_ID}/artifacts/file/dist/app-darwin-amd64.tar.gz'
+          url: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${CI_COMMIT_TAG}/raw/dist/app-darwin-amd64.tar.gz?job=package'
         - name: 'macOS ARM64'
-          url: '${CI_PROJECT_URL}/-/jobs/${PACKAGE_JOB_ID}/artifacts/file/dist/app-darwin-arm64.tar.gz'
+          url: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${CI_COMMIT_TAG}/raw/dist/app-darwin-arm64.tar.gz?job=package'
         - name: 'Windows AMD64'
-          url: '${CI_PROJECT_URL}/-/jobs/${PACKAGE_JOB_ID}/artifacts/file/dist/app-windows-amd64.zip'
+          url: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${CI_COMMIT_TAG}/raw/dist/app-windows-amd64.zip?job=package'
   rules:
     - if: $CI_COMMIT_TAG
 ```
@@ -280,7 +295,7 @@ release:
 
 Publish packages alongside the release.
 
-```yaml
+````yaml
 stages:
   - build
   - publish
@@ -297,7 +312,7 @@ publish-npm:
 publish-docker:
   stage: publish
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG .
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
     - docker tag $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG $CI_REGISTRY_IMAGE:latest
@@ -307,7 +322,9 @@ publish-docker:
 
 release:
   stage: release
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  script:
+    - echo "Creating release ${CI_COMMIT_TAG}"
   release:
     tag_name: ${CI_COMMIT_TAG}
     name: 'Release ${CI_COMMIT_TAG}'
@@ -317,18 +334,18 @@ release:
       ### npm
       ```bash
       npm install my-package@${CI_COMMIT_TAG}
-      ```bash
+      ```
 
       ### Docker
       ```bash
       docker pull ${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG}
-      ```bash
+      ```
   rules:
     - if: $CI_COMMIT_TAG
   needs:
     - publish-npm
     - publish-docker
-```text
+````
 
 ## Release Branches
 
@@ -337,7 +354,7 @@ Handle release branches for maintenance versions.
 ```yaml
 release:
   stage: release
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  image: registry.gitlab.com/gitlab-org/cli:latest
   script:
     - echo "Creating release"
   release:
@@ -346,34 +363,28 @@ release:
     description: 'Release from ${CI_COMMIT_REF_NAME}'
     ref: ${CI_COMMIT_SHA}  # Explicit commit reference
   rules:
-    # Release tags from main
-    - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == "main"
-    # Also allow from release branches
-    - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH =~ /^release\//
+    # Release tags for mainline versions
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
+    # Also allow maintenance tags
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+-maintenance\.[0-9]+$/
 ```
 
 ## Pre-Release Versions
 
-Mark releases as pre-release for testing.
+Use pre-release tag names for testing.
 
 ```yaml
 release:
   stage: release
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  image: registry.gitlab.com/gitlab-org/cli:latest
   script:
-    # Determine if this is a pre-release
-    - |
-      if [[ "${CI_COMMIT_TAG}" =~ (alpha|beta|rc) ]]; then
-        echo "PRERELEASE=true" >> release.env
-      else
-        echo "PRERELEASE=false" >> release.env
-      fi
+    - echo "Creating pre-release ${CI_COMMIT_TAG}"
   release:
     tag_name: ${CI_COMMIT_TAG}
-    name: 'Release ${CI_COMMIT_TAG}'
-    description: 'Automated release'
+    name: 'Pre-release ${CI_COMMIT_TAG}'
+    description: 'Automated pre-release build'
   rules:
-    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)[0-9]*$/
 ```
 
 ## Notifications
@@ -420,7 +431,7 @@ validate-tag:
   script:
     # Verify tag follows semver
     - |
-      if [[ ! "${CI_COMMIT_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+      if ! printf '%s\n' "${CI_COMMIT_TAG}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$'; then
         echo "Invalid tag format. Use semver: v1.2.3 or v1.2.3-rc1"
         exit 1
       fi
@@ -465,7 +476,7 @@ publish-npm:
 
 release:
   stage: release
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  image: registry.gitlab.com/gitlab-org/cli:latest
   script:
     - echo "Creating release ${CI_COMMIT_TAG}"
   release:
