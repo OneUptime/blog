@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Infrastructure as Code, Pulumi, Terraform, DevOps, Migration, Cloud Infrastructure
 
-Description: A comprehensive guide to migrating your infrastructure from Terraform to Pulumi, covering tf2pulumi conversion, state import strategies, HCL to code transformation.
+Description: A comprehensive guide to migrating your infrastructure from Terraform to Pulumi, covering Pulumi conversion, state import strategies, HCL to code transformation.
 
 ---
 
@@ -38,7 +38,7 @@ Here is the high-level migration flow:
 ```mermaid
 flowchart TD
     A[Existing Terraform Code] --> B{Choose Migration Path}
-    B --> C[Full Conversion with tf2pulumi]
+    B --> C[Full Conversion with pulumi convert]
     B --> D[Gradual Migration]
     B --> E[State Import Only]
 
@@ -57,26 +57,19 @@ flowchart TD
     H --> M[Production Deployment]
 ```
 
-## Method 1: Using tf2pulumi for Automatic Conversion
+## Method 1: Using pulumi convert for Automatic Conversion
 
-The `tf2pulumi` tool automatically converts Terraform HCL to Pulumi code in your preferred language.
+The `pulumi convert` command automatically converts Terraform HCL to Pulumi code in your preferred language. This replaces the older `tf2pulumi` tool, which is deprecated.
 
-### Installing tf2pulumi
+### Installing Pulumi
 
 ```bash
 # Install Pulumi CLI first (if not already installed)
 
 curl -fsSL https://get.pulumi.com | sh
 
-# Install tf2pulumi
-# On macOS with Homebrew
-brew install pulumi/tap/tf2pulumi
-
-# On Linux or Windows, download from GitHub releases
-# https://github.com/pulumi/tf2pulumi/releases
-
 # Verify installation
-tf2pulumi version
+pulumi version
 ```
 
 ### Converting a Simple Terraform Project
@@ -221,16 +214,16 @@ output "instance_ips" {
 cd /path/to/terraform/project
 
 # Convert to TypeScript (recommended for best type safety)
-tf2pulumi --target-language typescript
+pulumi convert --from terraform --language typescript
 
 # Or convert to Python
-tf2pulumi --target-language python
+pulumi convert --from terraform --language python
 
 # Or convert to Go
-tf2pulumi --target-language go
+pulumi convert --from terraform --language go
 
 # Or convert to C#
-tf2pulumi --target-language csharp
+pulumi convert --from terraform --language csharp
 ```
 
 ### Converted Pulumi Code (TypeScript)
@@ -390,6 +383,9 @@ echo "<h1>Web Server ${i + 1} - ${environment}</h1>" > /var/www/html/index.html
 export const vpcId = mainVpc.id;
 export const subnetIds = publicSubnets.map(s => s.id);
 export const securityGroupId = webSecurityGroup.id;
+export const vpcCidrBlock = mainVpc.cidrBlock;
+export const webSecurityGroupIngress = webSecurityGroup.ingress;
+export const vpcTags = mainVpc.tags;
 export const instanceIds = webInstances.map(i => i.id);
 export const instancePublicIps = webInstances.map(i => i.publicIp);
 
@@ -483,8 +479,8 @@ For large infrastructures, create an import file:
 # Run bulk import
 pulumi import --file resources.json --generate-code
 
-# The --generate-code flag creates TypeScript/Python code
-# for each imported resource automatically
+# The --generate-code flag creates resource declarations
+# in the current Pulumi project's language automatically
 ```
 
 ### Post-Import Code Refinement
@@ -955,6 +951,11 @@ One major advantage of Pulumi is native testing support.
 import * as pulumi from "@pulumi/pulumi";
 import "jest";
 
+// Provide required Pulumi config values for the mocked runtime
+process.env.PULUMI_CONFIG = JSON.stringify({
+    "project:environment": "test",
+});
+
 // Mock Pulumi runtime for unit tests
 pulumi.runtime.setMocks({
     newResource: (args: pulumi.runtime.MockResourceArgs): { id: string; state: any } => {
@@ -969,7 +970,7 @@ pulumi.runtime.setMocks({
         if (args.token === "aws:ec2/getAmi:getAmi") {
             return { id: "ami-mock123" };
         }
-        if (args.token === "aws:getAvailabilityZones:getAvailabilityZones") {
+        if (args.token === "aws:index/getAvailabilityZones:getAvailabilityZones") {
             return { names: ["us-east-1a", "us-east-1b", "us-east-1c"] };
         }
         return args.inputs;
@@ -977,34 +978,42 @@ pulumi.runtime.setMocks({
 });
 
 // Import your infrastructure after setting up mocks
-import * as infra from "../index";
+const infra = require("../index");
 
 describe("Infrastructure", () => {
     // Test VPC configuration
-    test("VPC has correct CIDR block", async () => {
-        const cidr = await infra.vpcCidrBlock;
-        expect(cidr).toBe("10.0.0.0/16");
+    test("VPC has correct CIDR block", done => {
+        infra.vpcCidrBlock.apply((cidr: string) => {
+            expect(cidr).toBe("10.0.0.0/16");
+            done();
+        });
     });
 
     // Test instance count
-    test("correct number of instances created", async () => {
-        const ids = await Promise.all(infra.instanceIds);
-        expect(ids.length).toBeGreaterThanOrEqual(2);
+    test("correct number of instances created", done => {
+        pulumi.all(infra.instanceIds).apply((ids: string[]) => {
+            expect(ids.length).toBeGreaterThanOrEqual(2);
+            done();
+        });
     });
 
     // Test security group rules
-    test("security group allows HTTP traffic", async () => {
-        const ingress = await infra.webSecurityGroupIngress;
-        const httpRule = ingress.find((rule: any) => rule.fromPort === 80);
-        expect(httpRule).toBeDefined();
-        expect(httpRule.cidrBlocks).toContain("0.0.0.0/0");
+    test("security group allows HTTP traffic", done => {
+        infra.webSecurityGroupIngress.apply((ingress: any[]) => {
+            const httpRule = ingress.find((rule: any) => rule.fromPort === 80);
+            expect(httpRule).toBeDefined();
+            expect(httpRule.cidrBlocks).toContain("0.0.0.0/0");
+            done();
+        });
     });
 
     // Test tags are applied
-    test("all resources have environment tag", async () => {
-        const tags = await infra.vpcTags;
-        expect(tags.Environment).toBeDefined();
-        expect(tags.ManagedBy).toBe("pulumi");
+    test("all resources have environment tag", done => {
+        infra.vpcTags.apply((tags: Record<string, string>) => {
+            expect(tags.Environment).toBeDefined();
+            expect(tags.ManagedBy).toBe("pulumi");
+            done();
+        });
     });
 });
 ```
