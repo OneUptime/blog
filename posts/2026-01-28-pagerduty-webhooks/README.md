@@ -26,16 +26,16 @@ flowchart LR
 
 ## Setting Up a Webhook
 
-### Step 1: Create the Webhook Extension
+### Step 1: Create the Webhook Subscription
 
-Navigate to **Integrations > Extensions > Add Extension** or configure via API:
+Navigate to **Integrations > Generic Webhooks (v3) > New Webhook** or configure via API:
 
 ```python
 import requests
 
 def create_webhook(api_key, service_id, endpoint_url, events):
     """
-    Create a webhook extension for a PagerDuty service
+    Create a V3 webhook subscription for a PagerDuty service
 
     Args:
         api_key: PagerDuty API key
@@ -43,30 +43,26 @@ def create_webhook(api_key, service_id, endpoint_url, events):
         endpoint_url: Your webhook endpoint URL
         events: List of event types to subscribe to
     """
-    url = "https://api.pagerduty.com/extensions"
+    url = "https://api.pagerduty.com/webhook_subscriptions"
 
     headers = {
         "Authorization": f"Token token={api_key}",
-        "Content-Type": "application/json"
+        "Accept": "application/vnd.pagerduty+json;version=2",
+        "Content-Type": "application/json",
     }
 
     payload = {
-        "extension": {
-            "type": "extension",
-            "name": "Custom Webhook",
-            "extension_schema": {
-                "id": "PJFWPEP",  # Generic V3 Webhooks schema ID
-                "type": "extension_schema_reference"
+        "webhook_subscription": {
+            "type": "webhook_subscription",
+            "description": "Custom Webhook",
+            "delivery_method": {
+                "type": "http_delivery_method",
+                "url": endpoint_url
             },
-            "endpoint_url": endpoint_url,
-            "extension_objects": [
-                {
-                    "id": service_id,
-                    "type": "service_reference"
-                }
-            ],
-            "config": {
-                "events": events
+            "events": events,
+            "filter": {
+                "id": service_id,
+                "type": "service_reference"
             }
         }
     }
@@ -111,19 +107,19 @@ PagerDuty sends JSON payloads with this structure:
       "urgency": "high",
       "priority": {
         "id": "P1",
-        "name": "Critical"
+        "summary": "Critical"
       },
       "service": {
         "id": "PSERVICE123",
-        "name": "Production Web App"
+        "summary": "Production Web App"
       },
-      "assignments": [
+      "assignees": [
         {
-          "assignee": {
-            "id": "PUSER001",
-            "name": "Jane Doe",
-            "email": "jane@company.com"
-          }
+          "id": "PUSER001",
+          "summary": "Jane Doe",
+          "type": "user_reference",
+          "self": "https://api.pagerduty.com/users/PUSER001",
+          "html_url": "https://yourcompany.pagerduty.com/users/PUSER001"
         }
       ],
       "created_at": "2026-01-28T14:30:00.000Z"
@@ -140,7 +136,6 @@ PagerDuty sends JSON payloads with this structure:
 from flask import Flask, request, jsonify
 import hmac
 import hashlib
-import json
 
 app = Flask(__name__)
 
@@ -150,13 +145,18 @@ def verify_signature(payload, signature):
     """
     Verify the webhook signature to ensure it came from PagerDuty
     """
+    if not signature:
+        return False
+
     expected = hmac.new(
         WEBHOOK_SECRET.encode(),
         payload,
         hashlib.sha256
     ).hexdigest()
 
-    return hmac.compare_digest(f"v1={expected}", signature)
+    expected_signature = f"v1={expected}"
+    signatures = [value.strip() for value in signature.split(",")]
+    return any(hmac.compare_digest(expected_signature, value) for value in signatures)
 
 @app.route("/pagerduty/webhook", methods=["POST"])
 def handle_pagerduty_webhook():
@@ -165,7 +165,8 @@ def handle_pagerduty_webhook():
     if not verify_signature(request.data, signature):
         return jsonify({"error": "Invalid signature"}), 401
 
-    event = request.json.get("event", {})
+    body = request.get_json(silent=True) or {}
+    event = body.get("event", {})
     event_type = event.get("event_type")
     incident = event.get("data", {})
 
@@ -191,7 +192,7 @@ def handle_triggered(incident):
     create_jira_ticket(
         title=incident["title"],
         description=f"PagerDuty incident: {incident['html_url']}",
-        priority=incident.get("priority", {}).get("name", "Medium")
+        priority=incident.get("priority", {}).get("summary", "Medium")
     )
 
     # Post to a custom Slack channel
@@ -202,14 +203,14 @@ def handle_triggered(incident):
 
 def handle_acknowledged(incident):
     """Handle incident acknowledgment"""
-    assignee = incident.get("assignments", [{}])[0].get("assignee", {})
-    print(f"Incident acknowledged by {assignee.get('name')}")
+    assignee = incident.get("assignees", [{}])[0]
+    print(f"Incident acknowledged by {assignee.get('summary')}")
 
     # Update ticket status
     update_ticket_status(
         incident_id=incident["id"],
         status="In Progress",
-        assignee=assignee.get("email")
+        assignee=assignee.get("summary")
     )
 
 def handle_resolved(incident):
@@ -240,28 +241,43 @@ const express = require('express');
 const crypto = require('crypto');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
 const WEBHOOK_SECRET = process.env.PAGERDUTY_WEBHOOK_SECRET;
 
 // Middleware to verify PagerDuty signature
 function verifySignature(req, res, next) {
   const signature = req.headers['x-pagerduty-signature'];
-  const payload = JSON.stringify(req.body);
+  if (!signature) {
+    return res.status(401).json({ error: 'Missing signature' });
+  }
 
   const expected = 'v1=' + crypto
     .createHmac('sha256', WEBHOOK_SECRET)
-    .update(payload)
+    .update(req.rawBody)
     .digest('hex');
 
-  if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
+  const signatures = signature.split(',').map(value => value.trim());
+  const valid = signatures.some(value => {
+    const expectedBuffer = Buffer.from(expected);
+    const signatureBuffer = Buffer.from(value);
+
+    return expectedBuffer.length === signatureBuffer.length &&
+      crypto.timingSafeEqual(expectedBuffer, signatureBuffer);
+  });
+
+  if (!valid) {
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
   next();
 }
 
-app.post('/pagerduty/webhook', verifySignature, (req, res) => {
+app.post('/pagerduty/webhook', verifySignature, async (req, res) => {
   const { event } = req.body;
   const eventType = event.event_type;
   const incident = event.data;
@@ -270,13 +286,13 @@ app.post('/pagerduty/webhook', verifySignature, (req, res) => {
 
   switch (eventType) {
     case 'incident.triggered':
-      handleTriggered(incident);
+      await handleTriggered(incident);
       break;
     case 'incident.acknowledged':
-      handleAcknowledged(incident);
+      await handleAcknowledged(incident);
       break;
     case 'incident.resolved':
-      handleResolved(incident);
+      await handleResolved(incident);
       break;
     default:
       console.log(`Unhandled event type: ${eventType}`);
@@ -335,7 +351,7 @@ flowchart TD
 |------------|-------------|
 | incident.triggered | New incident created |
 | incident.acknowledged | Incident acknowledged by responder |
-| incident.unacknowledged | Acknowledgment timed out |
+| incident.unacknowledged | Incident became unacknowledged |
 | incident.resolved | Incident marked resolved |
 | incident.escalated | Incident escalated to next level |
 | incident.reassigned | Incident assigned to different user |
@@ -346,7 +362,7 @@ flowchart TD
 
 ### Retry Logic
 
-PagerDuty retries failed webhooks with exponential backoff. Your endpoint should:
+PagerDuty retries failed webhooks periodically. Your endpoint should:
 
 ```python
 @app.route("/pagerduty/webhook", methods=["POST"])
@@ -359,8 +375,8 @@ def handle_webhook():
         # Return 5xx to trigger retry
         return jsonify({"error": str(e)}), 503
     except PermanentError as e:
-        # Return 4xx to stop retries
-        return jsonify({"error": str(e)}), 400
+        # Acknowledge permanent failures and log them internally
+        return jsonify({"status": "ignored", "error": str(e)}), 200
 ```
 
 ### Idempotency
