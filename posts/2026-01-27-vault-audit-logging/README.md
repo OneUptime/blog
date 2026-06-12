@@ -77,13 +77,17 @@ vault audit list
 Configuration options for the file device:
 
 ```bash
-# Enable with additional options
+# Enable with additional options:
+#   log_raw=false      - Set true to log sensitive data in plaintext (NOT recommended)
+#   hmac_accessor=true - HMAC the accessor in each request
+#   mode=0600          - File permissions
+#   format=json        - Output format: json or jsonx
 vault audit enable file \
     file_path=/var/log/vault/audit.log \
-    log_raw=false \           # Set true to log sensitive data in plaintext (NOT recommended)
-    hmac_accessor=true \      # HMAC the accessor in each request
-    mode=0600 \               # File permissions
-    format=json               # Output format: json or jsonx
+    log_raw=false \
+    hmac_accessor=true \
+    mode=0600 \
+    format=json
 ```
 
 ### Syslog Audit Device
@@ -95,10 +99,12 @@ Sends audit logs to a local or remote syslog daemon. Ideal for centralized loggi
 # Sends logs to the local syslog daemon
 vault audit enable syslog
 
-# Enable with custom configuration
+# Enable with custom configuration:
+#   tag=vault     - Syslog tag for filtering
+#   facility=AUTH - Syslog facility (AUTH, LOCAL0-LOCAL7, etc.)
 vault audit enable syslog \
-    tag=vault \              # Syslog tag for filtering
-    facility=AUTH \          # Syslog facility (AUTH, LOCAL0-LOCAL7, etc.)
+    tag=vault \
+    facility=AUTH \
     format=json
 ```
 
@@ -130,7 +136,7 @@ Understanding the log format is essential for parsing and analysis. Here's a sam
 ```json
 {
   "time": "2026-01-27T10:15:30.123456Z",
-  "type": "request",
+  "type": "response",
   "auth": {
     "client_token": "hmac-sha256:abc123...",
     "accessor": "hmac-sha256:def456...",
@@ -367,7 +373,7 @@ flowchart LR
     subgraph SOC2["SOC 2 Trust Criteria"]
         CC6[CC6.1 - Logical Access]
         CC7[CC7.2 - System Monitoring]
-        CC8[CC6.8 - Prevent Unauthorized Access]
+        CC74[CC7.4 - Incident Response]
     end
 
     subgraph VaultAudit["Vault Audit Capabilities"]
@@ -381,8 +387,8 @@ flowchart LR
     CC6 --> A2
     CC7 --> A2
     CC7 --> A3
-    CC8 --> A1
-    CC8 --> A4
+    CC74 --> A1
+    CC74 --> A4
 ```
 
 ### PCI-DSS Requirements
@@ -578,8 +584,9 @@ groups:
           description: "Vault audit log has {{ $value }} failures in the last 5 minutes"
 
       # Alert if no audit requests are being logged
+      # vault_audit_log_request is a summary; use _count to track activity
       - alert: VaultAuditLogInactive
-        expr: increase(vault_audit_log_request[5m]) == 0
+        expr: increase(vault_audit_log_request_count[5m]) == 0
         for: 10m
         labels:
           severity: warning
@@ -588,14 +595,15 @@ groups:
           description: "No audit log entries in the last 10 minutes"
 
       # Alert on high audit log latency
+      # Values are in milliseconds (Vault telemetry is ms, not seconds)
       - alert: VaultAuditLogLatency
-        expr: vault_audit_log_request_duration_seconds{quantile="0.99"} > 0.5
+        expr: vault_audit_log_request{quantile="0.99"} > 500
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "Vault audit log latency is high"
-          description: "99th percentile audit log latency is {{ $value }}s"
+          description: "99th percentile audit log latency is {{ $value }}ms"
 ```
 
 ## Security Best Practices
