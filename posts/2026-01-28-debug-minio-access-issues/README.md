@@ -238,9 +238,8 @@ mc anonymous set-json bucket-policy.json myminio/mybucket
 # Enable debug mode in mc
 mc ls myminio/mybucket --debug
 
-# For SDKs, enable request logging
-# Python example:
-export MINIO_DEBUG=1
+# For SDKs, enable request logging via the SDK's debug facility
+# (see the Python/JavaScript/Go examples in Step 6 below)
 ```
 
 ### Server-Side Audit Logging
@@ -248,13 +247,9 @@ export MINIO_DEBUG=1
 Enable MinIO audit logs to see exactly what is being denied:
 
 ```bash
-# Configure audit logging to console (for testing)
-mc admin config set myminio audit_webhook \
-  endpoint="" \
-  enable="on"
-
-# Or log to a file
-mc admin config set myminio logger_webhook:audit \
+# Configure audit logging to a webhook endpoint
+# (point this at a local listener like auditlog-echo for testing)
+mc admin config set myminio audit_webhook:primary \
   endpoint="http://localhost:8080/audit" \
   enable="on"
 
@@ -506,8 +501,8 @@ mc admin info myminio
 # Force IAM sync
 mc admin service restart myminio
 
-# Check for rate limits
-mc admin user ratelimit info myminio myuser
+# Check bucket quota (a quota hit can manifest as access errors)
+mc admin bucket quota myminio/mybucket
 ```
 
 ### Issue: CORS Errors from Browser
@@ -516,21 +511,22 @@ mc admin user ratelimit info myminio myuser
 
 **Fix**:
 ```bash
-# Set CORS configuration
-cat > cors.json << 'EOF'
-{
-  "CORSRules": [
-    {
-      "AllowedHeaders": ["*"],
-      "AllowedMethods": ["GET", "PUT", "POST", "DELETE"],
-      "AllowedOrigins": ["https://myapp.example.com"],
-      "ExposeHeaders": ["ETag"]
-    }
-  ]
-}
+# Set CORS configuration (mc cors set expects S3 CORS XML)
+cat > cors.xml << 'EOF'
+<CORSConfiguration>
+  <CORSRule>
+    <AllowedOrigin>https://myapp.example.com</AllowedOrigin>
+    <AllowedMethod>GET</AllowedMethod>
+    <AllowedMethod>PUT</AllowedMethod>
+    <AllowedMethod>POST</AllowedMethod>
+    <AllowedMethod>DELETE</AllowedMethod>
+    <AllowedHeader>*</AllowedHeader>
+    <ExposeHeader>ETag</ExposeHeader>
+  </CORSRule>
+</CORSConfiguration>
 EOF
 
-mc cors set myminio/mybucket cors.json
+mc cors set myminio/mybucket cors.xml
 ```
 
 ## Debugging Decision Tree
