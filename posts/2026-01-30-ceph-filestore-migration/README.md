@@ -50,10 +50,10 @@ Before starting the migration, understand why BlueStore is the preferred backend
 
 | Feature | FileStore | BlueStore |
 |---------|-----------|-----------|
-| Write Amplification | 2x (journal + data) | 1x (direct writes) |
+| Write Amplification | Higher (journal + filesystem) | Lower (direct writes) |
 | Checksum Support | No | Yes (per-object) |
 | Compression | Limited | Inline compression |
-| Performance | Good | 2x faster writes |
+| Performance | Good | Often better, workload-dependent |
 | Data Integrity | Journal-based | Built-in checksums |
 | Disk Space | More overhead | Less overhead |
 
@@ -106,7 +106,7 @@ ceph osd metadata | jq -r '.[] | "\(.id) \(.osd_objectstore)"'
 
 ### Verify Ceph Version
 
-BlueStore requires Ceph Luminous (12.x) or later. Check your version:
+BlueStore became the default OSD backend in Ceph Luminous (12.x). FileStore is deprecated and is not supported in Reef (18.x) and later, so clusters that still have FileStore OSDs should migrate before upgrading to Reef or a newer release. Check your version:
 
 ```bash
 # Check Ceph version across all nodes
@@ -131,9 +131,8 @@ Ensure you have enough capacity to migrate OSDs one at a time:
 # Check cluster capacity and usage
 ceph df
 
-# Calculate minimum required free space
-# Rule: You need at least 1/N of total capacity free
-# where N is the number of OSDs per failure domain
+# Confirm there is enough free capacity to backfill the selected OSD
+# without hitting nearfull or backfillfull thresholds.
 
 ceph osd df tree
 ```
@@ -188,12 +187,17 @@ Before migration, configure the cluster to handle OSD removals gracefully:
 # Prevent unnecessary data rebalancing during short maintenance windows
 ceph osd set noout
 
-# Optional: Reduce recovery impact on client I/O
-ceph osd set nobackfill
-ceph osd set norecover
+# Optional: Reduce extra maintenance load during migration
+ceph osd set noscrub
+ceph osd set nodeep-scrub
 
 # Verify flags are set
 ceph osd dump | grep flags
+
+# After the maintenance window, unset any flags you enabled
+ceph osd unset noout
+ceph osd unset noscrub
+ceph osd unset nodeep-scrub
 ```
 
 ---
@@ -237,12 +241,8 @@ ceph osd out $OSD_ID
 # Wait for data to migrate away
 echo "Waiting for PGs to become active+clean..."
 while true; do
-    # Count PGs that are not active+clean
-    degraded=$(ceph health detail 2>/dev/null | grep -c "degraded")
-    recovering=$(ceph pg stat | grep -c "recovering")
-
-    if [ "$degraded" -eq 0 ] && [ "$recovering" -eq 0 ]; then
-        echo "All PGs are healthy"
+    if ceph osd safe-to-destroy "$OSD_ID" >/dev/null 2>&1; then
+        echo "OSD.$OSD_ID is safe to destroy"
         break
     fi
 
@@ -251,14 +251,14 @@ while true; do
 done
 ```
 
-### Step 3: Stop and Remove OSD
+### Step 3: Stop and Destroy OSD Metadata
 
-Stop the OSD service and remove it from the cluster:
+Stop the OSD service and mark the OSD ID as destroyed so it can be reused:
 
 ```bash
 #!/bin/bash
-# remove_osd.sh
-# Stops and removes an OSD from the cluster
+# destroy_osd.sh
+# Stops an OSD and marks its ID as destroyed for replacement
 
 OSD_ID=$1
 HOST=$2
@@ -279,18 +279,12 @@ sleep 10
 # Verify OSD is down
 ceph osd tree | grep "osd.$OSD_ID"
 
-echo "Removing OSD.$OSD_ID from cluster..."
+echo "Marking OSD.$OSD_ID destroyed..."
 
-# Remove OSD from CRUSH map
-ceph osd crush remove osd.$OSD_ID
+# Keep the OSD ID and CRUSH entry available for the replacement OSD
+ceph osd destroy $OSD_ID --yes-i-really-mean-it
 
-# Delete authentication key
-ceph auth del osd.$OSD_ID
-
-# Remove OSD from cluster
-ceph osd rm $OSD_ID
-
-echo "OSD.$OSD_ID removed successfully"
+echo "OSD.$OSD_ID marked destroyed successfully"
 ```
 
 ### Step 4: Wipe the Disk
@@ -312,18 +306,8 @@ fi
 
 echo "Wiping $DEVICE on $HOST..."
 
-# Remove any existing LVM configuration
-ssh $HOST "sudo pvremove $DEVICE --force --force 2>/dev/null || true"
-
-# Wipe filesystem signatures
-ssh $HOST "sudo wipefs -a $DEVICE"
-
-# Zero out the beginning and end of the disk
-ssh $HOST "sudo dd if=/dev/zero of=$DEVICE bs=1M count=100"
-ssh $HOST "sudo dd if=/dev/zero of=$DEVICE bs=1M count=100 seek=\$((\$(blockdev --getsz $DEVICE) / 2048 - 100))"
-
-# Clear partition table
-ssh $HOST "sudo sgdisk --zap-all $DEVICE"
+# Remove Ceph LVM metadata, filesystems, and partition information
+ssh $HOST "sudo ceph-volume lvm zap $DEVICE --destroy"
 
 echo "Disk $DEVICE wiped successfully"
 ```
@@ -339,29 +323,31 @@ Create a new OSD with BlueStore backend:
 
 DEVICE=$1
 HOST=$2
+OSD_ID=$3
 
-if [ -z "$DEVICE" ] || [ -z "$HOST" ]; then
-    echo "Usage: $0 <device> <host>"
+if [ -z "$DEVICE" ] || [ -z "$HOST" ] || [ -z "$OSD_ID" ]; then
+    echo "Usage: $0 <device> <host> <osd_id>"
     exit 1
 fi
 
-echo "Deploying BlueStore OSD on $DEVICE ($HOST)..."
+echo "Deploying BlueStore OSD.$OSD_ID on $DEVICE ($HOST)..."
 
 # Using ceph-volume for modern Ceph deployments
-ssh $HOST "sudo ceph-volume lvm create --bluestore --data $DEVICE"
+ssh $HOST "sudo ceph-volume lvm create --bluestore --data $DEVICE --osd-id $OSD_ID"
 
-# For cephadm-managed clusters, use orchestrator
+# For cephadm-managed clusters, use the orchestrator replacement flow
+# ceph orch osd rm $OSD_ID --replace
 # ceph orch daemon add osd $HOST:$DEVICE
 
 echo "Verifying new OSD..."
 sleep 5
 
-# Find the new OSD ID
-NEW_OSD=$(ceph osd tree | grep "$HOST" -A 10 | grep "up" | tail -1 | awk '{print $4}')
+# Verify the replacement OSD ID
+NEW_OSD="osd.$OSD_ID"
 echo "New OSD created: $NEW_OSD"
 
 # Verify it is using BlueStore
-ceph osd metadata $NEW_OSD | jq '.osd_objectstore'
+ceph osd metadata $OSD_ID | jq '.osd_objectstore'
 ```
 
 ---
@@ -385,12 +371,10 @@ sequenceDiagram
     end
 
     Admin->>OSD: systemctl stop ceph-osd@$ID
-    Admin->>Monitor: ceph osd crush remove
-    Admin->>Monitor: ceph auth del
-    Admin->>Monitor: ceph osd rm
+    Admin->>Monitor: ceph osd destroy
 
-    Admin->>OSD: wipefs -a $DEVICE
-    Admin->>OSD: ceph-volume lvm create --bluestore
+    Admin->>OSD: ceph-volume lvm zap $DEVICE --destroy
+    Admin->>OSD: ceph-volume lvm create --bluestore --osd-id
 
     OSD->>Monitor: New OSD joins cluster
     Monitor->>Cluster: Begin backfill to new OSD
@@ -419,23 +403,43 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a $LOG_FILE
 }
 
-wait_for_healthy() {
+wait_for_clean() {
     local timeout=$1
     local elapsed=0
 
     while [ $elapsed -lt $timeout ]; do
-        health=$(ceph health 2>/dev/null)
-        if [ "$health" == "HEALTH_OK" ]; then
-            log "Cluster is healthy"
+        pg_stat=$(ceph pg stat 2>/dev/null)
+        if echo "$pg_stat" | grep -q "active+clean" && ! echo "$pg_stat" | grep -Eq "degraded|recover|backfill|remapped|undersized"; then
+            log "Placement groups are active+clean"
             return 0
         fi
 
-        log "Waiting for cluster health... ($health)"
+        log "Waiting for PGs to become active+clean... ($pg_stat)"
         sleep 30
         elapsed=$((elapsed + 30))
     done
 
-    log "ERROR: Timeout waiting for cluster health"
+    log "ERROR: Timeout waiting for clean PGs"
+    return 1
+}
+
+wait_until_safe_to_destroy() {
+    local osd_id=$1
+    local timeout=$2
+    local elapsed=0
+
+    while [ $elapsed -lt $timeout ]; do
+        if ceph osd safe-to-destroy "$osd_id" >/dev/null 2>&1; then
+            log "OSD.$osd_id is safe to destroy"
+            return 0
+        fi
+
+        log "Waiting for OSD.$osd_id to be safe to destroy"
+        sleep 30
+        elapsed=$((elapsed + 30))
+    done
+
+    log "ERROR: Timeout waiting for OSD.$osd_id to be safe to destroy"
     return 1
 }
 
@@ -452,31 +456,28 @@ migrate_osd() {
 
     # Step 2: Wait for data migration
     log "Waiting for data to migrate away from OSD.$osd_id"
-    wait_for_healthy $WAIT_TIMEOUT
+    wait_until_safe_to_destroy $osd_id $WAIT_TIMEOUT
 
     # Step 3: Stop OSD
     log "Stopping OSD.$osd_id"
     ssh $host "sudo systemctl stop ceph-osd@$osd_id"
     sleep 10
 
-    # Step 4: Remove OSD
-    log "Removing OSD.$osd_id from cluster"
-    ceph osd crush remove osd.$osd_id
-    ceph auth del osd.$osd_id
-    ceph osd rm $osd_id
+    # Step 4: Mark OSD ID as destroyed for replacement
+    log "Marking OSD.$osd_id destroyed"
+    ceph osd destroy $osd_id --yes-i-really-mean-it
 
     # Step 5: Wipe disk
     log "Wiping disk $device on $host"
-    ssh $host "sudo wipefs -a $device"
-    ssh $host "sudo sgdisk --zap-all $device"
+    ssh $host "sudo ceph-volume lvm zap $device --destroy"
 
     # Step 6: Deploy BlueStore OSD
     log "Deploying new BlueStore OSD on $device"
-    ssh $host "sudo ceph-volume lvm create --bluestore --data $device"
+    ssh $host "sudo ceph-volume lvm create --bluestore --data $device --osd-id $osd_id"
 
     # Step 7: Wait for recovery
     log "Waiting for new OSD to recover data"
-    wait_for_healthy $WAIT_TIMEOUT
+    wait_for_clean $WAIT_TIMEOUT
 
     log "Migration of OSD.$osd_id completed successfully"
 }
@@ -593,9 +594,9 @@ stateDiagram-v2
     WaitRecovery --> WaitRecovery: Still recovering
 
     StopOSD --> RemoveOSD: systemctl stop
-    RemoveOSD --> WipeDisk: Remove from CRUSH
-    WipeDisk --> DeployBlueStore: wipefs + sgdisk
-    DeployBlueStore --> WaitBackfill: ceph-volume create
+    RemoveOSD --> WipeDisk: ceph osd destroy
+    WipeDisk --> DeployBlueStore: ceph-volume lvm zap $DEVICE --destroy
+    DeployBlueStore --> WaitBackfill: ceph-volume create --osd-id
 
     WaitBackfill --> CheckRemaining: OSD healthy
 
@@ -642,9 +643,9 @@ vgs
 # Manually activate the OSD
 ceph-volume lvm activate --all
 
-# If still failing, recreate
-ceph-volume lvm zap $DEVICE
-ceph-volume lvm create --bluestore --data $DEVICE
+# If still failing, recreate the replacement OSD
+ceph-volume lvm zap $DEVICE --destroy
+ceph-volume lvm create --bluestore --data $DEVICE --osd-id $OSD_ID
 ```
 
 ### Issue: Cluster Runs Out of Space
@@ -719,15 +720,15 @@ ceph osd pool set <pool-name> compression_algorithm snappy
 # Verify compression settings
 ceph osd pool get <pool-name> all | grep compression
 
-# Enable checksums (enabled by default)
-ceph config set osd bluestore_csum_type crc32c
+# Checksums are enabled by default. To set a pool checksum type explicitly:
+ceph osd pool set <pool-name> csum_type crc32c
 ```
 
 ---
 
 ## Rollback Procedure
 
-If you need to rollback a single OSD to FileStore:
+If you need to rollback a single OSD to FileStore on a legacy pre-Reef cluster:
 
 ```bash
 #!/bin/bash
@@ -747,15 +748,12 @@ if [ "$confirm" != "yes" ]; then
     exit 0
 fi
 
-# Stop and remove OSD
+# Stop and destroy the replacement OSD metadata
 ssh $HOST "sudo systemctl stop ceph-osd@$OSD_ID"
-ceph osd crush remove osd.$OSD_ID
-ceph auth del osd.$OSD_ID
-ceph osd rm $OSD_ID
+ceph osd destroy $OSD_ID --yes-i-really-mean-it
 
 # Wipe disk
-ssh $HOST "sudo wipefs -a $DEVICE"
-ssh $HOST "sudo sgdisk --zap-all $DEVICE"
+ssh $HOST "sudo ceph-volume lvm zap $DEVICE --destroy"
 
 # Create partition for FileStore
 ssh $HOST "sudo sgdisk -n 1:0:0 -t 1:8300 $DEVICE"
@@ -764,7 +762,7 @@ ssh $HOST "sudo sgdisk -n 1:0:0 -t 1:8300 $DEVICE"
 ssh $HOST "sudo mkfs.xfs ${DEVICE}1"
 
 # Deploy FileStore OSD
-ssh $HOST "sudo ceph-volume lvm create --filestore --data ${DEVICE}1"
+ssh $HOST "sudo ceph-volume lvm create --filestore --data ${DEVICE}1 --osd-id $OSD_ID"
 
 echo "Rollback completed"
 ```
@@ -795,7 +793,7 @@ echo "Rollback completed"
 
 Migrating from FileStore to BlueStore is a significant undertaking but provides substantial benefits:
 
-- **2x faster write performance** with reduced write amplification
+- **Often better write performance** with reduced write amplification
 - **Better data integrity** with per-object checksums
 - **Lower storage overhead** through inline compression
 - **Improved reliability** with better crash recovery
