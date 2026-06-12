@@ -21,7 +21,7 @@ The benefits are immediate:
 - **No more key rotation headaches.** Access is tied to identity, not static files.
 - **Centralized access control.** One ACL policy governs who can reach what.
 - **Session recording.** Every command is logged for compliance and forensics.
-- **Check mode.** Test SSH access without actually granting it.
+- **Check mode.** Require step-up re-authentication for high-risk SSH sessions.
 
 This guide walks through enabling Tailscale SSH, configuring ACLs, setting up session recording, and integrating with VS Code Remote SSH.
 
@@ -105,7 +105,7 @@ This configuration establishes the network-level access. But Tailscale SSH has i
 
 ## SSH access rules
 
-The `ssh` section in your ACL policy defines who can SSH into which machines and with what privileges. This is where Tailscale SSH really shines - you can specify the exact username, require check mode, and enable session recording per rule.
+The `ssh` section in your ACL policy defines who can SSH into which machines and with what privileges. This is where Tailscale SSH really shines - you can specify the exact username, require periodic re-authentication, and enable session recording per rule.
 
 ```json
 {
@@ -118,23 +118,25 @@ The `ssh` section in your ACL policy defines who can SSH into which machines and
   "tagOwners": {
     "tag:server": ["group:sre"],
     "tag:production": ["group:sre"],
-    "tag:staging": ["group:engineers"]
+    "tag:staging": ["group:engineers"],
+    "tag:recorder": ["group:sre"]
   },
 
   // SSH-specific access rules
   // These rules control Tailscale SSH behavior independently of network ACLs
   "ssh": [
     // SRE team gets root access to production with session recording
+    // The recorder field references the tag attached to tsrecorder nodes
     {
       "action": "accept",
       "src": ["group:sre"],
       "dst": ["tag:production"],
       "users": ["root", "deploy"],
-      "recorder": ["admin@example.com"]
+      "recorder": ["tag:recorder"]
     },
 
-    // Engineers get their own user account on staging servers
-    // autogroup:nonroot means they SSH as their own username
+    // Engineers can SSH to staging as any non-root local user
+    // autogroup:nonroot allows any username on the host except root
     {
       "action": "accept",
       "src": ["group:engineers"],
@@ -142,13 +144,14 @@ The `ssh` section in your ACL policy defines who can SSH into which machines and
       "users": ["autogroup:nonroot"]
     },
 
-    // Auditors can only use check mode - they cannot actually connect
-    // This lets them verify access policies without executing commands
+    // High-risk root access requires re-authentication via the IdP
+    // checkPeriod sets how long a successful check lasts before re-auth
     {
       "action": "check",
-      "src": ["group:readonly"],
+      "src": ["group:sre"],
       "dst": ["tag:production"],
-      "users": ["root"]
+      "users": ["root"],
+      "checkPeriod": "12h"
     }
   ]
 }
@@ -156,17 +159,20 @@ The `ssh` section in your ACL policy defines who can SSH into which machines and
 
 Key fields in SSH rules:
 
-- **action**: `accept` grants access, `check` enables check mode only
+- **action**: `accept` grants access immediately; `check` grants access only after the user re-authenticates through your identity provider
 - **src**: Users or groups who can initiate SSH connections
-- **dst**: Target machines identified by tags or hostnames
+- **dst**: Target machines identified by tags or hostnames (port `22` is implicit and cannot be customized)
 - **users**: Linux usernames the source can SSH as
-- **recorder**: Email addresses that receive session recordings
+- **checkPeriod**: Required when `action` is `check`; how long a re-authentication is valid (1 minute to 168 hours, or `"always"` to require re-auth on every connection)
+- **recorder**: Tags of tsrecorder nodes that will record the session
 
 ---
 
 ## Session recording for compliance
 
 Session recording captures every keystroke and command output during an SSH session. This is invaluable for compliance audits, incident forensics, and training.
+
+Tailscale records sessions to dedicated recorder nodes that run the `tsrecorder` service. You deploy `tsrecorder`, tag the recorder nodes (for example `tag:recorder`), and then reference that tag from your SSH rules. The `recorder` field takes a list of tags - it does not accept user email addresses.
 
 To enable session recording, add the `recorder` field to your SSH rules:
 
@@ -178,56 +184,52 @@ To enable session recording, add the `recorder` field to your SSH rules:
       "src": ["group:sre"],
       "dst": ["tag:production"],
       "users": ["root"],
-      // Recordings are sent to these users
-      // They receive a link to view the session after it ends
-      "recorder": ["security@example.com", "compliance@example.com"]
+      // Sessions are streamed to nodes carrying this tag
+      // Those nodes run tsrecorder and persist the recording
+      "recorder": ["tag:recorder"],
+      // Deny the session if no recorder node is reachable
+      "enforceRecorder": true
     }
   ]
 }
 ```
 
-Session recordings are stored securely and accessible through the Tailscale admin console. Each recording includes:
+Session recordings are stored on the recorder nodes you operate and can be viewed through the Tailscale admin console. Each recording includes:
 
 - Full terminal output (what the user saw)
 - Timing information (when each command was entered)
 - Session metadata (who connected, when, from where)
 
-For highly sensitive environments, you can require recording for all sessions by adding a recorder to every SSH rule. Users will see a notification that their session is being recorded.
+Set `enforceRecorder` to `true` to refuse SSH sessions whenever a recorder is unreachable - useful for highly sensitive environments where an unrecorded session is unacceptable. Users will see a notification that their session is being recorded.
 
 ---
 
-## Check mode for access verification
+## Check mode for high-risk access
 
-Check mode lets you test whether a user would have SSH access without actually granting it. This is useful for:
+Check mode adds an interactive re-authentication step in front of an SSH session. The user must complete a fresh authentication flow with your identity provider before Tailscale opens the connection. This is useful for:
 
-- Auditing access policies before they go live
-- Letting security teams verify configurations
-- Debugging "why can't I SSH" problems
+- Root or other high-privilege accounts
+- Production environments where every elevated session should be intentional
+- Meeting compliance requirements that mandate step-up authentication
 
-Enable check mode by setting the action to `check`:
+Enable check mode by setting the action to `check` and providing a `checkPeriod`:
 
 ```json
 {
   "ssh": [
-    // This rule only enables check mode - no actual SSH access
+    // SREs may SSH as root, but must re-auth at least every 4 hours
     {
       "action": "check",
-      "src": ["group:security-auditors"],
+      "src": ["group:sre"],
       "dst": ["tag:production"],
-      "users": ["root"]
+      "users": ["root"],
+      "checkPeriod": "4h"
     }
   ]
 }
 ```
 
-Users with check mode access can run:
-
-```bash
-# Test whether you would have SSH access
-tailscale ssh --check user@hostname
-```
-
-The command returns success if access would be granted, or an error explaining why access would be denied. No actual connection is made.
+When the user runs `ssh root@host`, Tailscale opens a browser-based re-authentication prompt. After they sign in, the connection proceeds and remains exempt from further checks for the duration of `checkPeriod` (1 minute up to 168 hours, or `"always"` to require re-auth on every connection). Once the period elapses, the next connection prompts for re-authentication again.
 
 ---
 
@@ -235,40 +237,30 @@ The command returns success if access would be granted, or an error explaining w
 
 Tailscale SSH integrates seamlessly with VS Code Remote SSH. You can develop on remote servers without copying SSH keys or configuring jump hosts.
 
-First, ensure your VS Code SSH config uses Tailscale hostnames. Edit `~/.ssh/config`:
+Because Tailscale SSH claims port `22` on the tailnet interface of any host where you ran `tailscale set --ssh`, the standard `ssh` client (and therefore VS Code's Remote - SSH extension) connects to it without any extra wiring. Just SSH to the MagicDNS name and Tailscale handles authentication for you.
 
-```text
-# Use Tailscale SSH for all tailnet hosts
-Host *.your-tailnet.ts.net
-    ProxyCommand /usr/bin/tailscale ssh --accept-risks=lose-ssh %h
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-```
-
-Alternatively, configure individual hosts:
+You can optionally add entries to `~/.ssh/config` to make hostnames and usernames easy to manage:
 
 ```text
 # Production web server via Tailscale
 Host prod-web
     HostName prod-web.your-tailnet.ts.net
     User deploy
-    ProxyCommand tailscale ssh --accept-risks=lose-ssh %h
 
 # Staging database server
 Host staging-db
     HostName staging-db.your-tailnet.ts.net
     User developer
-    ProxyCommand tailscale ssh --accept-risks=lose-ssh %h
 ```
 
 In VS Code:
 
 1. Install the Remote - SSH extension
 2. Open the Command Palette and select "Remote-SSH: Connect to Host"
-3. Choose your Tailscale hostname
+3. Choose your Tailscale hostname (either a `Host` alias from your config or the full `*.ts.net` name)
 4. VS Code connects through Tailscale with full IDE features
 
-The `--accept-risks=lose-ssh` flag acknowledges that Tailscale SSH bypasses traditional SSH key verification. Since Tailscale handles authentication through your identity provider, this is the expected behavior.
+For a more integrated experience, Tailscale also publishes an official VS Code extension that exposes the machines on your tailnet directly in the editor's sidebar and connects to them over Tailscale SSH.
 
 ---
 
@@ -335,7 +327,7 @@ Many teams keep OpenSSH running on a non-standard port as an emergency backdoor,
 - **Use groups, not individual users.** Groups make it easy to onboard and offboard team members without editing ACLs.
 - **Tag your servers by role.** Tags like `tag:production`, `tag:staging`, and `tag:database` make ACLs readable and maintainable.
 - **Enable session recording for production.** Even if you trust your team, recordings provide invaluable context during incident reviews.
-- **Use check mode for auditing.** Let security teams verify access policies without granting actual access.
+- **Use check mode for high-risk accounts.** Require fresh IdP authentication before granting root or production access.
 - **Keep a fallback.** During migration, maintain traditional SSH access until you are confident in the Tailscale setup.
 - **Integrate with your IdP.** Tailscale SSH is most powerful when tied to your existing identity provider for SSO and MFA enforcement.
 - **Review access regularly.** ACLs can drift over time. Schedule quarterly reviews to remove stale rules and groups.
