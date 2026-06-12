@@ -45,7 +45,11 @@ Falco provides several official plugins:
 
 ## Installing Plugins
 
-Plugins are included in the Falco container image. Enable them through configuration:
+Plugins are distributed as Falco artifacts. Install them with `falcoctl`, then enable them through configuration:
+
+```bash
+falcoctl artifact install cloudtrail json
+```
 
 ```yaml
 # falco.yaml
@@ -53,9 +57,7 @@ Plugins are included in the Falco container image. Enable them through configura
 plugins:
   - name: cloudtrail
     library_path: libcloudtrail.so
-    init_config:
-      sqsDelete: true
-      aws_region: us-east-1
+    init_config: '{"sqsDelete": true, "aws": {"region": "us-east-1"}}'
     open_params: "sqs://my-cloudtrail-queue"
 
   - name: json
@@ -69,12 +71,21 @@ With Helm:
 
 ```yaml
 # values.yaml
+falcoctl:
+  artifact:
+    install:
+      enabled: true
+  config:
+    artifact:
+      install:
+        resolveDeps: true
+        refs: [cloudtrail, json]
+
 falco:
   plugins:
     - name: cloudtrail
       library_path: libcloudtrail.so
-      init_config:
-        sqsDelete: true
+      init_config: '{"sqsDelete": true}'
       open_params: "sqs://my-cloudtrail-queue"
     - name: json
       library_path: libjson.so
@@ -92,31 +103,57 @@ The CloudTrail plugin monitors AWS API activity for security threats.
 
 ### Setting Up CloudTrail
 
-First, configure CloudTrail to send events to an SQS queue:
+First, configure CloudTrail to publish log delivery notifications to an SNS topic, and subscribe an SQS queue to that topic:
 
 ```bash
 # Create SQS queue for CloudTrail events
 aws sqs create-queue --queue-name falco-cloudtrail-queue
 
+# Create SNS topic for CloudTrail log delivery notifications
+aws sns create-topic --name falco-cloudtrail-topic
+
+# Subscribe the queue to the topic
+aws sns subscribe \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:falco-cloudtrail-topic \
+  --protocol sqs \
+  --notification-endpoint arn:aws:sqs:us-east-1:123456789012:falco-cloudtrail-queue
+
 # Create S3 bucket for CloudTrail logs
 aws s3 mb s3://my-cloudtrail-bucket
 
-# Enable CloudTrail with S3 and SQS
+# Enable CloudTrail with S3 and SNS notifications
 aws cloudtrail create-trail \
   --name security-trail \
   --s3-bucket-name my-cloudtrail-bucket \
+  --sns-topic-name falco-cloudtrail-topic \
   --include-global-service-events
 
 aws cloudtrail start-logging --name security-trail
 ```
 
-Configure S3 bucket notifications to SQS:
+Allow the SNS topic to send messages to the SQS queue:
 
 ```json
 {
-  "QueueConfigurations": [
+  "Policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"sns.amazonaws.com\"},\"Action\":\"sqs:SendMessage\",\"Resource\":\"arn:aws:sqs:us-east-1:123456789012:falco-cloudtrail-queue\",\"Condition\":{\"ArnEquals\":{\"aws:SourceArn\":\"arn:aws:sns:us-east-1:123456789012:falco-cloudtrail-topic\"}}}]}"
+}
+```
+
+Apply the policy with:
+
+```bash
+aws sqs set-queue-attributes \
+  --queue-url https://sqs.us-east-1.amazonaws.com/123456789012/falco-cloudtrail-queue \
+  --attributes file://sqs-attributes.json
+```
+
+If you route S3 bucket notifications through SNS instead of CloudTrail SNS notifications, set `useS3SNS` to `true` and use an S3 notification configuration like:
+
+```json
+{
+  "TopicConfigurations": [
     {
-      "QueueArn": "arn:aws:sqs:us-east-1:123456789012:falco-cloudtrail-queue",
+      "TopicArn": "arn:aws:sns:us-east-1:123456789012:falco-cloudtrail-topic",
       "Events": ["s3:ObjectCreated:*"],
       "Filter": {
         "Key": {
@@ -140,9 +177,7 @@ Configure S3 bucket notifications to SQS:
 plugins:
   - name: cloudtrail
     library_path: libcloudtrail.so
-    init_config:
-      sqsDelete: true
-      useS3SNS: false
+    init_config: '{"sqsDelete": true, "useS3SNS": false}'
     open_params: "sqs://falco-cloudtrail-queue"
 
   - name: json
@@ -162,7 +197,7 @@ customRules:
       desc: Detect usage of AWS root account
       condition: >
         ct.user.identitytype = "Root" and
-        not ct.errorcode exists
+        not ct.error exists
       output: >
         Root account used for AWS API call
         (user=%ct.user.identitytype action=%ct.name region=%ct.region)
@@ -180,7 +215,7 @@ customRules:
                     RevokeSecurityGroupEgress)
       output: >
         Security group modified
-        (user=%ct.user.name action=%ct.name group=%ct.request.groupId)
+        (user=%ct.user action=%ct.name request=%ct.request)
       priority: WARNING
       source: aws_cloudtrail
       tags: [aws, network, security_group]
@@ -193,7 +228,7 @@ customRules:
                     AttachUserPolicy, DetachUserPolicy,
                     AttachRolePolicy, DetachRolePolicy)
       output: >
-        IAM policy changed (user=%ct.user.name action=%ct.name)
+        IAM policy changed (user=%ct.user action=%ct.name)
       priority: WARNING
       source: aws_cloudtrail
       tags: [aws, iam]
@@ -206,7 +241,7 @@ customRules:
         ct.user.identitytype != "AssumedRole" and
         json.value[/additionalEventData/MFAUsed] = "No"
       output: >
-        Console login without MFA (user=%ct.user.name sourceIP=%ct.srcip)
+        Console login without MFA (user=%ct.user sourceIP=%ct.srcip)
       priority: WARNING
       source: aws_cloudtrail
       tags: [aws, authentication]
@@ -283,7 +318,7 @@ plugins:
   - name: k8saudit
     library_path: libk8saudit.so
     init_config:
-      maxEventBytes: 1048576
+      maxEventSize: 1048576
     open_params: "http://:9765/k8s-audit"
 
   - name: json
@@ -307,7 +342,7 @@ customRules:
       output: >
         Pod exec detected
         (user=%ka.user.name pod=%ka.target.name
-        namespace=%ka.target.namespace command=%ka.req.exec.command)
+        namespace=%ka.target.namespace)
       priority: NOTICE
       source: k8s_audit
       tags: [k8s, exec]
@@ -353,7 +388,7 @@ import (
 )
 
 const (
-    PluginID          = 999
+    PluginID          uint32 = 999
     PluginName        = "custom-events"
     PluginDescription = "Custom event source plugin"
 )
@@ -371,6 +406,10 @@ func (p *CustomPlugin) Info() *plugins.Info {
     }
 }
 
+func (p *CustomPlugin) Init(config string) error {
+    return nil
+}
+
 func (p *CustomPlugin) Open(params string) (source.Instance, error) {
     // Initialize your event source here
     return &CustomInstance{}, nil
@@ -386,11 +425,15 @@ func (i *CustomInstance) NextBatch(pState sdk.PluginState, evts sdk.EventWriters
     return 0, nil
 }
 
-func main() {
+func init() {
     plugins.SetFactory(func() plugins.Plugin {
-        return &CustomPlugin{}
+        p := &CustomPlugin{}
+        source.Register(p)
+        return p
     })
 }
+
+func main() {}
 ```
 
 Build the plugin:
