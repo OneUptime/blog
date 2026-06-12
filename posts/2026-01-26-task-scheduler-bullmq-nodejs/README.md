@@ -20,10 +20,10 @@ BullMQ requires Redis 5.0 or higher. Install the dependencies and create a basic
 // Install: npm install bullmq ioredis
 
 // config/redis.ts
-import { Redis } from 'ioredis';
+import IORedis from 'ioredis';
 
 // Redis connection shared across queues and workers
-export const redisConnection = new Redis({
+export const redisConnection = new IORedis({
   host: process.env.REDIS_HOST || 'localhost',
   port: parseInt(process.env.REDIS_PORT || '6379'),
   maxRetriesPerRequest: null, // Required for BullMQ
@@ -37,7 +37,7 @@ process.on('SIGTERM', async () => {
 
 ```typescript
 // queues/emailQueue.ts
-import { Queue, Worker, Job } from 'bullmq';
+import { Queue } from 'bullmq';
 import { redisConnection } from '../config/redis';
 
 // Define the job data structure
@@ -164,7 +164,7 @@ async function sendViaProvider(email: { to: string; subject: string; body: strin
 
 ## Scheduling Jobs with Cron
 
-BullMQ supports repeatable jobs using cron expressions. These are useful for periodic tasks like daily reports or hourly cleanups.
+BullMQ supports Job Schedulers using cron expressions. These are useful for periodic tasks like daily reports or hourly cleanups.
 
 ```typescript
 // scheduler/cronJobs.ts
@@ -211,21 +211,19 @@ const scheduledJobs: ScheduledJob[] = [
 
 // Register all scheduled jobs on application startup
 export async function registerScheduledJobs(): Promise<void> {
-  // Remove existing repeatable jobs to avoid duplicates
-  const existingJobs = await schedulerQueue.getRepeatableJobs();
-  for (const job of existingJobs) {
-    await schedulerQueue.removeRepeatableByKey(job.key);
-  }
-
-  // Add fresh scheduled jobs
+  // Upsert scheduled jobs so deployments update existing schedules without duplicates
   for (const job of scheduledJobs) {
-    await schedulerQueue.add(job.name, job.data, {
-      repeat: {
+    await schedulerQueue.upsertJobScheduler(
+      job.name,
+      {
         pattern: job.cron,
         tz: job.timezone,
       },
-      jobId: job.name, // Use name as ID for easy lookup
-    });
+      {
+        name: job.name,
+        data: job.data,
+      }
+    );
 
     console.log(`Scheduled job: ${job.name} with cron: ${job.cron}`);
   }
@@ -355,11 +353,11 @@ export async function cancelScheduledNotification(jobId: string): Promise<boolea
 
 ## Job Priorities
 
-Process important jobs before others using priority levels:
+Process important jobs before lower-priority jobs using priority levels:
 
 ```typescript
 // queues/priorityQueue.ts
-import { Queue, Worker, Job } from 'bullmq';
+import { Queue } from 'bullmq';
 import { redisConnection } from '../config/redis';
 
 interface TaskData {
@@ -395,7 +393,7 @@ export async function addTask(
 
 // Usage examples
 async function exampleUsage() {
-  // Critical task: process immediately before other jobs
+  // Critical task: process before lower-priority jobs
   await addTask('payment-webhook', { paymentId: '123' }, Priority.CRITICAL);
 
   // High priority: important but not critical
@@ -477,14 +475,24 @@ const customBackoffQueue = new Queue('custom-backoff', {
       type: 'custom',
     },
   },
-  settings: {
-    backoffStrategy: (attemptsMade: number) => {
-      // Custom delays: 1s, 5s, 30s, 2m, 10m, 1h
-      const delays = [1000, 5000, 30000, 120000, 600000, 3600000];
-      return delays[Math.min(attemptsMade - 1, delays.length - 1)];
-    },
-  },
 });
+
+const customBackoffWorker = new Worker(
+  'custom-backoff',
+  async (_job: Job) => {
+    // Your job processing logic
+  },
+  {
+    connection: redisConnection,
+    settings: {
+      backoffStrategy: (attemptsMade: number) => {
+        // Custom delays: 1s, 5s, 30s, 2m, 10m, 1h
+        const delays = [1000, 5000, 30000, 120000, 600000, 3600000];
+        return delays[Math.min(attemptsMade - 1, delays.length - 1)];
+      },
+    },
+  }
+);
 ```
 
 ## Monitoring Queue Health
