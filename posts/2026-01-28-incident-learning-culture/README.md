@@ -346,13 +346,15 @@ flowchart TD
 ```python
 # Learning distribution implementation
 
+from collections import defaultdict
+from typing import Dict, List
+
 class LearningDistributor:
     def __init__(self):
         self.channels = {
             "immediate": self._distribute_immediate,
             "weekly": self._distribute_weekly,
-            "monthly": self._distribute_monthly,
-            "quarterly": self._distribute_quarterly
+            "monthly": self._distribute_monthly
         }
 
     async def distribute_learning(self, postmortem: Dict) -> None:
@@ -513,8 +515,10 @@ Learning without action is just documentation. Build systems to ensure improveme
 ```python
 # Action item tracking system
 
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
+from typing import Dict, List
 
 class ActionItemStatus(Enum):
     OPEN = "open"
@@ -535,7 +539,7 @@ class ActionItem:
     status: ActionItemStatus
     created_at: datetime
     updated_at: datetime
-    completion_notes: str = None
+    completion_notes: str | None = None
 
 class ActionItemTracker:
     def __init__(self, storage, notification_service):
@@ -555,8 +559,8 @@ class ActionItemTracker:
             due_date=item_data["due_date"],
             priority=item_data["priority"],
             status=ActionItemStatus.OPEN,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
 
         await self.storage.save(action_item)
@@ -578,11 +582,11 @@ class ActionItemTracker:
 
         overdue = await self.storage.query(
             status__in=[ActionItemStatus.OPEN, ActionItemStatus.IN_PROGRESS],
-            due_date__lt=datetime.utcnow()
+            due_date__lt=datetime.now(timezone.utc)
         )
 
         for item in overdue:
-            days_overdue = (datetime.utcnow() - item.due_date).days
+            days_overdue = (datetime.now(timezone.utc) - item.due_date).days
 
             if days_overdue <= 7:
                 # Reminder to owner
@@ -661,6 +665,9 @@ Track whether your learning culture is actually working:
 ```python
 # Learning culture health metrics
 
+from datetime import datetime
+from typing import Dict
+
 def calculate_learning_culture_health(org_data: Dict) -> Dict:
     """Calculate metrics that indicate learning culture health"""
 
@@ -714,7 +721,10 @@ def calculate_learning_culture_health(org_data: Dict) -> Dict:
     )
 
     # 4. Recurring incident rate
-    incident_fingerprints = [i.get("fingerprint") for i in incidents]
+    incident_fingerprints = [
+        i.get("fingerprint") for i in incidents
+        if i.get("fingerprint")
+    ]
     recurring = len(incident_fingerprints) - len(set(incident_fingerprints))
 
     metrics["recurring_incident_rate"] = (
@@ -750,10 +760,11 @@ def calculate_learning_culture_health(org_data: Dict) -> Dict:
     # Calculate overall health score
     weights = {
         "postmortem_completion_rate": 0.2,
-        "action_item_completion_rate": 0.25,
+        "action_item_completion_rate": 0.15,
         "recurring_incident_rate": -0.2,  # Negative - lower is better
         "postmortem_participation_rate": 0.15,
-        "voluntary_reporting_rate": 0.2
+        "voluntary_reporting_rate": 0.2,
+        "avg_days_to_postmortem": 0.1
     }
 
     health_score = 0
@@ -764,7 +775,7 @@ def calculate_learning_culture_health(org_data: Dict) -> Dict:
         elif metric == "avg_days_to_postmortem":
             # Normalize: 0-3 days = good, 7+ days = bad
             normalized = max(0, 1 - (metrics[metric] / 7))
-            health_score += normalized * 0.1
+            health_score += normalized * weight
         else:
             health_score += metrics[metric] * weight
 
@@ -781,6 +792,8 @@ Even in "blameless" postmortems, blame can creep in:
 
 ```python
 # Detecting blame in postmortem language
+
+from typing import Dict, List
 
 BLAME_INDICATORS = [
     "should have",
@@ -831,6 +844,8 @@ Action items get created but never completed:
 ```python
 # Preventing action item abandonment
 
+from datetime import datetime, timezone
+
 class ActionItemHealthChecker:
     def weekly_health_check(self):
         """Run weekly to prevent action item decay"""
@@ -840,7 +855,7 @@ class ActionItemHealthChecker:
         )
 
         for item in open_items:
-            age_days = (datetime.utcnow() - item.created_at).days
+            age_days = (datetime.now(timezone.utc) - item.created_at).days
 
             # Flag stale items
             if age_days > 14 and item.status == ActionItemStatus.OPEN:
@@ -888,6 +903,8 @@ Learnings stay within teams:
 
 ```python
 # Cross-team learning promotion
+
+from typing import Dict, List
 
 class CrossTeamLearningPromoter:
     def identify_shareable_learnings(self, postmortem: Dict) -> List[Dict]:
