@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Flux, SOPS, GitOps, Secrets Management, Age, GPG, Encryption, Security
 
-Description: A comprehensive guide to managing Kubernetes secrets securely in GitOps workflows using Flux and Mozilla SOPS, covering Age and GPG encryption, automatic decryption, secret rotation.
+Description: A comprehensive guide to managing Kubernetes secrets securely in GitOps workflows using Flux and SOPS, covering Age and GPG encryption, automatic decryption, secret rotation.
 
 ---
 
 > "The best secret is one that never leaves your control, even when it travels through Git." - Security Proverb
 
-GitOps is powerful, but it has a secret problem: you cannot commit plaintext secrets to Git. Mozilla SOPS (Secrets OPerationS) solves this by encrypting secrets with keys that only your cluster can decrypt. This guide shows you how to integrate SOPS with Flux for secure, auditable secret management.
+GitOps is powerful, but it has a secret problem: you cannot commit plaintext secrets to Git. SOPS (Secrets OPerationS) solves this by encrypting secrets with keys that only trusted operators and your cluster can decrypt. This guide shows you how to integrate SOPS with Flux for secure, auditable secret management.
 
 ## Why SOPS for GitOps?
 
@@ -54,17 +54,17 @@ Install the required tools:
 brew install sops
 
 # Linux
-curl -LO https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
-chmod +x sops-v3.8.1.linux.amd64
-sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+curl -LO https://github.com/getsops/sops/releases/download/v3.13.1/sops-v3.13.1.linux.amd64
+chmod +x sops-v3.13.1.linux.amd64
+sudo mv sops-v3.13.1.linux.amd64 /usr/local/bin/sops
 
 # Install Age (modern encryption tool, recommended over GPG)
 # macOS
 brew install age
 
 # Linux
-curl -LO https://github.com/FiloSottile/age/releases/download/v1.1.1/age-v1.1.1-linux-amd64.tar.gz
-tar xf age-v1.1.1-linux-amd64.tar.gz
+curl -LO https://github.com/FiloSottile/age/releases/download/v1.3.0/age-v1.3.0-linux-amd64.tar.gz
+tar xf age-v1.3.0-linux-amd64.tar.gz
 sudo mv age/age /usr/local/bin/
 sudo mv age/age-keygen /usr/local/bin/
 ```
@@ -139,7 +139,7 @@ export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
 mkdir -p ~/.config/sops/age
 cp age.agekey ~/.config/sops/age/keys.txt
 
-# Verify SOPS can find your key
+# Verify SOPS is installed
 sops --version
 ```
 
@@ -149,7 +149,8 @@ sops --version
 
 ```bash
 # First, create a plaintext secret (DO NOT commit this file!)
-cat > secret.yaml << 'EOF'
+mkdir -p clusters/production/secrets
+cat > clusters/production/secrets/database-credentials.yaml << 'EOF'
 apiVersion: v1
 kind: Secret
 metadata:
@@ -164,20 +165,17 @@ EOF
 
 # Encrypt the secret with SOPS
 # SOPS reads .sops.yaml to determine which key to use
-sops --encrypt secret.yaml > secret.enc.yaml
+sops --encrypt --in-place clusters/production/secrets/database-credentials.yaml
 
-# Alternatively, specify the age recipient directly
-sops --encrypt --age age1helqcqsh9464r8chnwc2fzj8uv7vr5ntnsft0tn45v2xtz0hpfwq98cmsg \
-  secret.yaml > secret.enc.yaml
-
-# Remove the plaintext file
-rm secret.yaml
+# Alternatively, specify the age recipient directly instead of relying on .sops.yaml:
+# sops --encrypt --age age1helqcqsh9464r8chnwc2fzj8uv7vr5ntnsft0tn45v2xtz0hpfwq98cmsg \
+#   --in-place clusters/production/secrets/database-credentials.yaml
 ```
 
 ### Examine the Encrypted Secret
 
 ```yaml
-# secret.enc.yaml - Safe to commit to Git
+# clusters/production/secrets/database-credentials.yaml - Safe to commit to Git
 apiVersion: v1
 kind: Secret
 metadata:
@@ -201,20 +199,20 @@ sops:
             -----END AGE ENCRYPTED FILE-----
     lastmodified: "2026-01-27T10:30:00Z"
     mac: ENC[AES256_GCM,data:abc123...,iv:xyz...,tag:123...,type:str]
-    version: 3.8.1
+    version: 3.13.1
 ```
 
 ### Edit Encrypted Secrets In-Place
 
 ```bash
 # SOPS decrypts, opens your editor, then re-encrypts on save
-sops secret.enc.yaml
+sops clusters/production/secrets/database-credentials.yaml
 
 # Or specify an editor
-EDITOR=nano sops secret.enc.yaml
+EDITOR=nano sops clusters/production/secrets/database-credentials.yaml
 
 # Decrypt to stdout (for debugging, be careful!)
-sops --decrypt secret.enc.yaml
+sops --decrypt clusters/production/secrets/database-credentials.yaml
 ```
 
 ## Configuring Flux for SOPS Decryption
@@ -272,7 +270,7 @@ sequenceDiagram
     SOPS->>SOPS: Decrypt using age key from secret
     SOPS->>Kust: Return decrypted manifest
     Kust->>K8s: Apply decrypted Secret
-    Note over K8s: Secret stored encrypted at rest
+    Note over K8s: Configure Kubernetes encryption at rest separately
 ```
 
 ## Using GPG Instead of Age
@@ -284,13 +282,14 @@ While Age is recommended, you might need GPG for existing workflows.
 ```bash
 # Generate a GPG key for SOPS
 # Use RSA 4096-bit for maximum compatibility
+# Use a key without a passphrase for Flux, because the controller cannot prompt
 gpg --full-generate-key
 
 # List your keys
 gpg --list-secret-keys --keyid-format LONG
 
 # Export the public key fingerprint
-gpg --list-keys "your-email@example.com" | grep -E "^\s+[A-F0-9]" | tr -d ' '
+gpg --list-secret-keys --with-colons "your-email@example.com" | awk -F: '/^fpr:/ {print $10; exit}'
 # Example: 1234567890ABCDEF1234567890ABCDEF12345678
 ```
 
@@ -396,8 +395,11 @@ stringData:
   password: $NEW_PASSWORD
 EOF
 
-# Encrypt with SOPS
-sops --encrypt /tmp/secret.yaml > "$SECRETS_PATH/$SECRET_NAME.yaml"
+# Encrypt with SOPS. filename-override lets SOPS match .sops.yaml rules
+# while reading plaintext from /tmp.
+sops --encrypt \
+  --filename-override "$SECRETS_PATH/$SECRET_NAME.yaml" \
+  /tmp/secret.yaml > "$SECRETS_PATH/$SECRET_NAME.yaml"
 
 # Clean up plaintext
 rm /tmp/secret.yaml
@@ -413,10 +415,10 @@ echo "Secret rotated successfully. Push to trigger Flux sync."
 
 ### Trigger Pod Restart on Secret Change
 
-By default, pods do not restart when a Secret changes. Use annotations to force a restart:
+By default, pods do not restart when a Secret changes. If you deploy with Helm, use a checksum annotation to force a rollout when the rendered Secret changes:
 
 ```yaml
-# deployment.yaml with checksum annotation
+# templates/deployment.yaml with checksum annotation
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -427,7 +429,7 @@ spec:
     metadata:
       annotations:
         # This annotation changes when the secret changes
-        # Kustomize can compute this automatically
+        # Helm computes this from the rendered Secret template
         checksum/secret: "{{ include (print $.Template.BasePath \"/secret.yaml\") . | sha256sum }}"
     spec:
       containers:
@@ -569,22 +571,11 @@ echo "Update .sops.yaml with this key"
 find clusters -name "*.yaml" -exec grep -l "sops:" {} \; | while read -r file; do
     echo "Re-encrypting: $file"
 
-    # Decrypt with old key
-    sops --decrypt "$file" > /tmp/decrypted.yaml
-
-    # Combine keys temporarily
-    cat "$OLD_KEY_FILE" "$NEW_KEY_FILE" > /tmp/combined-keys.txt
-
-    # Re-encrypt with new key
-    SOPS_AGE_KEY_FILE=/tmp/combined-keys.txt \
-      sops --encrypt --age "$NEW_PUBLIC_KEY" /tmp/decrypted.yaml > "$file"
-
-    rm /tmp/decrypted.yaml
+    SOPS_AGE_KEY_FILE="$OLD_KEY_FILE" \
+      sops rotate --in-place --add-age "$NEW_PUBLIC_KEY" "$file"
 done
 
-rm /tmp/combined-keys.txt
-
-echo "All secrets re-encrypted with new key"
+echo "All secrets re-encrypted with the new key added"
 echo "Update Kubernetes secret 'sops-age' with new private key"
 ```
 
@@ -592,7 +583,7 @@ echo "Update Kubernetes secret 'sops-age' with new private key"
 
 ```bash
 # After rotating the SOPS key, update the cluster secret
-cat keys-new.txt | kubectl create secret generic sops-age \
+cat ~/.config/sops/age/keys-new.txt | kubectl create secret generic sops-age \
   --namespace=flux-system \
   --from-file=age.agekey=/dev/stdin \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -637,7 +628,9 @@ grep -A5 "age:" secret.enc.yaml
 
 # Re-encrypt with correct key
 sops --decrypt secret.enc.yaml | \
-  sops --encrypt --age age1correct... /dev/stdin > secret.enc.yaml
+  sops --encrypt --age age1correct... \
+  --filename-override secret.enc.yaml /dev/stdin > secret.new.yaml
+mv secret.new.yaml secret.enc.yaml
 ```
 
 ### Validation Script
@@ -664,19 +657,28 @@ echo -e "\n=== Checking Kustomization Decryption Config ==="
 kubectl get kustomization -n flux-system -o yaml | grep -A3 "decryption"
 
 echo -e "\n=== Testing Encryption/Decryption ==="
-echo "apiVersion: v1
+TEST_FILE="clusters/production/secrets/test-validation.yaml"
+mkdir -p "$(dirname "$TEST_FILE")"
+
+cat > /tmp/test.yaml <<'EOF'
+apiVersion: v1
 kind: Secret
 metadata:
   name: test
 stringData:
-  key: value" | sops --encrypt /dev/stdin > /tmp/test.enc.yaml
+  key: value
+EOF
+
+sops --encrypt \
+  --filename-override "$TEST_FILE" \
+  /tmp/test.yaml > /tmp/test.enc.yaml
 
 if sops --decrypt /tmp/test.enc.yaml > /dev/null 2>&1; then
     echo "SUCCESS: Encryption/Decryption working"
 else
     echo "ERROR: Decryption failed"
 fi
-rm /tmp/test.enc.yaml
+rm /tmp/test.yaml /tmp/test.enc.yaml
 ```
 
 ## Best Practices
@@ -702,15 +704,15 @@ rm /tmp/test.enc.yaml
 #!/bin/bash
 # Check for unencrypted secrets
 
-for file in $(git diff --cached --name-only | grep -E '\.yaml$'); do
+while IFS= read -r file; do
     if grep -q "kind: Secret" "$file"; then
         if ! grep -q "sops:" "$file"; then
             echo "ERROR: Unencrypted Secret detected: $file"
-            echo "Encrypt with: sops --encrypt $file > $file.enc"
+            echo "Encrypt with: sops --encrypt --in-place \"$file\""
             exit 1
         fi
     fi
-done
+done < <(git diff --cached --name-only --diff-filter=ACM | grep -E '\.ya?ml$')
 ```
 
 ## Monitoring Secret Operations
