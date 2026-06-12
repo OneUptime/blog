@@ -231,7 +231,8 @@ public class ConsulServiceDiscovery : IServiceDiscovery
         }
 
         // Simple round-robin load balancing
-        var index = Interlocked.Increment(ref _roundRobinIndex) % instances.Count;
+        var index = (Interlocked.Increment(ref _roundRobinIndex) & int.MaxValue) %
+                    instances.Count;
         var instance = instances[index];
 
         _logger.LogDebug(
@@ -253,12 +254,16 @@ public class ConsulServiceDiscovery : IServiceDiscovery
                 tag: string.Empty,  // No tag filter
                 passingOnly: true); // Only healthy instances
 
-            var services = queryResult.Response
+            var response = queryResult.Response ?? Array.Empty<ServiceEntry>();
+
+            var services = response
                 .Select(entry => new ServiceInstance
                 {
                     Id = entry.Service.ID,
                     Name = entry.Service.Service,
-                    Address = entry.Service.Address,
+                    Address = string.IsNullOrEmpty(entry.Service.Address)
+                        ? entry.Node.Address
+                        : entry.Service.Address,
                     Port = entry.Service.Port,
                     Tags = entry.Service.Tags,
                     Meta = entry.Service.Meta ?? new Dictionary<string, string>()
@@ -378,7 +383,10 @@ Consul includes a key-value store for distributed configuration.
 
 ```csharp
 // ConsulConfigurationProvider.cs
+using Consul;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System.Text;
 
 public class ConsulConfigurationProvider : ConfigurationProvider
 {
@@ -579,6 +587,17 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<ConsulConfig>(
     builder.Configuration.GetSection("Consul"));
 
+var consulConfig = builder.Configuration
+    .GetSection("Consul")
+    .Get<ConsulConfig>();
+
+if (consulConfig != null && !string.IsNullOrEmpty(consulConfig.ServiceName))
+{
+    builder.Configuration.AddConsul(
+        consulConfig.Address,
+        $"config/{consulConfig.ServiceName}");
+}
+
 // Create Consul client
 builder.Services.AddSingleton<IConsulClient>(sp =>
 {
@@ -600,6 +619,7 @@ builder.Services.AddHostedService<ConsulConfigurationWatcher>();
 
 // Health checks endpoint
 builder.Services.AddHealthChecks();
+builder.Services.AddControllers();
 
 var app = builder.Build();
 
