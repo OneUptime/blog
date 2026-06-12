@@ -107,15 +107,12 @@ The master zone handles metadata operations and serves as the authoritative sour
 
 ```bash
 # Create the master zone within the zonegroup
-# --access-key and --secret are for the sync user
 radosgw-admin zone create \
     --rgw-zonegroup=us \
     --rgw-zone=us-east \
     --endpoints=https://rgw-us-east.example.com:443 \
     --master \
-    --default \
-    --access-key=SYNC_ACCESS_KEY \
-    --secret=SYNC_SECRET_KEY
+    --default
 ```
 
 ### Step 4: Create the Sync User
@@ -124,7 +121,6 @@ Create a system user for replication between zones:
 
 ```bash
 # Create a system user for sync operations
-# This user needs caps for all metadata and data operations
 radosgw-admin user create \
     --uid=sync-user \
     --display-name="Sync User" \
@@ -132,10 +128,11 @@ radosgw-admin user create \
     --secret=SYNC_SECRET_KEY \
     --system
 
-# Grant the user full capabilities
-radosgw-admin caps add \
-    --uid=sync-user \
-    --caps="buckets=*;users=*;usage=*;metadata=*;zone=*"
+# Add the system user's keys to the master zone
+radosgw-admin zone modify \
+    --rgw-zone=us-east \
+    --access-key=SYNC_ACCESS_KEY \
+    --secret=SYNC_SECRET_KEY
 ```
 
 ### Step 5: Commit the Period
@@ -258,8 +255,8 @@ flowchart LR
 
 **Advantages:**
 - Low latency for all clients regardless of location
-- No single point of failure
-- Seamless failover
+- Object writes can continue in non-master zones
+- Failover can move the metadata master role to another zone
 
 **Considerations:**
 - Eventual consistency between zones
@@ -330,31 +327,21 @@ radosgw-admin data sync status --source-zone=us-west --shard-id=0
 
 ### Prometheus Metrics
 
-RGW exposes metrics for monitoring sync status:
+Ceph exposes RGW metrics through the Ceph manager Prometheus module. In current Ceph releases, daemon perf counters are gathered through `ceph-exporter` and exposed through the manager endpoint:
 
 ```yaml
-# Prometheus scrape config for RGW metrics
+# Prometheus scrape config for the Ceph manager Prometheus module
 scrape_configs:
   - job_name: 'ceph-rgw'
+    honor_labels: true
     static_configs:
       - targets:
-          - 'rgw-us-east.example.com:9283'
-          - 'rgw-us-west.example.com:9283'
+          - 'ceph-mgr-us-east.example.com:9283'
+          - 'ceph-mgr-us-west.example.com:9283'
     metrics_path: /metrics
 ```
 
-Key metrics to monitor:
-
-```promql
-# Replication lag in seconds
-ceph_rgw_data_sync_source_last_update_lag_seconds
-
-# Sync errors
-rate(ceph_rgw_data_sync_source_sync_errors_total[5m])
-
-# Objects pending sync
-ceph_rgw_data_sync_source_entries_behind
-```
+Use `radosgw-admin sync status` as the authoritative sync check, and build Prometheus alerts from the Ceph exporter metrics available in your Ceph release.
 
 ## Failover and Disaster Recovery
 
@@ -370,20 +357,19 @@ For maintenance or planned migration, perform a controlled failover:
 radosgw-admin sync status
 # Verify "data is caught up with source"
 
-# Step 3: Promote secondary to master
+# Step 3: Promote secondary to master and default
 radosgw-admin zone modify \
     --rgw-zone=us-west \
-    --master
+    --master \
+    --default
 
-# Step 4: Demote the old primary
-radosgw-admin zone modify \
-    --rgw-zone=us-east \
-    --master=false
-
-# Step 5: Commit the changes
+# Step 4: Commit the changes
 radosgw-admin period update --commit
 
-# Step 6: Update DNS or load balancer to point to new primary
+# Step 5: Restart RGW in the promoted zone
+systemctl restart ceph-radosgw@rgw.us-west
+
+# Step 6: Update DNS or load balancer to point writes to the new primary
 ```
 
 ### Unplanned Failover (Disaster Recovery)
@@ -393,16 +379,19 @@ When the primary zone is unavailable:
 ```bash
 # On the secondary zone that will become primary
 
-# Step 1: Promote to master (force if primary is unreachable)
+# Step 1: Promote to master and default
 radosgw-admin zone modify \
     --rgw-zone=us-west \
-    --master
+    --master \
+    --default
 
 # Step 2: Commit the period
-# Use --yes-i-really-mean-it if the old master is unreachable
-radosgw-admin period update --commit --yes-i-really-mean-it
+radosgw-admin period update --commit
 
-# Step 3: Update client endpoints
+# Step 3: Restart RGW in the promoted zone
+systemctl restart ceph-radosgw@rgw.us-west
+
+# Step 4: Update client endpoints
 # DNS, load balancer, or application configuration
 ```
 
@@ -419,19 +408,10 @@ radosgw-admin realm pull \
     --access-key=SYNC_ACCESS_KEY \
     --secret=SYNC_SECRET_KEY
 
-# Step 2: Re-create the zone as secondary
-radosgw-admin zone create \
-    --rgw-zonegroup=us \
-    --rgw-zone=us-east \
-    --endpoints=https://rgw-us-east.example.com:443 \
-    --access-key=SYNC_ACCESS_KEY \
-    --secret=SYNC_SECRET_KEY
-
-# Step 3: Commit and restart
-radosgw-admin period update --commit
+# Step 2: Restart the recovered zone so it uses the current period
 systemctl restart ceph-radosgw@rgw.us-east
 
-# Step 4: Monitor resync progress
+# Step 3: Monitor resync progress
 watch radosgw-admin sync status
 ```
 
@@ -499,13 +479,12 @@ radosgw-admin sync group pipe create \
     --dest-zones=us-west
 ```
 
-### Bandwidth Throttling
+### Sync Tuning
 
-Limit replication bandwidth to avoid impacting production traffic:
+Tune sync concurrency and polling to avoid impacting production traffic:
 
 ```bash
-# Set maximum sync bandwidth (bytes per second)
-ceph config set client.rgw rgw_sync_data_inject_err_probability 0
+# Tune sync worker behavior
 ceph config set client.rgw rgw_data_sync_spawn_window 16
 ceph config set client.rgw rgw_data_sync_poll_interval 30
 ```
