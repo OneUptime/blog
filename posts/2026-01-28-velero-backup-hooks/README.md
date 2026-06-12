@@ -8,7 +8,7 @@ Description: Learn how to use Velero backup and restore hooks to ensure applicat
 
 ---
 
-Taking a backup while an application is actively writing data can lead to inconsistent or corrupted backups. Velero hooks provide a mechanism to execute commands inside containers before and after backup operations, allowing you to quiesce databases, flush caches, or perform any preparation needed for consistent backups.
+Taking a backup while an application is actively writing data can lead to inconsistent or corrupted backups. Velero hooks provide a mechanism to execute commands inside containers before and after backup operations, allowing you to quiesce applications, flush caches, or perform any preparation needed for consistent backups. For databases, use hooks with database-native backup tooling or stop writes for the duration of the backup; separate pre and post hooks cannot keep a single database session open across the backup.
 
 ## Understanding Velero Hooks
 
@@ -57,16 +57,16 @@ kind: Pod
 metadata:
   name: database-pod
   annotations:
-    # Pre-backup hook to freeze the database
+    # Pre-backup hook to pause application writes
     backup.velero.io/backup-volumes: data-volume
     pre.hook.backup.velero.io/container: database
-    pre.hook.backup.velero.io/command: '["/bin/sh", "-c", "pg_ctl stop -m fast"]'
+    pre.hook.backup.velero.io/command: '["/bin/sh", "-c", "touch /tmp/backup-in-progress"]'
     pre.hook.backup.velero.io/timeout: 30s
     pre.hook.backup.velero.io/on-error: Fail
 
-    # Post-backup hook to resume the database
+    # Post-backup hook to resume application writes
     post.hook.backup.velero.io/container: database
-    post.hook.backup.velero.io/command: '["/bin/sh", "-c", "pg_ctl start"]'
+    post.hook.backup.velero.io/command: '["/bin/sh", "-c", "rm -f /tmp/backup-in-progress"]'
     post.hook.backup.velero.io/timeout: 60s
 spec:
   containers:
@@ -103,17 +103,17 @@ spec:
         # Specify which volumes to backup
         backup.velero.io/backup-volumes: postgres-data
 
-        # Pre-backup: Create a consistent checkpoint and pause writes
+        # Pre-backup: Create a checkpoint before the volume backup
         pre.hook.backup.velero.io/container: postgresql
         pre.hook.backup.velero.io/command: |
-          ["/bin/bash", "-c", "psql -U postgres -c 'SELECT pg_start_backup($$velero-backup$$, false, false);'"]
+          ["/bin/bash", "-c", "psql -U postgres -c 'CHECKPOINT;'"]
         pre.hook.backup.velero.io/timeout: 60s
         pre.hook.backup.velero.io/on-error: Fail
 
-        # Post-backup: Resume normal operations
+        # Post-backup: Hook completed
         post.hook.backup.velero.io/container: postgresql
         post.hook.backup.velero.io/command: |
-          ["/bin/bash", "-c", "psql -U postgres -c 'SELECT pg_stop_backup(false, true);'"]
+          ["/bin/bash", "-c", "echo 'PostgreSQL volume backup hook completed'"]
         post.hook.backup.velero.io/timeout: 60s
     spec:
       containers:
@@ -155,17 +155,17 @@ spec:
       annotations:
         backup.velero.io/backup-volumes: mysql-data
 
-        # Pre-backup: Flush tables and lock for consistent backup
+        # Pre-backup: Flush tables before the volume backup
         pre.hook.backup.velero.io/container: mysql
         pre.hook.backup.velero.io/command: |
-          ["/bin/bash", "-c", "mysql -u root -p$MYSQL_ROOT_PASSWORD -e 'FLUSH TABLES WITH READ LOCK; SYSTEM touch /tmp/backup-in-progress;'"]
+          ["/bin/bash", "-c", "mysql -u root -p$MYSQL_ROOT_PASSWORD -e 'FLUSH TABLES;'"]
         pre.hook.backup.velero.io/timeout: 120s
         pre.hook.backup.velero.io/on-error: Fail
 
-        # Post-backup: Unlock tables
+        # Post-backup: Hook completed
         post.hook.backup.velero.io/container: mysql
         post.hook.backup.velero.io/command: |
-          ["/bin/bash", "-c", "mysql -u root -p$MYSQL_ROOT_PASSWORD -e 'UNLOCK TABLES;' && rm -f /tmp/backup-in-progress"]
+          ["/bin/bash", "-c", "echo 'MySQL volume backup hook completed'"]
         post.hook.backup.velero.io/timeout: 30s
     spec:
       containers:
@@ -220,9 +220,9 @@ spec:
                 - -c
                 - |
                   echo "Starting pre-backup hook"
-                  # Wait for active transactions to complete
-                  psql -U postgres -c "SELECT pg_start_backup('velero', false, false);"
-                  echo "Backup mode started"
+                  # Flush dirty buffers before Velero backs up the volume
+                  psql -U postgres -c "CHECKPOINT;"
+                  echo "Checkpoint completed"
               onError: Fail
               timeout: 120s
         post:
@@ -232,8 +232,7 @@ spec:
                 - /bin/bash
                 - -c
                 - |
-                  echo "Stopping backup mode"
-                  psql -U postgres -c "SELECT pg_stop_backup(false, true);"
+                  echo "PostgreSQL volume backup hook completed"
                   echo "Post-backup hook completed"
               onError: Continue
               timeout: 60s
@@ -356,7 +355,6 @@ spec:
                     echo "Preparing for full backup"
                     psql -U postgres -c "CHECKPOINT;"
                     psql -U postgres -c "VACUUM ANALYZE;"
-                    psql -U postgres -c "SELECT pg_start_backup('velero-full', false, false);"
                 onError: Fail
                 timeout: 300s
 ```
@@ -389,34 +387,41 @@ sequenceDiagram
 
 ```yaml
 # multi-container-hooks.yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: velero.io/v1
+kind: Backup
 metadata:
-  name: web-application
-  namespace: production
+  name: web-application-backup
+  namespace: velero
 spec:
-  template:
-    metadata:
-      annotations:
-        # Mark volumes for backup
-        backup.velero.io/backup-volumes: app-data,upload-data
-
-        # First: Application pauses incoming requests
-        pre.hook.backup.velero.io/container: nginx
-        pre.hook.backup.velero.io/command: '["/bin/sh", "-c", "touch /tmp/maintenance.flag"]'
-        pre.hook.backup.velero.io/timeout: 10s
-
-        # Application writes in-flight data
-        pre.hook.backup.velero.io/container: app
-        pre.hook.backup.velero.io/command: |
-          ["/bin/sh", "-c", "curl -X POST localhost:8080/admin/flush-buffers"]
-        pre.hook.backup.velero.io/timeout: 30s
-        pre.hook.backup.velero.io/on-error: Continue
-
-        # Post-backup: Resume operations
-        post.hook.backup.velero.io/container: nginx
-        post.hook.backup.velero.io/command: '["/bin/sh", "-c", "rm -f /tmp/maintenance.flag"]'
-        post.hook.backup.velero.io/timeout: 10s
+  includedNamespaces:
+    - production
+  defaultVolumesToFsBackup: true
+  hooks:
+    resources:
+      - name: web-application-hooks
+        includedNamespaces:
+          - production
+        labelSelector:
+          matchLabels:
+            app: web-application
+        pre:
+          # First: Application pauses incoming requests
+          - exec:
+              container: nginx
+              command: ["/bin/sh", "-c", "touch /tmp/maintenance.flag"]
+              timeout: 10s
+          # Application writes in-flight data
+          - exec:
+              container: app
+              command: ["/bin/sh", "-c", "curl -X POST localhost:8080/admin/flush-buffers"]
+              timeout: 30s
+              onError: Continue
+        post:
+          # Post-backup: Resume operations
+          - exec:
+              container: nginx
+              command: ["/bin/sh", "-c", "rm -f /tmp/maintenance.flag"]
+              timeout: 10s
 ```
 
 ### Error Handling and Notifications
@@ -446,8 +451,8 @@ spec:
                 - /bin/bash
                 - -c
                 - |
-                  # Attempt to start backup mode
-                  if ! psql -U postgres -c "SELECT pg_start_backup('velero', false, false);" 2>/tmp/hook-error.log; then
+                  # Attempt to checkpoint before the volume backup
+                  if ! psql -U postgres -c "CHECKPOINT;" 2>/tmp/hook-error.log; then
                     # Send alert on failure
                     curl -X POST "https://alerts.example.com/webhook" \
                       -H "Content-Type: application/json" \
@@ -455,7 +460,7 @@ spec:
                     cat /tmp/hook-error.log
                     exit 1
                   fi
-                  echo "Backup mode started successfully"
+                  echo "Checkpoint completed successfully"
               onError: Fail
               timeout: 120s
         post:
@@ -465,7 +470,7 @@ spec:
                 - /bin/bash
                 - -c
                 - |
-                  psql -U postgres -c "SELECT pg_stop_backup(false, true);"
+                  echo "PostgreSQL volume backup hook completed"
                   # Send success notification
                   curl -X POST "https://alerts.example.com/webhook" \
                     -H "Content-Type: application/json" \
@@ -495,7 +500,7 @@ echo "Testing pre-backup hook on pod: $POD"
 # Test the pre-backup command
 kubectl exec -n $NAMESPACE $POD -c $CONTAINER -- /bin/bash -c "
   echo 'Testing pre-backup hook'
-  psql -U postgres -c 'SELECT pg_start_backup(\"test\", false, false);'
+  psql -U postgres -c 'CHECKPOINT;'
 "
 
 if [ $? -eq 0 ]; then
@@ -511,7 +516,7 @@ sleep 5
 # Test the post-backup command
 kubectl exec -n $NAMESPACE $POD -c $CONTAINER -- /bin/bash -c "
   echo 'Testing post-backup hook'
-  psql -U postgres -c 'SELECT pg_stop_backup(false, true);'
+  echo 'PostgreSQL volume backup hook completed'
 "
 
 if [ $? -eq 0 ]; then
@@ -564,4 +569,4 @@ annotations:
 
 ---
 
-Velero hooks are essential for achieving application-consistent backups, especially for stateful applications like databases. By properly configuring pre and post-backup hooks, you ensure that your backed-up data is in a consistent state and can be reliably restored. Remember to test your hooks regularly, set appropriate timeouts, and choose the right error handling strategy based on how critical each hook is to your backup integrity.
+Velero hooks are essential for achieving application-consistent backups, especially for stateful applications like databases. By properly configuring pre and post-backup hooks, you can prepare applications before backup and clean up afterward. Remember to test your hooks regularly, set appropriate timeouts, and choose the right error handling strategy based on how critical each hook is to your backup integrity.
