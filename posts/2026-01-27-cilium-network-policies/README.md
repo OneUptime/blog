@@ -14,10 +14,10 @@ Cilium takes Kubernetes networking to the next level with eBPF-powered network p
 
 ## Why Cilium Network Policies?
 
-Standard Kubernetes Network Policies are limited to IP addresses and ports. Cilium Network Policies offer:
+Standard Kubernetes Network Policies are limited to L3/L4 selectors such as pods, namespaces, IP blocks, and ports. Cilium Network Policies offer:
 
-- **L7 Protocol Awareness**: Filter HTTP, gRPC, Kafka, and DNS at the application layer
-- **Identity-Based Security**: Use Kubernetes labels instead of IP addresses
+- **L7 Protocol Awareness**: Filter HTTP, gRPC, DNS, and deprecated Kafka policy fields at the application layer
+- **Identity-Based Security**: Use security identities derived from Kubernetes labels
 - **DNS-Aware Egress**: Allow traffic to specific FQDNs, not just IP blocks
 - **Better Performance**: eBPF runs in the kernel, avoiding iptables overhead
 
@@ -25,7 +25,7 @@ Standard Kubernetes Network Policies are limited to IP addresses and ports. Cili
 flowchart TB
     subgraph Standard["Standard K8s Network Policies"]
         direction TB
-        L3["Layer 3: IP Addresses"]
+        L3["Layer 3: Pod/namespace/IP selectors"]
         L4["Layer 4: TCP/UDP Ports"]
         L3 --> L4
     end
@@ -34,7 +34,7 @@ flowchart TB
         direction TB
         CL3["Layer 3: IP + Identity"]
         CL4["Layer 4: TCP/UDP Ports"]
-        CL7["Layer 7: HTTP/gRPC/Kafka/DNS"]
+        CL7["Layer 7: HTTP/gRPC/DNS/Kafka (deprecated)"]
         CL3 --> CL4 --> CL7
     end
 
@@ -48,9 +48,9 @@ flowchart TB
 Cilium assigns each pod an identity based on its labels. Policies reference these identities, not IPs.
 
 ```bash
-# View Cilium endpoints and their identities
+# View Cilium endpoints and their identities from the Cilium agent
 
-cilium endpoint list
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list
 
 # Output shows endpoint ID, identity, and labels
 # ENDPOINT   POLICY    IDENTITY   LABELS
@@ -66,12 +66,12 @@ flowchart LR
     subgraph Modes["Enforcement Modes"]
         Default["default\n(Kubernetes behavior)"]
         Always["always\n(Enforce all traffic)"]
-        Never["never\n(Audit only)"]
+        Never["never\n(Policy disabled)"]
     end
 
     Default -->|"No policy = allow"| A1[All traffic allowed]
     Always -->|"No policy = deny"| A2[All traffic denied]
-    Never -->|"Policies logged only"| A3[All traffic allowed]
+    Never -->|"Policies ignored"| A3[All traffic allowed]
 ```
 
 Configure the mode in your Cilium ConfigMap:
@@ -86,7 +86,7 @@ metadata:
 data:
   # "default" - Standard Kubernetes behavior: no policy means allow all
   # "always" - Zero-trust: no policy means deny all (most secure)
-  # "never" - Audit mode: policies are logged but not enforced
+  # "never" - Policy enforcement disabled: all traffic is allowed
   enable-policy: "default"
 ```
 
@@ -138,7 +138,7 @@ Control outbound traffic to external services:
 
 ```yaml
 # CiliumNetworkPolicy: Allow payment service to reach external payment gateways
-# Uses CIDR blocks for external IP ranges
+# Uses documentation CIDR blocks as placeholders for external IP ranges
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -151,19 +151,18 @@ spec:
   egress:
     # Allow HTTPS to external payment processors
     - toCIDR:
-        - 203.0.113.0/24  # Example: Stripe IP range
-        - 198.51.100.0/24 # Example: PayPal IP range
+        - 203.0.113.0/24  # Example documentation range
+        - 198.51.100.0/24 # Example documentation range
       toPorts:
         - ports:
             - port: "443"
               protocol: TCP
+  egressDeny:
     # Explicitly deny internal network ranges
-    - toCIDRSet:
-        - cidr: 0.0.0.0/0
-          except:
-            - 10.0.0.0/8
-            - 172.16.0.0/12
-            - 192.168.0.0/16
+    - toCIDR:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
 ```
 
 ### Cross-Namespace Communication
@@ -266,7 +265,7 @@ Filter requests based on HTTP headers:
 
 ```yaml
 # CiliumNetworkPolicy: L7 policy with header-based access control
-# Only allows requests with valid API key header
+# Only allows requests with required headers
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -292,11 +291,11 @@ spec:
                 headers:
                   # Require API version header
                   - "X-API-Version: v1"
-              # Admin endpoints require admin header
+              # Admin endpoints require an admin token header
               - method: ".*"
                 path: "/admin/.*"
-                headers:
-                  - "X-Admin-Token: .*"
+                headerMatches:
+                  - name: X-Admin-Token
 ```
 
 ### gRPC Policy
@@ -404,13 +403,15 @@ spec:
     # Allow traffic from host (node)
     - fromEntities:
         - host
-    # Allow health checks from Kubernetes
+    # Allow Cilium health checks
     - fromEntities:
         - health
   egress:
-    # Allow DNS to kube-dns
-    - toEntities:
-        - kube-dns
+    # Allow DNS to kube-dns/CoreDNS
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -429,17 +430,17 @@ flowchart TB
     subgraph Reserved["Reserved Identities"]
         host["host\n(Kubernetes nodes)"]
         world["world\n(External traffic)"]
-        health["health\n(Kubelet probes)"]
+        health["health\n(Cilium health endpoints)"]
         init["init\n(Pod initialization)"]
-        kubedns["kube-dns\n(DNS resolution)"]
+        apiserver["kube-apiserver\n(Kubernetes API)"]
         ingress["ingress\n(Ingress controller)"]
     end
 
     subgraph Usage["Common Usage"]
         host -->|"Node-local access"| U1[DaemonSet pods]
         world -->|"External APIs"| U2[Outbound HTTPS]
-        health -->|"Liveness probes"| U3[Pod health checks]
-        kubedns -->|"DNS resolution"| U4[Service discovery]
+        health -->|"Connectivity checks"| U3[Cilium health]
+        apiserver -->|"Control plane access"| U4[Kubernetes API]
     end
 ```
 
@@ -491,12 +492,17 @@ spec:
       app: backend
   egress:
     # Allow DNS resolution first (required for FQDN rules)
-    - toEntities:
-        - kube-dns
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
       toPorts:
         - ports:
             - port: "53"
               protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
     # Allow specific external domains
     - toFQDNs:
         # Exact match
@@ -527,8 +533,10 @@ spec:
     matchLabels:
       app: backend
   egress:
-    - toEntities:
-        - kube-dns
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -612,13 +620,15 @@ spec:
       toPorts:
         - ports:
             - port: "8080"
-    # Allow health checks from kubelet
+    # Allow Cilium health checks
     - fromEntities:
         - health
   egress:
     # Allow DNS
-    - toEntities:
-        - kube-dns
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -632,25 +642,29 @@ spec:
             - port: "5432"
 ```
 
-### Never Mode (Audit)
+### Policy Audit Mode
 
-Policies are tracked but not enforced - useful for testing:
+Policy audit mode logs policy verdicts without enforcing drops - useful for testing:
 
 ```bash
 # Enable audit mode for policy testing
 kubectl patch configmap cilium-config -n kube-system \
   --type merge \
-  -p '{"data":{"enable-policy":"never"}}'
+  -p '{"data":{"policy-audit-mode":"true"}}'
+
+# Restart Cilium to apply
+kubectl rollout restart daemonset/cilium -n kube-system
 ```
 
 Monitor policy decisions in audit mode:
 
 ```bash
-# Watch what would be blocked
-hubble observe --verdict DROPPED --follow
+# Watch audited policy verdicts
+hubble observe -t policy-verdict --follow
 
 # Check policy verdicts for a specific pod
-cilium endpoint get <endpoint-id> | grep PolicyVerdicts
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint get <endpoint-id> | grep PolicyVerdicts
 ```
 
 ## Complete Example: Microservices Architecture
@@ -719,12 +733,17 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    - toEntities:
-        - kube-dns
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
       toPorts:
         - ports:
             - port: "53"
               protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
 
 # 3. Frontend policies
 ---
@@ -745,7 +764,7 @@ spec:
       toPorts:
         - ports:
             - port: "80"
-    # Allow health checks
+    # Allow Cilium health checks
     - fromEntities:
         - health
 ---
@@ -889,10 +908,13 @@ spec:
 
 ```bash
 # Check if policies are applied to endpoints
-cilium endpoint list
+kubectl get ciliumendpoints -A
+
+# Get endpoint details from the Cilium agent
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list
 
 # Get detailed policy status for an endpoint
-cilium endpoint get <endpoint-id>
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint get <endpoint-id>
 
 # List all policies
 kubectl get cnp,ccnp -A
@@ -905,10 +927,14 @@ kubectl describe ciliumnetworkpolicy api-ingress -n production
 
 ```bash
 # Install Hubble CLI
-HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
-curl -L --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-amd64.tar.gz
-tar xzvf hubble-linux-amd64.tar.gz
-sudo mv hubble /usr/local/bin
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+HUBBLE_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then HUBBLE_ARCH=arm64; fi
+curl -L --fail --remote-name-all \
+  https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC hubble-linux-${HUBBLE_ARCH}.tar.gz /usr/local/bin
+rm hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
 
 # Enable Hubble relay
 cilium hubble enable
@@ -989,7 +1015,7 @@ data:
 1. **Start with Default Deny**: Apply default-deny policies before adding allow rules
 2. **Use Labels, Not IPs**: Identity-based policies survive pod restarts and scaling
 3. **Layer L7 on L4**: Start with L3/L4 policies, add L7 rules for sensitive endpoints
-4. **Test in Audit Mode**: Use `enable-policy: never` to validate before enforcing
+4. **Test in Audit Mode**: Use `policy-audit-mode: true` to validate before enforcing
 5. **Monitor with Hubble**: Enable observability to understand traffic patterns
 6. **Version Control Policies**: Store policies in Git, deploy via GitOps
 7. **Document Everything**: Comment why each policy exists, not just what it does
