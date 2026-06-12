@@ -62,9 +62,8 @@ Define a retention policy that balances operational needs with storage constrain
 ```java
 package com.example.batch.config;
 
-import org.springframework.batch.core.JobExecution;
+import com.example.batch.service.JobRepositoryCleanupService;
 import org.springframework.batch.core.explore.JobExplorer;
-import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -113,7 +112,7 @@ public class BatchCleanupConfig {
 
 ### Job Repository Cleanup Service
 
-The cleanup service removes old executions while preserving referential integrity. Delete operations must follow the correct order: step execution context, step executions, job execution context, job executions, then job instances.
+The cleanup service removes old executions while preserving referential integrity. Delete operations must follow the correct order: step execution context, step executions, job execution parameters, job execution context, job executions, then job instances.
 
 `service/JobRepositoryCleanupService.java`
 
@@ -124,23 +123,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobInstance;
-import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.explore.JobExplorer;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.Date;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
-@Service
 public class JobRepositoryCleanupService {
 
     private static final Logger logger = LoggerFactory.getLogger(JobRepositoryCleanupService.class);
@@ -195,8 +187,7 @@ public class JobRepositoryCleanupService {
     @Transactional
     public CleanupResult cleanupOldExecutions() {
         // Calculate cutoff date based on retention policy
-        LocalDateTime cutoffDate = LocalDateTime.now().minusDays(retentionDays);
-        Date cutoff = Date.from(cutoffDate.atZone(ZoneId.systemDefault()).toInstant());
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(retentionDays);
 
         int totalDeleted = 0;
 
@@ -205,7 +196,8 @@ public class JobRepositoryCleanupService {
 
         for (String jobName : jobNames) {
             // Process each job type separately
-            int deleted = cleanupJobExecutions(jobName, cutoff);
+            int remainingDeletes = batchSize - totalDeleted;
+            int deleted = cleanupJobExecutions(jobName, cutoff, remainingDeletes);
             totalDeleted += deleted;
 
             // Respect batch size limit to prevent memory issues
@@ -222,11 +214,14 @@ public class JobRepositoryCleanupService {
     }
 
     // Remove executions for a specific job that are older than cutoff
-    private int cleanupJobExecutions(String jobName, Date cutoff) {
+    private int cleanupJobExecutions(String jobName, LocalDateTime cutoff, int maxDeletes) {
         int deleted = 0;
+        if (maxDeletes <= 0) {
+            return deleted;
+        }
 
         // Get job instances for this job name
-        List<JobInstance> instances = jobExplorer.findJobInstancesByJobName(jobName, 0, batchSize);
+        List<JobInstance> instances = jobExplorer.getJobInstances(jobName, 0, maxDeletes);
 
         for (JobInstance instance : instances) {
             // Get all executions for this instance
@@ -240,6 +235,10 @@ public class JobRepositoryCleanupService {
                     deleted++;
                     logger.debug("Deleted job execution: {} for job: {}",
                         execution.getId(), jobName);
+
+                    if (deleted >= maxDeletes) {
+                        return deleted;
+                    }
                 }
             }
         }
@@ -248,20 +247,20 @@ public class JobRepositoryCleanupService {
     }
 
     // Check if an execution can be safely deleted
-    private boolean isEligibleForCleanup(JobExecution execution, Date cutoff) {
+    private boolean isEligibleForCleanup(JobExecution execution, LocalDateTime cutoff) {
         // Never delete running jobs
         if (execution.isRunning()) {
             return false;
         }
 
         // Check if execution ended before cutoff date
-        Date endTime = execution.getEndTime();
+        LocalDateTime endTime = execution.getEndTime();
         if (endTime == null) {
             // Use start time for jobs that never completed properly
             endTime = execution.getStartTime();
         }
 
-        return endTime != null && endTime.before(cutoff);
+        return endTime != null && endTime.isBefore(cutoff);
     }
 
     // Delete a single job execution and all related records
@@ -275,11 +274,11 @@ public class JobRepositoryCleanupService {
         // 2. Delete step executions (child)
         jdbcTemplate.update(DELETE_STEP_EXECUTIONS, executionId);
 
-        // 3. Delete job execution context
-        jdbcTemplate.update(DELETE_JOB_EXECUTION_CONTEXT, executionId);
-
-        // 4. Delete job execution parameters
+        // 3. Delete job execution parameters
         jdbcTemplate.update(DELETE_JOB_EXECUTION_PARAMS, executionId);
+
+        // 4. Delete job execution context
+        jdbcTemplate.update(DELETE_JOB_EXECUTION_CONTEXT, executionId);
 
         // 5. Delete the job execution itself
         jdbcTemplate.update(DELETE_JOB_EXECUTION, executionId);
@@ -567,7 +566,7 @@ public class StagingTableCleanupJob {
             Step cleanupOrderStagingStep,
             Step cleanupInventoryStagingStep,
             Step cleanupAuditLogStep,
-            Step vacuumTablesStep) {
+            Step analyzeTablesStep) {
 
         return new JobBuilder("stagingCleanupJob", jobRepository)
             // Clean order staging table first
@@ -576,8 +575,8 @@ public class StagingTableCleanupJob {
             .next(cleanupInventoryStagingStep)
             // Then audit logs
             .next(cleanupAuditLogStep)
-            // Finally, reclaim disk space
-            .next(vacuumTablesStep)
+            // Finally, update planner statistics
+            .next(analyzeTablesStep)
             .build();
     }
 
@@ -589,7 +588,8 @@ public class StagingTableCleanupJob {
             DataSource dataSource) {
 
         return new StepBuilder("cleanupOrderStagingStep", jobRepository)
-            .tasklet(createCleanupTasklet(dataSource, "ORDER_STAGING", "processed_at"),
+            .tasklet(createCleanupTasklet(dataSource, "ORDER_STAGING", "processed_at",
+                                          "status", "PROCESSED"),
                      transactionManager)
             .build();
     }
@@ -602,7 +602,8 @@ public class StagingTableCleanupJob {
             DataSource dataSource) {
 
         return new StepBuilder("cleanupInventoryStagingStep", jobRepository)
-            .tasklet(createCleanupTasklet(dataSource, "INVENTORY_STAGING", "load_timestamp"),
+            .tasklet(createCleanupTasklet(dataSource, "INVENTORY_STAGING", "load_timestamp",
+                                          "status", "COMPLETED"),
                      transactionManager)
             .build();
     }
@@ -615,13 +616,19 @@ public class StagingTableCleanupJob {
             DataSource dataSource) {
 
         return new StepBuilder("cleanupAuditLogStep", jobRepository)
-            .tasklet(createCleanupTasklet(dataSource, "BATCH_AUDIT_LOG", "created_at"),
+            .tasklet(createCleanupTasklet(dataSource, "BATCH_AUDIT_LOG", "created_at",
+                                          null, null),
                      transactionManager)
             .build();
     }
 
     // Factory method to create cleanup tasklets for different tables
-    private Tasklet createCleanupTasklet(DataSource dataSource, String tableName, String dateColumn) {
+    private Tasklet createCleanupTasklet(
+            DataSource dataSource,
+            String tableName,
+            String dateColumn,
+            String statusColumn,
+            String statusValue) {
         return (contribution, chunkContext) -> {
             JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
 
@@ -629,16 +636,26 @@ public class StagingTableCleanupJob {
             LocalDateTime cutoff = LocalDateTime.now().minusDays(stagingRetentionDays);
             String cutoffStr = cutoff.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
-            // Build delete query with parameterized table and column names
+            // Build delete query with validated table and column names
             // Note: Table/column names cannot be parameterized, so validate them
-            String sql = String.format(
-                "DELETE FROM %s WHERE %s < ? AND status = 'PROCESSED'",
-                validateIdentifier(tableName),
-                validateIdentifier(dateColumn)
-            );
-
-            // Execute deletion and log results
-            int deletedRows = jdbcTemplate.update(sql, cutoff);
+            String sql;
+            int deletedRows;
+            if (statusColumn != null && statusValue != null) {
+                sql = String.format(
+                    "DELETE FROM %s WHERE %s < ? AND %s = ?",
+                    validateIdentifier(tableName),
+                    validateIdentifier(dateColumn),
+                    validateIdentifier(statusColumn)
+                );
+                deletedRows = jdbcTemplate.update(sql, cutoff, statusValue);
+            } else {
+                sql = String.format(
+                    "DELETE FROM %s WHERE %s < ?",
+                    validateIdentifier(tableName),
+                    validateIdentifier(dateColumn)
+                );
+                deletedRows = jdbcTemplate.update(sql, cutoff);
+            }
 
             logger.info("Cleaned up {} rows from {} older than {}",
                 deletedRows, tableName, cutoffStr);
@@ -659,30 +676,27 @@ public class StagingTableCleanupJob {
         return identifier;
     }
 
-    // Step to reclaim disk space after deletions (PostgreSQL specific)
+    // Step to update planner statistics after deletions (PostgreSQL specific)
     @Bean
-    public Step vacuumTablesStep(
+    public Step analyzeTablesStep(
             JobRepository jobRepository,
             PlatformTransactionManager transactionManager,
             DataSource dataSource) {
 
-        return new StepBuilder("vacuumTablesStep", jobRepository)
+        return new StepBuilder("analyzeTablesStep", jobRepository)
             .tasklet((contribution, chunkContext) -> {
                 JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
 
-                // VACUUM reclaims space from deleted rows
                 // ANALYZE updates statistics for query planner
                 String[] tables = {"ORDER_STAGING", "INVENTORY_STAGING", "BATCH_AUDIT_LOG"};
 
                 for (String table : tables) {
                     try {
-                        // Note: VACUUM cannot run inside a transaction in PostgreSQL
-                        // This requires autocommit mode or a separate connection
-                        jdbcTemplate.execute("VACUUM ANALYZE " + validateIdentifier(table));
-                        logger.info("Vacuumed table: {}", table);
+                        jdbcTemplate.execute("ANALYZE " + validateIdentifier(table));
+                        logger.info("Analyzed table: {}", table);
                     } catch (Exception e) {
-                        // Log but don't fail the job for vacuum errors
-                        logger.warn("Failed to vacuum {}: {}", table, e.getMessage());
+                        // Log but don't fail the job for analyze errors
+                        logger.warn("Failed to analyze {}: {}", table, e.getMessage());
                     }
                 }
 
@@ -933,12 +947,8 @@ batch:
         date-column: created_at
         # No status check for audit logs
 
-# Schedule configuration
+# Scheduling is enabled by @EnableScheduling in BatchCleanupConfig.
 spring:
-  scheduling:
-    # Enable scheduled task execution
-    enabled: true
-
   # DataSource for batch tables
   datasource:
     url: jdbc:postgresql://localhost:5432/batchdb
@@ -1020,7 +1030,7 @@ groups:
 
       # Alert if cleanup takes too long
       - alert: BatchCleanupSlow
-        expr: batch_cleanup_duration_seconds > 3600
+        expr: max_over_time(batch_cleanup_duration_seconds_max[1h]) > 3600
         for: 5m
         labels:
           severity: warning
@@ -1039,6 +1049,7 @@ groups:
           description: "Less than 10% disk space remaining on batch temp volume."
 
       # Alert if job repository is growing too fast
+      # Requires a gauge named batch_job_execution_count that reports BATCH_JOB_EXECUTION row count
       - alert: BatchJobHistoryGrowing
         expr: increase(batch_job_execution_count[24h]) > 10000
         for: 1h
@@ -1073,8 +1084,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.Date;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -1118,8 +1127,7 @@ class JobRepositoryCleanupServiceTest {
         JobExecution oldExecution = jobLauncher.run(testJob, params);
 
         // Manually backdate the execution to simulate old data
-        LocalDateTime oldDate = LocalDateTime.now().minusDays(45);
-        Date oldTimestamp = Date.from(oldDate.atZone(ZoneId.systemDefault()).toInstant());
+        LocalDateTime oldTimestamp = LocalDateTime.now().minusDays(45);
 
         jdbcTemplate.update(
             "UPDATE BATCH_JOB_EXECUTION SET END_TIME = ? WHERE JOB_EXECUTION_ID = ?",
@@ -1165,8 +1173,7 @@ class JobRepositoryCleanupServiceTest {
         jobRepository.update(runningExecution);
 
         // Backdate to make it appear old
-        LocalDateTime oldDate = LocalDateTime.now().minusDays(45);
-        Date oldTimestamp = Date.from(oldDate.atZone(ZoneId.systemDefault()).toInstant());
+        LocalDateTime oldTimestamp = LocalDateTime.now().minusDays(45);
 
         jdbcTemplate.update(
             "UPDATE BATCH_JOB_EXECUTION SET START_TIME = ? WHERE JOB_EXECUTION_ID = ?",
@@ -1216,7 +1223,7 @@ class JobRepositoryCleanupServiceTest {
 2. **Use batch-size limits** to prevent long-running cleanup transactions
 3. **Never delete running job executions** regardless of their age
 4. **Maintain referential integrity** by deleting child records before parents
-5. **Reclaim disk space** with VACUUM or similar operations after large deletions
+5. **Update database statistics** after large deletions, and run database-specific vacuum operations outside transactional cleanup steps when needed
 6. **Monitor cleanup metrics** to detect failures and performance degradation
 7. **Test cleanup logic thoroughly** to avoid accidental data loss
 8. **Configure retention policies externally** for easy adjustment without deployment
