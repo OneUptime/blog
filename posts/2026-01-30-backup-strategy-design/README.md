@@ -177,11 +177,12 @@ Databases require special attention because they hold your most critical data.
 
 ### PostgreSQL Backup Strategy
 
-This script implements a tiered PostgreSQL backup strategy with WAL archiving for point-in-time recovery.
+This script implements a logical PostgreSQL backup strategy. Use it alongside physical base backups and WAL archiving for point-in-time recovery.
 
 ```bash
 #!/bin/bash
 # postgres-backup.sh - Comprehensive PostgreSQL backup strategy
+set -euo pipefail
 
 # Configuration - adjust these for your environment
 
@@ -202,7 +203,8 @@ send_heartbeat() {
     local message=$2
     curl -s -X POST "$HEARTBEAT_URL" \
         -H "Content-Type: application/json" \
-        -d "{\"status\":\"$status\",\"message\":\"$message\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+        -d "{\"status\":\"$status\",\"message\":\"$message\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+        || true
 }
 
 # Notify backup start
@@ -239,6 +241,7 @@ For Tier 1 databases, enable continuous WAL archiving for minimal data loss.
 ```bash
 # postgresql.conf - Enable WAL archiving for point-in-time recovery
 # These settings allow recovering to any point in time, not just backup times
+# Pair WAL archiving with regular physical base backups, such as pg_basebackup
 
 archive_mode = on
 archive_command = 'aws s3 cp %p s3://company-backups/wal/%f'
@@ -254,37 +257,41 @@ max_wal_size = 2GB
 
 ### MySQL Backup Strategy
 
-MySQL backups using a combination of full and incremental backups with binary log archiving.
+MySQL backups using full logical dumps that record binary log coordinates for point-in-time recovery.
 
 ```bash
 #!/bin/bash
-# mysql-backup.sh - MySQL backup with binary log archiving
+# mysql-backup.sh - MySQL backup with binary log coordinates
+set -euo pipefail
 
 DB_NAME="production"
 BACKUP_DIR="/var/backups/mysql"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 HEARTBEAT_URL="https://oneuptime.com/heartbeat/mysql_backup_xyz"
 
+mkdir -p "$BACKUP_DIR"
+
 # Send monitoring heartbeat
 send_heartbeat() {
     curl -s -X POST "$HEARTBEAT_URL" \
         -H "Content-Type: application/json" \
-        -d "{\"status\":\"$1\",\"database\":\"$DB_NAME\",\"size\":\"$2\"}"
+        -d "{\"status\":\"$1\",\"database\":\"$DB_NAME\",\"size\":\"$2\"}" \
+        || true
 }
 
 send_heartbeat "started" "0"
 
 # Full backup using mysqldump with single-transaction for consistency
-# --single-transaction ensures a consistent snapshot without locking tables
+# --single-transaction ensures a consistent snapshot for transactional tables such as InnoDB
 # --routines and --triggers include stored procedures and triggers
-mysqldump \
+# --source-data=2 records binary log coordinates as a SQL comment for PITR
+if mysqldump \
     --single-transaction \
     --routines \
     --triggers \
     --flush-logs \
-    "$DB_NAME" | gzip > "$BACKUP_DIR/$DB_NAME-$TIMESTAMP.sql.gz"
-
-if [ $? -eq 0 ]; then
+    --source-data=2 \
+    "$DB_NAME" | gzip > "$BACKUP_DIR/$DB_NAME-$TIMESTAMP.sql.gz"; then
     SIZE=$(du -sh "$BACKUP_DIR/$DB_NAME-$TIMESTAMP.sql.gz" | cut -f1)
     send_heartbeat "completed" "$SIZE"
 else
@@ -304,6 +311,7 @@ Use rsync with hard links for efficient incremental backups that look like full 
 ```bash
 #!/bin/bash
 # rsync-incremental.sh - Efficient incremental backups with hard links
+set -euo pipefail
 
 SOURCE="/data"
 BACKUP_BASE="/backups"
@@ -311,11 +319,18 @@ LATEST_LINK="$BACKUP_BASE/latest"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="$BACKUP_BASE/$TIMESTAMP"
 
+mkdir -p "$BACKUP_BASE"
+
+LINK_DEST_ARGS=()
+if [ -e "$LATEST_LINK" ]; then
+    LINK_DEST_ARGS=(--link-dest="$LATEST_LINK")
+fi
+
 # Create incremental backup using hard links to save space
 # --link-dest creates hard links to unchanged files from the previous backup
 # This means each backup directory appears complete, but only changed files use new space
 rsync -avz --delete \
-    --link-dest="$LATEST_LINK" \
+    "${LINK_DEST_ARGS[@]}" \
     "$SOURCE/" \
     "$BACKUP_PATH/"
 
@@ -457,7 +472,7 @@ export ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key
 etcdctl snapshot save "$SNAPSHOT_FILE"
 
 # Verify the snapshot is valid and complete
-etcdctl snapshot status "$SNAPSHOT_FILE" --write-out=table
+etcdutl --write-out=table snapshot status "$SNAPSHOT_FILE"
 
 # Upload to remote storage for disaster recovery
 aws s3 cp "$SNAPSHOT_FILE" "s3://company-backups/etcd/"
@@ -483,20 +498,20 @@ Create a systematic backup schedule using cron.
 # Minute Hour Day Month Weekday Command
 
 # Database backups - stagger to avoid resource contention
-0  2  *  *  *  /opt/scripts/postgres-backup.sh full
-0  */4 *  *  *  /opt/scripts/postgres-backup.sh incremental
-30 2  *  *  *  /opt/scripts/mysql-backup.sh full
+0  2  *  *  *  root  /opt/scripts/postgres-backup.sh full
+0  */4 *  *  *  root  /opt/scripts/postgres-backup.sh incremental
+30 2  *  *  *  root  /opt/scripts/mysql-backup.sh full
 
 # File system backups
-0  3  *  *  *  /opt/scripts/rsync-backup.sh /data
-0  4  *  *  0  /opt/scripts/rsync-backup.sh /data full  # Weekly full
+0  3  *  *  *  root  /opt/scripts/rsync-backup.sh /data
+0  4  *  *  0  root  /opt/scripts/rsync-backup.sh /data full  # Weekly full
 
 # Kubernetes backups
-0  1  *  *  *  /opt/scripts/etcd-backup.sh
-0  */6 *  *  *  /opt/scripts/velero-backup.sh
+0  1  *  *  *  root  /opt/scripts/etcd-backup.sh
+0  */6 *  *  *  root  /opt/scripts/velero-backup.sh
 
 # Verification jobs
-0  6  *  *  0  /opt/scripts/verify-backups.sh
+0  6  *  *  0  root  /opt/scripts/verify-backups.sh
 ```
 
 ### Backup Job Wrapper Script
@@ -605,7 +620,7 @@ Add comprehensive monitoring to your backup scripts.
 import requests
 import time
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 
 class BackupMonitor:
@@ -625,7 +640,7 @@ class BackupMonitor:
             "status": status,
             "job_name": self.job_name,
             "hostname": os.uname().nodename,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             **kwargs
         }
 
@@ -717,15 +732,19 @@ Schedule regular restore tests to verify backup integrity.
 ```bash
 #!/bin/bash
 # test-restore.sh - Automated backup restore verification
+set -euo pipefail
 
 BACKUP_FILE=$1
-TEST_DB="restore_test_$(date +%Y%m%d)"
+TEST_DB="restore_test_$(date +%Y%m%d_%H%M%S)"
 HEARTBEAT_URL="https://oneuptime.com/heartbeat/restore_test_xyz"
+
+trap 'dropdb --if-exists "$TEST_DB" >/dev/null 2>&1' EXIT
 
 send_result() {
     curl -s -X POST "$HEARTBEAT_URL" \
         -H "Content-Type: application/json" \
-        -d "{\"status\":\"$1\",\"backup\":\"$BACKUP_FILE\",\"message\":\"$2\"}"
+        -d "{\"status\":\"$1\",\"backup\":\"$BACKUP_FILE\",\"message\":\"$2\"}" \
+        || true
 }
 
 echo "Starting restore test for: $BACKUP_FILE"
@@ -746,10 +765,10 @@ if pg_restore -d "$TEST_DB" "$BACKUP_FILE"; then
 else
     echo "Restore FAILED"
     send_result "failed" "pg_restore failed"
+    RESTORE_STATUS=1
 fi
 
-# Clean up test database
-dropdb "$TEST_DB"
+exit "${RESTORE_STATUS:-0}"
 ```
 
 ### Backup Verification Checklist
@@ -849,7 +868,7 @@ def verify_database_backup(backup_path):
 
 Document your recovery procedures before you need them.
 
-```markdown
+````markdown
 # Database Recovery Runbook
 
 ## Prerequisites
@@ -868,19 +887,19 @@ Document your recovery procedures before you need them.
 ```bash
 ## List available backups
 aws s3 ls s3://company-backups/postgres/ --recursive | sort -k1,2 | tail -20
-```bash
+```
 
 ### 3. Download the Backup
 ```bash
 ## Download latest backup
 aws s3 cp s3://company-backups/postgres/production-YYYYMMDD.dump /tmp/restore.dump
-```bash
+```
 
 ### 4. Verify the Backup
 ```bash
 ## Check backup integrity before restoring
 pg_restore -l /tmp/restore.dump | head -50
-```bash
+```
 
 ### 5. Restore the Database
 ```bash
@@ -892,7 +911,7 @@ pg_restore -d production -c /tmp/restore.dump
 
 ## Restart application
 kubectl scale deployment app --replicas=3
-```bash
+```
 
 ### 6. Verify Recovery
 - Run data integrity checks
@@ -903,7 +922,7 @@ kubectl scale deployment app --replicas=3
 - Document the incident
 - Update backup procedures if needed
 - Notify stakeholders
-```text
+````
 
 ### Recovery Time Estimation
 
