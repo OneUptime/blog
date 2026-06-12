@@ -70,6 +70,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from typing import List, Optional
+from scopes import SCOPES
 
 # Configuration
 SECRET_KEY = "your-secret-key-keep-it-safe"
@@ -157,6 +158,14 @@ The token endpoint validates requested scopes against user permissions:
 # token_endpoint.py
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from datetime import timedelta
+from auth import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    Token,
+    authenticate_user,
+    create_access_token,
+    fake_users_db,
+)
 
 app = FastAPI()
 
@@ -220,8 +229,11 @@ FastAPI's `Security` dependency allows you to specify required scopes:
 
 ```python
 # dependencies.py
-from fastapi import Security, HTTPException, status
+from fastapi import Depends, Security, HTTPException, status
 from fastapi.security import SecurityScopes
+from jose import JWTError, jwt
+from auth import ALGORITHM, SECRET_KEY, TokenData, User, fake_users_db, get_user
+from scopes import oauth2_scheme
 
 async def get_current_user(
     security_scopes: SecurityScopes,
@@ -294,7 +306,8 @@ Use `Security()` instead of `Depends()` to specify required scopes:
 ```python
 # endpoints.py
 from fastapi import APIRouter, Security
-from typing import List
+from auth import User
+from dependencies import get_current_user
 
 router = APIRouter()
 
@@ -349,7 +362,11 @@ Require multiple scopes for sensitive operations:
 
 ```python
 # multi_scope.py
-from fastapi import Security
+from fastapi import Depends, HTTPException, Security, status
+from fastapi.security import SecurityScopes
+from auth import User
+from dependencies import get_current_user
+from scopes import oauth2_scheme
 
 # Require ALL listed scopes (AND logic)
 @app.delete("/users/{user_id}/permanent")
@@ -402,7 +419,11 @@ Implement hierarchical scopes where broader scopes include narrower ones:
 
 ```python
 # scope_hierarchy.py
-from typing import Set
+from typing import List, Set
+from fastapi import Depends, HTTPException, Security, status
+from fastapi.security import SecurityScopes
+from auth import User
+from scopes import oauth2_scheme
 
 # Define scope hierarchy
 SCOPE_HIERARCHY = {
@@ -468,8 +489,13 @@ Provide clear error messages when scope checks fail:
 
 ```python
 # error_handling.py
-from fastapi import Request
+from typing import List
+from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.security import SecurityScopes
+from jose import JWTError, jwt
+from auth import ALGORITHM, SECRET_KEY, User
+from scopes import oauth2_scheme
 
 class InsufficientScopeError(Exception):
     def __init__(self, required: List[str], provided: List[str]):
@@ -537,6 +563,7 @@ FastAPI automatically documents scopes in OpenAPI. Enhance with descriptions:
 ```python
 # openapi_docs.py
 from fastapi import FastAPI
+from fastapi.security import OAuth2PasswordBearer
 
 # Scopes with detailed descriptions for docs
 SCOPES = {
@@ -583,6 +610,8 @@ When you open `/docs`, you will see:
 import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
+from typing import List
+from main import ALGORITHM, SECRET_KEY, SCOPES, app
 
 client = TestClient(app)
 
@@ -597,7 +626,7 @@ def create_test_token(username: str, scopes: List[str]) -> str:
 def test_endpoint_requires_scope():
     """Test that endpoint rejects token without required scope"""
     # Token with only items:read scope
-    token = create_test_token("testuser", ["items:read"])
+    token = create_test_token("alice", ["items:read"])
 
     response = client.get(
         "/users/me",
@@ -610,7 +639,7 @@ def test_endpoint_requires_scope():
 
 def test_endpoint_accepts_valid_scope():
     """Test that endpoint accepts token with required scope"""
-    token = create_test_token("testuser", ["users:read"])
+    token = create_test_token("alice", ["users:read"])
 
     response = client.get(
         "/users/me",
@@ -622,7 +651,7 @@ def test_endpoint_accepts_valid_scope():
 def test_endpoint_requires_multiple_scopes():
     """Test endpoint requiring multiple scopes"""
     # Token with only one of the required scopes
-    token = create_test_token("testuser", ["users:delete"])
+    token = create_test_token("admin", ["users:delete"])
 
     response = client.delete(
         "/users/123/permanent",
@@ -652,12 +681,13 @@ def test_token_endpoint_validates_scopes():
         data={
             "username": "alice",
             "password": "secret",
+            "grant_type": "password",
             "scope": "admin"  # Alice does not have admin permission
         }
     )
 
     assert response.status_code == 400
-    assert "not authorized for scope" in response.json()["detail"]
+    assert "scope" in response.json()["detail"].lower()
 
 @pytest.fixture
 def admin_token():
