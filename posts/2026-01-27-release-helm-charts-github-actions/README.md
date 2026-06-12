@@ -52,6 +52,11 @@ jobs:
         with:
           version: v3.14.0
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
       - name: Add Helm repos
         run: |
           helm repo add bitnami https://charts.bitnami.com/bitnami
@@ -65,7 +70,7 @@ jobs:
           done
 
       - name: Run chart-testing lint
-        uses: helm/chart-testing-action@v2.6.1
+        uses: helm/chart-testing-action@v2.8.0
 
       - name: Run ct lint
         run: ct lint --config ct.yaml
@@ -139,13 +144,18 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
       - name: Create Kind cluster
-        uses: helm/kind-action@v1.9.0
+        uses: helm/kind-action@v1.12.0
         with:
           cluster_name: chart-testing
 
       - name: Run chart-testing install
-        uses: helm/chart-testing-action@v2.6.1
+        uses: helm/chart-testing-action@v2.8.0
 
       - name: Install charts
         run: ct install --config ct.yaml
@@ -283,7 +293,7 @@ jobs:
       - name: Detect changed charts
         id: changes
         run: |
-          CHANGED_CHARTS=$(git diff --name-only HEAD~1 | grep "^charts/" | cut -d/ -f2 | sort -u)
+          CHANGED_CHARTS=$(git diff --name-only HEAD~1 | grep "^charts/" | cut -d/ -f2 | sort -u | tr '\n' ' ')
           echo "charts=$CHANGED_CHARTS" >> $GITHUB_OUTPUT
 
       - name: Bump chart versions
@@ -395,13 +405,19 @@ Scan charts for security issues:
 jobs:
   security-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
       - name: Run Trivy on charts
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          scan-type: 'config'
+          scan-type: 'fs'
           scan-ref: 'charts/'
           format: 'sarif'
           output: 'trivy-results.sarif'
@@ -414,7 +430,7 @@ jobs:
       - name: Run Kubesec
         run: |
           for chart in charts/*/; do
-            helm template test "$chart" | kubesec scan -
+            helm template test "$chart" | docker run -i kubesec/kubesec:v2 scan /dev/stdin
           done
 ```
 
