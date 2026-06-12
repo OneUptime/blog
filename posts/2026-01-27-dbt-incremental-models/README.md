@@ -18,7 +18,7 @@ This guide covers everything you need to know about configuring incremental mode
 
 ## What is an Incremental Strategy?
 
-An incremental strategy defines how dbt identifies and processes new data. Instead of dropping and recreating tables on every run, incremental models append or merge only the records that have changed since the last execution.
+An incremental strategy defines how dbt applies new or changed data to the target table. Instead of dropping and recreating tables on every run, incremental models append, merge, or overwrite only the records that have changed since the last execution.
 
 The core concept is simple: track what data already exists, identify what is new, and process only the delta.
 
@@ -103,7 +103,7 @@ where date_column >= (select max(date_column) from {{ this }})
 -- Pattern 4: Lookback window for late-arriving data
 {% if is_incremental() %}
 where created_at > (
-    select dateadd(hour, -3, max(created_at))
+    select {{ dbt.dateadd(datepart="hour", interval=-3, from_date_or_timestamp="max(created_at)") }}
     from {{ this }}
 )
 {% endif %}
@@ -136,7 +136,7 @@ where updated_at > (select max(updated_at) from {{ this }})
 {% endif %}
 ```
 
-When `unique_key` is set, dbt uses it to determine whether to insert new rows or update existing ones.
+For strategies such as `merge` and `delete+insert`, dbt uses `unique_key` to determine whether to insert new rows or replace existing ones.
 
 ### Composite Unique Keys
 
@@ -170,7 +170,7 @@ group by user_id, event_date, event_type
 
 ## Merge Strategy
 
-The merge strategy (default for most warehouses) uses SQL MERGE to handle both inserts and updates in a single operation. This is ideal when records can be both created and modified.
+The merge strategy (a common default on several warehouses) uses SQL MERGE to handle both inserts and updates in a single operation. This is ideal when records can be both created and modified.
 
 ```sql
 {{
@@ -267,7 +267,7 @@ from {{ source('web', 'sessions') }}
 
 {% if is_incremental() %}
 where session_start >= (
-    select dateadd(day, -1, max(session_start))
+    select {{ dbt.dateadd(datepart="day", interval=-1, from_date_or_timestamp="max(session_start)") }}
     from {{ this }}
 )
 {% endif %}
@@ -277,18 +277,17 @@ The delete+insert strategy is particularly effective for:
 
 - Warehouses where MERGE is expensive (some Redshift configurations)
 - Scenarios where you want complete record replacement
-- Partitioned tables where you can delete entire partitions
+- Warehouses where a two-step row replacement strategy is preferable to MERGE
 
-### Partition-Based Delete+Insert
+### Partition-Based Insert Overwrite
 
-For partitioned tables, combine delete+insert with partition predicates:
+For partitioned tables on warehouses that support partition replacement, use `insert_overwrite` with partition predicates:
 
 ```sql
 {{
     config(
         materialized='incremental',
-        unique_key='event_id',
-        incremental_strategy='delete+insert',
+        incremental_strategy='insert_overwrite',
         partition_by={
             'field': 'event_date',
             'data_type': 'date',
@@ -432,16 +431,16 @@ select
     current_timestamp() as loaded_at
 from {{ source('metrics', 'raw_metrics') }}
 
-where date >= dateadd(day, -{{ lookback_days }}, current_date())
+where date >= {{ dbt.dateadd(datepart="day", interval=-lookback_days, from_date_or_timestamp="current_date") }}
 
 {% if is_incremental() %}
     and date >= (select max(date) from {{ this }})
 {% endif %}
 ```
 
-### Scheduled Full Refresh
+### Scheduled Reprocessing Without Full Refresh
 
-Implement periodic full refreshes to catch any data drift:
+Periodically reprocess the full source dataset to catch some forms of data drift. This is not the same as `--full-refresh`, because dbt does not drop and rebuild the target table:
 
 ```sql
 {{
@@ -452,8 +451,8 @@ Implement periodic full refreshes to catch any data drift:
     )
 }}
 
--- Force full refresh on first day of month
-{% set force_full_refresh = modules.datetime.datetime.now().day == 1 %}
+-- Reprocess all source rows on the first day of the month
+{% set force_reprocess = run_started_at.day == 1 %}
 
 select
     order_id,
@@ -463,7 +462,7 @@ select
     updated_at
 from {{ source('ecommerce', 'orders') }}
 
-{% if is_incremental() and not force_full_refresh %}
+{% if is_incremental() and not force_reprocess %}
 where updated_at > (select max(updated_at) from {{ this }})
 {% endif %}
 ```
@@ -496,7 +495,7 @@ from {{ source('streaming', 'events') }}
 {% if is_incremental() %}
     -- Look back 6 hours to catch late arrivals
     where event_timestamp > (
-        select dateadd(hour, -6, max(event_timestamp))
+        select {{ dbt.dateadd(datepart="hour", interval=-6, from_date_or_timestamp="max(event_timestamp)") }}
         from {{ this }}
     )
 {% endif %}
@@ -559,7 +558,7 @@ with source_data as (
         updated_at > (select max(updated_at) from {{ this }})
         -- Catch late-arriving new records (3-day lookback)
         or (
-            created_at > dateadd(day, -3, current_timestamp())
+            created_at > {{ dbt.dateadd(datepart="day", interval=-3, from_date_or_timestamp="current_timestamp") }}
             and created_at > (select max(created_at) from {{ this }})
         )
         -- Catch any records from recent loads
@@ -574,9 +573,9 @@ select * from source_data
 
 ## Best Practices Summary
 
-1. **Choose the right strategy**: Use `merge` for upserts, `delete+insert` for partition replacement, and `append` for immutable logs.
+1. **Choose the right strategy**: Use `merge` for upserts, `delete+insert` for row replacement, `insert_overwrite` for partition replacement where supported, and `append` for immutable logs.
 
-2. **Always set unique_key**: Without it, you risk duplicate records. Use composite keys when a single column is insufficient.
+2. **Set unique_key for upserts and row replacement**: Without it, strategies such as `merge` can behave like append-only inserts or fail on some adapters. Use composite keys when a single column is insufficient.
 
 3. **Handle late-arriving data**: Implement lookback windows appropriate for your data source latency patterns.
 
