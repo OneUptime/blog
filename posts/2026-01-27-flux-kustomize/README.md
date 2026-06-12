@@ -230,11 +230,11 @@ spec:
   prune: true
 
   postBuild:
-    # Inline substitutions (lower priority)
+    # Inline substitutions (higher priority)
     substitute:
       ENVIRONMENT: prod
 
-    # External sources for variables (higher priority)
+    # External sources for variables (lower priority)
     substituteFrom:
       # Variables from a ConfigMap
       - kind: ConfigMap
@@ -259,6 +259,8 @@ data:
   CLUSTER_NAME: production-us-east-1
   INGRESS_CLASS: nginx
   STORAGE_CLASS: fast-ssd
+  IMAGE_TAG: v2.1.0
+  LOG_LEVEL: warn
   REPLICAS: "5"
   CPU_REQUEST: "500m"
   MEMORY_REQUEST: "512Mi"
@@ -374,7 +376,6 @@ spec:
     name: flux-system
   path: ./apps/production
   prune: true
-  wait: true
   timeout: 15m0s
 
   # Define custom health checks for specific resources
@@ -404,11 +405,11 @@ spec:
       namespace: production
 ```
 
-### Health Check Status Expression
+### Additional Health Checks
 
 ```yaml
 # clusters/production/infrastructure.yaml
-# Advanced health checks using status expressions
+# Additional health checks for specific resources
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -421,7 +422,6 @@ spec:
     name: flux-system
   path: ./infrastructure/production
   prune: true
-  wait: true
 
   healthChecks:
     # Custom health check for Certificate resource
@@ -782,9 +782,9 @@ namespace: production
 commonLabels:
   environment: production
 
-# Strategic merge patches for production settings
+# Patches for production settings
 patches:
-  # Increase replicas for production
+  # Increase replicas for production with a JSON patch
   - target:
       kind: Deployment
       name: myapp
@@ -805,7 +805,6 @@ images:
 # Production-specific ConfigMap generator
 configMapGenerator:
   - name: app-config
-    behavior: merge
     literals:
       - ENVIRONMENT=production
       - LOG_LEVEL=warn
@@ -897,7 +896,6 @@ spec:
     name: flux-system
   path: ./infrastructure/production
   prune: true
-  wait: true
   timeout: 30m0s
 
   # Infrastructure rarely changes, use longer intervals
@@ -928,7 +926,6 @@ spec:
     name: flux-system
   path: ./apps/overlays/production
   prune: true
-  wait: true
   timeout: 15m0s
 
   # Depend on infrastructure being ready
@@ -998,7 +995,7 @@ flux get kustomizations
 flux get kustomizations --watch
 
 # Get detailed status for a specific Kustomization
-flux get kustomization apps -o yaml
+kubectl get kustomization apps -n flux-system -o yaml
 
 # Check for failed reconciliations
 flux get kustomizations --status-selector ready=false
