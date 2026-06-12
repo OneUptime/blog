@@ -279,11 +279,10 @@ CoreDNS can be configured to accept DoH queries:
 
 ```text
 # Corefile
-. {
-    # Enable DoH on port 443
-    https://.:443 {
-        tls /etc/coredns/cert.pem /etc/coredns/key.pem
-    }
+# Enable DoH on port 443
+https://.:443 {
+    # TLS certificates for the DoH endpoint
+    tls /etc/coredns/cert.pem /etc/coredns/key.pem
 
     # Forward to upstream resolvers
     forward . 1.1.1.1 8.8.8.8 {
