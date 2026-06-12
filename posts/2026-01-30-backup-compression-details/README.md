@@ -226,6 +226,8 @@ This implementation automatically adjusts compression based on available system 
 ```python
 import psutil
 import threading
+import json
+import struct
 from dataclasses import dataclass
 from typing import Optional
 
@@ -287,17 +289,17 @@ class AdaptiveCompressor:
                 self.current_level = 0
                 print(f"High CPU ({resources.cpu_percent}%) - switching to LZ4")
 
-            elif resources.cpu_percent < self.CPU_LOW_THRESHOLD:
-                # CPU is idle - maximize compression ratio
-                self.current_algorithm = CompressionAlgorithm.ZSTD
-                self.current_level = 9
-                print(f"Low CPU ({resources.cpu_percent}%) - using Zstd level 9")
-
             elif resources.memory_available_gb < self.MEMORY_LOW_THRESHOLD:
                 # Low memory - use memory-efficient algorithm
                 self.current_algorithm = CompressionAlgorithm.GZIP
                 self.current_level = 6
                 print(f"Low memory ({resources.memory_available_gb:.1f}GB) - using Gzip")
+
+            elif resources.cpu_percent < self.CPU_LOW_THRESHOLD:
+                # CPU is idle - maximize compression ratio
+                self.current_algorithm = CompressionAlgorithm.ZSTD
+                self.current_level = 9
+                print(f"Low CPU ({resources.cpu_percent}%) - using Zstd level 9")
 
             else:
                 # Normal conditions - balanced compression
@@ -348,9 +350,10 @@ def run_backup_with_adaptive_compression(source_path: str, dest_path: str):
             while chunk := source.read(chunk_size):
                 compressed, metadata = adaptive.compress_adaptive(chunk)
 
-                # Write chunk header with metadata for decompression
-                header = f"{metadata['algorithm']}:{metadata['original_size']}:"
-                dest.write(header.encode())
+                # Write length-prefixed metadata so mixed algorithms can be parsed safely
+                header = json.dumps(metadata).encode()
+                dest.write(struct.pack('<I', len(header)))
+                dest.write(header)
                 dest.write(compressed)
 
     print(f"Backup complete with adaptive compression")
@@ -368,10 +371,18 @@ For simpler use cases, this bash script selects compression based on current CPU
 get_cpu_usage() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS: use top command
-        top -l 1 | grep "CPU usage" | awk '{print $3}' | tr -d '%'
+        top -l 1 | awk '/CPU usage/ {gsub("%", "", $3); gsub("%", "", $5); print $3 + $5}'
     else
         # Linux: use /proc/stat
-        grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {print usage}'
+        read -r _ user nice system idle iowait irq softirq steal _ < /proc/stat
+        local idle1=$((idle + iowait))
+        local total1=$((user + nice + system + idle + iowait + irq + softirq + steal))
+        sleep 1
+        read -r _ user nice system idle iowait irq softirq steal _ < /proc/stat
+        local idle2=$((idle + iowait))
+        local total2=$((user + nice + system + idle + iowait + irq + softirq + steal))
+        awk -v idle_delta=$((idle2 - idle1)) -v total_delta=$((total2 - total1)) \
+            'BEGIN { if (total_delta > 0) print (1 - idle_delta / total_delta) * 100; else print 0 }'
     fi
 }
 
@@ -379,7 +390,7 @@ get_cpu_usage() {
 select_compressor() {
     local cpu_usage=$(get_cpu_usage)
 
-    echo "Current CPU usage: ${cpu_usage}%"
+    echo "Current CPU usage: ${cpu_usage}%" >&2
 
     if (( $(echo "$cpu_usage > 70" | bc -l) )); then
         # High CPU - use fastest compression
@@ -503,7 +514,7 @@ class DeduplicatingCompressor:
     3. Allows chunk-level recovery without full decompression
     """
 
-    # Rabin fingerprint parameters for CDC
+    # Content-defined chunking parameters
     WINDOW_SIZE = 48
     MIN_CHUNK_SIZE = 2 * 1024       # 2KB minimum
     MAX_CHUNK_SIZE = 64 * 1024      # 64KB maximum
@@ -900,6 +911,8 @@ class CompressionMonitor:
     def generate_report(self) -> str:
         """Generate a human-readable compression report."""
         stats = self.get_statistics()
+        if "error" in stats:
+            return stats["error"]
 
         report = []
         report.append("=" * 60)
@@ -988,6 +1001,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass
+from datetime import datetime
 import os
 
 @dataclass
@@ -1290,8 +1304,10 @@ flowchart LR
 
 ```python
 import concurrent.futures
-from typing import BinaryIO
+import json
 import struct
+import time
+import zstandard as zstd
 
 class RecoveryOptimizedCompressor:
     """
@@ -1382,8 +1398,6 @@ class RecoveryOptimizedCompressor:
         # - Index data (JSON)
         # - Compressed chunks
 
-        import json
-
         index_json = json.dumps(chunk_index).encode()
 
         output = bytearray()
@@ -1422,11 +1436,9 @@ class RecoveryOptimizedCompressor:
             compressed_chunks.append(compressed_data[start:end])
 
         # Decompress in parallel
-        decompressor = zstd.ZstdDecompressor()
-
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {
-                executor.submit(decompressor.decompress, chunk): i
+                executor.submit(lambda c: zstd.ZstdDecompressor().decompress(c), chunk): i
                 for i, chunk in enumerate(compressed_chunks)
             }
 
@@ -1538,7 +1550,7 @@ def benchmark_decompression(data: bytes):
             decompress_fn(compressed)
         duration = (time.time() - start) / iterations
 
-        speed_mbps = (len(compressed) / (1024 * 1024)) / duration
+        speed_mbps = (len(data) / (1024 * 1024)) / duration
 
         results.append({
             "algorithm": name,
@@ -1579,6 +1591,11 @@ Complete backup compression solution with:
 
 import os
 import json
+import gzip
+import bz2
+import lzma
+import lz4.frame
+import zstandard as zstd
 from datetime import datetime
 from pathlib import Path
 
@@ -1596,7 +1613,7 @@ class BackupCompressionManager:
 
         self.config = config or {
             "compression_priority": "balanced",  # speed, balanced, ratio
-            "enable_deduplication": True,
+            "enable_deduplication": False,
             "enable_incremental": True,
             "enable_monitoring": True,
             "recovery_optimized": True,
@@ -1638,11 +1655,13 @@ class BackupCompressionManager:
             manifest, compressed_data = dedup.deduplicate_and_compress(data)
             metadata["deduplication"] = dedup.get_efficiency_report()
             metadata["manifest"] = manifest
+            metadata["restore_supported"] = False
         else:
             # Direct compression
             algorithm, level = self.adaptive.adapt_compression()
             compressor = BackupCompressor(algorithm, level)
             compressed_data = compressor.compress(data)
+            metadata["restore_supported"] = True
 
         # Save compressed data
         compressed_file = backup_path / "data.compressed"
@@ -1676,6 +1695,13 @@ class BackupCompressionManager:
         # Load metadata
         with open(backup_path / "metadata.json", 'r') as f:
             metadata = json.load(f)
+
+        if not metadata.get("restore_supported", True):
+            raise NotImplementedError(
+                "This example stores deduplicated chunks separately from the "
+                "restore path. Use direct compression or implement chunk "
+                "reassembly from the manifest before restoring."
+            )
 
         # Load compressed data
         with open(backup_path / "data.compressed", 'rb') as f:
