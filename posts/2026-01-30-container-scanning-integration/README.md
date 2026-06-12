@@ -118,7 +118,7 @@ grype sbom:sbom.json
 # Scan local directory
 grype dir:/path/to/project
 
-# Scan specific file types only
+# Include vulnerabilities from all image layers, not just the squashed final filesystem
 grype myapp:latest --scope all-layers
 ```
 
@@ -136,6 +136,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   build-and-scan:
     runs-on: ubuntu-latest
@@ -148,7 +152,7 @@ jobs:
           docker build -t myapp:${{ github.sha }} .
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           # Image to scan
           image-ref: myapp:${{ github.sha }}
@@ -181,6 +185,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -192,7 +200,7 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Scan with Grype
-        uses: anchore/scan-action@v4
+        uses: anchore/scan-action@v7
         id: scan
         with:
           image: myapp:${{ github.sha }}
@@ -268,7 +276,7 @@ Scanning images already in your registry catches new CVEs discovered after the i
 ### AWS ECR Scanning
 
 ```bash
-# Enable basic scanning (uses Clair)
+# Enable basic scanning (uses Amazon ECR native scanning)
 aws ecr put-image-scanning-configuration \
   --repository-name myapp \
   --image-scanning-configuration scanOnPush=true
@@ -291,9 +299,8 @@ aws ecr describe-image-scan-findings \
 
 Harbor is an open source registry with built-in Trivy scanning.
 
-```yaml
-# Harbor scanner configuration via API
-# POST /api/v2.0/scanners
+```http
+POST /api/v2.0/scanners
 {
   "name": "Trivy",
   "description": "Trivy vulnerability scanner",
@@ -303,8 +310,7 @@ Harbor is an open source registry with built-in Trivy scanning.
   "use_internal_addr": true
 }
 
-# Enable automatic scanning on push
-# PUT /api/v2.0/projects/{project_name}
+PUT /api/v2.0/projects/{project_name}
 {
   "metadata": {
     "auto_scan": "true"
@@ -390,14 +396,16 @@ severity:
   - HIGH
 
 exit-code: 1
-ignore-unfixed: true
 timeout: 10m
 
 # Ignore specific CVEs (document reasons)
 ignorefile: .trivyignore
 
 vulnerability:
-  type:
+  ignore-unfixed: true
+
+pkg:
+  types:
     - os
     - library
 ```
@@ -439,7 +447,8 @@ fail-on-severity: high
 check-for-app-update: false
 
 # Output options
-output: table
+output:
+  - table
 ```
 
 ## Base Image Selection Guidelines
@@ -448,27 +457,29 @@ Your base image choice determines your vulnerability baseline.
 
 ### Image Size vs Security Comparison
 
-| Base Image | Size | Package Manager | Shell | Typical CVE Count |
-|------------|------|-----------------|-------|-------------------|
-| ubuntu:22.04 | 77MB | apt | yes | 50-100 |
-| debian:12-slim | 74MB | apt | yes | 30-60 |
-| alpine:3.19 | 7MB | apk | yes | 5-15 |
-| gcr.io/distroless/static | 2MB | none | no | 0-5 |
-| gcr.io/distroless/base | 20MB | none | no | 5-10 |
-| chainguard/static | 1MB | none | no | 0 |
+Exact image sizes and CVE counts change as images are rebuilt and vulnerability databases are updated, but smaller runtime images generally reduce scanner noise and attack surface.
+
+| Base Image | Relative Size | Package Manager | Shell | Typical Scanner Noise |
+|------------|---------------|-----------------|-------|-----------------------|
+| ubuntu:24.04 | large | apt | yes | higher |
+| debian:13-slim | medium | apt | yes | medium |
+| alpine:3.22 | small | apk | yes | lower |
+| gcr.io/distroless/static-debian13 | very small | none | no | very low |
+| gcr.io/distroless/base-debian13 | small | none | no | low |
+| cgr.dev/chainguard/static | very small | none | no | very low |
 
 ### Recommended Base Images by Use Case
 
 ```dockerfile
 # For Go applications - use static distroless
-# Zero OS packages means minimal attack surface
-FROM gcr.io/distroless/static-debian12
+# Minimal runtime contents reduce attack surface
+FROM gcr.io/distroless/static-debian13
 COPY myapp /
 ENTRYPOINT ["/myapp"]
 
 # For Node.js applications - use distroless nodejs
 # Includes only the Node runtime
-FROM gcr.io/distroless/nodejs20-debian12
+FROM gcr.io/distroless/nodejs22-debian13
 COPY --from=build /app /app
 WORKDIR /app
 CMD ["server.js"]
@@ -482,12 +493,12 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     rm -rf /var/lib/apt/lists/*
 
 # For Java applications - use distroless java
-FROM gcr.io/distroless/java21-debian12
+FROM gcr.io/distroless/java21-debian13
 COPY target/app.jar /app.jar
 ENTRYPOINT ["java", "-jar", "/app.jar"]
 ```
 
-### Chainguard Images for Zero CVE Base
+### Chainguard Images for Low-CVE Bases
 
 ```dockerfile
 # Chainguard images are rebuilt daily with latest patches
@@ -512,6 +523,13 @@ on:
   push:
     branches: [main]
   pull_request:
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+  id-token: write
+  attestations: write
 
 env:
   REGISTRY: ghcr.io
@@ -561,7 +579,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run Trivy scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ needs.build.outputs.image-tag }}
           format: sarif
