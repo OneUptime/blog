@@ -19,7 +19,7 @@ flowchart TD
     A[PagerDuty Incident] --> B[Slack Integration]
     B --> C[Incident Channel]
     B --> D[Team Channel]
-    B --> E[Direct Messages]
+    B --> E[Incident Cards]
 
     F[Slack Commands] --> G[/pd trigger]
     F --> H[/pd ack]
@@ -42,12 +42,12 @@ flowchart TD
 4. Click "Add to Slack"
 5. Authorize the integration
 
-### Step 2: Connect Your PagerDuty Account
+### Step 2: Link Your PagerDuty Account
 
 ```bash
 # In any Slack channel, run:
 
-/pd connect
+/pd oncall
 
 # Follow the OAuth flow to link your PagerDuty user account
 # This allows you to take actions on incidents from Slack
@@ -55,45 +55,53 @@ flowchart TD
 
 ### Step 3: Configure Service Notifications
 
-In PagerDuty, navigate to **Integrations > Extensions** and add Slack:
+In PagerDuty, navigate to **Integrations > Slack Integration**, select your workspace, and add a Slack channel connection. You can also create the connection with the Slack Integration API after your PagerDuty account is mapped to the Slack workspace:
 
 ```python
 import requests
 
-def configure_slack_extension(api_key, service_id, slack_channel_id):
+def configure_slack_connection(api_key, workspace_id, service_id, slack_channel_id):
     """
-    Configure Slack notifications for a PagerDuty service
+    Configure Slack notifications for a PagerDuty service.
     """
-    url = "https://api.pagerduty.com/extensions"
+    url = f"https://api.pagerduty.com/integration-slack/workspaces/{workspace_id}/connections"
 
     headers = {
         "Authorization": f"Token token={api_key}",
-        "Content-Type": "application/json"
+        "Accept": "application/vnd.pagerduty+json;version=2",
+        "Content-Type": "application/json",
     }
 
     payload = {
-        "extension": {
-            "type": "extension",
-            "name": "Slack Notifications",
-            "extension_schema": {
-                "id": "PSLACK",  # Slack extension schema
-                "type": "extension_schema_reference"
-            },
-            "extension_objects": [
-                {
-                    "id": service_id,
-                    "type": "service_reference"
-                }
-            ],
+        "slack_connection": {
+            "source_id": service_id,
+            "source_type": "service_reference",
+            "channel_id": slack_channel_id,
+            "notification_type": "responder",
             "config": {
-                "slack_channel": slack_channel_id,
-                "notify_on": ["trigger", "acknowledge", "resolve"],
-                "urgency_filter": ["high", "low"]
-            }
+                "events": [
+                    "incident.triggered",
+                    "incident.acknowledged",
+                    "incident.escalated",
+                    "incident.resolved",
+                    "incident.reassigned",
+                    "incident.annotated",
+                    "incident.unacknowledged",
+                    "incident.delegated",
+                    "incident.priority_updated",
+                    "incident.responder.added",
+                    "incident.responder.replied",
+                    "incident.status_update_published",
+                    "incident.reopened",
+                ],
+                "priorities": ["*"],
+                "urgency": "high",
+            },
         }
     }
 
     response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status()
     return response.json()
 ```
 
@@ -102,42 +110,39 @@ def configure_slack_extension(api_key, service_id, slack_channel_id):
 ### Trigger an Incident
 
 ```text
-/pd trigger "Database connection timeout" on Database Service
+/pd trigger
 ```
 
 ### Acknowledge an Incident
 
 ```text
-/pd ack 123
+/pd ack
 # or click the "Acknowledge" button on the incident message
 ```
 
 ### Resolve an Incident
 
 ```text
-/pd resolve 123 "Root cause: connection pool exhaustion. Fixed by increasing pool size."
+/pd resolve
 ```
 
 ### Check Who Is On-Call
 
 ```text
 /pd oncall
-# Shows current on-call responders for all your services
-
-/pd oncall "Production API"
-# Shows on-call for a specific service
+# Shows who is on call for a service
 ```
 
 ### Add a Note to an Incident
 
 ```text
-/pd note 123 "Restarted the service, monitoring for recurrence"
+/pd note Restarted the service, monitoring for recurrence
 ```
 
 ### Escalate an Incident
 
 ```text
-/pd escalate 123
+/pd escalate
 # Escalates to the next level in the escalation policy
 ```
 
@@ -153,7 +158,7 @@ sequenceDiagram
     M->>P: Alert triggered
     P->>P: Create incident
     P->>S: Post to #incidents channel
-    P->>S: DM on-call responder
+    P->>S: Post incident card
     S->>R: Mobile/Desktop notification
     R->>S: Click "Acknowledge"
     S->>P: API call to acknowledge
@@ -161,7 +166,7 @@ sequenceDiagram
 
     Note over R: Investigating...
 
-    R->>S: /pd note 123 "Found the issue"
+    R->>S: /pd note Found the issue
     S->>P: Add note to incident
     R->>S: Click "Resolve"
     S->>P: API call to resolve
@@ -172,41 +177,7 @@ sequenceDiagram
 
 ### Auto-Create Channels for Major Incidents
 
-Configure PagerDuty to create a Slack channel for each incident:
-
-```python
-def setup_incident_channel_creation(api_key, service_id):
-    """
-    Configure automatic Slack channel creation for incidents
-    """
-    url = f"https://api.pagerduty.com/services/{service_id}"
-
-    headers = {
-        "Authorization": f"Token token={api_key}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "service": {
-            "extensions": [
-                {
-                    "type": "slack_channel_extension",
-                    "config": {
-                        "auto_create_channel": True,
-                        "channel_prefix": "inc",
-                        "invite_responders": True,
-                        "invite_subscribers": True,
-                        "archive_on_resolve": False,
-                        "archive_after_hours": 72
-                    }
-                }
-            ]
-        }
-    }
-
-    response = requests.put(url, headers=headers, json=payload)
-    return response.json()
-```
+In PagerDuty, go to **Integrations > Slack Integration**, locate your workspace, click **View**, and modify **Channel Settings**. Toggle **Automatically create incident channels** on and configure the channel name, topic updates, bookmarks, and incident updates.
 
 ### Channel Naming Convention
 
@@ -223,7 +194,7 @@ def setup_incident_channel_creation(api_key, service_id):
 Create a Slack Workflow that runs when incidents are posted:
 
 ```yaml
-# Slack Workflow Builder configuration (conceptual)
+# Slack Workflow Builder or Slack app configuration (conceptual)
 workflow:
   name: "Incident Response Checklist"
   trigger:
@@ -270,11 +241,11 @@ def post_oncall_reminder():
 *Primary:* <@{oncall['primary']['slack_id']}> ({oncall['primary']['name']})
 *Secondary:* <@{oncall['secondary']['slack_id']}> ({oncall['secondary']['name']})
 
-_If you need to escalate, use `/pd escalate` or contact the secondary._
+_If you need to escalate an active incident, use `/pd escalate` from the incident's dedicated channel or contact the secondary._
 """
 
     slack_client.chat_postMessage(
-        channel="#team-platform",
+        channel="C0123456789",
         text=message
     )
 
@@ -333,7 +304,7 @@ def post_incident_update(slack_client, channel, thread_ts, update):
 
 ### Acknowledging from Mobile
 
-The PagerDuty Slack message includes interactive buttons. Tap "Acknowledge" directly from the Slack mobile app notification.
+The PagerDuty Slack message includes interactive buttons. Open the incident card in Slack mobile and tap "Acknowledge".
 
 ### Multiple Responders Coordinating
 
@@ -352,9 +323,9 @@ The PagerDuty Slack message includes interactive buttons. Tap "Acknowledge" dire
 ### Escalating to Leadership
 
 ```text
-/pd add-responder 123 @vp-engineering
+/pd page
 # or
-/pd run-play 123 "Major Incident Response"
+/pd workflow
 ```
 
 ## Troubleshooting
@@ -369,7 +340,7 @@ The PagerDuty Slack message includes interactive buttons. Tap "Acknowledge" dire
 
 ```text
 # Re-authenticate your connection
-/pd connect
+/pd oncall
 
 # Check your PagerDuty user permissions
 # You need appropriate role to take actions on incidents
@@ -377,9 +348,13 @@ The PagerDuty Slack message includes interactive buttons. Tap "Acknowledge" dire
 
 ### Missing Interactive Buttons
 
-Ensure the PagerDuty app has the required OAuth scopes:
+Ensure the PagerDuty app has the required OAuth scopes enabled, including:
+- `app_mentions:read`
 - `commands`
+- `channels:manage`
+- `channels:join`
 - `chat:write`
+- `chat:write.public`
 - `users:read`
 - `channels:read`
 
