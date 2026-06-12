@@ -29,18 +29,18 @@ Ceph RADOS Block Device (RBD) provides block-level storage that appears as a reg
 Before creating images, you need a pool. Pools define how data is replicated and where it lands in your cluster.
 
 ```bash
-# Create a replicated pool with 3 copies
+# Create a replicated pool
 
 # Pool name: rbd-pool
 # Placement groups: 128 (adjust based on cluster size)
 ceph osd pool create rbd-pool 128 128 replicated
 
-# Initialize the pool for RBD use
-# This creates necessary metadata objects
-rbd pool init rbd-pool
+# Set 3x replication explicitly
+ceph osd pool set rbd-pool size 3
 
-# Set the application tag so Ceph knows this pool holds RBD data
-ceph osd pool application enable rbd-pool rbd
+# Initialize the pool for RBD use
+# This creates necessary metadata objects and associates the pool with RBD
+rbd pool init rbd-pool
 
 # Verify pool creation
 ceph osd pool ls detail | grep rbd-pool
@@ -55,8 +55,8 @@ For production clusters, tune placement groups based on cluster size:
 # (12 * 100) / 3 / 2 = 200, round to nearest power of 2 = 256
 
 # Adjust PG count for an existing pool
+# Modern Ceph releases automatically step pgp_num after pg_num changes
 ceph osd pool set rbd-pool pg_num 256
-ceph osd pool set rbd-pool pgp_num 256
 ```
 
 ## Creating RBD Images
@@ -72,10 +72,10 @@ rbd create rbd-pool/myvolume --size 102400
 rbd create rbd-pool/database-vol --size 500G
 
 # Create with specific features enabled
-# layering: required for snapshots and clones
-# exclusive-lock: prevents multiple clients mounting the same image
-# object-map: speeds up diff and export operations
-# fast-diff: enables fast snapshot comparison
+# layering: required for copy-on-write clones
+# exclusive-lock: allows one client at a time to own the write lock and is required by object-map
+# object-map: tracks allocated objects and speeds up operations such as diff and export
+# fast-diff: enables faster snapshot comparison and depends on object-map
 rbd create rbd-pool/production-db \
     --size 1T \
     --image-feature layering,exclusive-lock,object-map,fast-diff
@@ -316,6 +316,8 @@ parameters:
   # Secret containing Ceph credentials
   csi.storage.k8s.io/provisioner-secret-name: ceph-csi-secret
   csi.storage.k8s.io/provisioner-secret-namespace: ceph-csi
+  csi.storage.k8s.io/controller-publish-secret-name: ceph-csi-secret
+  csi.storage.k8s.io/controller-publish-secret-namespace: ceph-csi
   csi.storage.k8s.io/controller-expand-secret-name: ceph-csi-secret
   csi.storage.k8s.io/controller-expand-secret-namespace: ceph-csi
   csi.storage.k8s.io/node-stage-secret-name: ceph-csi-secret
