@@ -88,7 +88,7 @@ flowchart TD
 Here is a practical implementation in Node.js using Redis:
 
 ```typescript
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 const redis = new Redis();
 
@@ -115,9 +115,10 @@ async function getWithLock<T>(
   }
 
   // Try to acquire lock
+  const lockValue = `${process.pid}:${Date.now()}:${Math.random()}`;
   const lockAcquired = await redis.set(
     lockKey,
-    '1',
+    lockValue,
     'EX',
     options.lockTimeout,
     'NX'
@@ -137,8 +138,8 @@ async function getWithLock<T>(
 
       return data;
     } finally {
-      // Always release the lock
-      await redis.del(lockKey);
+      // Only release the lock if we still own it
+      await releaseLock(lockKey, lockValue);
     }
   }
 
@@ -167,6 +168,19 @@ async function getWithLock<T>(
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+async function releaseLock(lockKey: string, lockValue: string): Promise<void> {
+  await redis.eval(
+    `if redis.call("GET", KEYS[1]) == ARGV[1] then
+      return redis.call("DEL", KEYS[1])
+    else
+      return 0
+    end`,
+    1,
+    lockKey,
+    lockValue
+  );
+}
 ```
 
 ### Lock Considerations
@@ -177,7 +191,7 @@ When implementing distributed locks for cache stampede prevention, keep these po
 
 **Use atomic lock acquisition.** The `SET key value EX timeout NX` pattern in Redis is atomic and prevents race conditions. Avoid separate `SETNX` and `EXPIRE` calls.
 
-**Always release locks in a finally block.** If your computation throws an exception, the lock must still be released. Otherwise, other requests will wait until the lock times out.
+**Release only locks you still own.** Store a unique value in the lock and use an atomic compare-and-delete script when releasing it. A plain `DEL` can remove another request's lock if your lock expired and was reacquired before your `finally` block runs.
 
 **Handle lock holder crashes.** The lock timeout serves as a safety net. If the process holding the lock crashes, the lock will eventually expire and allow another request to proceed.
 
@@ -206,7 +220,7 @@ flowchart TD
 The probability formula considers time remaining until expiration and a tunable parameter beta:
 
 ```text
-probability = exp(-beta * (expiry - now) / delta)
+probability = exp(-(expiry - now) / (delta * beta))
 ```
 
 Where:
@@ -244,7 +258,7 @@ async function getWithXFetch<T>(
 
     // Calculate early recomputation probability
     const probability = Math.exp(
-      -options.beta * timeRemaining / entry.delta
+      -timeRemaining / (entry.delta * options.beta)
     );
 
     if (Math.random() < probability) {
@@ -303,11 +317,11 @@ The beta parameter controls how early the recomputation starts:
 
 | Beta Value | Behavior |
 |------------|----------|
-| 0.5 | Very aggressive, starts refreshing early |
+| 0.5 | Conservative, waits longer before refreshing |
 | 1.0 | Balanced, recommended starting point |
-| 2.0 | Conservative, waits longer before refreshing |
+| 2.0 | More aggressive, starts refreshing earlier |
 
-Lower beta values reduce stampede risk but increase backend load during normal operation. Higher values are more efficient but leave a smaller safety margin.
+Higher beta values reduce stampede risk but increase backend load during normal operation. Lower values are more efficient but leave a smaller safety margin.
 
 ## Request Coalescing
 
@@ -399,9 +413,10 @@ async function getWithDistributedCoalescing<T>(
   }
 
   // Try to acquire distributed lock
+  const lockValue = `${process.pid}:${Date.now()}:${Math.random()}`;
   const lockAcquired = await redis.set(
     lockKey,
-    process.pid.toString(),
+    lockValue,
     'EX',
     options.lockTimeout,
     'NX'
@@ -419,7 +434,7 @@ async function getWithDistributedCoalescing<T>(
       return data;
     })
     .finally(async () => {
-      await redis.del(lockKey);
+      await releaseLock(lockKey, lockValue);
       inflight.delete(key);
     });
 
@@ -542,7 +557,7 @@ class StampedeProtectedCache {
       // Layer 2: Probabilistic early recomputation
       if (timeRemaining > 0) {
         const probability = Math.exp(
-          -opts.beta * timeRemaining / metadata.delta
+          -timeRemaining / (metadata.delta * opts.beta)
         );
 
         if (Math.random() < probability) {
@@ -554,8 +569,9 @@ class StampedeProtectedCache {
     }
 
     // Layer 3: Distributed lock with stale fallback
+    const lockValue = `${process.pid}:${Date.now()}:${Math.random()}`;
     const lockAcquired = await this.redis.set(
-      lockKey, '1', 'EX', opts.lockTimeout, 'NX'
+      lockKey, lockValue, 'EX', opts.lockTimeout, 'NX'
     );
 
     if (!lockAcquired) {
@@ -572,7 +588,7 @@ class StampedeProtectedCache {
     try {
       return await this.fetchAndStore(key, fetchFn, opts);
     } finally {
-      await this.redis.del(lockKey);
+      await this.releaseLock(lockKey, lockValue);
     }
   }
 
@@ -610,12 +626,13 @@ class StampedeProtectedCache {
     opts: CacheStampedeOptions
   ): void {
     const lockKey = `bglock:${key}`;
+    const lockValue = `${process.pid}:${Date.now()}:${Math.random()}`;
 
-    this.redis.set(lockKey, '1', 'EX', opts.lockTimeout, 'NX')
+    this.redis.set(lockKey, lockValue, 'EX', opts.lockTimeout, 'NX')
       .then(acquired => {
         if (acquired) {
           return this.fetchAndStore(key, fetchFn, opts)
-            .finally(() => this.redis.del(lockKey));
+            .finally(() => this.releaseLock(lockKey, lockValue));
         }
       })
       .catch(err => {
@@ -638,6 +655,19 @@ class StampedeProtectedCache {
     }
 
     throw new Error('Timeout waiting for cache population');
+  }
+
+  private async releaseLock(lockKey: string, lockValue: string): Promise<void> {
+    await this.redis.eval(
+      `if redis.call("GET", KEYS[1]) == ARGV[1] then
+        return redis.call("DEL", KEYS[1])
+      else
+        return 0
+      end`,
+      1,
+      lockKey,
+      lockValue
+    );
   }
 }
 ```
