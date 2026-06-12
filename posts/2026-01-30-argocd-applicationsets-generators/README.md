@@ -372,6 +372,8 @@ spec:
 
 Control rollout order with progressive sync. Roll out to staging first, then production.
 
+Progressive syncs must be enabled on the ApplicationSet controller before using `RollingSync`.
+
 ```yaml
 # progressive-sync.yaml
 # Deploys to dev first, waits, then staging, then prod
@@ -425,16 +427,13 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{env}}'
-      syncPolicy:
-        automated:
-          prune: true
 ```
 
 ## Practical Tips
 
 **Start simple.** Begin with List generator for a few environments. Move to Git or Cluster generators as you scale.
 
-**Use goTemplate for complex logic.** Enable Go templating for conditionals and loops:
+**Use goTemplate for complex logic.** Enable Go templating for functions and per-field conditionals:
 
 ```yaml
 spec:
@@ -443,9 +442,7 @@ spec:
     metadata:
       name: '{{ .name }}'
       annotations:
-        {{- if eq .env "prod" }}
-        pagerduty: enabled
-        {{- end }}
+        pagerduty: '{{ if eq .env "prod" }}enabled{{ else }}disabled{{ end }}'
 ```
 
 **Set preserveResourcesOnDeletion.** Prevent accidental deletion of resources when removing an element from a generator:
