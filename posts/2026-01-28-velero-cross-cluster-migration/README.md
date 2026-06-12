@@ -125,8 +125,8 @@ velero backup logs migration-backup-$(date +%Y%m%d) | grep -E "^(Backed up|level
 ### Step 2: Verify Backup on Target Cluster
 
 ```bash
-# On target cluster, sync backup metadata from storage
-# Velero automatically syncs every minute, or force a sync:
+# On target cluster, wait for backup metadata to sync from storage
+# Velero automatically syncs every minute by default
 velero backup-location get
 
 # Wait for backup to appear
@@ -142,10 +142,11 @@ velero backup describe migration-backup-20260128 --details
 # Create restore from the migration backup
 velero restore create migration-restore \
     --from-backup migration-backup-20260128 \
-    --include-namespaces production
+    --include-namespaces production \
+    --wait
 
 # Monitor restore progress
-velero restore describe migration-restore --details -w
+velero restore describe migration-restore --details
 
 # Check for any restore warnings or errors
 velero restore logs migration-restore
@@ -170,7 +171,7 @@ flowchart TB
     end
 
     subgraph Migration Path
-        M1[Restic/Kopia<br/>File System Backup]
+        M1[Kopia<br/>File System Backup]
     end
 
     A1 --> A3
@@ -183,7 +184,7 @@ flowchart TB
 
 ### Using File System Backup for Cross-Cloud Migration
 
-Volume snapshots are cloud-specific. Use file system backup for portability:
+Volume snapshots are provider-specific. Use file system backup for portability:
 
 ```bash
 # On source cluster - create backup with file system backup for volumes
@@ -193,7 +194,7 @@ velero backup create cross-cloud-migration \
     --default-volumes-to-fs-backup \
     --wait
 
-# This uses restic/kopia to backup volume contents to object storage
+# This uses Kopia to back up volume contents to object storage
 # which can be restored on any cluster regardless of cloud provider
 ```
 
@@ -201,31 +202,28 @@ velero backup create cross-cloud-migration \
 
 Map storage classes between clusters:
 
-```bash
-# On target cluster, restore with storage class mapping
-velero restore create cross-cloud-restore \
-    --from-backup cross-cloud-migration \
-    --include-namespaces production \
-    --storage-class-mappings "gp2:pd-standard,io1:pd-ssd"
+```yaml
+# Define storage class mapping in the Velero namespace
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: change-storage-class-config
+  namespace: velero
+  labels:
+    velero.io/plugin-config: ""
+    velero.io/change-storage-class: RestoreItemAction
+data:
+  gp2: pd-standard
+  gp3: pd-balanced
+  io1: pd-ssd
+  io2: pd-extreme
 ```
 
-```yaml
-# Alternatively, define mapping in restore spec
-apiVersion: velero.io/v1
-kind: Restore
-metadata:
-  name: cross-cloud-restore
-  namespace: velero
-spec:
-  backupName: cross-cloud-migration
-  includedNamespaces:
-    - production
-  # Map AWS storage classes to GCP equivalents
-  storageClassMapping:
-    gp2: pd-standard
-    gp3: pd-balanced
-    io1: pd-ssd
-    io2: pd-extreme
+```bash
+# On target cluster, restore after applying the ConfigMap
+velero restore create cross-cloud-restore \
+    --from-backup cross-cloud-migration \
+    --include-namespaces production
 ```
 
 ## Namespace and Resource Transformations
@@ -461,22 +459,28 @@ velero restore create migration-restore \
 Resource Transformation Hooks
 
 ```yaml
-# Use ConfigMap for resource transformations
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: velero-restore-action-config
-  namespace: velero
-  labels:
-    velero.io/plugin-config: ""
-    velero.io/change-pvc-node-selector: RestoreItemAction
-data:
-  # Transform annotations during restore
-  transformations: |
-    - operation: remove
-      path: /metadata/annotations/kubernetes.io~1last-applied-configuration
-    - operation: remove
-      path: /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
+# resource-modifiers.yaml
+version: v1
+resourceModifierRules:
+  - conditions:
+      groupResource: "*.*"
+    patches:
+      - operation: remove
+        path: "/metadata/annotations/kubernetes.io~1last-applied-configuration"
+      - operation: remove
+        path: "/metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration"
+```
+
+```bash
+# Create ConfigMap for resource transformations
+kubectl create configmap velero-resource-modifiers \
+    --from-file resource-modifiers.yaml \
+    -n velero
+
+# Reference the ConfigMap during restore
+velero restore create migration-restore \
+    --from-backup portable-backup \
+    --resource-modifier-configmap velero-resource-modifiers
 ```
 
 ## Migration Monitoring and Rollback
