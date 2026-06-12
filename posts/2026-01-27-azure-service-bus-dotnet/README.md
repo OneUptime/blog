@@ -40,7 +40,7 @@ await using var client = new ServiceBusClient(connectionString);
 
 ## Sending Messages to Queues and Topics
 
-Sending messages is straightforward. The `ServiceBusSender` handles batching, retries, and connection management.
+Sending messages is straightforward. The `ServiceBusSender` supports batching and uses the retry and connection settings configured on the client.
 
 ```csharp
 using Azure.Messaging.ServiceBus;
@@ -129,7 +129,7 @@ public class OrderProcessor : IAsyncDisposable
             // Process multiple messages concurrently
             MaxConcurrentCalls = 10,
 
-            // Automatically complete messages after successful processing
+            // Disable automatic completion so the handler can explicitly settle messages
             AutoCompleteMessages = false,
 
             // Prefetch messages for lower latency
@@ -236,8 +236,11 @@ public class SessionOrderProcessor : IAsyncDisposable
             // Messages per session processed concurrently
             MaxConcurrentCallsPerSession = 1,
 
-            // Automatically renew session locks
-            SessionIdleTimeout = TimeSpan.FromMinutes(5)
+            // Automatically renew session locks while processing
+            MaxAutoLockRenewalDuration = TimeSpan.FromMinutes(5),
+
+            // Close an idle session and move on to another
+            SessionIdleTimeout = TimeSpan.FromSeconds(30)
         });
 
         _processor.ProcessMessageAsync += HandleSessionMessageAsync;
@@ -399,6 +402,8 @@ Configure retry policies to handle transient failures gracefully.
 
 ```csharp
 using Azure.Messaging.ServiceBus;
+using Polly;
+using Polly.Retry;
 
 public class ResilientServiceBusClient
 {
@@ -432,10 +437,6 @@ public class ResilientServiceBusClient
         return new ServiceBusClient(connectionString, options);
     }
 }
-
-// For more complex scenarios, combine with Polly
-using Polly;
-using Polly.Retry;
 
 public class PollyEnhancedPublisher
 {
@@ -488,42 +489,40 @@ public class BatchPublisher
 
     public async Task SendBatchAsync<T>(IEnumerable<T> items) where T : class
     {
-        // Create a batch that respects size limits
-        using var batch = await _sender.CreateMessageBatchAsync();
-
-        var overflow = new List<T>();
-
-        foreach (var item in items)
+        var pending = items.Select(item => new ServiceBusMessage(JsonSerializer.Serialize(item))
         {
-            var message = new ServiceBusMessage(JsonSerializer.Serialize(item))
-            {
-                ContentType = "application/json"
-            };
+            ContentType = "application/json"
+        }).ToList();
 
-            // TryAddMessage returns false if the batch is full
-            if (!batch.TryAddMessage(message))
+        while (pending.Count > 0)
+        {
+            // Create a batch that respects size limits
+            using var batch = await _sender.CreateMessageBatchAsync();
+
+            for (var i = 0; i < pending.Count;)
             {
-                // Track items that did not fit
-                overflow.Add(item);
+                // TryAddMessage returns false if the batch is full
+                if (batch.TryAddMessage(pending[i]))
+                {
+                    pending.RemoveAt(i);
+                    continue;
+                }
+
+                if (batch.Count == 0)
+                {
+                    throw new InvalidOperationException("A single message exceeds the maximum Service Bus message size.");
+                }
+
+                break;
             }
-        }
 
-        if (batch.Count > 0)
-        {
             // Send the batch as a single operation
             await _sender.SendMessagesAsync(batch);
             Console.WriteLine($"Sent batch of {batch.Count} messages ({batch.SizeInBytes} bytes)");
         }
-
-        // Recursively handle overflow
-        if (overflow.Count > 0)
-        {
-            Console.WriteLine($"Processing overflow: {overflow.Count} items");
-            await SendBatchAsync(overflow);
-        }
     }
 
-    // Alternative: send a list directly (SDK handles batching)
+    // Alternative: send a list directly when it fits in one service batch
     public async Task SendListAsync<T>(IEnumerable<T> items) where T : class
     {
         var messages = items.Select(item => new ServiceBusMessage(JsonSerializer.Serialize(item))
@@ -531,7 +530,7 @@ public class BatchPublisher
             ContentType = "application/json"
         }).ToList();
 
-        // SendMessagesAsync automatically batches if the list exceeds size limits
+        // SendMessagesAsync sends the list atomically and fails if it exceeds one batch
         await _sender.SendMessagesAsync(messages);
         Console.WriteLine($"Sent {messages.Count} messages");
     }
@@ -597,6 +596,7 @@ Register Service Bus components properly in ASP.NET Core applications.
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 public static class ServiceBusExtensions
 {
