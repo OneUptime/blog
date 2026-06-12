@@ -123,7 +123,7 @@ flowchart TB
 ```
 
 Key characteristics:
-- Dictionaries are loaded entirely into memory (except cache layout)
+- Most layouts load dictionaries into memory; cache and direct layouts fetch data differently
 - Lookups bypass the query engine and access memory directly
 - Updates are atomic: new data replaces old data completely
 - Multiple dictionaries can share the same source with different refresh intervals
@@ -181,7 +181,8 @@ SELECT
     status,
     origin,
     type,
-    key,
+    key.names AS key_names,
+    key.types AS key_types,
     element_count,
     bytes_allocated,
     loading_duration
@@ -279,11 +280,8 @@ SOURCE(MYSQL(
     -- Allows filtering, joins, or transformations at source
     -- QUERY 'SELECT customer_id, email, company, plan, created_at FROM customers WHERE active = 1'
 
-    -- Connection pooling for performance
-    CONNECTION_POOL_SIZE 5
-
     -- Retry settings for reliability
-    FAIL_ON_CONNECTION_LOSS true
+    FAIL_ON_CONNECTION_LOSS 'true'
 ))
 
 LAYOUT(HASHED())
@@ -313,7 +311,6 @@ SOURCE(POSTGRESQL(
     USER 'analytics_reader'
     PASSWORD 'secure_password'
     DB 'inventory'
-    SCHEMA 'public'
     TABLE 'products'
 
     -- Failover replica for high availability
@@ -349,8 +346,8 @@ SOURCE(HTTP(
 
     -- Authentication headers for secured APIs
     HEADERS(
-        'Authorization' 'Bearer ${FEATURE_FLAGS_TOKEN}'
-        'Accept' 'application/json'
+        HEADER(NAME 'Authorization' VALUE 'Bearer ${FEATURE_FLAGS_TOKEN}')
+        HEADER(NAME 'Accept' VALUE 'application/json')
     )
 ))
 
@@ -365,29 +362,27 @@ LIFETIME(MIN 30 MAX 60);
 -- Useful for pre-aggregated lookup tables
 CREATE DICTIONARY ip_geo_dict
 (
-    ip_range_start UInt32,
-    ip_range_end UInt32,
+    prefix String,
     country_code String,
     country_name String,
     city String DEFAULT 'Unknown',
     latitude Float64 DEFAULT 0,
     longitude Float64 DEFAULT 0
 )
-PRIMARY KEY ip_range_start
+PRIMARY KEY prefix
 
 SOURCE(CLICKHOUSE(
     HOST 'localhost'
     PORT 9000
     USER 'default'
     DB 'geo'
-    TABLE 'ip_ranges'
+    TABLE 'ip_prefixes'
 
     -- For distributed setups with TLS
     -- SECURE 1
 ))
 
-LAYOUT(RANGE_HASHED())
-RANGE(MIN ip_range_start MAX ip_range_end)
+LAYOUT(IP_TRIE())
 LIFETIME(MIN 86400 MAX 90000);
 ```
 
@@ -428,12 +423,13 @@ The layout determines how dictionary data is organized in memory, affecting look
 | Layout | Key Type | Memory Usage | Lookup Speed | Best For |
 |--------|----------|--------------|--------------|----------|
 | FLAT | UInt64 (0 to N) | Fixed array | O(1) | Sequential IDs, small datasets |
-| HASHED | Any single key | Hash table | O(1) avg | General purpose, sparse keys |
-| SPARSE_HASHED | Any single key | Lower than hashed | O(1) avg | Large datasets, memory constrained |
+| HASHED | UInt64 single key | Hash table | O(1) avg | General purpose, sparse keys |
+| SPARSE_HASHED | UInt64 single key | Lower than hashed | O(1) avg | Large datasets, memory constrained |
 | COMPLEX_KEY_HASHED | Composite keys | Hash table | O(1) avg | Multi-column lookups |
-| RANGE_HASHED | Key + range | Hash + range tree | O(log n) | Time-versioned data, IP ranges |
-| CACHE | Any | LRU cache | O(1) avg | Huge datasets, partial loading |
-| DIRECT | Any | None (query source) | Varies | Real-time data, no caching |
+| RANGE_HASHED | UInt64 key + range | Hash + ordered ranges | O(log n) | Time-versioned data |
+| IP_TRIE | String CIDR prefix | Trie | Prefix lookup | IP geolocation and network classification |
+| CACHE | UInt64 single key | LRU cache | O(1) avg | Huge datasets, partial loading |
+| DIRECT | UInt64 single key | None (query source) | Varies | Real-time data, no caching |
 
 ### FLAT Layout
 
@@ -465,11 +461,11 @@ LIFETIME(MIN 3600 MAX 7200);
 
 ### HASHED Layout
 
-General-purpose layout for any key type.
+General-purpose layout for UInt64 keys.
 
 ```sql
 -- HASHED layout: classic hash table implementation
--- Works with any key values, not just sequential
+-- Works with sparse UInt64 key values, not just sequential
 -- Most commonly used layout for general purpose
 CREATE DICTIONARY users_dict
 (
@@ -482,7 +478,7 @@ PRIMARY KEY user_id
 
 SOURCE(CLICKHOUSE(TABLE 'users' DB 'auth'))
 
--- HASHED is the default and most flexible
+-- HASHED is common and flexible for UInt64 keys
 LAYOUT(HASHED(
     -- Optional: pre-allocate for expected size
     -- Reduces rehashing during load
@@ -498,7 +494,7 @@ Memory-efficient version for large datasets.
 
 ```sql
 -- SPARSE_HASHED: lower memory footprint
--- Uses approximately 30% less memory than HASHED
+-- Uses less memory than HASHED
 -- Slight lookup overhead is usually negligible
 CREATE DICTIONARY large_products_dict
 (
@@ -538,7 +534,7 @@ CREATE DICTIONARY tenant_resources_dict
     quota_limit UInt64 DEFAULT 1000,
     tier String DEFAULT 'basic'
 )
-PRIMARY KEY (tenant_id, resource_id)
+PRIMARY KEY tenant_id, resource_id
 
 SOURCE(CLICKHOUSE(TABLE 'tenant_resources' DB 'multi_tenant'))
 
@@ -828,7 +824,7 @@ SOURCE(CLICKHOUSE(
     DB 'analytics'
 ))
 
-LAYOUT(HASHED())
+LAYOUT(COMPLEX_KEY_HASHED())
 
 -- Refresh between 5-10 minutes (300-600 seconds)
 -- Random jitter prevents all dictionaries refreshing simultaneously
@@ -968,13 +964,12 @@ FROM products;
 -- Useful for complex transformations or external APIs
 CREATE DICTIONARY geoip_dict
 (
-    ip_start UInt32,
-    ip_end UInt32,
+    prefix String,
     country String,
     region String,
     city String
 )
-PRIMARY KEY ip_start
+PRIMARY KEY prefix
 
 SOURCE(EXECUTABLE(
     -- Script that outputs tab-separated data
@@ -983,8 +978,7 @@ SOURCE(EXECUTABLE(
     IMPLICIT_KEY false
 ))
 
-LAYOUT(RANGE_HASHED())
-RANGE(MIN ip_start MAX ip_end)
+LAYOUT(IP_TRIE())
 LIFETIME(MIN 86400 MAX 90000);
 ```
 
@@ -1049,11 +1043,12 @@ SELECT
     status,
     origin,
     type,
-    key,
+    key.names AS key_names,
+    key.types AS key_types,
     element_count,
     bytes_allocated,
-    hierarchical,
-    is_injective,
+    hierarchical_index_bytes_allocated,
+    load_factor,
 
     -- Refresh info
     loading_start_time,
@@ -1140,8 +1135,8 @@ flowchart TD
 
 | Practice | Reason |
 |----------|--------|
-| Use HASHED for general purpose | Best balance of flexibility and performance |
-| Use SPARSE_HASHED for large datasets | 30% memory reduction with minimal overhead |
+| Use HASHED for general-purpose UInt64 lookups | Best balance of flexibility and performance |
+| Use SPARSE_HASHED for large datasets | Lower memory usage with some lookup overhead |
 | Use FLAT for sequential small datasets | Fastest possible lookups via array index |
 | Use RANGE_HASHED for time-versioned data | Proper historical lookups with date matching |
 | Set LIFETIME with min/max range | Prevents thundering herd problem |
@@ -1211,7 +1206,7 @@ flowchart LR
 
 ClickHouse dictionaries transform expensive JOIN operations into blazing-fast O(1) lookups by loading reference data into memory. Key takeaways:
 
-- **Choose the right layout**: HASHED for general use, SPARSE_HASHED for memory efficiency, FLAT for sequential keys, RANGE_HASHED for versioned data
+- **Choose the right layout**: HASHED for general UInt64 keys, SPARSE_HASHED for memory efficiency, FLAT for sequential keys, RANGE_HASHED for versioned data
 - **Configure sources carefully**: MySQL, PostgreSQL, HTTP, and ClickHouse tables all work; test connectivity before production
 - **Manage freshness**: Use LIFETIME with min/max ranges and INVALIDATE_QUERY for efficient refresh
 - **Monitor continuously**: Track dictionary health, memory usage, and update times via system.dictionaries
