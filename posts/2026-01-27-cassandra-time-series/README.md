@@ -114,7 +114,7 @@ graph TB
     end
 ```
 
-**Key insight**: Data within a partition is stored contiguously on disk. Queries that read from a single partition are fast. Queries that span many partitions require coordinating reads across multiple nodes.
+**Key insight**: Data within a partition is stored together on the same replica set and ordered by the clustering columns. Queries that read from a single partition are fast. Queries that span many partitions require coordinating reads across multiple nodes.
 
 ---
 
@@ -197,8 +197,9 @@ Time bucketing prevents unbounded partition growth by including a time component
 ### Hourly Bucketing (High-Frequency Data)
 
 ```sql
--- For data with sub-second granularity (logs, events, traces)
--- Each partition contains up to 1 hour of data
+-- For event data where an hour stays within the target partition size
+-- For very high-rate logs or traces, use smaller buckets or add a shard key
+-- Each partition contains up to 1 hour of data for one service/event type
 CREATE TABLE events_hourly (
     service_id UUID,
     event_type TEXT,
@@ -360,7 +361,7 @@ public class MetricsRepository {
 
 | Data Frequency | Retention | Recommended Bucket | Max Rows/Partition |
 |---------------|-----------|-------------------|-------------------|
-| Sub-second (logs) | Hours | 1 hour | ~3,600,000 |
+| Sub-second (logs) | Hours | 1 minute or sharded hour | ~60,000 at 1,000/sec |
 | Per-second (events) | Days | 1 hour | ~3,600 |
 | Per-minute (metrics) | Weeks | 1 day | ~1,440 |
 | Per-hour (aggregates) | Months | 1 week | ~168 |
@@ -372,7 +373,7 @@ public class MetricsRepository {
 
 ## 5. TTL for Automatic Data Expiration
 
-Cassandra's TTL (Time To Live) feature automatically deletes data after a specified duration. This is essential for time-series data to prevent unbounded storage growth.
+Cassandra's TTL (Time To Live) feature automatically expires data after a specified duration. Expired data is marked with tombstones and later removed by compaction after the grace period. This is essential for time-series data to prevent unbounded storage growth.
 
 ### Setting TTL at Insert Time
 
@@ -475,8 +476,8 @@ CREATE TABLE metrics_daily_rollup (
 
 ```python
 # Python: Managing TTL in application code
-from cassandra.cluster import Cluster
-from datetime import datetime, timedelta
+from datetime import datetime
+from uuid import UUID
 
 class TimeSeriesWriter:
     # Define retention policies in seconds
@@ -497,7 +498,7 @@ class TimeSeriesWriter:
             "USING TTL ?"
         )
 
-    def write_metric(self, service_id: str, metric_name: str,
+    def write_metric(self, service_id: UUID, metric_name: str,
                      timestamp: datetime, value: float,
                      retention_tier: str = 'raw'):
         """
@@ -595,10 +596,9 @@ WHERE service_id = 123e4567-e89b-12d3-a456-426614174000
 # Python: Query across multiple time buckets
 # This requires querying each partition separately and merging results
 import asyncio
-from cassandra.cluster import Cluster
-from cassandra.query import SimpleStatement
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
+from uuid import UUID
 
 class TimeSeriesReader:
     def __init__(self, session):
@@ -614,7 +614,7 @@ class TimeSeriesReader:
 
     def query_time_range(
         self,
-        service_id: str,
+        service_id: UUID,
         metric_name: str,
         start: datetime,
         end: datetime
@@ -659,7 +659,7 @@ class TimeSeriesReader:
 
     async def query_time_range_parallel(
         self,
-        service_id: str,
+        service_id: UUID,
         metric_name: str,
         start: datetime,
         end: datetime
@@ -670,8 +670,6 @@ class TimeSeriesReader:
         Queries multiple partitions concurrently using async I/O.
         Useful when querying across many days/weeks.
         """
-        from cassandra.cluster import Session
-
         # Generate bucket dates
         bucket_dates = []
         current = start.date()
@@ -679,13 +677,26 @@ class TimeSeriesReader:
             bucket_dates.append(current)
             current += timedelta(days=1)
 
-        # Create async tasks for each bucket
-        async def query_bucket(bucket_date):
-            # Note: In production, use async Cassandra driver
-            rows = self.session.execute(self.range_query.bind([
+        loop = asyncio.get_running_loop()
+
+        # Create async driver requests for each bucket
+        def query_bucket(bucket_date):
+            future = loop.create_future()
+            response_future = self.session.execute_async(self.range_query.bind([
                 service_id, metric_name, bucket_date, start, end
             ]))
-            return [{'timestamp': r.timestamp, 'value': r.value} for r in rows]
+
+            def on_success(rows):
+                loop.call_soon_threadsafe(
+                    future.set_result,
+                    [{'timestamp': r.timestamp, 'value': r.value} for r in rows]
+                )
+
+            def on_error(exc):
+                loop.call_soon_threadsafe(future.set_exception, exc)
+
+            response_future.add_callbacks(on_success, on_error)
+            return future
 
         # Execute all queries concurrently
         tasks = [query_bucket(d) for d in bucket_dates]
@@ -705,6 +716,7 @@ class TimeSeriesReader:
 # Cassandra does not support complex aggregations, so we compute them client-side
 from dataclasses import dataclass
 from typing import List, Optional
+from uuid import UUID
 import statistics
 
 @dataclass
@@ -755,7 +767,7 @@ def aggregate_metrics(values: List[float]) -> Optional[AggregatedMetrics]:
 # Usage example
 reader = TimeSeriesReader(session)
 data = reader.query_time_range(
-    service_id='123e4567-e89b-12d3-a456-426614174000',
+    service_id=UUID('123e4567-e89b-12d3-a456-426614174000'),
     metric_name='response_time_ms',
     start=datetime(2026, 1, 27, 0, 0),
     end=datetime(2026, 1, 27, 23, 59)
