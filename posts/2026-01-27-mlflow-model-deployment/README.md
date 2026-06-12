@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MLflow, Machine Learning, Model Deployment, MLOps, Docker, Kubernetes, SageMaker, Python
 
-Description: Learn how to deploy machine learning models with MLflow, covering the Model Registry, deployment stages, Docker containers, Kubernetes, and AWS SageMaker integration.
+Description: Learn how to deploy machine learning models with MLflow, covering the Model Registry, deployment aliases, Docker containers, Kubernetes, and AWS SageMaker integration.
 
 ---
 
@@ -16,7 +16,7 @@ The path from a trained model to production often involves multiple handoffs, cu
 
 ## Understanding the Model Registry
 
-The MLflow Model Registry is a centralized store for managing the full lifecycle of MLflow models. It provides model lineage, versioning, stage transitions, and annotations, making it essential for production ML workflows.
+The MLflow Model Registry is a centralized store for managing the full lifecycle of MLflow models. It provides model lineage, versioning, aliases, tags, and annotations, making it essential for production ML workflows.
 
 ### Registering a Model
 
@@ -59,7 +59,7 @@ with mlflow.start_run():
     # registered_model_name creates a new model or adds a version to existing
     mlflow.sklearn.log_model(
         model,
-        artifact_path="model",  # Path within the run artifacts
+        name="model",  # Model name within the run outputs
         registered_model_name="iris-classifier"  # Name in Model Registry
     )
 
@@ -95,57 +95,53 @@ print(f"Tags: {model_details.tags}")
 versions = client.search_model_versions(f"name='{model_name}'")
 for version in versions:
     print(f"\nVersion {version.version}:")
-    print(f"  Stage: {version.current_stage}")  # None, Staging, Production, Archived
+    print(f"  Aliases: {version.aliases}")  # Mutable deployment labels such as candidate or champion
     print(f"  Run ID: {version.run_id}")  # Link to training run
     print(f"  Source: {version.source}")  # Path to model artifacts
 ```
 
 ---
 
-## Managing Model Stages
+## Managing Model Aliases
 
-MLflow provides four built-in stages for models: None, Staging, Production, and Archived. These stages enable controlled promotion of models through your deployment pipeline, ensuring proper testing before production deployment.
+MLflow model stages are deprecated as of MLflow 2.9.0. Use model version aliases, such as candidate and champion, to create mutable references for controlled promotion through your deployment pipeline.
 
-### Transitioning Model Stages
+### Transitioning Model Aliases
 
-The stage transition API allows you to move models between stages programmatically. This enables automated CI/CD pipelines that promote models based on test results or approval workflows.
+The alias API allows you to move deployment labels between model versions programmatically. This enables automated CI/CD pipelines that promote models based on test results or approval workflows.
 
 ```python
-# stage_transitions.py
-# Manage model stage transitions in MLflow
+# alias_transitions.py
+# Manage model aliases in MLflow
 from mlflow.tracking import MlflowClient
-import mlflow
 
 client = MlflowClient()
 
 model_name = "iris-classifier"
-version = 1  # The version number to transition
+version = "1"  # The version number to label
 
-# Transition a model version to Staging for testing
-# archive_existing_versions=True automatically archives any existing Staging versions
-client.transition_model_version_stage(
+# Assign a candidate alias for testing
+client.set_registered_model_alias(
     name=model_name,
-    version=version,
-    stage="Staging",
-    archive_existing_versions=True  # Clean up old staging versions
+    alias="candidate",
+    version=version
 )
-print(f"Model {model_name} v{version} transitioned to Staging")
+print(f"Model {model_name} v{version} assigned alias 'candidate'")
 
-# After validation, promote to Production
+# After validation, promote to champion
 # This is typically done after automated or manual testing passes
-client.transition_model_version_stage(
+client.set_registered_model_alias(
     name=model_name,
-    version=version,
-    stage="Production",
-    archive_existing_versions=True  # Archive previous production version
+    alias="champion",
+    version=version
 )
-print(f"Model {model_name} v{version} transitioned to Production")
+print(f"Model {model_name} v{version} assigned alias 'champion'")
 
-# Add description to document the production version
+# Add description to document the champion version
 client.update_model_version(
     name=model_name,
     version=version,
-    description="Production model deployed after validation. Accuracy: 96.7%"
+    description="Champion model deployed after validation. Accuracy: 96.7%"
 )
 
 # Add tags for additional metadata
@@ -157,25 +153,25 @@ client.set_model_version_tag(
 )
 ```
 
-### Loading Models by Stage
+### Loading Models by Alias
 
-Once models are staged, you can load them by stage name rather than version number. This decouples your deployment code from specific versions, allowing seamless model updates.
+Once aliases are assigned, you can load models by alias rather than version number. This decouples your deployment code from specific versions, allowing seamless model updates.
 
 ```python
-# load_by_stage.py
-# Load models from the registry by stage name
+# load_by_alias.py
+# Load models from the registry by alias
 import mlflow.pyfunc
 
 model_name = "iris-classifier"
 
-# Load the current Production model - always gets the latest Production version
-production_model = mlflow.pyfunc.load_model(
-    model_uri=f"models:/{model_name}/Production"
+# Load the current champion model - follows the champion alias
+champion_model = mlflow.pyfunc.load_model(
+    model_uri=f"models:/{model_name}@champion"
 )
 
-# Load the current Staging model for testing
-staging_model = mlflow.pyfunc.load_model(
-    model_uri=f"models:/{model_name}/Staging"
+# Load the current candidate model for testing
+candidate_model = mlflow.pyfunc.load_model(
+    model_uri=f"models:/{model_name}@candidate"
 )
 
 # You can also load by specific version number when needed
@@ -191,7 +187,7 @@ sample_data = pd.DataFrame({
     "petal_length": [1.4],
     "petal_width": [0.2]
 })
-prediction = production_model.predict(sample_data)
+prediction = champion_model.predict(sample_data)
 print(f"Prediction: {prediction}")
 ```
 
@@ -252,7 +248,7 @@ explicit_signature = ModelSignature(
 with mlflow.start_run():
     mlflow.sklearn.log_model(
         model,
-        artifact_path="model",
+        name="model",
         signature=signature,  # Schema for validation
         input_example=X_numeric.head(2),  # Sample input for testing
         registered_model_name="price-predictor"
@@ -298,13 +294,13 @@ MLflow provides a built-in serving capability that launches a REST API server fo
 
 ### Starting the Local Server
 
-The mlflow models serve command launches a Gunicorn server that exposes your model as a REST API. You can serve models from the registry or directly from a run.
+The mlflow models serve command launches an inference server that exposes your model as a REST API. You can serve models from the registry or directly from a run.
 
 ```bash
-# Serve a model from the Model Registry (Production stage)
+# Serve a model from the Model Registry by alias
 # --env-manager=local uses the current Python environment
 mlflow models serve \
-    --model-uri "models:/iris-classifier/Production" \
+    --model-uri "models:/iris-classifier@champion" \
     --host 0.0.0.0 \
     --port 5001 \
     --env-manager=local
@@ -323,10 +319,10 @@ mlflow models serve \
 
 # Serve with custom workers for higher throughput
 mlflow models serve \
-    --model-uri "models:/iris-classifier/Production" \
+    --model-uri "models:/iris-classifier@champion" \
     --host 0.0.0.0 \
     --port 5001 \
-    --workers 4  # Number of Gunicorn workers
+    --workers 4  # Number of server workers
 ```
 
 ### Making Predictions via REST API
@@ -401,9 +397,8 @@ The mlflow models build-docker command creates a self-contained Docker image wit
 # Build a Docker image from a registered model
 # The image includes the model, dependencies, and MLflow serving code
 mlflow models build-docker \
-    --model-uri "models:/iris-classifier/Production" \
-    --name "iris-classifier" \
-    --enable-mlserver  # Use MLServer instead of default Flask server
+    --model-uri "models:/iris-classifier@champion" \
+    --name "iris-classifier"
 
 # Build with a specific tag for versioning
 mlflow models build-docker \
@@ -458,6 +453,7 @@ WORKDIR /app
 
 # Install system dependencies required by ML libraries
 RUN apt-get update && apt-get install -y \
+    curl \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -598,8 +594,6 @@ spec:
             periodSeconds: 5
           # Environment variables for configuration
           env:
-            - name: GUNICORN_WORKERS
-              value: "2"
             - name: MODEL_NAME
               value: "iris-classifier"
 ```
@@ -646,7 +640,7 @@ spec:
     - host: ml.example.com
       http:
         paths:
-          - path: /iris-classifier
+          - path: /
             pathType: Prefix
             backend:
               service:
@@ -756,16 +750,16 @@ aws sagemaker list-endpoints
 
 ### Deploying to SageMaker
 
-MLflow provides the mlflow.sagemaker module for deploying models directly to SageMaker endpoints.
+MLflow provides a SageMaker deployment client for deploying models directly to SageMaker endpoints.
 
 ```python
 # deploy_sagemaker.py
 # Deploy an MLflow model to AWS SageMaker
-import mlflow.sagemaker
+from mlflow.deployments import get_deploy_client
 
 # Define deployment configuration
 app_name = "iris-classifier"  # SageMaker endpoint name
-model_uri = "models:/iris-classifier/Production"  # Model to deploy
+model_uri = "models:/iris-classifier@champion"  # Model to deploy
 region = "us-west-2"  # AWS region
 
 # The execution role needs SageMaker permissions
@@ -777,20 +771,22 @@ bucket = "my-mlflow-models"
 
 # Deploy to SageMaker
 # This creates a SageMaker endpoint with the specified configuration
-mlflow.sagemaker.deploy(
-    app_name=app_name,
+client = get_deploy_client(f"sagemaker:/{region}")
+client.create_deployment(
+    name=app_name,
     model_uri=model_uri,
-    region_name=region,
-    mode="create",  # Use "replace" to update existing endpoint
-    execution_role_arn=execution_role_arn,
-    bucket=bucket,
-    image_url=None,  # Use default MLflow image
-    instance_type="ml.m5.large",  # Instance type for inference
-    instance_count=1,  # Number of instances
-    vpc_config=None,  # Optional VPC configuration
-    data_capture_config=None,  # Optional data capture for monitoring
-    synchronous=True,  # Wait for deployment to complete
-    timeout_seconds=1200  # Timeout for deployment
+    config={
+        "region_name": region,
+        "execution_role_arn": execution_role_arn,
+        "bucket": bucket,
+        "image_url": None,  # Use default MLflow image
+        "instance_type": "ml.m5.large",  # Instance type for inference
+        "instance_count": 1,  # Number of instances
+        "vpc_config": None,  # Optional VPC configuration
+        "data_capture_config": None,  # Optional data capture for monitoring
+        "synchronous": True,  # Wait for deployment to complete
+        "timeout_seconds": 1200  # Timeout for deployment
+    }
 )
 
 print(f"Model deployed to SageMaker endpoint: {app_name}")
@@ -831,13 +827,13 @@ print(f"SageMaker predictions: {predictions}")
 
 
 # Method 2: Using MLflow's SageMaker deployment client
-import mlflow.sagemaker
+from mlflow.deployments import get_deploy_client
 
 # Get predictions using MLflow's API
-result = mlflow.sagemaker.predict(
-    app_name="iris-classifier",
-    region_name="us-west-2",
-    data=pd.DataFrame({
+client = get_deploy_client("sagemaker:/us-west-2")
+result = client.predict(
+    deployment_name="iris-classifier",
+    inputs=pd.DataFrame({
         "sepal_length": [5.1, 6.2],
         "sepal_width": [3.5, 2.9],
         "petal_length": [1.4, 4.3],
@@ -855,28 +851,35 @@ Manage your SageMaker endpoints for model updates and cleanup.
 # manage_sagemaker.py
 # Update and delete SageMaker endpoints
 import mlflow.sagemaker
+from mlflow.deployments import get_deploy_client
+
+client = get_deploy_client("sagemaker:/us-west-2")
 
 # Update an existing endpoint with a new model version
-# This performs a rolling update with no downtime
-mlflow.sagemaker.deploy(
-    app_name="iris-classifier",
+# By default, this replaces the existing model behind the endpoint
+client.update_deployment(
+    name="iris-classifier",
     model_uri="models:/iris-classifier/2",  # New version
-    region_name="us-west-2",
-    mode="replace",  # Update existing endpoint
-    execution_role_arn="arn:aws:iam::123456789012:role/SageMakerExecutionRole",
-    bucket="my-mlflow-models",
-    instance_type="ml.m5.large",
-    instance_count=2,  # Scale up during update
-    synchronous=True
+    config={
+        "region_name": "us-west-2",
+        "mode": mlflow.sagemaker.DEPLOYMENT_MODE_REPLACE,
+        "execution_role_arn": "arn:aws:iam::123456789012:role/SageMakerExecutionRole",
+        "bucket": "my-mlflow-models",
+        "instance_type": "ml.m5.large",
+        "instance_count": 2,  # Number of instances for the updated endpoint
+        "synchronous": True
+    }
 )
 
 # Delete an endpoint when no longer needed
 # This removes the endpoint and stops billing
-mlflow.sagemaker.delete(
-    app_name="iris-classifier",
-    region_name="us-west-2",
-    archive=False,  # Set True to keep model artifacts
-    synchronous=True
+client.delete_deployment(
+    name="iris-classifier",
+    config={
+        "region_name": "us-west-2",
+        "archive": False,  # Set True to keep model artifacts
+        "synchronous": True
+    }
 )
 print("SageMaker endpoint deleted")
 ```
@@ -885,12 +888,12 @@ print("SageMaker endpoint deleted")
 
 ## Best Practices Summary
 
-1. **Use the Model Registry** - Centralize model versioning and stage management for traceability
+1. **Use the Model Registry** - Centralize model versioning and alias management for traceability
 2. **Define model signatures** - Include input/output schemas for validation and documentation
 3. **Pin dependencies** - Use conda.yaml or requirements.txt with pinned versions for reproducibility
 4. **Implement health checks** - Add /health endpoints for load balancers and orchestration
 5. **Set resource limits** - Configure memory and CPU limits to prevent resource exhaustion
-6. **Use staging environments** - Test models in Staging before promoting to Production
+6. **Use staging environments** - Test candidate models before promoting them to champion
 7. **Enable autoscaling** - Configure HPA in Kubernetes or auto-scaling in SageMaker
 8. **Monitor predictions** - Log predictions and latency for model performance monitoring
 9. **Version Docker images** - Tag images with model version for rollback capability
