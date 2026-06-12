@@ -42,7 +42,7 @@ Key characteristics:
 | Unidirectional | Messages flow in one direction only |
 | Decoupled | Source and destination can be on different clusters |
 | Reliable | Uses acknowledgments to prevent message loss |
-| Flexible | Can transform messages during transfer |
+| Flexible | Can override selected publish fields/properties and add forwarding headers |
 | Resilient | Automatically reconnects on failure |
 
 Common use cases:
@@ -169,7 +169,7 @@ Static shovels are defined in the RabbitMQ configuration file and start automati
 
 ### Basic Static Shovel
 
-Create or edit the advanced configuration file (`/etc/rabbitmq/advanced.config` or `rabbitmq.conf`):
+Create or edit the advanced configuration file (`/etc/rabbitmq/advanced.config`):
 
 ```erlang
 %% advanced.config - Basic static shovel example
@@ -180,6 +180,7 @@ Create or edit the advanced configuration file (`/etc/rabbitmq/advanced.config` 
       {orders_to_analytics, [
         %% Source configuration
         {source, [
+          {protocol, amqp091},
           %% Connect to local broker
           {uris, ["amqp://guest:guest@localhost:5672"]},
           %% Consume from this queue
@@ -190,10 +191,11 @@ Create or edit the advanced configuration file (`/etc/rabbitmq/advanced.config` 
 
         %% Destination configuration
         {destination, [
+          {protocol, amqp091},
           %% Remote analytics cluster
           {uris, ["amqp://shovel_user:secure_pass@analytics.example.com:5672"]},
           %% Publish to this exchange with routing key
-          {publish_properties, [
+          {publish_fields, [
             {exchange, <<"analytics.ingest">>},
             {routing_key, <<"orders">>}
           ]}
@@ -202,8 +204,8 @@ Create or edit the advanced configuration file (`/etc/rabbitmq/advanced.config` 
         %% Acknowledgment mode: on-confirm ensures no message loss
         {ack_mode, on_confirm},
 
-        %% Reconnect delay on failure (milliseconds)
-        {reconnect_delay, 5000}
+        %% Reconnect delay on failure (seconds)
+        {reconnect_delay, 5}
       ]}
     ]}
   ]}
@@ -212,7 +214,7 @@ Create or edit the advanced configuration file (`/etc/rabbitmq/advanced.config` 
 
 ### Static Shovel with Message Transformation
 
-Transform messages during transfer using publish properties:
+Add forwarding metadata during transfer and override publish fields:
 
 ```erlang
 %% advanced.config - Shovel with header injection
@@ -221,12 +223,14 @@ Transform messages during transfer using publish properties:
     {shovels, [
       {enriched_events, [
         {source, [
+          {protocol, amqp091},
           {uris, ["amqp://localhost"]},
           {queue, <<"raw.events">>}
         ]},
         {destination, [
+          {protocol, amqp091},
           {uris, ["amqp://processing.example.com"]},
-          {publish_properties, [
+          {publish_fields, [
             {exchange, <<"enriched.events">>},
             {routing_key, <<"from_source">>}
           ]},
@@ -241,24 +245,13 @@ Transform messages during transfer using publish properties:
 ].
 ```
 
-### Modern rabbitmq.conf Format
+### Static Shovels and rabbitmq.conf
 
-For RabbitMQ 3.7+, use the new-style configuration:
+Static shovels must be defined in `advanced.config`; RabbitMQ's `rabbitmq.conf` format can configure plugin-wide settings such as pre-declared topology, but not the static shovel definitions themselves:
 
 ```ini
-# rabbitmq.conf - Static shovel in modern format
-
-# Define the shovel
-shovel.orders_replication.source.uris.1 = amqp://localhost
-shovel.orders_replication.source.queue = orders.pending
-shovel.orders_replication.source.prefetch-count = 250
-
-shovel.orders_replication.destination.uris.1 = amqp://backup.example.com
-shovel.orders_replication.destination.exchange = orders.replicated
-shovel.orders_replication.destination.routing-key = backup
-
-shovel.orders_replication.ack-mode = on-confirm
-shovel.orders_replication.reconnect-delay = 5
+# rabbitmq.conf - plugin-wide Shovel setting
+shovel.topology.predeclared = true
 ```
 
 ---
@@ -272,13 +265,15 @@ Dynamic shovels are created at runtime via the management API or CLI. They are s
 ```bash
 # Create a dynamic shovel using rabbitmqctl
 rabbitmqctl set_parameter shovel my-dynamic-shovel '{
+  "src-protocol": "amqp091",
   "src-uri": "amqp://localhost",
   "src-queue": "source.queue",
+  "dest-protocol": "amqp091",
   "dest-uri": "amqp://remote.example.com",
   "dest-exchange": "destination.exchange",
   "dest-exchange-key": "routed",
   "ack-mode": "on-confirm",
-  "prefetch-count": 100
+  "src-prefetch-count": 100
 }'
 
 # List all dynamic shovels
@@ -297,19 +292,21 @@ curl -u admin:password -X PUT \
   -H "Content-Type: application/json" \
   -d '{
     "value": {
+      "src-protocol": "amqp091",
       "src-uri": "amqp://localhost",
       "src-queue": "api.source",
+      "dest-protocol": "amqp091",
       "dest-uri": "amqp://destination.example.com",
       "dest-exchange": "api.destination",
       "ack-mode": "on-confirm",
-      "prefetch-count": 200,
+      "src-prefetch-count": 200,
       "reconnect-delay": 5
     }
   }'
 
 # Get shovel status
 curl -u admin:password \
-  "http://localhost:15672/api/shovels/%2F/api-created-shovel"
+  "http://localhost:15672/api/shovels/vhost/%2F/api-created-shovel"
 ```
 
 ### Dynamic Shovel with Node.js
@@ -320,7 +317,7 @@ curl -u admin:password \
 
 import axios, { AxiosInstance } from 'axios';
 
-interface ShovelConfig {
+export interface ShovelConfig {
   name: string;
   sourceUri: string;
   sourceQueue: string;
@@ -332,7 +329,7 @@ interface ShovelConfig {
   reconnectDelay?: number;
 }
 
-class RabbitMQShovelManager {
+export class RabbitMQShovelManager {
   private client: AxiosInstance;
   private vhost: string;
 
@@ -354,19 +351,21 @@ class RabbitMQShovelManager {
   async createShovel(config: ShovelConfig): Promise<void> {
     const payload = {
       value: {
+        'src-protocol': 'amqp091',
         'src-uri': config.sourceUri,
         'src-queue': config.sourceQueue,
+        'dest-protocol': 'amqp091',
         'dest-uri': config.destUri,
         'dest-exchange': config.destExchange,
         'dest-exchange-key': config.destRoutingKey || '',
         'ack-mode': config.ackMode || 'on-confirm',
-        'prefetch-count': config.prefetchCount || 100,
+        'src-prefetch-count': config.prefetchCount || 100,
         'reconnect-delay': config.reconnectDelay || 5
       }
     };
 
     await this.client.put(
-      `/api/parameters/shovel/${this.vhost}/${config.name}`,
+      `/api/parameters/shovel/${this.vhost}/${encodeURIComponent(config.name)}`,
       payload
     );
     console.log(`Shovel '${config.name}' created successfully`);
@@ -375,7 +374,7 @@ class RabbitMQShovelManager {
   // Get shovel status
   async getShovelStatus(name: string): Promise<any> {
     const response = await this.client.get(
-      `/api/shovels/${this.vhost}/${name}`
+      `/api/shovels/vhost/${this.vhost}/${encodeURIComponent(name)}`
     );
     return response.data;
   }
@@ -389,7 +388,7 @@ class RabbitMQShovelManager {
   // Delete a shovel
   async deleteShovel(name: string): Promise<void> {
     await this.client.delete(
-      `/api/parameters/shovel/${this.vhost}/${name}`
+      `/api/parameters/shovel/${this.vhost}/${encodeURIComponent(name)}`
     );
     console.log(`Shovel '${name}' deleted successfully`);
   }
@@ -474,6 +473,7 @@ flowchart TB
     {shovels, [
       {cross_dc_replication, [
         {source, [
+          {protocol, amqp091},
           %% Multiple URIs for high availability
           {uris, [
             "amqps://shovel:password@rmq1.dc1.example.com:5671",
@@ -491,15 +491,18 @@ flowchart TB
           ]}
         ]},
         {destination, [
+          {protocol, amqp091},
           %% Destination cluster URIs
           {uris, [
             "amqps://shovel:password@rmq1.dc2.example.com:5671",
             "amqps://shovel:password@rmq2.dc2.example.com:5671"
           ]},
           {publish_properties, [
-            {exchange, <<"replicated.events">>},
-            {routing_key, <<"from_dc1">>},
             {delivery_mode, 2}  %% Persistent
+          ]},
+          {publish_fields, [
+            {exchange, <<"replicated.events">>},
+            {routing_key, <<"from_dc1">>}
           ]},
           %% Declare exchange if needed
           {declarations, [
@@ -511,7 +514,7 @@ flowchart TB
           ]}
         ]},
         {ack_mode, on_confirm},
-        {reconnect_delay, 10000}
+        {reconnect_delay, 10}
       ]}
     ]}
   ]},
@@ -551,12 +554,14 @@ flowchart LR
       %% Outbound: DC1 -> DC2
       {dc1_to_dc2, [
         {source, [
+          {protocol, amqp091},
           {uris, ["amqp://localhost"]},
           {queue, <<"orders.dc1.local">>}
         ]},
         {destination, [
+          {protocol, amqp091},
           {uris, ["amqp://dc2.example.com"]},
-          {publish_properties, [
+          {publish_fields, [
             {exchange, <<"">>},
             {routing_key, <<"orders.dc1.replicated">>}
           ]}
@@ -579,16 +584,10 @@ flowchart LR
 
 import { RabbitMQShovelManager, ShovelConfig } from './shovel-manager';
 
-interface ShovelHealth {
-  name: string;
-  state: 'running' | 'starting' | 'terminated';
-  lastError?: string;
-}
-
 class ResilientShovelManager {
   private manager: RabbitMQShovelManager;
   private shovels: Map<string, ShovelConfig> = new Map();
-  private checkInterval: NodeJS.Timer | null = null;
+  private checkInterval: NodeJS.Timeout | null = null;
 
   constructor(manager: RabbitMQShovelManager) {
     this.manager = manager;
@@ -724,7 +723,7 @@ journalctl -u rabbitmq-server | grep -i shovel
 
 ### Prometheus Metrics
 
-RabbitMQ exposes shovel metrics for Prometheus:
+RabbitMQ exposes broker, queue, connection, and node metrics through the `rabbitmq_prometheus` plugin. For Shovel-specific state, use `rabbitmqctl shovel_status` or the management HTTP API and export custom metrics from that data:
 
 ```yaml
 # prometheus.yml - scrape config
@@ -735,14 +734,14 @@ scrape_configs:
     metrics_path: /metrics
 ```
 
-Key metrics to monitor:
+Useful signals to monitor:
 
-| Metric | Description |
-|--------|-------------|
-| `rabbitmq_shovel_state` | Current shovel state (1=running, 0=not running) |
-| `rabbitmq_shovel_messages_published_total` | Total messages transferred |
-| `rabbitmq_shovel_messages_confirmed_total` | Messages confirmed by destination |
-| `rabbitmq_shovel_connection_status` | Connection health to source/dest |
+| Signal | Source |
+|--------|--------|
+| Shovel state | `rabbitmqctl shovel_status` or `GET /api/shovels` |
+| Source queue depth and unacknowledged messages | RabbitMQ Prometheus queue metrics |
+| Destination queue depth and publish/confirm rates | RabbitMQ Prometheus queue metrics |
+| Shovel connection health | Management API shovel status and RabbitMQ connection metrics |
 
 ### Alerting Rules
 
@@ -751,9 +750,9 @@ Key metrics to monitor:
 groups:
   - name: rabbitmq-shovel-alerts
     rules:
-      # Alert when shovel stops running
+      # Assumes a custom exporter emits rabbitmq_custom_shovel_state
       - alert: RabbitMQShovelDown
-        expr: rabbitmq_shovel_state == 0
+        expr: rabbitmq_custom_shovel_state == 0
         for: 2m
         labels:
           severity: critical
@@ -761,17 +760,17 @@ groups:
           summary: "RabbitMQ Shovel {{ $labels.shovel }} is down"
           description: "Shovel has been in non-running state for more than 2 minutes"
 
-      # Alert on message transfer lag
+      # Alert on source queue backlog while the shovel is running
       - alert: RabbitMQShovelLag
         expr: |
-          rate(rabbitmq_shovel_messages_published_total[5m]) == 0
-          and rabbitmq_shovel_state == 1
+          rabbitmq_queue_messages_ready{queue="source.queue"} > 1000
+          and rabbitmq_custom_shovel_state == 1
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "RabbitMQ Shovel {{ $labels.shovel }} has no throughput"
-          description: "Shovel is running but no messages transferred in 5 minutes"
+          summary: "RabbitMQ Shovel {{ $labels.shovel }} source backlog is high"
+          description: "Shovel is running but the source queue backlog is growing"
 ```
 
 ### Custom Monitoring Script
@@ -946,6 +945,7 @@ flowchart LR
     {shovels, [
       {production_shovel, [
         {source, [
+          {protocol, amqp091},
           %% Always use multiple URIs for HA
           {uris, [
             "amqps://shovel:${SHOVEL_PASSWORD}@node1.example.com:5671",
@@ -967,14 +967,17 @@ flowchart LR
           ]}
         ]},
         {destination, [
+          {protocol, amqp091},
           {uris, [
             "amqps://shovel:${SHOVEL_PASSWORD}@dest1.example.com:5671",
             "amqps://shovel:${SHOVEL_PASSWORD}@dest2.example.com:5671"
           ]},
           {publish_properties, [
-            {exchange, <<"processed.messages">>},
-            {routing_key, <<"from_source">>},
             {delivery_mode, 2}  %% Always persist critical messages
+          ]},
+          {publish_fields, [
+            {exchange, <<"processed.messages">>},
+            {routing_key, <<"from_source">>}
           ]},
           {declarations, [
             {'exchange.declare', [
@@ -987,7 +990,7 @@ flowchart LR
         %% ALWAYS use on_confirm for production
         {ack_mode, on_confirm},
         %% Reconnect with backoff, not too aggressive
-        {reconnect_delay, 10000}
+        {reconnect_delay, 10}
       ]}
     ]}
   ]}
@@ -1092,7 +1095,7 @@ rabbitmqctl list_queues -p /dest messages messages_ready
 
 # Adjust prefetch if needed (dynamic shovel)
 rabbitmqctl set_parameter shovel my-shovel \
-  '{"prefetch-count": 500, ...}'
+  '{"src-prefetch-count": 500, ...}'
 ```
 
 ---
@@ -1105,7 +1108,7 @@ RabbitMQ Shovel is an essential tool for reliable message transfer between broke
 2. **Use dynamic shovels** for operational flexibility and programmatic control
 3. **Always use `on_confirm` ack mode** in production to prevent message loss
 4. **Configure multiple URIs** for high availability
-5. **Monitor shovel health** with Prometheus metrics and alerting
+5. **Monitor shovel health** with `shovel_status`, the management API, and alerting
 6. **Choose Shovel over Federation** when you need explicit, unidirectional data movement
 7. **Secure connections** with TLS and dedicated service accounts
 8. **Tune prefetch** based on message size and network characteristics
