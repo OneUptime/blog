@@ -29,7 +29,7 @@ Node Exporter collects system metrics from Linux machines.
 ```bash
 # Install node_exporter
 
-wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
+wget https://github.com/prometheus/node_exporter/releases/download/v1.11.1/node_exporter-1.11.1.linux-amd64.tar.gz
 tar xvfz node_exporter-*.tar.gz
 cd node_exporter-*
 ./node_exporter &
@@ -58,10 +58,10 @@ For Windows servers, use Windows Exporter:
 
 ```powershell
 # Install via msi
-msiexec /i windows_exporter-0.25.1-amd64.msi
+msiexec /i windows_exporter-0.31.7-amd64.msi --% ENABLED_COLLECTORS=cpu,logical_disk,memory,net,os,process,system
 
 # Or run directly
-.\windows_exporter.exe --collectors.enabled "cpu,cs,logical_disk,memory,net,os,process,system"
+.\windows_exporter.exe --collectors.enabled "cpu,logical_disk,memory,net,os,process,system"
 ```
 
 ### Prometheus Configuration
@@ -103,10 +103,10 @@ Track CPU utilization across modes:
 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
 
 # CPU by mode
-sum(rate(node_cpu_seconds_total[5m])) by (mode)
+avg by (mode) (rate(node_cpu_seconds_total[5m])) * 100
 
 # CPU utilization per core
-100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) by (cpu) * 100)
+100 - (avg by (instance, cpu) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
 
 # Load average
 node_load1
@@ -122,11 +122,11 @@ Type: Time series
 
 Queries:
   - Legend: System
-    Expr: sum(rate(node_cpu_seconds_total{mode="system"}[5m])) * 100
+    Expr: avg(rate(node_cpu_seconds_total{mode="system"}[5m])) * 100
   - Legend: User
-    Expr: sum(rate(node_cpu_seconds_total{mode="user"}[5m])) * 100
+    Expr: avg(rate(node_cpu_seconds_total{mode="user"}[5m])) * 100
   - Legend: IOWait
-    Expr: sum(rate(node_cpu_seconds_total{mode="iowait"}[5m])) * 100
+    Expr: avg(rate(node_cpu_seconds_total{mode="iowait"}[5m])) * 100
 
 Stack: true
 Unit: percent
@@ -316,7 +316,7 @@ storage_write_iops
 # NFS operations
 rate(node_nfs_requests_total[5m])
 
-# NFS latency
+# NFS retransmissions
 rate(node_nfs_rpc_retransmissions_total[5m])
 ```
 
@@ -349,7 +349,7 @@ Project: my-project
 
 # GCE CPU
 Metric: compute.googleapis.com/instance/cpu/utilization
-Filter: resource.instance_id="$instance"
+Filter: instance_id = "$instance"
 
 # Cloud SQL
 Metric: cloudsql.googleapis.com/database/cpu/utilization
