@@ -74,10 +74,10 @@ Then round up to the nearest power of 2.
 
 | Cluster Size | PGs per OSD | Notes |
 |-------------|-------------|-------|
-| Small (< 5 OSDs) | 128 | Minimum for testing |
-| Medium (5-10 OSDs) | 128-256 | Production starting point |
-| Large (10-50 OSDs) | 128-256 | Standard recommendation |
-| Very Large (> 50 OSDs) | 100-200 | Lower to reduce memory overhead |
+| Small (< 5 OSDs) | 50-100 | Keep PG overhead low |
+| Medium (5-10 OSDs) | 100-200 | Production starting point |
+| Large (10-50 OSDs) | 150-250 | Standard recommendation |
+| Very Large (> 50 OSDs) | 150-250 | Avoid values above 500 without careful testing |
 
 ### Calculation Example
 
@@ -231,9 +231,9 @@ ceph pg stat
 ceph pg dump --format json-pretty > pg_dump.json
 
 # Show PGs by state
-ceph pg ls-by-state active+clean
-ceph pg ls-by-state degraded
-ceph pg ls-by-state undersized
+ceph pg ls --states active+clean
+ceph pg ls --states degraded
+ceph pg ls --states undersized
 
 # Query a specific PG
 ceph pg 1.2a query
@@ -245,7 +245,7 @@ ceph pg 1.2a query
 # Common PG states and their meanings:
 # active+clean     - Normal, healthy state
 # active+degraded  - Some replicas missing, but data accessible
-# active+recovery  - Recovering missing replicas
+# active+recovering - Recovering missing replicas
 # peering          - OSDs agreeing on PG state
 # undersized       - Fewer replicas than configured
 # stale            - OSD not reporting to monitors
@@ -298,11 +298,11 @@ ceph pg stat
 # Count PGs by state
 echo ""
 echo "--- PG State Distribution ---"
-ceph pg dump 2>/dev/null | awk '/^[0-9]/ {print $10}' | sort | uniq -c | sort -rn
+ceph pg dump pgs_brief 2>/dev/null | awk '/^[0-9a-f]+\./ {print $2}' | sort | uniq -c | sort -rn
 
 # Check for any degraded or recovering PGs
-DEGRADED=$(ceph pg ls-by-state degraded 2>/dev/null | wc -l)
-RECOVERING=$(ceph pg ls-by-state recovering 2>/dev/null | wc -l)
+DEGRADED=$(ceph pg ls --states degraded --format json 2>/dev/null | jq 'if type == "array" then length elif has("pg_stats") then (.pg_stats | length) else 0 end')
+RECOVERING=$(ceph pg ls --states recovering --format json 2>/dev/null | jq 'if type == "array" then length elif has("pg_stats") then (.pg_stats | length) else 0 end')
 
 echo ""
 echo "--- Health Indicators ---"
@@ -331,8 +331,8 @@ ceph config set global mon_max_pg_per_osd 300
 # Check which OSDs are involved
 ceph pg 1.2a query | jq '.peer_info'
 
-# Force recovery of a stuck PG
-ceph pg force_recovery 1.2a
+# Prioritize recovery of a PG
+ceph pg force-recovery 1.2a
 
 # Issue: PG not scrubbing
 # Initiate deep scrub manually
@@ -368,7 +368,7 @@ ceph osd df tree | tail -1
 ceph mgr module enable balancer
 
 # Set balancer mode
-# Options: none, crush-compat, upmap, read (for read affinity)
+# Options include crush-compat, upmap, read, and upmap-read
 ceph balancer mode upmap
 
 # Enable automatic balancing
@@ -510,7 +510,8 @@ sequenceDiagram
 ceph config set osd osd_min_pg_log_entries 3000
 ceph config set osd osd_max_pg_log_entries 10000
 
-# Tune recovery parameters to balance performance and recovery speed
+# Tune recovery parameters to balance performance and recovery speed.
+# With the mClock scheduler, use built-in profiles unless you explicitly enable overrides.
 ceph config set osd osd_recovery_max_active 3
 ceph config set osd osd_recovery_sleep 0.5
 
@@ -535,7 +536,7 @@ ceph config set osd osd_max_pg_per_osd_hard_ratio 3
 
 5. **Avoid extremes**: Too few PGs cause uneven distribution; too many waste memory and slow recovery.
 
-6. **Use the balancer**: Enable the upmap balancer for fine-grained PG distribution without data movement.
+6. **Use the balancer**: Enable the upmap balancer for fine-grained PG distribution without changing CRUSH weights.
 
 7. **Regular monitoring**: Set up alerts for degraded PGs and high variance in OSD utilization.
 
