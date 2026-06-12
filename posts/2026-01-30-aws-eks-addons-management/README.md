@@ -70,7 +70,9 @@ Before managing add-ons, ensure you have the required tools and permissions.
 ```bash
 # Install eksctl
 
-curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+ARCH=amd64
+PLATFORM=$(uname -s)_$ARCH
+curl --silent --location "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz" | tar xz -C /tmp
 sudo mv /tmp/eksctl /usr/local/bin
 
 # Verify installation
@@ -81,7 +83,7 @@ aws configure
 aws sts get-caller-identity
 ```
 
-Your IAM user or role needs these permissions:
+For AWS CLI add-on operations, your IAM user or role needs these permissions. Creating IAM roles with `eksctl create iamserviceaccount` also requires IAM and CloudFormation permissions.
 
 ```json
 {
@@ -91,11 +93,15 @@ Your IAM user or role needs these permissions:
             "Effect": "Allow",
             "Action": [
                 "eks:DescribeAddon",
+                "eks:DescribeAddonConfiguration",
                 "eks:DescribeAddonVersions",
+                "eks:DescribeCluster",
+                "eks:DescribeUpdate",
                 "eks:ListAddons",
                 "eks:CreateAddon",
                 "eks:UpdateAddon",
-                "eks:DeleteAddon"
+                "eks:DeleteAddon",
+                "iam:PassRole"
             ],
             "Resource": "*"
         }
@@ -166,7 +172,7 @@ eksctl update addon \
     --version v1.11.1-eksbuild.8 \
     --region us-west-2
 
-# Force update (overwrites custom config)
+# Force-migrate an existing self-managed add-on to an EKS managed add-on
 eksctl update addon \
     --cluster my-cluster \
     --name kube-proxy \
@@ -461,7 +467,9 @@ eksctl create iamserviceaccount \
     --cluster my-cluster \
     --namespace kube-system \
     --name aws-node \
+    --role-name AmazonEKSVPCCNIRole \
     --attach-policy-arn arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy \
+    --override-existing-serviceaccounts \
     --approve \
     --region us-west-2
 ```
@@ -499,7 +507,9 @@ eksctl create iamserviceaccount \
     --cluster my-cluster \
     --namespace kube-system \
     --name ebs-csi-controller-sa \
-    --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
+    --role-name AmazonEKS_EBS_CSI_DriverRole \
+    --role-only \
+    --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicyV2 \
     --approve \
     --region us-west-2
 ```
@@ -608,7 +618,7 @@ set -e
 CLUSTER_NAME="my-cluster"
 REGION="us-west-2"
 
-# Function to update add-on if new version available
+# Function to update add-on if the default compatible version changed
 update_addon_if_needed() {
     local addon_name=$1
 
@@ -619,18 +629,19 @@ update_addon_if_needed() {
         --output text \
         --region $REGION)
 
-    latest_version=$(aws eks describe-addon-versions \
+    default_version=$(aws eks describe-addon-versions \
         --addon-name $addon_name \
         --kubernetes-version 1.29 \
-        --query 'addons[0].addonVersions[0].addonVersion' \
-        --output text)
+        --query 'addons[].addonVersions[?compatibilities[?defaultVersion==`true`]].addonVersion | [0]' \
+        --output text \
+        --region $REGION)
 
-    if [ "$current_version" != "$latest_version" ]; then
-        echo "Updating $addon_name from $current_version to $latest_version"
+    if [ "$current_version" != "$default_version" ]; then
+        echo "Updating $addon_name from $current_version to $default_version"
         aws eks update-addon \
             --cluster-name $CLUSTER_NAME \
             --addon-name $addon_name \
-            --addon-version $latest_version \
+            --addon-version $default_version \
             --resolve-conflicts PRESERVE \
             --region $REGION
 
@@ -642,7 +653,7 @@ update_addon_if_needed() {
 
         echo "$addon_name updated successfully"
     else
-        echo "$addon_name is already at latest version: $current_version"
+        echo "$addon_name is already at the default compatible version: $current_version"
     fi
 }
 
