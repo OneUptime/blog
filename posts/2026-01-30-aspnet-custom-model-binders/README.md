@@ -69,7 +69,7 @@ public class CompactDateModelBinder : IModelBinder
         // Try to fetch the value from the value provider
         var valueProviderResult = bindingContext.ValueProvider.GetValue(modelName);
 
-        // If no value was provided, let other binders try
+        // If no value was provided, leave the result unset
         if (valueProviderResult == ValueProviderResult.None)
         {
             return Task.CompletedTask;
@@ -131,8 +131,11 @@ public class CompactDateModelBinderProvider : IModelBinderProvider
             context.Metadata.ModelType == typeof(DateTime?))
         {
             // Check for our custom attribute (optional enhancement)
-            var hasAttribute = context.Metadata.Attributes.ParameterAttributes?
-                .Any(a => a is CompactDateAttribute) ?? false;
+            var hasAttribute =
+                (context.Metadata.Attributes.ParameterAttributes?
+                    .Any(a => a is CompactDateAttribute) ?? false) ||
+                (context.Metadata.Attributes.PropertyAttributes?
+                    .Any(a => a is CompactDateAttribute) ?? false);
 
             if (hasAttribute)
             {
@@ -426,8 +429,8 @@ public class PhoneNumberModelBinder : IModelBinder
 
         if (string.IsNullOrEmpty(value))
         {
-            // Check if the parameter is required
-            if (bindingContext.ModelMetadata.IsRequired)
+            // Treat empty input as invalid for non-nullable targets
+            if (!bindingContext.ModelMetadata.IsReferenceOrNullableType)
             {
                 bindingContext.ModelState.TryAddModelError(
                     modelName,
@@ -849,7 +852,7 @@ Follow these guidelines when building custom model binders:
 
 2. **Set ModelState values** - Call `SetModelValue` so validation and error messages work correctly.
 
-3. **Return early for missing values** - Let other binders try if your binder cannot handle the input.
+3. **Return early for missing values** - Leave `bindingContext.Result` unset when no value is available.
 
 4. **Use specific error messages** - Help developers debug binding issues with clear error text.
 
