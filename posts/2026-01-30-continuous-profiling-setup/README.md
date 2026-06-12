@@ -95,14 +95,15 @@ services:
     ports:
       - "4040:4040"  # HTTP API and UI
     volumes:
-      - pyroscope-data:/var/lib/pyroscope
-    environment:
+      - pyroscope-data:/data
+    command:
       # Storage configuration
-      - PYROSCOPE_STORAGE_TYPE=filesystem
+      - "-storage.backend=filesystem"
+      - "-storage.filesystem.dir=/data"
       # Retention period for profiles
-      - PYROSCOPE_RETENTION_PERIOD=168h
+      - "-compactor.blocks-retention-period=168h"
       # Log level for debugging
-      - PYROSCOPE_LOG_LEVEL=info
+      - "-log.level=info"
 
 volumes:
   pyroscope-data:
@@ -130,6 +131,11 @@ spec:
       containers:
         - name: pyroscope
           image: grafana/pyroscope:latest
+          args:
+            - "-storage.backend=s3"
+            - "-storage.s3.bucket-name=$(S3_BUCKET_NAME)"
+            - "-storage.s3.region=$(S3_REGION)"
+            - "-compactor.blocks-retention-period=168h"
           ports:
             - containerPort: 4040
           resources:
@@ -144,11 +150,9 @@ spec:
               mountPath: /var/lib/pyroscope
           env:
             # Use S3 for production storage
-            - name: PYROSCOPE_STORAGE_TYPE
-              value: "s3"
-            - name: PYROSCOPE_S3_BUCKET
+            - name: S3_BUCKET_NAME
               value: "pyroscope-profiles"
-            - name: PYROSCOPE_S3_REGION
+            - name: S3_REGION
               value: "us-east-1"
       volumes:
         - name: storage
@@ -243,15 +247,13 @@ pyroscope.configure(
     # Pyroscope server URL
     server_address=os.getenv("PYROSCOPE_SERVER_URL", "http://pyroscope:4040"),
 
-    # Enable specific profile types
+    # Configure CPU profiling
     # CPU profiling uses sampling to minimize overhead
-    enable_cpu_profiling=True,
-    # Memory profiling tracks allocations
-    enable_memory_profiling=True,
-    # GIL profiling shows Global Interpreter Lock contention
-    enable_gil_profiling=True,
+    oncpu=True,
+    # GIL-only profiling shows Global Interpreter Lock contention
+    gil_only=True,
     # Thread ID tracking for multi-threaded applications
-    enable_thread_id=True,
+    report_thread_id=True,
 
     # Sampling rate: 100 means sample 100 times per second
     # Higher values give more detail but increase overhead
@@ -271,7 +273,7 @@ pyroscope.configure(
 def process_payment(payment_data):
     # Tag this span with operation-specific labels
     with pyroscope.tag_wrapper({"operation": "payment", "type": payment_data["type"]}):
-        # All CPU/memory usage in this block is tagged
+        # CPU samples in this block are tagged
         validate_payment(payment_data)
         charge_customer(payment_data)
         send_receipt(payment_data)
@@ -298,15 +300,15 @@ Pyroscope.init({
   },
 
   // Wall time profiling includes time spent waiting
-  // CPU profiling only counts actual CPU work
-  wall: true,
+  // collectCpuTime also records CPU time samples
+  wall: {
+    collectCpuTime: true,
+    // 10,000 microseconds means 100 samples per second
+    samplingIntervalMicros: 10000,
+  },
 
   // Heap profiling tracks memory allocations
-  heap: true,
-
-  // Sample rate in Hz (samples per second)
-  // 100 Hz is a good balance of detail vs overhead
-  sampleRate: 100,
+  heap: {},
 });
 
 // Start profiling - call this after configuration
@@ -341,6 +343,9 @@ import io.pyroscope.javaagent.PyroscopeAgent;
 import io.pyroscope.javaagent.config.Config;
 import io.pyroscope.javaagent.EventType;
 import io.pyroscope.http.Format;
+import java.time.Duration;
+import java.util.Map;
+import org.springframework.boot.SpringApplication;
 
 public class Application {
     public static void main(String[] args) {
@@ -350,27 +355,27 @@ public class Application {
                 // Application name for identification
                 .setApplicationName("inventory-service")
                 // Pyroscope server URL
-                .setServerAddress(System.getenv("PYROSCOPE_SERVER_URL"))
-                // Use pprof format for better compatibility
+                .setServerAddress(System.getenv().getOrDefault("PYROSCOPE_SERVER_URL", "http://pyroscope:4040"))
+                // Use JFR format to support multiple profiling events
                 .setFormat(Format.JFR)
 
                 // Profile types to collect
                 // CPU sampling shows where processing time is spent
-                .setProfilingEvent(EventType.CPU)
+                .setProfilingEvent(EventType.ITIMER)
                 // Allocation profiling shows memory usage patterns
-                .setProfilingAlloc(true)
+                .setProfilingAlloc("512k")
                 // Lock profiling shows thread contention
-                .setProfilingLock(true)
+                .setProfilingLock("10ms")
 
-                // Sampling interval in nanoseconds
-                // 10ms (10000000ns) is a good default
-                .setProfilingInterval(10000000)
+                // Sampling interval
+                // 10ms is a good default
+                .setProfilingInterval(Duration.ofMillis(10))
 
                 // Labels for filtering
                 .setLabels(Map.of(
-                    "env", System.getenv("ENVIRONMENT"),
-                    "version", System.getenv("APP_VERSION"),
-                    "hostname", System.getenv("HOSTNAME")
+                    "env", System.getenv().getOrDefault("ENVIRONMENT", "development"),
+                    "version", System.getenv().getOrDefault("APP_VERSION", "unknown"),
+                    "hostname", System.getenv().getOrDefault("HOSTNAME", "local")
                 ))
                 .build()
         );
@@ -409,9 +414,8 @@ spec:
           image: ghcr.io/parca-dev/parca:latest
           args:
             # Enable persistent storage
+            - "--enable-persistence"
             - "--storage-path=/var/lib/parca"
-            # Retention period for profiles
-            - "--storage-retention-time=168h"
             # Listen address
             - "--http-address=:7070"
           ports:
@@ -463,10 +467,6 @@ spec:
             - "--remote-store-insecure"
             # Node name for labeling
             - "--node=$(NODE_NAME)"
-            # Sample rate in Hz
-            - "--profiling-sample-frequency=19"
-            # CPU profiling duration per collection
-            - "--profiling-duration=10s"
           env:
             - name: NODE_NAME
               valueFrom:
@@ -477,19 +477,49 @@ spec:
             privileged: true
           volumeMounts:
             # Required mounts for eBPF and symbol resolution
-            - name: sys-kernel
-              mountPath: /sys/kernel
+            - name: run
+              mountPath: /run
+              readOnly: true
+            - name: boot
+              mountPath: /boot
+              readOnly: true
+            - name: debugfs
+              mountPath: /sys/kernel/debug
+              readOnly: true
+            - name: cgroup
+              mountPath: /sys/fs/cgroup
+              readOnly: true
+            - name: bpffs
+              mountPath: /sys/fs/bpf
               readOnly: true
             - name: modules
               mountPath: /lib/modules
               readOnly: true
+            - name: dbus-system
+              mountPath: /var/run/dbus/system_bus_socket
+              readOnly: true
       volumes:
-        - name: sys-kernel
+        - name: run
           hostPath:
-            path: /sys/kernel
+            path: /run
+        - name: boot
+          hostPath:
+            path: /boot
+        - name: debugfs
+          hostPath:
+            path: /sys/kernel/debug
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+        - name: bpffs
+          hostPath:
+            path: /sys/fs/bpf
         - name: modules
           hostPath:
             path: /lib/modules
+        - name: dbus-system
+          hostPath:
+            path: /var/run/dbus/system_bus_socket
 ```
 
 ## Datadog Continuous Profiling
@@ -504,6 +534,7 @@ package main
 import (
     "log"
     "os"
+    "time"
 
     "gopkg.in/DataDog/dd-trace-go.v1/profiler"
 )
@@ -515,9 +546,6 @@ func main() {
         profiler.WithService(os.Getenv("DD_SERVICE")),
         profiler.WithEnv(os.Getenv("DD_ENV")),
         profiler.WithVersion(os.Getenv("DD_VERSION")),
-        // Datadog API key
-        profiler.WithAPIKey(os.Getenv("DD_API_KEY")),
-
         // Profile types to collect
         profiler.WithProfileTypes(
             profiler.CPUProfile,        // CPU usage
@@ -563,19 +591,9 @@ profiler = Profiler(
     # Version tag for comparing across deployments
     version=os.getenv("DD_VERSION", "1.0.0"),
 
-    # Enable memory profiling
-    # This tracks allocations and heap usage
-    enable_memory_profiling=True,
-
-    # Enable lock profiling for threading issues
-    enable_lock_profiling=True,
-
-    # Enable exception profiling
-    # This captures where exceptions are raised
-    enable_exception_profiling=True,
-
-    # Enable GC profiling for garbage collection analysis
-    enable_gc_profiling=True,
+    # Optional advanced collectors can be controlled with environment variables:
+    # DD_PROFILING_MEMORY_ENABLED, DD_PROFILING_LOCK_ENABLED,
+    # DD_PROFILING_EXCEPTION_ENABLED, and DD_PROFILING_HEAP_ENABLED.
 )
 
 # Start the profiler
@@ -644,9 +662,8 @@ pyroscope.configure(
     server_address=os.getenv("PYROSCOPE_SERVER_URL"),
 
     # Only CPU profiling
-    enable_cpu_profiling=True,
-    enable_memory_profiling=False,
-    enable_gil_profiling=False,
+    oncpu=True,
+    gil_only=False,
 
     # Low sample rate: 19 Hz is prime to avoid aliasing
     # This reduces overhead while still catching hotspots
@@ -795,9 +812,9 @@ def compare_profiles(baseline_version: str, new_version: str) -> dict:
         now,
     )
 
-    # Compare total CPU time
-    baseline_total = sum(baseline.get("flamebearer", {}).get("levels", [[0]])[0])
-    new_total = sum(new.get("flamebearer", {}).get("levels", [[0]])[0])
+    # Compare total samples reported by Pyroscope
+    baseline_total = baseline.get("flamebearer", {}).get("numTicks", 0)
+    new_total = new.get("flamebearer", {}).get("numTicks", 0)
 
     if baseline_total == 0:
         return {"status": "no_baseline", "message": "No baseline data available"}
@@ -898,16 +915,16 @@ def process_checkout(cart):
 ### 3. Set Up Alerts on Profile Metrics
 
 ```yaml
-# Prometheus alerting rule for CPU regression
+# Prometheus alerting rule for a profile-derived CPU regression metric
 groups:
   - name: profiling
     rules:
       - alert: CPUProfileRegression
         expr: |
           (
-            sum(rate(pyroscope_profiles_cpu_total{env="production"}[1h]))
+            sum(rate(profile_cpu_samples_total{env="production"}[1h]))
             /
-            sum(rate(pyroscope_profiles_cpu_total{env="production"}[1h] offset 1d))
+            sum(rate(profile_cpu_samples_total{env="production"}[1h] offset 1d))
           ) > 1.2
         for: 30m
         labels:
