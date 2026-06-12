@@ -32,7 +32,6 @@ Here is an example of unit testing a request validator in Python using pytest:
 # validators.py
 
 from dataclasses import dataclass
-from typing import Optional
 import re
 
 @dataclass
@@ -166,7 +165,7 @@ def create_user():
     Create a new user account.
     Expects JSON body with email, username, and password.
     """
-    data = request.get_json()
+    data = request.get_json(silent=True)
 
     if not data:
         return jsonify({'error': 'Request body required'}), 400
@@ -196,6 +195,11 @@ def create_user():
         'email': data['email'],
         'username': data['username']
     }), 201
+
+@app.route('/api/users', methods=['GET'])
+def list_users():
+    """Retrieve all users."""
+    return jsonify(list(users_db.values())), 200
 
 @app.route('/api/users/<int:user_id>', methods=['GET'])
 def get_user(user_id):
@@ -386,7 +390,7 @@ Tests that validate responses against schemas:
 ```python
 # test_schemas.py
 import pytest
-from jsonschema import validate, ValidationError
+from jsonschema import validate, ValidationError, FormatChecker
 from schemas import USER_RESPONSE_SCHEMA, ERROR_RESPONSE_SCHEMA
 from app import app, users_db
 
@@ -414,7 +418,11 @@ class TestResponseSchemas:
         data = response.get_json()
 
         # This will raise ValidationError if schema doesn't match
-        validate(instance=data, schema=USER_RESPONSE_SCHEMA)
+        validate(
+            instance=data,
+            schema=USER_RESPONSE_SCHEMA,
+            format_checker=FormatChecker()
+        )
 
     def test_error_response_matches_schema(self, client):
         """Error responses conform to ERROR_RESPONSE_SCHEMA."""
@@ -423,7 +431,11 @@ class TestResponseSchemas:
         })
 
         data = response.get_json()
-        validate(instance=data, schema=ERROR_RESPONSE_SCHEMA)
+        validate(
+            instance=data,
+            schema=ERROR_RESPONSE_SCHEMA,
+            format_checker=FormatChecker()
+        )
 
     def test_schema_rejects_extra_fields(self, client):
         """Schema validation catches unexpected fields in response."""
@@ -448,7 +460,7 @@ Here is an API with JWT authentication and comprehensive tests:
 ```python
 # auth.py
 import jwt
-import datetime
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import request, jsonify
 
@@ -456,10 +468,11 @@ SECRET_KEY = 'your-secret-key-change-in-production'
 
 def generate_token(user_id: int, expires_hours: int = 24) -> str:
     """Generate a JWT token for the given user."""
+    now = datetime.now(tz=timezone.utc)
     payload = {
         'user_id': user_id,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=expires_hours),
-        'iat': datetime.datetime.utcnow()
+        'exp': now + timedelta(hours=expires_hours),
+        'iat': now
     }
     return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
 
@@ -502,9 +515,16 @@ Authentication tests covering various scenarios:
 # test_auth.py
 import pytest
 import jwt
-import datetime
-from auth import generate_token, decode_token, SECRET_KEY
+from datetime import datetime, timedelta, timezone
+from flask import jsonify
+from auth import generate_token, decode_token, SECRET_KEY, require_auth
 from app import app
+
+@app.route('/api/protected-resource')
+@require_auth
+def protected_resource():
+    """Example protected endpoint for authentication tests."""
+    return jsonify({'message': 'ok'}), 200
 
 @pytest.fixture
 def client():
@@ -514,19 +534,21 @@ def client():
 
 def create_expired_token(user_id: int) -> str:
     """Helper to create an already-expired token for testing."""
+    now = datetime.now(tz=timezone.utc)
     payload = {
         'user_id': user_id,
-        'exp': datetime.datetime.utcnow() - datetime.timedelta(hours=1),
-        'iat': datetime.datetime.utcnow() - datetime.timedelta(hours=2)
+        'exp': now - timedelta(hours=1),
+        'iat': now - timedelta(hours=2)
     }
     return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
 
 def create_token_wrong_secret(user_id: int) -> str:
     """Helper to create a token signed with wrong secret."""
+    now = datetime.now(tz=timezone.utc)
     payload = {
         'user_id': user_id,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24),
-        'iat': datetime.datetime.utcnow()
+        'exp': now + timedelta(hours=24),
+        'iat': now
     }
     return jwt.encode(payload, 'wrong-secret', algorithm='HS256')
 
@@ -670,46 +692,43 @@ Here is how to set up consumer-driven contract tests:
 
 ```python
 # test_contracts.py
+from pathlib import Path
 import pytest
-import atexit
-from pact import Consumer, Provider
+import requests
+from pact import Pact
 
-# Create a Pact between the consumer and provider
-pact = Consumer('UserServiceClient').has_pact_with(
-    Provider('UserService'),
-    pact_dir='./pacts'
-)
-
-# Start the mock service
-pact.start_service()
-atexit.register(pact.stop_service)
+@pytest.fixture
+def pact():
+    """Create a Pact between the consumer and provider."""
+    pact = Pact('UserServiceClient', 'UserService')
+    yield pact
+    pact.write_file(Path(__file__).parent / 'pacts')
 
 class TestUserServiceContract:
     """Contract tests defining expected API behavior."""
 
-    def test_get_user_contract(self):
+    def test_get_user_contract(self, pact):
         """Define contract for GET /api/users/{id} endpoint."""
 
         # Define the expected interaction
         (pact
-            .given('a user with ID 1 exists')
             .upon_receiving('a request to get user 1')
-            .with_request('GET', '/api/users/1')
-            .will_respond_with(200, body={
+            .given('a user with ID 1 exists')
+            .with_request(method='GET', path='/api/users/1')
+            .will_respond_with(status=200, body={
                 'id': 1,
                 'email': 'user@example.com',
                 'username': 'testuser'
             }))
 
-        with pact:
+        with pact.serve() as server:
             # Make request to mock service
-            import requests
-            response = requests.get(f'{pact.uri}/api/users/1')
+            response = requests.get(f'{server.url}/api/users/1')
 
             assert response.status_code == 200
             assert response.json()['id'] == 1
 
-    def test_create_user_contract(self):
+    def test_create_user_contract(self, pact):
         """Define contract for POST /api/users endpoint."""
 
         expected_request = {
@@ -719,24 +738,22 @@ class TestUserServiceContract:
         }
 
         (pact
-            .given('no user with email new@example.com exists')
             .upon_receiving('a request to create a new user')
+            .given('no user with email new@example.com exists')
             .with_request(
-                'POST',
-                '/api/users',
-                body=expected_request,
-                headers={'Content-Type': 'application/json'}
+                method='POST',
+                path='/api/users',
+                body=expected_request
             )
-            .will_respond_with(201, body={
+            .will_respond_with(status=201, body={
                 'id': 2,
                 'email': 'new@example.com',
                 'username': 'newuser'
             }))
 
-        with pact:
-            import requests
+        with pact.serve() as server:
             response = requests.post(
-                f'{pact.uri}/api/users',
+                f'{server.url}/api/users',
                 json=expected_request
             )
 
@@ -1009,8 +1026,8 @@ markers =
     contract: Contract tests (verify API contracts)
     slow: Slow tests (performance, load testing)
 
-# Default: run unit and integration tests
-addopts = -m "unit or integration" --strict-markers
+# Default: enforce registered marker names
+addopts = --strict-markers
 ```
 
 CI pipeline configuration for running tests:
@@ -1029,8 +1046,8 @@ jobs:
   unit-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -1041,7 +1058,7 @@ jobs:
         run: pytest tests/unit -v --cov=src --cov-report=xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: coverage.xml
 
@@ -1057,8 +1074,8 @@ jobs:
           - 5432:5432
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -1073,8 +1090,8 @@ jobs:
   contract-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -1085,7 +1102,7 @@ jobs:
         run: pytest tests/contracts -v
 
       - name: Upload pact files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pacts
           path: pacts/
