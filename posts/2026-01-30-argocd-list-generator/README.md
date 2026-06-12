@@ -48,7 +48,7 @@ argocd-applicationset-controller-xxx   1/1     Running   0          10m
 
 ## Basic List Generator Structure
 
-The List Generator uses an `elements` array where each element is a map of key-value pairs. These values are then substituted into the template using Go templating syntax.
+The List Generator uses an `elements` array where each element is a map of key-value pairs. These values are then substituted into the template using ApplicationSet template placeholders.
 
 Here is the basic structure of an ApplicationSet with a List Generator:
 
@@ -410,11 +410,8 @@ spec:
     - list:
         elements:
           - env: dev
-            auto_sync: "true"
           - env: staging
-            auto_sync: "true"
           - env: prod
-            auto_sync: "false"
   template:
     metadata:
       name: 'myapp-{{env}}'
@@ -491,7 +488,7 @@ kubectl describe applicationset myapp-environments -n argocd
 View generated Applications:
 
 ```bash
-kubectl get applications -n argocd -l app.kubernetes.io/instance=myapp-environments
+kubectl get applications -n argocd | grep myapp
 ```
 
 Check ApplicationSet controller logs:
