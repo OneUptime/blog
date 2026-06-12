@@ -34,7 +34,7 @@ jobs:
     steps:
       - name: Send Slack notification
         run: |
-          curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+          curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
             -H 'Content-Type: application/json' \
             -d '{
               "text": "Deployment completed successfully!",
@@ -67,18 +67,24 @@ For richer Slack messages, use a dedicated action:
 
 ```yaml
       - name: Slack notification
-        uses: slackapi/slack-github-action@v1.25.0
+        uses: slackapi/slack-github-action@v3.0.3
         with:
-          channel-id: 'deployments'
-          slack-message: |
-            *${{ github.workflow }}* completed with status: *${{ job.status }}*
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ secrets.SLACK_CHANNEL_ID }}
+            text: "${{ github.workflow }} completed with status: ${{ job.status }}"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: |
+                    *${{ github.workflow }}* completed with status: *${{ job.status }}*
 
-            - Repository: ${{ github.repository }}
-            - Branch: ${{ github.ref_name }}
-            - Triggered by: ${{ github.actor }}
-            - <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+                    - Repository: ${{ github.repository }}
+                    - Branch: ${{ github.ref_name }}
+                    - Triggered by: ${{ github.actor }}
+                    - <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>
 ```
 
 ## Conditional Notifications
@@ -103,13 +109,15 @@ jobs:
       - name: Notify on success
         if: needs.build.result == 'success'
         run: |
-          curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+          curl -X POST "${{ secrets.SLACK_WEBHOOK }}" \
+            -H 'Content-Type: application/json' \
             -d '{"text": ":white_check_mark: Build passed for ${{ github.ref_name }}"}'
 
       - name: Notify on failure
         if: needs.build.result == 'failure'
         run: |
-          curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+          curl -X POST "${{ secrets.SLACK_WEBHOOK }}" \
+            -H 'Content-Type: application/json' \
             -d '{
               "text": ":x: Build failed!",
               "attachments": [{
@@ -117,7 +125,7 @@ jobs:
                 "fields": [
                   {"title": "Branch", "value": "${{ github.ref_name }}", "short": true},
                   {"title": "Author", "value": "${{ github.actor }}", "short": true},
-                  {"title": "Commit", "value": "${{ github.event.head_commit.message }}", "short": false}
+                  {"title": "Commit", "value": "${{ github.sha }}", "short": false}
                 ]
               }]
             }'
@@ -125,7 +133,8 @@ jobs:
       - name: Notify on cancellation
         if: needs.build.result == 'cancelled'
         run: |
-          curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+          curl -X POST "${{ secrets.SLACK_WEBHOOK }}" \
+            -H 'Content-Type: application/json' \
             -d '{"text": ":warning: Build was cancelled for ${{ github.ref_name }}"}'
 ```
 
@@ -152,8 +161,7 @@ jobs:
                   {"name": "Branch", "value": "${{ github.ref_name }}", "inline": true},
                   {"name": "Commit", "value": "`${{ github.sha }}`", "inline": false}
                 ],
-                "footer": {"text": "Triggered by ${{ github.actor }}"},
-                "timestamp": "${{ github.event.head_commit.timestamp }}"
+                "footer": {"text": "Triggered by ${{ github.actor }}"}
               }]
             }'
 ```
@@ -257,7 +265,7 @@ jobs:
             -d '{
               "routing_key": "${{ secrets.PAGERDUTY_ROUTING_KEY }}",
               "event_action": "trigger",
-              "dedup_key": "deploy-${{ github.repository }}-${{ github.run_id }}",
+              "dedup_key": "deploy-${{ github.repository }}",
               "payload": {
                 "summary": "Production deployment failed for ${{ github.repository }}",
                 "severity": "critical",
@@ -279,8 +287,12 @@ jobs:
             -d '{
               "routing_key": "${{ secrets.PAGERDUTY_ROUTING_KEY }}",
               "event_action": "resolve",
-              "dedup_key": "deploy-${{ github.repository }}-${{ github.run_id }}"
+              "dedup_key": "deploy-${{ github.repository }}"
             }'
+
+      - name: Fail job after alert
+        if: steps.deploy.outcome == 'failure'
+        run: exit 1
 ```
 
 ## GitHub Issues for Tracking
@@ -299,9 +311,11 @@ jobs:
     needs: build
     if: failure()
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - name: Create issue
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const title = `Build failed on ${context.ref}`;
@@ -321,7 +335,6 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
-              labels: 'build-failure',
               per_page: 100
             });
 
@@ -331,8 +344,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title: title,
-                body: body,
-                labels: ['build-failure', 'automated']
+                body: body
               });
             }
 ```
@@ -372,8 +384,9 @@ jobs:
           EOF
           )
 
-          curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
-            -d "{\"text\": \"$MESSAGE\"}"
+          curl -X POST "${{ secrets.SLACK_WEBHOOK }}" \
+            -H 'Content-Type: application/json' \
+            -d "$(jq -n --arg text "$MESSAGE" '{text: $text}')"
 ```
 
 ## Best Practices
