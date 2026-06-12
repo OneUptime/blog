@@ -87,13 +87,13 @@ spec:
       policies:
         - type: Percent
           value: 100                     # Double capacity if needed
-          periodSeconds: 15              # Check every 15 seconds
+          periodSeconds: 15              # Allow this increase per 15-second window
     scaleDown:
       stabilizationWindowSeconds: 300    # Wait 5 minutes before scaling down
       policies:
         - type: Pods
           value: 2                       # Remove at most 2 pods at a time
-          periodSeconds: 60              # Check every minute
+          periodSeconds: 60              # Allow this reduction per 60-second window
 ```
 
 ### Scaling on Custom Metrics
@@ -123,7 +123,7 @@ spec:
           name: http_requests_per_second    # Custom metric from Prometheus adapter
         target:
           type: AverageValue
-          averageValue: 1000                # Target 1000 RPS per pod
+          averageValue: "1000"              # Target 1000 RPS per pod
 ```
 
 ### Cluster Autoscaler
@@ -131,21 +131,35 @@ spec:
 Your pods can only scale if nodes are available. Configure the cluster autoscaler to provision new nodes when pods are pending.
 
 ```yaml
-# cluster-autoscaler-config.yaml
-# Configures node pool scaling for GKE, EKS, or AKS
-# Adjust node pool sizes based on your cloud provider
-apiVersion: v1
-kind: ConfigMap
+# cluster-autoscaler-deployment.yaml
+# Example arguments for a self-managed Cluster Autoscaler deployment
+# Adjust discovery and cloud-provider settings for your environment
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: cluster-autoscaler-config
+  name: cluster-autoscaler
   namespace: kube-system
-data:
-  # Scale up quickly, scale down conservatively
-  scale-down-delay-after-add: "10m"
-  scale-down-unneeded-time: "10m"
-  scan-interval: "10s"
-  # Leave buffer capacity for sudden spikes
-  expendable-pods-priority-cutoff: "-10"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+  template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
+    spec:
+      containers:
+        - name: cluster-autoscaler
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.32.0
+          command:
+            - ./cluster-autoscaler
+            # Scale up quickly, scale down conservatively
+            - --scan-interval=10s
+            - --scale-down-delay-after-add=10m
+            - --scale-down-unneeded-time=10m
+            # Leave buffer capacity for sudden spikes
+            - --expendable-pods-priority-cutoff=-10
 ```
 
 ---
@@ -188,8 +202,8 @@ curl -s https://api.example.com/v1/categories > /dev/null
 
 # Verify database connection pool is sized appropriately
 echo "Checking database connections..."
-kubectl exec -it deploy/api -n production -- \
-  psql $DATABASE_URL -c "SHOW max_connections;"
+kubectl exec deploy/api -n production -- \
+  sh -c 'psql "$DATABASE_URL" -c "SHOW max_connections;"'
 
 echo "Pre-warm complete. Ready for traffic."
 ```
@@ -263,6 +277,7 @@ const cacheMiddleware = (options = {}) => {
     ttl = 60,           // Cache TTL in seconds
     staleTtl = 300,     // Stale content TTL (serve while revalidating)
     keyPrefix = 'cache:',
+    refreshCache,       // Optional async callback that refreshes this cache key
   } = options;
 
   return async (req, res, next) => {
@@ -286,8 +301,12 @@ const cacheMiddleware = (options = {}) => {
         res.set('Age', Math.floor(age / 1000));
 
         // If stale, trigger background refresh
-        if (age > ttl * 1000) {
-          setImmediate(() => refreshCache(req, cacheKey, ttl, staleTtl));
+        if (age > ttl * 1000 && typeof refreshCache === 'function') {
+          setImmediate(() => {
+            Promise.resolve()
+              .then(() => refreshCache(req, cacheKey, ttl, staleTtl))
+              .catch(console.error);
+          });
         }
 
         return res.json(data);
@@ -450,7 +469,7 @@ class TokenBucketRateLimiter {
       end
 
       -- Update bucket state
-      redis.call('HMSET', key, 'tokens', tokens, 'last_refill', now)
+      redis.call('HSET', key, 'tokens', tokens, 'last_refill', now)
       redis.call('EXPIRE', key, 3600)
 
       return {allowed, tokens}
@@ -648,7 +667,7 @@ async function processPayment(order) {
       const response = await fetch('https://payments.example.com/charge', {
         method: 'POST',
         body: JSON.stringify(order),
-        timeout: 5000,
+        signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) throw new Error('Payment failed');
       return response.json();
@@ -783,7 +802,7 @@ export const options = {
 
   // Success criteria
   thresholds: {
-    http_req_duration: ['p95<500', 'p99<1000'],  // Latency targets
+    http_req_duration: ['p(95)<500', 'p(99)<1000'],  // Latency targets
     errors: ['rate<0.01'],                        // Less than 1% errors
     http_req_failed: ['rate<0.01'],               // Less than 1% HTTP failures
   },
@@ -868,19 +887,20 @@ spec:
 
     # Step 2: Inject pod failures during spike
     - name: inject-failures
-      templateType: PodChaos
+      templateType: Schedule
       deadline: 3m
-      podChaos:
-        action: pod-kill
-        mode: fixed-percent
-        value: "30"           # Kill 30% of pods
-        selector:
-          namespaces:
-            - production
-          labelSelectors:
-            app: web
-        scheduler:
-          cron: "*/30 * * * * *"    # Kill pods every 30 seconds
+      schedule:
+        schedule: "@every 30s"      # Kill pods every 30 seconds
+        type: "PodChaos"
+        podChaos:
+          action: pod-kill
+          mode: fixed-percent
+          value: "30"              # Kill 30% of pods
+          selector:
+            namespaces:
+              - production
+            labelSelectors:
+              app: web
 
     # Step 3: Verify system recovers
     - name: verify-recovery
@@ -908,11 +928,11 @@ panels:
   # Latency percentiles
   - title: "Response Time Percentiles"
     queries:
-      - expr: histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[1m]))
+      - expr: histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))
         legend: "p50"
-      - expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[1m]))
+      - expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))
         legend: "p95"
-      - expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[1m]))
+      - expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))
         legend: "p99"
 
   # Auto-scaling response
