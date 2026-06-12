@@ -367,9 +367,20 @@ include_test_accounts,false,
 
 ```sql
 -- models/marts/attribution.sql
-{% set new_model_enabled = var('use_new_attribution', false) %}
+-- Read the flag value from the seed at compile time
+{% set flag_query %}
+    select is_enabled
+    from {{ ref('feature_flags') }}
+    where feature_name = 'new_attribution_model'
+{% endset %}
 
--- Check feature flag from seed at compile time
+{% if execute %}
+    {% set results = run_query(flag_query) %}
+    {% set new_model_enabled = results.columns[0].values()[0] %}
+{% else %}
+    {% set new_model_enabled = false %}
+{% endif %}
+
 {% if new_model_enabled %}
     -- New attribution logic
     select * from {{ ref('attribution_v2') }}
@@ -393,12 +404,10 @@ sources:
     quoting:
       database: false
       schema: false
-      identifier: true  # Quote table names
+      identifier: true  # dbt wraps table names in quotes
     tables:
       - name: order  # Reserved word in most SQL dialects
-        identifier: '"order"'
       - name: user
-        identifier: '"user"'
 ```
 
 ## Project Organization
