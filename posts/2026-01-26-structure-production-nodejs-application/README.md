@@ -148,9 +148,12 @@ For database-specific configuration, create a separate file:
 
 ```typescript
 // src/config/database.ts
+import knex from 'knex';
+import { Model } from 'objection';
+import type { Knex } from 'knex';
 import { config } from './index';
 
-export const databaseConfig = {
+export const databaseConfig: Knex.Config = {
   client: 'pg',
   connection: {
     host: config.database.host,
@@ -168,6 +171,17 @@ export const databaseConfig = {
   seeds: {
     directory: './seeds',
   },
+};
+
+export const db = knex(databaseConfig);
+
+export const initDatabase = async () => {
+  Model.knex(db);
+  await db.raw('select 1');
+};
+
+export const closeDatabase = async () => {
+  await db.destroy();
 };
 ```
 
@@ -828,7 +842,7 @@ export const createApp = () => {
 import { createApp } from './app';
 import { config } from './config';
 import { logger } from './utils/logger';
-import { initDatabase } from './config/database';
+import { initDatabase, closeDatabase } from './config/database';
 
 const start = async () => {
   try {
@@ -839,7 +853,7 @@ const start = async () => {
     // Create and start the app
     const app = createApp();
 
-    app.listen(config.port, () => {
+    const server = app.listen(config.port, () => {
       logger.info(`Server running on port ${config.port}`, {
         env: config.env,
         port: config.port,
@@ -849,7 +863,11 @@ const start = async () => {
     // Graceful shutdown
     const shutdown = async (signal: string) => {
       logger.info(`${signal} received, shutting down gracefully`);
-      process.exit(0);
+
+      server.close(async () => {
+        await closeDatabase();
+        process.exit(0);
+      });
     };
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
@@ -928,7 +946,7 @@ describe('UserService', () => {
 
 1. **Separation of Concerns**: Each layer has a single responsibility. Controllers don't contain business logic, services don't know about HTTP.
 
-2. **Dependency Injection**: Services receive their dependencies, making them testable and flexible.
+2. **Dependency Management**: Keep data access and utility dependencies centralized in services, and inject them where you need stronger test isolation or runtime flexibility.
 
 3. **Configuration Management**: All environment-specific values live in config, validated at startup.
 
