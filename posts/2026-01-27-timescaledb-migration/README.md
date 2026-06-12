@@ -93,7 +93,7 @@ DB_USER="${2:-postgres}"
 
 echo "=== TimescaleDB Migration Pre-Check ==="
 
-# Check PostgreSQL version (TimescaleDB requires PostgreSQL 12+)
+# Check PostgreSQL version (current TimescaleDB 2.x requires PostgreSQL 15+)
 echo "Checking PostgreSQL version..."
 psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT version();"
 
@@ -131,7 +131,8 @@ echo "=== Pre-Check Complete ==="
 # Ubuntu/Debian
 # Add TimescaleDB repository
 sudo sh -c "echo 'deb https://packagecloud.io/timescale/timescaledb/ubuntu/ $(lsb_release -c -s) main' > /etc/apt/sources.list.d/timescaledb.list"
-wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey | sudo apt-key add -
+wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey | \
+    sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg
 sudo apt update
 
 # Install TimescaleDB for your PostgreSQL version (e.g., PostgreSQL 16)
@@ -321,40 +322,39 @@ SELECT create_hypertable(
     chunk_time_interval => INTERVAL '1 day'
 );
 
--- Step 2: Migrate data in batches using a function
-CREATE OR REPLACE FUNCTION migrate_metrics_batch(
+-- Step 2: Migrate data in batches using a procedure
+-- Must be a PROCEDURE (not a FUNCTION) because PostgreSQL only allows
+-- COMMIT/ROLLBACK inside procedures invoked with CALL.
+CREATE OR REPLACE PROCEDURE migrate_metrics_batch(
     start_time TIMESTAMPTZ,
     end_time TIMESTAMPTZ,
-    batch_size INT DEFAULT 100000
-) RETURNS BIGINT AS $$
+    INOUT total_migrated BIGINT DEFAULT 0
+) AS $$
 DECLARE
-    total_migrated BIGINT := 0;
     batch_migrated BIGINT;
-    current_time TIMESTAMPTZ := start_time;
+    cur_time TIMESTAMPTZ := start_time;
 BEGIN
-    WHILE current_time < end_time LOOP
+    WHILE cur_time < end_time LOOP
         INSERT INTO metrics_new
         SELECT * FROM metrics
-        WHERE timestamp >= current_time
-          AND timestamp < current_time + INTERVAL '1 hour'
+        WHERE timestamp >= cur_time
+          AND timestamp < cur_time + INTERVAL '1 hour'
         ON CONFLICT DO NOTHING;
 
         GET DIAGNOSTICS batch_migrated = ROW_COUNT;
         total_migrated := total_migrated + batch_migrated;
-        current_time := current_time + INTERVAL '1 hour';
+        cur_time := cur_time + INTERVAL '1 hour';
 
         -- Commit each batch to avoid long transactions
         COMMIT;
 
         RAISE NOTICE 'Migrated % rows, total: %', batch_migrated, total_migrated;
     END LOOP;
-
-    RETURN total_migrated;
 END;
 $$ LANGUAGE plpgsql;
 
 -- Step 3: Run migration (can be done while application is running)
-SELECT migrate_metrics_batch(
+CALL migrate_metrics_batch(
     '2024-01-01'::timestamptz,
     '2026-01-27'::timestamptz
 );
@@ -398,6 +398,7 @@ sequenceDiagram
 # Application-level dual-write pattern for zero-downtime migration
 
 import psycopg2
+import psycopg2.extras  # psycopg2.extras is not auto-imported with psycopg2
 from datetime import datetime, timedelta
 import logging
 
@@ -560,8 +561,7 @@ SELECT add_continuous_aggregate_policy('metrics_hourly',
 # No changes required for basic operations
 
 from sqlalchemy import create_engine, Column, Integer, Float, DateTime, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 
 Base = declarative_base()
