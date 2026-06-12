@@ -8,7 +8,7 @@ Description: Learn how to implement Kafka consumers with at-least-once delivery 
 
 ---
 
-> At-least-once delivery means your message will always be processed, but you must design your system to handle duplicates gracefully.
+> At-least-once delivery means your message will be delivered one or more times, but you must design your system to handle duplicates gracefully.
 
 Kafka's delivery semantics determine how reliably messages flow from producers to consumers. Understanding and implementing at-least-once semantics correctly is essential for building reliable event-driven systems. This guide covers everything from offset management to idempotent consumer design with practical code examples.
 
@@ -35,12 +35,12 @@ Kafka supports three delivery semantics, each with different trade-offs:
 
 | Semantic | Description | When Messages Are Lost | When Duplicates Occur |
 |----------|-------------|------------------------|----------------------|
-| At-most-once | Process first, commit later (or auto-commit) | Consumer crashes after commit but before processing | Never |
+| At-most-once | Commit before processing, or allow offsets to be committed before processing completes | Consumer crashes after commit but before processing | Never |
 | At-least-once | Commit only after successful processing | Never | Consumer crashes after processing but before commit |
 | Exactly-once | Transactional processing with idempotent producers | Never | Never (but adds complexity and overhead) |
 
 **At-least-once** is the most common choice for production systems because:
-- It guarantees no message loss
+- It avoids committing messages before they are handled
 - It is simpler to implement than exactly-once
 - Duplicate handling can be addressed at the application layer
 
@@ -195,6 +195,8 @@ def consume_with_sync_commit(consumer):
 ### Python - Asynchronous Commit with Callback
 
 ```python
+from confluent_kafka import Consumer
+
 def commit_callback(err, partitions):
     """Called when async commit completes."""
     if err:
@@ -203,10 +205,19 @@ def commit_callback(err, partitions):
         for p in partitions:
             log_debug(f"Committed {p.topic}[{p.partition}]@{p.offset}")
 
+config = {
+    'bootstrap.servers': 'localhost:9092',
+    'group.id': 'order-processor',
+    'enable.auto.commit': False,
+    'on_commit': commit_callback,
+}
+
+consumer = Consumer(config)
+
 def consume_with_async_commit(consumer):
     """
     Asynchronous commit for higher throughput.
-    Use callback to track commit failures.
+    Use on_commit to track commit failures.
     """
     while True:
         msg = consumer.poll(timeout=1.0)
@@ -218,8 +229,8 @@ def consume_with_async_commit(consumer):
 
         try:
             process_message(msg)
-            # Async commit with callback
-            consumer.commit(asynchronous=True, callback=commit_callback)
+            # Async commit; on_commit runs on a later poll()
+            consumer.commit(message=msg, asynchronous=True)
         except ProcessingError as e:
             log_error(f"Processing failed: {e}")
             send_to_dlq(msg, e)
@@ -279,7 +290,8 @@ def process_order(order_data):
 ### Dead Letter Queue Pattern
 
 ```python
-from confluent_kafka import Producer
+import time
+from confluent_kafka import Consumer, Producer
 
 class ConsumerWithDLQ:
     def __init__(self, consumer_config, dlq_topic='orders-dlq'):
@@ -378,7 +390,7 @@ class IdempotentConsumer:
     def get_idempotency_key(self, msg):
         """
         Generate unique key for message.
-        Use message key if available, otherwise hash the content.
+        Use message key if available, otherwise hash the record identity.
         """
         if msg.key():
             return f"processed:{msg.topic()}:{msg.key().decode()}"
@@ -493,10 +505,8 @@ class KeyBasedDeduplicator:
             # No key - cannot deduplicate, process anyway
             return True
 
-        # SETNX returns True if key was set (new message)
-        is_new = self.cache.setnx(key, "1")
-        if is_new:
-            self.cache.expire(key, self.ttl)
+        # SET with NX and EX atomically sets a TTL only for new keys
+        is_new = self.cache.set(key, "1", nx=True, ex=self.ttl)
         return is_new
 ```
 
@@ -534,15 +544,15 @@ class ContentHashDeduplicator:
         content_hash = self.compute_hash(msg)
         key = f"hash:{content_hash}"
 
-        is_new = self.cache.setnx(key, "1")
-        if is_new:
-            self.cache.expire(key, self.ttl)
+        is_new = self.cache.set(key, "1", nx=True, ex=self.ttl)
         return is_new
 ```
 
 ### Strategy 3: Sliding Window Deduplication
 
 ```python
+import hashlib
+import json
 import time
 
 class SlidingWindowDeduplicator:
@@ -553,6 +563,19 @@ class SlidingWindowDeduplicator:
     def __init__(self, redis_client, window_seconds=300):
         self.redis = redis_client
         self.window = window_seconds
+
+    def compute_hash(self, msg):
+        content = msg.value()
+        if isinstance(content, bytes):
+            content = content.decode('utf-8')
+
+        try:
+            parsed = json.loads(content)
+            normalized = json.dumps(parsed, sort_keys=True)
+        except json.JSONDecodeError:
+            normalized = content
+
+        return hashlib.sha256(normalized.encode()).hexdigest()
 
     def should_process(self, msg):
         key = msg.key().decode() if msg.key() else self.compute_hash(msg)
@@ -583,6 +606,9 @@ Process messages in batches for better throughput while maintaining at-least-onc
 ### Batch Commit Pattern
 
 ```python
+import time
+from confluent_kafka import Consumer, TopicPartition
+
 class BatchConsumer:
     def __init__(self, consumer_config, batch_size=100, batch_timeout=5.0):
         self.consumer = Consumer(consumer_config)
@@ -620,7 +646,7 @@ class BatchConsumer:
 
                 except Exception as e:
                     # Batch failed - do not commit
-                    # Messages will be redelivered on next poll
+                    # Messages will be redelivered after restart or reassignment
                     log_error(f"Batch processing failed: {e}")
                     # Optionally: process messages individually to isolate failures
                     self.process_individually(batch, processor_func)
@@ -639,7 +665,6 @@ class BatchConsumer:
                 offsets[tp] = msg.offset()
 
         # Build offset map for commit
-        from confluent_kafka import TopicPartition
         commit_offsets = [
             TopicPartition(topic, partition, offset + 1)
             for (topic, partition), offset in offsets.items()
@@ -706,7 +731,8 @@ public class BatchConsumer {
 
                 } catch (Exception e) {
                     System.err.println("Batch failed: " + e.getMessage());
-                    // Handle failure - process individually or send to DLQ
+                    // Isolate failures before polling more records
+                    processIndividually(batch, processor);
                 }
 
                 batch.clear();
@@ -728,6 +754,29 @@ public class BatchConsumer {
         }
 
         consumer.commitSync(offsets);
+    }
+
+    private void processIndividually(List<ConsumerRecord<String, String>> batch, BatchProcessor processor) {
+        for (ConsumerRecord<String, String> record : batch) {
+            try {
+                processor.process(Collections.singletonList(record));
+                consumer.commitSync(Collections.singletonMap(
+                    new TopicPartition(record.topic(), record.partition()),
+                    new OffsetAndMetadata(record.offset() + 1)
+                ));
+            } catch (Exception e) {
+                System.err.println("Record failed: " + e.getMessage());
+                sendToDlq(record, e);
+                consumer.commitSync(Collections.singletonMap(
+                    new TopicPartition(record.topic(), record.partition()),
+                    new OffsetAndMetadata(record.offset() + 1)
+                ));
+            }
+        }
+    }
+
+    private void sendToDlq(ConsumerRecord<String, String> record, Exception error) {
+        // Publish record and error metadata to a dead letter topic.
     }
 
     @FunctionalInterface
@@ -773,6 +822,10 @@ config = {
 ### Java Configuration
 
 ```java
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import java.util.Properties;
+
 Properties props = new Properties();
 props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka1:9092,kafka2:9092");
 props.put(ConsumerConfig.GROUP_ID_CONFIG, "order-processor");
@@ -827,12 +880,11 @@ Consumer lag indicates how far behind your consumer is from the latest messages.
 ### Python Lag Monitoring
 
 ```python
-from confluent_kafka import Consumer
-from confluent_kafka.admin import AdminClient
+from confluent_kafka import Consumer, TopicPartition
 
 class LagMonitor:
     def __init__(self, bootstrap_servers, group_id):
-        self.admin = AdminClient({'bootstrap.servers': bootstrap_servers})
+        self.group_id = group_id
         self.consumer = Consumer({
             'bootstrap.servers': bootstrap_servers,
             'group.id': group_id,
@@ -870,7 +922,7 @@ class LagMonitor:
             'total_lag': total_lag,
             'partition_lag': partition_lag,
             'topic': topic,
-            'group_id': self.consumer.consumer_group_metadata().group_id,
+            'group_id': self.group_id,
         }
 
     def report_lag(self, topic, metrics_client):
@@ -988,6 +1040,7 @@ class TestRetryLogic:
 
 ```python
 import pytest
+from confluent_kafka import Consumer, Producer
 from testcontainers.kafka import KafkaContainer
 
 @pytest.fixture
@@ -1085,7 +1138,7 @@ class TestAtLeastOnceDelivery:
 
 ## Best Practices Summary
 
-1. **Disable auto-commit** - Always use `enable.auto.commit=false` for at-least-once semantics.
+1. **Disable auto-commit for manual control** - Use `enable.auto.commit=false` when you want explicit control over offset commits.
 
 2. **Commit after processing** - Only commit offsets after successfully processing the message.
 
