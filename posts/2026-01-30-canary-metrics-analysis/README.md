@@ -38,7 +38,7 @@ Not all metrics matter equally for canary analysis. Focus on metrics that direct
 
 **Error rates** catch bugs and failures. Compare HTTP 5xx rates, exception counts, and timeout rates between canary and baseline.
 
-**Throughput metrics** ensure the canary handles load properly. If the canary processes fewer requests per second at the same load, something is wrong.
+**Throughput metrics** ensure the canary handles load properly. Compare throughput after normalizing for the traffic split. If the canary processes fewer requests per second for the same traffic share, something is wrong.
 
 **Resource utilization** catches efficiency regressions. Higher CPU or memory usage for the same workload indicates a problem even if user-facing metrics look fine.
 
@@ -49,7 +49,7 @@ Here is a configuration structure that defines which metrics to analyze.
 
 metrics:
   - name: request_latency_p99
-    query: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{version="{{version}}"}[5m]))
+    query: histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{version="{{version}}"}[5m])))
     threshold:
       max_percent_increase: 10
     weight: 40
@@ -63,7 +63,7 @@ metrics:
   - name: throughput
     query: sum(rate(http_requests_total{version="{{version}}"}[5m]))
     threshold:
-      min_percent: 95  # Must handle at least 95% of baseline throughput
+      min_percent: 95  # Compare normalized throughput, not raw RPS from a 95/5 split
     weight: 25
 
 analysis:
@@ -80,15 +80,14 @@ This Python implementation shows the essential logic for fetching metrics and co
 
 ```python
 # canary_analyzer.py
-import requests
 from dataclasses import dataclass
-from typing import List, Dict
-import statistics
+from typing import Dict
+import requests
 
 @dataclass
 class MetricConfig:
     name: str
-    query_template: str
+    query: str
     threshold: Dict
     weight: int
 
@@ -112,7 +111,10 @@ class CanaryAnalyzer:
             f"{self.prometheus_url}/api/v1/query",
             params={"query": query}
         )
+        response.raise_for_status()
         data = response.json()
+        if data.get('status') != 'success':
+            raise RuntimeError(f"Prometheus query failed: {data}")
 
         # Handle empty results
         if not data['data']['result']:
@@ -126,10 +128,10 @@ class CanaryAnalyzer:
         """Compare a single metric between baseline and canary."""
 
         # Build queries for each version
-        baseline_query = metric.query_template.replace(
+        baseline_query = metric.query.replace(
             "{{version}}", baseline_version
         )
-        canary_query = metric.query_template.replace(
+        canary_query = metric.query.replace(
             "{{version}}", canary_version
         )
 
@@ -246,8 +248,11 @@ def fetch_metric_series(prometheus_url: str, query: str,
             "step": step_seconds
         }
     )
+    response.raise_for_status()
 
     data = response.json()
+    if data.get('status') != 'success':
+        raise RuntimeError(f"Prometheus query failed: {data}")
     if not data['data']['result']:
         return []
 
