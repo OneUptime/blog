@@ -90,7 +90,7 @@ class DatabaseHealthCheck {
 module.exports = { DatabaseHealthCheck };
 ```
 
-This pattern works for any database. For MySQL, use `SELECT 1`. For Redis, use `PING`. The query should be fast enough that it does not add meaningful load to the database.
+This pattern works for many dependencies. For MySQL, use `SELECT 1`. For Redis, use `PING`. The query should be fast enough that it does not add meaningful load to the database.
 
 ## Connection Pool Health Monitoring
 
@@ -99,10 +99,8 @@ Beyond simple connectivity, you should monitor the health of your connection poo
 ```javascript
 // pool-health.js
 class PoolHealthMonitor {
-  constructor(pool, options = {}) {
+  constructor(pool) {
     this.pool = pool;
-    this.maxWaitTime = options.maxWaitTime || 5000;
-    this.minAvailable = options.minAvailable || 2;
   }
 
   // Check pool statistics for signs of trouble
@@ -153,16 +151,21 @@ Health checks must have timeouts. A hanging check is worse than a failed check b
 // Wrap any async function with a timeout
 function withTimeout(asyncFn, timeoutMs) {
   return async function(...args) {
+    let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         reject(new Error(`Health check timed out after ${timeoutMs}ms`));
       }, timeoutMs);
     });
 
-    return Promise.race([
-      asyncFn.apply(this, args),
-      timeoutPromise,
-    ]);
+    try {
+      return await Promise.race([
+        asyncFn.apply(this, args),
+        timeoutPromise,
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
   };
 }
 
@@ -231,13 +234,14 @@ class HealthCheckSystem {
     }
 
     const startTime = Date.now();
+    let timeoutId;
 
     try {
       const result = await Promise.race([
         check.fn(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), check.timeout)
-        ),
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Timeout')), check.timeout);
+        }),
       ]);
 
       const checkResult = {
@@ -261,6 +265,8 @@ class HealthCheckSystem {
 
       this.results.set(name, checkResult);
       return checkResult;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -408,7 +414,7 @@ Follow these guidelines to build effective health checks.
 
 **Keep checks fast.** A health check that takes 10 seconds defeats its purpose. Target sub-second response times.
 
-**Use dedicated connections.** Do not let health checks compete with application traffic for connections.
+**Keep connection usage small.** Do not let health checks starve application traffic for connections.
 
 **Check what matters.** A database health check should verify you can query, not just connect.
 
