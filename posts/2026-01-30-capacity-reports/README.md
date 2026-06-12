@@ -49,7 +49,7 @@ Here is a Python class that defines this report structure:
 ```python
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from enum import Enum
 
 class ReportSection(Enum):
@@ -74,7 +74,7 @@ class CapacityReport:
 
     # Report sections
     executive_summary: Optional[str] = None
-    utilization_data: Dict[str, any] = field(default_factory=dict)
+    utilization_data: Dict[str, Any] = field(default_factory=dict)
     trends: List[Dict] = field(default_factory=list)
     forecasts: List[Dict] = field(default_factory=list)
     risks: List[Dict] = field(default_factory=list)
@@ -524,6 +524,7 @@ graph TD
 ```python
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
+from statistics import NormalDist
 import math
 
 class CapacityForecaster:
@@ -556,14 +557,18 @@ class CapacityForecaster:
 
         # Calculate standard error for confidence intervals
         residuals = []
-        for i, val in enumerate(self.trend.values):
-            predicted = self.growth['baseline'] + daily_growth * i
+        for timestamp, val in zip(self.trend.timestamps, self.trend.values):
+            elapsed_days = (timestamp - self.trend.timestamps[0]).total_seconds() / 86400
+            predicted = self.growth['baseline'] + daily_growth * elapsed_days
             residuals.append(val - predicted)
 
         std_error = (sum(r**2 for r in residuals) / len(residuals)) ** 0.5
 
-        # Z-score for confidence level
-        z_score = 1.96 if confidence_level == 0.95 else 1.645
+        if not 0 < confidence_level < 1:
+            raise ValueError("confidence_level must be between 0 and 1")
+
+        # Z-score for two-sided confidence interval
+        z_score = NormalDist().inv_cdf((1 + confidence_level) / 2)
 
         for day in range(1, days_ahead + 1):
             forecast_date = last_date + timedelta(days=day)
@@ -589,13 +594,11 @@ class CapacityForecaster:
             }
         }
 
-    def capacity_exhaustion_date(self, current_capacity: float,
-                                 threshold: float = 100.0) -> Dict:
+    def capacity_exhaustion_date(self, threshold: float = 100.0) -> Dict:
         """
         Calculate when capacity will be exhausted at current growth rate.
 
         Args:
-            current_capacity: Current resource capacity (absolute value)
             threshold: Percentage threshold to consider as exhausted
 
         Returns:
@@ -824,7 +827,7 @@ class RecommendationEngine:
 
     def _check_growth_trajectory(self):
         """Check if growth rate requires proactive scaling."""
-        exhaustion = self.forecaster.capacity_exhaustion_date(100)
+        exhaustion = self.forecaster.capacity_exhaustion_date(threshold=100)
 
         if exhaustion.get('days_to_exhaustion') and \
            exhaustion['days_to_exhaustion'] <= 90:
@@ -1186,7 +1189,7 @@ class AutomatedReportGenerator:
                 section += f"## {resource}\n\n"
                 section += forecaster.generate_forecast_table([30, 60, 90])
 
-                exhaustion = forecaster.capacity_exhaustion_date(100)
+                exhaustion = forecaster.capacity_exhaustion_date(threshold=100)
                 if exhaustion.get('exhaustion_date'):
                     section += f"\n**Capacity Exhaustion**: {exhaustion['message']}\n\n"
 
@@ -1265,11 +1268,15 @@ class AutomatedReportGenerator:
 
     def _to_pdf(self, report: Dict) -> bytes:
         """Convert report to PDF format."""
-        # Use a library like weasyprint or reportlab
         html_content = self._to_html(report)
-        # Convert HTML to PDF
-        # return pdf_bytes
-        pass
+        try:
+            from weasyprint import HTML
+        except ImportError as exc:
+            raise RuntimeError(
+                "PDF output requires WeasyPrint. Install it with `pip install weasyprint`."
+            ) from exc
+
+        return HTML(string=html_content).write_pdf()
 
 # Example usage and scheduling
 
@@ -1365,7 +1372,7 @@ async def generate_complete_capacity_report():
     forecaster = CapacityForecaster(trend_analyzer)
     print(forecaster.generate_forecast_table())
 
-    exhaustion = forecaster.capacity_exhaustion_date(100)
+    exhaustion = forecaster.capacity_exhaustion_date(threshold=100)
     print(f"\nCapacity exhaustion: {exhaustion['message']}")
 
     # Generate recommendations
