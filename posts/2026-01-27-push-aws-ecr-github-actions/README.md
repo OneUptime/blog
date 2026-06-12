@@ -306,8 +306,11 @@ jobs:
           aws ecr describe-repositories --repository-names my-app 2>/dev/null || \
           aws ecr create-repository \
             --repository-name my-app \
-            --image-scanning-configuration scanOnPush=true \
             --encryption-configuration encryptionType=AES256
+
+          aws ecr put-registry-scanning-configuration \
+            --scan-type BASIC \
+            --rules '[{"scanFrequency":"SCAN_ON_PUSH","repositoryFilters":[{"filter":"my-app","filterType":"WILDCARD"}]}]'
 
   build-push:
     needs: ensure-repository
@@ -350,6 +353,9 @@ Replicate images across regions for disaster recovery:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     outputs:
       image-digest: ${{ steps.build.outputs.digest }}
     steps:
@@ -376,6 +382,9 @@ jobs:
   replicate:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       matrix:
         region: [eu-west-1, ap-southeast-1]
@@ -386,9 +395,13 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ matrix.region }}
 
-      - name: Login to ECR in ${{ matrix.region }}
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: Login to primary and target ECR registries
+        run: |
+          aws ecr get-login-password --region us-east-1 | \
+            docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
+
+          aws ecr get-login-password --region ${{ matrix.region }} | \
+            docker login --username AWS --password-stdin 123456789012.dkr.ecr.${{ matrix.region }}.amazonaws.com
 
       - name: Pull and push to region
         run: |
