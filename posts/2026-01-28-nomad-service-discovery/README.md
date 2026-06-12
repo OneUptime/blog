@@ -8,17 +8,17 @@ Description: Learn how to set up service discovery in Nomad using Consul, includ
 
 ---
 
-Nomad does not provide built-in service discovery on its own. The standard pattern is to integrate Nomad with Consul so services register automatically and can be discovered via DNS or API. This guide shows the setup and core configuration.
+Nomad supports its own service discovery, but Consul is the default provider and a common production pattern. With Consul integration, services register automatically and can be discovered via DNS or API. This guide shows the setup and core configuration.
 
 ## Prerequisites
 
 - Nomad cluster running
 - Consul cluster available
-- Nomad clients able to reach Consul
+- Nomad clients able to reach a Consul agent
 
 ## Step 1: Configure Nomad to Use Consul
 
-Add Consul integration in the Nomad client config:
+Add Consul integration in the Nomad agent config:
 
 ```hcl
 consul {
@@ -77,7 +77,7 @@ Consul provides DNS entries like:
 api.service.consul
 ```
 
-Within the same network, your apps can call `http://api.service.consul` to reach healthy instances.
+Within the same network, your apps can use `api.service.consul` to resolve healthy instances. If your service uses dynamic Nomad ports, query Consul DNS for SRV records or use the Consul API to get the registered port; use a URL like `http://api.service.consul:8080` only when the service is registered on a known port.
 
 ## Step 4: Use Consul API for Discovery
 
@@ -101,4 +101,4 @@ curl http://localhost:8500/v1/health/service/api?passing=true
 
 ## Conclusion
 
-Nomad service discovery is clean and reliable when backed by Consul. With a simple service stanza and health checks, you get dynamic discovery, load balancing, and safer deployments.
+Nomad service discovery is clean and reliable when backed by Consul. With a simple service stanza and health checks, you get dynamic discovery and safer deployments.
