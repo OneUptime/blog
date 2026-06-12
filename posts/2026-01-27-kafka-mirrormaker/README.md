@@ -45,7 +45,7 @@ flowchart LR
 | Consumer Group Sync | No | Yes |
 | Active-Active | Complex | Native support |
 | Configuration | Properties files | Connect configs |
-| Exactly-Once | No | Yes (with transactions) |
+| Exactly-Once | No | Optional with Kafka Connect source exactly-once support and transactions |
 
 ## MirrorMaker 2.0 Setup
 
@@ -114,8 +114,9 @@ tasks.max = 10
 # This command launches MM2 as a dedicated Connect cluster
 bin/connect-mirror-maker.sh mm2.properties
 
-# Alternatively, run as distributed Kafka Connect workers
-# First, configure connect-distributed.properties with MM2 connectors
+# Alternatively, run distributed Kafka Connect workers and create
+# MirrorSourceConnector, MirrorCheckpointConnector, and MirrorHeartbeatConnector
+# instances through the Connect REST API
 bin/connect-distributed.sh connect-distributed.properties
 ```
 
@@ -289,29 +290,17 @@ systemctl stop mirrormaker || docker stop mirrormaker
 echo "Waiting for final offset synchronization..."
 sleep 30
 
-# Step 4: Translate consumer group offsets
-echo "Translating consumer group offsets..."
+# Step 4: Verify synced consumer group offsets
+echo "Verifying synced consumer group offsets..."
 for group in "${CONSUMER_GROUPS[@]}"; do
     echo "Processing consumer group: $group"
 
-    # Get the translated offsets from checkpoint topic
-    kafka-console-consumer.sh \
-        --bootstrap-server $DR_BOOTSTRAP \
-        --topic primary.checkpoints.internal \
-        --from-beginning \
-        --timeout-ms 10000 \
-        --property print.key=true | \
-        grep "$group" | tail -1 > /tmp/offsets-$group.txt
-
-    # Reset consumer group to translated offset
-    # This uses the offset translation from MM2 checkpoints
+    # With sync.group.offsets.enabled=true, MM2 writes translated offsets
+    # to __consumer_offsets on the DR cluster while the group is inactive.
     kafka-consumer-groups.sh \
         --bootstrap-server $DR_BOOTSTRAP \
         --group $group \
-        --reset-offsets \
-        --to-earliest \
-        --topic "primary.*" \
-        --execute
+        --describe
 done
 
 # Step 5: Update DNS or load balancer
@@ -559,7 +548,7 @@ source->target.topics.exclude = .*\.internal|test-.*|__.*
 ### Custom Replication Policy
 
 ```java
-// CustomReplicationPolicy.java - Control topic naming and filtering
+// CustomReplicationPolicy.java - Control topic naming
 
 import org.apache.kafka.connect.mirror.ReplicationPolicy;
 import java.util.Map;
@@ -567,8 +556,8 @@ import java.util.Map;
 /**
  * Custom replication policy that:
  * 1. Uses a different naming convention for replicated topics
- * 2. Filters out topics based on custom logic
- * 3. Handles topic name transformations
+ * 2. Extracts source cluster aliases from remote topic names
+ * 3. Extracts upstream topic names from remote topic names
  */
 public class CustomReplicationPolicy implements ReplicationPolicy {
 
@@ -590,35 +579,30 @@ public class CustomReplicationPolicy implements ReplicationPolicy {
      */
     @Override
     public String formatRemoteTopic(String sourceClusterAlias, String topic) {
-        // Skip internal topics
-        if (topic.startsWith("__") || topic.startsWith("mm2-")) {
-            return null;
-        }
-
         // Custom naming: orders -> orders-replica-us-east
         return topic + replicaSuffix + separator + sourceClusterAlias;
-    }
-
-    /**
-     * Extract the source topic name from a replicated topic
-     */
-    @Override
-    public String topicSource(String topic) {
-        if (topic.contains(replicaSuffix)) {
-            int idx = topic.indexOf(replicaSuffix);
-            return topic.substring(0, idx);
-        }
-        return null;
     }
 
     /**
      * Extract the source cluster from a replicated topic name
      */
     @Override
-    public String upstreamCluster(String topic) {
+    public String topicSource(String topic) {
         if (topic.contains(replicaSuffix + separator)) {
             int idx = topic.lastIndexOf(separator);
             return topic.substring(idx + 1);
+        }
+        return null;
+    }
+
+    /**
+     * Extract the upstream topic name from a replicated topic
+     */
+    @Override
+    public String upstreamTopic(String topic) {
+        if (topic.contains(replicaSuffix + separator)) {
+            int idx = topic.indexOf(replicaSuffix + separator);
+            return topic.substring(0, idx);
         }
         return null;
     }
@@ -632,24 +616,6 @@ public class CustomReplicationPolicy implements ReplicationPolicy {
                topic.endsWith(".internal") ||
                topic.contains("heartbeats") ||
                topic.contains("checkpoints");
-    }
-
-    /**
-     * Determine if a topic should be replicated
-     * Return true to replicate, false to skip
-     */
-    public boolean shouldReplicateTopic(String topic) {
-        // Skip topics with 'local' in the name
-        if (topic.contains("local")) {
-            return false;
-        }
-
-        // Skip already-replicated topics to prevent loops
-        if (topic.contains(replicaSuffix)) {
-            return false;
-        }
-
-        return true;
     }
 }
 ```
@@ -681,10 +647,10 @@ source->target.transforms.maskPII.type = com.example.transforms.MaskPIITransform
 source->target.transforms.maskPII.fields = email,phone,ssn
 source->target.transforms.maskPII.mask.char = *
 
-# Transform 3: Filter records based on content
-source->target.predicates = isProduction
-source->target.predicates.isProduction.type = org.apache.kafka.connect.transforms.predicates.RecordIsTombstone
-source->target.transforms.addHeaders.predicate = isProduction
+# Transform 3: Apply the header transform only to non-tombstone records
+source->target.predicates = isTombstone
+source->target.predicates.isTombstone.type = org.apache.kafka.connect.transforms.predicates.RecordIsTombstone
+source->target.transforms.addHeaders.predicate = isTombstone
 source->target.transforms.addHeaders.negate = true
 ```
 
@@ -710,9 +676,13 @@ public class MaskPIITransform<R extends ConnectRecord<R>> implements Transformat
 
     @Override
     public void configure(Map<String, ?> configs) {
-        String fields = (String) configs.getOrDefault("fields", "");
+        Object fieldsConfig = configs.get("fields");
+        String fields = fieldsConfig == null ? "" : fieldsConfig.toString();
         fieldsToMask = Arrays.asList(fields.split(","));
-        maskChar = ((String) configs.getOrDefault("mask.char", "*")).charAt(0);
+
+        Object maskConfig = configs.get("mask.char");
+        String mask = maskConfig == null ? "*" : maskConfig.toString();
+        maskChar = mask.charAt(0);
     }
 
     @Override
@@ -834,11 +804,11 @@ flowchart TB
 ```properties
 # mm2-monitoring.properties
 
-# Enable JMX metrics
+# Enable the JMX metrics reporter
 metric.reporters = org.apache.kafka.common.metrics.JmxReporter
 
-# JMX configuration
-jmx.port = 9999
+# Expose JMX by setting JMX_PORT=9999 or KAFKA_JMX_OPTS when starting MM2.
+# jmx.port is not a Kafka worker property.
 
 # Key MirrorMaker 2.0 metrics to monitor:
 # kafka.connect.mirror:type=MirrorSourceConnector,target=*,topic=*,partition=*
@@ -899,12 +869,9 @@ rules:
 #!/usr/bin/env python3
 # monitor_replication_lag.py - Monitor MirrorMaker 2.0 replication lag
 
-import json
 import time
-import subprocess
 from datetime import datetime
-from kafka import KafkaConsumer, KafkaAdminClient
-from kafka.admin import TopicDescription
+from kafka import KafkaConsumer, TopicPartition
 import requests
 
 class ReplicationLagMonitor:
@@ -921,10 +888,6 @@ class ReplicationLagMonitor:
         self.target_bootstrap = target_bootstrap
         self.source_alias = source_alias
 
-        # Initialize admin clients
-        self.source_admin = KafkaAdminClient(bootstrap_servers=source_bootstrap)
-        self.target_admin = KafkaAdminClient(bootstrap_servers=target_bootstrap)
-
     def get_topic_offsets(self, bootstrap_servers: str, topics: list) -> dict:
         """Get the latest offsets for all partitions of specified topics."""
         consumer = KafkaConsumer(
@@ -937,10 +900,10 @@ class ReplicationLagMonitor:
             partitions = consumer.partitions_for_topic(topic)
             if partitions:
                 for partition in partitions:
-                    tp = (topic, partition)
+                    tp = TopicPartition(topic, partition)
                     consumer.assign([tp])
                     consumer.seek_to_end(tp)
-                    offsets[tp] = consumer.position(tp)
+                    offsets[(topic, partition)] = consumer.position(tp)
 
         consumer.close()
         return offsets
@@ -986,7 +949,7 @@ class ReplicationLagMonitor:
     def get_replication_latency_from_heartbeats(self) -> float:
         """
         Calculate replication latency using MirrorMaker heartbeat topic.
-        Heartbeats contain timestamps that show end-to-end latency.
+        This uses the Kafka record timestamp on replicated heartbeat records.
         """
         heartbeat_topic = f"{self.source_alias}.heartbeats"
 
@@ -994,18 +957,13 @@ class ReplicationLagMonitor:
             heartbeat_topic,
             bootstrap_servers=self.target_bootstrap,
             auto_offset_reset='latest',
-            consumer_timeout_ms=10000,
-            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+            consumer_timeout_ms=10000
         )
 
         latencies = []
 
         for message in consumer:
-            # Heartbeat contains source timestamp
-            source_timestamp = message.value.get('timestamp', 0)
-            receive_timestamp = message.timestamp
-
-            latency_ms = receive_timestamp - source_timestamp
+            latency_ms = int(time.time() * 1000) - message.timestamp
             latencies.append(latency_ms)
 
             if len(latencies) >= 10:
@@ -1051,17 +1009,20 @@ class ReplicationLagMonitor:
                      alert_webhook: str, topic: str):
         """Send alert if lag exceeds threshold."""
         if lag > threshold:
-            alert_payload = {
-                "severity": "critical" if lag > threshold * 2 else "warning",
-                "title": f"MirrorMaker Replication Lag Alert",
-                "message": f"Topic {topic} has replication lag of {lag} messages",
-                "timestamp": datetime.utcnow().isoformat(),
+            severity = "critical" if lag > threshold * 2 else "warning"
+            alert_payload = [{
                 "labels": {
+                    "alertname": "MirrorMakerReplicationLag",
+                    "severity": severity,
                     "topic": topic,
-                    "lag": lag,
-                    "threshold": threshold
-                }
-            }
+                },
+                "annotations": {
+                    "summary": "MirrorMaker replication lag alert",
+                    "description": f"Topic {topic} has replication lag of {lag} messages"
+                },
+                "startsAt": datetime.utcnow().isoformat() + "Z",
+                "generatorURL": "monitor_replication_lag.py"
+            }]
 
             requests.post(alert_webhook, json=alert_payload)
             print(f"ALERT: Lag {lag} exceeds threshold {threshold} for {topic}")
@@ -1096,7 +1057,7 @@ def main():
                 monitor.alert_on_lag(
                     lag_info['total_lag'],
                     lag_threshold,
-                    "http://alertmanager:9093/api/v1/alerts",
+                    "http://alertmanager:9093/api/v2/alerts",
                     topic
                 )
 
@@ -1213,16 +1174,16 @@ if __name__ == "__main__":
 curl -s http://localhost:8083/connectors | jq
 
 # View connector configuration
-curl -s http://localhost:8083/connectors/MirrorSourceConnector/config | jq
+curl -s http://localhost:8083/connectors/<connector-name>/config | jq
 
 # Check connector status
-curl -s http://localhost:8083/connectors/MirrorSourceConnector/status | jq
+curl -s http://localhost:8083/connectors/<connector-name>/status | jq
 
 # Pause replication
-curl -X PUT http://localhost:8083/connectors/MirrorSourceConnector/pause
+curl -X PUT http://localhost:8083/connectors/<connector-name>/pause
 
 # Resume replication
-curl -X PUT http://localhost:8083/connectors/MirrorSourceConnector/resume
+curl -X PUT http://localhost:8083/connectors/<connector-name>/resume
 
 # View replicated topics on target
 kafka-topics.sh --bootstrap-server target:9092 --list | grep "source\."
