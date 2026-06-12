@@ -57,7 +57,7 @@ az servicebus topic subscription create \
   --namespace-name my-servicebus-ns \
   --resource-group my-rg \
   --max-delivery-count 10 \
-  --dead-lettering-on-message-expiration true
+  --enable-dead-lettering-on-message-expiration true
 
 az servicebus topic subscription create \
   --name analytics-consumer \
@@ -317,7 +317,7 @@ while (true)
     try
     {
         // Deserialize and process the message
-        var order = JsonSerializer.Deserialize<OrderCreatedEvent>(message.Body);
+        var order = message.Body.ToObjectFromJson<OrderCreatedEvent>();
         Console.WriteLine($"Processing order {order.OrderId} from {order.Region}");
 
         await ProcessOrderAsync(order);
@@ -373,14 +373,14 @@ var processor = client.CreateProcessor(
 processor.ProcessMessageAsync += async args =>
 {
     var message = args.Message;
-    var order = JsonSerializer.Deserialize<OrderCreatedEvent>(message.Body);
+    var order = message.Body.ToObjectFromJson<OrderCreatedEvent>();
 
     Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] Processing {order.OrderId}");
 
     await ProcessOrderAsync(order);
 
     // Complete is called automatically on success
-    // To abandon or dead-letter, throw an exception
+    // Throw an exception to abandon for retry, or call DeadLetterMessageAsync to dead-letter
 };
 
 // Handler for errors
@@ -402,7 +402,7 @@ await processor.StopProcessingAsync();
 
 ## Message Sessions for Ordered Processing
 
-By default, Service Bus does not guarantee message order. Sessions provide ordered, exactly-once delivery for related messages.
+By default, Service Bus does not guarantee ordered processing across concurrent consumers. Sessions provide ordered handling for related messages.
 
 ```mermaid
 sequenceDiagram
@@ -461,8 +461,8 @@ var message3 = new ServiceBusMessage("Step 3: Process payment")
     Subject = "OrderWorkflow"
 };
 
-// Send in any order; receiver gets them in sequence
-await sender.SendMessagesAsync(new[] { message3, message1, message2 });
+// Send in the required order; receiver gets them in enqueue sequence
+await sender.SendMessagesAsync(new[] { message1, message2, message3 });
 ```
 
 ### Receiving Session Messages
@@ -515,7 +515,7 @@ var sessionProcessor = client.CreateSessionProcessor(
         // But only one message per session at a time (preserves order)
         MaxConcurrentCallsPerSession = 1,
 
-        // Keep session lock alive during processing
+        // Close an idle session and move to another
         SessionIdleTimeout = TimeSpan.FromMinutes(5)
     }
 );
@@ -528,7 +528,7 @@ sessionProcessor.ProcessMessageAsync += async args =>
     var state = await args.GetSessionStateAsync();
     if (state != null)
     {
-        var progress = JsonSerializer.Deserialize<WorkflowState>(state);
+        var progress = state.ToObjectFromJson<WorkflowState>();
         Console.WriteLine($"Resuming from step {progress.CurrentStep}");
     }
 
@@ -555,7 +555,7 @@ Dead-letter queues (DLQ) capture messages that cannot be processed. Every subscr
 
 - Max delivery count is exceeded
 - Messages expire with dead-lettering enabled
-- Filter evaluation errors occur
+- Filter evaluation errors occur, if dead-lettering on filter evaluation exceptions is enabled
 - You explicitly dead-letter a message
 
 ```mermaid
@@ -625,6 +625,14 @@ public class DeadLetterProcessor : BackgroundService
 {
     private readonly ServiceBusClient _client;
     private readonly ILogger<DeadLetterProcessor> _logger;
+
+    public DeadLetterProcessor(
+        ServiceBusClient client,
+        ILogger<DeadLetterProcessor> logger)
+    {
+        _client = client;
+        _logger = logger;
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -777,6 +785,24 @@ public class OrderEventPublisher : IOrderEventPublisher, IAsyncDisposable
         await _sender.SendMessageAsync(message);
     }
 
+    public async Task PublishOrderUpdatedAsync(OrderUpdatedEvent order)
+    {
+        var message = new ServiceBusMessage(JsonSerializer.SerializeToUtf8Bytes(order))
+        {
+            MessageId = order.OrderId.ToString(),
+            Subject = "OrderUpdated",
+            ContentType = "application/json",
+            SessionId = order.CustomerId
+        };
+
+        message.ApplicationProperties["EventType"] = "OrderUpdated";
+        message.ApplicationProperties["Region"] = order.Region;
+        message.ApplicationProperties["Amount"] = (double)order.TotalAmount;
+        message.ApplicationProperties["CustomerTier"] = order.CustomerTier;
+
+        await _sender.SendMessageAsync(message);
+    }
+
     public async Task PublishBatchAsync(IEnumerable<IOrderEvent> events)
     {
         var batch = await _sender.CreateMessageBatchAsync();
@@ -793,7 +819,11 @@ public class OrderEventPublisher : IOrderEventPublisher, IAsyncDisposable
                     batch.Dispose();
 
                     batch = await _sender.CreateMessageBatchAsync();
-                    batch.TryAddMessage(message);
+
+                    if (!batch.TryAddMessage(message))
+                    {
+                        throw new Exception($"Message too large for batch: {message.MessageId}");
+                    }
                 }
             }
 
@@ -821,6 +851,16 @@ public class OrderProcessorService : BackgroundService
     private readonly IOrderService _orderService;
     private readonly ILogger<OrderProcessorService> _logger;
     private ServiceBusProcessor _processor;
+
+    public OrderProcessorService(
+        ServiceBusClient client,
+        IOrderService orderService,
+        ILogger<OrderProcessorService> logger)
+    {
+        _client = client;
+        _orderService = orderService;
+        _logger = logger;
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -927,6 +967,11 @@ public class ServiceBusMetrics
 {
     private readonly ServiceBusAdministrationClient _adminClient;
 
+    public ServiceBusMetrics(ServiceBusAdministrationClient adminClient)
+    {
+        _adminClient = adminClient;
+    }
+
     public async Task<TopicMetrics> GetTopicMetricsAsync(string topicName)
     {
         var topicInfo = await _adminClient.GetTopicRuntimePropertiesAsync(topicName);
@@ -962,6 +1007,14 @@ public class DeadLetterMonitorService : BackgroundService
 {
     private readonly ServiceBusAdministrationClient _adminClient;
     private readonly IAlertService _alertService;
+
+    public DeadLetterMonitorService(
+        ServiceBusAdministrationClient adminClient,
+        IAlertService alertService)
+    {
+        _adminClient = adminClient;
+        _alertService = alertService;
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
