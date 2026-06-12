@@ -495,7 +495,8 @@ Enable SCIM for automatic user provisioning:
 ```bash
 # Users added/removed in IdP are automatically synced to Tailscale
 # Configure SCIM endpoint in your IdP:
-# Endpoint: https://api.tailscale.com/api/v2/tailnet/{tailnet}/scim/v2
+# Endpoint: https://controlplane.tailscale.com/scim/v2/
+# (For Microsoft Entra ID, append the required ?aadOptscim062020 suffix)
 # Bearer token: Generate in Tailscale admin console
 ```
 
@@ -536,13 +537,18 @@ Track all changes to your tailnet configuration:
 Export metrics for observability:
 
 ```bash
-# Prometheus metrics endpoint
-curl http://localhost:41112/metrics
+# Prometheus metrics endpoint (served by the local tailscaled over the Tailscale service IP)
+curl http://100.100.100.100/metrics
+
+# Alternatively, write metrics to a file via the CLI
+tailscale metrics print
+tailscale metrics write /tmp/tailscale-metrics.prom
 
 # Key metrics to monitor:
-# - tailscale_connected_peers: Number of connected devices
-# - tailscale_inbound_bytes_total: Traffic received
-# - tailscale_outbound_bytes_total: Traffic sent
+# - tailscaled_inbound_bytes_total: Traffic received
+# - tailscaled_outbound_bytes_total: Traffic sent
+# - tailscaled_advertised_routes / tailscaled_approved_routes: Subnet route state
+# - tailscaled_health_messages: Daemon health warnings
 ```
 
 ### Integration with OneUptime
