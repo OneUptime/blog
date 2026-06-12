@@ -15,7 +15,7 @@ API keys are the silent workhorses of modern applications. They authenticate ser
 Static credentials are a ticking time bomb. Here is why rotation matters:
 
 - **Limit blast radius**: A compromised key is only valid until the next rotation.
-- **Compliance requirements**: PCI-DSS, SOC 2, and HIPAA mandate credential rotation.
+- **Compliance requirements**: PCI-DSS may require periodic changes for application and system account credentials, while SOC 2 and HIPAA often drive risk-based credential lifecycle controls and audit evidence.
 - **Employee offboarding**: When team members leave, rotating keys ensures they lose access.
 - **Audit trails**: Rotation creates natural checkpoints for security reviews.
 
@@ -96,6 +96,7 @@ class APIKeyRotator {
 
   // Perform rotation: create new key, mark old for expiration
   async rotate() {
+    const oldestKey = this.getOldestActiveKey();
     const newKeyData = this.generateKey();
 
     // Store new key in secrets backend
@@ -103,10 +104,10 @@ class APIKeyRotator {
     this.keys.set(newKeyData.keyId, newKeyData);
 
     // Mark oldest active key for revocation after overlap period
-    const oldestKey = this.getOldestActiveKey();
     if (oldestKey) {
       oldestKey.status = 'pending_revocation';
       oldestKey.revokeAt = Date.now() + this.overlapPeriodMs;
+      await this.secretsBackend.store(oldestKey.keyId, oldestKey);
     }
 
     console.log(`Rotated API key. New key ID: ${newKeyData.keyId}`);
@@ -126,10 +127,22 @@ class APIKeyRotator {
     return oldest;
   }
 
+  // Compare equal-length API key strings with a timing-safe comparison
+  keyMatches(storedKey, providedKey) {
+    const stored = Buffer.from(storedKey);
+    const provided = Buffer.from(providedKey || '');
+
+    return stored.length === provided.length && crypto.timingSafeEqual(stored, provided);
+  }
+
   // Validate an incoming API key
   validate(providedKey) {
     for (const [, keyData] of this.keys) {
-      if (keyData.key === providedKey && keyData.status === 'active') {
+      const isUsable =
+        keyData.status === 'active' ||
+        (keyData.status === 'pending_revocation' && Date.now() < keyData.revokeAt);
+
+      if (this.keyMatches(keyData.key, providedKey) && isUsable) {
         if (Date.now() < keyData.expiresAt) {
           return { valid: true, keyId: keyData.keyId };
         }
@@ -157,7 +170,7 @@ module.exports = APIKeyRotator;
 
 ## Secrets Backend Integration
 
-The rotator needs a backend to persist keys. Here is an adapter for HashiCorp Vault, which is common in production environments.
+The rotator needs a backend to persist keys. Here is an adapter for HashiCorp Vault KV v2, which is common in production environments.
 
 ```javascript
 // vault-backend.js
@@ -170,6 +183,7 @@ class VaultBackend {
       token: options.token || process.env.VAULT_TOKEN,
     });
     this.secretPath = options.secretPath || 'secret/data/api-keys';
+    this.metadataPath = options.metadataPath || this.secretPath.replace('/data/', '/metadata/');
   }
 
   // Store a new key in Vault
@@ -179,6 +193,7 @@ class VaultBackend {
         key: keyData.key,
         createdAt: keyData.createdAt,
         expiresAt: keyData.expiresAt,
+        revokeAt: keyData.revokeAt,
         status: keyData.status,
       },
     });
@@ -190,14 +205,14 @@ class VaultBackend {
     return response.data.data;
   }
 
-  // Revoke a key by deleting it from Vault
+  // Revoke a key by deleting its KV v2 metadata and all versions from Vault
   async revoke(keyId) {
-    await this.client.delete(`${this.secretPath}/${keyId}`);
+    await this.client.delete(`${this.metadataPath}/${keyId}`);
   }
 
   // List all stored key IDs
   async list() {
-    const response = await this.client.list(this.secretPath);
+    const response = await this.client.list(this.metadataPath);
     return response.data.keys || [];
   }
 }
@@ -241,6 +256,8 @@ cron.schedule('0 0 * * *', async () => {
     console.error('Rotation failed:', error);
     // Send alert to monitoring system
   }
+}, {
+  timezone: 'UTC',
 });
 
 // Run cleanup every hour to revoke expired keys
