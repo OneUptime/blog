@@ -59,8 +59,9 @@ server {
         # Enable CORS for cross-origin playback
         add_header Access-Control-Allow-Origin "*";
 
-        # Disable buffering for better streaming performance
-        proxy_buffering off;
+        # Use sendfile for efficient static file delivery
+        sendfile on;
+        tcp_nopush on;
     }
 
     # HLS manifest files - these update frequently during live streams
@@ -234,11 +235,11 @@ server {
     location /video/ {
         root /var/www;
 
-        # Enable range request support
-        add_header Accept-Ranges bytes;
-
-        # Ensure the CDN respects range requests
-        proxy_force_ranges on;
+        # nginx natively supports byte-range requests for static files,
+        # and adds the Accept-Ranges: bytes header automatically.
+        # The directive below caps the maximum number of ranges allowed
+        # per request to mitigate range-amplification abuse.
+        max_ranges 10;
 
         # Set proper content type for video segments
         types {
