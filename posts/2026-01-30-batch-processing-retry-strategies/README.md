@@ -274,7 +274,7 @@ import logging
 from typing import Callable, TypeVar, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 T = TypeVar('T')
 
@@ -392,7 +392,7 @@ class RetryOrSkipProcessor:
             "error": str(error),
             "error_type": type(error).__name__,
             "attempts": attempts,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         self.logger.warning(
             f"Item sent to dead letter queue after {attempts} attempts: {error}"
@@ -523,10 +523,9 @@ For large batches, process items in chunks and save checkpoints. This allows rec
 
 ```python
 import json
-import hashlib
 from typing import Callable, TypeVar, List, Optional, Iterator, Any
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 T = TypeVar('T')
@@ -542,7 +541,7 @@ class Checkpoint:
 
     def save(self, path: Path) -> None:
         """Persist checkpoint to disk."""
-        self.last_updated = datetime.utcnow().isoformat()
+        self.last_updated = datetime.now(timezone.utc).isoformat()
         path.write_text(json.dumps(asdict(self), indent=2))
 
     @classmethod
@@ -608,7 +607,7 @@ class ChunkedBatchProcessor:
             on_chunk_complete: Callback after each chunk (current, total)
 
         Returns:
-            Combined results from all chunks
+            Combined results from chunks processed in this run
         """
         chunks = list(self._chunk_items(items))
         total_chunks = len(chunks)
@@ -638,6 +637,8 @@ class ChunkedBatchProcessor:
 
                     # Update checkpoint
                     checkpoint.completed_chunks.append(chunk_index)
+                    if chunk_index in checkpoint.failed_chunks:
+                        checkpoint.failed_chunks.remove(chunk_index)
                     checkpoint.save(self.checkpoint_path)
 
                     if on_chunk_complete:
@@ -656,7 +657,7 @@ class ChunkedBatchProcessor:
                     else:
                         print(f"Chunk {chunk_index} attempt {attempt} failed, retrying...")
 
-        # Combine results in order
+        # Combine results from this run in order
         final_results: List[T] = []
         for i in range(total_chunks):
             if i in all_results:
@@ -678,7 +679,7 @@ def process_user_batch(users: List[dict]) -> List[dict]:
         results.append({
             "user_id": user["id"],
             "processed": True,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     return results
 
@@ -707,7 +708,7 @@ import hashlib
 import json
 from typing import Callable, TypeVar, Optional, Any
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from abc import ABC, abstractmethod
 
 T = TypeVar('T')
@@ -739,13 +740,13 @@ class InMemoryIdempotencyStore(IdempotencyStore):
     def get(self, key: str) -> Optional[dict]:
         if key in self._store:
             value, expiry = self._store[key]
-            if datetime.utcnow() < expiry:
+            if datetime.now(timezone.utc) < expiry:
                 return value
             del self._store[key]
         return None
 
     def set(self, key: str, value: dict, ttl_seconds: int) -> None:
-        expiry = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+        expiry = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
         self._store[key] = (value, expiry)
 
     def delete(self, key: str) -> None:
@@ -827,6 +828,11 @@ class IdempotentBatchProcessor:
         # Check cache first
         cached = self.store.get(key)
         if cached is not None:
+            if cached.get("status") == "failed":
+                raise RuntimeError(
+                    f"Cached non-retryable failure for {key}: {cached['error']}"
+                )
+
             return IdempotentResult(
                 result=cached["result"],
                 from_cache=True,
@@ -843,7 +849,7 @@ class IdempotentBatchProcessor:
                 {
                     "result": result,
                     "status": "success",
-                    "processed_at": datetime.utcnow().isoformat(),
+                    "processed_at": datetime.now(timezone.utc).isoformat(),
                 },
                 self.ttl_seconds,
             )
@@ -861,7 +867,7 @@ class IdempotentBatchProcessor:
                 "status": "failed",
                 "error": str(e),
                 "error_type": type(e).__name__,
-                "processed_at": datetime.utcnow().isoformat(),
+                "processed_at": datetime.now(timezone.utc).isoformat(),
             }
 
             # Only cache non-retryable failures
@@ -959,7 +965,7 @@ flowchart LR
 
 ## Complete Batch Retry System
 
-Here is a production-ready batch processor that combines all the patterns:
+Here is a production-ready batch processor that combines retry policies, skip logic, a dead letter queue, and metrics:
 
 ```python
 import time
@@ -967,8 +973,7 @@ import logging
 from typing import Callable, TypeVar, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timezone
 
 T = TypeVar('T')
 
@@ -987,23 +992,14 @@ class BatchConfig:
     initial_delay: float = 1.0
     max_delay: float = 60.0
 
-    # Chunk settings
-    chunk_size: int = 100
-    checkpoint_enabled: bool = True
-    checkpoint_dir: str = "./checkpoints"
-
     # Failure handling
     skip_on_failure: bool = True
     max_skip_ratio: float = 0.1
 
-    # Idempotency
-    idempotency_enabled: bool = True
-    idempotency_ttl: int = 86400
-
 @dataclass
 class BatchMetrics:
     """Metrics collected during batch processing."""
-    start_time: datetime = field(default_factory=datetime.utcnow)
+    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     end_time: Optional[datetime] = None
     total_items: int = 0
     processed: int = 0
@@ -1013,7 +1009,7 @@ class BatchMetrics:
 
     @property
     def duration_seconds(self) -> float:
-        end = self.end_time or datetime.utcnow()
+        end = self.end_time or datetime.now(timezone.utc)
         return (end - self.start_time).total_seconds()
 
     @property
@@ -1028,9 +1024,7 @@ class BatchProcessor:
 
     Features:
     - Configurable retry policies (fixed, linear, exponential)
-    - Chunk-based processing with checkpoints
     - Retry vs skip logic with dead letter queue
-    - Idempotent operations
     - Comprehensive metrics
     """
 
@@ -1040,10 +1034,6 @@ class BatchProcessor:
         self.logger = logging.getLogger(f"batch.{job_id}")
         self.metrics = BatchMetrics()
         self.dead_letter_queue: List[dict] = []
-
-        # Initialize checkpoint directory
-        if self.config.checkpoint_enabled:
-            Path(self.config.checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
     def calculate_delay(self, attempt: int) -> float:
         """Calculate retry delay based on configured policy."""
@@ -1090,7 +1080,6 @@ class BatchProcessor:
 
             except Exception as e:
                 last_error = e
-                self.metrics.retried += 1
 
                 if attempt == self.config.max_retries:
                     self.logger.warning(
@@ -1104,6 +1093,7 @@ class BatchProcessor:
                     )
                     break
 
+                self.metrics.retried += 1
                 delay = self.calculate_delay(attempt)
                 self.logger.debug(
                     f"Item {item_id} attempt {attempt} failed, "
@@ -1155,7 +1145,7 @@ class BatchProcessor:
                         "item": item,
                         "item_id": item_id,
                         "error": str(error),
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                     })
                     results.append(None)
                     self.metrics.skipped += 1
@@ -1173,7 +1163,7 @@ class BatchProcessor:
             if on_progress:
                 on_progress(i + 1, len(items))
 
-        self.metrics.end_time = datetime.utcnow()
+        self.metrics.end_time = datetime.now(timezone.utc)
 
         self.logger.info(
             f"Batch {self.job_id} complete: "
