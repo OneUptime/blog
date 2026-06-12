@@ -18,7 +18,7 @@ Ollama is an open-source tool that lets you run large language models locally on
 - **Privacy** - Your data never leaves your machine
 - **Cost** - No per-token API fees
 - **Offline access** - Works without internet
-- **Customization** - Fine-tune and create custom models
+- **Customization** - Create custom models and use fine-tuned weights or adapters
 - **Low latency** - No network round trips
 
 ## Installation
@@ -45,7 +45,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 
 ### Windows
 
-Download the installer from [ollama.com/download](https://ollama.com/download) and run it. Ollama runs as a background service on Windows.
+Download the installer from [ollama.com/download](https://ollama.com/download) and run it. Ollama runs as a background application on Windows.
 
 ### Docker
 
@@ -79,7 +79,7 @@ ollama pull llama3.2
 # Pull specific model sizes
 ollama pull llama3.2:1b      # 1 billion parameters (smallest)
 ollama pull llama3.2:3b      # 3 billion parameters
-ollama pull llama3.2:8b      # 8 billion parameters
+ollama pull llama3.1:8b      # 8 billion parameters
 
 # Pull other popular models
 ollama pull mistral          # Mistral 7B
@@ -98,7 +98,7 @@ ollama list
 # Example output:
 # NAME              ID            SIZE    MODIFIED
 # llama3.2:latest   a6990ed6be41  2.0 GB  2 hours ago
-# mistral:latest    f974a74358d6  4.1 GB  1 day ago
+# mistral:latest    f974a74358d6  4.4 GB  1 day ago
 
 # Remove a model to free disk space
 ollama rm mistral
@@ -129,17 +129,20 @@ ollama run llama3.2 "Explain how DNS works in 3 sentences"
 cat code.py | ollama run codellama "Review this code for bugs"
 ```
 
-### CLI Options
+### CLI Commands
 
-```bash
-# Set custom system prompt
-ollama run llama3.2 --system "You are a helpful coding assistant"
+```text
+# Set a custom system prompt inside the interactive session
+>>> /set system "You are a helpful coding assistant"
 
-# Multiline input mode (useful for code)
-ollama run codellama --multiline
+# Multiline input in the interactive session (useful for code)
+>>> """Explain this code:
+... def hello():
+...     print("hello")
+... """
 
-# Set context window size
-ollama run llama3.2 --num-ctx 4096
+# Set context window size inside the interactive session
+>>> /set parameter num_ctx 4096
 ```
 
 ## REST API for Applications
@@ -207,7 +210,7 @@ curl http://localhost:11434/api/version
 
 ## Context and Conversation Management
 
-Ollama maintains conversation context within a session. For multi-turn conversations, you must manage message history yourself.
+Ollama maintains conversation context in the interactive CLI session. For API-based multi-turn conversations, you must manage message history yourself.
 
 ### Context Window
 
@@ -306,9 +309,9 @@ Ollama automatically detects and uses available GPUs.
 
 ```bash
 # Check if GPU is detected
-ollama run llama3.2 --verbose
+ollama ps
 
-# Look for: "using CUDA" in the output
+# Look for "100% GPU" or a CPU/GPU split in the PROCESSOR column
 
 # Verify NVIDIA drivers
 nvidia-smi
@@ -332,7 +335,7 @@ rocm-smi
 
 ```bash
 # Disable GPU for testing
-CUDA_VISIBLE_DEVICES="" ollama serve
+CUDA_VISIBLE_DEVICES="-1" ollama serve
 ```
 
 ## Memory Requirements
@@ -344,7 +347,7 @@ Model size determines RAM/VRAM requirements.
 | Phi-3 Mini | 3.8B | 4 GB | 3 GB |
 | Llama 3.2 | 3B | 4 GB | 3 GB |
 | Mistral | 7B | 8 GB | 6 GB |
-| Llama 3.2 | 8B | 10 GB | 8 GB |
+| Llama 3.1 | 8B | 10 GB | 8 GB |
 | Llama 3.1 | 70B | 64 GB | 48 GB |
 
 **Tips for memory management:**
@@ -478,10 +481,10 @@ echo "$response" | jq -r '.response'
 ### Integration with LangChain
 
 ```python
-from langchain_community.llms import Ollama
+from langchain_ollama import OllamaLLM
 
 # Initialize Ollama LLM
-llm = Ollama(model="llama3.2", base_url="http://localhost:11434")
+llm = OllamaLLM(model="llama3.2", base_url="http://localhost:11434")
 
 # Generate response
 response = llm.invoke("What are the benefits of Infrastructure as Code?")
