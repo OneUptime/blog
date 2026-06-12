@@ -37,11 +37,11 @@ RFC 9457 defines five standard members:
 
 | Field | Type | Required | Purpose |
 |-------|------|----------|---------|
-| `type` | URI | No* | Identifies the problem type |
+| `type` | URI reference | No* | Identifies the problem type |
 | `title` | string | No | Short, human-readable summary |
 | `status` | integer | No | HTTP status code |
 | `detail` | string | No | Human-readable explanation specific to this occurrence |
-| `instance` | URI | No | URI reference identifying this specific problem |
+| `instance` | URI reference | No | URI reference identifying this specific problem |
 
 *If `type` is omitted, it defaults to `about:blank`, meaning the problem has no additional semantics beyond the HTTP status code.
 
@@ -90,7 +90,7 @@ Here's a Node.js implementation:
 
 ```typescript
 // types/problem-details.ts
-interface ProblemDetails {
+export interface ProblemDetails {
   type: string;
   title: string;
   status: number;
@@ -100,7 +100,7 @@ interface ProblemDetails {
 }
 
 // problems/registry.ts
-const PROBLEM_TYPES = {
+export const PROBLEM_TYPES = {
   VALIDATION_ERROR: {
     type: 'https://api.example.com/problems/validation-error',
     title: 'Validation Error',
@@ -129,7 +129,10 @@ const PROBLEM_TYPES = {
 } as const;
 
 // problems/builder.ts
-function createProblem(
+import { PROBLEM_TYPES } from './registry';
+import { type ProblemDetails } from '../types/problem-details';
+
+export function createProblem(
   problemType: keyof typeof PROBLEM_TYPES,
   options: {
     detail?: string;
@@ -154,7 +157,10 @@ function createProblem(
 
 ```typescript
 // middleware/problem-details.ts
-import { Request, Response, NextFunction } from 'express';
+import { type Request, type Response, type NextFunction } from 'express';
+import { createProblem } from '../problems/builder';
+import { PROBLEM_TYPES } from '../problems/registry';
+import { type ProblemDetails } from '../types/problem-details';
 
 class ApiError extends Error {
   constructor(
@@ -479,8 +485,8 @@ sequenceDiagram
 ```python
 # problem_details.py
 
-from dataclasses import dataclass, field, asdict
-from typing import Optional, Any
+from dataclasses import dataclass, field
+from typing import Optional
 from flask import jsonify, Response
 
 @dataclass
@@ -549,9 +555,20 @@ class Problems:
         )
 
 # Flask usage
-from flask import Flask, request
+from flask import Flask
 
 app = Flask(__name__)
+
+class ValidationError(Exception):
+    def __init__(self, message: str, errors: list):
+        super().__init__(message)
+        self.errors = errors
+
+class NotFoundError(Exception):
+    def __init__(self, resource: str, resource_id: str):
+        super().__init__(f'{resource} with ID {resource_id} does not exist')
+        self.resource = resource
+        self.resource_id = resource_id
 
 @app.errorhandler(Exception)
 def handle_error(error):
