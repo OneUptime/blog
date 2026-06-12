@@ -21,9 +21,9 @@ Distributed systems face several challenges that make consensus essential:
 - **Network partitions**: Nodes may become temporarily unreachable
 - **Node failures**: Servers can crash and restart at any time
 - **Message delays**: Network latency can cause messages to arrive out of order
-- **Byzantine failures**: In some systems, nodes may behave maliciously
+- **Non-Byzantine failures**: Nodes may crash, restart, or become unreachable without behaving maliciously
 
-Consensus protocols solve these problems by providing guarantees about agreement, validity, and termination.
+Crash-fault-tolerant consensus protocols like Paxos and Raft solve these problems by providing guarantees about agreement, validity, and termination. Byzantine failures require specialized Byzantine fault-tolerant protocols and are outside the scope of Paxos and Raft.
 
 ```mermaid
 flowchart TD
@@ -210,12 +210,13 @@ class Proposer:
     3. Ensuring progress even with competing proposers
     """
 
-    def __init__(self, node_id: str, acceptors: list):
+    def __init__(self, node_id: str, acceptors: list, proposer_id: int = 1):
         self.node_id = node_id
         self.acceptors = acceptors
+        self.proposer_id = proposer_id
 
         # Counter for generating unique proposal numbers
-        # In practice, this should include the node_id for global uniqueness
+        # In practice, assign each proposer a unique numeric ID
         self.proposal_counter = 0
 
         self.lock = threading.Lock()
@@ -226,13 +227,13 @@ class Proposer:
 
         In a real implementation, this should combine:
         - A local counter
-        - The node ID (to ensure global uniqueness)
-        - Possibly a timestamp
+        - A unique proposer ID
+        - Enough bits/range to avoid collisions for the cluster size
         """
         with self.lock:
             self.proposal_counter += 1
-            # Combine counter with node_id hash for uniqueness
-            return self.proposal_counter * 1000 + hash(self.node_id) % 1000
+            # Reserve the low 16 bits for a unique proposer ID.
+            return (self.proposal_counter << 16) | self.proposer_id
 
     def propose(self, value: Any) -> Optional[Any]:
         """
@@ -366,7 +367,7 @@ stateDiagram-v2
 
 ### Leader Election in Raft
 
-The leader election process ensures exactly one leader per term:
+The leader election process ensures at most one leader per term:
 
 ```mermaid
 sequenceDiagram
@@ -400,13 +401,13 @@ sequenceDiagram
 
 ### Raft Implementation
 
-Here is a comprehensive Raft implementation:
+Here is a simplified educational Raft implementation:
 
 ```python
 """
-Raft Consensus Protocol Implementation
+Raft Consensus Protocol Implementation Sketch
 
-This module implements the Raft consensus algorithm including:
+This module sketches the Raft consensus algorithm including:
 - Leader election with randomized timeouts
 - Log replication with consistency checks
 - Safety guarantees through term-based voting
@@ -1069,7 +1070,8 @@ class EtcdLeaderElection:
         """
         try:
             # Refresh lease periodically (every TTL/3 seconds)
-            for _ in self.lease.refresh():
+            while not self._stop_event.is_set():
+                self.lease.refresh()
                 if self._stop_event.is_set():
                     break
                 time.sleep(self.lease_ttl / 3)
@@ -1204,8 +1206,10 @@ class EtcdDistributedLock:
 
     def _keepalive(self):
         """Keep the lease alive while we hold the lock."""
+        lease = self.lease
         try:
-            for _ in self.lease.refresh():
+            while self.lease is lease:
+                lease.refresh()
                 time.sleep(self.ttl / 3)
         except Exception:
             pass
@@ -1291,7 +1295,8 @@ class EtcdServiceDiscovery:
         # Start keepalive
         def keepalive():
             try:
-                for _ in lease.refresh():
+                while self.registrations.get(key) is lease:
+                    lease.refresh()
                     time.sleep(ttl / 3)
             except Exception:
                 pass
