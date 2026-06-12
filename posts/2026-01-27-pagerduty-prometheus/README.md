@@ -113,38 +113,38 @@ route:
     # Route critical alerts to PagerDuty immediately
     - receiver: 'pagerduty-critical'
       matchers:
-        - severity = critical
+        - severity="critical"
       # Override timing for critical alerts
       group_wait: 10s
       repeat_interval: 1h
       # Continue evaluating child routes for additional matching
       continue: false
 
-    # Route high-severity alerts to PagerDuty during business hours only
-    - receiver: 'pagerduty-high'
+    # Route error-severity alerts to PagerDuty during business hours only
+    - receiver: 'pagerduty-error'
       matchers:
-        - severity = high
-      # Use time-based muting for off-hours (optional, requires mute_time_intervals)
+        - severity="error"
+      # Send notifications only during the named time interval
       active_time_intervals:
         - business-hours
 
     # Route warning alerts to a separate channel
     - receiver: 'slack-warnings'
       matchers:
-        - severity = warning
+        - severity="warning"
       group_wait: 1m
       repeat_interval: 24h
 
     # Route database alerts to the DBA on-call team
     - receiver: 'pagerduty-dba'
       matchers:
-        - team = database
+        - team="database"
       continue: false
 
     # Route infrastructure alerts to the platform team
     - receiver: 'pagerduty-platform'
       matchers:
-        - team = platform
+        - team="platform"
 
 # Define time intervals for time-based routing
 time_intervals:
@@ -213,12 +213,12 @@ groups:
           description: 'Node {{ $labels.instance }} has been unreachable for more than 2 minutes.'
           runbook_url: 'https://wiki.example.com/runbooks/node-down'
 
-      # High severity alert for high CPU usage
+      # Error severity alert for high CPU usage
       - alert: HighCPUUsage
         expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
         for: 10m
         labels:
-          severity: high
+          severity: error
           team: platform
         annotations:
           summary: 'High CPU usage on {{ $labels.instance }}'
@@ -260,7 +260,7 @@ receivers:
 
         # Client information
         client: 'Prometheus Alertmanager'
-        client_url: '{{ template "pagerduty.clientUrl" . }}'
+        client_url: '{{ .ExternalURL }}'
 
         # Custom details appear in the incident body
         # Use key-value pairs for structured information
@@ -300,13 +300,14 @@ receivers:
 
         # Images can be included for visual context (optional)
         # images:
-        #   - src: '{{ .CommonAnnotations.graph_url }}'
+        #   - href: '{{ .CommonAnnotations.graph_url }}'
+        #     src: '{{ .CommonAnnotations.graph_image_url }}'
         #     alt: 'Metric Graph'
 ```
 
 ---
 
-## Custom event fields and service keys
+## Custom event fields and integration keys
 
 For organizations with multiple PagerDuty services, you can route alerts to different services based on labels or use custom event fields for advanced workflows.
 
@@ -360,54 +361,49 @@ route:
   routes:
     - receiver: 'pagerduty-database'
       matchers:
-        - team = database
+        - team="database"
     - receiver: 'pagerduty-application'
       matchers:
-        - team = application
+        - team="application"
     - receiver: 'pagerduty-platform'
       matchers:
-        - team = platform
+        - team="platform"
 ```
 
 ---
 
 ## Deduplication and alert grouping
 
-PagerDuty uses a deduplication key to identify unique incidents. Alertmanager generates this key automatically, but you can customize it to control how alerts are grouped into incidents.
+PagerDuty uses a deduplication key to identify unique incidents. Alertmanager generates this key automatically for PagerDuty notifications, and you control how alerts are grouped into PagerDuty incidents by configuring Alertmanager's routing and grouping labels.
 
 ### Deduplication configuration
 
 ```yaml
 # alertmanager.yml
-# Configure deduplication keys for PagerDuty
+# Configure grouping labels that influence PagerDuty deduplication
+
+route:
+  receiver: 'pagerduty-default'
+
+  # Option 1: Group by alert name and instance
+  # Each instance gets its own notification group
+  # group_by: ['alertname', 'instance']
+
+  # Option 2: Group by alert name and service
+  # All instances of the same service are grouped
+  # group_by: ['alertname', 'service']
+
+  # Option 3: Group by alert name, cluster, and namespace
+  # Recommended for Kubernetes environments
+  group_by: ['alertname', 'cluster', 'namespace']
 
 receivers:
-  - name: 'pagerduty-dedupe'
+  - name: 'pagerduty-default'
     pagerduty_configs:
       - routing_key: 'your-pagerduty-integration-key'
         send_resolved: true
         severity: '{{ .CommonLabels.severity }}'
         description: '{{ .CommonAnnotations.summary }}'
-
-        # Custom deduplication key
-        # Alerts with the same dedup_key are grouped into one incident
-        # Default: combination of routing_key and group labels
-
-        # Option 1: Dedupe by alert name and instance
-        # Each instance gets its own incident
-        # dedup_key: '{{ .CommonLabels.alertname }}-{{ .CommonLabels.instance }}'
-
-        # Option 2: Dedupe by alert name and service
-        # All instances of the same service are grouped
-        # dedup_key: '{{ .CommonLabels.alertname }}-{{ .CommonLabels.service }}'
-
-        # Option 3: Dedupe by alert name, cluster, and namespace
-        # Recommended for Kubernetes environments
-        dedup_key: '{{ .CommonLabels.alertname }}-{{ .CommonLabels.cluster }}-{{ .CommonLabels.namespace }}'
-
-        # Option 4: Use a fingerprint from Alertmanager
-        # Most granular option, each unique alert gets its own incident
-        # dedup_key: '{{ .GroupKey }}'
 ```
 
 ### Alertmanager grouping interaction
@@ -437,7 +433,7 @@ route:
     # Critical alerts: faster grouping, shorter wait
     - receiver: 'pagerduty-critical'
       matchers:
-        - severity = critical
+        - severity="critical"
       group_wait: 10s
       group_interval: 1m
       repeat_interval: 1h
@@ -445,7 +441,7 @@ route:
     # Warning alerts: longer wait to batch more together
     - receiver: 'pagerduty-warnings'
       matchers:
-        - severity = warning
+        - severity="warning"
       group_wait: 2m
       group_interval: 10m
       repeat_interval: 24h
@@ -494,7 +490,7 @@ curl -X POST http://localhost:9093/api/v2/alerts \
 
 Follow these guidelines for a reliable Prometheus-PagerDuty integration:
 
-- **Use Events API v2**: The newer API supports richer incident details, custom fields, and better deduplication.
+- **Use Events API v2**: The newer API supports richer incident details, custom details, and better deduplication.
 
 - **Set appropriate severities**: Map your alert severities consistently. Reserve "critical" for issues requiring immediate human intervention.
 
@@ -504,7 +500,7 @@ Follow these guidelines for a reliable Prometheus-PagerDuty integration:
 
 - **Enable send_resolved**: Let PagerDuty know when issues are fixed automatically to reduce on-call burden.
 
-- **Use descriptive dedup keys**: Choose deduplication keys that match how your team thinks about incidents.
+- **Use descriptive grouping labels**: Choose `group_by` labels that match how your team thinks about incidents.
 
 - **Test before production**: Verify alerts flow correctly with test alerts before relying on the integration.
 
