@@ -19,8 +19,8 @@ flowchart TB
     subgraph ArgoCD
         A1[Centralized UI]
         A2[Application CRD]
-        A3[Single Controller]
-        A4[Built-in Secrets]
+        A3[Integrated Components]
+        A4[Repository Secrets]
     end
 
     subgraph Flux
@@ -37,7 +37,7 @@ flowchart TB
 
 | Factor | ArgoCD | Flux |
 |--------|--------|------|
-| Architecture | Monolithic | Modular (GitOps Toolkit) |
+| Architecture | Integrated control plane | Modular (GitOps Toolkit) |
 | Resource Usage | Higher (UI, Redis, Dex) | Lower (no UI by default) |
 | Multi-tenancy | Project-based | Namespace-based |
 | Helm Support | Via Application | Native HelmRelease CRD |
@@ -83,12 +83,14 @@ graph LR
 # -------                      ----
 # Application               -> GitRepository + Kustomization
 # Application (Helm)        -> HelmRepository + HelmRelease
-# ApplicationSet            -> Kustomization with variable substitution
+# ApplicationSet            -> Multiple Kustomizations generated from templates
 # AppProject                -> Namespace + ServiceAccount + RBAC
 # Repository (Git)          -> GitRepository
 # Repository (Helm)         -> HelmRepository
-# Sync Policy (automated)   -> Kustomization.spec.interval
-# Self-Heal                 -> Kustomization.spec.prune + force
+# Sync Policy (automated)   -> Kustomization reconciliation interval
+# Self-Heal                 -> Flux reconciliation loop
+# Prune                     -> Kustomization.spec.prune
+# Immutable field handling  -> Kustomization.spec.force
 # Sync Waves                -> Kustomization.spec.dependsOn
 ```
 
@@ -176,6 +178,7 @@ spec:
   prune: true
 
   # Target namespace for resources
+  # The namespace must already exist or be managed as a manifest
   targetNamespace: production
 
   # Wait for resources to be ready
@@ -383,7 +386,7 @@ spec:
   interval: 1m
   url: https://github.com/myorg/backend-api.git
   ref:
-    branch: main  # HEAD in ArgoCD maps to main/master branch
+    branch: main  # Choose the repository's default branch when ArgoCD uses HEAD
 
 ---
 # Then, create the Kustomization to deploy from that source
@@ -400,8 +403,8 @@ spec:
   interval: 5m
   prune: true  # Equivalent to ArgoCD's automated.prune
   targetNamespace: backend
-  # Flux creates namespaces automatically when targetNamespace is set
-  # No explicit CreateNamespace option needed
+  # Flux does not create targetNamespace automatically
+  # Add a Namespace manifest to Git or create it before reconciliation
 ```
 
 ### Converting Helm-Based Applications
@@ -453,7 +456,7 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: redis
-  namespace: redis  # HelmRelease can live in target namespace
+  namespace: redis  # HelmRelease can live in target namespace; create it first
 spec:
   interval: 5m
   chart:
@@ -548,7 +551,7 @@ spec:
 # Repeat for order-service, inventory-service...
 
 ---
-# Option 2: Using Flux's variable substitution (similar to ApplicationSet)
+# Option 2: Using Flux's variable substitution for manifest values
 # Create a single GitRepository for a monorepo structure
 
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -577,7 +580,8 @@ spec:
   interval: 5m
   prune: true
   targetNamespace: users
-  # Variable substitution (similar to ArgoCD templating)
+  # Variable substitution applies inside rendered manifests;
+  # it does not generate multiple Kustomization objects by itself
   postBuild:
     substitute:
       SERVICE_NAME: user-service
@@ -614,8 +618,8 @@ flowchart LR
 ### Migrating from ArgoCD Vault Plugin to SOPS
 
 ```yaml
-# Step 1: Install SOPS in your cluster
-# This is typically done via Flux itself
+# Step 1: Make your encrypted secrets available to Flux
+# SOPS runs locally for encryption; Flux decrypts during reconciliation
 
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
@@ -654,9 +658,9 @@ spec:
 # migrate-secrets-to-sops.sh
 # Convert existing secrets to SOPS-encrypted format
 
-# Install age for encryption
-brew install age  # macOS
-# or: apt install age  # Ubuntu
+# Install SOPS and age for encryption
+brew install sops age  # macOS
+# or: apt install sops age  # Ubuntu, depending on your distribution packages
 
 # Generate age key pair
 age-keygen -o age.agekey
@@ -683,9 +687,9 @@ yq eval 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimesta
 sops --encrypt --in-place db-credentials.yaml
 
 # Create the SOPS key secret in Flux
-kubectl create secret generic sops-age \
+cat age.agekey | kubectl create secret generic sops-age \
   --namespace=flux-system \
-  --from-file=age.agekey
+  --from-file=age.agekey=/dev/stdin
 ```
 
 ### Migrating External Secrets
@@ -709,7 +713,7 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-secrets
-  namespace: external-secrets
+  namespace: external-secrets  # Create this namespace first or manage it in Git
 spec:
   interval: 5m
   chart:
@@ -817,22 +821,15 @@ resources:
   - gotk-components.yaml
   - gotk-sync.yaml
 
-# Ensure Flux doesn't manage ArgoCD namespace
-patches:
-  - patch: |
-      - op: add
-        path: /spec/template/spec/containers/0/args/-
-        value: --watch-all-namespaces=true
-    target:
-      kind: Deployment
-      name: kustomize-controller
+# Keep ArgoCD manifests out of the Flux-managed path until migration cleanup
+# Flux only manages resources included by these Kustomize resources
 ```
 
 ### Phase 2: Migrate Applications One by One
 
 ```bash
 #!/bin/bash
-# migrate-app.sh - Migrate a single application from ArgoCD to Flux
+# migrate-app.sh - Migrate a single branch-based application from ArgoCD to Flux
 # Usage: ./migrate-app.sh <app-name>
 
 APP_NAME=$1
@@ -853,6 +850,9 @@ REPO_URL=$(yq eval '.spec.source.repoURL' /tmp/argocd-$APP_NAME.yaml)
 PATH=$(yq eval '.spec.source.path' /tmp/argocd-$APP_NAME.yaml)
 TARGET_NS=$(yq eval '.spec.destination.namespace' /tmp/argocd-$APP_NAME.yaml)
 REVISION=$(yq eval '.spec.source.targetRevision' /tmp/argocd-$APP_NAME.yaml)
+if [ "$REVISION" = "HEAD" ] || [ "$REVISION" = "null" ] || [ -z "$REVISION" ]; then
+  REVISION=main
+fi
 
 echo "Repository: $REPO_URL"
 echo "Path: $PATH"
@@ -865,6 +865,9 @@ kubectl patch application $APP_NAME -n argocd --type=json \
   -p='[{"op": "remove", "path": "/spec/syncPolicy/automated"}]' 2>/dev/null || true
 
 # Step 3: Create Flux resources
+echo "Ensuring target namespace exists..."
+kubectl create namespace "$TARGET_NS" --dry-run=client -o yaml | kubectl apply -f -
+
 echo "Creating Flux GitRepository..."
 cat << EOF | kubectl apply -f -
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -876,7 +879,7 @@ spec:
   interval: 1m
   url: $REPO_URL
   ref:
-    branch: ${REVISION:-main}
+    branch: $REVISION
 EOF
 
 echo "Creating Flux Kustomization..."
@@ -1072,7 +1075,7 @@ spec:
 
 ```yaml
 # Flux notification for migration status
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -1084,7 +1087,7 @@ spec:
     name: slack-webhook
 
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: migration-alerts
