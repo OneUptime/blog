@@ -84,13 +84,13 @@ One of the most impactful optimizations is placing the RocksDB database (DB) and
 ```bash
 # Create an OSD with dedicated DB and WAL devices
 # --data: Primary data device (HDD)
-# --block-db: Database device (NVMe SSD partition)
-# --block-wal: Write-ahead log device (NVMe SSD partition)
+# --block.db: Database device (NVMe SSD partition)
+# --block.wal: Write-ahead log device (NVMe SSD partition)
 
 ceph-volume lvm create \
     --data /dev/sda \
-    --block-db /dev/nvme0n1p1 \
-    --block-wal /dev/nvme0n1p2
+    --block.db /dev/nvme0n1p1 \
+    --block.wal /dev/nvme0n1p2
 
 # Verify the OSD configuration
 ceph-volume lvm list
@@ -189,7 +189,7 @@ ceph config set osd bluestore_cache_autotune true
 # This includes cache plus other OSD memory usage
 ceph config set osd osd_memory_target 4294967296             # 4 GB total
 
-# Set cache minimum size during autotune
+# Set cache allocation chunk size during autotune
 ceph config set osd bluestore_cache_autotune_chunk_size 33554432  # 32 MB
 
 # Verify current cache settings
@@ -282,7 +282,8 @@ ceph df detail
 ### Allocation Hints
 
 ```bash
-# Configure allocation size for sequential workloads
+# Configure allocation size before creating OSDs; existing OSDs keep the value
+# they were created with unless they are redeployed.
 ceph config set osd bluestore_min_alloc_size_hdd 65536       # 64 KB for HDD
 ceph config set osd bluestore_min_alloc_size_ssd 4096        # 4 KB for SSD
 
@@ -294,8 +295,8 @@ ceph config set osd bluestore_prefer_deferred_size_ssd 0
 ### RocksDB Tuning
 
 ```bash
-# Increase RocksDB memory allocation
-ceph config set osd bluestore_rocksdb_options "compression=kNoCompression,\
+# Adjust selected RocksDB options without replacing the built-in defaults
+ceph config set osd bluestore_rocksdb_options_annex "compression=kNoCompression,\
 max_write_buffer_number=4,\
 min_write_buffer_number_to_merge=1,\
 recycle_log_file_num=4,\
@@ -331,13 +332,13 @@ ceph config set osd ms_async_op_threads 5
 
 ```bash
 # View BlueStore statistics for a specific OSD
-ceph daemon osd.0 perf dump bluestore
+ceph daemon osd.0 counter dump | jq '.bluestore'
 
 # Monitor cache hit ratios
-ceph daemon osd.0 perf dump bluestore | grep cache
+ceph daemon osd.0 counter dump | jq '.bluestore | {onode_hits, onode_misses}'
 
 # Check compression statistics
-ceph daemon osd.0 perf dump bluestore | grep compress
+ceph daemon osd.0 counter dump | jq '.bluestore | with_entries(select(.key | test("compress")))'
 
 # View current BlueStore configuration
 ceph daemon osd.0 config show | grep bluestore
@@ -349,22 +350,24 @@ ceph daemon osd.0 config show | grep bluestore
 # Use the following to check critical BlueStore metrics:
 
 # 1. Cache effectiveness
-ceph daemon osd.0 perf dump bluestore | jq '.bluestore | {
-    "cache_hit_ratio": ((.bluestore_cache_hit / (.bluestore_cache_hit + .bluestore_cache_miss)) * 100),
-    "onode_hits": .bluestore_onode_hits,
-    "onode_misses": .bluestore_onode_misses
+ceph daemon osd.0 counter dump | jq '.bluestore | {
+    "onode_hit_ratio": ((.onode_hits / (.onode_hits + .onode_misses)) * 100),
+    "onode_hits": .onode_hits,
+    "onode_misses": .onode_misses
 }'
 
 # 2. Write amplification
-ceph daemon osd.0 perf dump bluestore | jq '.bluestore | {
-    "bytes_written": .bluestore_write_bytes,
-    "bytes_written_wal": .bluestore_wal_write_bytes
+ceph daemon osd.0 counter dump | jq '.bluestore | {
+    "write_big_bytes": .write_big_bytes,
+    "write_small_bytes": .write_small_bytes,
+    "write_pad_bytes": .write_pad_bytes,
+    "issued_deferred_write_bytes": .issued_deferred_write_bytes
 }'
 
 # 3. Latency statistics
-ceph daemon osd.0 perf dump bluestore | jq '.bluestore | {
-    "commit_latency_avg": .bluestore_commit_lat.avgtime,
-    "kv_sync_latency_avg": .bluestore_kv_sync_lat.avgtime
+ceph daemon osd.0 counter dump | jq '.bluestore | {
+    "commit_latency_avg": .txc_commit_lat.avgtime,
+    "kv_sync_latency_avg": .kv_sync_lat.avgtime
 }'
 ```
 
