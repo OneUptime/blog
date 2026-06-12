@@ -56,8 +56,8 @@ flowchart TB
 
 rabbitmqctl add_user myuser secretpassword
 
-# Create user with hashed password (more secure)
-rabbitmqctl add_user myuser --password-hash "hashed_value"
+# Create user with a pre-hashed password
+rabbitmqctl add_user --pre-hashed-password myuser "hashed_value"
 
 # List all users
 rabbitmqctl list_users
@@ -99,7 +99,7 @@ rabbitmqctl delete_user myuser
 
 ## Managing Virtual Hosts
 
-Virtual hosts provide complete isolation between applications.
+Virtual hosts provide logical isolation between applications.
 
 ### Create Virtual Hosts
 
@@ -200,6 +200,7 @@ rabbitmqctl list_permissions -p /production
 
 ```python
 import requests
+from urllib.parse import quote
 from requests.auth import HTTPBasicAuth
 
 class RabbitMQAdmin:
@@ -209,7 +210,8 @@ class RabbitMQAdmin:
 
     def create_user(self, username, password, tags=None):
         """Create a new user"""
-        url = f"{self.base_url}/users/{username}"
+        username_encoded = quote(username, safe='')
+        url = f"{self.base_url}/users/{username_encoded}"
         data = {
             "password": password,
             "tags": tags or ""
@@ -219,20 +221,23 @@ class RabbitMQAdmin:
 
     def delete_user(self, username):
         """Delete a user"""
-        url = f"{self.base_url}/users/{username}"
+        username_encoded = quote(username, safe='')
+        url = f"{self.base_url}/users/{username_encoded}"
         response = requests.delete(url, auth=self.auth)
         return response.status_code == 204
 
     def create_vhost(self, vhost):
         """Create a virtual host"""
-        url = f"{self.base_url}/vhosts/{vhost}"
+        vhost_encoded = quote(vhost, safe='')
+        url = f"{self.base_url}/vhosts/{vhost_encoded}"
         response = requests.put(url, auth=self.auth)
         return response.status_code in [201, 204]
 
     def set_permissions(self, vhost, username, configure, write, read):
         """Set user permissions for a vhost"""
-        vhost_encoded = vhost.replace('/', '%2f')
-        url = f"{self.base_url}/permissions/{vhost_encoded}/{username}"
+        vhost_encoded = quote(vhost, safe='')
+        username_encoded = quote(username, safe='')
+        url = f"{self.base_url}/permissions/{vhost_encoded}/{username_encoded}"
         data = {
             "configure": configure,
             "write": write,
@@ -243,10 +248,12 @@ class RabbitMQAdmin:
 
     def set_topic_permissions(self, vhost, username, exchange, write, read):
         """Set topic permissions for an exchange"""
-        vhost_encoded = vhost.replace('/', '%2f')
-        url = f"{self.base_url}/topic-permissions/{vhost_encoded}/{username}"
+        vhost_encoded = quote(vhost, safe='')
+        username_encoded = quote(username, safe='')
+        url = f"{self.base_url}/topic-permissions/{vhost_encoded}/{username_encoded}"
         data = {
             "exchange": exchange,
+            "configure": ".*",
             "write": write,
             "read": read
         }
@@ -312,7 +319,7 @@ rabbitmqctl set_permissions -p /production event_publisher \
 # Subscriber - can create queues and read
 rabbitmqctl add_user event_subscriber sub_pass
 rabbitmqctl set_permissions -p /production event_subscriber \
-    "^subscriber\\." "" "^(subscriber\\.|events$)"
+    "^subscriber\\." "^subscriber\\." "^(subscriber\\.|events$)"
 ```
 
 ### Pattern 3: Monitoring User
@@ -322,9 +329,9 @@ rabbitmqctl set_permissions -p /production event_subscriber \
 rabbitmqctl add_user monitoring mon_pass
 rabbitmqctl set_user_tags monitoring monitoring
 
-# Grant read access to all vhosts
-for vhost in $(rabbitmqctl list_vhosts --quiet); do
-    rabbitmqctl set_permissions -p "$vhost" monitoring "" "" ".*"
+# Grant management UI visibility without resource access
+for vhost in $(rabbitmqctl list_vhosts --silent); do
+    rabbitmqctl set_permissions -p "$vhost" monitoring "" "" ""
 done
 ```
 
