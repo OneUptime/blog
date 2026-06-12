@@ -72,8 +72,11 @@ Development environments benefit most from always-on sampling. You need complete
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+} from '@opentelemetry/semantic-conventions';
 import { AlwaysOnSampler } from '@opentelemetry/sdk-trace-base';
 
 const traceExporter = new OTLPTraceExporter({
@@ -81,9 +84,9 @@ const traceExporter = new OTLPTraceExporter({
 });
 
 export const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'development',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-service',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: 'development',
   }),
   traceExporter,
   // Always-on: capture every trace in development
@@ -383,15 +386,15 @@ processors:
         value: hot
         action: insert
 
+connectors:
   # Route high-value to hot storage
   routing:
-    from_attribute: transaction.type
+    default_pipelines: [traces/warm]
+    error_mode: ignore
     table:
-      - value: payment
-        exporters: [otlp/hot]
-      - value: financial
-        exporters: [otlp/hot]
-    default_exporters: [otlp/warm]
+      - context: span
+        condition: attributes["transaction.type"] == "payment" or attributes["transaction.type"] == "financial"
+        pipelines: [traces/hot]
 
 exporters:
   otlp/hot:
@@ -407,10 +410,16 @@ exporters:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
       processors: [batch, attributes/tier]
-      exporters: [otlp/hot, otlp/warm]
+      exporters: [routing]
+    traces/hot:
+      receivers: [routing]
+      exporters: [otlp/hot]
+    traces/warm:
+      receivers: [routing]
+      exporters: [otlp/warm]
 ```
 
 ### Retention Policies
@@ -710,7 +719,7 @@ const spanProcessor = new BatchSpanProcessor(exporter, {
 });
 
 export const sdk = new NodeSDK({
-  spanProcessor,
+  spanProcessors: [spanProcessor],
   sampler: new CircuitBreakerSampler({
     maxSamplesPerWindow: 50000,  // 50k traces per minute max
     windowDurationMs: 60000,
@@ -855,8 +864,12 @@ export class GracefulDegradationSampler implements Sampler {
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import {
   AlwaysOnSampler,
   ParentBasedSampler,
@@ -891,16 +904,18 @@ const traceExporter = new OTLPTraceExporter({
 });
 
 export const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
+    [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
   }),
-  spanProcessor: new BatchSpanProcessor(traceExporter, {
-    maxQueueSize: 2048,
-    maxExportBatchSize: 512,
-    scheduledDelayMillis: 5000,
-  }),
+  spanProcessors: [
+    new BatchSpanProcessor(traceExporter, {
+      maxQueueSize: 2048,
+      maxExportBatchSize: 512,
+      scheduledDelayMillis: 5000,
+    }),
+  ],
   sampler: createSampler(),
   instrumentations: [
     getNodeAutoInstrumentations({
@@ -1011,10 +1026,11 @@ import (
 	"os"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func getSampler() sdktrace.Sampler {
@@ -1032,8 +1048,13 @@ func getSampler() sdktrace.Sampler {
 }
 
 func InitTracer(ctx context.Context, serviceName string) (*sdktrace.TracerProvider, error) {
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "https://oneuptime.com/otlp/v1/traces"
+	}
+
 	exporter, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithEndpoint(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")),
+		otlptracehttp.WithEndpointURL(endpoint),
 		otlptracehttp.WithHeaders(map[string]string{
 			"x-oneuptime-token": os.Getenv("ONEUPTIME_TOKEN"),
 		}),
@@ -1045,7 +1066,7 @@ func InitTracer(ctx context.Context, serviceName string) (*sdktrace.TracerProvid
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName(serviceName),
-			semconv.DeploymentEnvironment(os.Getenv("ENVIRONMENT")),
+			attribute.String("deployment.environment.name", os.Getenv("ENVIRONMENT")),
 		),
 	)
 	if err != nil {
