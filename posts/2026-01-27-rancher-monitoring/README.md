@@ -26,7 +26,7 @@ flowchart TB
     end
 
     subgraph Downstream["Downstream Cluster"]
-        subgraph MonitoringStack["rancher-monitoring namespace"]
+        subgraph MonitoringStack["cattle-monitoring-system namespace"]
             Prom[Prometheus]
             AM[Alertmanager]
             Graf[Grafana]
@@ -66,7 +66,7 @@ The fastest path to cluster observability is through Rancher's UI, but you can a
 
 ### Via Rancher UI
 
-Navigate to your cluster, select **Apps** from the sidebar, and install the **Monitoring** chart from the Rancher charts repository:
+Navigate to your cluster, select **Cluster Tools**, and install the **Monitoring** chart from the Rancher charts repository:
 
 ```yaml
 # Example values to customize the installation
@@ -224,24 +224,24 @@ grafana:
   additionalDataSources: []
 
 # Node Exporter - runs on every node
-nodeExporter:
+prometheus-node-exporter:
   resources:
     requests:
       memory: 30Mi
-      cpu: 50m
+      cpu: 100m
     limits:
-      memory: 100Mi
+      memory: 50Mi
       cpu: 200m
 
 # Kube State Metrics
-kubeStateMetrics:
+kube-state-metrics:
   resources:
     requests:
-      memory: 50Mi
-      cpu: 50m
+      memory: 130Mi
+      cpu: 100m
     limits:
       memory: 200Mi
-      cpu: 200m
+      cpu: 100m
 ```
 
 ## Prometheus Integration Deep Dive
@@ -262,7 +262,7 @@ metadata:
   name: my-application
   namespace: production
   labels:
-    # This label ensures Rancher's Prometheus picks up the monitor
+    # Use a label that matches your Prometheus serviceMonitorSelector if you customize it
     release: rancher-monitoring
 spec:
   # Selector to find the target Service
@@ -422,7 +422,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: custom-app-dashboard
-  namespace: cattle-monitoring-system
+  namespace: cattle-dashboards
   labels:
     # This label tells Grafana to load the dashboard
     grafana_dashboard: "1"
@@ -727,19 +727,19 @@ stringData:
       # Child routes (more specific matching)
       routes:
         # Critical alerts go to PagerDuty
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'pagerduty-critical'
           continue: true  # Also send to default receiver
 
         # Infrastructure team alerts
-        - match:
-            team: infrastructure
+        - matchers:
+            - team="infrastructure"
           receiver: 'infrastructure-team-slack'
 
         # Silence alerts for staging
-        - match:
-            namespace: staging
+        - matchers:
+            - namespace="staging"
           receiver: 'null'
 
     # Receivers define where to send notifications
@@ -781,10 +781,10 @@ stringData:
     # Inhibition rules to suppress redundant alerts
     inhibit_rules:
       # If a critical alert fires, suppress warnings for the same alertname
-      - source_match:
-          severity: 'critical'
-        target_match:
-          severity: 'warning'
+      - source_matchers:
+          - severity="critical"
+        target_matchers:
+          - severity="warning"
         equal: ['alertname', 'namespace']
 ```
 
@@ -956,9 +956,8 @@ prometheus:
 
       # Object storage configuration
       objectStorageConfig:
-        existingSecret:
-          name: thanos-objstore-config
-          key: objstore.yml
+        name: thanos-objstore-config
+        key: objstore.yml
 
       # Resource allocation
       resources:
@@ -1013,28 +1012,24 @@ Configure Alertmanager to send alerts to OneUptime's webhook receiver:
 receivers:
   - name: 'oneuptime-webhook'
     webhook_configs:
-      - url: 'https://oneuptime.example.com/api/incoming-request/YOUR_MONITOR_ID'
+      - url: 'https://oneuptime.example.com/heartbeat/YOUR_SECRET_KEY'
         send_resolved: true
         http_config:
-          bearer_token: 'YOUR_API_TOKEN'
+          authorization:
+            credentials: 'YOUR_API_TOKEN'
 ```
 
-### Prometheus Remote Write to OneUptime
+### Sending Metrics to OneUptime
 
-Send metrics to OneUptime for long-term storage and cross-system correlation:
+Send metrics to OneUptime for long-term storage and cross-system correlation through the OpenTelemetry OTLP endpoint:
 
 ```yaml
-# In monitoring-values.yaml
-prometheus:
-  prometheusSpec:
-    remoteWrite:
-      - url: "https://oneuptime.example.com/api/metrics/write"
-        bearerToken: "YOUR_ONEUPTIME_API_TOKEN"
-        writeRelabelConfigs:
-          # Only send essential metrics to reduce volume
-          - sourceLabels: [__name__]
-            regex: "(http_requests_total|http_request_duration_seconds_bucket|up|kube_pod_status_phase)"
-            action: keep
+# OpenTelemetry Collector exporter configuration
+exporters:
+  otlphttp/oneuptime:
+    endpoint: "https://oneuptime.example.com/otlp"
+    headers:
+      x-oneuptime-token: "YOUR_ONEUPTIME_TELEMETRY_INGESTION_TOKEN"
 ```
 
 ## Troubleshooting Common Issues
