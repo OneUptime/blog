@@ -8,15 +8,15 @@ Description: Learn how to implement consistent hash exchange in RabbitMQ for det
 
 ---
 
-When you need messages with the same key to always go to the same queue, consistent hash exchange is your solution. It uses a hash ring to deterministically route messages based on routing key or message header, ensuring that related messages (like all orders from the same customer) end up at the same consumer for ordered processing.
+When you need messages with the same key to always go to the same queue while the exchange topology is unchanged, consistent hash exchange is your solution. It uses a hash ring to deterministically route messages based on routing key, message header, or message property, ensuring that related messages (like all orders from the same customer) end up on the same queue for ordered processing.
 
 ## Why Consistent Hash Exchange?
 
-Standard exchanges distribute messages round-robin or based on exact routing key matches. But sometimes you need:
+Standard exchanges route messages by exchange-specific rules such as fanout, exact routing key matches, or topic patterns. But sometimes you need:
 
-- All messages for a user processed by the same consumer (for ordering)
+- All messages for a user processed by the same queue with one active consumer (for ordering)
 - Sharding across multiple queues for parallel processing
-- Sticky routing that survives queue additions/removals
+- Sticky routing while the queue bindings and node state remain unchanged
 
 ```mermaid
 flowchart LR
@@ -53,8 +53,8 @@ rabbitmq-plugins enable rabbitmq_consistent_hash_exchange
 # Verify it's enabled
 rabbitmq-plugins list | grep consistent_hash
 
-# Restart not required, but verify
-rabbitmqctl status | grep consistent_hash
+# Verify the running node reports the plugin as enabled
+rabbitmqctl status | grep rabbitmq_consistent_hash_exchange
 ```
 
 ## Basic Setup
@@ -128,7 +128,7 @@ setupConsistentHashExchange();
 
 ## Publishing Messages
 
-The routing key becomes the hash key. Messages with the same routing key always go to the same queue.
+The routing key becomes the hash key. Messages with the same routing key go to the same queue while the exchange bindings and node state remain unchanged.
 
 ### Python Publisher
 
@@ -196,9 +196,13 @@ async function publishUserEvent(userId, eventType, eventData) {
     await connection.close();
 }
 
-// All events for user_123 go to the same queue
-await publishUserEvent('user_123', 'login', { ip: '1.2.3.4' });
-await publishUserEvent('user_123', 'purchase', { amount: 99.99 });
+async function main() {
+    // All events for user_123 go to the same queue
+    await publishUserEvent('user_123', 'login', { ip: '1.2.3.4' });
+    await publishUserEvent('user_123', 'purchase', { amount: 99.99 });
+}
+
+main().catch(console.error);
 ```
 
 ## Hash on Message Header
@@ -222,11 +226,13 @@ def setup_header_hash_exchange():
         }
     )
 
-    # Bind queues
+    # Declare and bind queues
     for i in range(4):
+        queue_name = f'orders_shard_{i}'
+        channel.queue_declare(queue=queue_name, durable=True)
         channel.queue_bind(
             exchange='orders',
-            queue=f'orders_shard_{i}',
+            queue=queue_name,
             routing_key='10'
         )
 
@@ -297,6 +303,7 @@ def setup_weighted_distribution():
     )
 
     # High capacity queue gets more messages
+    channel.queue_declare(queue='high_capacity', durable=True)
     channel.queue_bind(
         exchange='weighted',
         queue='high_capacity',
@@ -304,6 +311,7 @@ def setup_weighted_distribution():
     )
 
     # Low capacity queue gets fewer messages
+    channel.queue_declare(queue='low_capacity', durable=True)
     channel.queue_bind(
         exchange='weighted',
         queue='low_capacity',
@@ -344,7 +352,7 @@ def add_shard(exchange_name, queue_name, weight='10'):
 
     connection.close()
 
-def remove_shard(exchange_name, queue_name):
+def remove_shard(exchange_name, queue_name, weight='10'):
     """Remove a shard from the consistent hash exchange"""
     connection = pika.BlockingConnection(
         pika.ConnectionParameters('localhost')
@@ -354,7 +362,8 @@ def remove_shard(exchange_name, queue_name):
     # Unbind from exchange
     channel.queue_unbind(
         exchange=exchange_name,
-        queue=queue_name
+        queue=queue_name,
+        routing_key=weight
     )
 
     # Optionally delete the queue
@@ -396,7 +405,7 @@ class ShardConsumer:
         print(f"[{self.queue_name}] Processing event for user {user_id}")
 
         # Process the message
-        # Messages for the same user always come to this consumer
+        # Messages for the same user come to this shard
         # So you can maintain per-user state safely
 
         ch.basic_ack(delivery_tag=method.delivery_tag)
@@ -429,10 +438,10 @@ while True:
 
 ### 1. User Event Ordering
 
-Ensure all events for a user are processed in order:
+Ensure all events for a user are routed to the same queue for ordered processing with one active consumer:
 
 ```python
-# Hash on user_id ensures ordering per user
+# Hash on user_id keeps a user's events on the same queue
 channel.basic_publish(
     exchange='user_events',
     routing_key=user_id,
@@ -442,7 +451,7 @@ channel.basic_publish(
 
 ### 2. Session Affinity
 
-Keep all requests for a session on the same worker:
+Keep all requests for a session on the same queue:
 
 ```python
 # Hash on session_id
@@ -468,7 +477,7 @@ channel.basic_publish(
 
 ### 4. Aggregation by Key
 
-Aggregate data for the same key on the same worker:
+Aggregate data for the same key on the same queue:
 
 ```python
 # Hash on aggregation_key
@@ -547,4 +556,4 @@ rabbitmqctl list_bindings source_name destination_name routing_key | grep user_e
 
 ## Conclusion
 
-Consistent hash exchange provides deterministic message routing based on hash keys. It ensures related messages always reach the same consumer, enabling ordered processing and stateful aggregation. Use it when message affinity matters, and monitor distribution to ensure balanced load across your shards.
+Consistent hash exchange provides deterministic message routing based on hash keys while the exchange bindings and node state remain unchanged. It ensures related messages reach the same queue, enabling ordered processing with one active consumer and stateful aggregation. Use it when message affinity matters, and monitor distribution to ensure balanced load across your shards.
