@@ -41,7 +41,7 @@ Every rule needs these fields:
   desc: Description         # Human-readable explanation
   condition: <expression>   # Boolean expression to match
   output: <format string>   # Alert message with field interpolation
-  priority: <level>         # DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY
+  priority: <level>         # DEBUG, INFORMATIONAL, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY
   enabled: true             # Optional - toggle rule on/off
   tags: [tag1, tag2]        # Optional - categorization
 ```
@@ -73,10 +73,12 @@ fd.directory       # Directory of fd
 fd.filename        # Filename only
 
 # Network fields
-fd.sip             # Source IP
-fd.sport           # Source port
-fd.dip             # Destination IP
-fd.dport           # Destination port
+fd.cip             # Client IP
+fd.cport           # Client port
+fd.sip             # Server IP
+fd.sport           # Server port
+fd.rip             # Remote IP
+fd.rport           # Remote port
 ```
 
 ## Using Macros for Reusability
@@ -308,6 +310,12 @@ Falco can also process Kubernetes audit logs for API-level detection.
 # Enable audit log source in falco.yaml first
 # Then create audit rules:
 
+- macro: kevt
+  condition: jevt.value[/stage] = ResponseComplete
+
+- macro: kevt_started
+  condition: jevt.value[/stage] = ResponseStarted
+
 # Detect exec into pod
 - rule: Exec into Pod
   desc: Detect kubectl exec into pods
@@ -358,28 +366,28 @@ Falco can also process Kubernetes audit logs for API-level detection.
     kevt and
     ka.target.resource = pods and
     ka.verb = create and
-    not ka.req.pod.spec.automountServiceAccountToken = false
+    not jevt.value[/requestObject/spec/automountServiceAccountToken] = false
   output: >
     Pod created with SA token mounted
     (user=%ka.user.name pod=%ka.target.name namespace=%ka.target.namespace)
-  priority: INFO
+  priority: INFORMATIONAL
   source: k8s_audit
   tags: [kubernetes, serviceaccount]
 ```
 
 ## Testing Rules Locally
 
-### Using falco with File Input
+### Using sysdig and falco with File Input
 
 ```bash
 # Record syscalls to a capture file
-sudo falco -w events.scap -M 60  # Capture for 60 seconds
+sudo sysdig -w events.scap -M 60  # Capture for 60 seconds
 
 # Test rules against the capture
-falco -r my_rules.yaml -e events.scap
+falco -r my_rules.yaml -o engine.kind=replay -o engine.replay.capture_file=events.scap
 
-# Test a specific rule
-falco -r my_rules.yaml -e events.scap --filter "rule='My Rule Name'"
+# Inspect a specific rule
+falco -r my_rules.yaml -l "My Rule Name"
 ```
 
 ### Using falco-driver-loader for Live Testing
@@ -392,7 +400,7 @@ falco-driver-loader
 sudo falco -r /etc/falco/falco_rules.yaml -r /etc/falco/my_custom_rules.yaml
 
 # Dry run to validate syntax
-falco -r my_rules.yaml --validate
+falco --validate my_rules.yaml
 ```
 
 ### Docker-Based Testing
@@ -401,8 +409,10 @@ falco -r my_rules.yaml --validate
 # Run Falco in a container for testing
 docker run --rm -i -t \
   --privileged \
+  -v /sys/kernel/tracing:/sys/kernel/tracing:ro \
   -v /var/run/docker.sock:/host/var/run/docker.sock \
   -v /proc:/host/proc:ro \
+  -v /etc:/host/etc:ro \
   -v $(pwd)/my_rules.yaml:/etc/falco/rules.d/my_rules.yaml:ro \
   falcosecurity/falco:latest
 
@@ -423,9 +433,9 @@ docker run --rm -it falcosecurity/event-generator run syscall
 
 # Test specific actions
 docker run --rm -it falcosecurity/event-generator run \
-  syscall.ReadSensitiveFile \
+  syscall.ReadSensitiveFileUntrusted \
   syscall.WriteBelowEtc \
-  syscall.SpawnShell
+  syscall.RunShellUntrusted
 ```
 
 ## Rule Priorities and Outputs
@@ -435,7 +445,7 @@ docker run --rm -it falcosecurity/event-generator run \
 ```yaml
 # Priority levels from lowest to highest:
 # DEBUG    - Detailed info for debugging
-# INFO     - Informational events
+# INFORMATIONAL - Informational events
 # NOTICE   - Normal but significant events
 # WARNING  - Warning conditions
 # ERROR    - Error conditions
@@ -498,14 +508,11 @@ http_output:
   enabled: true
   url: https://alerts.example.com/falco
 
-# gRPC output for sidekick
-grpc:
+# Program output for local integrations
+program_output:
   enabled: true
-  bind_address: "0.0.0.0:5060"
-  threadiness: 8
-
-grpc_output:
-  enabled: true
+  keep_alive: false
+  program: "jq . >> /var/log/falco/events.jsonl"
 ```
 
 ## Deployment and Management
@@ -515,7 +522,7 @@ grpc_output:
 ```yaml
 # values.yaml for Helm chart
 falco:
-  rules_file:
+  rules_files:
     - /etc/falco/falco_rules.yaml
     - /etc/falco/falco_rules.local.yaml
     - /etc/falco/rules.d
@@ -558,7 +565,9 @@ data:
       items: [gcr.io/myproject/, docker.io/mycompany/]
 
     - macro: trusted_image
-      condition: container.image.repository in (allowed_images)
+      condition: >
+        container.image.repository startswith "gcr.io/myproject/" or
+        container.image.repository startswith "docker.io/mycompany/"
 
     - rule: Untrusted Container Running
       desc: Alert on containers from untrusted registries
