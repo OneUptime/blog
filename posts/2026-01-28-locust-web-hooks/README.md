@@ -31,8 +31,8 @@ graph TB
 
     subgraph Request Events
         D --> R1[request]
-        D --> R2[request_success]
-        D --> R3[request_failure]
+        R1 --> R2[exception is None]
+        R1 --> R3[exception is set]
     end
 
     subgraph Webhook Triggers
@@ -48,8 +48,8 @@ Available events:
 - `test_start`: Test run begins
 - `spawning_complete`: All users spawned
 - `request`: Every request (success or failure)
-- `request_success`: Successful requests only
-- `request_failure`: Failed requests only
+- Request success: `request` event where `exception` is `None`
+- Request failure: `request` event where `exception` is set
 - `test_stopping`: Test is stopping
 - `test_stop`: Test has stopped
 - `quitting`: Locust is exiting
@@ -67,7 +67,7 @@ from locust import HttpUser, task, between, events
 import requests
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 class WebhookSender:
     """Send webhooks to external endpoints."""
@@ -99,7 +99,7 @@ def on_test_start(environment, **kwargs):
     """Notify when test starts."""
     webhook.send({
         "event": "test_started",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "host": environment.host,
         "user_count": environment.runner.target_user_count if environment.runner else 0
     })
@@ -111,7 +111,7 @@ def on_test_stop(environment, **kwargs):
 
     webhook.send({
         "event": "test_completed",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "host": environment.host,
         "results": {
             "total_requests": stats.num_requests,
@@ -143,7 +143,7 @@ Send formatted notifications to Slack:
 from locust import HttpUser, task, between, events
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
@@ -183,7 +183,7 @@ class SlackNotifier:
                     {"type": "mrkdwn", "text": f"*Target:*\n{host}"},
                     {"type": "mrkdwn", "text": f"*Users:*\n{user_count}"},
                     {"type": "mrkdwn", "text": f"*Spawn Rate:*\n{spawn_rate}/s"},
-                    {"type": "mrkdwn", "text": f"*Started:*\n{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC"}
+                    {"type": "mrkdwn", "text": f"*Started:*\n{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC"}
                 ]
             }
         ])
@@ -253,8 +253,11 @@ def on_test_start(environment, **kwargs):
     spawn_rate = environment.runner.spawn_rate if environment.runner else 0
     slack.test_started(environment.host, target_users, spawn_rate)
 
-@events.request_failure.add_listener
-def on_request_failure(request_type, name, response_time, response, exception, **kwargs):
+@events.request.add_listener
+def on_request(request_type, name, response_time, response, exception, **kwargs):
+    if exception is None:
+        return
+
     key = f"{request_type}:{name}"
     failure_counts[key] = failure_counts.get(key, 0) + 1
 
@@ -286,7 +289,7 @@ Discord uses a similar webhook format with some differences:
 from locust import HttpUser, task, between, events
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
@@ -305,7 +308,7 @@ class DiscordNotifier:
             "title": title,
             "description": description,
             "color": color,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "fields": fields or []
         }
 
@@ -378,7 +381,7 @@ Trigger incidents on critical failures:
 from locust import HttpUser, task, between, events
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 PAGERDUTY_ROUTING_KEY = os.getenv("PAGERDUTY_ROUTING_KEY")
 
@@ -396,7 +399,7 @@ class PagerDutyNotifier:
         if not self.routing_key:
             return
 
-        self.dedup_key = f"locust-{datetime.utcnow().strftime('%Y%m%d%H%M')}"
+        self.dedup_key = f"locust-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}"
 
         payload = {
             "routing_key": self.routing_key,
@@ -406,7 +409,7 @@ class PagerDutyNotifier:
                 "summary": summary,
                 "severity": severity,
                 "source": "Locust Load Test",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "custom_details": details or {}
             }
         }
@@ -687,7 +690,7 @@ class ProgressReporter:
             return
 
         stats = self.environment.stats.total
-        user_count = len(self.environment.runner.user_greenlets) if self.environment.runner else 0
+        user_count = self.environment.runner.user_count if self.environment.runner else 0
 
         payload = {
             "event": "progress",
