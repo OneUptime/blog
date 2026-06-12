@@ -189,7 +189,7 @@ We will use PostgreSQL as our primary database.
 
 ### MongoDB
 - Pros: Flexible schema, horizontal scaling
-- Cons: No ACID transactions across documents, eventual consistency concerns for orders
+- Cons: Multi-document transactions can add performance and schema-design complexity for order workflows
 
 ### CockroachDB
 - Pros: Distributed, PostgreSQL compatible
@@ -214,7 +214,7 @@ We will use PostgreSQL as our primary database.
 
 ## References
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/)
-- [JSONB Performance Analysis](https://example.com/jsonb-perf)
+- [PostgreSQL JSON Types](https://www.postgresql.org/docs/current/datatype-json.html)
 ```
 
 ### ADR Directory Structure
@@ -575,9 +575,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate Mermaid Diagrams
-        uses: mermaid-js/mermaid-cli@v10
-        with:
-          files: docs/architecture/diagrams/*.mmd
+        run: |
+          npm install -g @mermaid-js/mermaid-cli
+          shopt -s nullglob
+          for diagram in docs/architecture/diagrams/*.mmd; do
+            mmdc -i "$diagram" -o "/tmp/$(basename "$diagram").svg"
+          done
 
       - name: Validate ADR Format
         run: |
@@ -800,10 +803,9 @@ repos:
 
       - id: validate-mermaid
         name: Validate Mermaid Diagrams
-        entry: mmdc -i
-        language: node
+        entry: bash -c 'for file in "$@"; do npx -y -p @mermaid-js/mermaid-cli mmdc -i "$file" -o "/tmp/$(basename "$file").svg"; done' --
+        language: system
         files: \.mmd$
-        additional_dependencies: ['@mermaid-js/mermaid-cli']
 ```
 
 ### Integration Tests for Documentation
