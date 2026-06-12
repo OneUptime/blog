@@ -70,7 +70,7 @@ az aks update \
   --enable-keda
 
 # Verify KEDA pods are running in kube-system namespace
-kubectl get pods -n kube-system -l app=keda
+kubectl get pods -n kube-system | grep keda
 ```
 
 ### Option B: Helm Installation
@@ -136,6 +136,11 @@ export IDENTITY_PRINCIPAL_ID=$(az identity show \
   --name keda-identity \
   --resource-group myResourceGroup \
   --query principalId -o tsv)
+
+export IDENTITY_TENANT_ID=$(az identity show \
+  --name keda-identity \
+  --resource-group myResourceGroup \
+  --query tenantId -o tsv)
 ```
 
 ### Grant Permissions to Azure Resources
@@ -149,10 +154,10 @@ export SERVICEBUS_ID=$(az servicebus namespace show \
   --resource-group myResourceGroup \
   --query id -o tsv)
 
-# Grant "Azure Service Bus Data Receiver" role for queue monitoring
+# Grant "Azure Service Bus Data Owner" role for queue monitoring
 az role assignment create \
   --assignee $IDENTITY_PRINCIPAL_ID \
-  --role "Azure Service Bus Data Receiver" \
+  --role "Azure Service Bus Data Owner" \
   --scope $SERVICEBUS_ID
 
 # For Storage Queue, grant "Storage Queue Data Reader" role
@@ -165,6 +170,23 @@ az role assignment create \
   --assignee $IDENTITY_PRINCIPAL_ID \
   --role "Storage Queue Data Reader" \
   --scope $STORAGE_ID
+
+# For Event Hubs, grant read access to the Event Hubs namespace
+export EVENTHUB_ID=$(az eventhubs namespace show \
+  --name myeventhubns \
+  --resource-group myResourceGroup \
+  --query id -o tsv)
+
+az role assignment create \
+  --assignee $IDENTITY_PRINCIPAL_ID \
+  --role "Azure Event Hubs Data Receiver" \
+  --scope $EVENTHUB_ID
+
+# Event Hubs checkpoint lag also requires read access to the blob container
+az role assignment create \
+  --assignee $IDENTITY_PRINCIPAL_ID \
+  --role "Storage Blob Data Reader" \
+  --scope $STORAGE_ID
 ```
 
 ### Create Federated Credential
@@ -172,14 +194,30 @@ az role assignment create \
 This links the Kubernetes ServiceAccount to the Azure managed identity.
 
 ```bash
-# Create federation between AKS service account and managed identity
+# Use kube-system for the AKS add-on, or keda for the Helm install
+export KEDA_NAMESPACE=kube-system
+
+# Create federation between the KEDA operator service account and managed identity
 az identity federated-credential create \
-  --name keda-federated-credential \
+  --name keda-operator-federated-credential \
   --identity-name keda-identity \
   --resource-group myResourceGroup \
   --issuer $AKS_OIDC_ISSUER \
-  --subject system:serviceaccount:keda:keda-operator \
-  --audience api://AzureADTokenExchange
+  --subject system:serviceaccount:$KEDA_NAMESPACE:keda-operator \
+  --audiences api://AzureADTokenExchange
+
+# Annotate and restart the KEDA operator so Workload Identity variables are injected
+kubectl annotate serviceaccount keda-operator \
+  azure.workload.identity/client-id=$IDENTITY_CLIENT_ID \
+  -n $KEDA_NAMESPACE --overwrite
+
+kubectl rollout restart deployment keda-operator -n $KEDA_NAMESPACE
+
+# If you installed KEDA with Helm, enable Workload Identity in the chart as well
+helm upgrade keda kedacore/keda --namespace keda \
+  --set podIdentity.azureWorkload.enabled=true \
+  --set podIdentity.azureWorkload.clientId=$IDENTITY_CLIENT_ID \
+  --set podIdentity.azureWorkload.tenantId=$IDENTITY_TENANT_ID
 ```
 
 ## 3. Create a TriggerAuthentication
@@ -217,6 +255,14 @@ Azure Service Bus is a common trigger for event-driven workloads. This ScaledObj
 `deployments/queue-processor.yaml`
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: queue-processor-sa
+  namespace: default
+  annotations:
+    azure.workload.identity/client-id: <IDENTITY_CLIENT_ID>
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -281,8 +327,18 @@ spec:
 Apply both resources:
 
 ```bash
-# Deploy the processor and ScaledObject
-kubectl apply -f deployments/queue-processor.yaml
+# Create a federated credential for the processor service account if the app uses Workload Identity
+az identity federated-credential create \
+  --name queue-processor-federated-credential \
+  --identity-name keda-identity \
+  --resource-group myResourceGroup \
+  --issuer $AKS_OIDC_ISSUER \
+  --subject system:serviceaccount:default:queue-processor-sa \
+  --audiences api://AzureADTokenExchange
+
+# Replace placeholder, deploy the processor, and create the ScaledObject
+sed "s/<IDENTITY_CLIENT_ID>/$IDENTITY_CLIENT_ID/" \
+  deployments/queue-processor.yaml | kubectl apply -f -
 kubectl apply -f keda/servicebus-scaledobject.yaml
 
 # Check the ScaledObject status
@@ -462,7 +518,7 @@ kubectl get hpa -A | grep keda
 kubectl describe scaledobject queue-processor-scaledobject
 
 # View KEDA operator logs for troubleshooting
-kubectl logs -n keda -l app=keda-operator --tail=100
+kubectl logs -n $KEDA_NAMESPACE -l app.kubernetes.io/name=keda-operator --tail=100
 ```
 
 KEDA exposes Prometheus metrics by default. Add this ServiceMonitor if you use Prometheus Operator:
@@ -474,11 +530,11 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: keda-metrics
-  namespace: keda
+  namespace: kube-system              # Use keda if you installed KEDA with Helm
 spec:
   selector:
     matchLabels:
-      app: keda-operator
+      app.kubernetes.io/name: keda-operator
   endpoints:
     - port: metrics
       interval: 15s
@@ -488,7 +544,7 @@ spec:
 Key metrics to watch:
 
 - `keda_scaler_metrics_value` - Current metric value from each scaler
-- `keda_scaler_errors_total` - Errors polling external sources
+- `keda_scaler_detail_errors_total` - Errors polling external sources
 - `keda_scaled_object_paused` - Whether scaling is paused
 
 ## 10. Troubleshooting Common Issues
@@ -500,7 +556,7 @@ Key metrics to watch:
 kubectl describe scaledobject <name> | grep -A 10 "Conditions"
 
 # Look for errors in KEDA operator logs
-kubectl logs -n keda -l app=keda-operator | grep -i error
+kubectl logs -n $KEDA_NAMESPACE -l app.kubernetes.io/name=keda-operator | grep -i error
 
 # Verify TriggerAuthentication exists in the correct namespace
 kubectl get triggerauthentication -n <namespace>
