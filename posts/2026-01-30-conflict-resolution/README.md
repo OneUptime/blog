@@ -138,7 +138,7 @@ console.log(nodeB.read()); // Same as above
 
 ## Strategy 2: Custom Merge Functions
 
-For more complex data types, you can define domain-specific merge logic that preserves information from all conflicting writes.
+For more complex data types, you can define domain-specific merge logic that preserves the information your application cares about.
 
 ### Shopping Cart Example
 
@@ -187,7 +187,7 @@ class MergeableCart {
   }
 
   // Custom merge function that combines carts intelligently
-  // This preserves additions from both sides
+  // This preserves items from both sides and keeps the highest observed quantity
   merge(other: MergeableCart): void {
     for (const [productId, otherItem] of other.items) {
       const localItem = this.items.get(productId);
@@ -249,7 +249,7 @@ console.log(mobileCart.getItems());
 
 ## Strategy 3: CRDTs (Conflict-free Replicated Data Types)
 
-CRDTs are data structures that mathematically guarantee convergence without coordination. They are designed so that any order of operations applied to any replica will result in the same final state.
+CRDTs are data structures that mathematically guarantee convergence without coordination. State-based CRDTs are designed so that merging replica states in any order yields the same final state; operation-based CRDTs require their operations to be delivered according to the rules of the specific data type.
 
 ### How CRDTs Work
 
@@ -282,7 +282,7 @@ class GCounter {
   // Increment the counter (only affects this node's count)
   increment(amount: number = 1): void {
     if (amount < 0) {
-      throw new Error("G-Counter can only be incremented by positive values");
+      throw new Error("G-Counter can only be incremented by non-negative values");
     }
     const current = this.counts.get(this.nodeId) || 0;
     this.counts.set(this.nodeId, current + amount);
@@ -545,7 +545,7 @@ flowchart TB
 | Use Case | Recommended Strategy | Reason |
 |----------|---------------------|--------|
 | User profile fields | LWW | Simple fields where latest value is correct |
-| Shopping cart | Custom merge | Need to preserve all additions |
+| Shopping cart | Custom merge | Need domain-specific rules for additions, removals, and quantities |
 | Like/view counts | G-Counter or PN-Counter | Mathematical convergence guaranteed |
 | Tag collections | OR-Set | Need add/remove with concurrent safety |
 | Collaborative text | Sequence CRDTs | Preserve all user edits |
@@ -618,7 +618,7 @@ class HybridResolver<T extends Record<string, any>> {
         return remoteTimestamp > localTimestamp ? remoteValue : localValue;
 
       case "max":
-        // Take the maximum value (useful for counters, versions)
+        // Take the maximum value (useful for versions or high-water marks)
         return Math.max(localValue, remoteValue);
 
       case "min":
@@ -653,7 +653,7 @@ class HybridResolver<T extends Record<string, any>> {
 interface UserProfile {
   name: string;           // LWW: use latest name
   email: string;          // LWW: use latest email
-  loginCount: number;     // Max: never lose login counts
+  loginCount: number;     // Max: keep the highest observed login count
   tags: string[];         // Union: combine all tags
   preferences: object;    // Custom: deep merge
 }
@@ -667,7 +667,7 @@ const userResolver = new HybridResolver<UserProfile>({
   preferences: {
     strategy: "custom",
     customMerge: (local, remote) => {
-      // Deep merge preferences
+      // Shallow merge preferences
       return { ...local, ...remote };
     },
   },
@@ -786,6 +786,6 @@ async function testORSetConvergence() {
 
 - Martin Kleppmann's "Designing Data-Intensive Applications" covers distributed data in depth
 - The original CRDT papers by Marc Shapiro provide mathematical foundations
-- CRDTs are used in production by Figma, Redis, Riak, and many other systems
+- CRDTs and CRDT-inspired designs are used in production by systems such as Figma, Redis, Riak, and many others
 
 Building robust conflict resolution requires understanding both the theoretical foundations and practical trade-offs. Start simple with LWW, and evolve to more sophisticated strategies as your requirements demand.
