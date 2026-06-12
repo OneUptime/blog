@@ -230,7 +230,10 @@ def query_with_timeout(session, sql: str, timeout_seconds: int = 30):
     """Execute query with timeout."""
     try:
         # Set statement timeout for this transaction
-        session.execute(text(f"SET statement_timeout = '{timeout_seconds}s'"))
+        session.execute(
+            text("SET LOCAL statement_timeout = :timeout"),
+            {"timeout": f"{timeout_seconds}s"}
+        )
         result = session.execute(text(sql))
         return result.fetchall()
     except OperationalError as e:
@@ -294,8 +297,10 @@ def run_command(cmd: list, timeout: float = 60.0) -> Tuple[Optional[str], Option
 
     except subprocess.TimeoutExpired as e:
         print(f"Command timed out after {timeout} seconds")
-        # e.stdout and e.stderr may contain partial output
-        return e.stdout, e.stderr, -1
+        # e.stdout and e.stderr may contain partial byte output even when text=True
+        stdout = e.stdout.decode() if isinstance(e.stdout, bytes) else e.stdout
+        stderr = e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr
+        return stdout, stderr, -1
 
 # Usage
 stdout, stderr, code = run_command(["python", "long_script.py"], timeout=30)
@@ -356,13 +361,15 @@ def retry_on_timeout(
             for attempt in range(max_retries):
                 try:
                     # Add timeout to kwargs if not present
-                    if 'timeout' not in kwargs:
-                        kwargs['timeout'] = timeout
+                    call_kwargs = kwargs.copy()
+                    if 'timeout' not in call_kwargs:
+                        call_kwargs['timeout'] = timeout
 
-                    return func(*args, **kwargs)
+                    return func(*args, **call_kwargs)
 
-                except (TimeoutError, Exception) as e:
-                    if 'timeout' not in str(e).lower():
+                except Exception as e:
+                    error_text = f"{type(e).__name__}: {e}".lower()
+                    if 'timeout' not in error_text and 'timed out' not in error_text:
                         raise  # Re-raise non-timeout errors
 
                     last_exception = e
@@ -498,7 +505,10 @@ class TimeoutConfig:
     api_slow: float = 120.0        # Slow API calls (reports, exports)
 
 # Usage
+import requests
+
 config = TimeoutConfig()
+url = "https://api.example.com/data"
 response = requests.get(url, timeout=(config.http_connect, config.http_read))
 ```
 
@@ -558,4 +568,3 @@ Proper timeout handling prevents your application from hanging and improves user
 ---
 
 *Building resilient Python applications? [OneUptime](https://oneuptime.com) helps you monitor timeout rates, track slow operations, and alert when services become unresponsive.*
-
