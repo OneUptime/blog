@@ -107,10 +107,10 @@ Apache Airflow is a popular choice for orchestrating batch workflows. Here is an
 # This DAG orchestrates a daily ETL pipeline with proper dependencies
 
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-from airflow.sensors.filesystem import FileSensor
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
+from airflow.providers.standard.operators.bash import BashOperator
+from airflow.providers.standard.sensors.filesystem import FileSensor
 
 # Default arguments applied to all tasks in this DAG
 default_args = {
@@ -129,7 +129,7 @@ dag = DAG(
     'daily_batch_pipeline',
     default_args=default_args,
     description='Daily batch processing pipeline for sales data',
-    schedule_interval='0 2 * * *',  # Run at 2 AM daily
+    schedule='0 2 * * *',  # Run at 2 AM daily
     start_date=datetime(2026, 1, 1),
     catchup=False,  # Do not backfill missed runs
     tags=['batch', 'etl', 'sales'],
@@ -139,11 +139,11 @@ dag = DAG(
 def extract_data(**context):
     """
     Extract data from source systems.
-    Uses execution_date for incremental extraction.
+    Uses logical_date for incremental extraction.
     """
-    execution_date = context['execution_date']
-    # Extract only data for the specific execution date
-    print(f"Extracting data for {execution_date}")
+    logical_date = context['logical_date']
+    # Extract only data for the specific logical date
+    print(f"Extracting data for {logical_date}")
     # Implementation: Connect to source DB, query records, save to staging
     return {'records_extracted': 10000}
 
@@ -201,7 +201,6 @@ wait_for_file = FileSensor(
 extract_task = PythonOperator(
     task_id='extract_task',
     python_callable=extract_data,
-    provide_context=True,
     dag=dag,
 )
 
@@ -209,7 +208,6 @@ extract_task = PythonOperator(
 validate_task = PythonOperator(
     task_id='validate_task',
     python_callable=validate_data,
-    provide_context=True,
     dag=dag,
 )
 
@@ -217,7 +215,6 @@ validate_task = PythonOperator(
 transform_task = PythonOperator(
     task_id='transform_task',
     python_callable=transform_data,
-    provide_context=True,
     dag=dag,
 )
 
@@ -225,7 +222,6 @@ transform_task = PythonOperator(
 load_task = PythonOperator(
     task_id='load_task',
     python_callable=load_data,
-    provide_context=True,
     dag=dag,
 )
 
@@ -276,7 +272,6 @@ flowchart TD
 # dependency_manager.py
 # A simple dependency manager for batch jobs
 
-from collections import defaultdict
 from enum import Enum
 from typing import List, Dict, Set, Callable
 import logging
@@ -336,7 +331,7 @@ class Job:
 class DependencyManager:
     """
     Manages job execution order based on dependencies.
-    Uses topological sorting to determine execution sequence.
+    Repeatedly runs jobs whose dependencies have completed.
     """
 
     def __init__(self):
@@ -357,13 +352,13 @@ class DependencyManager:
         """
         runnable = []
         for job in self.jobs.values():
-            if job.status == JobStatus.PENDING and job.can_run(self.completed_jobs):
+            if job.status == JobStatus.PENDING:
                 # Skip jobs that depend on failed jobs
-                if not job.dependencies.intersection(self.failed_jobs):
-                    runnable.append(job)
-                else:
+                if job.dependencies.intersection(self.failed_jobs):
                     job.status = JobStatus.SKIPPED
                     logger.warning(f"Skipping {job.name} due to failed dependency")
+                elif job.can_run(self.completed_jobs):
+                    runnable.append(job)
         return runnable
 
     def run_all(self) -> Dict[str, JobStatus]:
@@ -813,7 +808,7 @@ def load_data(daily_metrics, customer_metrics, output_date: str):
     Write transformed data to the data warehouse.
 
     Uses partitioning for efficient querying and
-    overwrites only the specific date partition.
+    overwrites only partitions present in the incoming data.
     """
     logger.info(f"Loading data for date: {output_date}")
 
@@ -822,6 +817,7 @@ def load_data(daily_metrics, customer_metrics, output_date: str):
         daily_metrics
         .write
         .mode("overwrite")
+        .option("partitionOverwriteMode", "dynamic")
         .partitionBy("sale_date")
         .parquet(f"s3://data-warehouse/metrics/daily_sales/")
     )
@@ -903,10 +899,11 @@ import com.example.batch.listener.JobCompletionListener;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
+import org.springframework.batch.core.configuration.annotation.EnableJdbcJobRepository;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.core.step.builder.ChunkOrientedStepBuilder;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.item.file.FlatFileItemReader;
@@ -928,6 +925,7 @@ import javax.sql.DataSource;
  */
 @Configuration
 @EnableBatchProcessing
+@EnableJdbcJobRepository
 public class BatchConfiguration {
 
     /**
@@ -1000,9 +998,10 @@ public class BatchConfiguration {
             CustomerProcessor processor,
             JdbcBatchItemWriter<CustomerReport> writer) {
 
-        return new StepBuilder("processCustomersStep", jobRepository)
+        return new ChunkOrientedStepBuilder<Customer, CustomerReport>(
+                "processCustomersStep", jobRepository, 100)
             // Process 100 records per chunk/transaction
-            .<Customer, CustomerReport>chunk(100, transactionManager)
+            .transactionManager(transactionManager)
             .reader(reader)
             .processor(processor)
             .writer(writer)
