@@ -311,12 +311,11 @@ terraform apply
 ### Precedence (lowest to highest)
 
 1. Default values
-2. terraform.tfvars
-3. terraform.tfvars.json
-4. *.auto.tfvars (alphabetical)
-5. -var-file flags (in order)
-6. -var flags (in order)
-7. TF_VAR_ environment variables
+2. TF_VAR_ environment variables
+3. terraform.tfvars
+4. terraform.tfvars.json
+5. *.auto.tfvars and *.auto.tfvars.json (alphabetical)
+6. -var-file and -var flags (in order)
 
 ## Local Values
 
