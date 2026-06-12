@@ -23,12 +23,13 @@ Benefits include:
 
 ## Setting Up MediatR
 
-Install the required packages:
+Install the required package:
 
 ```bash
 dotnet add package MediatR
-dotnet add package MediatR.Extensions.Microsoft.DependencyInjection
 ```
+
+Since MediatR 12, dependency injection support is included in the main `MediatR` package, so the separate `MediatR.Extensions.Microsoft.DependencyInjection` package is no longer needed.
 
 Register MediatR in your application:
 
