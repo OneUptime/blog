@@ -369,7 +369,7 @@ print(isinstance(handler, Closeable))  # True
 ```python
 # type_guards.py
 # Type narrowing and type guards
-from typing import Union, TypeGuard, List
+from typing import Union, TypeGuard, List, Optional
 
 # Type narrowing with isinstance
 def process_value(value: Union[int, str]) -> str:
@@ -414,7 +414,7 @@ def greet(name: Optional[str]) -> str:
 ```python
 # literal_final.py
 # Literal types and Final
-from typing import Literal, Final
+from typing import Literal, Final, final
 
 # Literal - specific values only
 def set_mode(mode: Literal["read", "write", "append"]) -> None:
@@ -463,7 +463,7 @@ class Config:
 ```python
 # type_aliases.py
 # Creating type aliases for readability
-from typing import Dict, List, Tuple, Callable, TypeAlias
+from typing import Dict, List, Tuple, Callable, TypeAlias, Union
 
 # Simple aliases
 UserId = int
