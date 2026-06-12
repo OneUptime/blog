@@ -10,7 +10,7 @@ Description: A comprehensive guide to understanding, preventing, and handling Dy
 
 > "Throttling in DynamoDB is not a failure of the service-it's feedback. Your job is to listen to that feedback and design systems that respond gracefully."
 
-DynamoDB is one of the most powerful managed NoSQL databases available, but its pricing model and architecture mean that throttling is a reality you must plan for. When your application exceeds provisioned capacity or hits partition-level limits, DynamoDB responds with `ProvisionedThroughputExceededException`. How you handle this determines whether your users experience seamless performance or cascading failures.
+DynamoDB is one of the most powerful managed NoSQL databases available, but its pricing model and architecture mean that throttling is a reality you must plan for. When your application exceeds provisioned capacity or hits partition-level limits, DynamoDB responds with throttling errors such as `ProvisionedThroughputExceededException`, `ThrottlingException`, or `RequestLimitExceeded`, with throttling reason details that identify the underlying limit. How you handle this determines whether your users experience seamless performance or cascading failures.
 
 This guide covers everything from understanding why throttling happens to implementing robust solutions that keep your applications resilient.
 
@@ -24,7 +24,7 @@ Before solving throttling, you need to understand why it occurs. DynamoDB distri
 
 1. **Hot Partitions**: Uneven access patterns concentrate requests on specific partitions
 2. **Burst Capacity Exhaustion**: Sustained traffic above provisioned capacity depletes burst credits
-3. **Partition-Level Limits**: Single partition limit of 3,000 RCU or 1,000 WCU
+3. **Partition-Level Limits**: Single partition limits of 3,000 read operations or 1,000 write operations per second
 4. **Sudden Traffic Spikes**: Traffic increases faster than auto-scaling can respond
 
 ```mermaid
@@ -35,13 +35,13 @@ flowchart TD
     D -->|Available| E[Use Burst Credits]
     E --> C
     D -->|Exhausted| F[Throttle Request]
-    F --> G[Return ProvisionedThroughputExceededException]
+    F --> G[Return throttling exception]
     C --> H[Success Response]
 ```
 
 ### Partition Capacity Distribution
 
-DynamoDB allocates capacity evenly across partitions. If you provision 10,000 RCU and have 10 partitions, each partition receives only 1,000 RCU-regardless of actual traffic distribution.
+DynamoDB stores data across physical partitions and can use adaptive capacity to shift throughput toward hot partitions. Still, each partition has per-second throughput limits, so a single hot partition can throttle even when the table has unused aggregate capacity. Conceptually, if you provision 10,000 RCU and have 10 equally used partitions, each partition would consume about 1,000 RCU.
 
 ```python
 # Understanding partition capacity allocation
@@ -56,10 +56,11 @@ def calculate_partition_capacity(
     """
     Calculate per-partition capacity limits.
 
-    Each partition receives an equal share of provisioned capacity,
-    but is also subject to hard limits:
-    - Max 3,000 RCU per partition
-    - Max 1,000 WCU per partition
+    This simplified model divides provisioned capacity evenly across
+    partitions. DynamoDB can use adaptive capacity for uneven traffic,
+    but each partition is still subject to per-second limits:
+    - Max 3,000 read operations per partition
+    - Max 1,000 write operations per partition
     """
     # Calculate allocated capacity per partition
     allocated_rcu_per_partition = total_provisioned_rcu // partition_count
@@ -374,8 +375,7 @@ graph LR
 
 ```python
 import hashlib
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timedelta
 import uuid
 
 # ANTI-PATTERN: Using date as partition key
@@ -478,7 +478,7 @@ def calculated_partition_key(
 def time_series_partition_key(
     sensor_id: str,
     timestamp: datetime,
-    scatter_factor: int = 100
+    scatter_factor: int = 60
 ) -> dict:
     """
     Design for high-velocity time-series data.
@@ -508,13 +508,13 @@ def query_sensor_data(
     sensor_id: str,
     start_time: datetime,
     end_time: datetime,
-    scatter_factor: int = 100
+    scatter_factor: int = 60
 ) -> list:
     """
     Query scattered time-series partitions.
 
     Must query all scatter partitions within the time range.
-    Use ParallelScan or parallel queries for performance.
+    Use parallel queries for performance.
     """
     import concurrent.futures
 
@@ -762,11 +762,13 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
 cloudwatch = boto3.client('cloudwatch')
+dynamodb_client = boto3.client('dynamodb')
 
 
 def create_throttling_alarms(
     table_name: str,
     sns_topic_arn: str,
+    provisioned_read_capacity: int,
     read_throttle_threshold: int = 10,
     write_throttle_threshold: int = 10
 ) -> List[str]:
@@ -776,6 +778,7 @@ def create_throttling_alarms(
     Args:
         table_name: The DynamoDB table to monitor
         sns_topic_arn: SNS topic for alarm notifications
+        provisioned_read_capacity: Provisioned read capacity units for the table
         read_throttle_threshold: Number of throttled reads to trigger alarm
         write_throttle_threshold: Number of throttled writes to trigger alarm
 
@@ -788,7 +791,7 @@ def create_throttling_alarms(
     cloudwatch.put_metric_alarm(
         AlarmName=f'{table_name}-ReadThrottling',
         AlarmDescription=f'Read throttling detected on {table_name}',
-        MetricName='ReadThrottledRequests',
+        MetricName='ReadThrottleEvents',
         Namespace='AWS/DynamoDB',
         Dimensions=[
             {'Name': 'TableName', 'Value': table_name}
@@ -808,7 +811,7 @@ def create_throttling_alarms(
     cloudwatch.put_metric_alarm(
         AlarmName=f'{table_name}-WriteThrottling',
         AlarmDescription=f'Write throttling detected on {table_name}',
-        MetricName='WriteThrottledRequests',
+        MetricName='WriteThrottleEvents',
         Namespace='AWS/DynamoDB',
         Dimensions=[
             {'Name': 'TableName', 'Value': table_name}
@@ -826,6 +829,8 @@ def create_throttling_alarms(
 
     # Alarm for high consumed capacity (proactive alert)
     # Triggers when consumption exceeds 80% of provisioned
+    high_read_threshold = provisioned_read_capacity * 300 * 0.8
+
     cloudwatch.put_metric_alarm(
         AlarmName=f'{table_name}-HighReadCapacity',
         AlarmDescription=f'Read capacity consumption high on {table_name}',
@@ -838,7 +843,7 @@ def create_throttling_alarms(
         Period=300,  # 5 minutes
         EvaluationPeriods=2,
         # This threshold should be 80% of your provisioned capacity * 300 seconds
-        Threshold=0,  # Set this based on your provisioned capacity
+        Threshold=high_read_threshold,
         ComparisonOperator='GreaterThanThreshold',
         AlarmActions=[sns_topic_arn],
         TreatMissingData='notBreaching'
@@ -866,7 +871,7 @@ def get_throttling_metrics(
     # Get read throttling events
     read_response = cloudwatch.get_metric_statistics(
         Namespace='AWS/DynamoDB',
-        MetricName='ReadThrottledRequests',
+        MetricName='ReadThrottleEvents',
         Dimensions=[
             {'Name': 'TableName', 'Value': table_name}
         ],
@@ -880,7 +885,7 @@ def get_throttling_metrics(
     # Get write throttling events
     write_response = cloudwatch.get_metric_statistics(
         Namespace='AWS/DynamoDB',
-        MetricName='WriteThrottledRequests',
+        MetricName='WriteThrottleEvents',
         Dimensions=[
             {'Name': 'TableName', 'Value': table_name}
         ],
@@ -938,13 +943,29 @@ def identify_hot_partitions(
     start_time = end_time - timedelta(minutes=minutes)
 
     try:
+        contributor_config = dynamodb_client.describe_contributor_insights(
+            TableName=table_name
+        )
+        throttled_key_rules = [
+            rule for rule in contributor_config.get('ContributorInsightsRuleList', [])
+            if rule.startswith('DynamoDBContributorInsights-PKT-')
+        ]
+
+        if not throttled_key_rules:
+            return {
+                'error': 'Throttled-keys Contributor Insights rule not found',
+                'recommendation': 'Enable Contributor Insights throttled keys mode for this table'
+            }
+
         # Get top partition keys by throttled requests
         response = cloudwatch.get_insight_rule_report(
-            RuleName=f'DynamoDBContributorInsights-PKC-{table_name}',
+            RuleName=throttled_key_rules[0],
             StartTime=start_time,
             EndTime=end_time,
             Period=60,
-            MaxContributorCount=10
+            MaxContributorCount=10,
+            Metrics=['Maximum'],
+            OrderBy='Maximum'
         )
 
         hot_keys = []
@@ -978,6 +999,7 @@ sns_topic = 'arn:aws:sns:us-east-1:123456789:DynamoDBAlerts'
 alarms = create_throttling_alarms(
     table_name=table_name,
     sns_topic_arn=sns_topic,
+    provisioned_read_capacity=1000,
     read_throttle_threshold=5,  # Alert on 5+ throttled reads
     write_throttle_threshold=5   # Alert on 5+ throttled writes
 )
@@ -1029,12 +1051,6 @@ latency_histogram = meter.create_histogram(
     unit="ms"
 )
 
-retry_counter = meter.create_counter(
-    name="dynamodb.retries",
-    description="Number of DynamoDB request retries",
-    unit="1"
-)
-
 T = TypeVar('T')
 
 
@@ -1048,7 +1064,6 @@ def instrumented_dynamodb_operation(
     Captures:
     - Request latency
     - Throttling events
-    - Retry attempts
     """
     def decorator(func: Callable[[], T]) -> Callable[[], T]:
         @functools.wraps(func)
@@ -1062,7 +1077,11 @@ def instrumented_dynamodb_operation(
                 return result
 
             except Exception as e:
-                if 'ProvisionedThroughputExceededException' in str(e):
+                if any(code in str(e) for code in [
+                    'ProvisionedThroughputExceededException',
+                    'ThrottlingException',
+                    'RequestLimitExceeded'
+                ]):
                     throttled = True
                     throttle_counter.add(
                         1,
@@ -1109,7 +1128,7 @@ Effective DynamoDB throttling management requires a multi-layered approach combi
 
 1. **Choose high-cardinality partition keys** - Avoid dates, status codes, or any attribute with limited unique values
 2. **Implement write sharding** for high-velocity writes to single logical entities
-3. **Calculate partition capacity** before provisioning - remember the 3,000 RCU / 1,000 WCU per partition limit
+3. **Calculate partition capacity** before provisioning - remember the 3,000 read operations / 1,000 write operations per second per partition limit
 4. **Use on-demand mode** for unpredictable workloads where you cannot forecast capacity needs
 
 ### Implementation Phase
