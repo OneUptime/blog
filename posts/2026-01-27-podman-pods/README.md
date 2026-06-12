@@ -42,8 +42,8 @@ graph TB
 
 - **Shared network namespace**: All containers in a pod share the same IP address and port space
 - **Localhost communication**: Containers can communicate via `localhost`
-- **Infra container**: Every pod has a hidden "pause" container that holds namespaces
-- **Atomic deployment**: Containers in a pod start and stop together
+- **Infra container**: By default, each pod has an infra container that holds shared namespaces
+- **Shared lifecycle commands**: Pod commands can start, stop, restart, and remove the pod's containers together
 - **Kubernetes compatibility**: Pod definitions can be exported to Kubernetes YAML
 
 ## Creating Your First Pod
@@ -85,7 +85,7 @@ podman pod create --name web-stack \
 
 ```bash
 # Create a pod with memory and CPU limits
-# These limits apply to the entire pod, shared among all containers
+# These limits apply to the pod's cgroup and are shared by containers in the pod
 # --cpus limits CPU usage to 2 cores
 # --memory limits total memory to 2 gigabytes
 podman pod create --name limited-pod \
@@ -141,7 +141,7 @@ podman exec webapp-nginx sh -c "apk add --no-cache redis && redis-cli -h localho
 
 ### Understanding the Infra Container
 
-Every pod has an infrastructure (infra) container that maintains the shared namespaces. This container runs a minimal "pause" process that does nothing but hold the namespaces open.
+By default, every pod has an infrastructure (infra) container that maintains the shared namespaces. This container runs a minimal process that does nothing but hold the namespaces open.
 
 ```mermaid
 flowchart TD
@@ -165,7 +165,7 @@ flowchart TD
         SIDECAR -.->|joins| NS_NET
     end
 
-    CLIENT["External Client"] -->|"localhost:8080"| NS_NET
+    CLIENT["External Client"] -->|"host port 8080"| NS_NET
 ```
 
 ### Inspecting Pod Namespaces
@@ -181,9 +181,10 @@ podman run -d --pod ns-demo --name ns-demo-app alpine sleep infinity
 # Returns detailed JSON with container IDs and network settings
 podman pod inspect ns-demo | jq '.Containers'
 
-# Check that containers share the network namespace
-# The SandboxKey shows the network namespace path
-podman inspect ns-demo-app --format '{{.NetworkSettings.SandboxKey}}'
+# Check the pod's shared network namespace
+# The infra container owns the pod's network namespace
+podman pod inspect ns-demo --format '{{.InfraContainerID}}' | \
+    xargs podman inspect --format '{{.NetworkSettings.SandboxKey}}'
 ```
 
 ## Shared Namespaces Explained
@@ -312,15 +313,14 @@ podman run -d --pod fullstack \
     -e POSTGRES_DB=myapp \
     postgres:15-alpine
 
-# Add Node.js application
+# Add Node.js application image
 # DATABASE_URL uses localhost because of shared network namespace
 # No need for container names or service discovery
 podman run -d --pod fullstack \
     --name fullstack-app \
     -e DATABASE_URL=postgresql://app:secret@localhost:5432/myapp \
     -e NODE_ENV=development \
-    node:20-alpine \
-    sh -c "npm install && npm start"
+    my-node-app:latest
 ```
 
 ### Pattern 2: Sidecar Logging
@@ -390,9 +390,10 @@ podman run -d --pod ambassador-demo \
     nginx:alpine
 
 # Ambassador proxy handles TLS termination, auth, rate limiting, etc.
-# All external traffic goes through Envoy first
+# Provide an Envoy config that listens on 8080 and proxies to localhost:80
 podman run -d --pod ambassador-demo \
     --name ambassador-proxy \
+    -v ./envoy.yaml:/etc/envoy/envoy.yaml:Z \
     envoyproxy/envoy:v1.28-latest
 ```
 
@@ -468,15 +469,15 @@ podman run -d --pod k8s-export --name k8s-export-web nginx:alpine
 podman run -d --pod k8s-export --name k8s-export-cache redis:alpine
 
 # Export to Kubernetes YAML
-# This generates a Pod manifest compatible with kubectl apply
-podman generate kube k8s-export > k8s-export.yaml
+# This generates a Pod manifest that can be adapted for Kubernetes
+podman kube generate k8s-export > k8s-export.yaml
 ```
 
-The generated YAML is fully compatible with Kubernetes:
+The generated YAML uses Kubernetes API fields, but host-specific fields such as `hostPort` may need review before applying it to a shared cluster:
 
 ```yaml
 # Generated Kubernetes YAML from Podman pod
-# This manifest can be applied directly to any Kubernetes cluster
+# Review hostPort and other host-specific settings before applying to a cluster
 apiVersion: v1
 kind: Pod
 metadata:
@@ -529,15 +530,15 @@ spec:
 EOF
 
 # Import and run the pod in Podman
-# podman play kube reads Kubernetes YAML and creates equivalent pods
-podman play kube my-k8s-pod.yaml
+# podman kube play reads Kubernetes YAML and creates equivalent pods
+podman kube play my-k8s-pod.yaml
 
 # List the created pod
 podman pod ps
 
 # Stop and remove pods created from YAML
-# The --down flag tears down all resources created by play kube
-podman play kube --down my-k8s-pod.yaml
+# The --down flag tears down resources created by kube play
+podman kube play --down my-k8s-pod.yaml
 ```
 
 ### Kubernetes Development Workflow
@@ -551,7 +552,7 @@ flowchart LR
     end
 
     subgraph EXPORT["Export Phase"]
-        GEN["podman generate kube"]
+        GEN["podman kube generate"]
         YAML["Kubernetes YAML"]
     end
 
@@ -562,7 +563,7 @@ flowchart LR
 
     DEV -->|develop| POD
     POD -->|test| TEST
-    TEST -->|"podman generate kube"| GEN
+    TEST -->|"podman kube generate"| GEN
     GEN --> YAML
     YAML -->|"kubectl apply -f"| DEPLOY
     DEPLOY --> PROD
@@ -583,10 +584,10 @@ podman run -d --pod dev-app \
 curl localhost:8080
 
 # 3. Export to Kubernetes YAML when ready
-podman generate kube dev-app > deployment.yaml
+podman kube generate dev-app > pod.yaml
 
-# 4. Apply to Kubernetes cluster
-kubectl apply -f deployment.yaml
+# 4. Review host-specific settings, then apply to Kubernetes cluster
+kubectl apply -f pod.yaml
 
 # 5. Verify deployment
 kubectl get pods
@@ -597,14 +598,14 @@ kubectl get pods
 ### Default Pod Networking
 
 ```bash
-# Pods use CNI (Container Network Interface) by default
-# Each pod gets its own IP address on the podman network
+# Modern Podman uses Netavark by default; older installations may use CNI
+# Each rootful bridge-networked pod gets its own IP address on the podman network
 
 # Create a pod and check its IP address
 podman pod create --name net-test
 podman run -d --pod net-test --name net-test-app alpine sleep infinity
 
-# Get pod IP address by inspecting the infra container
+# Get pod IP address by inspecting the infra container on a rootful bridge network
 podman pod inspect net-test --format '{{.InfraContainerID}}' | \
     xargs podman inspect --format '{{.NetworkSettings.IPAddress}}'
 ```
@@ -616,13 +617,17 @@ podman pod inspect net-test --format '{{.InfraContainerID}}' | \
 podman pod create --name frontend --publish 3000:3000
 podman pod create --name backend --publish 5000:5000
 
-# Add containers to each pod
-podman run -d --pod frontend --name frontend-app \
-    -e BACKEND_URL=http://$(podman pod inspect backend --format '{{.InfraContainerID}}' | \
-    xargs podman inspect --format '{{.NetworkSettings.IPAddress}}'):5000 \
-    node:alpine
+# Start the backend first
+podman run -d --pod backend --name backend-app \
+    python:3.11-alpine python -m http.server 5000
 
-podman run -d --pod backend --name backend-app python:alpine
+# Add a frontend container configured with the backend pod IP
+BACKEND_IP=$(podman pod inspect backend --format '{{.InfraContainerID}}' | \
+    xargs podman inspect --format '{{.NetworkSettings.IPAddress}}')
+
+podman run -d --pod frontend --name frontend-app \
+    -e BACKEND_URL=http://${BACKEND_IP}:5000 \
+    my-frontend-app:latest
 
 # Alternative: Use host networking mode for simpler pod-to-pod communication
 # This shares the host's network namespace with all containers
@@ -652,7 +657,7 @@ podman run --pod dns-demo alpine cat /etc/resolv.conf
 # Health checks run periodically to verify container health
 podman run -d --pod webapp \
     --name webapp-healthy \
-    --health-cmd "curl -f http://localhost:80/health || exit 1" \
+    --health-cmd "wget -q --spider http://localhost:80/ || exit 1" \
     --health-interval 10s \
     --health-retries 3 \
     --health-timeout 5s \
@@ -670,25 +675,25 @@ Resource Management
 
 ```bash
 # Set resource limits at pod level
-# Limits are shared among all containers in the pod
+# Limits apply to the pod's cgroup and are shared by containers in the pod
 podman pod create --name resource-limited \
     --cpus 2.5 \
     --memory 4g \
-    --memory-swap 4g
+    --memory-swap 6g
 
 # Or set limits per container within the pod
-# Container limits must not exceed pod limits
+# Per-container limits can also be set inside the pod
 podman run -d --pod resource-limited \
     --name cpu-intensive \
     --cpus 1.5 \
     --memory 2g \
-    stress-ng --cpu 2
+    ghcr.io/alexei-led/stress-ng --cpu 2
 
 podman run -d --pod resource-limited \
     --name memory-intensive \
     --cpus 1.0 \
     --memory 2g \
-    stress-ng --vm 1 --vm-bytes 1g
+    ghcr.io/alexei-led/stress-ng --vm 1 --vm-bytes 1g
 ```
 
 ### Init Containers Pattern
@@ -734,10 +739,12 @@ podman run -d --pod monitored-app \
     my-instrumented-app:latest
 
 # OpenTelemetry collector sidecar shipping to OneUptime
+# The mounted config should use these environment variables in its OTLP exporter
 podman run -d --pod monitored-app \
     --name monitored-app-otel \
-    -e ONEUPTIME_OTLP_ENDPOINT=https://otlp.oneuptime.com \
-    -e ONEUPTIME_API_KEY=${ONEUPTIME_API_KEY} \
+    -e OTEL_EXPORTER_OTLP_ENDPOINT=https://oneuptime.com/otlp \
+    -e OTEL_EXPORTER_OTLP_HEADERS=x-oneuptime-token=${ONEUPTIME_API_KEY} \
+    -v ./otel-collector-config.yaml:/etc/otelcol/config.yaml:Z \
     otel/opentelemetry-collector:latest
 ```
 
@@ -826,14 +833,14 @@ podman logs -t my-pod-container-name
 ### Security Considerations
 
 ```bash
-# Run pods with reduced privileges for better security
-podman pod create --name secure-pod \
-    --security-opt no-new-privileges:true \
-    --cap-drop ALL
+# Create a pod, then apply reduced privileges to its containers
+podman pod create --name secure-pod
 
 # Run containers as non-root user
 podman run -d --pod secure-pod \
     --user 1000:1000 \
+    --security-opt no-new-privileges:true \
+    --cap-drop ALL \
     --name secure-app \
     my-app:latest
 
