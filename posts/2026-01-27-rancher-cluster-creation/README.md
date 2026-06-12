@@ -51,20 +51,20 @@ flowchart TB
 
 | Feature | RKE1 | RKE2/K3s | Imported | Hosted Provider |
 |---------|------|----------|----------|-----------------|
-| Full lifecycle management | Yes | Yes | No | Partial |
+| Full lifecycle management | Legacy only | Yes | No | Partial |
 | Custom node configuration | Yes | Yes | No | Limited |
 | etcd backup/restore | Yes | Yes | No | Provider-dependent |
 | Certificate rotation | Yes | Yes | No | Provider-dependent |
-| Upgrade control | Full | Full | None | Limited |
-| Best for | Production on-prem | Modern deployments | Existing clusters | Cloud-native teams |
+| Upgrade control | Legacy only | Full | Limited | Limited |
+| Best for | Existing RKE1 clusters | Modern deployments | Existing clusters | Cloud-native teams |
 
 ## RKE vs RKE2: Choosing Your Distribution
 
-RKE (Rancher Kubernetes Engine) comes in two versions. Understanding when to use each is critical for long-term success.
+RKE (Rancher Kubernetes Engine) comes in two versions. Understanding when to use each is critical for long-term success. RKE1 reached end of life on July 31, 2025, and Rancher 2.12.0 and later no longer support provisioning or managing downstream RKE1 clusters. Use RKE1 guidance only for maintaining existing legacy clusters; use RKE2 or K3s for new Rancher-managed clusters.
 
 ### RKE1: The Original
 
-RKE1 is Docker-based and has been battle-tested for years.
+RKE1 is Docker-based and was battle-tested for years, but it should be treated as a legacy option.
 
 ```yaml
 # rke-cluster.yml - RKE1 cluster configuration
@@ -132,10 +132,6 @@ services:
 Deploy the cluster with RKE CLI:
 
 ```bash
-# Validate the cluster configuration before deployment
-# This checks for syntax errors and connectivity issues
-rke config --validate --config rke-cluster.yml
-
 # Deploy the Kubernetes cluster
 # This process typically takes 10-15 minutes
 rke up --config rke-cluster.yml
@@ -145,7 +141,7 @@ export KUBECONFIG=$(pwd)/kube_config_rke-cluster.yml
 
 # Verify cluster health
 kubectl get nodes
-kubectl get componentstatuses
+kubectl get --raw='/readyz?verbose'
 ```
 
 ### RKE2: The Security-Focused Successor
@@ -182,7 +178,8 @@ disable:
   - rke2-ingress-nginx  # We will deploy our own ingress
 
 # Profile for CIS benchmark hardening
-profile: cis-1.23
+# Use "cis"; "cis-1.23" is deprecated in current RKE2 releases
+profile: cis
 
 # Kubelet arguments for resource management
 kubelet-arg:
@@ -238,7 +235,7 @@ kubectl get nodes
 For additional server nodes (HA setup):
 
 ```yaml
-# rke2-agent-config.yaml for additional control plane nodes
+# rke2-server-config.yaml for additional control plane nodes
 # Place at /etc/rancher/rke2/config.yaml
 
 # Join token - must match the server token
@@ -285,8 +282,9 @@ flowchart LR
 
 ```yaml
 # aws-cloud-provider.yaml
-# Cloud provider configuration for AWS integration
-# Enables dynamic provisioning of EBS volumes and ELBs
+# Cloud controller configuration for AWS integration
+# Use this with the external AWS cloud controller manager.
+# Use the AWS EBS CSI driver for dynamic EBS volume provisioning.
 
 apiVersion: v1
 kind: ConfigMap
@@ -326,141 +324,124 @@ Rancher node template for AWS:
 # rancher-aws-node-template.yaml
 # Defines the EC2 instance configuration for Rancher-managed nodes
 
-apiVersion: management.cattle.io/v3
-kind: NodeTemplate
+apiVersion: rke-machine-config.cattle.io/v1
+kind: Amazonec2Config
 metadata:
   name: aws-production-template
   namespace: fleet-default
 spec:
-  # Cloud credential reference - created in Rancher UI
-  cloudCredentialSecretName: cattle-global-data:cc-abc123
+  # AWS region
+  region: us-west-2
 
-  # Driver-specific configuration for amazonec2
-  amazonec2Config:
-    # AWS region
-    region: us-west-2
+  # Availability zone
+  zone: a
 
-    # Availability zone
-    zone: a
+  # VPC and subnet configuration
+  vpcId: vpc-0123456789abcdef0
+  subnetId: subnet-0123456789abcdef0
 
-    # VPC and subnet configuration
-    vpcId: vpc-0123456789abcdef0
-    subnetId: subnet-0123456789abcdef0
+  # Instance configuration
+  instanceType: m5.xlarge
+  rootSize: "100"  # GB
 
-    # Instance configuration
-    instanceType: m5.xlarge
-    rootSize: "100"  # GB
+  # AMI - use an OS image supported by your Rancher/RKE2 version
+  ami: ami-0123456789abcdef0
 
-    # AMI - use latest Ubuntu 22.04 for RKE2
-    ami: ami-0123456789abcdef0
+  # Security group for the nodes
+  securityGroup:
+    - k8s-nodes-sg
 
-    # Security group for the nodes
-    securityGroup:
-      - k8s-nodes-sg
+  # IAM instance profile for AWS integrations
+  iamInstanceProfile: K8sNodeInstanceProfile
 
-    # IAM instance profile for AWS integrations
-    iamInstanceProfile: K8sNodeInstanceProfile
+  # SSH configuration
+  sshUser: ubuntu
+  sshKeyContents: |
+    ssh-rsa AAAAB3NzaC1yc2E... your-public-key
 
-    # SSH configuration
-    sshUser: ubuntu
-    sshKeyContents: |
-      ssh-rsa AAAAB3NzaC1yc2E... your-public-key
+  # Enable detailed CloudWatch monitoring
+  monitoring: true
 
-    # Enable detailed CloudWatch monitoring
-    monitoring: true
+  # Use spot instances for cost savings (optional)
+  # requestSpotInstance: true
+  # spotPrice: "0.10"
 
-    # Use spot instances for cost savings (optional)
-    # requestSpotInstance: true
-    # spotPrice: "0.10"
-
-    # Tags for cost allocation and identification
-    tags: Environment,Production,Team,Platform
+  # Tags for cost allocation and identification
+  tags: Environment,Production,Team,Platform
 ```
 
 ### Creating an EKS Cluster via Rancher
 
-```yaml
-# rancher-eks-cluster.yaml
+```hcl
+# rancher-eks-cluster.tf
 # Creates a fully managed EKS cluster through Rancher
 
-apiVersion: management.cattle.io/v3
-kind: Cluster
-metadata:
-  name: production-eks
-  namespace: fleet-default
-spec:
-  # Display name in Rancher UI
-  displayName: Production EKS Cluster
+resource "rancher2_cluster" "production_eks" {
+  name        = "production-eks"
+  description = "Production EKS Cluster"
 
-  # EKS-specific configuration
-  eksConfig:
+  eks_config_v2 {
     # AWS region for the cluster
-    region: us-west-2
+    region = "us-west-2"
 
     # Kubernetes version
-    kubernetesVersion: "1.28"
+    kubernetes_version = "1.35"
 
     # Cloud credential for AWS access
-    amazonCredentialSecret: cattle-global-data:cc-aws-prod
+    cloud_credential_id = "cattle-global-data:cc-aws-prod"
 
     # VPC configuration
-    subnets:
-      - subnet-0123456789abcdef0  # Private subnet AZ-a
-      - subnet-0123456789abcdef1  # Private subnet AZ-b
-      - subnet-0123456789abcdef2  # Private subnet AZ-c
-    securityGroups:
-      - sg-0123456789abcdef0
+    subnets = [
+      "subnet-0123456789abcdef0", # Private subnet AZ-a
+      "subnet-0123456789abcdef1", # Private subnet AZ-b
+      "subnet-0123456789abcdef2", # Private subnet AZ-c
+    ]
+    security_groups = ["sg-0123456789abcdef0"]
 
     # Control plane logging
-    loggingTypes:
-      - api
-      - audit
-      - authenticator
-      - controllerManager
-      - scheduler
+    logging_types = [
+      "api",
+      "audit",
+      "authenticator",
+      "controllerManager",
+      "scheduler",
+    ]
 
     # Enable private API endpoint
-    privateAccess: true
-    publicAccess: true
-    publicAccessSources:
-      - 10.0.0.0/8  # Restrict to internal networks
+    private_access        = true
+    public_access         = true
+    public_access_sources = ["10.0.0.0/8"] # Restrict to internal networks
 
     # KMS encryption for secrets
-    secretsEncryption: true
-    kmsKey: arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012
+    secrets_encryption = true
+    kms_key            = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
 
     # Node groups configuration
-    nodeGroups:
-      - nodegroupName: general-purpose
-        instanceType: m5.xlarge
-        desiredSize: 3
-        minSize: 2
-        maxSize: 10
-        diskSize: 100
-        # Use EKS-optimized AMI
-        imageId: ""  # Empty uses default EKS AMI
+    node_groups {
+      name          = "general-purpose"
+      instance_type = "m5.xlarge"
+      desired_size  = 3
+      min_size      = 2
+      max_size      = 10
+      disk_size     = 100
+      labels = {
+        "workload-type" = "general"
+      }
+    }
 
-        # Labels for node selection
-        labels:
-          workload-type: general
-
-        # Launch template for custom configuration
-        # launchTemplate:
-        #   id: lt-0123456789abcdef0
-        #   version: 1
-
-      - nodegroupName: memory-optimized
-        instanceType: r5.2xlarge
-        desiredSize: 2
-        minSize: 1
-        maxSize: 5
-        diskSize: 200
-        labels:
-          workload-type: memory-intensive
-        taints:
-          - key: workload-type
-            value: memory-intensive
-            effect: NoSchedule
+    node_groups {
+      name          = "memory-optimized"
+      instance_type = "r5.2xlarge"
+      desired_size  = 2
+      min_size      = 1
+      max_size      = 5
+      disk_size     = 200
+      labels = {
+        "workload-type" = "memory-intensive"
+      }
+    }
+  }
+}
 ```
 
 ## Custom Cluster Creation
@@ -488,19 +469,17 @@ sequenceDiagram
 # rancher-custom-cluster.yaml
 # Defines a custom cluster where nodes are manually registered
 
-apiVersion: management.cattle.io/v3
+apiVersion: provisioning.cattle.io/v1
 kind: Cluster
 metadata:
   name: custom-production
   namespace: fleet-default
 spec:
   displayName: Custom Production Cluster
+  kubernetesVersion: v1.35.5+rke2r1
 
   # RKE2 configuration for custom clusters
   rkeConfig:
-    # Kubernetes version
-    kubernetesVersion: v1.28.4+rke2r1
-
     # Machine global configuration
     machineGlobalConfig:
       # CNI plugin
@@ -579,10 +558,10 @@ After creating the cluster, Rancher provides a registration command. Here is a s
 
 set -euo pipefail
 
-# Configuration - replace with your values
+# Configuration - replace with values from the Rancher registration command
 RANCHER_URL="https://rancher.example.com"
-CLUSTER_ID="c-m-xxxxx"  # From Rancher UI
-TOKEN="token-xxxxx:xxxxxxxxxxxx"  # Registration token
+TOKEN="token-xxxxx:xxxxxxxxxxxx"
+CA_CHECKSUM="sha256-checksum-from-rancher"  # Leave empty if Rancher did not include one
 NODE_ROLE="${1:-worker}"  # control-plane, etcd, or worker
 
 # Validate node role
@@ -596,28 +575,22 @@ case $NODE_ROLE in
     ;;
 esac
 
-# Build role flags
-ROLE_FLAGS=""
+# Build role flags and node labels
+ROLE_FLAGS=()
+LABELS=()
 if [[ "$NODE_ROLE" == "all" ]]; then
-  ROLE_FLAGS="--etcd --controlplane --worker"
+  ROLE_FLAGS=(--etcd --controlplane --worker)
+  LABELS=(--label node-role=all)
 elif [[ "$NODE_ROLE" == "control-plane" ]]; then
-  ROLE_FLAGS="--controlplane --etcd"
+  ROLE_FLAGS=(--controlplane --etcd)
+  LABELS=(--label node-role=control-plane)
 else
-  ROLE_FLAGS="--$NODE_ROLE"
+  ROLE_FLAGS=(--"$NODE_ROLE")
+  LABELS=(--label node-role="$NODE_ROLE")
 fi
 
 # Pre-flight checks
 echo "Running pre-flight checks..."
-
-# Check if Docker or containerd is available
-if command -v docker &> /dev/null; then
-  echo "Docker found: $(docker --version)"
-elif command -v containerd &> /dev/null; then
-  echo "containerd found"
-else
-  echo "ERROR: Neither Docker nor containerd found. Install container runtime first."
-  exit 1
-fi
 
 # Check network connectivity to Rancher
 if ! curl -sk "$RANCHER_URL/healthz" > /dev/null; then
@@ -632,16 +605,20 @@ for port in 6443 9345 10250; do
   fi
 done
 
-# Add node labels based on hardware characteristics
-LABELS="--label node.kubernetes.io/instance-type=$(cat /proc/cpuinfo | grep 'model name' | head -1 | cut -d: -f2 | xargs)"
-
-# Register the node
+# Register the node with Rancher System Agent
 echo "Registering node with Rancher..."
-curl -fsSL "$RANCHER_URL/v3/clusterregistrationtokens/$CLUSTER_ID" \
-  -H "Authorization: Bearer $TOKEN" | \
-  grep -o 'curl.*' | \
-  sed "s/'$//" | \
-  bash -s -- $ROLE_FLAGS $LABELS
+INSTALL_ARGS=(
+  --server "$RANCHER_URL"
+  --label cattle.io/os=linux
+  --token "$TOKEN"
+)
+
+if [[ -n "$CA_CHECKSUM" ]]; then
+  INSTALL_ARGS+=(--ca-checksum "$CA_CHECKSUM")
+fi
+
+curl -fL "$RANCHER_URL/system-agent-install.sh" | \
+  sudo sh -s - "${INSTALL_ARGS[@]}" "${ROLE_FLAGS[@]}" "${LABELS[@]}"
 
 echo "Node registration initiated. Check Rancher UI for status."
 ```
@@ -767,22 +744,17 @@ flowchart TB
 # ha-cluster-config.yaml
 # Production-ready HA configuration for Rancher-managed clusters
 
-apiVersion: management.cattle.io/v3
+apiVersion: provisioning.cattle.io/v1
 kind: Cluster
 metadata:
   name: ha-production
+  namespace: fleet-default
 spec:
   displayName: HA Production Cluster
+  kubernetesVersion: v1.35.5+rke2r1
+  cloudCredentialSecretName: cattle-global-data:cc-aws-prod
 
   rkeConfig:
-    kubernetesVersion: v1.28.4+rke2r1
-
-    # HA control plane configuration
-    controlPlaneConfig:
-      # Number of control plane nodes (odd number for etcd quorum)
-      # Rancher will distribute across available nodes
-      controlPlaneConcurrency: "1"
-
     machineGlobalConfig:
       cni: cilium
 
@@ -834,6 +806,11 @@ spec:
         machineConfigRef:
           kind: Amazonec2Config
           name: compute-machine-config
+
+    # Upgrade strategy
+    upgradeStrategy:
+      controlPlaneConcurrency: "1"
+      workerConcurrency: "10%"
 ```
 
 ### Importing Existing Clusters
@@ -893,141 +870,53 @@ echo "This typically takes 1-2 minutes."
 ### Agent Configuration for Imported Clusters
 
 ```yaml
-# cattle-cluster-agent-config.yaml
-# Custom configuration for the Rancher agent in imported clusters
+# Configure these as Rancher agent environment variables when importing.
+agentEnvVars:
+  # Configure agent HTTP proxy if needed
+  - name: HTTP_PROXY
+    value: http://proxy.example.com:3128
+  - name: HTTPS_PROXY
+    value: http://proxy.example.com:3128
+  - name: NO_PROXY
+    value: localhost,127.0.0.1,10.0.0.0/8,.cluster.local
 
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cattle-cluster-agent-config
-  namespace: cattle-system
-data:
-  # Agent configuration
-  config: |
-    # Increase agent memory for large clusters
-    CATTLE_AGENT_MEMORY_LIMIT=2Gi
-
-    # Configure agent HTTP proxy if needed
-    # HTTP_PROXY=http://proxy.example.com:3128
-    # HTTPS_PROXY=http://proxy.example.com:3128
-    # NO_PROXY=localhost,127.0.0.1,10.0.0.0/8,.cluster.local
-
-    # Agent logging level
-    CATTLE_LOG_LEVEL=info
+  # Agent logging level
+  - name: CATTLE_LOG_LEVEL
+    value: info
 ```
 
 ## Monitoring Your Rancher Clusters
 
 Once your clusters are provisioned, monitoring becomes critical. [OneUptime](https://oneuptime.com) provides comprehensive monitoring for Kubernetes clusters managed by Rancher.
 
-```yaml
-# oneuptime-integration.yaml
-# Deploy OneUptime monitoring agent to Rancher-managed clusters
+```bash
+# Install the OneUptime Kubernetes Agent Helm chart
+helm repo add oneuptime https://helm-chart.oneuptime.com
+helm repo update
 
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: oneuptime-monitoring
+helm install kubernetes-agent oneuptime/kubernetes-agent \
+  --namespace oneuptime-agent \
+  --create-namespace \
+  --set oneuptime.url="https://oneuptime.com" \
+  --set oneuptime.apiKey="your-oneuptime-api-key" \
+  --set clusterName="rancher-production"
 
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: oneuptime-credentials
-  namespace: oneuptime-monitoring
-type: Opaque
-stringData:
-  # Your OneUptime API key
-  api-key: "your-oneuptime-api-key"
-  # OneUptime endpoint
-  endpoint: "https://oneuptime.com/api"
-
----
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: oneuptime-agent
-  namespace: oneuptime-monitoring
-spec:
-  selector:
-    matchLabels:
-      app: oneuptime-agent
-  template:
-    metadata:
-      labels:
-        app: oneuptime-agent
-    spec:
-      serviceAccountName: oneuptime-agent
-      containers:
-        - name: agent
-          image: oneuptime/agent:latest
-          env:
-            - name: ONEUPTIME_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: oneuptime-credentials
-                  key: api-key
-            - name: CLUSTER_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.labels['cluster.x-k8s.io/cluster-name']
-          resources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
-            requests:
-              cpu: 100m
-              memory: 128Mi
-          volumeMounts:
-            - name: proc
-              mountPath: /host/proc
-              readOnly: true
-      volumes:
-        - name: proc
-          hostPath:
-            path: /proc
+# Verify the agent pods
+kubectl get pods -n oneuptime-agent
 ```
 
 Set up cluster health monitoring:
 
-```yaml
-# cluster-health-probe.yaml
-# Monitor critical cluster components
+```bash
+# Confirm the API server readiness endpoint
+kubectl get --raw='/readyz?verbose'
 
-apiVersion: oneuptime.com/v1
-kind: HealthCheck
-metadata:
-  name: rancher-cluster-health
-  namespace: oneuptime-monitoring
-spec:
-  # Check API server availability
-  checks:
-    - name: kubernetes-api
-      type: http
-      endpoint: https://kubernetes.default.svc/healthz
-      interval: 30s
-      timeout: 10s
+# Confirm DNS is resolving inside the cluster
+kubectl run dns-check --rm -i --restart=Never --image=busybox:1.36 -- \
+  nslookup kubernetes.default.svc.cluster.local
 
-    - name: etcd-health
-      type: http
-      endpoint: https://localhost:2379/health
-      interval: 60s
-      timeout: 10s
-
-    - name: coredns
-      type: dns
-      query: kubernetes.default.svc.cluster.local
-      interval: 30s
-
-  alerting:
-    # Alert configuration for OneUptime
-    escalationPolicy: critical-infrastructure
-
-  notifications:
-    slack:
-      channel: "#platform-alerts"
-    pagerduty:
-      routingKey: kubernetes-cluster
+# Confirm the OneUptime agent is collecting from the cluster
+kubectl get pods -n oneuptime-agent
 ```
 
 ## Troubleshooting Common Issues
@@ -1057,7 +946,7 @@ kubectl get events --all-namespaces --sort-by='.lastTimestamp' | tail -20
 
 echo ""
 echo "=== etcd Health (if accessible) ==="
-kubectl -n kube-system exec -it etcd-$(hostname) -- etcdctl endpoint health 2>/dev/null || echo "etcd not accessible from this node"
+kubectl -n kube-system exec etcd-$(hostname) -- etcdctl endpoint health 2>/dev/null || echo "etcd not accessible from this node"
 ```
 
 ### Network Connectivity Issues
