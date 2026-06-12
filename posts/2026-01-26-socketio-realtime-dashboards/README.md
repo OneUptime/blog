@@ -75,6 +75,7 @@ export interface ServerToClientEvents {
   'metrics:update': (data: MetricsUpdate) => void;
   'alerts:new': (data: Alert) => void;
   'service:status': (data: ServiceStatus) => void;
+  'auth:error': (data: { message: string }) => void;
 }
 
 // Client-to-server events
@@ -135,6 +136,11 @@ export interface MetricsHistory {
   service: string;
   dataPoints: { timestamp: number; metrics: MetricsUpdate['metrics'] }[];
 }
+
+export interface SocketData {
+  userId: string;
+  permissions: string[];
+}
 ```
 
 ## Room-Based Subscriptions
@@ -149,6 +155,7 @@ import { Server, Socket } from 'socket.io';
 import {
   ServerToClientEvents,
   ClientToServerEvents,
+  SocketData,
   MetricsUpdate,
   Alert,
 } from './types/events';
@@ -156,7 +163,7 @@ import {
 const app = express();
 const httpServer = createServer(app);
 
-const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
+const io = new Server<ClientToServerEvents, ServerToClientEvents, {}, SocketData>(httpServer, {
   cors: { origin: '*' },
 });
 
@@ -417,17 +424,20 @@ Secure your WebSocket connections with token-based authentication:
 ```typescript
 // auth-middleware.ts
 import { Socket } from 'socket.io';
-import jwt from 'jsonwebtoken';
+import { JwtPayload, verify } from 'jsonwebtoken';
+import { ClientToServerEvents, ServerToClientEvents, SocketData } from './types/events';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-
-interface AuthenticatedSocket extends Socket {
-  userId: string;
-  permissions: string[];
-}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // Middleware to authenticate socket connections
-export function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
+export function authenticateSocket(
+  socket: Socket<ClientToServerEvents, ServerToClientEvents, {}, SocketData>,
+  next: (err?: Error) => void,
+) {
+  if (!JWT_SECRET) {
+    return next(new Error('JWT_SECRET is not configured'));
+  }
+
   const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
 
   if (!token) {
@@ -435,14 +445,15 @@ export function authenticateSocket(socket: Socket, next: (err?: Error) => void) 
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as {
-      userId: string;
-      permissions: string[];
-    };
+    const decoded = verify(token, JWT_SECRET) as JwtPayload;
 
-    // Attach user info to socket
-    (socket as AuthenticatedSocket).userId = decoded.userId;
-    (socket as AuthenticatedSocket).permissions = decoded.permissions;
+    if (typeof decoded.userId !== 'string' || !Array.isArray(decoded.permissions)) {
+      return next(new Error('Invalid authentication token'));
+    }
+
+    // Attach user info to the socket data object
+    socket.data.userId = decoded.userId;
+    socket.data.permissions = decoded.permissions;
 
     next();
   } catch (err) {
@@ -451,14 +462,14 @@ export function authenticateSocket(socket: Socket, next: (err?: Error) => void) 
 }
 
 // Check if user can access specific service metrics
-export function canAccessService(socket: AuthenticatedSocket, service: string): boolean {
+export function canAccessService(socket: Socket<ClientToServerEvents, ServerToClientEvents, {}, SocketData>, service: string): boolean {
   // Admin can access everything
-  if (socket.permissions.includes('admin')) {
+  if (socket.data.permissions.includes('admin')) {
     return true;
   }
 
   // Check service-specific permission
-  return socket.permissions.includes(`service:${service}`);
+  return socket.data.permissions.includes(`service:${service}`);
 }
 ```
 
@@ -477,8 +488,8 @@ io.on('connection', (socket) => {
   socket.on('subscribe:metrics', (services) => {
     for (const service of services) {
       // Check permissions before allowing subscription
-      if (!canAccessService(socket as any, service)) {
-        socket.emit('error', { message: `Access denied to ${service}` });
+      if (!canAccessService(socket, service)) {
+        socket.emit('auth:error', { message: `Access denied to ${service}` });
         continue;
       }
 
@@ -610,7 +621,7 @@ const io = new Server(httpServer, {
 });
 
 // Connect to Redis
-async function setupRedisAdapter() {
+async function startServer() {
   const pubClient = createClient({ url: 'redis://localhost:6379' });
   const subClient = pubClient.duplicate();
 
@@ -620,13 +631,19 @@ async function setupRedisAdapter() {
   io.adapter(createAdapter(pubClient, subClient));
 
   console.log('Redis adapter connected');
+
+  httpServer.listen(4000, () => {
+    console.log('Scaled Socket.io server on port 4000');
+  });
 }
 
-setupRedisAdapter().catch(console.error);
+startServer().catch(console.error);
 
 // Now broadcasts work across all server instances
 // io.emit() and io.to().emit() are coordinated through Redis
 ```
+
+When running multiple Socket.io servers behind a load balancer, keep sticky sessions enabled so each Socket.io session reaches the server instance that owns it.
 
 ## Architecture Overview
 
