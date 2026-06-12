@@ -10,7 +10,7 @@ Description: Learn how to implement cloud cost monitoring for visibility into in
 
 Cloud costs have a way of growing silently. One day you are running a simple workload, the next you are staring at a bill that makes you question every architectural decision. The problem is not cloud pricing itself. The problem is visibility. Without proper monitoring, you cannot optimize what you cannot see.
 
-FinOps (Financial Operations) emerged as a discipline to bring engineering, finance, and business teams together around cloud cost management. At its core, FinOps requires real-time visibility into spending. This guide walks through building a cloud cost monitoring system that covers AWS, GCP, and Azure, using Prometheus for metrics collection and alerting.
+FinOps (Financial Operations) emerged as a discipline to bring engineering, finance, and business teams together around cloud cost management. At its core, FinOps requires timely visibility into spending. This guide walks through building a cloud cost monitoring system that covers AWS, GCP, and Azure, using Prometheus for metrics collection and alerting.
 
 ---
 
@@ -161,7 +161,7 @@ flowchart TB
 The architecture follows these principles:
 
 1. **Provider Agnostic**: Normalize costs across clouds into common metrics
-2. **Real-time Capable**: Update at least hourly for operational visibility
+2. **Timely Updates**: Update at least hourly for operational visibility, while accounting for cloud billing data delays
 3. **Historically Rich**: Retain data for trend analysis and forecasting
 4. **Tag-centric**: Enable allocation through consistent tagging
 5. **Alert-driven**: Proactive notification of anomalies
@@ -266,11 +266,10 @@ class AWSCostCollector:
         Initialize the collector with AWS credentials.
         Uses default credential chain (env vars, instance role, etc.)
         """
-        self.ce_client = boto3.client('ce')
+        self.ce_client = boto3.client('ce', region_name='us-east-1')
         self.account_id = account_id
 
         # Cache results to avoid API rate limits
-        # Cost Explorer has a limit of 5 requests per second
         self.cache = {}
         self.cache_ttl = 3600  # 1 hour cache
 
@@ -331,7 +330,7 @@ class AWSCostCollector:
 
     def get_reservation_utilization(self) -> dict:
         """
-        Fetch Reserved Instance utilization to track commitment efficiency.
+        Fetch overall Reserved Instance utilization to track commitment efficiency.
         Low utilization indicates wasted reservations.
         """
         end_date = datetime.utcnow().date()
@@ -343,10 +342,7 @@ class AWSCostCollector:
                     'Start': start_date.isoformat(),
                     'End': end_date.isoformat()
                 },
-                Granularity='MONTHLY',
-                GroupBy=[
-                    {'Type': 'DIMENSION', 'Key': 'SERVICE'}
-                ]
+                Granularity='MONTHLY'
             )
             return response
         except Exception as e:
@@ -364,6 +360,15 @@ class AWSCostCollector:
         service_costs = self.get_cost_by_service()
         if 'ResultsByTime' in service_costs:
             for result in service_costs['ResultsByTime']:
+                daily_total = sum(
+                    float(group['Metrics']['UnblendedCost']['Amount'])
+                    for group in result.get('Groups', [])
+                )
+                aws_daily_cost.labels(
+                    account_id=self.account_id,
+                    date=result['TimePeriod']['Start']
+                ).set(daily_total)
+
                 for group in result.get('Groups', []):
                     # Extract service name and region from group keys
                     service = group['Keys'][0]
@@ -399,14 +404,12 @@ class AWSCostCollector:
         ri_utilization = self.get_reservation_utilization()
         if 'UtilizationsByTime' in ri_utilization:
             for util in ri_utilization['UtilizationsByTime']:
-                for group in util.get('Groups', []):
-                    service = group['Key']
-                    utilization = float(group['Utilization']['UtilizationPercentage'])
-
+                total = util.get('Total', {})
+                if 'UtilizationPercentage' in total:
                     aws_reservation_utilization.labels(
                         account_id=self.account_id,
-                        service=service
-                    ).set(utilization)
+                        service='all'
+                    ).set(float(total['UtilizationPercentage']))
 
         logger.info("Completed AWS cost metrics collection")
 
@@ -458,7 +461,7 @@ The export creates tables with this schema:
 
 ```sql
 -- GCP billing export table structure
--- Table: billing_export_v1
+-- Table: gcp_billing_export_resource_v1_<BILLING_ACCOUNT_ID>
 -- Contains detailed usage and cost records
 
 -- Key columns for cost analysis:
@@ -537,7 +540,7 @@ class GCPCostCollector:
             billing_dataset: BigQuery dataset with billing data
         """
         self.bq_client = bigquery.Client()
-        self.billing_table = f"{billing_project}.{billing_dataset}.gcp_billing_export_v1_*"
+        self.billing_table = f"{billing_project}.{billing_dataset}.gcp_billing_export_resource_v1_*"
 
     def query_cost_by_service(self, days: int = 7) -> list:
         """
@@ -558,7 +561,7 @@ class GCPCostCollector:
         FROM `{self.billing_table}`
         WHERE
             -- Filter to recent period
-            _PARTITIONTIME >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+            usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
             AND cost > 0
         GROUP BY
             service.description,
@@ -589,7 +592,7 @@ class GCPCostCollector:
         FROM `{self.billing_table}`,
             UNNEST(labels) AS label
         WHERE
-            _PARTITIONTIME >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+            usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
             AND label.key = @label_key
             AND cost > 0
         GROUP BY
@@ -624,7 +627,7 @@ class GCPCostCollector:
             SUM(cost) AS total_cost
         FROM `{self.billing_table}`
         WHERE
-            _PARTITIONTIME >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+            usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
         GROUP BY
             date,
             project.id
@@ -653,7 +656,7 @@ class GCPCostCollector:
         FROM `{self.billing_table}`,
             UNNEST(credits) AS credit
         WHERE
-            _PARTITIONTIME >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+            usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
         GROUP BY
             credit.name,
             project.id
@@ -732,7 +735,7 @@ if __name__ == '__main__':
 
 ## 6. Azure Cost Management Integration
 
-Azure Cost Management provides both REST APIs and export capabilities. The API approach offers real-time data while exports are better for historical analysis.
+Azure Cost Management provides both REST APIs and export capabilities. The API approach offers direct querying for recent cost data while exports are better for historical analysis.
 
 ### Setting Up Azure Cost Management Access
 
@@ -753,10 +756,18 @@ az ad sp create-for-rbac \
 ```python
 # azure_cost_exporter.py
 # Exports Azure cost data as Prometheus metrics
-# Requires: azure-identity, azure-mgmt-costmanagement, prometheus_client
+# Requires: azure-identity, azure-mgmt-costmanagement, azure-mgmt-consumption, prometheus_client
 
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.costmanagement import CostManagementClient
+from azure.mgmt.costmanagement.models import (
+    QueryAggregation,
+    QueryDataset,
+    QueryDefinition,
+    QueryGrouping,
+    QueryTimePeriod,
+)
+from azure.mgmt.consumption import ConsumptionManagementClient
 from prometheus_client import Gauge, start_http_server
 from datetime import datetime, timedelta
 import time
@@ -811,6 +822,9 @@ class AzureCostCollector:
         self.credential = DefaultAzureCredential()
         self.subscription_id = subscription_id
         self.client = CostManagementClient(
+            self.credential
+        )
+        self.consumption_client = ConsumptionManagementClient(
             self.credential,
             subscription_id
         )
@@ -822,38 +836,38 @@ class AzureCostCollector:
         Query cost breakdown by Azure service (meter category).
         Uses the Cost Management query API with grouping.
         """
-        end_date = datetime.utcnow().date()
+        end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
 
         # Build query definition
-        query = {
-            "type": "ActualCost",
-            "timeframe": "Custom",
-            "timePeriod": {
-                "from": start_date.isoformat(),
-                "to": end_date.isoformat()
-            },
-            "dataset": {
-                "granularity": "Daily",
-                "aggregation": {
-                    "totalCost": {
-                        "name": "Cost",
-                        "function": "Sum"
-                    }
+        query = QueryDefinition(
+            type="ActualCost",
+            timeframe="Custom",
+            time_period=QueryTimePeriod(
+                from_property=start_date,
+                to=end_date
+            ),
+            dataset=QueryDataset(
+                granularity="Daily",
+                aggregation={
+                    "totalCost": QueryAggregation(
+                        name="Cost",
+                        function="Sum"
+                    )
                 },
                 # Group by service name and resource group
-                "grouping": [
-                    {
-                        "type": "Dimension",
-                        "name": "ServiceName"
-                    },
-                    {
-                        "type": "Dimension",
-                        "name": "ResourceGroup"
-                    }
+                grouping=[
+                    QueryGrouping(
+                        type="Dimension",
+                        name="ServiceName"
+                    ),
+                    QueryGrouping(
+                        type="Dimension",
+                        name="ResourceGroup"
+                    )
                 ]
-            }
-        }
+            )
+        )
 
         try:
             result = self.client.query.usage(
@@ -870,33 +884,33 @@ class AzureCostCollector:
         Query cost breakdown by a specific tag.
         Azure tags enable cost allocation by team, environment, project.
         """
-        end_date = datetime.utcnow().date()
+        end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
 
-        query = {
-            "type": "ActualCost",
-            "timeframe": "Custom",
-            "timePeriod": {
-                "from": start_date.isoformat(),
-                "to": end_date.isoformat()
-            },
-            "dataset": {
-                "granularity": "None",
-                "aggregation": {
-                    "totalCost": {
-                        "name": "Cost",
-                        "function": "Sum"
-                    }
+        query = QueryDefinition(
+            type="ActualCost",
+            timeframe="Custom",
+            time_period=QueryTimePeriod(
+                from_property=start_date,
+                to=end_date
+            ),
+            dataset=QueryDataset(
+                granularity="None",
+                aggregation={
+                    "totalCost": QueryAggregation(
+                        name="Cost",
+                        function="Sum"
+                    )
                 },
                 # Group by tag for allocation
-                "grouping": [
-                    {
-                        "type": "Tag",
-                        "name": tag_name
-                    }
+                grouping=[
+                    QueryGrouping(
+                        type="Tag",
+                        name=tag_name
+                    )
                 ]
-            }
-        }
+            )
+        )
 
         try:
             result = self.client.query.usage(
@@ -914,7 +928,7 @@ class AzureCostCollector:
         Budgets help track spending against targets.
         """
         try:
-            budgets = self.client.budgets.list(scope=self.scope)
+            budgets = self.consumption_client.budgets.list(scope=self.scope)
             return list(budgets)
         except Exception as e:
             logger.error(f"Failed to fetch budgets: {e}")
@@ -925,15 +939,12 @@ class AzureCostCollector:
         Parse the Cost Management query result into usable rows.
         The API returns data in a columnar format that needs transformation.
         """
-        if not result or 'properties' not in result:
+        if not result:
             return []
 
-        properties = result['properties']
+        properties = result.get('properties', result)
         columns = properties.get('columns', [])
         rows = properties.get('rows', [])
-
-        # Map column names to indices
-        col_map = {col['name']: idx for idx, col in enumerate(columns)}
 
         parsed = []
         for row in rows:
@@ -951,10 +962,12 @@ class AzureCostCollector:
 
         # Update cost by service
         service_result = self.query_cost_by_service()
+        daily_totals = {}
         for row in self.parse_query_result(service_result):
             service_name = row.get('ServiceName', 'Unknown')
             resource_group = row.get('ResourceGroup', 'Unknown')
-            cost = float(row.get('Cost', 0))
+            cost = float(row.get('totalCost', 0))
+            usage_date = str(row.get('UsageDate', ''))
 
             azure_cost_by_service.labels(
                 service_name=service_name,
@@ -962,12 +975,21 @@ class AzureCostCollector:
                 resource_group=resource_group
             ).set(cost)
 
+            if usage_date:
+                daily_totals[usage_date] = daily_totals.get(usage_date, 0) + cost
+
+        for usage_date, total_cost in daily_totals.items():
+            azure_daily_cost.labels(
+                subscription_id=self.subscription_id,
+                date=usage_date
+            ).set(total_cost)
+
         # Update cost by common tags
         for tag_name in ['Team', 'Environment', 'Project', 'CostCenter']:
             tag_result = self.query_cost_by_tag(tag_name)
             for row in self.parse_query_result(tag_result):
                 tag_value = row.get(tag_name, 'untagged')
-                cost = float(row.get('Cost', 0))
+                cost = float(row.get('totalCost', 0))
 
                 azure_cost_by_tag.labels(
                     tag_name=tag_name,
@@ -1094,9 +1116,9 @@ groups:
       - record: cloud:cost_by_provider:sum
         expr: |
           sum by (cloud_provider) (
-            label_replace(aws_cost_dollars, "cloud_provider", "aws", "", "") or
-            label_replace(gcp_cost_dollars, "cloud_provider", "gcp", "", "") or
-            label_replace(azure_cost_dollars, "cloud_provider", "azure", "", "")
+            aws_cost_dollars or
+            gcp_cost_dollars or
+            azure_cost_dollars
           )
 
       # Cost by team (from tags)
@@ -1104,7 +1126,10 @@ groups:
         expr: |
           sum by (tag_value) (
             aws_cost_by_tag_dollars{tag_key="Team"} or
-            gcp_cost_by_label_dollars{label_key="team"} or
+            label_replace(
+              gcp_cost_by_label_dollars{label_key="team"},
+              "tag_value", "$1", "label_value", "(.*)"
+            ) or
             azure_cost_by_tag_dollars{tag_name="Team"}
           )
 
@@ -1533,21 +1558,21 @@ route:
 
   routes:
     # Critical cost alerts go to Slack and PagerDuty
-    - match:
-        severity: critical
-        team: finops
+    - matchers:
+        - severity="critical"
+        - team="finops"
       receiver: 'finops-critical'
       continue: true
 
     # Warning alerts go to Slack only
-    - match:
-        severity: warning
-        team: finops
+    - matchers:
+        - severity="warning"
+        - team="finops"
       receiver: 'finops-warning'
 
     # Team-specific budget alerts
-    - match_re:
-        alertname: 'TeamBudgetExceeded'
+    - matchers:
+        - alertname="TeamBudgetExceeded"
       receiver: 'team-notification'
       group_by: ['team']
 
@@ -1568,7 +1593,7 @@ receivers:
           *Severity:* {{ .CommonLabels.severity }}
           *Description:* {{ .CommonAnnotations.description }}
     pagerduty_configs:
-      - service_key: 'your-pagerduty-key'
+      - routing_key: 'your-pagerduty-routing-key'
         severity: critical
 
   - name: 'finops-warning'
@@ -1593,10 +1618,10 @@ receivers:
 # Inhibition rules
 inhibit_rules:
   # Suppress warning if critical is firing
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname']
 ```
 
@@ -1611,7 +1636,7 @@ Effective cost dashboards serve different audiences: executives want trends and 
 ```mermaid
 flowchart TB
     subgraph Exec["Executive Dashboard"]
-        Total["Total Cloud Spend<br/>$XXX,XXX MTD"]
+        Total["Daily Cloud Spend<br/>$XX,XXX"]
         Trend["30-Day Trend<br/>Line Chart"]
         Provider["Cost by Provider<br/>Pie Chart"]
         Growth["Month-over-Month<br/>Growth %"]
@@ -1636,7 +1661,7 @@ flowchart TB
   "uid": "cloud-costs-overview",
   "panels": [
     {
-      "title": "Total Cloud Spend (MTD)",
+      "title": "Total Daily Cloud Spend",
       "type": "stat",
       "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
       "targets": [
@@ -1740,8 +1765,8 @@ flowchart TB
 ```yaml
 # Common cost reporting queries
 
-# Total spend this month
-total_mtd: |
+# Current daily spend
+current_daily: |
   sum(
     aws_cost_dollars or
     gcp_cost_dollars or
@@ -1752,9 +1777,12 @@ total_mtd: |
 top_services: |
   topk(10,
     sum by (service) (
-      aws_cost_by_service or
-      gcp_cost_by_service or
-      azure_cost_by_service
+      aws_cost_dollars or
+      gcp_cost_dollars or
+      label_replace(
+        azure_cost_dollars,
+        "service", "$1", "service_name", "(.*)"
+      )
     )
   )
 
@@ -1762,7 +1790,10 @@ top_services: |
 by_team: |
   sum by (tag_value) (
     aws_cost_by_tag_dollars{tag_key="Team"} or
-    gcp_cost_by_label_dollars{label_key="team"} or
+    label_replace(
+      gcp_cost_by_label_dollars{label_key="team"},
+      "tag_value", "$1", "label_value", "(.*)"
+    ) or
     azure_cost_by_tag_dollars{tag_name="Team"}
   )
 
@@ -1771,11 +1802,9 @@ wow_change: |
   (cloud:total_cost:sum - cloud:total_cost:sum offset 7d) /
   cloud:total_cost:sum offset 7d * 100
 
-# Forecast (simple linear projection)
+# Forecast (simple daily run-rate projection)
 forecast_eom: |
-  cloud:total_cost:sum * (
-    days_in_month() / day_of_month()
-  )
+  cloud:total_cost:sum * days_in_month()
 
 # Untagged resource percentage
 untagged_pct: |
