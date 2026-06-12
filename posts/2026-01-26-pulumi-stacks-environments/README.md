@@ -12,7 +12,7 @@ Managing multiple environments is one of the most common challenges in infrastru
 
 ## What Are Pulumi Stacks?
 
-A Pulumi stack is an isolated, independently configurable instance of a Pulumi program. Each stack has its own state file and configuration values, allowing you to deploy the same infrastructure code to different environments with different settings.
+A Pulumi stack is an isolated, independently configurable instance of a Pulumi program. Each stack has its own state and configuration values, allowing you to deploy the same infrastructure code to different environments with different settings.
 
 ```mermaid
 graph TB
@@ -148,7 +148,7 @@ export function loadConfig(): EnvironmentConfig {
     const config = new pulumi.Config();
 
     return {
-        // requireString throws an error if the value is missing
+        // require throws an error if the value is missing
         // This catches configuration errors early in the deployment
         environment: config.require("environment"),
         instanceType: config.require("instanceType"),
@@ -570,7 +570,7 @@ export const summary = pulumi.all([
 
 ## Managing Secrets Across Environments
 
-Pulumi encrypts secrets automatically. Here's how to handle sensitive configuration:
+Pulumi encrypts values that you mark as secrets. Here's how to handle sensitive configuration:
 
 ```bash
 # Set a secret value for the dev stack
@@ -587,11 +587,12 @@ Access secrets in your code:
 
 ```typescript
 import * as pulumi from "@pulumi/pulumi";
+import * as aws from "@pulumi/aws";
 
 const config = new pulumi.Config();
 
 // requireSecret returns an Output<string> that is marked as secret
-// Pulumi will never display this value in logs or state
+// Pulumi encrypts the value in state and redacts it from CLI output
 const dbPassword = config.requireSecret("dbPassword");
 
 // Use the secret in resources
@@ -627,6 +628,7 @@ graph LR
 
 ```typescript
 import * as pulumi from "@pulumi/pulumi";
+import * as aws from "@pulumi/aws";
 
 // Reference the networking stack for the current environment
 const env = pulumi.getStack(); // Returns "dev", "staging", or "prod"
@@ -717,7 +719,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - uses: pulumi/actions@v5
+      - uses: pulumi/actions@v7
         with:
           command: preview
           stack-name: myorg/my-app-infra/staging
@@ -742,7 +744,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - uses: pulumi/actions@v5
+      - uses: pulumi/actions@v7
         with:
           command: up
           stack-name: myorg/my-app-infra/staging
@@ -767,7 +769,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - uses: pulumi/actions@v5
+      - uses: pulumi/actions@v7
         with:
           command: up
           stack-name: myorg/my-app-infra/prod
