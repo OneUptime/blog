@@ -175,7 +175,7 @@ Google requires a Cloud Console project:
 
 1. Create OAuth 2.0 credentials in Google Cloud Console
 2. Add authorized redirect URI: `https://argocd.example.com/auth/callback`
-3. Enable the Admin SDK API for group claims
+3. Use Dex with the Google connector if you need Google Workspace group claims
 
 ```yaml
 # argocd-cm ConfigMap for Google Workspace
@@ -205,7 +205,7 @@ data:
 
 ## Option 2: SAML Integration via Dex
 
-Many enterprises require SAML. ArgoCD uses Dex as a SAML-to-OIDC bridge.
+Many enterprises require SAML. ArgoCD uses Dex as a SAML-to-OIDC bridge. Dex's SAML connector is currently unmaintained and under consideration for deprecation, so prefer OIDC or LDAP when your IdP supports them.
 
 ### Dex Architecture
 
@@ -277,6 +277,8 @@ data:
 
 ### SAML with Azure AD
 
+Configure Azure AD to emit `email` and `Group` claims, then use the Login URL as the Dex `ssoURL`.
+
 ```yaml
 # Dex configuration for Azure AD SAML
 apiVersion: v1
@@ -293,7 +295,7 @@ data:
         id: azure
         name: Azure AD
         config:
-          # Federation metadata URL from Azure AD
+          # Login URL from Azure AD SAML configuration
           ssoURL: https://login.microsoftonline.com/TENANT_ID/saml2
 
           # Download certificate from Azure AD SAML configuration
@@ -302,10 +304,10 @@ data:
 
           redirectURI: https://argocd.example.com/api/dex/callback
 
-          # Azure AD attribute names
-          usernameAttr: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name
-          emailAttr: http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress
-          groupsAttr: http://schemas.microsoft.com/ws/2008/06/identity/claims/groups
+          # Azure AD claim names configured in User Attributes & Claims
+          usernameAttr: email
+          emailAttr: email
+          groupsAttr: Group
 
           # Entity ID must match Azure AD configuration
           entityIssuer: https://argocd.example.com/api/dex/callback
@@ -581,7 +583,7 @@ Verify group memberships and permissions:
 argocd account get-user-info
 
 # Test what a specific user can do
-argocd admin settings rbac can <username> get applications '*/*'
+argocd admin settings rbac can <username> get application '*/*'
 
 # Validate RBAC policy syntax
 argocd admin settings rbac validate --policy-file policy.csv
@@ -718,7 +720,7 @@ kubectl logs -n argocd deployment/argocd-server | grep -i groups
 **RBAC not working:**
 ```bash
 # Test RBAC policy
-argocd admin settings rbac can user@example.com get applications 'default/*' \
+argocd admin settings rbac can user@example.com get application 'default/*' \
   --policy-file <(kubectl get cm argocd-rbac-cm -n argocd -o jsonpath='{.data.policy\.csv}')
 
 # Check user's groups
