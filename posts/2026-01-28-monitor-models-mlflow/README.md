@@ -48,7 +48,7 @@ First, instrument your model serving to log predictions:
 import mlflow
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from typing import Any
 
@@ -66,7 +66,7 @@ class MonitoredModel:
         self.model = mlflow.pyfunc.load_model(model_uri)
         self.experiment_name = experiment_name
         self.log_sample_rate = log_sample_rate
-        self.model_version = model_uri.split("/")[-1]
+        self.model_reference = model_uri
 
         mlflow.set_experiment(experiment_name)
 
@@ -76,12 +76,12 @@ class MonitoredModel:
 
     def predict(self, features: pd.DataFrame, request_id: str = None) -> np.ndarray:
         """Make prediction and log for monitoring."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         # Make prediction
         predictions = self.model.predict(features)
 
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         latency_ms = (end_time - start_time).total_seconds() * 1000
 
         # Sample-based logging
@@ -109,7 +109,7 @@ class MonitoredModel:
             record = {
                 "request_id": request_id or f"req_{timestamp.timestamp()}_{i}",
                 "timestamp": timestamp.isoformat(),
-                "model_version": self.model_version,
+                "model_reference": self.model_reference,
                 "features": features.iloc[i].to_dict(),
                 "prediction": float(predictions[i]) if hasattr(predictions[i], '__float__') else predictions[i],
                 "latency_ms": latency_ms
@@ -126,7 +126,7 @@ class MonitoredModel:
             return
 
         # Write to JSONL file (in production, use a database or streaming system)
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         filename = f"/tmp/predictions_{timestamp}.jsonl"
 
         with open(filename, "w") as f:
@@ -146,7 +146,7 @@ class MonitoredModel:
 # Usage
 
 model = MonitoredModel(
-    model_uri="models:/churn-predictor/Production",
+    model_uri="models:/churn-predictor@champion",
     experiment_name="/monitoring/churn-model",
     log_sample_rate=0.1  # Log 10% of predictions
 )
@@ -270,7 +270,7 @@ class DriftDetector:
 
             mlflow.log_metric("total_features_monitored", total_features)
             mlflow.log_metric("drifted_features_count", drifted_features)
-            mlflow.log_metric("drift_ratio", drifted_features / total_features)
+            mlflow.log_metric("drift_ratio", drifted_features / total_features if total_features else 0)
 
             for feature, result in drift_results.items():
                 mlflow.log_metric(f"drift_{feature}_statistic", result["statistic"])
@@ -399,7 +399,7 @@ import mlflow
 import pandas as pd
 import numpy as np
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 class PerformanceMonitor:
     """
@@ -442,7 +442,7 @@ class PerformanceMonitor:
         return {
             "metrics": metrics,
             "degradation": degradation,
-            "timestamp": batch_timestamp or datetime.utcnow(),
+            "timestamp": batch_timestamp or datetime.now(timezone.utc),
             "sample_size": len(predictions)
         }
 
@@ -543,7 +543,7 @@ Put it all together with an automated monitoring job:
 
 ```python
 import mlflow
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
 
@@ -580,7 +580,7 @@ class ModelMonitoringPipeline:
         mlflow.set_experiment(f"/monitoring/{self.model_name}")
 
         results = {}
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(timezone.utc)
 
         with mlflow.start_run(run_name=f"monitoring-{timestamp.strftime('%Y%m%d_%H%M')}"):
             # 1. Data drift detection
@@ -640,15 +640,16 @@ class ModelMonitoringPipeline:
 
         # Simple outlier detection using IQR
         outlier_count = 0
-        for col in df.select_dtypes(include=[np.number]).columns:
+        numeric_df = df.select_dtypes(include=[np.number])
+        for col in numeric_df.columns:
             q1, q3 = df[col].quantile([0.25, 0.75])
             iqr = q3 - q1
             outliers = ((df[col] < q1 - 1.5 * iqr) | (df[col] > q3 + 1.5 * iqr)).sum()
             outlier_count += outliers
 
         return {
-            "missing_ratio": missing_cells / total_cells,
-            "outlier_ratio": outlier_count / len(df),
+            "missing_ratio": missing_cells / total_cells if total_cells else 0,
+            "outlier_ratio": outlier_count / numeric_df.size if numeric_df.size else 0,
             "row_count": len(df)
         }
 
