@@ -48,7 +48,7 @@ var app = builder.Build();
 // Map the health endpoint with detailed JSON output
 app.MapHealthChecks("/health", new HealthCheckOptions
 {
-    ResponseWriter = WriteHealthCheckResponse
+    ResponseWriter = HealthCheckResponseWriter.WriteHealthCheckResponse
 });
 
 app.Run();
