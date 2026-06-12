@@ -19,7 +19,7 @@ Traditional file-based or memory-based sessions have problems at scale:
 - **Database sessions**: Added load on primary database, slower than needed
 
 Redis solves all of these:
-- Persistent across server restarts
+- Can persist across server restarts when Redis persistence is enabled
 - Shared across all application instances
 - Sub-millisecond response times
 - Built-in TTL for automatic cleanup
@@ -67,6 +67,7 @@ const redis = new Redis({
 
 class SessionStore {
   constructor(options = {}) {
+    this.redis = options.redis || redis;
     this.prefix = options.prefix || 'sess:';
     this.ttl = options.ttl || 86400; // 24 hours default
     this.secret = options.secret || process.env.SESSION_SECRET;
@@ -124,7 +125,7 @@ class SessionStore {
   // Get session data
   async get(sessionId) {
     const key = this.prefix + sessionId;
-    const data = await redis.get(key);
+    const data = await this.redis.get(key);
 
     if (!data) {
       return null;
@@ -143,7 +144,7 @@ class SessionStore {
     const key = this.prefix + sessionId;
     const serialized = JSON.stringify(data);
 
-    await redis.setex(key, ttl, serialized);
+    await this.redis.setex(key, ttl, serialized);
   }
 
   // Update session without changing TTL
@@ -151,24 +152,24 @@ class SessionStore {
     const key = this.prefix + sessionId;
 
     // Get current TTL
-    const ttl = await redis.ttl(key);
+    const ttl = await this.redis.ttl(key);
 
     if (ttl > 0) {
       const serialized = JSON.stringify(data);
-      await redis.setex(key, ttl, serialized);
+      await this.redis.setex(key, ttl, serialized);
     }
   }
 
   // Touch session (refresh TTL without changing data)
   async touch(sessionId, ttl = this.ttl) {
     const key = this.prefix + sessionId;
-    await redis.expire(key, ttl);
+    await this.redis.expire(key, ttl);
   }
 
   // Destroy session
   async destroy(sessionId) {
     const key = this.prefix + sessionId;
-    await redis.del(key);
+    await this.redis.del(key);
   }
 
   // Create new session
@@ -191,11 +192,11 @@ class SessionStore {
     let cursor = '0';
 
     do {
-      const [newCursor, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      const [newCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
       cursor = newCursor;
 
       for (const key of keys) {
-        const data = await redis.get(key);
+        const data = await this.redis.get(key);
         if (data) {
           const session = JSON.parse(data);
           if (session.userId === userId) {
@@ -217,7 +218,7 @@ class SessionStore {
     const keys = sessions.map((s) => this.prefix + s.sessionId);
 
     if (keys.length > 0) {
-      await redis.del(...keys);
+      await this.redis.del(...keys);
     }
 
     return sessions.length;
@@ -247,95 +248,104 @@ function sessionMiddleware(options = {}) {
   const cookieName = options.cookieName || 'session_id';
   const cookieOptions = {
     httpOnly: true,
-    secure: options.secure !== false && process.env.NODE_ENV === 'production',
+    secure: options.secure ?? (process.env.NODE_ENV === 'production'),
     sameSite: options.sameSite || 'lax',
-    maxAge: (options.ttl || 86400) * 1000,
+    maxAge: options.ttl || 86400,
     path: '/',
     ...options.cookie,
   };
 
   return async function session(req, res, next) {
-    // Parse cookies
-    const cookies = cookie.parse(req.headers.cookie || '');
-    const signedSessionId = cookies[cookieName];
+    try {
+      // Parse cookies
+      const cookies = cookie.parse(req.headers.cookie || '');
+      const signedSessionId = cookies[cookieName];
 
-    let sessionId = null;
-    let sessionData = null;
+      let sessionId = null;
+      let sessionData = null;
 
-    // Try to load existing session
-    if (signedSessionId) {
-      sessionId = store.verifySessionId(signedSessionId);
+      // Try to load existing session
+      if (signedSessionId) {
+        sessionId = store.verifySessionId(signedSessionId);
 
-      if (sessionId) {
+        if (sessionId) {
+          sessionData = await store.get(sessionId);
+        }
+      }
+
+      // Create new session if none exists
+      if (!sessionData) {
+        const newSignedId = await store.create({});
+        sessionId = store.verifySessionId(newSignedId);
         sessionData = await store.get(sessionId);
+
+        // Set cookie with new session ID
+        res.setHeader('Set-Cookie', cookie.serialize(cookieName, newSignedId, cookieOptions));
       }
-    }
 
-    // Create new session if none exists
-    if (!sessionData) {
-      const newSignedId = await store.create({});
-      sessionId = store.verifySessionId(newSignedId);
-      sessionData = await store.get(sessionId);
+      function attachSession(data) {
+        req.session = data;
+        req.sessionId = sessionId;
 
-      // Set cookie with new session ID
-      res.setHeader('Set-Cookie', cookie.serialize(cookieName, newSignedId, cookieOptions));
-    }
+        // Method to save session changes
+        req.session.save = async function () {
+          await store.set(sessionId, req.session, options.ttl);
+        };
 
-    // Attach session to request
-    req.session = sessionData;
-    req.sessionId = sessionId;
+        // Method to regenerate session (after login)
+        req.session.regenerate = async function (data = {}) {
+          // Destroy old session
+          await store.destroy(sessionId);
 
-    // Method to save session changes
-    req.session.save = async function () {
-      await store.set(sessionId, req.session, options.ttl);
-    };
+          // Create new session
+          const newSignedId = await store.create(data);
+          const newSessionId = store.verifySessionId(newSignedId);
+          const newData = await store.get(newSessionId);
 
-    // Method to regenerate session (after login)
-    req.session.regenerate = async function (data = {}) {
-      // Destroy old session
-      await store.destroy(sessionId);
+          // Update request
+          sessionId = newSessionId;
+          attachSession(newData);
 
-      // Create new session
-      const newSignedId = await store.create(data);
-      const newSessionId = store.verifySessionId(newSignedId);
-      const newData = await store.get(newSessionId);
+          // Set new cookie
+          res.setHeader('Set-Cookie', cookie.serialize(cookieName, newSignedId, cookieOptions));
 
-      // Update request
-      req.session = newData;
-      req.sessionId = newSessionId;
+          return newData;
+        };
 
-      // Set new cookie
-      res.setHeader('Set-Cookie', cookie.serialize(cookieName, newSignedId, cookieOptions));
+        // Method to destroy session (logout)
+        req.session.destroy = async function () {
+          await store.destroy(sessionId);
+          sessionId = null;
+          req.session = null;
+          req.sessionId = null;
 
-      return newData;
-    };
-
-    // Method to destroy session (logout)
-    req.session.destroy = async function () {
-      await store.destroy(sessionId);
-      req.session = null;
-      req.sessionId = null;
-
-      // Clear cookie
-      res.setHeader('Set-Cookie', cookie.serialize(cookieName, '', {
-        ...cookieOptions,
-        maxAge: 0,
-      }));
-    };
-
-    // Auto-save on response end
-    const originalEnd = res.end;
-    res.end = function (...args) {
-      if (req.session && sessionId) {
-        // Save asynchronously, don't block response
-        store.set(sessionId, req.session, options.ttl).catch((err) => {
-          console.error('Failed to save session:', err);
-        });
+          // Clear cookie
+          res.setHeader('Set-Cookie', cookie.serialize(cookieName, '', {
+            ...cookieOptions,
+            maxAge: 0,
+          }));
+        };
       }
-      originalEnd.apply(res, args);
-    };
 
-    next();
+      // Attach session to request
+      attachSession(sessionData);
+
+      // Auto-save on response end
+      const originalEnd = res.end;
+      res.end = function (...args) {
+        if (req.session && sessionId) {
+          // Save asynchronously, don't block response
+          store.set(sessionId, req.session, options.ttl).catch((err) => {
+            console.error('Failed to save session:', err);
+          });
+        }
+        originalEnd.apply(res, args);
+      };
+
+      next();
+    } catch (err) {
+      next(err);
+    }
   };
 }
 
@@ -547,9 +557,9 @@ class SecureSessionStore extends SessionStore {
     });
 
     // Keep last 100 activities per session
-    await redis.lpush(key, entry);
-    await redis.ltrim(key, 0, 99);
-    await redis.expire(key, this.maxAge);
+    await this.redis.lpush(key, entry);
+    await this.redis.ltrim(key, 0, 99);
+    await this.redis.expire(key, this.maxAge);
   }
 }
 
@@ -605,11 +615,11 @@ class DistributedSessionStore {
     const sessionKey = this.getKey(sessionId);
     const metaKey = `{sess}:meta:${sessionId}`;
 
-    // Use pipeline for atomic multi-key operation
-    const pipeline = this.redis.pipeline();
-    pipeline.setex(sessionKey, this.ttl, JSON.stringify(sessionData));
-    pipeline.setex(metaKey, this.ttl, JSON.stringify(metaData));
-    await pipeline.exec();
+    // Use MULTI for an atomic multi-key operation
+    const transaction = this.redis.multi();
+    transaction.setex(sessionKey, this.ttl, JSON.stringify(sessionData));
+    transaction.setex(metaKey, this.ttl, JSON.stringify(metaData));
+    await transaction.exec();
   }
 }
 
@@ -629,7 +639,7 @@ async function getSessionStats(prefix = 'sess:') {
   let totalSessions = 0;
   let activeSessions = 0;
   const ttlBuckets = {
-    expired: 0,
+    noExpiryOrMissing: 0,
     lessThan1h: 0,
     lessThan1d: 0,
     moreThan1d: 0,
@@ -644,7 +654,7 @@ async function getSessionStats(prefix = 'sess:') {
       const ttl = await redis.ttl(key);
 
       if (ttl < 0) {
-        ttlBuckets.expired++;
+        ttlBuckets.noExpiryOrMissing++;
       } else if (ttl < 3600) {
         ttlBuckets.lessThan1h++;
         activeSessions++;
@@ -678,7 +688,7 @@ app.get('/admin/sessions/stats', requireAdmin, async (req, res) => {
 |---------|---------------|
 | Session creation | Generate secure random ID, sign with HMAC |
 | Storage | Redis SETEX with TTL |
-| Security | HTTP-only cookies, CSRF protection, session regeneration |
+| Security | HTTP-only cookies, SameSite cookies, session regeneration |
 | Scaling | Redis Cluster with hash tags |
 | Cleanup | Automatic via Redis TTL |
 | Logout everywhere | Track user sessions, bulk delete |
