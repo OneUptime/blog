@@ -48,8 +48,8 @@ flowchart LR
 Before configuring egress gateway, ensure:
 
 1. **Cilium 1.13+** is installed with egress gateway support enabled
-2. **BPF masquerading** is enabled (IPtables masquerading is not supported)
-3. **Dedicated gateway nodes** are available with static IPs
+2. **BPF masquerading** and **kube-proxy replacement** are enabled
+3. **Gateway nodes** are available with static IPs
 
 Check your Cilium installation:
 
@@ -61,8 +61,8 @@ cilium status
 # Check Cilium version
 cilium version
 
-# Verify BPF masquerading is enabled
-kubectl -n kube-system exec ds/cilium -- cilium status | grep Masquerading
+# Verify BPF masquerading and kube-proxy replacement are enabled
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep -E 'Masquerading|KubeProxyReplacement'
 ```
 
 ## Enabling Egress Gateway in Cilium
@@ -81,8 +81,8 @@ egressGateway:
 bpf:
   masquerade: true
 
-# Enable policy enforcement for egress control
-policyEnforcementMode: "default"
+# kube-proxy replacement is required for egress gateway
+kubeProxyReplacement: true
 
 # Optional: Enable Hubble for observability
 hubble:
@@ -114,8 +114,8 @@ Designate specific nodes as egress gateways by labeling them:
 ```bash
 # Label nodes that will serve as egress gateways
 # These nodes should have static, predictable IPs
-kubectl label nodes gateway-node-1 egress-gateway=true
-kubectl label nodes gateway-node-2 egress-gateway=true
+kubectl label nodes gateway-node-1 egress-gateway=true egress-ip=primary zone=zone-a
+kubectl label nodes gateway-node-2 egress-gateway=true egress-ip=secondary zone=zone-b
 
 # Verify labels
 kubectl get nodes -l egress-gateway=true
@@ -161,8 +161,7 @@ spec:
     nodeSelector:
       matchLabels:
         egress-gateway: "true"
-    # The interface on gateway nodes for egress
-    interface: eth0
+        egress-ip: primary
     # The egress IP address (must be configured on the node)
     egressIP: 10.0.1.100
 ```
@@ -199,6 +198,7 @@ spec:
     nodeSelector:
       matchLabels:
         egress-gateway: "true"
+        egress-ip: primary
     egressIP: 10.0.1.100
 
 ---
@@ -220,6 +220,7 @@ spec:
     nodeSelector:
       matchLabels:
         egress-gateway: "true"
+        egress-ip: secondary
     egressIP: 10.0.1.101
 ```
 
@@ -251,6 +252,7 @@ spec:
     nodeSelector:
       matchLabels:
         egress-gateway: "true"
+        egress-ip: primary
     egressIP: 10.0.1.100
 ```
 
@@ -276,7 +278,7 @@ spec:
     nodeSelector:
       matchLabels:
         egress-gateway: "true"
-        region: us-east-1
+        egress-ip: primary
     egressIP: 10.0.1.100
 
 ---
@@ -297,7 +299,7 @@ spec:
     nodeSelector:
       matchLabels:
         egress-gateway: "true"
-        region: azure-eastus
+        egress-ip: secondary
     egressIP: 10.0.2.100
 ```
 
@@ -338,12 +340,13 @@ spec:
     nodeSelector:
       matchLabels:
         egress-gateway: "true"
+        egress-ip: primary
     egressIP: 10.0.1.100
 ```
 
 ## High Availability Setup
 
-Ensure egress gateway remains available during node failures.
+Improve egress gateway availability by configuring more than one gateway node.
 
 ```mermaid
 flowchart TB
@@ -354,19 +357,16 @@ flowchart TB
     end
 
     subgraph HA["HA Egress Gateway"]
-        EG1[Gateway Node 1<br/>Active<br/>IP: 10.0.1.100]
-        EG2[Gateway Node 2<br/>Standby<br/>IP: 10.0.1.100]
-        VIP[Virtual IP<br/>10.0.1.100]
+        EG1[Gateway Node 1<br/>IP: 10.0.1.100]
+        EG2[Gateway Node 2<br/>IP: 10.0.2.100]
     end
 
-    P1 --> VIP
-    P2 --> VIP
-    P3 --> VIP
-    VIP --> EG1
-    EG1 -.->|Failover| EG2
+    P1 --> EG1
+    P2 --> EG1
+    P3 --> EG2
 
     EG1 --> External[External Services]
-    EG2 -.-> External
+    EG2 --> External
 ```
 
 ### Multiple Gateway Nodes
@@ -388,13 +388,19 @@ spec:
   excludedCIDRs:
     - "10.0.0.0/8"
     - "172.16.0.0/12"
-  egressGateway:
-    # Select multiple gateway nodes
-    # Cilium will distribute traffic and handle failover
-    nodeSelector:
-      matchLabels:
-        egress-gateway: "true"
-    egressIP: 10.0.1.100
+  egressGateways:
+    # Each selected endpoint uses one gateway from this list.
+    # Changing the selected gateway set can break existing connections.
+    - nodeSelector:
+        matchLabels:
+          egress-gateway: "true"
+          zone: zone-a
+      egressIP: 10.0.1.100
+    - nodeSelector:
+        matchLabels:
+          egress-gateway: "true"
+          zone: zone-b
+      egressIP: 10.0.2.100
 ```
 
 ### Node Preparation for HA
@@ -403,42 +409,20 @@ spec:
 # Prepare gateway nodes with required configuration
 # Run on each gateway node
 
-# Ensure the egress IP is configured as a secondary IP
-# This allows the IP to float between nodes
+# Ensure each egress IP is configured on the gateway node that advertises it
 sudo ip addr add 10.0.1.100/32 dev eth0
 
 # For cloud providers, use their mechanisms:
-# AWS: Elastic IP attached to ENI
+# AWS: Elastic IP or secondary private IP attached to ENI
 # GCP: Alias IP range
 # Azure: Secondary IP configuration
 ```
 
-### Using External Load Balancer
+### Using Provider-Managed Failover
 
-For true high availability with automatic failover:
+For automatic failover of a single externally allowlisted IP, use your cloud provider's supported mechanism to move or reassign that IP to a healthy gateway node. A Kubernetes `Service` of type `LoadBalancer` does not configure the source IP used by Cilium Egress Gateway.
 
-```yaml
-# external-lb-egress.yaml
-# Use external load balancer for egress HA
-apiVersion: v1
-kind: Service
-metadata:
-  name: egress-lb
-  namespace: kube-system
-  annotations:
-    # Cloud-specific annotations for internal LB
-    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-spec:
-  type: LoadBalancer
-  loadBalancerIP: 10.0.1.100  # Static IP for egress
-  selector:
-    egress-gateway: "true"
-  ports:
-    - port: 443
-      targetPort: 443
-      protocol: TCP
-```
+Re-apply the `CiliumEgressGatewayPolicy` after changing gateway-node IP assignments so Cilium refreshes its selected egress IP.
 
 ### Health Checks for Gateway Nodes
 
@@ -476,7 +460,7 @@ spec:
                   echo "Egress healthy"
                 else
                   echo "Egress failed"
-                  # Alert or trigger failover
+                  # Alert so the provider failover process can react
                 fi
                 sleep 30
               done
@@ -513,40 +497,35 @@ flowchart LR
 ### Enable Hubble Observability
 
 ```yaml
-# hubble-config.yaml
-# Enhanced Hubble configuration for egress monitoring
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cilium-config
-  namespace: kube-system
-data:
-  # Enable Hubble for flow visibility
-  enable-hubble: "true"
-  hubble-listen-address: ":4244"
-  hubble-disable-tls: "false"
-
-  # Enable metrics export
-  hubble-metrics-server: ":9965"
-  hubble-metrics:
-    - dns
-    - drop
-    - tcp
-    - flow
-    - icmp
-    - http
+# values.yaml additions for Hubble egress monitoring
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  metrics:
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - icmp
+      - httpV2:labelsContext=source_namespace,destination_ip,traffic_direction
 ```
 
 ### Hubble CLI Commands
 
 ```bash
 # Install Hubble CLI
-HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
-curl -L --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-amd64.tar.gz
-tar xzvfC hubble-linux-amd64.tar.gz /usr/local/bin
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+HUBBLE_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then HUBBLE_ARCH=arm64; fi
+curl -L --fail --remote-name-all \
+  https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC hubble-linux-${HUBBLE_ARCH}.tar.gz /usr/local/bin
 
 # Port forward to Hubble relay
-kubectl port-forward -n kube-system svc/hubble-relay 4245:80 &
+cilium hubble port-forward &
 
 # Observe all egress traffic
 hubble observe --type trace:to-network
@@ -567,40 +546,22 @@ hubble observe --type trace:to-network -o json > egress-flows.json
 ### Prometheus Metrics
 
 ```yaml
-# prometheus-servicemonitor.yaml
-# Scrape Cilium and Hubble metrics
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: cilium-metrics
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: cilium-agent
-  namespaceSelector:
-    matchNames:
-      - kube-system
-  endpoints:
-    - port: prometheus
-      interval: 30s
-      path: /metrics
+# values.yaml additions for Prometheus Operator ServiceMonitors
+prometheus:
+  enabled: true
+  serviceMonitor:
+    enabled: true
 
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: hubble-metrics
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: hubble
-  namespaceSelector:
-    matchNames:
-      - kube-system
-  endpoints:
-    - port: metrics
+operator:
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+hubble:
+  metrics:
+    serviceMonitor:
+      enabled: true
       interval: 30s
 ```
 
@@ -623,7 +584,8 @@ spec:
           expr: |
             sum(rate(hubble_flows_processed_total{
               type="Trace",
-              subtype="to-network"
+              subtype="to-network",
+              verdict="FORWARDED"
             }[5m])) > 10000
           for: 5m
           labels:
@@ -635,7 +597,7 @@ spec:
         - alert: EgressPolicyDrops
           expr: |
             sum(rate(hubble_drop_total{
-              reason="Policy denied"
+              reason="POLICY_DENIED"
             }[5m])) > 100
           for: 2m
           labels:
@@ -671,8 +633,8 @@ spec:
         "type": "graph",
         "targets": [
           {
-            "expr": "sum(rate(hubble_flows_processed_total{type=\"Trace\",subtype=\"to-network\"}[5m])) by (destination)",
-            "legendFormat": "{{destination}}"
+            "expr": "sum(rate(hubble_flows_processed_total{type=\"Trace\",subtype=\"to-network\",verdict=\"FORWARDED\"}[5m]))",
+            "legendFormat": "egress"
           }
         ]
       },
@@ -690,7 +652,7 @@ spec:
         "type": "graph",
         "targets": [
           {
-            "expr": "sum(rate(hubble_drop_total{reason=\"Policy denied\"}[5m])) by (source_namespace)"
+            "expr": "sum(rate(hubble_drop_total{reason=\"POLICY_DENIED\"}[5m]))"
           }
         ]
       }
@@ -705,13 +667,13 @@ spec:
 
 ```bash
 # Check Cilium egress gateway status
-kubectl -n kube-system exec ds/cilium -- cilium bpf egress list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf egress list
 
 # Verify policy is applied
 kubectl get ciliumegressgatewaypolicies -o yaml
 
 # Check endpoint status
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list
 
 # Debug connectivity from a pod
 kubectl exec -it test-pod -- curl -v https://api.external.com
@@ -748,7 +710,7 @@ kubectl exec -it test-pod -- curl -v https://api.external.com
 
 6. **Document Policies**: Maintain clear documentation of which services use which egress IPs and why.
 
-7. **Test Failover**: Regularly test gateway node failover to ensure HA configuration works as expected.
+7. **Test Failover**: Regularly test gateway node failover or gateway reassignment to ensure HA configuration works as expected.
 
 8. **Audit Regularly**: Review egress policies and traffic patterns quarterly to ensure they match security requirements.
 
