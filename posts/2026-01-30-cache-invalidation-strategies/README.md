@@ -65,6 +65,7 @@ When data consistency is critical, invalidate the cache immediately when the sou
 ```python
 import redis
 from functools import wraps
+from inspect import signature
 
 cache = redis.Redis(host='localhost', port=6379, db=0)
 
@@ -74,14 +75,18 @@ def invalidate_cache(*patterns):
     after the wrapped function executes successfully.
     """
     def decorator(func):
+        sig = signature(func)
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             result = func(*args, **kwargs)
+            bound_args = sig.bind(*args, **kwargs)
+            bound_args.apply_defaults()
 
             # Invalidate all matching cache keys after successful update
             for pattern in patterns:
                 # Build the actual key from the pattern and function arguments
-                cache_key = pattern.format(*args, **kwargs)
+                cache_key = pattern.format(**bound_args.arguments)
                 cache.delete(cache_key)
 
             return result
@@ -125,7 +130,10 @@ class VersionedCache:
     def _get_version(self) -> int:
         """Get current version, initializing to 1 if not set."""
         version = cache.get(self.version_key)
-        return int(version) if version else 1
+        if version:
+            return int(version)
+        cache.setnx(self.version_key, 1)
+        return 1
 
     def _build_key(self, key: str) -> str:
         """Build versioned cache key."""
@@ -148,6 +156,7 @@ class VersionedCache:
         Invalidate all cached items by incrementing the version.
         Old entries remain but become inaccessible with the new version.
         """
+        cache.setnx(self.version_key, 1)
         cache.incr(self.version_key)
 
 
@@ -265,7 +274,8 @@ class HybridCache:
         self.version_key = f"{namespace}:version"
 
     def _build_key(self, key: str) -> str:
-        version = cache.get(self.version_key) or b'1'
+        cache.setnx(self.version_key, 1)
+        version = cache.get(self.version_key)
         return f"{self.namespace}:v{version.decode()}:{key}"
 
     def get(self, key: str) -> dict | None:
@@ -273,7 +283,7 @@ class HybridCache:
         data = cache.get(self._build_key(key))
         return json.loads(data) if data else None
 
-    def set(self, key: str, value: dict, ttl: int = None):
+    def set(self, key: str, value: dict, ttl: int | None = None):
         """Set with TTL for automatic expiration."""
         cache.setex(
             self._build_key(key),
@@ -287,6 +297,7 @@ class HybridCache:
 
     def invalidate_all(self):
         """Version bump for bulk invalidation."""
+        cache.setnx(self.version_key, 1)
         cache.incr(self.version_key)
 ```
 
