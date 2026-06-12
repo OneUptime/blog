@@ -133,28 +133,28 @@ Based on the puzzle of the same name, this scheme provides efficient storage wit
 ```mermaid
 flowchart TB
     subgraph "Tower of Hanoi (5 Sets)"
-        subgraph SetA["Set A: Every 2nd backup"]
-            A1[Day 2]
-            A2[Day 4]
-            A3[Day 6]
+        subgraph SetA["Set A: Every other backup"]
+            A1[Day 1]
+            A2[Day 3]
+            A3[Day 5]
         end
 
-        subgraph SetB["Set B: Every 4th backup"]
-            B1[Day 4]
-            B2[Day 8]
+        subgraph SetB["Set B: Every 4th backup, offset by 2"]
+            B1[Day 2]
+            B2[Day 6]
         end
 
-        subgraph SetC["Set C: Every 8th backup"]
-            C1[Day 8]
-            C2[Day 16]
+        subgraph SetC["Set C: Every 8th backup, offset by 4"]
+            C1[Day 4]
+            C2[Day 12]
         end
 
-        subgraph SetD["Set D: Every 16th backup"]
-            D1[Day 16]
+        subgraph SetD["Set D: Every 16th backup, offset by 8"]
+            D1[Day 8]
         end
 
-        subgraph SetE["Set E: Every 32nd backup"]
-            E1[Day 32]
+        subgraph SetE["Set E: Every 32nd backup, offset by 16"]
+            E1[Day 16]
         end
     end
 ```
@@ -522,12 +522,12 @@ Different industries have different retention requirements:
 
 | Industry | Regulation | Retention Period |
 |----------|------------|------------------|
-| Healthcare | HIPAA | 6 years |
-| Financial | SOX | 7 years |
-| Financial | SEC Rule 17a-4 | 6 years |
-| Government | FISMA | 3 years |
+| Healthcare | HIPAA documentation | 6 years |
+| Financial | SOX audit/review records | 7 years |
+| Financial | SEC Rule 17a-4 | 3-6 years, depending on record type |
+| Government | FISMA/NIST systems | Follow NARA and agency records schedules |
 | General | GDPR | As needed (minimize) |
-| Retail | PCI-DSS | 1 year |
+| Retail | PCI-DSS audit logs | 12 months, with 3 months immediately available |
 
 ### Designing for Compliance
 
@@ -601,9 +601,6 @@ DAY_OF_WEEK=$(date +%u)
 
 if [ "$DAY_OF_WEEK" = "7" ]; then
     # Sunday: Full backup
-    tar -czf "$BACKUP_DIR/full-$(date +%Y%m%d).tar.gz" "$DATA_DIR"
-
-    # Update snapshot file for incrementals
     tar -czf "$BACKUP_DIR/full-$(date +%Y%m%d).tar.gz" \
         --listed-incremental="$BACKUP_DIR/snapshot.snar" \
         "$DATA_DIR"
@@ -644,6 +641,9 @@ With deduplication (90% reduction):
 ### Key Metrics to Track
 
 ```python
+from datetime import datetime
+from pathlib import Path
+
 def check_rotation_health(backup_dir):
     """Check if rotation scheme is working correctly."""
     issues = []
