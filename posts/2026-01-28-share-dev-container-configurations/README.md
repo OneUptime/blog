@@ -119,28 +119,42 @@ Reference shared templates from a central repository. New projects can start wit
 
 ```text
 org-devcontainer-templates/
-  templates/
+  src/
     nodejs/
+      devcontainer-template.json
       .devcontainer/
         devcontainer.json
         Dockerfile
       README.md
     python/
+      devcontainer-template.json
       .devcontainer/
         devcontainer.json
         Dockerfile
       README.md
     go/
+      devcontainer-template.json
       .devcontainer/
         devcontainer.json
       README.md
 ```
 
-### Template Configuration
+### Template Metadata
 
 ```json
 {
-  // templates/nodejs/.devcontainer/devcontainer.json
+  "id": "nodejs",
+  "version": "1.0.0",
+  "name": "Org Node.js Standard",
+  "description": "Organization standard Node.js development environment"
+}
+```
+
+### Template Configuration
+
+```jsonc
+{
+  // src/nodejs/.devcontainer/devcontainer.json
   "name": "Org Node.js Standard",
   "image": "ghcr.io/yourorg/devcontainer-nodejs:20",
 
@@ -176,12 +190,12 @@ org-devcontainer-templates/
 ### Using Templates in New Projects
 
 ```bash
-# Clone template into new project
+# Apply a published Dev Container Template
 
-npx degit yourorg/devcontainer-templates/templates/nodejs/.devcontainer .devcontainer
+devcontainer templates apply -t ghcr.io/yourorg/devcontainer-templates/nodejs:1
 
 # Or use GitHub template repository feature
-gh repo create my-new-project --template yourorg/nodejs-template
+gh repo create my-new-project --private --template yourorg/nodejs-template
 ```
 
 ## Method 3: Custom Features
@@ -392,7 +406,7 @@ jobs:
 
 ### Using Pre-built Images
 
-```json
+```jsonc
 {
   "name": "Fast Start Development",
   "image": "ghcr.io/yourorg/devcontainer-nodejs:latest",
@@ -418,7 +432,7 @@ flowchart TB
 
 ### Base Configuration
 
-```json
+```jsonc
 {
   // .devcontainer/base/devcontainer.json
   "name": "Org Base",
@@ -472,7 +486,7 @@ RUN npm install -g @team/toolkit
 
 ### Project-Specific Layer
 
-```json
+```jsonc
 {
   // .devcontainer/devcontainer.json
   "name": "My Project",
@@ -503,7 +517,7 @@ Control updates and maintain stability.
 
 ### Semantic Versioning for Features
 
-```json
+```jsonc
 {
   "features": {
     // Pin to major version - get minor updates
@@ -520,7 +534,7 @@ Control updates and maintain stability.
 
 ### Image Tags
 
-```json
+```jsonc
 {
   // Use digest for reproducibility
   "image": "ghcr.io/yourorg/devcontainer:latest@sha256:abc123...",
@@ -532,7 +546,7 @@ Control updates and maintain stability.
 
 ### Change Documentation
 
-```markdown
+````markdown
 <!-- CHANGELOG.md in template repo -->
 # Dev Container Changelog
 
@@ -550,8 +564,8 @@ Update your devcontainer.json:
 {
   "image": "ghcr.io/yourorg/devcontainer:2024-01"
 }
-```bash
-```text
+```
+````
 
 ## Access Control
 
@@ -559,22 +573,11 @@ Manage who can use and modify configurations.
 
 ### GitHub Container Registry Visibility
 
-```yaml
-# In your repository settings or package settings
-# Options: public, private, internal (org only)
-
-# .github/workflows/publish.yml
-- name: Set package visibility
-  run: |
-    gh api \
-      --method PUT \
-      /orgs/yourorg/packages/container/devcontainer-nodejs/visibility \
-      -f visibility='internal'
-```
+In your repository settings or package settings, choose the appropriate package visibility: public, private, or internal (organization only). GitHub Actions workflows can also be granted package access from the package settings page.
 
 ### Feature Repository Access
 
-```json
+```jsonc
 {
   "features": {
     // Public features - anyone can use
@@ -590,10 +593,8 @@ Manage who can use and modify configurations.
 
 ```bash
 # Developers need to authenticate once
-docker login ghcr.io -u USERNAME -p GITHUB_TOKEN
-
-# Or use credential helper
-gh auth setup-git
+export CR_PAT=YOUR_TOKEN
+echo "$CR_PAT" | docker login ghcr.io -u USERNAME --password-stdin
 ```
 
 ## Testing Shared Configurations
@@ -609,7 +610,7 @@ name: Test Templates
 on:
   pull_request:
     paths:
-      - 'templates/**'
+      - 'src/**'
 
 jobs:
   test:
@@ -623,7 +624,7 @@ jobs:
       - name: Build Dev Container
         uses: devcontainers/ci@v0.3
         with:
-          subFolder: templates/${{ matrix.template }}
+          subFolder: src/${{ matrix.template }}
           runCmd: |
             echo "Container built successfully"
             # Run template-specific tests
