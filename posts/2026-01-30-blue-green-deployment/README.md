@@ -184,17 +184,19 @@ deploy_to_inactive() {
         target_env="blue"
     fi
 
-    echo "Deploying version $IMAGE_TAG to $target_env environment..."
+    echo "Deploying version $IMAGE_TAG to $target_env environment..." >&2
 
     # Update the ECS service or EC2 instances in the target environment
-    # This example assumes ECS, adjust for your infrastructure
+    # This example assumes ECS with a mutable image tag in the task definition.
+    # For immutable tags, register a new task definition revision first.
     aws ecs update-service \
         --cluster "${APP_NAME}-cluster" \
         --service "${APP_NAME}-${target_env}" \
         --force-new-deployment \
-        --region "$REGION"
+        --region "$REGION" \
+        >/dev/null
 
-    echo "Waiting for deployment to stabilize..."
+    echo "Waiting for deployment to stabilize..." >&2
     aws ecs wait services-stable \
         --cluster "${APP_NAME}-cluster" \
         --services "${APP_NAME}-${target_env}" \
@@ -226,11 +228,11 @@ verify_health() {
             --query 'TargetHealthDescriptions[*].TargetHealth.State' \
             --output text)
 
-        # Check if all targets are healthy
-        if echo "$health" | grep -qv "healthy"; then
+        # Check if all targets are exactly healthy
+        if [[ -z "$health" ]] || echo "$health" | tr '\t' '\n' | grep -qxv "healthy"; then
             echo "Waiting for targets to become healthy (attempt $((attempt + 1))/$max_attempts)..."
             sleep 10
-            ((attempt++))
+            ((attempt += 1))
         else
             echo "All targets in $env are healthy"
             return 0
@@ -406,13 +408,13 @@ import boto3
 import time
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 @dataclass
 class RollbackConfig:
     """Configuration for rollback monitoring."""
     error_rate_threshold: float = 0.05  # 5% error rate triggers rollback
-    latency_threshold_ms: float = 2000  # 2 second p99 latency threshold
     monitoring_duration_seconds: int = 300  # Monitor for 5 minutes
     check_interval_seconds: int = 30
 
@@ -425,6 +427,21 @@ class DeploymentMonitor:
         self.green_tg_arn = green_tg_arn
         self.elbv2 = boto3.client('elbv2')
         self.cloudwatch = boto3.client('cloudwatch')
+        self.load_balancer_dimension = self._get_load_balancer_dimension()
+
+    def _arn_resource(self, arn: str) -> str:
+        """Return the resource portion of an ELBv2 ARN."""
+        return arn.split(':', 5)[5]
+
+    def _get_load_balancer_dimension(self) -> str:
+        """Return the CloudWatch LoadBalancer dimension value for the listener."""
+        response = self.elbv2.describe_listeners(ListenerArns=[self.listener_arn])
+        load_balancer_arn = response['Listeners'][0]['LoadBalancerArn']
+        return self._arn_resource(load_balancer_arn).replace('loadbalancer/', '', 1)
+
+    def _target_group_dimension(self, target_group_arn: str) -> str:
+        """Return the CloudWatch TargetGroup dimension value."""
+        return self._arn_resource(target_group_arn)
 
     def get_active_environment(self) -> str:
         """Determine which environment is currently receiving traffic."""
@@ -439,12 +456,19 @@ class DeploymentMonitor:
 
     def get_error_rate(self, target_group_arn: str) -> Optional[float]:
         """Calculate error rate from CloudWatch metrics."""
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(seconds=300)
+        dimensions = [
+            {'Name': 'TargetGroup', 'Value': self._target_group_dimension(target_group_arn)},
+            {'Name': 'LoadBalancer', 'Value': self.load_balancer_dimension}
+        ]
+
         response = self.cloudwatch.get_metric_statistics(
             Namespace='AWS/ApplicationELB',
             MetricName='HTTPCode_Target_5XX_Count',
-            Dimensions=[{'Name': 'TargetGroup', 'Value': target_group_arn.split('/')[-1]}],
-            StartTime=time.time() - 300,
-            EndTime=time.time(),
+            Dimensions=dimensions,
+            StartTime=start_time,
+            EndTime=end_time,
             Period=60,
             Statistics=['Sum']
         )
@@ -455,9 +479,9 @@ class DeploymentMonitor:
         response = self.cloudwatch.get_metric_statistics(
             Namespace='AWS/ApplicationELB',
             MetricName='RequestCount',
-            Dimensions=[{'Name': 'TargetGroup', 'Value': target_group_arn.split('/')[-1]}],
-            StartTime=time.time() - 300,
-            EndTime=time.time(),
+            Dimensions=dimensions,
+            StartTime=start_time,
+            EndTime=end_time,
             Period=60,
             Statistics=['Sum']
         )
@@ -511,7 +535,7 @@ class DeploymentMonitor:
                 self.rollback(active_env)
                 return False
 
-            print(f"Health check passed - error rate: {error_rate:.2%}" if error_rate else "No traffic yet")
+            print(f"Health check passed - error rate: {error_rate:.2%}" if error_rate is not None else "No traffic yet")
             time.sleep(self.config.check_interval_seconds)
 
         print("Monitoring completed - deployment is healthy")
@@ -564,14 +588,16 @@ jobs:
           # Build and push to ECR
           aws ecr get-login-password | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
           docker build -t ${{ secrets.ECR_REGISTRY }}/${{ env.APP_NAME }}:${{ github.sha }} .
+          docker tag ${{ secrets.ECR_REGISTRY }}/${{ env.APP_NAME }}:${{ github.sha }} ${{ secrets.ECR_REGISTRY }}/${{ env.APP_NAME }}:latest
           docker push ${{ secrets.ECR_REGISTRY }}/${{ env.APP_NAME }}:${{ github.sha }}
+          docker push ${{ secrets.ECR_REGISTRY }}/${{ env.APP_NAME }}:latest
 
       - name: Deploy to inactive environment
         run: |
           chmod +x scripts/deploy.sh
           ./scripts/deploy.sh
         env:
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: latest
           LISTENER_ARN: ${{ secrets.ALB_LISTENER_ARN }}
           BLUE_TG_ARN: ${{ secrets.BLUE_TG_ARN }}
           GREEN_TG_ARN: ${{ secrets.GREEN_TG_ARN }}
