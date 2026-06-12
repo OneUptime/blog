@@ -39,7 +39,7 @@ on:
     branches: [main]
 
 env:
-  TF_VERSION: "1.6.0"
+  TF_VERSION: "1.15.6"
   AWS_REGION: "us-east-1"
 
 jobs:
@@ -119,11 +119,15 @@ jobs:
               body: output
             })
 
+      - name: Terraform Plan Status
+        if: github.event_name == 'pull_request' && (steps.fmt.outcome == 'failure' || steps.plan.outcome == 'failure')
+        run: exit 1
+
       # Apply only on push to main
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: terraform apply -auto-approve
-```
+````
 
 ### Multi-Environment Pipeline
 
@@ -157,6 +161,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ needs.determine-environment.outputs.environment }}
 
+    permissions:
+      id-token: write
+      contents: read
+
     defaults:
       run:
         working-directory: environments/${{ needs.determine-environment.outputs.environment }}
@@ -173,7 +181,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.6.0"
+          terraform_version: "1.15.6"
 
       - name: Terraform Init
         run: terraform init
@@ -184,7 +192,7 @@ jobs:
       - name: Terraform Apply
         if: github.event_name == 'push'
         run: terraform apply -auto-approve tfplan
-````
+```
 
 ## GitLab CI Pipeline
 
@@ -192,7 +200,7 @@ jobs:
 # .gitlab-ci.yml
 
 image:
-  name: hashicorp/terraform:1.6.0
+  name: hashicorp/terraform:1.15.6
   entrypoint: [""]
 
 variables:
@@ -242,7 +250,7 @@ apply:
     - plan
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-  when: manual  # Require manual approval
+      when: manual  # Require manual approval
   environment:
     name: production
 ```
@@ -260,8 +268,6 @@ resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 
   client_id_list = ["sts.amazonaws.com"]
-
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
 # IAM role that GitHub Actions can assume
@@ -281,8 +287,11 @@ resource "aws_iam_role" "github_actions" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          # Restrict to specific repo and branches
-          "token.actions.githubusercontent.com:sub" = "repo:myorg/myrepo:*"
+          # Restrict to a specific repo and workflow contexts
+          "token.actions.githubusercontent.com:sub" = [
+            "repo:myorg/myrepo:ref:refs/heads/main",
+            "repo:myorg/myrepo:pull_request"
+          ]
         }
       }
     }]
@@ -346,11 +355,13 @@ security-scan:
   steps:
     - uses: actions/checkout@v4
 
-    # Scan for security issues with tfsec
-    - name: tfsec
-      uses: aquasecurity/tfsec-action@v1.0.0
+    # Scan for security issues with Trivy
+    - name: Trivy
+      uses: aquasecurity/trivy-action@v0.36.0
       with:
-        soft_fail: true
+        scan-type: config
+        scan-ref: .
+        exit-code: "0"
 
     # Scan for misconfigurations with checkov
     - name: Checkov
@@ -465,11 +476,17 @@ jobs:
       - name: Detect Drift
         id: drift
         run: |
+          set +e
           terraform plan -detailed-exitcode -out=drift.plan
-        continue-on-error: true
+          exitcode=$?
+          set -e
+          echo "exitcode=$exitcode" >> "$GITHUB_OUTPUT"
+          if [ "$exitcode" -eq 1 ]; then
+            exit 1
+          fi
 
       - name: Report Drift
-        if: steps.drift.outcome == 'failure'
+        if: steps.drift.outputs.exitcode == '2'
         run: |
           echo "Drift detected! Creating issue..."
           gh issue create \
