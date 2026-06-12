@@ -14,7 +14,7 @@ This guide walks through the practical aspects of Rust-C interoperability. We wi
 
 ## How FFI Works
 
-At the binary level, Rust and C can call each other because they share the same calling conventions. When you mark a Rust function with `extern "C"`, it uses the C ABI (Application Binary Interface), making it indistinguishable from a C function at runtime.
+At the binary level, Rust and C can call each other when both sides use a compatible ABI. When you mark a Rust function with `extern "C"`, it uses the platform's C ABI (Application Binary Interface), making it callable like a C function at runtime.
 
 ```mermaid
 flowchart LR
@@ -37,7 +37,7 @@ flowchart LR
     CF --> CL
 ```
 
-The key insight is that FFI is inherently unsafe. Rust cannot verify that the C code follows memory safety rules, so all FFI calls happen inside `unsafe` blocks. Your job is to create safe Rust wrappers around the unsafe FFI calls.
+The key insight is that FFI is inherently unsafe. Rust cannot verify that the C code follows memory safety rules, so calls to unsafe foreign functions happen inside `unsafe` blocks. Your job is to create safe Rust wrappers around the unsafe FFI calls.
 
 ## Calling C Functions from Rust
 
@@ -46,7 +46,7 @@ Let's start with a simple example: calling the C standard library's `strlen` fun
 ```rust
 // Declare the external C function
 // This tells Rust about a function that exists in a C library
-extern "C" {
+unsafe extern "C" {
     // strlen takes a pointer to a null-terminated C string
     // and returns its length (not including the null terminator)
     fn strlen(s: *const std::ffi::c_char) -> usize;
@@ -67,7 +67,7 @@ fn main() {
 }
 ```
 
-The `extern "C"` block declares functions that exist somewhere else, using C calling conventions. We are not defining `strlen` here; we are telling Rust it exists and what its signature looks like.
+The `unsafe extern "C"` block declares functions that exist somewhere else, using C calling conventions. We are not defining `strlen` here; we are telling Rust it exists and what its signature looks like.
 
 ## Linking to C Libraries
 
@@ -92,7 +92,7 @@ Now you can use functions from that library:
 
 ```rust
 // Using libm's pow function for exponentiation
-extern "C" {
+unsafe extern "C" {
     // double pow(double base, double exponent)
     fn pow(base: f64, exponent: f64) -> f64;
 }
@@ -120,14 +120,14 @@ flowchart TB
     subgraph Rust_Types["Rust Types"]
         r_i32["std::ffi::c_int"]
         r_u32["std::ffi::c_uint"]
-        r_isize["std::ffi::c_long"]
+        r_long["std::ffi::c_long"]
         r_char["std::ffi::c_char"]
         r_ptr["*mut std::ffi::c_void"]
         r_str["*const c_char / CString"]
     end
     c_int --> r_i32
     c_uint --> r_u32
-    c_long --> r_isize
+    c_long --> r_long
     c_char --> r_char
     c_ptr --> r_ptr
     c_str --> r_str
@@ -169,13 +169,12 @@ The `#[repr(C)]` attribute is essential. Without it, Rust may reorder struct fie
 
 ## Working with C Strings
 
-Strings require special handling because C and Rust represent them differently. C strings are null-terminated byte arrays; Rust strings are length-prefixed UTF-8.
+Strings require special handling because C and Rust represent them differently. C strings are null-terminated byte arrays; Rust strings are UTF-8 and store their length explicitly.
 
 ```rust
-use std::ffi::{CStr, CString};
-use std::os::raw::c_char;
+use std::ffi::{c_char, c_int, CStr, CString};
 
-extern "C" {
+unsafe extern "C" {
     fn puts(s: *const c_char) -> c_int;
     fn getenv(name: *const c_char) -> *mut c_char;
 }
@@ -230,13 +229,13 @@ use std::ffi::{c_char, c_int, CStr};
 
 // Export this function with C linkage
 // no_mangle prevents Rust from changing the function name
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rust_add(a: c_int, b: c_int) -> c_int {
     a + b
 }
 
 // A more complex example: string processing
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rust_string_length(s: *const c_char) -> c_int {
     // Handle null pointer gracefully
     if s.is_null() {
@@ -254,7 +253,7 @@ pub extern "C" fn rust_string_length(s: *const c_char) -> c_int {
 
 // Example with heap allocation
 // The caller is responsible for freeing this memory
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rust_create_greeting(name: *const c_char) -> *mut c_char {
     if name.is_null() {
         return std::ptr::null_mut();
@@ -278,7 +277,7 @@ pub extern "C" fn rust_create_greeting(name: *const c_char) -> *mut c_char {
 }
 
 // Companion function to free strings allocated by Rust
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rust_free_string(s: *mut c_char) {
     if !s.is_null() {
         unsafe {
@@ -319,6 +318,8 @@ Real-world C libraries often use opaque pointers and function callbacks. Here's 
 
 ```rust
 use std::ffi::{c_int, c_void};
+use std::marker::PhantomData;
+use std::rc::Rc;
 
 // Opaque type - we don't know the internal structure
 // This is common for handles and contexts in C APIs
@@ -330,7 +331,7 @@ pub struct OpaqueHandle {
 // Function pointer type for callbacks
 type Callback = extern "C" fn(data: *mut c_void, value: c_int);
 
-extern "C" {
+unsafe extern "C" {
     fn create_handle() -> *mut OpaqueHandle;
     fn destroy_handle(handle: *mut OpaqueHandle);
     fn set_callback(handle: *mut OpaqueHandle, cb: Callback, user_data: *mut c_void);
@@ -340,6 +341,8 @@ extern "C" {
 // Safe wrapper around the opaque handle
 pub struct SafeHandle {
     raw: *mut OpaqueHandle,
+    callback_data: *mut Box<dyn FnMut(c_int)>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
 impl SafeHandle {
@@ -348,7 +351,11 @@ impl SafeHandle {
         if raw.is_null() {
             None
         } else {
-            Some(SafeHandle { raw })
+            Some(SafeHandle {
+                raw,
+                callback_data: std::ptr::null_mut(),
+                _not_send_or_sync: PhantomData,
+            })
         }
     }
 
@@ -356,9 +363,16 @@ impl SafeHandle {
     where
         F: FnMut(c_int) + 'static,
     {
-        // Box the closure and convert to raw pointer
+        if !self.callback_data.is_null() {
+            unsafe {
+                drop(Box::from_raw(self.callback_data));
+            }
+        }
+
+        // Box the closure and convert to a raw pointer stored as user data
         let boxed: Box<Box<dyn FnMut(c_int)>> = Box::new(Box::new(callback));
-        let user_data = Box::into_raw(boxed) as *mut c_void;
+        self.callback_data = Box::into_raw(boxed);
+        let user_data = self.callback_data as *mut c_void;
 
         unsafe {
             set_callback(self.raw, trampoline, user_data);
@@ -384,14 +398,15 @@ impl Drop for SafeHandle {
     fn drop(&mut self) {
         unsafe {
             destroy_handle(self.raw);
+            if !self.callback_data.is_null() {
+                drop(Box::from_raw(self.callback_data));
+            }
         }
     }
 }
 
-// Ensure the handle cannot be sent between threads unless explicitly allowed
-// This is important if the C library is not thread-safe
-impl !Send for SafeHandle {}
-impl !Sync for SafeHandle {}
+// The raw pointer and marker field keep the handle from being Send or Sync.
+// This is important if the C library is not thread-safe.
 ```
 
 ## Using bindgen for Automatic Bindings
@@ -495,9 +510,9 @@ flowchart TB
 Here's a complete example showing proper memory management:
 
 ```rust
-use std::ffi::{c_char, c_int, c_void, CStr, CString};
+use std::ffi::{c_char, c_int, c_void, CStr};
 
-extern "C" {
+unsafe extern "C" {
     // C functions that allocate memory
     fn c_create_buffer(size: c_int) -> *mut c_void;
     fn c_free_buffer(buf: *mut c_void);
@@ -577,7 +592,7 @@ impl Drop for CAllocatedString {
 // Functions to pass Rust-allocated data to C
 // The C code must NOT free this memory
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn rust_provide_data(callback: extern "C" fn(*const u8, c_int)) {
     let data: Vec<u8> = vec![1, 2, 3, 4, 5];
 
@@ -589,24 +604,33 @@ pub extern "C" fn rust_provide_data(callback: extern "C" fn(*const u8, c_int)) {
 }
 
 // If C needs to own the data, explicitly transfer ownership
-#[no_mangle]
-pub extern "C" fn rust_give_data_to_c() -> *mut u8 {
+#[repr(C)]
+pub struct RustBuffer {
+    ptr: *mut u8,
+    len: usize,
+    capacity: usize,
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_give_data_to_c() -> RustBuffer {
     let mut data: Vec<u8> = vec![1, 2, 3, 4, 5];
     let ptr = data.as_mut_ptr();
+    let len = data.len();
+    let capacity = data.capacity();
 
     // Prevent Rust from freeing the memory
     std::mem::forget(data);
 
     // C now owns this memory and must free it with rust_free_data
-    ptr
+    RustBuffer { ptr, len, capacity }
 }
 
-#[no_mangle]
-pub extern "C" fn rust_free_data(ptr: *mut u8, len: c_int, capacity: c_int) {
-    if !ptr.is_null() {
+#[unsafe(no_mangle)]
+pub extern "C" fn rust_free_data(buffer: RustBuffer) {
+    if !buffer.ptr.is_null() {
         unsafe {
             // Reconstruct the Vec and let it drop
-            let _ = Vec::from_raw_parts(ptr, len as usize, capacity as usize);
+            let _ = Vec::from_raw_parts(buffer.ptr, buffer.len, buffer.capacity);
         }
     }
 }
@@ -630,7 +654,7 @@ pub enum ErrorCode {
     Unknown = -99,
 }
 
-extern "C" {
+unsafe extern "C" {
     fn c_operation(input: c_int) -> c_int;
     fn c_get_last_error() -> *const c_char;
 }
@@ -689,11 +713,10 @@ Let's put it all together with a practical example wrapping zlib for compression
 ```rust
 // Example: Safe wrapper around zlib compression functions
 
-use std::ffi::{c_int, c_ulong, c_void};
-use std::ptr;
+use std::ffi::{c_int, c_ulong};
 
 // Raw FFI bindings
-extern "C" {
+unsafe extern "C" {
     fn compress(
         dest: *mut u8,
         dest_len: *mut c_ulong,
@@ -845,7 +868,7 @@ When working with FFI, follow these practices to minimize risk:
 
 4. **Use RAII for resources**: Implement `Drop` for any type that owns C resources.
 
-5. **Consider thread safety**: Mark types as `!Send` or `!Sync` if the underlying C code is not thread-safe.
+5. **Consider thread safety**: Use marker fields or wrapper types to prevent `Send` or `Sync` if the underlying C code is not thread-safe.
 
 6. **Test extensively**: FFI bugs often manifest as memory corruption or undefined behavior. Use tools like Valgrind, AddressSanitizer, and Miri.
 
@@ -872,7 +895,7 @@ pub fn create_handle() -> Handle {
 
 Rust FFI is a powerful feature that lets you leverage existing C libraries while maintaining Rust's safety guarantees in your own code. The key points to remember:
 
-- Use `extern "C"` and `#[repr(C)]` to ensure ABI compatibility
+- Use `unsafe extern "C"`, `extern "C"`, `#[unsafe(no_mangle)]`, and `#[repr(C)]` to ensure ABI compatibility
 - Always wrap unsafe FFI calls in safe abstractions
 - Use `CString` and `CStr` for string conversion
 - Match memory allocation with the corresponding deallocation
