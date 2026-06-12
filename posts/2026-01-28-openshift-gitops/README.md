@@ -23,9 +23,9 @@ In the OpenShift console:
 
 1. Go to **Operators → OperatorHub**
 2. Install **OpenShift GitOps**
-3. Accept the default namespace `openshift-gitops`
+3. Accept the default installation namespace `openshift-gitops-operator`
 
-This installs a pre-configured Argo CD instance.
+This installs a pre-configured Argo CD instance in the `openshift-gitops` namespace.
 
 ## Step 2: Access the Argo CD UI
 
