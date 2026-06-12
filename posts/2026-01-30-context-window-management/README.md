@@ -26,10 +26,10 @@ Before diving into implementation, let us understand what we are working with.
 
 | Model | Context Window | Approximate Words | Cost Consideration |
 |-------|---------------|-------------------|-------------------|
-| GPT-3.5 | 16K tokens | ~12,000 words | Lower cost, smaller context |
-| GPT-4 | 128K tokens | ~96,000 words | Higher cost, larger context |
+| GPT-3.5 Turbo (legacy) | Up to 16K tokens | ~12,000 words | Lower cost, smaller context |
+| GPT-4o / GPT-4 Turbo | 128K tokens | ~96,000 words | Higher cost, larger context |
 | Claude 3.5 | 200K tokens | ~150,000 words | Premium pricing |
-| Llama 3 | 8K-128K tokens | Varies by variant | Self-hosted options |
+| Llama 3 / 3.1 | 8K / 128K tokens | Varies by generation | Self-hosted options |
 
 > The goal is not to use the maximum context available. The goal is to use the minimum context required for high-quality responses.
 
@@ -62,19 +62,19 @@ Let us build each component.
 
 Accurate token counting is the foundation of context management. Different models use different tokenizers, so you need model-specific counting.
 
-The following utility provides accurate token counting for both OpenAI and open-source models using the tiktoken library:
+The following utility provides token counting for OpenAI models and a tokenizer-based estimate for other models using the tiktoken library:
 
 ```python
 import tiktoken
-from typing import List, Dict, Union
+from typing import List, Dict
 
 class TokenCounter:
     """
-    Accurate token counting for different LLM providers.
-    Uses tiktoken for OpenAI models and approximations for others.
+    Token counting for OpenAI models and fallback estimates for others.
+    Uses tiktoken for OpenAI models and approximations for non-OpenAI models.
     """
 
-    def __init__(self, model: str = "gpt-4"):
+    def __init__(self, model: str = "gpt-4o-mini"):
         self.model = model
         self._encoder = None
         self._load_encoder()
@@ -285,7 +285,7 @@ graph LR
 The sliding window manager maintains recent context while intelligently compressing older messages:
 
 ```python
-from typing import Tuple, Optional
+from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
 @dataclass
@@ -577,9 +577,8 @@ Long-running applications need persistent memory. This component stores conversa
 The memory store provides both short-term (recent messages) and long-term (semantic search) memory capabilities:
 
 ```python
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Callable
 from dataclasses import dataclass, field
-import json
 import hashlib
 from datetime import datetime
 
@@ -803,7 +802,7 @@ class ContextWindowManager:
 
     def __init__(
         self,
-        model: str = "gpt-4",
+        model: str = "gpt-4o-mini",
         max_tokens: int = 8000,
         reserve_for_response: int = 2000,
         llm_client: Optional[Callable] = None,
@@ -996,6 +995,7 @@ Here is how you would use this system in a production chatbot:
 
 ```python
 from openai import OpenAI
+from typing import List
 
 # Initialize the OpenAI client
 
@@ -1004,7 +1004,7 @@ client = OpenAI()
 def llm_call(prompt: str) -> str:
     """Wrapper for LLM calls."""
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=1000
     )
@@ -1020,7 +1020,7 @@ def get_embedding(text: str) -> List[float]:
 
 # Initialize the context manager
 context_manager = ContextWindowManager(
-    model="gpt-4",
+    model="gpt-4o-mini",
     max_tokens=8000,
     reserve_for_response=2000,
     llm_client=llm_call,
@@ -1058,7 +1058,7 @@ for user_message in exchanges:
 
     # Make the LLM call
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o-mini",
         messages=context["messages"],
         max_tokens=2000
     )
