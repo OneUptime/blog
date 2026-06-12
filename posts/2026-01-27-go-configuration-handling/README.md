@@ -407,8 +407,8 @@ func LoadConfig(configPath string) (*AppConfig, error) {
     // This allows any config value to be overridden via env var
     v.SetEnvPrefix("APP")                  // Environment variable prefix
     v.SetEnvKeyReplacer(strings.NewReplacer(
-        ".", "_",                          // server.port -> SERVER_PORT
-        "-", "_",                          // some-key -> SOME_KEY
+        ".", "_",                          // server.port -> APP_SERVER_PORT
+        "-", "_",                          // some-key -> APP_SOME_KEY
     ))
     v.AutomaticEnv()                       // Automatically read env vars
 
@@ -435,6 +435,9 @@ func setDefaults(v *viper.Viper) {
     v.SetDefault("database.driver", "postgres")
     v.SetDefault("database.host", "localhost")
     v.SetDefault("database.port", 5432)
+    v.SetDefault("database.name", "")
+    v.SetDefault("database.user", "")
+    v.SetDefault("database.password", "")
     v.SetDefault("database.ssl_mode", "disable")
     v.SetDefault("database.max_open_conns", 25)
     v.SetDefault("database.max_idle_conns", 5)
@@ -444,6 +447,7 @@ func setDefaults(v *viper.Viper) {
     v.SetDefault("cache.enabled", false)
     v.SetDefault("cache.host", "localhost")
     v.SetDefault("cache.port", 6379)
+    v.SetDefault("cache.password", "")
     v.SetDefault("cache.db", 0)
     v.SetDefault("cache.ttl", "1h")
 
@@ -451,6 +455,7 @@ func setDefaults(v *viper.Viper) {
     v.SetDefault("logging.level", "info")
     v.SetDefault("logging.format", "json")
     v.SetDefault("logging.output", "stdout")
+    v.SetDefault("logging.file_path", "")
     v.SetDefault("logging.max_size", 100)
     v.SetDefault("logging.max_backups", 3)
     v.SetDefault("logging.max_age", 28)
@@ -545,7 +550,7 @@ observability:
   environment: "development"
 ```
 
-### Reading YAML with Standard Library
+### Reading YAML with yaml.v3
 
 ```go
 // config/yaml_loader.go
@@ -561,23 +566,23 @@ import (
 
 // ServerConfig holds server-related configuration.
 type ServerConfig struct {
-    Host         string        `yaml:"host"`
-    Port         int           `yaml:"port"`
-    ReadTimeout  time.Duration `yaml:"read_timeout"`
-    WriteTimeout time.Duration `yaml:"write_timeout"`
+    Host         string        `yaml:"host" toml:"host"`
+    Port         int           `yaml:"port" toml:"port"`
+    ReadTimeout  time.Duration `yaml:"read_timeout" toml:"read_timeout"`
+    WriteTimeout time.Duration `yaml:"write_timeout" toml:"write_timeout"`
 }
 
 // DatabaseConfig holds database connection settings.
 type DatabaseConfig struct {
-    Driver          string        `yaml:"driver"`
-    Host            string        `yaml:"host"`
-    Port            int           `yaml:"port"`
-    Name            string        `yaml:"name"`
-    User            string        `yaml:"user"`
-    Password        string        `yaml:"password"`
-    MaxOpenConns    int           `yaml:"max_open_conns"`
-    MaxIdleConns    int           `yaml:"max_idle_conns"`
-    ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
+    Driver          string        `yaml:"driver" toml:"driver"`
+    Host            string        `yaml:"host" toml:"host"`
+    Port            int           `yaml:"port" toml:"port"`
+    Name            string        `yaml:"name" toml:"name"`
+    User            string        `yaml:"user" toml:"user"`
+    Password        string        `yaml:"password" toml:"password"`
+    MaxOpenConns    int           `yaml:"max_open_conns" toml:"max_open_conns"`
+    MaxIdleConns    int           `yaml:"max_idle_conns" toml:"max_idle_conns"`
+    ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" toml:"conn_max_lifetime"`
 }
 
 // Config is the root configuration structure.
@@ -628,43 +633,10 @@ JSON is widely supported but doesn't allow comments.
 
 ```json
 {
-  "server": {
-    "host": "0.0.0.0",
-    "port": 8080,
-    "read_timeout": "30s",
-    "write_timeout": "30s",
-    "idle_timeout": "60s"
-  },
-  "database": {
-    "driver": "postgres",
-    "host": "localhost",
-    "port": 5432,
-    "name": "myapp_dev",
-    "user": "myapp",
-    "password": "",
-    "ssl_mode": "disable",
-    "max_open_conns": 25,
-    "max_idle_conns": 5,
-    "conn_max_lifetime": "5m"
-  },
-  "cache": {
-    "enabled": true,
-    "host": "localhost",
-    "port": 6379,
-    "password": "",
-    "db": 0,
-    "ttl": "1h"
-  },
-  "logging": {
-    "level": "info",
-    "format": "json",
-    "output": "stdout"
-  },
-  "features": {
-    "new_dashboard": false,
-    "beta_features": false,
-    "maintenance_mode": false
-  }
+  "app_name": "myapp",
+  "environment": "development",
+  "port": 8080,
+  "features": ["new_dashboard", "beta_features"]
 }
 ```
 
@@ -805,7 +777,7 @@ import (
 
 // LoadConfigFile loads configuration from a file,
 // automatically detecting the format from the extension.
-// Supported formats: yaml, yml, json, toml, hcl, env, properties
+// Supported formats: yaml, yml, json, toml, env
 func LoadConfigFile(filename string) (*AppConfig, error) {
     v := viper.New()
 
@@ -920,10 +892,10 @@ type ValidatedDatabaseConfig struct {
 type ValidatedCacheConfig struct {
     Enabled  bool          `mapstructure:"enabled"`
     Host     string        `mapstructure:"host" validate:"required_if=Enabled true"`
-    Port     int           `mapstructure:"port" validate:"required_if=Enabled true,min=1,max=65535"`
+    Port     int           `mapstructure:"port" validate:"required_if=Enabled true,omitempty,min=1,max=65535"`
     Password string        `mapstructure:"password"`
     DB       int           `mapstructure:"db" validate:"min=0,max=15"`
-    TTL      time.Duration `mapstructure:"ttl" validate:"gt=0"`
+    TTL      time.Duration `mapstructure:"ttl" validate:"omitempty,gt=0"`
 }
 
 // ValidatedLoggingConfig includes validation rules for logging settings.
@@ -1092,13 +1064,15 @@ import (
 type ConfigLoader struct {
     v           *viper.Viper
     environment string
+    configPath  string
 }
 
 // NewConfigLoader creates a new configuration loader.
-func NewConfigLoader() *ConfigLoader {
+func NewConfigLoader(configPath string) *ConfigLoader {
     return &ConfigLoader{
         v:           viper.New(),
         environment: os.Getenv("APP_ENV"),
+        configPath:  configPath,
     }
 }
 
@@ -1191,10 +1165,14 @@ func (cl *ConfigLoader) setHardcodedDefaults() {
 
 // loadBaseConfig loads the base configuration file.
 func (cl *ConfigLoader) loadBaseConfig() error {
-    cl.v.SetConfigName("config")
-    cl.v.SetConfigType("yaml")
-    cl.v.AddConfigPath(".")
-    cl.v.AddConfigPath("./config")
+    if cl.configPath != "" {
+        cl.v.SetConfigFile(cl.configPath)
+    } else {
+        cl.v.SetConfigName("config")
+        cl.v.SetConfigType("yaml")
+        cl.v.AddConfigPath(".")
+        cl.v.AddConfigPath("./config")
+    }
 
     if err := cl.v.ReadInConfig(); err != nil {
         if _, ok := err.(viper.ConfigFileNotFoundError); ok {
@@ -1340,7 +1318,7 @@ func loadConfiguration() (*AppConfig, error) {
     }
 
     // Create loader
-    loader := NewConfigLoader()
+    loader := NewConfigLoader(configPath)
 
     // Load configuration
     config, err := loader.Load()
