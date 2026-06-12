@@ -117,7 +117,7 @@ flowchart TB
 | Collector | Decoupled from code | Network overhead before filtering |
 | Service mesh | Language-agnostic | Less granular control |
 
-**Recommendation**: Filter as early as possible. Code-level or SDK-level filtering eliminates overhead entirely.
+**Recommendation**: Filter as early as possible. Code-level or instrumentation-level filters can avoid creating spans for excluded requests; sampler-based rules still run at span creation time.
 
 ---
 
@@ -158,22 +158,15 @@ sdk.start();
 ```python
 # telemetry.py
 
+from fastapi import FastAPI
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
+app = FastAPI()
 IGNORED_PATHS = {"/health", "/healthz", "/ready", "/live", "/metrics"}
-
-def request_hook(span, scope):
-    """Called for each request - return None to skip tracing."""
-    pass
-
-def should_trace(scope) -> bool:
-    """Return False to disable tracing for this request."""
-    path = scope.get("path", "")
-    return path not in IGNORED_PATHS
 
 # Configure provider
 provider = TracerProvider()
@@ -181,10 +174,8 @@ provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
 trace.set_tracer_provider(provider)
 
 # Instrument with exclusion filter
-def exclude_health_checks(info):
-    return info.request.url.path not in IGNORED_PATHS
-
-FastAPIInstrumentor.instrument(
+FastAPIInstrumentor.instrument_app(
+    app,
     excluded_urls=",".join(IGNORED_PATHS)
 )
 ```
@@ -320,15 +311,18 @@ For latency-critical paths, even the overhead of creating (but not exporting) sp
 ```typescript
 // samplers/performance-aware-sampler.ts
 import {
-  Sampler,
-  SamplingDecision,
-  SamplingResult,
   Context,
   SpanKind,
   Attributes,
   Link,
 } from '@opentelemetry/api';
-import { ParentBasedSampler, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
+import {
+  ParentBasedSampler,
+  Sampler,
+  SamplingDecision,
+  SamplingResult,
+  TraceIdRatioBasedSampler,
+} from '@opentelemetry/sdk-trace-base';
 
 const PERFORMANCE_CRITICAL_OPERATIONS = new Set([
   'websocket.message',
@@ -396,7 +390,8 @@ Sometimes you need to turn tracing on/off dynamically without redeploying.
 
 ```typescript
 // samplers/toggleable-sampler.ts
-import { Sampler, SamplingDecision, SamplingResult, Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
+import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
+import { Sampler, SamplingDecision, SamplingResult } from '@opentelemetry/sdk-trace-base';
 
 export class ToggleableSampler implements Sampler {
   private readonly innerSampler: Sampler;
@@ -440,7 +435,8 @@ export class ToggleableSampler implements Sampler {
 
 ```typescript
 // samplers/feature-flag-sampler.ts
-import { Sampler, SamplingDecision, SamplingResult } from '@opentelemetry/api';
+import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
+import { Sampler, SamplingDecision, SamplingResult } from '@opentelemetry/sdk-trace-base';
 
 interface FeatureFlagClient {
   isEnabled(flag: string, context?: Record<string, any>): boolean;
@@ -461,7 +457,14 @@ export class FeatureFlagSampler implements Sampler {
     this.flagName = flagName;
   }
 
-  shouldSample(context, traceId, spanName, spanKind, attributes, links): SamplingResult {
+  shouldSample(
+    context: Context,
+    traceId: string,
+    spanName: string,
+    spanKind: SpanKind,
+    attributes: Attributes,
+    links: Link[]
+  ): SamplingResult {
     // Check feature flag
     const enabled = this.flagClient.isEnabled(this.flagName, {
       spanName,
@@ -524,8 +527,8 @@ When tracing causes production issues, you need a fast way to disable it entirel
 
 ```typescript
 // samplers/kill-switch-sampler.ts
-import { Sampler, SamplingDecision, SamplingResult, Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
-import { AlwaysOffSampler } from '@opentelemetry/sdk-trace-base';
+import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
+import { AlwaysOffSampler, Sampler, SamplingResult } from '@opentelemetry/sdk-trace-base';
 
 const KILL_SWITCH_FILE = '/etc/config/tracing-kill-switch';
 const KILL_SWITCH_ENV = 'TRACING_KILL_SWITCH';
@@ -655,20 +658,19 @@ processors:
   # Filter out unwanted spans
   filter:
     error_mode: ignore
-    traces:
-      span:
-        # Drop health check spans
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/healthz"'
-        - 'attributes["http.route"] == "/ready"'
-        - 'attributes["http.route"] == "/metrics"'
-        # Drop static asset spans
-        - 'attributes["http.route"] matches "^/static/.*"'
-        - 'attributes["http.route"] matches ".*\\.(css|js|png|jpg|ico)$"'
-        # Drop internal endpoints
-        - 'attributes["http.route"] matches "^/internal/.*"'
-        # Drop by span name
-        - 'name == "healthcheck"'
+    trace_conditions:
+      # Drop health check spans
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/healthz"'
+      - 'span.attributes["http.route"] == "/ready"'
+      - 'span.attributes["http.route"] == "/metrics"'
+      # Drop static asset spans
+      - 'IsMatch(span.attributes["http.route"], "^/static/.*")'
+      - 'IsMatch(span.attributes["http.route"], ".*\\.(css|js|png|jpg|ico)$")'
+      # Drop internal endpoints
+      - 'IsMatch(span.attributes["http.route"], "^/internal/.*")'
+      # Drop by span name
+      - 'span.name == "healthcheck"'
 
   # Batch for efficiency
   batch:
@@ -694,25 +696,24 @@ service:
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Drop if explicitly marked as internal
-        - 'attributes["trace.internal"] == true'
-        # Drop debug spans in production
-        - 'attributes["trace.level"] == "debug"'
-        # Drop high-frequency batch operations
-        - 'name matches "^batch\\.row\\..*" and attributes["batch.size"] > 1000'
+    error_mode: ignore
+    trace_conditions:
+      # Drop if explicitly marked as internal
+      - 'span.attributes["trace.internal"] == true'
+      # Drop debug spans in production
+      - 'span.attributes["trace.level"] == "debug"'
+      # Drop high-frequency batch operations
+      - 'IsMatch(span.name, "^batch\\.row\\..*") and span.attributes["batch.size"] > 1000'
 ```
 
-### Always-Off via Sampling Processor
+### Global Always-Off via Sampling Processor
 
 ```yaml
 processors:
-  # Use probabilistic sampling with 0% for specific spans
+  # Use probabilistic sampling with 0% to drop all traces in this pipeline.
+  # For selective always-off rules, use the filter processor above.
   probabilistic_sampler:
     sampling_percentage: 0
-    # This effectively creates always-off for everything
-    # Use in combination with filter for selective always-off
 ```
 
 ---
@@ -748,8 +749,9 @@ processors:
 Track how many requests are being excluded to ensure your rules are working:
 
 ```typescript
-import { Counter } from '@opentelemetry/api';
+import { metrics } from '@opentelemetry/api';
 
+const meter = metrics.getMeter('tracing-exclusions');
 const excludedRequestsCounter = meter.createCounter('tracing.excluded_requests', {
   description: 'Requests excluded from tracing',
 });
