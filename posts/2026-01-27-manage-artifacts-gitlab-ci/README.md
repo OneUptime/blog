@@ -166,7 +166,7 @@ test:
   stage: test
   script:
     - npm test -- --coverage
-  coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
+  coverage: '/All files[^|]*\|[^|]*\s+\d+(?:\.\d+)?/'
   artifacts:
     reports:
       coverage_report:
@@ -184,18 +184,19 @@ Upload security scan results for the security dashboard.
 sast:
   stage: test
   script:
-    - semgrep scan --json -o sast-report.json .
+    - semgrep scan --config auto --gitlab-sast-output=sast-report.json .
   artifacts:
     reports:
       sast: sast-report.json
 
-dependency-scan:
+container-scan:
   stage: test
   script:
-    - trivy fs --format json -o deps-report.json .
+    - curl --location --output /tmp/trivy-gitlab.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/gitlab.tpl
+    - trivy image --format template --template "@/tmp/trivy-gitlab.tpl" -o gl-container-scanning-report.json "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
   artifacts:
     reports:
-      dependency_scanning: deps-report.json
+      container_scanning: gl-container-scanning-report.json
 
 code-quality:
   stage: test
@@ -217,7 +218,7 @@ build:
       - dist/
     exclude:
       - dist/**/*.map  # Exclude source maps
-      - dist/test/     # Exclude test files
+      - dist/test/**/* # Exclude test files
 ```
 
 ## Conditional Artifacts
@@ -283,6 +284,7 @@ build:
     - npm run build
     # Upload to S3 instead of GitLab artifacts
     - aws s3 cp --recursive dist/ s3://builds/${CI_COMMIT_SHA}/
+    - echo "s3://builds/${CI_COMMIT_SHA}/" > build-location.txt
   artifacts:
     paths:
       # Store just a reference
@@ -351,17 +353,16 @@ Manage artifact storage to control costs.
 cleanup-old-artifacts:
   stage: cleanup
   script:
-    # Delete artifacts older than 30 days via API
+    # Delete all artifacts that are eligible for deletion via API
     - |
-      CUTOFF=$(date -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)
       curl --request DELETE \
         --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts?created_before=${CUTOFF}"
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/artifacts"
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
 ```
 
-Configure project-level artifact expiration in Settings, then CI/CD, then Artifact expiration.
+Set `expire_in` per job, or configure the default artifacts expiration at the instance level.
 
 ## Downloading Artifacts from Other Projects
 
@@ -382,7 +383,7 @@ Use the `name` option for downloadable archives.
 ```yaml
 build:
   artifacts:
-    name: "${CI_PROJECT_NAME}-${CI_COMMIT_REF_NAME}-${CI_COMMIT_SHORT_SHA}"
+    name: "${CI_PROJECT_NAME}-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"
     paths:
       - dist/
 ```
