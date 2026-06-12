@@ -112,27 +112,10 @@ Resource Allocation
 Proper resource allocation ensures fair scheduling and prevents noisy neighbors. Nomad reserves resources and enforces limits.
 
 ```hcl
-task "server" {
-  driver = "docker"
+group "api" {
+  count = 3
 
-  config {
-    image = "ghcr.io/acme/api:v2.1.0"
-    ports = ["http"]
-  }
-
-  # Resource reservations and limits
-  resources {
-    # CPU in MHz - Nomad bins tasks based on available CPU
-    cpu = 500                      # Reserve 500 MHz
-
-    # Memory in MB - hard limit, container is killed if exceeded
-    memory = 512                   # Reserve 512 MB RAM
-
-    # Memory max allows bursting above reservation (soft limit)
-    memory_max = 1024              # Can burst to 1 GB if available
-  }
-
-  # Scaling block for horizontal pod autoscaling (requires Nomad Autoscaler)
+  # Scaling block for horizontal application scaling (requires Nomad Autoscaler)
   scaling {
     enabled = true
     min     = 2                    # Minimum 2 instances
@@ -147,6 +130,27 @@ task "server" {
           target = 70              # Target 70% CPU utilization
         }
       }
+    }
+  }
+
+  task "server" {
+    driver = "docker"
+
+    config {
+      image = "ghcr.io/acme/api:v2.1.0"
+      ports = ["http"]
+    }
+
+    # Resource reservations and limits
+    resources {
+      # CPU in MHz - Nomad bins tasks based on available CPU
+      cpu = 500                    # Reserve 500 MHz
+
+      # Memory in MB - reservation when memory_max is set
+      memory = 512                 # Reserve 512 MB RAM
+
+      # Memory max in MB - hard limit when memory oversubscription is enabled
+      memory_max = 1024            # Can burst to 1 GB if available
     }
   }
 }
@@ -220,7 +224,7 @@ Bridge mode with dynamic ports is recommended for most workloads. Use Consul Con
 
 ## Service Discovery
 
-Nomad integrates natively with Consul for service discovery. Services are automatically registered and deregistered based on health status.
+Nomad integrates natively with Consul for service discovery. Services are automatically registered and deregistered as allocations start and stop, while health checks report whether each service instance is ready for traffic.
 
 ```hcl
 group "api" {
@@ -285,7 +289,7 @@ Services become discoverable via Consul DNS (api.service.consul) or the Consul A
 
 ## Health Checks
 
-Health checks determine when a service is ready to receive traffic. Nomad supports HTTP, TCP, gRPC, and script-based checks.
+Health checks determine when a service is ready to receive traffic. The Nomad service provider supports HTTP and TCP checks; when using Consul as the provider, checks can also include gRPC and script-based checks.
 
 ```hcl
 service {
@@ -301,7 +305,7 @@ service {
     timeout  = "3s"                # Fail if no response in 3 seconds
     method   = "GET"               # HTTP method
 
-    # Optional: check response body
+    # Optional: restart unhealthy tasks after repeated check failures
     check_restart {
       limit = 3                    # Restart after 3 consecutive failures
       grace = "60s"                # Wait 60s after start before checking
@@ -430,9 +434,9 @@ Use `distinct_hosts` for high availability. Spread across datacenters for disast
 
 2. **Use dynamic ports** - Let Nomad allocate ports to avoid conflicts and enable dense packing.
 
-3. **Configure resource limits** - Set both `memory` and `memory_max` to prevent OOM kills while allowing bursting.
+3. **Configure resource limits** - Set `memory` for the reservation and `memory_max` for the hard limit when you want controlled bursting.
 
-4. **Implement health checks** - Every service needs HTTP or TCP checks. Use `check_restart` for automatic recovery.
+4. **Implement health checks** - Every service needs an appropriate HTTP, TCP, or gRPC check. Use `check_restart` for automatic recovery.
 
 5. **Spread across failure domains** - Use `spread` and `distinct_hosts` to survive node and datacenter failures.
 
