@@ -33,7 +33,7 @@ Split test suites across executors:
 parallelism: 4
 ```
 
-Use `circleci tests split` to divide test files by timing.
+Use `circleci tests split --split-by=timings` to divide test files by timing after storing test results.
 
 ## 3. Use Workflows to Gate Expensive Jobs
 
