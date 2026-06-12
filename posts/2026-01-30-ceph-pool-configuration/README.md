@@ -71,11 +71,12 @@ The following commands create a basic replicated pool with sensible defaults:
 ceph osd pool create rbd-pool 128 128
 
 # Set the replication factor to 3 (store 3 copies of each object)
-# This provides tolerance for 2 simultaneous OSD failures
+# This protects against data loss if up to 2 replicas are lost, though
+# min_size controls whether I/O can continue during failures
 ceph osd pool set rbd-pool size 3
 
-# Set minimum replicas required for write operations
-# Setting min_size to 2 means writes will fail if fewer than 2 replicas are available
+# Set minimum replicas required for I/O
+# Setting min_size to 2 means I/O will fail if fewer than 2 replicas are available
 ceph osd pool set rbd-pool min_size 2
 
 # Enable the RBD application for this pool
@@ -106,7 +107,8 @@ The following formula helps calculate the optimal PG count:
 
 ```bash
 # Formula: (Target PGs per OSD * Number of OSDs * Data Percentage) / Replica Count
-# Recommended: 100-200 PGs per OSD
+# Modern clusters often rely on the PG autoscaler; for manual sizing,
+# choose a target that matches your Ceph release, balancer settings, and cluster size
 
 # For a cluster with 12 OSDs and 3-way replication:
 # (100 * 12 * 1.0) / 3 = 400 PGs
@@ -164,7 +166,7 @@ ceph osd erasure-code-profile set ec-4-2-profile \
 ceph osd erasure-code-profile get ec-4-2-profile
 
 # Create the erasure coded pool using this profile
-# Note: EC pools require k+m PGs minimum, but more is better for distribution
+# Note: EC pools require enough OSDs or failure-domain buckets for k+m shards
 ceph osd pool create ec-data-pool 256 256 erasure ec-4-2-profile
 
 # Enable RGW application for object storage use
@@ -250,7 +252,7 @@ Ceph supports pool-level snapshots for point-in-time recovery:
 ceph osd pool mksnap mypool snapshot-2026-01-30
 
 # List snapshots for a pool
-ceph osd pool lssnap mypool
+rados -p mypool lssnap
 
 # Remove a snapshot
 ceph osd pool rmsnap mypool snapshot-2026-01-30
@@ -268,8 +270,8 @@ ceph osd pool set mypool compression_mode aggressive
 # Compression modes:
 # none - no compression
 # passive - compress only if client requests it
-# aggressive - compress all data
-# force - compress everything, including already compressed data
+# aggressive - compress unless the client marks data as incompressible
+# force - try to compress regardless of client hints
 
 # Set compression ratio hint (optional)
 ceph osd pool set mypool compression_required_ratio 0.875
