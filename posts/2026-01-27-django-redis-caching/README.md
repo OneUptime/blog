@@ -92,7 +92,7 @@ CACHES = {
             },
             # Serializer - pickle is default, can use json for debugging
             "SERIALIZER": "django_redis.serializers.pickle.PickleSerializer",
-            # Compress data larger than 10KB
+            # Enable compression for cached values
             "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
             # Socket timeout in seconds
             "SOCKET_CONNECT_TIMEOUT": 5,
@@ -189,24 +189,17 @@ if not added:
 ```python
 from django.core.cache import cache
 
-# Get the raw Redis client for advanced operations
-from django_redis import get_redis_connection
-redis_client = get_redis_connection("default")
-
-# Find keys matching a pattern (use sparingly in production)
-# Note: KEYS command can be slow on large datasets
-keys = redis_client.keys("myapp:1:user_*")
+# django-redis adds pattern helpers to Django's cache API.
+# Use sparingly in production; these scan Redis keys.
+keys = list(cache.iter_keys("user_*"))
 
 # Delete all keys matching pattern
 def delete_pattern(pattern):
     """Delete all cache keys matching pattern."""
-    redis_client = get_redis_connection("default")
-    keys = redis_client.keys(pattern)
-    if keys:
-        redis_client.delete(*keys)
+    cache.delete_pattern(pattern)
 
 # Example: Clear all user-related cache
-delete_pattern("myapp:1:user_*")
+delete_pattern("user_*")
 ```
 
 ## Per-View Caching with Decorators
@@ -312,7 +305,7 @@ Cache expensive template sections independently.
 
 ## Per-Site Caching Middleware
 
-Cache all responses site-wide for anonymous users.
+Cache public GET and HEAD responses site-wide where request and response headers allow caching.
 
 ```python
 # settings.py
@@ -567,7 +560,7 @@ Use Redis for session storage for better performance and scalability.
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "sessions"
 
-# Or use django-redis session backend directly
+# Or use Django's cached database session backend for persistent sessions
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 
 # Session settings
