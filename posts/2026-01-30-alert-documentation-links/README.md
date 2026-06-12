@@ -136,7 +136,7 @@ groups:
   - name: payment-service
     rules:
       - alert: PaymentServiceHighLatency
-        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{service="payment-service"}[5m])) > 2
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="payment-service"}[5m]))) > 2
         for: 3m
         labels:
           severity: critical
@@ -154,17 +154,17 @@ groups:
           wiki_url: "https://docs.company.com/services/payment-service"
 
       - alert: PaymentServiceHighErrorRate
-        expr: rate(http_requests_total{service="payment-service",status=~"5.."}[5m]) / rate(http_requests_total{service="payment-service"}[5m]) > 0.05
+        expr: (sum(rate(http_requests_total{service="payment-service",status=~"5.."}[5m])) / sum(rate(http_requests_total{service="payment-service"}[5m]))) * 100 > 5
         for: 2m
         labels:
           severity: critical
           team: payments
           service: payment-service
         annotations:
-          summary: "Payment service error rate is {{ printf \"%.1f\" (mul $value 100) }}%"
+          summary: "Payment service error rate is {{ printf \"%.1f\" $value }}%"
           description: |
             Error rate has exceeded 5% threshold.
-            Current rate: {{ printf "%.1f" (mul $value 100) }}%
+            Current rate: {{ printf "%.1f" $value }}%
             Check for upstream dependency failures or deployment issues.
           runbook_url: "https://wiki.company.com/runbooks/payment-service-errors"
           dashboard_url: "https://grafana.company.com/d/payment-service/payment-service-overview?viewPanel=error-rate"
@@ -200,17 +200,17 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'pagerduty-critical'
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'slack-warnings'
 
 receivers:
   - name: 'default'
     slack_configs:
-      - api_url: '${SLACK_WEBHOOK_URL}'
+      - api_url: 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
         channel: '#alerts'
         title: '{{ .GroupLabels.alertname }}'
         text: |
@@ -229,7 +229,7 @@ receivers:
 
   - name: 'pagerduty-critical'
     pagerduty_configs:
-      - service_key: '${PAGERDUTY_SERVICE_KEY}'
+      - routing_key: '<pagerduty-routing-key>'
         severity: critical
         description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
         details:
@@ -245,7 +245,7 @@ receivers:
 
   - name: 'slack-warnings'
     slack_configs:
-      - api_url: '${SLACK_WEBHOOK_URL}'
+      - api_url: 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
         channel: '#alerts-warnings'
         color: 'warning'
         title: ':warning: {{ .GroupLabels.alertname }}'
@@ -257,7 +257,7 @@ receivers:
 
 ### Runbook Template Structure
 
-```markdown
+````markdown
 # Runbook: High CPU Usage
 
 ## Alert Details
@@ -287,7 +287,7 @@ top -bn1 | head -20
 
 ## Check for runaway processes
 ps aux --sort=-%cpu | head -10
-```bash
+```
 
 ### 2. Check Recent Deployments
 - Review deployment history in ArgoCD
@@ -319,7 +319,7 @@ If unresolved after 15 minutes:
 - [Service Architecture](https://docs.company.com/architecture)
 - [Scaling Guidelines](https://docs.company.com/scaling)
 - [Incident Response Process](https://docs.company.com/incident-response)
-```text
+````
 
 ---
 
@@ -373,7 +373,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+              expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -399,8 +399,8 @@ groups:
           summary: "Service latency is elevated"
           description: "P95 latency has exceeded 2 seconds"
           runbook_url: "https://wiki.company.com/runbooks/high-latency"
-          __dashboardUid__: "service-overview"
-          __panelId__: "latency-panel"
+        dashboardUid: "service-overview"
+        panelId: 12
         labels:
           severity: warning
 ```
@@ -484,13 +484,13 @@ Dynamic templates allow alert links to adapt based on alert context.
 ```yaml
 # Available template variables in Prometheus alerting rules
 annotations:
-  summary: "{{ $labels.alertname }} on {{ $labels.instance }}"
+  summary: "{{ $labels.service }} on {{ $labels.instance }}"
 
   # Use $value for the current metric value
   description: "Current value: {{ printf \"%.2f\" $value }}"
 
   # Use $labels for any label on the metric
-  runbook_url: "https://wiki.company.com/runbooks/{{ $labels.alertname | toLower | replace \" \" \"-\" }}"
+  runbook_url: "https://wiki.company.com/runbooks/{{ $labels.service | toLower | reReplaceAll \" \" \"-\" }}"
 
   # Build complex URLs with multiple labels
   dashboard_url: |
@@ -503,7 +503,7 @@ annotations:
 
 ### Advanced Templating with Alertmanager
 
-```yaml
+```gotemplate
 # alertmanager/templates/custom.tmpl
 {{ define "slack.custom.title" }}
 [{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}
@@ -528,18 +528,14 @@ annotations:
 {{ end }}
 {{ end }}
 
-{{ define "pagerduty.custom.links" }}
-[
-  {{ if .CommonAnnotations.runbook_url }}
-  {"href": "{{ .CommonAnnotations.runbook_url }}", "text": "Runbook"},
-  {{ end }}
-  {{ if .CommonAnnotations.dashboard_url }}
-  {"href": "{{ .CommonAnnotations.dashboard_url }}", "text": "Dashboard"},
-  {{ end }}
-  {{ if .CommonAnnotations.logs_url }}
-  {"href": "{{ .CommonAnnotations.logs_url }}", "text": "Logs"}
-  {{ end }}
-]
+{{ define "pagerduty.custom.description" }}
+{{ .CommonAnnotations.description }}
+{{ if .CommonAnnotations.runbook_url }}
+Runbook: {{ .CommonAnnotations.runbook_url }}
+{{ end }}
+{{ if .CommonAnnotations.dashboard_url }}
+Dashboard: {{ .CommonAnnotations.dashboard_url }}
+{{ end }}
 {{ end }}
 ```
 
@@ -551,7 +547,7 @@ groups:
   - name: api-alerts
     rules:
       - alert: APIHighLatency
-        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 1
         labels:
           severity: warning
         annotations:
@@ -626,7 +622,6 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import List, Optional
-import re
 
 
 @dataclass
@@ -664,6 +659,9 @@ def validate_url(alert_name: str, link_type: str, url: str,
 
         response = requests.head(url, timeout=timeout, headers=headers,
                                  allow_redirects=True)
+        if response.status_code == 405:
+            response = requests.get(url, timeout=timeout, headers=headers,
+                                    allow_redirects=True)
 
         is_valid = response.status_code < 400
         return LinkValidationResult(
@@ -803,7 +801,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -865,9 +863,11 @@ groups:
     rules:
       - alert: CheckoutServiceHighErrorRate
         expr: |
-          sum(rate(http_requests_total{service="checkout",status=~"5.."}[5m]))
-          /
-          sum(rate(http_requests_total{service="checkout"}[5m])) > 0.02
+          (
+            sum(rate(http_requests_total{service="checkout",status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{service="checkout"}[5m]))
+          ) * 100 > 2
         for: 3m
         labels:
           severity: critical
@@ -875,10 +875,10 @@ groups:
           service: checkout
           slo: checkout-availability
         annotations:
-          summary: "Checkout error rate is {{ printf \"%.1f\" (mul $value 100) }}%"
+          summary: "Checkout error rate is {{ printf \"%.1f\" $value }}%"
           description: |
             The checkout service error rate has exceeded the 2% threshold.
-            Current error rate: {{ printf "%.1f" (mul $value 100) }}%
+            Current error rate: {{ printf "%.1f" $value }}%
 
             This directly impacts revenue and customer experience.
             Immediate investigation required.
