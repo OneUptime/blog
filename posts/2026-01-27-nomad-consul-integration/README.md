@@ -172,8 +172,8 @@ job "api-service" {
         # Custom HTTP check configuration
         method = "GET"
 
-        # Expected status codes (default is 2xx)
-        # Useful when health endpoints return specific codes
+        # Check transition thresholds
+        # Useful when health endpoints occasionally flap
         # success_before_passing = 2
         # failures_before_critical = 3
 
@@ -336,6 +336,10 @@ job "secure-api" {
       port "http" {
         to = 8080
       }
+
+      port "health" {
+        to = -1
+      }
     }
 
     service {
@@ -361,13 +365,13 @@ job "secure-api" {
               local_bind_port  = 6379
             }
 
-            # Expose paths through the mesh for health checks
+            # Expose paths through Envoy for health checks
             expose {
               path {
                 path            = "/health"
                 protocol        = "http"
                 local_path_port = 8080
-                listener_port   = "http"
+                listener_port   = "health"
               }
             }
           }
@@ -504,21 +508,13 @@ job "ingress-gateway" {
             }
           }
         }
-      }
-    }
 
-    task "gateway" {
-      driver = "docker"
-
-      config {
-        image   = "consul:latest"
-        command = "consul"
-        args    = ["connect", "envoy", "-gateway=ingress", "-register"]
-      }
-
-      resources {
-        cpu    = 256
-        memory = 128
+        sidecar_task {
+          resources {
+            cpu    = 256
+            memory = 128
+          }
+        }
       }
     }
   }
@@ -530,21 +526,6 @@ job "ingress-gateway" {
 ## Intentions
 
 Consul intentions define which services are allowed to communicate. They work with Connect to enforce authorization policies.
-
-### Defining Intentions
-
-```bash
-# Allow web-app to call api-service
-consul intention create web-app api-service
-
-# Deny all traffic from unknown sources to database
-consul intention create -deny '*' database
-
-# Allow specific service with description
-consul intention create \
-  -description "Allow API to access database" \
-  api-service database
-```
 
 ### Intention Configuration in HCL
 
@@ -614,14 +595,14 @@ Sources = [
 ### Verifying Intentions
 
 ```bash
-# List all intentions
-consul intention list
+# List all service intention config entries
+consul config list -kind service-intentions
 
-# Check specific intention
+# Check a specific L4 intention decision
 consul intention check web-app api-service
 
 # Get intention details
-consul intention get web-app api-service
+consul config read -kind service-intentions -name api-service
 ```
 
 ---
@@ -827,7 +808,7 @@ job "secure-app" {
   group "app" {
     # Vault configuration for the group
     vault {
-      policies = ["app-secrets"]
+      role        = "app-secrets"
       change_mode = "restart"
     }
 
@@ -842,13 +823,13 @@ job "secure-app" {
       template {
         data = <<EOF
 {{- with secret "database/creds/readonly" }}
-export DB_USER="{{ .Data.username }}"
-export DB_PASS="{{ .Data.password }}"
+DB_USER={{ .Data.username | toJSON }}
+DB_PASS={{ .Data.password | toJSON }}
 {{- end }}
 
 {{- with secret "secret/data/app/config" }}
-export API_KEY="{{ .Data.data.api_key }}"
-export ENCRYPTION_KEY="{{ .Data.data.encryption_key }}"
+API_KEY={{ .Data.data.api_key | toJSON }}
+ENCRYPTION_KEY={{ .Data.data.encryption_key | toJSON }}
 {{- end }}
 EOF
 
@@ -936,7 +917,7 @@ dig @127.0.0.1 -p 8600 web-app.service.consul
 dig @127.0.0.1 -p 8600 web-app.service.consul SRV
 
 # Query specific datacenter
-dig @127.0.0.1 -p 8600 web-app.service.dc2.consul
+dig @127.0.0.1 -p 8600 web-app.service.dc2.dc.consul
 
 # Query with tag filter
 dig @127.0.0.1 -p 8600 primary.postgres.service.consul
@@ -964,11 +945,11 @@ dns_config {
     "*" = "30s"
   }
 
-  # Enable case-insensitive lookups
+  # Truncate large UDP responses so clients retry over TCP
   enable_truncate = true
 
-  # UDP response size
-  udp_answer_limit = 3
+  # Limit A/AAAA/ANY answers
+  a_record_limit = 3
 }
 
 # Recursors for non-Consul queries
@@ -977,10 +958,7 @@ recursors = ["8.8.8.8", "8.8.4.4"]
 
 ### Prepared Queries for Advanced DNS
 
-```hcl
-# prepared-query.hcl
-# Prepared query for failover across datacenters
-
+```json
 {
   "Name": "api-geo",
   "Service": {
@@ -1001,7 +979,7 @@ Register and use the prepared query:
 
 ```bash
 # Register the query
-curl -X POST -d @prepared-query.hcl \
+curl -X POST -d @prepared-query.json \
   http://localhost:8500/v1/query
 
 # Query via DNS
