@@ -81,7 +81,7 @@ class FilterModule(object):
         return value
 ```
 
-The `__future__` imports ensure Python 2/3 compatibility. While Python 2 support is deprecated, many production environments still run older Ansible versions.
+The `__future__` imports are a legacy compatibility idiom used in many Ansible examples. The examples in this guide use f-strings, so they require Python 3.6 or newer.
 
 ## Building Your First Filter
 
@@ -1157,7 +1157,7 @@ __metaclass__ = type
 import hashlib
 import base64
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class FilterModule(object):
@@ -1235,7 +1235,7 @@ class FilterModule(object):
         If value is None, returns current timestamp.
         """
         if value is None:
-            dt = datetime.utcnow()
+            dt = datetime.now(timezone.utc)
         elif isinstance(value, str):
             dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
         else:
