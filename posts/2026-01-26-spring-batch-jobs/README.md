@@ -159,17 +159,18 @@ The reader pulls data from your source. Spring Batch provides readers for files,
 ```java
 // BatchConfiguration.java
 @Configuration
-@EnableBatchProcessing
 public class BatchConfiguration {
 
     // Reads customer data from a CSV file
     // Each line becomes a Customer object
     @Bean
-    public FlatFileItemReader<Customer> customerReader() {
+    @StepScope
+    public FlatFileItemReader<Customer> customerReader(
+            @Value("#{jobParameters['inputFile'] ?: 'customers.csv'}") String inputFile) {
         return new FlatFileItemReaderBuilder<Customer>()
             .name("customerReader")
             // Resource location - can be file system or classpath
-            .resource(new ClassPathResource("customers.csv"))
+            .resource(new ClassPathResource(inputFile))
             // Skip the header row
             .linesToSkip(1)
             // Parse each line using comma delimiter
@@ -226,8 +227,8 @@ public class CustomerProcessor implements ItemProcessor<Customer, Customer> {
     public Customer process(Customer customer) throws Exception {
         // Validate email format
         if (!isValidEmail(customer.getEmail())) {
-            log.warn("Skipping customer with invalid email: {}", customer.getEmail());
-            // Returning null tells Spring Batch to skip this item
+            log.warn("Filtering customer with invalid email: {}", customer.getEmail());
+            // Returning null tells Spring Batch to filter this item
             return null;
         }
 
@@ -352,7 +353,7 @@ public Job importCustomerJob(
         .listener(listener)
         // Start with the import step
         .start(importCustomerStep)
-        // Prevent duplicate executions with same parameters
+        // Disable restarting a failed execution with the same parameters
         .preventRestart()
         .build();
 }
@@ -376,7 +377,7 @@ sequenceDiagram
         Step->>Reader: read()
         Reader-->>Step: Item (or null if done)
         Step->>Processor: process(item)
-        Processor-->>Step: Processed Item (or null to skip)
+        Processor-->>Step: Processed Item (or null to filter)
         Step->>Step: Add to chunk buffer
     end
 
@@ -505,7 +506,7 @@ public class JobCompletionListener implements JobExecutionListener {
 
         // Log step details
         for (StepExecution step : jobExecution.getStepExecutions()) {
-            log.info("Step {}: Read={}, Processed={}, Written={}, Skipped={}",
+            log.info("Step {}: Read={}, Filtered={}, Written={}, Skipped={}",
                 step.getStepName(),
                 step.getReadCount(),
                 step.getFilterCount(),
@@ -556,7 +557,7 @@ public class BatchScheduler {
     public void runDailyImport() {
         try {
             // Create unique job parameters for each run
-            // This allows the same job to run multiple times
+            // This creates a new job instance each time
             JobParameters params = new JobParametersBuilder()
                 .addLocalDateTime("executionTime", LocalDateTime.now())
                 .addString("source", "scheduled")
@@ -617,11 +618,11 @@ public class BatchController {
                 importCustomerJob,
                 paramsBuilder.toJobParameters());
 
-            return ResponseEntity.accepted()
+            return ResponseEntity.ok()
                 .body(new JobExecutionResponse(
                     execution.getId(),
                     execution.getStatus().toString(),
-                    "Job started successfully"));
+                    "Job launched successfully"));
 
         } catch (JobExecutionAlreadyRunningException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -680,7 +681,7 @@ Spring Batch includes readers and writers for many data sources.
 // Read customers from database using pagination
 // This is memory-efficient for large tables
 @Bean
-public JdbcPagingItemReader<Customer> databaseReader(DataSource dataSource) {
+public JdbcPagingItemReader<Customer> databaseReader(DataSource dataSource) throws Exception {
 
     // Define how to sort results for consistent pagination
     Map<String, Order> sortKeys = new HashMap<>();
@@ -779,7 +780,6 @@ public Job customerProcessingJob(
         .from(errorNotificationStep).on("*").end()
         // Success notification ends the job
         .from(notificationStep).on("*").end()
-        .build()
         .build();
 }
 
@@ -790,7 +790,7 @@ public Step validateFileStep(JobRepository jobRepository,
     return new StepBuilder("validateFileStep", jobRepository)
         .tasklet((contribution, chunkContext) -> {
             // Get input file from job parameters
-            String inputFile = chunkContext.getStepContext()
+            String inputFile = contribution.getStepExecution()
                 .getJobParameters()
                 .getString("inputFile", "customers.csv");
 
