@@ -29,8 +29,8 @@ version: 2.1
 
 jobs:
   build:
-    machine:
-      resource_class: my-org/my-runner
+    machine: true
+    resource_class: my-org/my-runner
     steps:
       - checkout
       - run: make build
