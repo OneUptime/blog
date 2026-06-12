@@ -102,7 +102,7 @@ class SendOrderConfirmation
 
 ## Registering Events and Listeners
 
-Register your events and listeners in `app/Providers/EventServiceProvider`:
+Laravel can discover listeners automatically, but you can also register events and listeners manually in `app/Providers/AppServiceProvider`:
 
 ```php
 <?php
@@ -115,24 +115,23 @@ use App\Listeners\SendOrderConfirmation;
 use App\Listeners\UpdateInventory;
 use App\Listeners\NotifyWarehouse;
 use App\Listeners\SendPaymentReceipt;
-use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\ServiceProvider;
 
-class EventServiceProvider extends ServiceProvider
+class AppServiceProvider extends ServiceProvider
 {
     /**
-     * The event to listener mappings for the application.
+     * Bootstrap any application services.
      * One event can have multiple listeners.
      */
-    protected $listen = [
-        OrderPlaced::class => [
-            SendOrderConfirmation::class,
-            UpdateInventory::class,
-            NotifyWarehouse::class,
-        ],
-        PaymentProcessed::class => [
-            SendPaymentReceipt::class,
-        ],
-    ];
+    public function boot(): void
+    {
+        Event::listen(OrderPlaced::class, SendOrderConfirmation::class);
+        Event::listen(OrderPlaced::class, UpdateInventory::class);
+        Event::listen(OrderPlaced::class, NotifyWarehouse::class);
+
+        Event::listen(PaymentProcessed::class, SendPaymentReceipt::class);
+    }
 }
 ```
 
@@ -233,12 +232,24 @@ class OrderEventSubscriber
 }
 ```
 
-Register the subscriber in `EventServiceProvider`:
+Register the subscriber in `AppServiceProvider`:
 
 ```php
-protected $subscribe = [
-    OrderEventSubscriber::class,
-];
+<?php
+
+namespace App\Providers;
+
+use App\Listeners\OrderEventSubscriber;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\ServiceProvider;
+
+class AppServiceProvider extends ServiceProvider
+{
+    public function boot(): void
+    {
+        Event::subscribe(OrderEventSubscriber::class);
+    }
+}
 ```
 
 ## Queued Listeners for Async Processing
@@ -476,36 +487,30 @@ Echo.private(`conversation.${conversationId}`)
 
 ## Event Discovery (Auto-Registration)
 
-Laravel can automatically discover and register events and listeners. Enable this in `EventServiceProvider`:
+Laravel can automatically discover and register events and listeners. By default, Laravel scans your application's `app/Listeners` directory. If you store listeners somewhere else, configure the additional discovery paths in `bootstrap/app.php`:
 
 ```php
 <?php
 
-namespace App\Providers;
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use Illuminate\Foundation\Configuration\Middleware;
 
-use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
-
-class EventServiceProvider extends ServiceProvider
-{
-    /**
-     * Enable event discovery.
-     * Laravel will scan the Listeners directory and auto-register.
-     */
-    public function shouldDiscoverEvents(): bool
-    {
-        return true;
-    }
-
-    /**
-     * Get the directories to scan for events.
-     */
-    protected function discoverEventsWithin(): array
-    {
-        return [
-            $this->app->path('Listeners'),
-        ];
-    }
-}
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(
+        web: __DIR__.'/../routes/web.php',
+        commands: __DIR__.'/../routes/console.php',
+    )
+    ->withMiddleware(function (Middleware $middleware): void {
+        //
+    })
+    ->withExceptions(function (Exceptions $exceptions): void {
+        //
+    })
+    ->withEvents(discover: [
+        __DIR__.'/../app/Domain/Orders/Listeners',
+    ])
+    ->create();
 ```
 
 With discovery enabled, Laravel uses the type-hint in the listener's `handle` method:
