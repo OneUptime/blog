@@ -580,6 +580,7 @@ Use ApplicationSet features to control rollout across clusters.
 ### Rolling Sync Strategy
 
 Roll out changes progressively to minimize blast radius.
+Progressive syncs are experimental and must be explicitly enabled in the ApplicationSet controller before using RollingSync.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -615,6 +616,8 @@ spec:
   template:
     metadata:
       name: 'my-app-{{name}}'
+      labels:
+        region: '{{metadata.labels.region}}'
     spec:
       project: default
       source:
