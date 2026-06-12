@@ -287,13 +287,13 @@ spec:
     removeHeader: true
 ---
 # Create the secret with htpasswd format
-# Generate with: htpasswd -nb admin password | base64
+# Generate the htpasswd entry with: htpasswd -nb admin password
 apiVersion: v1
 kind: Secret
 metadata:
   name: auth-secret
   namespace: default
-type: kubernetes.io/basic-auth
+type: Opaque
 stringData:
   # Format: username:password-hash (use htpasswd to generate)
   users: |
@@ -593,7 +593,7 @@ kind: Secret
 metadata:
   name: dashboard-auth-secret
   namespace: traefik
-type: kubernetes.io/basic-auth
+type: Opaque
 stringData:
   users: |
     admin:$apr1$H6uskkkW$IgXLP6ewTrSuBkTrqE8wj/
