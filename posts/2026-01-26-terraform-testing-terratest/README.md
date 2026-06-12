@@ -66,7 +66,7 @@ terraform-modules/
 ```bash
 cd test
 go mod init github.com/mycompany/terraform-modules/test
-go get github.com/gruntwork-io/terratest/modules/terraform
+go get github.com/gruntwork-io/terratest@latest
 go get github.com/stretchr/testify/assert
 ```
 
@@ -87,6 +87,7 @@ import (
 func TestVPCModule(t *testing.T) {
     // Run tests in parallel for speed
     t.Parallel()
+    ctx := t.Context()
 
     // Configure Terraform options
     terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
@@ -102,14 +103,14 @@ func TestVPCModule(t *testing.T) {
     })
 
     // Clean up resources at the end of the test
-    defer terraform.Destroy(t, terraformOptions)
+    defer terraform.DestroyContext(t, ctx, terraformOptions)
 
     // Deploy the infrastructure
-    terraform.InitAndApply(t, terraformOptions)
+    terraform.InitAndApplyContext(t, ctx, terraformOptions)
 
     // Get outputs
-    vpcId := terraform.Output(t, terraformOptions, "vpc_id")
-    vpcCidr := terraform.Output(t, terraformOptions, "vpc_cidr")
+    vpcId := terraform.OutputContext(t, ctx, terraformOptions, "vpc_id")
+    vpcCidr := terraform.OutputContext(t, ctx, terraformOptions, "vpc_cidr")
 
     // Validate outputs
     assert.NotEmpty(t, vpcId)
@@ -135,7 +136,6 @@ package test
 
 import (
     "testing"
-    "fmt"
 
     "github.com/gruntwork-io/terratest/modules/aws"
     "github.com/gruntwork-io/terratest/modules/terraform"
@@ -144,6 +144,7 @@ import (
 
 func TestEC2Instance(t *testing.T) {
     t.Parallel()
+    ctx := t.Context()
 
     awsRegion := "us-east-1"
 
@@ -158,22 +159,19 @@ func TestEC2Instance(t *testing.T) {
         },
     })
 
-    defer terraform.Destroy(t, terraformOptions)
+    defer terraform.DestroyContext(t, ctx, terraformOptions)
 
-    terraform.InitAndApply(t, terraformOptions)
+    terraform.InitAndApplyContext(t, ctx, terraformOptions)
 
     // Get instance ID from output
-    instanceId := terraform.Output(t, terraformOptions, "instance_id")
+    instanceId := terraform.OutputContext(t, ctx, terraformOptions, "instance_id")
 
-    // Use AWS SDK to verify instance state
-    instance := aws.GetInstanceByTag(t, awsRegion, "Name", "test-instance")
-    assert.Equal(t, instanceId, instance.InstanceId)
+    // Use AWS helpers to verify tags
+    instanceIds := aws.GetEc2InstanceIdsByTagContext(t, ctx, awsRegion, "Name", "test-instance")
+    assert.Contains(t, instanceIds, instanceId)
 
-    // Verify instance is running
-    assert.Equal(t, "running", aws.GetInstanceState(t, awsRegion, instanceId))
-
-    // Verify instance type
-    assert.Equal(t, "t3.micro", instance.InstanceType)
+    tags := aws.GetTagsForEc2InstanceContext(t, ctx, awsRegion, instanceId)
+    assert.Equal(t, "test-instance", tags["Name"])
 }
 ```
 
@@ -185,8 +183,9 @@ func TestEC2Instance(t *testing.T) {
 package test
 
 import (
-    "testing"
+    "fmt"
     "strings"
+    "testing"
 
     "github.com/gruntwork-io/terratest/modules/aws"
     "github.com/gruntwork-io/terratest/modules/random"
@@ -196,6 +195,7 @@ import (
 
 func TestS3Bucket(t *testing.T) {
     t.Parallel()
+    ctx := t.Context()
 
     awsRegion := "us-east-1"
     // Use random suffix to avoid naming conflicts
@@ -208,21 +208,24 @@ func TestS3Bucket(t *testing.T) {
             "bucket_name": bucketName,
             "versioning":  true,
         },
+        EnvVars: map[string]string{
+            "AWS_DEFAULT_REGION": awsRegion,
+        },
     })
 
-    defer terraform.Destroy(t, terraformOptions)
+    defer terraform.DestroyContext(t, ctx, terraformOptions)
 
-    terraform.InitAndApply(t, terraformOptions)
+    terraform.InitAndApplyContext(t, ctx, terraformOptions)
 
     // Verify bucket exists
-    aws.AssertS3BucketExists(t, awsRegion, bucketName)
+    aws.AssertS3BucketExistsContext(t, ctx, awsRegion, bucketName)
 
     // Verify versioning is enabled
-    versioning := aws.GetS3BucketVersioning(t, awsRegion, bucketName)
+    versioning := aws.GetS3BucketVersioningContext(t, ctx, awsRegion, bucketName)
     assert.Equal(t, "Enabled", versioning)
 
     // Verify bucket policy
-    bucketPolicy := aws.GetS3BucketPolicy(t, awsRegion, bucketName)
+    bucketPolicy := aws.GetS3BucketPolicyContext(t, ctx, awsRegion, bucketName)
     assert.NotEmpty(t, bucketPolicy)
 }
 ```
@@ -235,10 +238,10 @@ func TestS3Bucket(t *testing.T) {
 package test
 
 import (
+    "crypto/tls"
+    "fmt"
     "testing"
     "time"
-    "fmt"
-    "crypto/tls"
 
     "github.com/gruntwork-io/terratest/modules/http-helper"
     "github.com/gruntwork-io/terratest/modules/terraform"
@@ -246,6 +249,7 @@ import (
 
 func TestALBEndpoint(t *testing.T) {
     t.Parallel()
+    ctx := t.Context()
 
     terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
         TerraformDir: "../modules/alb-app",
@@ -254,12 +258,12 @@ func TestALBEndpoint(t *testing.T) {
         },
     })
 
-    defer terraform.Destroy(t, terraformOptions)
+    defer terraform.DestroyContext(t, ctx, terraformOptions)
 
-    terraform.InitAndApply(t, terraformOptions)
+    terraform.InitAndApplyContext(t, ctx, terraformOptions)
 
     // Get ALB DNS name
-    albDns := terraform.Output(t, terraformOptions, "alb_dns_name")
+    albDns := terraform.OutputContext(t, ctx, terraformOptions, "alb_dns_name")
     url := fmt.Sprintf("http://%s/health", albDns)
 
     // Configure TLS settings
@@ -269,8 +273,9 @@ func TestALBEndpoint(t *testing.T) {
     maxRetries := 30
     sleepBetweenRetries := 10 * time.Second
 
-    http_helper.HttpGetWithRetryWithCustomValidation(
+    http_helper.HTTPGetWithRetryWithCustomValidationContext(
         t,
+        ctx,
         url,
         tlsConfig,
         maxRetries,
@@ -300,6 +305,7 @@ import (
 
 func TestBastionSSH(t *testing.T) {
     t.Parallel()
+    ctx := t.Context()
 
     // Generate SSH key pair for testing
     keyPair := ssh.GenerateRSAKeyPair(t, 2048)
@@ -311,12 +317,12 @@ func TestBastionSSH(t *testing.T) {
         },
     })
 
-    defer terraform.Destroy(t, terraformOptions)
+    defer terraform.DestroyContext(t, ctx, terraformOptions)
 
-    terraform.InitAndApply(t, terraformOptions)
+    terraform.InitAndApplyContext(t, ctx, terraformOptions)
 
     // Get bastion IP
-    bastionIp := terraform.Output(t, terraformOptions, "public_ip")
+    bastionIp := terraform.OutputContext(t, ctx, terraformOptions, "public_ip")
 
     // Configure SSH host
     host := ssh.Host{
@@ -329,10 +335,10 @@ func TestBastionSSH(t *testing.T) {
     maxRetries := 30
     sleepBetweenRetries := 10 * time.Second
 
-    ssh.CheckSshConnectionWithRetry(t, host, maxRetries, sleepBetweenRetries)
+    ssh.CheckSSHConnectionWithRetryContext(t, ctx, &host, maxRetries, sleepBetweenRetries)
 
     // Run command via SSH
-    output := ssh.CheckSshCommand(t, host, "echo 'Hello from Terratest'")
+    output := ssh.CheckSSHCommandContext(t, ctx, &host, "echo 'Hello from Terratest'")
     assert.Contains(t, output, "Hello from Terratest")
 }
 ```
@@ -342,6 +348,14 @@ func TestBastionSSH(t *testing.T) {
 Test multiple configurations efficiently:
 
 ```go
+import (
+    "fmt"
+    "testing"
+
+    "github.com/gruntwork-io/terratest/modules/terraform"
+    "github.com/stretchr/testify/assert"
+)
+
 func TestMultipleConfigurations(t *testing.T) {
     t.Parallel()
 
@@ -361,6 +375,7 @@ func TestMultipleConfigurations(t *testing.T) {
 
         t.Run(tc.name, func(t *testing.T) {
             t.Parallel()
+            ctx := t.Context()
 
             terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
                 TerraformDir: "../modules/ec2-cluster",
@@ -371,12 +386,12 @@ func TestMultipleConfigurations(t *testing.T) {
                 },
             })
 
-            defer terraform.Destroy(t, terraformOptions)
+            defer terraform.DestroyContext(t, ctx, terraformOptions)
 
-            terraform.InitAndApply(t, terraformOptions)
+            terraform.InitAndApplyContext(t, ctx, terraformOptions)
 
             // Verify instance count
-            instanceIds := terraform.OutputList(t, terraformOptions, "instance_ids")
+            instanceIds := terraform.OutputListContext(t, ctx, terraformOptions, "instance_ids")
             assert.Equal(t, tc.instanceCount, len(instanceIds))
         })
     }
@@ -388,8 +403,16 @@ func TestMultipleConfigurations(t *testing.T) {
 Break long tests into stages for debugging:
 
 ```go
+import (
+    "testing"
+
+    "github.com/gruntwork-io/terratest/modules/test-structure"
+    "github.com/gruntwork-io/terratest/modules/terraform"
+)
+
 func TestStagedDeployment(t *testing.T) {
     t.Parallel()
+    ctx := t.Context()
 
     terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
         TerraformDir: "../modules/full-stack",
@@ -397,7 +420,7 @@ func TestStagedDeployment(t *testing.T) {
 
     // Stage: Deploy infrastructure
     test_structure.RunTestStage(t, "deploy", func() {
-        terraform.InitAndApply(t, terraformOptions)
+        terraform.InitAndApplyContext(t, ctx, terraformOptions)
     })
 
     // Stage: Validate infrastructure
@@ -407,7 +430,7 @@ func TestStagedDeployment(t *testing.T) {
 
     // Stage: Destroy infrastructure
     test_structure.RunTestStage(t, "destroy", func() {
-        terraform.Destroy(t, terraformOptions)
+        terraform.DestroyContext(t, ctx, terraformOptions)
     })
 }
 
@@ -421,8 +444,16 @@ func TestStagedDeployment(t *testing.T) {
 For faster feedback without deploying:
 
 ```go
+import (
+    "testing"
+
+    "github.com/gruntwork-io/terratest/modules/terraform"
+    "github.com/stretchr/testify/assert"
+)
+
 func TestPlanOnly(t *testing.T) {
     t.Parallel()
+    ctx := t.Context()
 
     terraformOptions := &terraform.Options{
         TerraformDir: "../modules/vpc",
@@ -433,8 +464,7 @@ func TestPlanOnly(t *testing.T) {
     }
 
     // Initialize and plan only
-    terraform.Init(t, terraformOptions)
-    planOutput := terraform.Plan(t, terraformOptions)
+    planOutput := terraform.InitAndPlanContext(t, ctx, terraformOptions)
 
     // Verify expected resources in plan
     assert.Contains(t, planOutput, "aws_vpc.main will be created")
@@ -462,6 +492,7 @@ go test -v -timeout 60m
 ```go
 func TestModule(t *testing.T) {
     t.Parallel()  // Add this to all tests
+    ctx := t.Context()
     // ...
 }
 ```
@@ -469,7 +500,7 @@ func TestModule(t *testing.T) {
 ### 4. Clean Up on Failure
 
 ```go
-defer terraform.Destroy(t, terraformOptions)
+defer terraform.DestroyContext(t, ctx, terraformOptions)
 ```
 
 ### 5. Use Retries for Async Resources
@@ -499,20 +530,23 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.21'
+          go-version: '1.26'
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_TEST_ROLE }}
           aws-region: us-east-1
