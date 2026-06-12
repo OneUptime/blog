@@ -32,6 +32,7 @@ flowchart LR
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from math import ceil
 from typing import List, Optional, Dict
 from statistics import mean, median, stdev
 
@@ -78,6 +79,13 @@ class IncidentMetrics:
         return None
 
     @property
+    def tttr(self) -> Optional[float]:
+        """Time to Resolve - from mitigation to full resolution"""
+        if self.mitigation_time and self.resolution_time:
+            return (self.resolution_time - self.mitigation_time).total_seconds()
+        return None
+
+    @property
     def mttr(self) -> Optional[float]:
         """Mean Time to Resolve - full incident duration"""
         if self.trigger_time and self.resolution_time:
@@ -89,7 +97,7 @@ def calculate_aggregate_metrics(incidents: List[IncidentMetrics]) -> Dict:
 
     metrics = {}
 
-    for metric_name in ['mttd', 'mtta', 'mtti', 'tttm', 'mttr']:
+    for metric_name in ['mttd', 'mtta', 'mtti', 'tttm', 'tttr', 'mttr']:
         values = [
             getattr(i, metric_name)
             for i in incidents
@@ -97,10 +105,11 @@ def calculate_aggregate_metrics(incidents: List[IncidentMetrics]) -> Dict:
         ]
 
         if values:
+            sorted_values = sorted(values)
             metrics[metric_name] = {
                 'mean': mean(values),
                 'median': median(values),
-                'p95': sorted(values)[int(len(values) * 0.95)],
+                'p95': sorted_values[min(len(sorted_values) - 1, ceil(len(sorted_values) * 0.95) - 1)],
                 'stdev': stdev(values) if len(values) > 1 else 0,
                 'min': min(values),
                 'max': max(values),
@@ -156,7 +165,7 @@ def calculate_customer_impact_score(impact: IncidentImpact,
     # Normalize each factor to 0-100 scale
     normalized = {}
 
-    # Users affected (log scale for large numbers)
+    # Users affected (capped at configured maximum)
     max_users = config.get('max_users', 1000000)
     normalized['users_affected'] = min(100, (impact.users_affected / max_users) * 100)
 
@@ -305,8 +314,10 @@ flowchart TB
 ```python
 # Metrics collection and storage
 
-from datetime import datetime, timedelta
-from typing import Dict, List
+from datetime import datetime, timedelta, timezone
+from math import ceil
+from typing import Dict, List, Optional
+from statistics import mean, median
 import json
 
 class IncidentMetricsCollector:
@@ -322,12 +333,17 @@ class IncidentMetricsCollector:
         self.storage.store_metrics(
             metric_type="incident",
             incident_id=incident["id"],
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             metrics=metrics
         )
 
         # Update aggregate metrics
         self._update_aggregates(metrics, incident)
+
+    def _update_aggregates(self, metrics: Dict, incident: Dict) -> None:
+        """Update aggregate metrics if the storage backend supports it"""
+        if hasattr(self.storage, "update_aggregates"):
+            self.storage.update_aggregates(metrics=metrics, incident=incident)
 
     def _extract_metrics(self, incident: Dict) -> Dict:
         """Extract all relevant metrics from incident"""
@@ -347,6 +363,14 @@ class IncidentMetricsCollector:
             "mtti": self._calculate_duration(
                 timestamps.get("acknowledged"),
                 timestamps.get("root_cause_identified")
+            ),
+            "tttm": self._calculate_duration(
+                timestamps.get("root_cause_identified"),
+                timestamps.get("mitigated")
+            ),
+            "tttr": self._calculate_duration(
+                timestamps.get("mitigated"),
+                timestamps.get("resolved")
             ),
             "mttr": self._calculate_duration(
                 timestamps.get("trigger"),
@@ -430,7 +454,7 @@ class IncidentMetricsCollector:
 
         result = {}
 
-        for metric_name in ["mttd", "mtta", "mtti", "mttr"]:
+        for metric_name in ["mttd", "mtta", "mtti", "tttm", "tttr", "mttr"]:
             values = [
                 m[metric_name]
                 for m in metrics_list
@@ -438,10 +462,11 @@ class IncidentMetricsCollector:
             ]
 
             if values:
+                sorted_values = sorted(values)
                 result[metric_name] = {
                     "mean_seconds": mean(values),
                     "median_seconds": median(values),
-                    "p95_seconds": sorted(values)[int(len(values) * 0.95)] if len(values) >= 20 else max(values),
+                    "p95_seconds": sorted_values[min(len(sorted_values) - 1, ceil(len(sorted_values) * 0.95) - 1)] if len(values) >= 20 else max(values),
                     "sample_size": len(values)
                 }
 
@@ -471,7 +496,9 @@ class IncidentMetricsCollector:
 # Incident response SLO definitions
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
+from typing import Dict, Optional
 
 class Severity(Enum):
     P1 = "critical"
@@ -520,6 +547,27 @@ response_slos = {
     )
 }
 
+def calculate_incident_metrics(incident: Dict) -> IncidentMetrics:
+    """Calculate IncidentMetrics from an incident dictionary"""
+    timestamps = incident.get("timestamps", {})
+
+    def parse_timestamp(value: str) -> Optional[datetime]:
+        if not value:
+            return None
+        return datetime.fromisoformat(value.replace('Z', '+00:00'))
+
+    return IncidentMetrics(
+        incident_id=incident["id"],
+        trigger_time=parse_timestamp(timestamps.get("trigger")),
+        detection_time=parse_timestamp(timestamps.get("detected")),
+        alert_time=parse_timestamp(timestamps.get("alerted")),
+        ack_time=parse_timestamp(timestamps.get("acknowledged")),
+        investigation_start=parse_timestamp(timestamps.get("investigation_started")),
+        root_cause_time=parse_timestamp(timestamps.get("root_cause_identified")),
+        mitigation_time=parse_timestamp(timestamps.get("mitigated")),
+        resolution_time=parse_timestamp(timestamps.get("resolved"))
+    )
+
 def check_slo_compliance(incident: Dict, slos: Dict) -> Dict:
     """Check if incident met its response SLOs"""
 
@@ -539,8 +587,8 @@ def check_slo_compliance(incident: Dict, slos: Dict) -> Dict:
             "mttr_seconds": metrics.mttr
         },
         "compliance": {
-            "mtta_met": metrics.mtta <= slo.mtta_target_seconds if metrics.mtta else None,
-            "mttr_met": metrics.mttr <= slo.mttr_target_seconds if metrics.mttr else None,
+            "mtta_met": metrics.mtta <= slo.mtta_target_seconds if metrics.mtta is not None else None,
+            "mttr_met": metrics.mttr <= slo.mttr_target_seconds if metrics.mttr is not None else None,
             "postmortem_met": (
                 not slo.postmortem_required or
                 incident.get("postmortem_completed", False)
@@ -549,7 +597,7 @@ def check_slo_compliance(incident: Dict, slos: Dict) -> Dict:
     }
 
     compliance["overall_compliant"] = all(
-        v for v in compliance["compliance"].values() if v is not None
+        v is True for v in compliance["compliance"].values()
     )
 
     return compliance
