@@ -152,7 +152,7 @@ velero install \
     --provider azure \
     --plugins velero/velero-plugin-for-microsoft-azure:v1.9.0 \
     --bucket velero \
-    --backup-location-config resourceGroup=velero-backups,storageAccount=velerobackups \
+    --backup-location-config resourceGroup=velero-backups,storageAccount=velerobackups,storageAccountKeyEnvVar=AZURE_STORAGE_ACCOUNT_ACCESS_KEY \
     --secret-file ./credentials-velero
 ```
 
@@ -543,14 +543,15 @@ spec:
             summary: "No successful backup in 24 hours"
             description: "Velero has not completed a successful backup in 24 hours"
 
-        - alert: VeleroSchedulePaused
+        - alert: VeleroBackupPartialFailure
           expr: |
-            velero_schedule_paused == 1
+            increase(velero_backup_partial_failure_total[1h]) > 0
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "Velero schedule is paused"
+            summary: "Velero backup partially failed"
+            description: "A Velero backup completed with partial failures in the last hour"
 ```
 
 ## Restoring from Backups
