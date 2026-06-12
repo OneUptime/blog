@@ -24,8 +24,8 @@ graph TD
     A --> C[Availability]
     A --> D[Partition Tolerance]
 
-    B --> E[All nodes see the same data at the same time]
-    C --> F[Every request receives a response]
+    B --> E[Reads observe the latest successful write]
+    C --> F[Every request receives a non-error response]
     D --> G[System continues despite network failures]
 
     style A fill:#f9f,stroke:#333,stroke-width:2px
@@ -65,7 +65,7 @@ Here is a simplified strong consistency coordinator in Python:
 
 ```python
 import threading
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 import time
@@ -78,9 +78,11 @@ class ConsistencyLevel(Enum):
 @dataclass
 class WriteOperation:
     key: str
-    value: any
+    value: Any
     timestamp: float
     version: int
+    previous_value: Optional[Any]
+    previous_version: int
 
 class StrongConsistencyStore:
     """
@@ -91,7 +93,7 @@ class StrongConsistencyStore:
     def __init__(self, node_id: str, is_leader: bool = False):
         self.node_id = node_id
         self.is_leader = is_leader
-        self.data: Dict[str, any] = {}
+        self.data: Dict[str, Any] = {}
         self.versions: Dict[str, int] = {}
         self.lock = threading.RLock()
         self.followers: List['StrongConsistencyStore'] = []
@@ -100,7 +102,7 @@ class StrongConsistencyStore:
         """Register a follower node for replication."""
         self.followers.append(follower)
 
-    def write(self, key: str, value: any) -> bool:
+    def write(self, key: str, value: Any) -> bool:
         """
         Write with strong consistency.
         Blocks until all followers acknowledge.
@@ -115,7 +117,9 @@ class StrongConsistencyStore:
                 key=key,
                 value=value,
                 timestamp=time.time(),
-                version=current_version
+                version=current_version,
+                previous_value=self.data.get(key),
+                previous_version=self.versions.get(key, 0)
             )
 
             # Replicate to ALL followers synchronously
@@ -150,7 +154,7 @@ class StrongConsistencyStore:
             self.versions[operation.key] = operation.version
             return True
 
-    def read(self, key: str) -> Optional[any]:
+    def read(self, key: str) -> Optional[Any]:
         """Read always returns the most recent committed value."""
         with self.lock:
             return self.data.get(key)
@@ -162,6 +166,18 @@ class StrongConsistencyStore:
                 follower.rollback(operation)
             except:
                 pass  # Best effort rollback
+
+    def rollback(self, operation: WriteOperation):
+        """Rollback a previously applied operation."""
+        with self.lock:
+            if self.versions.get(operation.key, 0) != operation.version:
+                return
+            if operation.previous_version == 0:
+                self.data.pop(operation.key, None)
+                self.versions.pop(operation.key, None)
+            else:
+                self.data[operation.key] = operation.previous_value
+                self.versions[operation.key] = operation.previous_version
 ```
 
 ### When to Use Strong Consistency
@@ -217,7 +233,7 @@ sequenceDiagram
 ```python
 import asyncio
 import random
-from typing import Dict, Set, Optional
+from typing import Any, Dict, Set, Optional
 from dataclasses import dataclass, field
 from collections import defaultdict
 import time
@@ -242,11 +258,13 @@ class VectorClock:
     def happens_before(self, other: 'VectorClock') -> bool:
         """Check if this clock happens before other."""
         dominated = False
-        for node, time in other.clocks.items():
+        all_nodes = set(self.clocks.keys()) | set(other.clocks.keys())
+        for node in all_nodes:
             self_time = self.clocks.get(node, 0)
-            if self_time > time:
+            other_time = other.clocks.get(node, 0)
+            if self_time > other_time:
                 return False
-            if self_time < time:
+            if self_time < other_time:
                 dominated = True
         return dominated
 
@@ -256,7 +274,7 @@ class VectorClock:
 
 @dataclass
 class VersionedValue:
-    value: any
+    value: Any
     vector_clock: VectorClock
     timestamp: float
 
@@ -278,7 +296,7 @@ class EventualConsistencyStore:
         """Connect to a peer node for replication."""
         self.peers.add(peer)
 
-    async def write(self, key: str, value: any) -> bool:
+    async def write(self, key: str, value: Any) -> bool:
         """
         Write with eventual consistency.
         Returns immediately after local write.
@@ -332,7 +350,8 @@ class EventualConsistencyStore:
     async def receive_replication(self, key: str, incoming: VersionedValue):
         """
         Receive a replicated value and resolve conflicts.
-        Uses last-writer-wins with vector clock tiebreaker.
+        Uses vector clocks for causal ordering and last-writer-wins as the
+        tiebreaker for concurrent writes.
         """
         if key not in self.data:
             self.data[key] = incoming
@@ -418,7 +437,7 @@ graph TD
 ### Implementation Example
 
 ```python
-from typing import Dict, List, Set, Optional, Tuple
+from typing import Any, Dict, List, Set, Optional, Tuple
 from dataclasses import dataclass, field
 from collections import defaultdict
 import threading
@@ -449,7 +468,7 @@ class CausalContext:
 @dataclass
 class CausalOperation:
     key: str
-    value: any
+    value: Any
     origin_node: str
     sequence: int
     causal_context: CausalContext
@@ -463,7 +482,7 @@ class CausalConsistencyStore:
     def __init__(self, node_id: str):
         self.node_id = node_id
         self.sequence = 0
-        self.data: Dict[str, any] = {}
+        self.data: Dict[str, Any] = {}
         self.lock = threading.RLock()
 
         # Current causal context (what we've seen)
@@ -481,7 +500,7 @@ class CausalConsistencyStore:
     def connect_peer(self, peer: 'CausalConsistencyStore'):
         self.peers.add(peer)
 
-    def write(self, key: str, value: any, client_context: CausalContext = None) -> CausalContext:
+    def write(self, key: str, value: Any, client_context: CausalContext = None) -> CausalContext:
         """
         Write with causal consistency.
         Takes the client's context to establish causal dependencies.
@@ -526,8 +545,10 @@ class CausalConsistencyStore:
             # Check if we satisfy client's causal dependencies
             if client_context and not self.current_context.satisfies(client_context):
                 # In a real system, might wait or return error
-                # Here we just return what we have
-                pass
+                # Here we return an explicit error instead of stale data
+                raise CausalDependencyException(
+                    "Node has not yet applied the client's causal dependencies"
+                )
 
             value = self.data.get(key)
             return value, self.current_context.copy()
@@ -561,7 +582,11 @@ class CausalConsistencyStore:
         """Check if all causal dependencies are satisfied."""
         for node_id, seq in op.causal_context.dependencies.items():
             if node_id == op.origin_node:
-                # Don't need to check dependency on self
+                # Require prior operations from the same origin before applying
+                # this operation.
+                required_seq = op.sequence - 1
+                if self.current_context.dependencies.get(node_id, 0) < required_seq:
+                    return False
                 continue
             if self.current_context.dependencies.get(node_id, 0) < seq:
                 return False
@@ -586,6 +611,11 @@ class CausalConsistencyStore:
         for peer in self.peers:
             # In real system, this would be async
             peer.receive_operation(op)
+
+
+class CausalDependencyException(Exception):
+    """Raised when a node has not yet applied required causal dependencies."""
+    pass
 
 
 # Example usage demonstrating causal ordering
@@ -668,7 +698,7 @@ sequenceDiagram
 ### Implementation Example
 
 ```python
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 from dataclasses import dataclass
 import threading
 import time
@@ -702,7 +732,7 @@ class ReadYourWritesStore:
 
     def __init__(self, node_id: str):
         self.node_id = node_id
-        self.data: Dict[str, any] = {}
+        self.data: Dict[str, Any] = {}
         self.versions: Dict[str, int] = {}
         self.lock = threading.RLock()
         self.peers: list = []
@@ -716,7 +746,7 @@ class ReadYourWritesStore:
     def write(
         self,
         key: str,
-        value: any,
+        value: Any,
         session: SessionContext
     ) -> int:
         """
@@ -733,8 +763,7 @@ class ReadYourWritesStore:
 
             # Notify anyone waiting for this version
             if key in self.version_conditions:
-                with self.version_conditions[key]:
-                    self.version_conditions[key].notify_all()
+                self.version_conditions[key].notify_all()
 
             # Async replication to peers
             self._replicate_async(key, value, new_version)
@@ -746,7 +775,7 @@ class ReadYourWritesStore:
         key: str,
         session: SessionContext,
         timeout: float = 5.0
-    ) -> Optional[any]:
+    ) -> Optional[Any]:
         """
         Read a value, ensuring we return at least the version
         the client has written (from their session context).
@@ -767,32 +796,29 @@ class ReadYourWritesStore:
         key: str,
         min_version: int,
         timeout: float
-    ) -> Optional[any]:
+    ) -> Optional[Any]:
         """Wait for a specific version to be replicated."""
 
         # Create condition variable if needed
         with self.lock:
             if key not in self.version_conditions:
-                self.version_conditions[key] = threading.Condition()
-
-        condition = self.version_conditions[key]
-        deadline = time.time() + timeout
-
-        with condition:
+                self.version_conditions[key] = threading.Condition(self.lock)
+            condition = self.version_conditions[key]
+            deadline = time.time() + timeout
             while True:
-                with self.lock:
-                    if self.versions.get(key, 0) >= min_version:
-                        return self.data.get(key)
+                if self.versions.get(key, 0) >= min_version:
+                    return self.data.get(key)
 
                 remaining = deadline - time.time()
                 if remaining <= 0:
-                    # Timeout - return what we have or None
-                    with self.lock:
-                        return self.data.get(key)
+                    # Timeout - fail instead of returning stale data
+                    raise TimeoutError(
+                        f"Timed out waiting for {key} to reach version {min_version}"
+                    )
 
                 condition.wait(timeout=remaining)
 
-    def receive_replication(self, key: str, value: any, version: int):
+    def receive_replication(self, key: str, value: Any, version: int):
         """Receive replicated data from another node."""
         with self.lock:
             current = self.versions.get(key, 0)
@@ -802,10 +828,9 @@ class ReadYourWritesStore:
 
                 # Notify waiters
                 if key in self.version_conditions:
-                    with self.version_conditions[key]:
-                        self.version_conditions[key].notify_all()
+                    self.version_conditions[key].notify_all()
 
-    def _replicate_async(self, key: str, value: any, version: int):
+    def _replicate_async(self, key: str, value: Any, version: int):
         """Asynchronously replicate to peers."""
         for peer in self.peers:
             # In production, use actual async/threading
@@ -869,7 +894,7 @@ graph LR
 ### Implementation Example
 
 ```python
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 import threading
 
@@ -898,11 +923,11 @@ class MonotonicReadsStore:
 
     def __init__(self, node_id: str):
         self.node_id = node_id
-        self.data: Dict[str, Tuple[any, int]] = {}  # key -> (value, version)
+        self.data: Dict[str, Tuple[Any, int]] = {}  # key -> (value, version)
         self.lock = threading.RLock()
         self.peers: list = []
 
-    def write(self, key: str, value: any) -> int:
+    def write(self, key: str, value: Any) -> int:
         """Write a value, returning the new version."""
         with self.lock:
             current_version = self.data.get(key, (None, 0))[1]
@@ -945,7 +970,7 @@ class MonotonicReadsStore:
 
             return value, version
 
-    def receive_replication(self, key: str, value: any, version: int):
+    def receive_replication(self, key: str, value: Any, version: int):
         """Receive replicated data."""
         with self.lock:
             current = self.data.get(key, (None, 0))[1]
@@ -1036,16 +1061,21 @@ flowchart TD
 Many production systems use multiple consistency models for different operations:
 
 ```python
+import time
+from typing import Any
+
 class HybridConsistencyStore:
     """
     Uses different consistency models for different operations.
     """
 
     def __init__(self, node_id: str):
-        self.strong_store = StrongConsistencyStore(node_id)
+        self.node_id = node_id
+        self.strong_store = StrongConsistencyStore(node_id, is_leader=True)
         self.eventual_store = EventualConsistencyStore(node_id)
+        self.causal_store = CausalConsistencyStore(node_id)
 
-    async def write(self, key: str, value: any, consistency: ConsistencyLevel):
+    async def write(self, key: str, value: Any, consistency: ConsistencyLevel):
         """Write with specified consistency level."""
         if consistency == ConsistencyLevel.STRONG:
             return self.strong_store.write(key, value)
@@ -1059,9 +1089,13 @@ class HybridConsistencyStore:
         amount: float
     ):
         """Financial operation - always strong consistency."""
-        # Debit and credit must be atomic and strongly consistent
-        self.strong_store.write(f"balance:{from_account}", -amount)
-        self.strong_store.write(f"balance:{to_account}", amount)
+        # In production, debit and credit must be one atomic transaction.
+        # This simplified example records the transfer in the strong store.
+        transfer_id = f"{from_account}:{to_account}:{time.time()}"
+        self.strong_store.write(
+            f"transfer:{transfer_id}",
+            {"from": from_account, "to": to_account, "amount": amount}
+        )
 
     async def update_profile_picture(self, user_id: str, url: str):
         """Profile picture - eventual consistency is fine."""
@@ -1075,8 +1109,7 @@ class HybridConsistencyStore:
     ):
         """Comment must causally follow the post."""
         # Use causal consistency for social features
-        causal_store = CausalConsistencyStore(self.node_id)
-        return causal_store.write(
+        return self.causal_store.write(
             f"comment:{post_id}",
             comment,
             causal_context
@@ -1110,9 +1143,7 @@ class DataStore:
 Write tests that verify your consistency guarantees under failure conditions:
 
 ```python
-import pytest
-
-async def test_read_your_writes_across_nodes():
+def test_read_your_writes_across_nodes():
     """Verify read-your-writes works even when reads go to different nodes."""
     node1 = ReadYourWritesStore("node1")
     node2 = ReadYourWritesStore("node2")
@@ -1133,6 +1164,8 @@ async def test_read_your_writes_across_nodes():
 Track how far behind your replicas are:
 
 ```python
+from prometheus_client import Counter, Gauge
+
 class ConsistencyMetrics:
     def __init__(self):
         self.replication_lag_seconds = Gauge(
