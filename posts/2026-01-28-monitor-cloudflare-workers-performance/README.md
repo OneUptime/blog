@@ -72,7 +72,7 @@ async function fetchWorkerAnalytics(
 ): Promise<WorkerMetrics> {
   const query: AnalyticsQuery = {
     query: `
-      query GetWorkerAnalytics($accountId: String!, $scriptName: String!, $since: Time!, $until: Time!) {
+      query GetWorkerAnalytics($accountId: string!, $scriptName: string!, $since: string!, $until: string!) {
         viewer {
           accounts(filter: { accountTag: $accountId }) {
             workersInvocationsAdaptive(
@@ -87,8 +87,8 @@ async function fetchWorkerAnalytics(
               quantiles {
                 cpuTimeP50
                 cpuTimeP99
-                durationP50
-                durationP99
+                wallTimeP50
+                wallTimeP99
               }
             }
           }
@@ -119,7 +119,7 @@ async function fetchWorkerAnalytics(
     requests: metrics.sum.requests,
     errors: metrics.sum.errors,
     cpuTime: metrics.quantiles.cpuTimeP99,
-    duration: metrics.quantiles.durationP99
+    duration: metrics.quantiles.wallTimeP99
   };
 }
 ```
@@ -179,6 +179,7 @@ class MetricsRecorder {
   }): void {
     this.dataset.writeDataPoint({
       blobs: [
+        "request",
         data.path,
         data.method,
         data.cacheStatus
@@ -199,6 +200,7 @@ class MetricsRecorder {
   }): void {
     this.dataset.writeDataPoint({
       blobs: [
+        "error",
         data.path,
         data.errorType,
         data.errorMessage
@@ -210,7 +212,7 @@ class MetricsRecorder {
 
   recordCustomMetric(name: string, value: number, labels: Record<string, string>): void {
     this.dataset.writeDataPoint({
-      blobs: [name, ...Object.values(labels)],
+      blobs: ["custom", name, ...Object.values(labels)],
       doubles: [value],
       indexes: [name]
     });
@@ -292,15 +294,15 @@ async function queryMetrics(
 ): Promise<QueryResult> {
   const query = `
     SELECT
-      blob1 as path,
-      blob2 as method,
-      COUNT() as request_count,
-      AVG(double2) as avg_duration,
-      quantileExact(0.99)(double2) as p99_duration,
-      SUM(CASE WHEN double1 >= 500 THEN 1 ELSE 0 END) as error_count
+      blob2 as path,
+      blob3 as method,
+      SUM(_sample_interval) as request_count,
+      SUM(_sample_interval * double2) / SUM(_sample_interval) as avg_duration,
+      quantileExactWeighted(0.99)(double2, _sample_interval) as p99_duration,
+      SUM(CASE WHEN double1 >= 500 THEN _sample_interval ELSE 0 END) as error_count
     FROM worker_metrics
-    WHERE timestamp > NOW() - INTERVAL '1' HOUR
-    GROUP BY blob1, blob2
+    WHERE timestamp > NOW() - INTERVAL '1' HOUR AND blob1 = 'request'
+    GROUP BY blob2, blob3
     ORDER BY request_count DESC
     LIMIT 100
   `;
@@ -326,14 +328,14 @@ async function getErrorBreakdown(
 ): Promise<QueryResult> {
   const query = `
     SELECT
-      blob2 as error_type,
-      blob3 as error_message,
-      COUNT() as count
+      blob3 as error_type,
+      blob4 as error_message,
+      SUM(_sample_interval) as count
     FROM worker_metrics
     WHERE
       timestamp > NOW() - INTERVAL '1' HOUR
-      AND blob2 != ''
-    GROUP BY blob2, blob3
+      AND blob1 = 'error'
+    GROUP BY blob3, blob4
     ORDER BY count DESC
     LIMIT 50
   `;
