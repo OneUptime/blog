@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: API, Rate Limiting, HTTP Headers, Node.js, Python, Express, Flask, REST API
 
-Description: A practical guide to implementing standardized API rate limit headers that help clients understand their usage limits, remaining quota, and when limits reset.
+Description: A practical guide to implementing common API rate limit headers that help clients understand their usage limits, remaining quota, and when limits reset.
 
 ---
 
@@ -18,9 +18,9 @@ When an API enforces rate limits but does not communicate them, clients end up i
 2. **Predictability**: Developers can build retry logic based on reset times
 3. **Better User Experience**: Applications can show users when they can try again
 
-## Standard Rate Limit Headers
+## Common Rate Limit Headers
 
-The most widely adopted headers follow these conventions:
+The legacy `X-RateLimit-*` headers are widely adopted conventions. Newer IETF drafts define standard `RateLimit` and `RateLimit-Policy` fields, so document the exact headers your API emits.
 
 ```mermaid
 flowchart LR
@@ -52,7 +52,7 @@ flowchart LR
 | `X-RateLimit-Limit` | Maximum requests allowed in the window | `100` |
 | `X-RateLimit-Remaining` | Requests remaining in current window | `42` |
 | `X-RateLimit-Reset` | Unix timestamp when the limit resets | `1706644800` |
-| `Retry-After` | Seconds until client can retry (on 429) | `60` |
+| `Retry-After` | Seconds until client can retry, or an HTTP-date (on 429) | `60` |
 
 ## Basic Implementation in Node.js with Express
 
@@ -305,8 +305,8 @@ from flask import Flask, request, jsonify, make_response
 
 class RateLimiter:
     """
-    A sliding window rate limiter using Redis.
-    Provides accurate rate limiting with configurable windows.
+    A fixed window rate limiter using Redis.
+    Provides rate limiting with configurable windows.
     """
 
     def __init__(self, redis_url='redis://localhost:6379',
@@ -315,6 +315,20 @@ class RateLimiter:
         self.limit = limit
         self.window_seconds = window_seconds
         self.key_prefix = key_prefix
+        self.lua_script = """
+        local key = KEYS[1]
+        local window = tonumber(ARGV[1])
+
+        local current = redis.call('INCR', key)
+
+        if current == 1 then
+            redis.call('EXPIRE', key, window)
+        end
+
+        local ttl = redis.call('TTL', key)
+
+        return {current, ttl}
+        """
 
     def check(self, key):
         """
@@ -324,16 +338,15 @@ class RateLimiter:
         redis_key = f"{self.key_prefix}:{key}"
         now = int(time.time())
 
-        # Use pipeline for atomic operations
-        pipe = self.redis.pipeline()
-        pipe.incr(redis_key)
-        pipe.ttl(redis_key)
-        count, ttl = pipe.execute()
-
-        # Set expiry on first request
-        if ttl == -1:
-            self.redis.expire(redis_key, self.window_seconds)
-            ttl = self.window_seconds
+        # Lua keeps the increment and expiry update atomic.
+        count, ttl = self.redis.eval(
+            self.lua_script,
+            1,
+            redis_key,
+            self.window_seconds
+        )
+        count = int(count)
+        ttl = int(ttl)
 
         remaining = max(0, self.limit - count)
         reset_timestamp = now + max(0, ttl)
@@ -496,6 +509,20 @@ const PLAN_LIMITS = {
 class TieredRateLimiter {
     constructor(redisUrl = 'redis://localhost:6379') {
         this.redis = new Redis(redisUrl);
+        this.luaScript = `
+            local key = KEYS[1]
+            local window = tonumber(ARGV[1])
+
+            local current = redis.call('INCR', key)
+
+            if current == 1 then
+                redis.call('EXPIRE', key, window)
+            end
+
+            local ttl = redis.call('TTL', key)
+
+            return {current, ttl}
+        `;
     }
 
     async check(userId, plan = 'free') {
@@ -503,13 +530,12 @@ class TieredRateLimiter {
         const key = `ratelimit:${plan}:${userId}`;
         const now = Math.floor(Date.now() / 1000);
 
-        const count = await this.redis.incr(key);
-
-        if (count === 1) {
-            await this.redis.expire(key, limits.windowSeconds);
-        }
-
-        const ttl = await this.redis.ttl(key);
+        const [count, ttl] = await this.redis.eval(
+            this.luaScript,
+            1,
+            key,
+            limits.windowSeconds
+        );
         const remaining = Math.max(0, limits.limit - count);
 
         return {
@@ -557,7 +583,7 @@ module.exports = { TieredRateLimiter, createTieredMiddleware, PLAN_LIMITS };
 
 ## Client-Side: Handling Rate Limit Headers
 
-Clients should read and respect rate limit headers. Here is a JavaScript client that implements automatic retry with backoff.
+Clients should read and respect rate limit headers. Here is a JavaScript client that implements automatic retry using `Retry-After`.
 
 ```javascript
 // api-client.js
@@ -585,14 +611,14 @@ class APIClient {
 
         // Parse rate limit headers from response
         this.rateLimitInfo = {
-            limit: parseInt(response.headers.get('X-RateLimit-Limit')) || null,
-            remaining: parseInt(response.headers.get('X-RateLimit-Remaining')) || null,
-            reset: parseInt(response.headers.get('X-RateLimit-Reset')) || null
+            limit: this.parseIntegerHeader(response.headers.get('X-RateLimit-Limit')),
+            remaining: this.parseIntegerHeader(response.headers.get('X-RateLimit-Remaining')),
+            reset: this.parseIntegerHeader(response.headers.get('X-RateLimit-Reset'))
         };
 
         // Handle 429 Too Many Requests
         if (response.status === 429) {
-            const retryAfter = parseInt(response.headers.get('Retry-After')) || 60;
+            const retryAfter = this.parseRetryAfter(response.headers.get('Retry-After')) ?? 60;
             console.log(`Rate limited. Retrying in ${retryAfter} seconds...`);
 
             await this.sleep(retryAfter * 1000);
@@ -604,6 +630,29 @@ class APIClient {
 
     sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    parseIntegerHeader(value) {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isNaN(parsed) ? null : parsed;
+    }
+
+    parseRetryAfter(value) {
+        if (!value) {
+            return null;
+        }
+
+        const seconds = Number.parseInt(value, 10);
+        if (!Number.isNaN(seconds)) {
+            return Math.max(0, seconds);
+        }
+
+        const date = Date.parse(value);
+        if (!Number.isNaN(date)) {
+            return Math.max(0, Math.ceil((date - Date.now()) / 1000));
+        }
+
+        return null;
     }
 
     // Expose rate limit info for UI display
