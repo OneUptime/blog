@@ -347,7 +347,7 @@ const jwt = require('jsonwebtoken');
 // Configuration loaded from environment variables
 const JWT_CONFIG = {
     secret: process.env.JWT_SECRET,
-    algorithms: ['HS256', 'RS256'],
+    algorithms: ['HS256'],
     issuer: 'auth.example.com',
     audience: 'api.example.com'
 };
@@ -534,24 +534,24 @@ class SlidingWindowRateLimiter {
         const windowStart = now - this.windowMs;
         const key = `${this.keyPrefix}:${identifier}`;
 
-        // Use Redis pipeline for atomic operations
-        // This ensures accurate counting under concurrent requests
-        const pipeline = redis.pipeline();
+        // Use a Redis transaction so the cleanup, count, add, and expiry
+        // operations execute without interleaving from concurrent requests
+        const transaction = redis.multi();
 
         // Remove entries outside the current window
-        pipeline.zremrangebyscore(key, 0, windowStart);
+        transaction.zremrangebyscore(key, 0, windowStart);
 
         // Count current requests in window
-        pipeline.zcard(key);
+        transaction.zcard(key);
 
         // Add current request with timestamp as score
         // Random suffix ensures uniqueness for multiple requests at same ms
-        pipeline.zadd(key, now, `${now}:${Math.random()}`);
+        transaction.zadd(key, now, `${now}:${Math.random()}`);
 
         // Set expiry to automatically clean up old keys
-        pipeline.expire(key, Math.ceil(this.windowMs / 1000) + 1);
+        transaction.expire(key, Math.ceil(this.windowMs / 1000) + 1);
 
-        const results = await pipeline.exec();
+        const results = await transaction.exec();
         const currentCount = results[1][1];  // Result of zcard
 
         // Calculate response values
@@ -635,10 +635,11 @@ plugins:
       policy: redis
 
       # Redis configuration for distributed limiting
-      redis_host: redis.example.com
-      redis_port: 6379
-      redis_password: ${REDIS_PASSWORD}
-      redis_database: 0
+      redis:
+        host: redis.example.com
+        port: 6379
+        password: ${REDIS_PASSWORD}
+        database: 0
 
       # What to use as the rate limit key
       # Options: consumer, credential, ip, header, path
@@ -852,6 +853,10 @@ function transformResponse(options = {}) {
 
             // Add pagination metadata for list responses
             if (options.pagination && Array.isArray(body)) {
+                if (!transformed.meta) {
+                    transformed.meta = {};
+                }
+
                 transformed.meta.pagination = {
                     total: body.length,
                     page: parseInt(req.query.page) || 1,
@@ -894,7 +899,6 @@ plugins:
       add:
         headers:
           - "X-Gateway-Version:1.0"
-          - "X-Request-Start:$(now)"
         querystring:
           - "gateway=true"
       # Remove sensitive headers before forwarding
@@ -924,7 +928,7 @@ plugins:
       # Add standard response headers
       add:
         headers:
-          - "X-Response-Time:$(latency)"
+          - "X-Transformed-By:kong"
       # Rename internal headers to public names
       rename:
         headers:
@@ -942,8 +946,6 @@ Kong is a popular open-source API gateway built on NGINX with a plugin ecosystem
 ```yaml
 # docker-compose.yml for Kong with PostgreSQL
 # Production-ready setup with health checks and persistent storage
-version: '3.8'
-
 services:
   # PostgreSQL database for Kong configuration
   kong-database:
@@ -962,7 +964,7 @@ services:
 
   # Run database migrations before starting Kong
   kong-migration:
-    image: kong:3.5
+    image: kong:3.14
     command: kong migrations bootstrap
     depends_on:
       kong-database:
@@ -975,7 +977,7 @@ services:
 
   # Kong gateway service
   kong:
-    image: kong:3.5
+    image: kong:3.14
     depends_on:
       kong-migration:
         condition: service_completed_successfully
@@ -1072,7 +1074,7 @@ routes:
       - DELETE
     strip_path: false
 
-# Global plugins applied to all services
+# Plugins applied globally or to specific services
 plugins:
   # CORS configuration for browser clients
   - name: cors
@@ -1117,8 +1119,6 @@ plugins:
       status_code_metrics: true
       latency_metrics: true
 
-# Service-specific plugins
-plugins:
   # JWT authentication for user service
   - name: jwt
     service: user-service
@@ -1135,8 +1135,9 @@ plugins:
       minute: 100
       hour: 1000
       policy: redis
-      redis_host: redis
-      redis_port: 6379
+      redis:
+        host: redis
+        port: 6379
 
 # Consumer definitions for API clients
 consumers:
@@ -1219,6 +1220,10 @@ http {
     # $binary_remote_addr uses less memory than $remote_addr
     limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
     limit_req_zone $http_x_api_key zone=api_key_limit:10m rate=100r/s;
+
+    # Cache zone for product responses
+    proxy_cache_path /var/cache/nginx/products levels=1:2 keys_zone=product_cache:10m
+                     max_size=1g inactive=60m use_temp_path=off;
 
     # Connection limiting per client
     limit_conn_zone $binary_remote_addr zone=conn_limit:10m;
@@ -1333,6 +1338,7 @@ http {
                 proxy_pass http://product_service;
 
                 # Cache GET requests for products
+                proxy_cache product_cache;
                 proxy_cache_valid 200 5m;
                 proxy_cache_use_stale error timeout updating;
             }
@@ -1475,6 +1481,15 @@ Resources:
                 - secretsmanager:GetSecretValue
               Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:jwt-secret-*'
 
+  # Allow API Gateway to invoke the Lambda authorizer
+  AuthorizerInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt AuthorizerFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/authorizers/${JwtAuthorizer}'
+
   # Users resource
   UsersResource:
     Type: AWS::ApiGateway::Resource
@@ -1500,9 +1515,6 @@ Resources:
         ConnectionType: INTERNET
         IntegrationResponses:
           - StatusCode: 200
-        # Pass request ID to backend
-        RequestParameters:
-          integration.request.header.X-Request-ID: context.requestId
       MethodResponses:
         - StatusCode: 200
 
@@ -1525,10 +1537,11 @@ Resources:
       AuthorizerId: !Ref JwtAuthorizer
       ApiKeyRequired: true
       Integration:
-        Type: HTTP_PROXY
+        Type: HTTP
         IntegrationHttpMethod: POST
         Uri: !Sub '${OrderServiceEndpoint}/orders'
         ConnectionType: INTERNET
+        PassthroughBehavior: WHEN_NO_TEMPLATES
         # Transform request to add context
         RequestTemplates:
           application/json: |
@@ -1542,6 +1555,10 @@ Resources:
                 }
               }
             }
+        IntegrationResponses:
+          - StatusCode: 200
+      MethodResponses:
+        - StatusCode: 200
 
   # API Stage with logging and throttling
   ApiStage:
@@ -1930,6 +1947,9 @@ spec:
     matchLabels:
       app: api-gateway
   template:
+    metadata:
+      labels:
+        app: api-gateway
     spec:
       # Spread pods across nodes for fault tolerance
       affinity:
@@ -1943,7 +1963,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: gateway
-          image: kong:3.5
+          image: kong:3.14
           resources:
             requests:
               cpu: "500m"
@@ -1953,16 +1973,14 @@ spec:
               memory: "2Gi"
           # Readiness probe for load balancer
           readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
+            exec:
+              command: ["kong", "health"]
             initialDelaySeconds: 5
             periodSeconds: 10
           # Liveness probe for restart on failure
           livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
+            exec:
+              command: ["kong", "health"]
             initialDelaySeconds: 15
             periodSeconds: 20
 ```
