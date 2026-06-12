@@ -111,7 +111,7 @@ metadata:
 spec:
   containers:
   - name: cuda-container
-    image: nvidia/cuda:12.0-base
+    image: nvidia/cuda:12.4.1-base-ubuntu22.04
     resources:
       limits:
         # Request exactly 1 GPU
@@ -148,6 +148,10 @@ Apply the configuration:
 
 ```bash
 kubectl apply -f gpu-sharing-config.yaml
+helm upgrade nvidia-device-plugin nvdp/nvidia-device-plugin \
+  --namespace kube-system \
+  --set gfd.enabled=true \
+  --set config.name=nvidia-device-plugin-config
 ```
 
 ## Step 2: Choosing a Model Serving Framework
@@ -234,8 +238,7 @@ spec:
           # Download Mistral-7B-Instruct-v0.2 to the models directory
           snapshot_download(
               repo_id='mistralai/Mistral-7B-Instruct-v0.2',
-              local_dir='/models/mistral-7b-instruct',
-              local_dir_use_symlinks=False
+              local_dir='/models/mistral-7b-instruct'
           )
           "
         volumeMounts:
@@ -304,7 +307,7 @@ spec:
         args:
         # Path to the downloaded model
         - --model=/models/mistral-7b-instruct
-        # Use all available GPUs for tensor parallelism
+        # Use one GPU for tensor parallelism
         - --tensor-parallel-size=1
         # Maximum GPU memory to use (90% recommended)
         - --gpu-memory-utilization=0.9
@@ -314,8 +317,6 @@ spec:
         - --enable-chunked-prefill
         # Serve on port 8000
         - --port=8000
-        # Trust remote code if using custom models
-        - --trust-remote-code
         ports:
         - containerPort: 8000
           name: http
@@ -382,6 +383,8 @@ kind: Service
 metadata:
   name: vllm-server
   namespace: llm-serving
+  labels:
+    app: vllm-server
 spec:
   selector:
     app: vllm-server
@@ -589,10 +592,9 @@ spec:
     metadata:
       # Scale based on pending requests
       serverAddress: http://prometheus.monitoring:9090
-      metricName: vllm_pending_requests
       threshold: "10"
       query: |
-        sum(vllm_num_requests_waiting{namespace="llm-serving"})
+        sum(vllm:num_requests_waiting{namespace="llm-serving"})
 ```
 
 Resource Quotas
@@ -611,7 +613,7 @@ metadata:
 spec:
   hard:
     # Limit total GPUs in the namespace
-    nvidia.com/gpu: "8"
+    requests.nvidia.com/gpu: "8"
     # Limit total memory
     limits.memory: 256Gi
 ```
@@ -672,10 +674,10 @@ spec:
 
 Key metrics to monitor include:
 
-- `vllm_num_requests_running`: Active requests being processed
-- `vllm_num_requests_waiting`: Requests in the queue
-- `vllm_gpu_cache_usage_perc`: GPU memory cache utilization
-- `vllm_avg_generation_throughput_toks_per_s`: Token generation speed
+- `vllm:num_requests_running`: Active requests being processed
+- `vllm:num_requests_waiting`: Requests in the queue
+- `vllm:kv_cache_usage_perc`: KV cache utilization
+- `vllm:generation_tokens`: Generated tokens counter
 
 ## Step 6: Multi-Model Deployment
 
@@ -818,7 +820,7 @@ When exposing LLMs, implement proper security measures.
 
 Add authentication using an API gateway or sidecar proxy.
 
-This example shows a simple API key validation using Nginx as a sidecar:
+This example shows an Nginx sidecar you can pair with an API key validation configuration:
 
 ```yaml
 # auth-sidecar.yaml

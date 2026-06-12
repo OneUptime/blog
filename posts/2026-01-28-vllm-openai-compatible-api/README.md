@@ -36,10 +36,10 @@ flowchart LR
 
 ## Installing vLLM
 
-vLLM requires a CUDA-capable GPU. Here are the installation options:
+vLLM supports NVIDIA CUDA GPUs and other accelerators. Here are the installation options:
 
 ```bash
-# Option 1: pip install (requires CUDA 11.8 or 12.1)
+# Option 1: pip install for NVIDIA GPUs
 
 pip install vllm
 
@@ -61,22 +61,19 @@ Launch vLLM with the OpenAI-compatible API endpoint:
 
 ```bash
 # Basic launch with Llama 3.2
-python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Llama-3.2-3B-Instruct \
+vllm serve meta-llama/Llama-3.2-3B-Instruct \
     --host 0.0.0.0 \
     --port 8000
 
 # With GPU memory optimization
-python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Llama-3.2-3B-Instruct \
+vllm serve meta-llama/Llama-3.2-3B-Instruct \
     --host 0.0.0.0 \
     --port 8000 \
     --gpu-memory-utilization 0.9 \
     --max-model-len 4096
 
 # Multi-GPU with tensor parallelism
-python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Llama-3.2-70B-Instruct \
+vllm serve meta-llama/Llama-3.2-70B-Instruct \
     --tensor-parallel-size 4 \
     --host 0.0.0.0 \
     --port 8000
@@ -142,14 +139,13 @@ For production deployments, consider these configuration options:
 
 ```bash
 # Production launch script
-python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Llama-3.2-3B-Instruct \
+vllm serve meta-llama/Llama-3.2-3B-Instruct \
     --host 0.0.0.0 \
     --port 8000 \
     --gpu-memory-utilization 0.85 \
     --max-model-len 8192 \
     --max-num-seqs 256 \
-    --disable-log-requests \
+    --no-enable-log-requests \
     --enable-prefix-caching \
     --uvicorn-log-level warning
 ```
@@ -162,7 +158,7 @@ Key parameters explained:
 | `--max-model-len` | Maximum context length | Match your use case |
 | `--max-num-seqs` | Concurrent request batching | Higher for throughput |
 | `--enable-prefix-caching` | Cache common prefixes | Enable for repeated prompts |
-| `--quantization` | awq, gptq, squeezellm | Reduces memory, slight quality loss |
+| `--quantization` | awq, gptq, bitsandbytes, fp8 | Reduces memory, slight quality loss |
 
 ## Docker Deployment
 
@@ -181,7 +177,7 @@ services:
       # Cache downloaded models
       - ./model-cache:/root/.cache/huggingface
     environment:
-      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+      - HF_TOKEN=${HF_TOKEN}
     deploy:
       resources:
         reservations:
@@ -216,12 +212,22 @@ services:
 
 ## Implementing Authentication
 
-vLLM does not include built-in authentication. Use a reverse proxy or API gateway:
+vLLM includes basic API key authentication for OpenAI-compatible endpoints:
+
+```bash
+vllm serve meta-llama/Llama-3.2-3B-Instruct \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --api-key sk-your-secret-key
+```
+
+For TLS termination, rate limiting, or protecting non-OpenAI utility endpoints, use a reverse proxy or API gateway:
 
 ```python
 # FastAPI wrapper with API key authentication
 from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 import httpx
 
 app = FastAPI()
@@ -229,15 +235,24 @@ VLLM_URL = "http://localhost:8000"
 VALID_API_KEYS = {"sk-your-secret-key", "sk-another-key"}
 
 async def proxy_request(request: Request, path: str):
-    async with httpx.AsyncClient() as client:
-        response = await client.request(
-            method=request.method,
-            url=f"{VLLM_URL}{path}",
-            headers={"Content-Type": "application/json"},
-            content=await request.body(),
-            timeout=120.0
-        )
-        return response
+    client = httpx.AsyncClient(timeout=120.0)
+    headers = {
+        key: value
+        for key, value in request.headers.items()
+        if key.lower() not in {"host", "authorization", "content-length"}
+    }
+    upstream_request = client.build_request(
+        method=request.method,
+        url=f"{VLLM_URL}{path}",
+        headers=headers,
+        content=await request.body()
+    )
+    response = await client.send(upstream_request, stream=True)
+    return response, client
+
+async def close_upstream(response: httpx.Response, client: httpx.AsyncClient):
+    await response.aclose()
+    await client.aclose()
 
 @app.api_route("/v1/{path:path}", methods=["GET", "POST"])
 async def authenticated_proxy(
@@ -254,12 +269,18 @@ async def authenticated_proxy(
         raise HTTPException(status_code=403, detail="Invalid API key")
 
     # Forward to vLLM
-    response = await proxy_request(request, f"/v1/{path}")
+    response, client = await proxy_request(request, f"/v1/{path}")
+    headers = {
+        key: value
+        for key, value in response.headers.items()
+        if key.lower() not in {"content-length", "transfer-encoding", "connection"}
+    }
 
     return StreamingResponse(
-        content=response.iter_bytes(),
+        content=response.aiter_bytes(),
         status_code=response.status_code,
-        headers=dict(response.headers)
+        headers=headers,
+        background=BackgroundTask(close_upstream, response, client)
     )
 
 # Run with: uvicorn auth_proxy:app --port 8001
@@ -289,11 +310,8 @@ sequenceDiagram
 vLLM exposes Prometheus metrics for observability:
 
 ```bash
-# Enable metrics endpoint
-python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Llama-3.2-3B-Instruct \
-    --port 8000 \
-    --enable-metrics
+# Start the server, then query the metrics endpoint
+vllm serve meta-llama/Llama-3.2-3B-Instruct --port 8000
 ```
 
 ```python
@@ -305,8 +323,8 @@ metrics = requests.get("http://localhost:8000/metrics").text
 # Key metrics to monitor:
 # - vllm:num_requests_running - Current batch size
 # - vllm:num_requests_waiting - Queue depth
-# - vllm:gpu_cache_usage_perc - KV cache utilization
-# - vllm:avg_generation_throughput_toks_per_s - Tokens/second
+# - vllm:kv_cache_usage_perc - KV cache utilization
+# - vllm:generation_tokens - Generated tokens processed
 ```
 
 ## Load Testing
