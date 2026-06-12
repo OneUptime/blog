@@ -31,7 +31,7 @@ Custom conventions shine when you need to:
 
 - Enforce snake_case or other naming standards across all tables and columns
 - Automatically configure audit fields like CreatedAt and UpdatedAt
-- Set default string lengths to avoid nvarchar(max)
+- Set default string lengths to avoid unbounded string columns
 - Apply soft delete filters globally
 - Configure decimal precision for all money columns
 
@@ -73,7 +73,7 @@ public abstract class BaseConvention : IModelFinalizingConvention
 
 ## Convention 1: Snake Case Naming
 
-Most databases perform better with snake_case names. This convention converts all PascalCase entity and property names.
+Many teams prefer snake_case names for PostgreSQL and legacy database compatibility. This convention converts all PascalCase entity and property names.
 
 ```csharp
 using System.Text.RegularExpressions;
@@ -182,22 +182,22 @@ public class AuditFieldConvention : IModelFinalizingConvention
             var createdAt = entity.FindProperty(nameof(IAuditable.CreatedAt));
             if (createdAt != null)
             {
-                createdAt.SetDefaultValueSql("CURRENT_TIMESTAMP");
-                createdAt.SetColumnType("timestamp with time zone");
+                createdAt.Builder.HasDefaultValueSql("CURRENT_TIMESTAMP");
+                createdAt.Builder.HasColumnType("timestamp with time zone");
             }
 
             // Configure UpdatedAt as nullable timestamp
             var updatedAt = entity.FindProperty(nameof(IAuditable.UpdatedAt));
             if (updatedAt != null)
             {
-                updatedAt.SetColumnType("timestamp with time zone");
+                updatedAt.Builder.HasColumnType("timestamp with time zone");
             }
 
             // Configure CreatedBy with max length
             var createdBy = entity.FindProperty(nameof(IAuditable.CreatedBy));
             if (createdBy != null)
             {
-                createdBy.SetMaxLength(256);
+                createdBy.Builder.HasMaxLength(256);
                 createdBy.SetIsNullable(false);
             }
 
@@ -205,7 +205,7 @@ public class AuditFieldConvention : IModelFinalizingConvention
             var updatedBy = entity.FindProperty(nameof(IAuditable.UpdatedBy));
             if (updatedBy != null)
             {
-                updatedBy.SetMaxLength(256);
+                updatedBy.Builder.HasMaxLength(256);
             }
         }
     }
@@ -277,7 +277,7 @@ public class AuditInterceptor : SaveChangesInterceptor
 
 ## Convention 3: Default String Length
 
-Avoid nvarchar(max) columns by setting a sensible default length for all strings.
+Avoid unbounded string columns by setting a sensible default length for all strings.
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
@@ -285,7 +285,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 
 // Sets a default max length for all string properties
-// Prevents accidental nvarchar(max) columns which hurt performance
+// Prevents accidental unbounded columns, such as nvarchar(max) on SQL Server
 public class DefaultStringLengthConvention : IModelFinalizingConvention
 {
     private readonly int _defaultMaxLength;
@@ -315,7 +315,7 @@ public class DefaultStringLengthConvention : IModelFinalizingConvention
                 if (property.GetColumnType() != null)
                     continue;
 
-                property.SetMaxLength(_defaultMaxLength);
+                property.Builder.HasMaxLength(_defaultMaxLength);
             }
         }
     }
@@ -362,8 +362,8 @@ public class DecimalPrecisionConvention : IModelFinalizingConvention
                 if (property.GetPrecision() != null)
                     continue;
 
-                property.SetPrecision(_precision);
-                property.SetScale(_scale);
+                property.Builder.HasPrecision(_precision);
+                property.Builder.HasScale(_scale);
             }
         }
     }
@@ -413,7 +413,7 @@ public class SoftDeleteConvention : IModelFinalizingConvention
             var deletedAt = entity.FindProperty(nameof(ISoftDelete.DeletedAt));
             if (deletedAt != null)
             {
-                deletedAt.SetColumnType("timestamp with time zone");
+                deletedAt.Builder.HasColumnType("timestamp with time zone");
             }
         }
     }
@@ -623,7 +623,7 @@ public class AttributeBasedConvention : IModelFinalizingConvention
                 var columnTypeAttr = clrProperty.GetCustomAttribute<ColumnTypeAttribute>();
                 if (columnTypeAttr != null)
                 {
-                    property.SetColumnType(columnTypeAttr.TypeName);
+                    property.Builder.HasColumnType(columnTypeAttr.TypeName);
                 }
 
                 // Check for Encrypted attribute - set up value converter
@@ -760,7 +760,7 @@ After migrations, your database will have clean, consistent naming.
 ```sql
 -- Generated table structure (PostgreSQL)
 CREATE TABLE customer (
-    id SERIAL PRIMARY KEY,
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     first_name VARCHAR(256) NOT NULL,
     last_name VARCHAR(256) NOT NULL,
     email VARCHAR(256) NOT NULL,
@@ -773,7 +773,7 @@ CREATE TABLE customer (
 );
 
 CREATE TABLE "order" (
-    id SERIAL PRIMARY KEY,
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     customer_id INTEGER NOT NULL REFERENCES customer(id),
     total_amount DECIMAL(18, 2) NOT NULL,
     status INTEGER NOT NULL,
@@ -786,7 +786,7 @@ CREATE TABLE "order" (
 );
 
 CREATE TABLE order_item (
-    id SERIAL PRIMARY KEY,
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     order_id INTEGER NOT NULL REFERENCES "order"(id),
     product_name VARCHAR(256) NOT NULL,
     quantity INTEGER NOT NULL,
