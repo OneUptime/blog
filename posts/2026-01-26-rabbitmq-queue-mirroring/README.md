@@ -8,19 +8,19 @@ Description: Learn how to configure queue mirroring in RabbitMQ for high availab
 
 ---
 
-A single queue on a single node is a single point of failure. When that node goes down, your messages are unavailable until it comes back. Queue mirroring replicates queue contents across multiple nodes, ensuring messages survive node failures. RabbitMQ offers two approaches: classic mirrored queues and the newer quorum queues.
+A single queue on a single node is a single point of failure. When that node goes down, your messages are unavailable until it comes back. Queue mirroring replicates queue contents across multiple nodes, ensuring messages survive node failures. RabbitMQ 3.13 and earlier offered classic mirrored queues, while modern RabbitMQ releases use quorum queues for replicated queues.
 
 ## Classic Mirrored Queues vs Quorum Queues
 
-RabbitMQ 3.8+ introduced quorum queues as the recommended replacement for classic mirrored queues:
+RabbitMQ 3.8+ introduced quorum queues as the recommended replacement for classic mirrored queues. Classic queue mirroring was deprecated in RabbitMQ 3.9 and removed in RabbitMQ 4.0:
 
 | Feature | Classic Mirrored | Quorum Queues |
 |---------|------------------|---------------|
 | Consensus | None (eventual) | Raft |
-| Data Safety | Can lose acks | No lost acks |
-| Performance | Higher throughput | More consistent |
-| Memory | All in memory | Disk-based |
-| Status | Deprecated | Recommended |
+| Data Safety | Weaker guarantees | Confirmed messages survive while a majority is available |
+| Performance | Lower for replicated safe workloads | Higher throughput for many replicated safe workloads |
+| Memory | Classic queue storage model | Disk-based with an in-memory index |
+| Status | Deprecated; removed in 4.0 | Recommended |
 
 ```mermaid
 flowchart TB
@@ -95,20 +95,23 @@ async function createQuorumQueue() {
 createQuorumQueue().catch(console.error);
 ```
 
-### Setting Quorum Queue Defaults via Policy
+### Setting Quorum Queue Defaults
 
-Apply quorum queue type to all matching queues:
+Queue type cannot be set or changed using a policy. Set the default queue type for new queues with virtual host metadata or node configuration:
 
 ```bash
-# Make all queues starting with "critical" quorum queues
-rabbitmqctl set_policy quorum-critical "^critical\\." \
-  '{"queue-mode": "lazy", "x-queue-type": "quorum"}' \
-  --apply-to queues
+# Make new queues in the "production" vhost quorum queues by default
+rabbitmqctl add_vhost production --default-queue-type quorum
+```
+
+```ini
+# /etc/rabbitmq/rabbitmq.conf
+default_queue_type = quorum
 ```
 
 ## Configuring Classic Mirrored Queues
 
-While deprecated, you may encounter classic mirrored queues in existing systems.
+While deprecated and removed in RabbitMQ 4.0, you may encounter classic mirrored queues in RabbitMQ 3.13 and earlier systems.
 
 ### Mirror to All Nodes
 
@@ -198,6 +201,7 @@ channel.queue_declare(
         'x-queue-type': 'quorum',
         'x-dead-letter-exchange': 'dlx',
         'x-dead-letter-routing-key': 'orders.failed',
+        'x-overflow': 'reject-publish',
         'x-dead-letter-strategy': 'at-least-once'  # or 'at-most-once'
     }
 )
@@ -208,11 +212,11 @@ channel.queue_declare(
 ### Check Quorum Queue Status
 
 ```bash
-# List quorum queues with member info
-rabbitmqctl list_queues name type leader members online
+# List queue names, types, and state
+rabbitmqctl list_queues name type state
 
 # Detailed quorum queue info
-rabbitmqctl quorum_status <queue_name>
+rabbitmq-queues quorum_status --vhost "/" <queue_name>
 ```
 
 ### Python Monitoring Script
@@ -262,11 +266,17 @@ check_queue_replication('localhost', 'admin', 'password')
 ### Management API for Quorum Queues
 
 ```python
+from urllib.parse import quote
+
+import requests
+from requests.auth import HTTPBasicAuth
+
 def get_quorum_queue_info(host, vhost, queue_name, user, password):
     """Get detailed quorum queue information"""
 
-    vhost_encoded = vhost.replace('/', '%2f')
-    url = f"http://{host}:15672/api/queues/{vhost_encoded}/{queue_name}"
+    vhost_encoded = quote(vhost, safe='')
+    queue_encoded = quote(queue_name, safe='')
+    url = f"http://{host}:15672/api/queues/{vhost_encoded}/{queue_encoded}"
 
     response = requests.get(url, auth=HTTPBasicAuth(user, password))
     queue = response.json()
@@ -282,6 +292,7 @@ def get_quorum_queue_info(host, vhost, queue_name, user, password):
     print(f"Online: {queue.get('online')}")
     print(f"Messages: {queue.get('messages')}")
     print(f"Open files: {queue.get('open_files', {}).get('total', 0)}")
+    return queue
 
 get_quorum_queue_info('localhost', '/', 'orders', 'admin', 'password')
 ```
@@ -300,7 +311,7 @@ def monitor_leader_changes(host, queue_name, user, password, callback):
     current_leader = None
 
     while True:
-        queue_info = get_queue_info(host, queue_name, user, password)
+        queue_info = get_quorum_queue_info(host, '/', queue_name, user, password)
 
         if queue_info:
             leader = queue_info.get('leader')
@@ -320,14 +331,14 @@ def alert_leader_change(message):
 
 ### Classic Queue Failover
 
-For classic mirrored queues, promote a mirror when master fails:
+For RabbitMQ 3.13 and earlier classic mirrored queues, check synchronisation before planned maintenance:
 
 ```bash
 # Force sync before maintenance
 rabbitmqctl sync_queue <queue_name>
 
 # Check sync status
-rabbitmqctl list_queues name slave_nodes synchronised_slave_nodes
+rabbitmqctl list_queues name mirror_pids synchronised_mirror_pids
 ```
 
 ## Migration from Classic to Quorum Queues
@@ -336,7 +347,6 @@ rabbitmqctl list_queues name slave_nodes synchronised_slave_nodes
 
 ```python
 import pika
-import json
 
 def migrate_to_quorum_queue(host, old_queue, new_queue):
     """Migrate messages from classic to quorum queue"""
@@ -345,6 +355,7 @@ def migrate_to_quorum_queue(host, old_queue, new_queue):
         pika.ConnectionParameters(host)
     )
     channel = connection.channel()
+    channel.confirm_delivery()
 
     # Create new quorum queue
     channel.queue_declare(
@@ -394,12 +405,12 @@ migrate_to_quorum_queue('localhost', 'orders_classic', 'orders_quorum')
 ```ini
 # /etc/rabbitmq/rabbitmq.conf
 
-# Raft settings for quorum queues
-quorum_commands_soft_limit = 32
-quorum_cluster_size = 5
+# Quorum queue settings
+quorum_queue.commands_soft_limit = 32
+quorum_queue.initial_cluster_size = 5
 
 # WAL settings
-raft.wal_max_size_bytes = 536870912
+quorum_queue.wal_max_size_bytes = 536870912
 ```
 
 ### Benchmarking
@@ -497,6 +508,15 @@ Three or five replicas ensure clear majority for consensus:
 Alert when followers fall behind:
 
 ```python
+import requests
+from requests.auth import HTTPBasicAuth
+
+def get_all_queues(host, user, password):
+    url = f"http://{host}:15672/api/queues"
+    response = requests.get(url, auth=HTTPBasicAuth(user, password))
+    response.raise_for_status()
+    return response.json()
+
 def check_replication_health(host, user, password):
     queues = get_all_queues(host, user, password)
 
@@ -512,4 +532,4 @@ def check_replication_health(host, user, password):
 
 ## Conclusion
 
-Queue mirroring is essential for RabbitMQ high availability. Quorum queues provide stronger consistency guarantees and are the recommended choice for new deployments. If you have classic mirrored queues, plan a migration to quorum queues to benefit from Raft-based consensus and better failure handling. Always use an odd number of replicas and monitor replication status to catch issues before they cause data loss.
+Queue replication is essential for RabbitMQ high availability. Quorum queues provide stronger consistency guarantees and are the recommended choice for new deployments. If you have classic mirrored queues, plan a migration to quorum queues to benefit from Raft-based consensus and better failure handling. Prefer an odd number of replicas and monitor replication status to catch issues before they cause data loss.
