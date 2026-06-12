@@ -70,6 +70,7 @@ interface QuotaUsage {
     apiCalls: number;
     bandwidth: number;
     computeUnits: number;
+    storage: number;
   };
 }
 
@@ -147,11 +148,18 @@ class QuotaManager {
     });
   }
 
-  private getPeriodKey(tenantId: string, metric: string): string {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    return `quota:${tenantId}:${year}-${month}:${metric}`;
+  getPlan(planId: string): QuotaPlan {
+    const plan = this.plans.get(planId);
+    if (!plan) {
+      throw new Error(`Unknown plan: ${planId}`);
+    }
+    return plan;
+  }
+
+  private getPeriodKey(tenantId: string, metric: string, resetPeriod: ResetPeriod): string {
+    const { start } = this.getPeriodBounds(resetPeriod);
+    const periodKey = start.toISOString();
+    return `quota:${tenantId}:${periodKey}:${metric}`;
   }
 
   private getPeriodBounds(resetPeriod: ResetPeriod): { start: Date; end: Date } {
@@ -195,7 +203,7 @@ class QuotaManager {
     }
 
     const limit = plan.limits[metric];
-    const key = this.getPeriodKey(tenantId, metric);
+    const key = this.getPeriodKey(tenantId, metric, plan.resetPeriod);
     const { end } = this.getPeriodBounds(plan.resetPeriod);
 
     // Get current usage
@@ -250,12 +258,13 @@ class QuotaManager {
       throw new Error(`Unknown plan: ${planId}`);
     }
 
-    const key = this.getPeriodKey(tenantId, metric);
+    const key = this.getPeriodKey(tenantId, metric, plan.resetPeriod);
     const { end } = this.getPeriodBounds(plan.resetPeriod);
     const ttlSeconds = Math.ceil((end.getTime() - Date.now()) / 1000);
 
     // Atomic increment and get
     const newUsage = await this.redis.incrBy(key, units);
+    const previousUsage = newUsage - units;
 
     // Set expiry on first write
     if (newUsage === units) {
@@ -267,15 +276,28 @@ class QuotaManager {
     const isOverage = newUsage > limit;
     const overageUnits = isOverage ? newUsage - limit : 0;
 
+    if (isOverage && plan.overagePolicy === 'block') {
+      await this.redis.decrBy(key, units);
+      return {
+        allowed: false,
+        remaining: Math.max(0, limit - previousUsage),
+        limit,
+        resetAt: end,
+        isOverage: false,
+        overageUnits: 0,
+      };
+    }
+
     // Track overage separately for billing
     if (isOverage && plan.overagePolicy === 'allow_and_bill') {
       const overageKey = `${key}:overage`;
-      await this.redis.incrBy(overageKey, units);
+      const overageIncrement = newUsage - Math.max(limit, previousUsage);
+      await this.redis.incrBy(overageKey, overageIncrement);
       await this.redis.expire(overageKey, ttlSeconds);
     }
 
     return {
-      allowed: !isOverage || plan.overagePolicy !== 'block',
+      allowed: true,
       remaining,
       limit,
       resetAt: end,
@@ -297,7 +319,7 @@ class QuotaManager {
     const overage: Record<string, number> = {};
 
     for (const metric of metrics) {
-      const key = this.getPeriodKey(tenantId, metric);
+      const key = this.getPeriodKey(tenantId, metric, plan.resetPeriod);
       const value = await this.redis.get(key);
       usage[metric] = value ? parseInt(value, 10) : 0;
 
@@ -328,7 +350,7 @@ flowchart LR
     end
 
     subgraph Overage
-        F -->|Block| X[403 Forbidden]
+        F -->|Block| X[429 Too Many Requests]
         P -->|Bill| B[Overage Charges]
         E -->|Bill| B
     end
@@ -363,7 +385,7 @@ function createQuotaMiddleware(quotaManager: QuotaManager) {
       const units = unitsFn ? unitsFn(req) : 1;
 
       try {
-        const result = await quotaManager.checkQuota(tenantId, planId, metric, units);
+        const result = await quotaManager.consumeQuota(tenantId, planId, metric, units);
 
         // Set quota headers
         res.set({
@@ -385,13 +407,6 @@ function createQuotaMiddleware(quotaManager: QuotaManager) {
         if (result.isOverage) {
           res.set('X-Quota-Overage', String(result.overageUnits));
         }
-
-        // Consume quota after successful check
-        res.on('finish', async () => {
-          if (res.statusCode < 400) {
-            await quotaManager.consumeQuota(tenantId, planId, metric, units);
-          }
-        });
 
         next();
       } catch (error) {
@@ -472,6 +487,8 @@ class FixedPeriodQuotaManager extends QuotaManager {
 Allows usage to roll over based on a sliding time window:
 
 ```typescript
+import { randomUUID } from 'crypto';
+
 class RollingWindowQuotaManager {
   private redis: RedisClientType;
   private windowSeconds: number;
@@ -488,7 +505,7 @@ class RollingWindowQuotaManager {
     // Add usage with timestamp as score
     await this.redis.zAdd(key, {
       score: timestamp,
-      value: `${timestamp}:${units}`,
+      value: `${timestamp}:${randomUUID()}:${units}`,
     });
 
     // Remove entries older than window
@@ -509,7 +526,7 @@ class RollingWindowQuotaManager {
     // Sum up units
     return entries.reduce((total, entry) => {
       const parts = entry.split(':');
-      const units = parseInt(parts[1], 10);
+      const units = parseInt(parts[2], 10);
       return total + units;
     }, 0);
   }
@@ -549,6 +566,7 @@ class OverageBillingTracker {
     apiCalls: 0.0001,        // $0.0001 per call
     bandwidth: 0.00001,      // $0.00001 per byte ($0.01 per MB)
     computeUnits: 0.001,     // $0.001 per unit
+    storage: 0.0000001,      // $0.0000001 per byte
   };
 
   constructor(redis: RedisClientType) {
@@ -646,7 +664,7 @@ class ThrottledQuotaManager {
     planId: string,
     metric: keyof QuotaLimits
   ): Promise<{ allowed: boolean; throttled: boolean; waitMs: number }> {
-    const result = await this.quotaManager.checkQuota(tenantId, planId, metric);
+    const result = await this.quotaManager.consumeQuota(tenantId, planId, metric);
 
     if (!result.allowed) {
       return { allowed: false, throttled: false, waitMs: 0 };
@@ -654,15 +672,9 @@ class ThrottledQuotaManager {
 
     if (result.isOverage) {
       const limiter = this.getThrottledLimiter(tenantId);
-      const remainingTokens = limiter.getTokensRemaining();
-
-      if (remainingTokens < 1) {
-        const waitMs = Math.ceil((1 - remainingTokens) * 1000 / this.throttledRate);
-        await new Promise(resolve => setTimeout(resolve, waitMs));
-      }
-
+      const startedAt = Date.now();
       await limiter.removeTokens(1);
-      return { allowed: true, throttled: true, waitMs: 0 };
+      return { allowed: true, throttled: true, waitMs: Date.now() - startedAt };
     }
 
     return { allowed: true, throttled: false, waitMs: 0 };
@@ -691,7 +703,7 @@ class QuotaAlertManager {
 
   async checkAndTriggerAlerts(
     tenantId: string,
-    planId: string,
+    _planId: string,
     metric: string,
     currentUsage: number,
     limit: number
