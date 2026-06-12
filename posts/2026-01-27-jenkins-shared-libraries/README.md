@@ -48,13 +48,13 @@ A shared library repository follows a specific structure:
 
 **Key directories:**
 
-- `vars/` - Contains global variables accessible directly in pipelines. This is where you define custom steps.
+- `vars/` - Contains global variables accessible directly in pipelines. A `call` method in one of these files lets you use that variable like a custom step.
 - `src/` - Contains Groovy classes following standard Java package structure. Used for complex logic.
-- `resources/` - Contains non-Groovy files loaded via `libraryResource()`.
+- `resources/` - Contains non-Groovy files from external shared libraries loaded via `libraryResource()`.
 
 ## Creating Custom Steps (vars Directory)
 
-Custom steps in `vars/` are the simplest way to share pipeline logic. Each file becomes a global function.
+Custom steps in `vars/` are the simplest way to share pipeline logic. Each file becomes a global variable, and defining `call()` lets you invoke it like a function.
 
 ### Basic Custom Step
 
@@ -223,7 +223,7 @@ class GitUtils implements Serializable {
             script: "git diff --name-only HEAD~1 HEAD",
             returnStdout: true
         ).trim()
-        return changes.contains(filePath)
+        return changes.readLines().contains(filePath)
     }
 
     // Get list of changed files
@@ -316,13 +316,17 @@ def call(Map params) {
     pipeline {
         agent any
 
-        environment {
-            COMMIT_SHA = gitUtils.getShortCommit()
-            BRANCH_NAME = gitUtils.getBranchName()
-            IMAGE_TAG = config.getFullImageTag("${BRANCH_NAME}-${COMMIT_SHA}")
-        }
-
         stages {
+            stage('Initialize') {
+                steps {
+                    script {
+                        env.COMMIT_SHA = gitUtils.getShortCommit()
+                        env.BRANCH_NAME = gitUtils.getBranchName()
+                        env.IMAGE_TAG = config.getFullImageTag("${env.BRANCH_NAME}-${env.COMMIT_SHA}")
+                    }
+                }
+            }
+
             stage('Build') {
                 steps {
                     script {
@@ -362,10 +366,14 @@ def call(Map params) {
 
         post {
             success {
-                notify.success(config.projectName)
+                script {
+                    notify.success(config.projectName)
+                }
             }
             failure {
-                notify.failure(config.projectName, currentBuild.rawBuild.getLog(50).join('\n'))
+                script {
+                    notify.failure(config.projectName, "Build ${env.BUILD_NUMBER} failed")
+                }
             }
         }
     }
@@ -439,7 +447,7 @@ pipeline {
 
 Configured in Jenkins system configuration, available to all pipelines:
 
-**Manage Jenkins > Configure System > Global Pipeline Libraries**
+**Manage Jenkins > System > Global Trusted Pipeline Libraries** or **Global Untrusted Pipeline Libraries**
 
 ```text
 Name: company-shared-lib
@@ -449,7 +457,7 @@ Retrieval method: Modern SCM
   - Project Repository: https://github.com/company/jenkins-shared-lib
 ```
 
-Global libraries can be trusted (run without sandbox) or untrusted.
+Global libraries can be configured as trusted (run without the Groovy sandbox) or untrusted.
 
 ### Folder-Level Libraries
 
@@ -457,13 +465,14 @@ Configured at the folder level, available only to pipelines in that folder:
 
 **Folder > Configure > Pipeline Libraries**
 
-This is useful for team-specific libraries or when different teams need different library versions.
+This is useful for team-specific libraries or when different teams need different library versions. Folder-level libraries are always untrusted.
 
-### Library Priority
+### Library Resolution Notes
 
-1. Libraries specified in the Jenkinsfile (`@Library`)
-2. Folder-level libraries
-3. Global libraries
+1. Libraries marked "Load implicitly" are available without an `@Library` annotation.
+2. If a library has a default version, `@Library('name')` uses that version.
+3. If "Allow default version to be overridden" is enabled, `@Library('name@version')` can select a different version.
+4. The `library()` step cannot override an implicitly loaded library, because it has already been loaded.
 
 ## Versioning Libraries
 
@@ -568,6 +577,8 @@ class NotifyTest extends Specification {
 ```groovy
 // test/groovy/vars/DeployToK8sTest.groovy
 import org.junit.Rule
+import org.junit.Test
+import hudson.model.Result
 import org.jvnet.hudson.test.JenkinsRule
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition
 import org.jenkinsci.plugins.workflow.job.WorkflowJob
@@ -577,6 +588,7 @@ class DeployToK8sTest {
     @Rule
     public JenkinsRule jenkins = new JenkinsRule()
 
+    @Test
     void testDeployRequiresNamespace() {
         def job = jenkins.createProject(WorkflowJob, 'test-job')
         job.definition = new CpsFlowDefinition('''
@@ -633,7 +645,7 @@ class TestHelper extends BasePipelineTest {
 
 ### Sandbox Restrictions
 
-By default, shared libraries run in the Groovy sandbox with restricted permissions:
+Untrusted shared libraries run in the Groovy sandbox with restricted permissions:
 
 ```groovy
 // This will fail in sandbox mode
@@ -645,12 +657,12 @@ def output = sh(script: 'ls -la', returnStdout: true)
 
 ### Script Approval
 
-For global trusted libraries, disable sandbox restrictions carefully:
+Configure trusted libraries carefully:
 
-**Manage Jenkins > Configure System > Global Pipeline Libraries**
-- Check "Load implicitly" for auto-loading
-- Check "Allow default version to be overridden"
-- For trusted libraries, leave "Modern SCM" security settings permissive
+**Manage Jenkins > System > Global Trusted Pipeline Libraries**
+- Only grant trusted-library repository write access to Jenkins administrators or similarly trusted users
+- Check "Load implicitly" only when every pipeline should receive the library automatically
+- Check "Allow default version to be overridden" only when pipelines should be allowed to select another branch, tag, or commit
 
 ### Credentials Handling
 
