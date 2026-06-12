@@ -216,8 +216,7 @@ Your choice of Message Group ID directly affects throughput and ordering guarant
 ```python
 import boto3
 import json
-import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 
 sqs = boto3.client('sqs')
 QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/123456789012/my-orders.fifo'
@@ -233,7 +232,7 @@ def send_order_event(order_id: str, event_type: str, payload: dict):
         'order_id': order_id,
         'event_type': event_type,
         'payload': payload,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }
 
     response = sqs.send_message(
@@ -258,7 +257,7 @@ def send_user_activity(user_id: str, activity: dict):
     message_body = {
         'user_id': user_id,
         'activity': activity,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }
 
     response = sqs.send_message(
@@ -271,9 +270,9 @@ def send_user_activity(user_id: str, activity: dict):
 
 
 # Example usage
-send_order_event('order-123', 'created', {'items': ['item-1', 'item-2']})
+send_order_event('order-123', 'order_created', {'items': ['item-1', 'item-2']})
 send_order_event('order-123', 'payment_received', {'amount': 99.99})
-send_order_event('order-123', 'shipped', {'tracking': 'TRACK123'})
+send_order_event('order-123', 'order_shipped', {'tracking': 'TRACK123'})
 
 # These three messages will always be processed in this exact order
 # because they share the same MessageGroupId
@@ -313,8 +312,6 @@ sqs.send_message(
 For more control, provide your own deduplication ID. This is required when `ContentBasedDeduplication` is disabled.
 
 ```python
-import uuid
-
 def send_with_explicit_dedup(order_id: str, event_type: str, payload: dict):
     """
     Send with explicit deduplication ID.
@@ -363,18 +360,18 @@ def send_idempotent_command(command_id: str, command: dict):
 
 ## Step 4: Configure High Throughput Mode
 
-Standard FIFO queues support 300 messages per second. High throughput mode increases this to 3,000 messages per second per message group, with up to 30,000 total messages per second.
+Standard FIFO queues support 300 API transactions per second per API action, or up to 3,000 messages per second when you use batches of 10 messages. High throughput mode raises the queue's regional throughput quota; in the highest-throughput Regions, this is up to 70,000 non-batched transactions per second per API action, or up to 700,000 messages per second with batching.
 
 ```mermaid
 flowchart LR
     subgraph "Standard Mode"
-        S[All Messages] --> SQ[Single Partition<br/>300 msg/sec total]
+        S[All Messages] --> SQ[Queue quota<br/>300 TPS per API action]
     end
 
     subgraph "High Throughput Mode"
-        G1[Group A] --> P1[Partition 1<br/>3000 msg/sec]
-        G2[Group B] --> P2[Partition 2<br/>3000 msg/sec]
-        G3[Group C] --> P3[Partition 3<br/>3000 msg/sec]
+        G1[Group A] --> P1[Partition 1<br/>300 TPS per API action<br/>3000 msg/sec with batching]
+        G2[Group B] --> P2[Partition 2<br/>300 TPS per API action<br/>3000 msg/sec with batching]
+        G3[Group C] --> P3[Partition 3<br/>300 TPS per API action<br/>3000 msg/sec with batching]
     end
 ```
 
@@ -393,7 +390,7 @@ Requirements for high throughput mode:
 
 - `DeduplicationScope` must be `messageGroup`
 - `FifoThroughputLimit` must be `perMessageGroupId`
-- Each unique Message Group ID gets its own throughput allocation
+- Use many distinct Message Group IDs so SQS can distribute messages across partitions
 
 ```python
 # High throughput producer example
@@ -518,7 +515,7 @@ def process_event(event: dict):
 ```javascript
 // Lambda function configured with FIFO SQS trigger
 
-const { DynamoDBClient, UpdateCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 
 const dynamodb = new DynamoDBClient({});
 
@@ -527,7 +524,9 @@ exports.handler = async (event) => {
 
   const batchItemFailures = [];
 
-  for (const record of event.Records) {
+  for (let i = 0; i < event.Records.length; i++) {
+    const record = event.Records[i];
+
     try {
       const body = JSON.parse(record.body);
       const groupId = record.attributes.MessageGroupId;
@@ -539,11 +538,14 @@ exports.handler = async (event) => {
     } catch (error) {
       console.error(`Error processing message ${record.messageId}:`, error);
 
-      // Report this message as failed
-      // SQS will retry it and maintain ordering for its group
-      batchItemFailures.push({
-        itemIdentifier: record.messageId
-      });
+      // For FIFO queues, stop at the first failure and report this
+      // message plus all unprocessed messages to preserve ordering.
+      for (const failedRecord of event.Records.slice(i)) {
+        batchItemFailures.push({
+          itemIdentifier: failedRecord.messageId
+        });
+      }
+      break;
     }
   }
 
@@ -573,21 +575,31 @@ async function processOrderEvent(event) {
     throw new Error(`Unknown event type: ${event_type}`);
   }
 
+  const validStateNames = validPreviousStates.map((_, index) => `:state${index}`);
+  const conditionExpression = event_type === 'order_created'
+    ? 'attribute_not_exists(#status)'
+    : `#status IN (${validStateNames.join(', ')})`;
+
+  const expressionAttributeValues = {
+    ':new_status': { S: getNewStatus(event_type) },
+    ':now': { S: new Date().toISOString() }
+  };
+
+  validPreviousStates.forEach((state, index) => {
+    expressionAttributeValues[`:state${index}`] = { S: state };
+  });
+
   // Update order state in DynamoDB with conditional write
   // This ensures state transitions happen in valid order
-  await dynamodb.send(new UpdateCommand({
+  await dynamodb.send(new UpdateItemCommand({
     TableName: 'Orders',
     Key: { order_id: { S: order_id } },
     UpdateExpression: 'SET #status = :new_status, updated_at = :now',
-    ConditionExpression: '#status IN (:valid_states)',
+    ConditionExpression: conditionExpression,
     ExpressionAttributeNames: {
       '#status': 'status'
     },
-    ExpressionAttributeValues: {
-      ':new_status': { S: getNewStatus(event_type) },
-      ':now': { S: new Date().toISOString() },
-      ':valid_states': { L: validPreviousStates.map(s => ({ S: s })) }
-    }
+    ExpressionAttributeValues: expressionAttributeValues
   }));
 }
 
@@ -692,7 +704,9 @@ def publish_group_metrics():
     Publish custom metrics about message groups.
 
     This helps identify if specific groups are blocking
-    or experiencing higher failure rates.
+    or experiencing higher failure rates. Use this only for
+    diagnostic queues because receiving messages increments
+    ApproximateReceiveCount and can affect DLQ redrive.
     """
     # Sample messages to analyze groups
     messages = []
@@ -857,8 +871,8 @@ Keep these limits in mind when designing your system:
 
 | Limit | Value | Notes |
 |-------|-------|-------|
-| Standard throughput | 300 msg/sec | Per queue (send/receive/delete combined) |
-| High throughput mode | 3,000 msg/sec per group | Up to 30,000 msg/sec total |
+| Standard throughput | 300 TPS per API action | Up to 3,000 msg/sec per API action with batching |
+| High throughput mode | Regional quota | Up to 70,000 TPS per API action, or 700,000 msg/sec with batching, in the highest-throughput Regions |
 | Message size | 256 KB | Use S3 for larger payloads |
 | Deduplication window | 5 minutes | After this, same content can be sent again |
 | Message Group IDs | Unlimited | Use as many groups as needed |
