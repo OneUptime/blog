@@ -96,7 +96,7 @@ class CachePreloader {
 
     for (const item of data) {
       const key = `${loader.keyPrefix}:${item[loader.keyField]}`;
-      pipeline.setex(key, loader.ttl, JSON.stringify(item));
+      pipeline.set(key, JSON.stringify(item), 'EX', loader.ttl);
     }
 
     await pipeline.exec();
@@ -249,11 +249,28 @@ class PartialPreloader {
     this.db = db;
     this.topN = options.topN || 1000;
     this.accessTracker = options.accessTracker;
+    this.allowedTables = options.allowedTables || [];
+    this.allowedOrderBy = options.allowedOrderBy || ['updated_at DESC'];
+  }
+
+  validateTableName(tableName) {
+    if (!this.allowedTables.includes(tableName)) {
+      throw new Error(`Unsupported preload table: ${tableName}`);
+    }
+    return tableName;
+  }
+
+  validateOrderBy(orderBy) {
+    if (!this.allowedOrderBy.includes(orderBy)) {
+      throw new Error(`Unsupported order by clause: ${orderBy}`);
+    }
+    return orderBy;
   }
 
   // Preload items based on access frequency
   async preloadByFrequency(tableName, options = {}) {
     const { keyPrefix, ttl = 3600 } = options;
+    const safeTableName = this.validateTableName(tableName);
 
     // Get top accessed items from analytics
     const hotKeys = await this.accessTracker.getTopKeys(keyPrefix, this.topN);
@@ -268,7 +285,7 @@ class PartialPreloader {
 
     // Fetch only the hot items
     const result = await this.db.query(`
-      SELECT * FROM ${tableName}
+      SELECT * FROM ${safeTableName}
       WHERE id = ANY($1)
     `, [ids]);
 
@@ -276,7 +293,7 @@ class PartialPreloader {
     const pipeline = this.redis.pipeline();
     for (const row of result.rows) {
       const key = `${keyPrefix}:${row.id}`;
-      pipeline.setex(key, ttl, JSON.stringify(row));
+      pipeline.set(key, JSON.stringify(row), 'EX', ttl);
     }
     await pipeline.exec();
 
@@ -286,17 +303,19 @@ class PartialPreloader {
   // Default preload when no access data exists
   async preloadDefault(tableName, options) {
     const { keyPrefix, ttl = 3600, orderBy = 'updated_at DESC' } = options;
+    const safeTableName = this.validateTableName(tableName);
+    const safeOrderBy = this.validateOrderBy(orderBy);
 
     const result = await this.db.query(`
-      SELECT * FROM ${tableName}
-      ORDER BY ${orderBy}
+      SELECT * FROM ${safeTableName}
+      ORDER BY ${safeOrderBy}
       LIMIT $1
     `, [this.topN]);
 
     const pipeline = this.redis.pipeline();
     for (const row of result.rows) {
       const key = `${keyPrefix}:${row.id}`;
-      pipeline.setex(key, ttl, JSON.stringify(row));
+      pipeline.set(key, JSON.stringify(row), 'EX', ttl);
     }
     await pipeline.exec();
 
@@ -362,7 +381,7 @@ class BackgroundPreloader {
       const pipeline = this.redis.pipeline();
       for (const item of batch) {
         const key = `${loader.keyPrefix}:${item[loader.keyField]}`;
-        pipeline.setex(key, loader.ttl, JSON.stringify(item));
+        pipeline.set(key, JSON.stringify(item), 'EX', loader.ttl);
       }
       await pipeline.exec();
 
