@@ -63,7 +63,7 @@ class CostAwareCapacityTracker:
             resource_type=resource_type,
             utilization_percent=utilization,
             hourly_cost=hourly_cost,
-            timestamp=datetime.datetime.utcnow()
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
         )
         self.metrics.append(metric)
         return metric
@@ -333,7 +333,7 @@ Unexpected cost spikes often indicate capacity issues. Integrate cost monitoring
 ```python
 # cost_anomaly_detector.py - Detect unusual cost patterns
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 import statistics
 
@@ -363,7 +363,7 @@ class CostAnomalyDetector:
     def detect_anomalies(self, service: str,
                         lookback_days: int = 30) -> List[CostAnomaly]:
         """Detect cost anomalies for a service."""
-        cutoff = datetime.utcnow() - timedelta(days=lookback_days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
 
         service_data = [
             p for p in self.historical_data
