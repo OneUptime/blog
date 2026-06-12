@@ -49,7 +49,8 @@ upstream backend_pool {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     # Certificate and key paths
@@ -297,7 +298,7 @@ openssl x509 -in /etc/letsencrypt/live/api.example.com/fullchain.pem -noout -dat
 
 Add to crontab:
 ```bash
-# Run twice daily (certbot only renews if expiry < 30 days)
+# Run twice daily (certbot only renews certificates that are due)
 0 0,12 * * * /opt/scripts/renew-certs.sh >> /var/log/cert-renewal.log 2>&1
 ```
 
@@ -309,8 +310,8 @@ Always verify your certificate chain is complete:
 # Check certificate chain
 openssl s_client -connect api.example.com:443 -servername api.example.com < /dev/null 2>/dev/null | openssl x509 -noout -dates -subject -issuer
 
-# Verify chain is complete (should show full path to root)
-openssl s_client -connect api.example.com:443 -showcerts < /dev/null 2>/dev/null
+# Verify the server sends the leaf and required intermediates (root CA is usually omitted)
+openssl s_client -connect api.example.com:443 -servername api.example.com -showcerts < /dev/null 2>/dev/null
 ```
 
 ## Common Mistakes and How to Avoid Them
@@ -340,7 +341,7 @@ docker run --rm -ti drwetter/testssl.sh api.example.com
 nmap --script ssl-enum-ciphers -p 443 api.example.com
 
 # Verify certificate expiry
-echo | openssl s_client -connect api.example.com:443 2>/dev/null | openssl x509 -noout -enddate
+echo | openssl s_client -connect api.example.com:443 -servername api.example.com 2>/dev/null | openssl x509 -noout -enddate
 ```
 
 ## Monitoring SSL Termination
