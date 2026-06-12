@@ -85,6 +85,23 @@ interface DashboardRow {
   collapsed?: boolean;
 }
 
+interface Panel {
+  type: 'stat' | 'gauge' | 'timeseries' | 'table' | 'barchart';
+  title: string;
+  width: number;
+}
+
+interface DashboardVariable {
+  name: string;
+  type: 'query' | 'custom' | 'interval';
+  multi: boolean;
+}
+
+interface TimeRange {
+  from: string;
+  to: string;
+}
+
 const capacityDashboardLayout: DashboardLayout = {
   rows: [
     {
@@ -115,7 +132,7 @@ const capacityDashboardLayout: DashboardLayout = {
       height: 250,
       panels: [
         { type: 'timeseries', title: 'Disk Usage Trends', width: 8 },
-        { type: 'bar', title: 'Storage by Volume', width: 4 },
+        { type: 'barchart', title: 'Storage by Volume', width: 4 },
         { type: 'timeseries', title: 'IOPS Trends', width: 6 },
         { type: 'timeseries', title: 'Throughput', width: 6 }
       ]
@@ -330,6 +347,11 @@ interface TrendAnalysis {
   r_squared: number;       // Goodness of fit
   daysToThreshold: number; // When will we hit limit
   confidence: number;      // Prediction confidence
+}
+
+interface DataPoint {
+  timestamp: number;
+  value: number;
 }
 
 export function calculateLinearTrend(
@@ -696,13 +718,13 @@ groups:
     type: datasource
     uid: grafana
   options:
-    alertInstanceLabelFilter: 'category="capacity"'
+    alertInstanceLabelFilter: '{category="capacity"}'
     alertName: ""
     dashboardAlerts: false
     groupBy: []
     groupMode: default
     maxItems: 20
-    sortOrder: 1  # Severity
+    sortOrder: 1  # Importance
     stateFilter:
       firing: true
       pending: true
@@ -743,6 +765,23 @@ interface AlertContext {
   affectedResources: string[];
   suggestedActions: string[];
   historicalOccurrences: AlertOccurrence[];
+}
+
+interface Alert {
+  alertname: string;
+  labels: Record<string, string | undefined>;
+  annotations: Record<string, string | undefined>;
+}
+
+interface MetricLink {
+  name: string;
+  query: string;
+  panelId: string;
+}
+
+interface AlertOccurrence {
+  startedAt: string;
+  endedAt?: string;
 }
 
 export function buildAlertContext(alert: Alert): AlertContext {
@@ -900,11 +939,11 @@ panels:
       defaults:
         links:
           - title: "Drill down to node"
-            url: "/d/node-details/node-details?var-node=${__field.labels.node}&var-cluster=${cluster}&${__url_time_range}"
+            url: "/d/node-details/node-details${__url_time_range}&var-node=${__field.labels.node}&var-cluster=${cluster}"
             targetBlank: false
 
           - title: "View in Node Exporter"
-            url: "/d/node-exporter/node-exporter?var-instance=${__field.labels.instance}&${__url_time_range}"
+            url: "/d/node-exporter/node-exporter${__url_time_range}&var-instance=${__field.labels.instance}"
             targetBlank: true
 
           - title: "View related logs"
@@ -917,7 +956,7 @@ panels:
       defaults:
         links:
           - title: "View pod details"
-            url: "/d/pod-details/pod-details?var-namespace=${__data.fields.namespace}&var-pod=${__data.fields.pod}&${__url_time_range}"
+            url: "/d/pod-details/pod-details${__url_time_range}&var-namespace=${__data.fields.namespace}&var-pod=${__data.fields.pod}"
 
           - title: "View container logs"
             url: "/explore?left=%5B%22${__from}%22,%22${__to}%22,%22loki%22,%7B%22expr%22:%22%7Bnamespace%3D%5C%22${__data.fields.namespace}%5C%22,pod%3D%5C%22${__data.fields.pod}%5C%22%7D%22%7D%5D"
@@ -1227,6 +1266,31 @@ interface MobileAlertConfig {
   escalation: EscalationPolicy;
 }
 
+interface NotificationChannel {
+  type: 'push' | 'sms' | 'email';
+  app?: string;
+  settings: Record<string, boolean | number | string>;
+  filter: {
+    severity: string[];
+    afterHours?: boolean;
+  };
+}
+
+interface QuietHours {
+  enabled: boolean;
+  start: string;
+  end: string;
+  timezone: string;
+  exceptFor: string[];
+}
+
+interface EscalationPolicy {
+  initialDelay: number;
+  repeatInterval: number;
+  maxRepeats: number;
+  escalateTo: string;
+}
+
 const mobileCapacityAlerts: MobileAlertConfig = {
   channels: [
     {
@@ -1280,7 +1344,7 @@ const mobileCapacityAlerts: MobileAlertConfig = {
 
 // Generate mobile-friendly alert message
 export function formatMobileAlert(alert: Alert): string {
-  const severity = alert.labels.severity.toUpperCase();
+  const severity = (alert.labels.severity || 'unknown').toUpperCase();
   const resource = alert.labels.instance || alert.labels.pod || 'unknown';
   const value = alert.annotations.value || 'N/A';
 
@@ -1541,6 +1605,84 @@ const capacityDashboardProvisioning: DashboardProvisioning = {
     }
   ]
 };
+
+interface DashboardConfig {
+  environment: string;
+  datasource: string;
+  multiCluster: boolean;
+  refreshInterval?: string;
+}
+
+type TemplateVariable = {
+  name: string;
+  type: 'query';
+  datasource: string;
+  query: string;
+  refresh: number;
+  multi: boolean;
+  includeAll: boolean;
+};
+
+type GrafanaPanel = Record<string, unknown>;
+
+interface GrafanaDashboard {
+  dashboard: {
+    title: string;
+    uid: string;
+    tags: string[];
+    timezone: string;
+    refresh: string;
+    time: {
+      from: string;
+      to: string;
+    };
+    templating: {
+      list: TemplateVariable[];
+    };
+    panels: GrafanaPanel[];
+  };
+  overwrite: boolean;
+}
+
+function generateSummaryPanels(config: DashboardConfig): GrafanaPanel[] {
+  return [
+    {
+      title: 'Capacity Health Score',
+      type: 'stat',
+      datasource: config.datasource
+    }
+  ];
+}
+
+function generateResourcePanels(config: DashboardConfig): GrafanaPanel[] {
+  return [
+    {
+      title: 'CPU Utilization',
+      type: 'timeseries',
+      datasource: config.datasource
+    }
+  ];
+}
+
+function generateForecastPanels(config: DashboardConfig): GrafanaPanel[] {
+  return [
+    {
+      title: 'Capacity Forecast',
+      type: 'timeseries',
+      datasource: config.datasource
+    }
+  ];
+}
+
+function generateAlertPanels(config: DashboardConfig): GrafanaPanel[] {
+  return [
+    {
+      title: 'Active Capacity Alerts',
+      type: 'alertlist',
+      datasource: config.datasource
+    }
+  ];
+}
 
 // Generate dashboard from template
 export function generateCapacityDashboard(
