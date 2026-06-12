@@ -55,7 +55,7 @@ With `canary = 1`, Nomad deploys one allocation first. You can validate it and t
 nomad deployment promote <deployment-id>
 ```
 
-If you do not promote it, Nomad can revert automatically if you enabled `auto_revert`.
+If the canary is unhealthy, you can fail the deployment; with `auto_revert` enabled, Nomad attempts to roll back to the last stable job version.
 
 ## Health Checks
 
@@ -76,10 +76,11 @@ service {
 
 ## Rollbacks
 
-Roll back to the previous job version:
+Find the version you want to roll back to, then revert the job to that version:
 
 ```bash
-nomad job revert api
+nomad job history -p api
+nomad job revert api <version>
 ```
 
 Use this for quick recovery when a deployment fails.
@@ -89,7 +90,7 @@ Use this for quick recovery when a deployment fails.
 - Keep `max_parallel` small for stateful services.
 - Always include health checks to gate rollouts.
 - Use canaries for high-risk changes.
-- Automate `nomad deployment status` checks in CI.
+- Automate `nomad deployment status <deployment-id>` checks in CI.
 
 ## Conclusion
 
