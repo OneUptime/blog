@@ -136,11 +136,11 @@ class AdmissionController {
 
   // Call this method for every incoming request
   // Returns true if request should be admitted, false if it should be rejected
-  shouldAdmit(priority: RequestPriority): boolean {
+  shouldAdmit(priority: RequestPriorityLevel): boolean {
     this.refillTokens();
 
     // Always admit critical requests if we have any capacity
-    if (priority === RequestPriority.CRITICAL && this.tokens > 0) {
+    if (priority === RequestPriorityLevel.CRITICAL && this.tokens > 0) {
       this.tokens -= 1;
       return true;
     }
@@ -171,17 +171,17 @@ class AdmissionController {
 
   // Higher priority requests cost fewer tokens
   // Lower priority requests cost more when system is stressed
-  private calculateTokensRequired(priority: RequestPriority): number {
+  private calculateTokensRequired(priority: RequestPriorityLevel): number {
     const healthFactor = this.health.healthy ? 1 : 2;
 
     switch (priority) {
-      case RequestPriority.CRITICAL:
+      case RequestPriorityLevel.CRITICAL:
         return 1;
-      case RequestPriority.HIGH:
+      case RequestPriorityLevel.HIGH:
         return 1 * healthFactor;
-      case RequestPriority.NORMAL:
+      case RequestPriorityLevel.NORMAL:
         return 2 * healthFactor;
-      case RequestPriority.LOW:
+      case RequestPriorityLevel.LOW:
         return 4 * healthFactor;
       default:
         return 4 * healthFactor;
@@ -193,7 +193,11 @@ class AdmissionController {
     this.health = health;
 
     // Adjust capacity based on health
-    if (health.healthy && health.errorRate < 0.01) {
+    if (
+      health.healthy &&
+      health.errorRate < 0.01 &&
+      health.latencyP99Ms <= health.targetLatencyMs
+    ) {
       // System is healthy, use full capacity
       this.currentCapacity = this.config.maxRPS;
     } else if (health.latencyP99Ms > health.targetLatencyMs * 2) {
@@ -210,7 +214,7 @@ class AdmissionController {
       );
     } else {
       // Slight degradation, reduce proportionally
-      const latencyRatio = health.latencyP99Ms / health.targetLatencyMs;
+      const latencyRatio = Math.max(1, health.latencyP99Ms / health.targetLatencyMs);
       this.currentCapacity = Math.max(
         this.config.minRPS,
         this.config.maxRPS / latencyRatio
@@ -228,7 +232,7 @@ class AdmissionController {
   }
 }
 
-enum RequestPriority {
+enum RequestPriorityLevel {
   CRITICAL = 1,  // Health checks, payment confirmations
   HIGH = 2,      // User-initiated actions
   NORMAL = 3,    // Standard API requests
@@ -600,7 +604,6 @@ func (cl *ConcurrencyLimiter) createReleaseFunc() func(latencyMs float64) {
 		released = true
 
 		atomic.AddInt64(&cl.inFlight, -1)
-		cl.recordLatency(latencyMs)
 
 		// Return token to semaphore
 		select {
@@ -608,6 +611,8 @@ func (cl *ConcurrencyLimiter) createReleaseFunc() func(latencyMs float64) {
 		default:
 			// Semaphore full - limit was decreased
 		}
+
+		cl.recordLatency(latencyMs)
 	}
 }
 
@@ -659,7 +664,7 @@ func (cl *ConcurrencyLimiter) recordLatency(latencyMs float64) {
 	atomic.StoreInt64(&cl.limit, newLimit)
 
 	// Adjust semaphore capacity
-	cl.adjustSemaphore(currentLimit, newLimit)
+	cl.adjustSemaphore(newLimit)
 }
 
 func (cl *ConcurrencyLimiter) calculateAverage() float64 {
@@ -673,17 +678,35 @@ func (cl *ConcurrencyLimiter) calculateAverage() float64 {
 	return sum / float64(len(cl.latencies))
 }
 
-func (cl *ConcurrencyLimiter) adjustSemaphore(oldLimit, newLimit int64) {
-	if newLimit > oldLimit {
+func (cl *ConcurrencyLimiter) adjustSemaphore(newLimit int64) {
+	inFlight := atomic.LoadInt64(&cl.inFlight)
+	desiredAvailable := newLimit - inFlight
+	if desiredAvailable < 0 {
+		desiredAvailable = 0
+	}
+
+	currentAvailable := int64(len(cl.semaphore))
+
+	if desiredAvailable > currentAvailable {
 		// Add tokens to semaphore
-		for i := oldLimit; i < newLimit; i++ {
+		for i := currentAvailable; i < desiredAvailable; i++ {
 			select {
 			case cl.semaphore <- struct{}{}:
 			default:
+				return
 			}
 		}
+		return
 	}
-	// When decreasing, tokens are naturally removed as they are not returned
+
+	// Remove excess available tokens immediately when the limit decreases.
+	for i := currentAvailable; i > desiredAvailable; i-- {
+		select {
+		case <-cl.semaphore:
+		default:
+			return
+		}
+	}
 }
 
 // Stats returns current limiter statistics
@@ -721,11 +744,8 @@ flowchart TD
     B -->|Pass| C[Layer 2: Priority Check]
     B -->|Reject| Z[503 Rate Limited]
 
-    C -->|Pass| D[Layer 3: Concurrency Check]
+    C -->|Pass| E[Layer 3: Circuit Breaker]
     C -->|Reject| Y[503 Low Priority Shed]
-
-    D -->|Pass| E[Layer 4: Circuit Breaker]
-    D -->|Reject| X[503 Concurrency Exceeded]
 
     E -->|Pass| F[Process Request]
     E -->|Open| W[503 Circuit Open]
@@ -853,6 +873,7 @@ class CircuitBreakerStrategy implements SheddingStrategy {
   private failures: number = 0;
   private lastFailure: number = 0;
   private successes: number = 0;
+  private halfOpenInFlight: number = 0;
 
   constructor(
     private failureThreshold: number,
@@ -872,6 +893,7 @@ class CircuitBreakerStrategy implements SheddingStrategy {
         if (now - this.lastFailure > this.recoveryTimeMs) {
           this.state = 'half_open';
           this.successes = 0;
+          this.halfOpenInFlight = 1;
           return { allowed: true };
         }
         return {
@@ -883,7 +905,8 @@ class CircuitBreakerStrategy implements SheddingStrategy {
 
       case 'half_open':
         // Allow limited requests to test recovery
-        if (this.successes < this.halfOpenRequests) {
+        if (this.successes + this.halfOpenInFlight < this.halfOpenRequests) {
+          this.halfOpenInFlight++;
           return { allowed: true };
         }
         return {
@@ -896,20 +919,26 @@ class CircuitBreakerStrategy implements SheddingStrategy {
   }
 
   recordResult(_ctx: RequestContext, success: boolean): void {
+    if (this.state === 'half_open' && this.halfOpenInFlight > 0) {
+      this.halfOpenInFlight--;
+    }
+
     if (success) {
       this.failures = 0;
       this.successes++;
 
       if (this.state === 'half_open' && this.successes >= this.halfOpenRequests) {
         this.state = 'closed';
+        this.halfOpenInFlight = 0;
       }
     } else {
       this.failures++;
       this.lastFailure = Date.now();
       this.successes = 0;
 
-      if (this.failures >= this.failureThreshold) {
+      if (this.state === 'half_open' || this.failures >= this.failureThreshold) {
         this.state = 'open';
+        this.halfOpenInFlight = 0;
       }
     }
   }
@@ -1180,17 +1209,25 @@ class LoadSheddingTestHarness {
 
     // Calculate metrics
     const sortedLatencies = [...latencies].sort((a, b) => a - b);
-    const p99Index = Math.floor(sortedLatencies.length * 0.99);
+    const p99Index = Math.min(
+      sortedLatencies.length - 1,
+      Math.floor(sortedLatencies.length * 0.99)
+    );
+    const totalRequests = accepted + shed;
+    const avgLatencyMs = latencies.length > 0
+      ? latencies.reduce((a, b) => a + b, 0) / latencies.length
+      : 0;
+    const maxLatencyMs = latencies.length > 0 ? Math.max(...latencies) : 0;
 
     const result: TestResult = {
       patternName: pattern.name,
-      totalRequests: accepted + shed,
+      totalRequests,
       acceptedRequests: accepted,
       shedRequests: shed,
-      shedRate: shed / (accepted + shed),
-      avgLatencyMs: latencies.reduce((a, b) => a + b, 0) / latencies.length,
+      shedRate: totalRequests > 0 ? shed / totalRequests : 0,
+      avgLatencyMs,
       p99LatencyMs: sortedLatencies[p99Index] || 0,
-      maxLatencyMs: Math.max(...latencies),
+      maxLatencyMs,
       errorsCount: errors,
       recoveryTimeMs: recoveryStart && recoveryEnd
         ? recoveryEnd - recoveryStart
@@ -1261,7 +1298,11 @@ class LoadSheddingTestHarness {
       }
 
       // Check for cascading failures (high error rate with low shed rate)
-      if (result.errorsCount / result.acceptedRequests > 0.1 && result.shedRate < 0.2) {
+      const errorRate = result.acceptedRequests > 0
+        ? result.errorsCount / result.acceptedRequests
+        : 0;
+
+      if (errorRate > 0.1 && result.shedRate < 0.2) {
         failures.push(
           `${result.patternName}: High error rate with low shedding suggests ` +
           `insufficient protection`
@@ -1326,6 +1367,8 @@ Essential metrics to monitor:
 ```typescript
 // shedding-metrics.ts
 // Prometheus metrics for load shedding observability
+
+import { Counter, Gauge, Histogram } from 'prom-client';
 
 interface MetricsConfig {
   serviceName: string;
