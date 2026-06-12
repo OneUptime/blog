@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby On Rail, PostgreSQL, Full-Text Search, Database, Search, Performance
+Tags: Ruby on Rails, PostgreSQL, Full-Text Search, Database, Search, Performance
 
 Description: Learn how to implement powerful full-text search in your Rails application using PostgreSQL's built-in search capabilities, from basic tsvector queries to advanced features like ranking, highlighting.
 
@@ -76,7 +76,7 @@ Now you can search articles:
 
 ```ruby
 # Find articles matching the search term
-# This handles stemming, so "running" matches "run", "runs", "runner"
+# This handles stemming, so "running" matches "run" and "runs"
 Article.search_by_title_and_content('postgresql database')
 
 # Chain with other scopes
@@ -271,17 +271,17 @@ class Article < ApplicationRecord
         # Enable highlighting
         highlight: {
           # HTML tags to wrap matched terms
-          start_sel: '<mark>',
-          stop_sel: '</mark>',
+          StartSel: '<mark>',
+          StopSel: '</mark>',
           # Maximum length of highlighted fragment
-          max_words: 35,
-          min_words: 15,
+          MaxWords: 35,
+          MinWords: 15,
           # Short words to skip
-          short_word: 3,
+          ShortWord: 3,
           # Number of fragments to return
-          max_fragments: 3,
+          MaxFragments: 3,
           # Fragment delimiter
-          fragment_delimiter: '...'
+          FragmentDelimiter: '...'
         }
       }
     }
@@ -383,7 +383,7 @@ For article title autocomplete without a separate table:
 ```ruby
 # app/models/article.rb
 class Article < ApplicationRecord
-  # Fast prefix autocomplete using trigrams
+  # Fast prefix autocomplete
   scope :title_autocomplete, ->(prefix) {
     where("title ILIKE ?", "#{sanitize_sql_like(prefix)}%")
       .select(:id, :title)
@@ -456,7 +456,7 @@ class Article < ApplicationRecord
 
   def self.global_search_config
     {
-      content: -> { "#{title} #{content}" },
+      content: ->(record) { "#{record.title} #{record.content}" },
       category: 'article',
       url: ->(record) { Rails.application.routes.url_helpers.article_path(record) }
     }
@@ -469,7 +469,7 @@ class Product < ApplicationRecord
 
   def self.global_search_config
     {
-      content: -> { "#{name} #{description} #{sku}" },
+      content: ->(record) { "#{record.name} #{record.description} #{record.sku}" },
       category: 'product',
       url: ->(record) { Rails.application.routes.url_helpers.product_path(record) }
     }
@@ -478,6 +478,11 @@ end
 ```
 
 Using PgSearch multisearch for global search:
+
+```bash
+rails g pg_search:migration:multisearch
+rails db:migrate
+```
 
 ```ruby
 # config/initializers/pg_search.rb
