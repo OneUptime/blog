@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenShift, Tekton, Pipeline, CI/CD, Kubernetes, DevOps, Automation
 
-Description: A comprehensive guide to implementing OpenShift Pipelines using Tekton, covering Tasks, Pipelines, Triggers, Workspaces, PVC integration, ClusterTasks, and monitoring for cloud-native CI/CD workflows.
+Description: A comprehensive guide to implementing OpenShift Pipelines using Tekton, covering Tasks, Pipelines, Triggers, Workspaces, PVC integration, reusable tasks, and monitoring for cloud-native CI/CD workflows.
 
 ---
 
@@ -17,7 +17,7 @@ OpenShift Pipelines is the Red Hat distribution of Tekton, a powerful Kubernetes
 Key benefits:
 - **Kubernetes-native**: Pipelines are CRDs, not external config files
 - **Serverless**: No always-running CI server consuming resources
-- **Scalable**: Each pipeline run is an isolated pod
+- **Scalable**: Each task run executes in its own isolated pod
 - **Portable**: Same pipeline works on any Kubernetes cluster
 - **Declarative**: Everything defined in YAML, stored in Git
 
@@ -28,7 +28,7 @@ Key benefits:
 ```yaml
 # openshift-pipelines-subscription.yaml
 
-# This installs the OpenShift Pipelines Operator from the Red Hat Marketplace
+# This installs the OpenShift Pipelines Operator from the Red Hat OperatorHub catalog
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
@@ -47,8 +47,8 @@ Apply and verify:
 # Install the operator
 oc apply -f openshift-pipelines-subscription.yaml
 
-# Wait for the operator to be ready
-oc wait --for=condition=Ready pods -l app=openshift-pipelines-operator -n openshift-operators --timeout=300s
+# Wait for the operator-managed TektonConfig to be ready
+oc wait tektonconfig/config --for=condition=Ready --timeout=300s
 
 # Verify Tekton CRDs are installed
 oc get crd | grep tekton
@@ -76,7 +76,7 @@ Tasks are the building blocks of Tekton pipelines. Each Task defines a series of
 ```yaml
 # build-task.yaml
 # A Task that builds a container image using buildah
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: build-image
@@ -166,7 +166,7 @@ spec:
 ```yaml
 # test-task.yaml
 # A Task that runs unit tests and code quality checks
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: run-tests
@@ -251,7 +251,7 @@ Pipelines orchestrate multiple Tasks, defining execution order and data flow bet
 ```yaml
 # ci-pipeline.yaml
 # A complete CI/CD pipeline that clones, tests, builds, and deploys
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: ci-cd-pipeline
@@ -288,8 +288,14 @@ spec:
     # Task 1: Clone the source repository
     - name: clone-source
       taskRef:
-        name: git-clone
-        kind: ClusterTask
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
       params:
         - name: url
           value: $(params.git-url)
@@ -336,8 +342,14 @@ spec:
     # Task 4: Deploy to development (depends on image build)
     - name: deploy-dev
       taskRef:
-        name: openshift-client
-        kind: ClusterTask
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: openshift-client
+          - name: namespace
+            value: openshift-pipelines
       runAfter:
         - build-image
       params:
@@ -369,7 +381,7 @@ spec:
 ```yaml
 # parallel-pipeline.yaml
 # Pipeline demonstrating parallel task execution
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: parallel-testing-pipeline
@@ -389,8 +401,14 @@ spec:
     # Task 1: Clone repository
     - name: clone
       taskRef:
-        name: git-clone
-        kind: ClusterTask
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
       workspaces:
         - name: output
           workspace: shared-workspace
@@ -610,7 +628,7 @@ spec:
   # Resources to create when triggered
   resourcetemplates:
     # Create a PipelineRun
-    - apiVersion: tekton.dev/v1beta1
+    - apiVersion: tekton.dev/v1
       kind: PipelineRun
       metadata:
         # Generate unique name using timestamp
@@ -649,7 +667,8 @@ spec:
             secret:
               secretName: registry-credentials
         # Set a timeout for the entire pipeline
-        timeout: "1h0m0s"
+        timeouts:
+          pipeline: "1h0m0s"
         # Configure pod template for all tasks
         podTemplate:
           securityContext:
@@ -686,7 +705,7 @@ Workspaces provide flexible storage options for Tasks and Pipelines.
 ```yaml
 # workspace-examples.yaml
 # Different workspace configurations for various use cases
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: workspace-examples
@@ -739,7 +758,7 @@ spec:
 ```yaml
 # task-with-workspaces.yaml
 # Task demonstrating multiple workspace usage patterns
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: build-with-cache
@@ -837,7 +856,7 @@ spec:
   storageClassName: efs  # Use shared filesystem for cache
 ---
 # Task using the shared cache
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: npm-build-with-cache
@@ -867,7 +886,7 @@ spec:
 ```yaml
 # pipeline-with-dynamic-pvc.yaml
 # Pipeline using VolumeClaimTemplate for automatic PVC management
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   generateName: build-run-
@@ -898,17 +917,17 @@ spec:
       fsGroup: 65532
 ```
 
-## Using ClusterTasks
+## Using Shared Tasks
 
-ClusterTasks are cluster-scoped tasks available to all namespaces, reducing duplication and ensuring consistency.
+OpenShift Pipelines provides reusable tasks in the OpenShift Pipelines installation namespace. You can access those tasks from other namespaces by using the cluster resolver, reducing duplication and ensuring consistency.
 
-### Available ClusterTasks
+### Available Shared Tasks
 
 ```bash
-# List all available ClusterTasks
-oc get clustertasks
+# List tasks provided by OpenShift Pipelines
+oc get tasks -n openshift-pipelines
 
-# Common ClusterTasks included with OpenShift Pipelines:
+# Common reusable tasks included with OpenShift Pipelines:
 # - git-clone         - Clone a Git repository
 # - buildah           - Build images using buildah
 # - openshift-client  - Run oc commands
@@ -917,12 +936,12 @@ oc get clustertasks
 # - npm               - Run npm commands
 ```
 
-### Using ClusterTasks in Pipelines
+### Using Shared Tasks in Pipelines
 
 ```yaml
-# pipeline-with-clustertasks.yaml
-# Pipeline leveraging built-in ClusterTasks
-apiVersion: tekton.dev/v1beta1
+# pipeline-with-shared-tasks.yaml
+# Pipeline leveraging built-in shared tasks
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: standard-build-pipeline
@@ -943,11 +962,17 @@ spec:
       optional: true
 
   tasks:
-    # Use git-clone ClusterTask
+    # Use the git-clone task from the openshift-pipelines namespace
     - name: fetch-source
       taskRef:
-        name: git-clone
-        kind: ClusterTask  # Specify ClusterTask kind
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
       params:
         - name: url
           value: $(params.git-url)
@@ -961,11 +986,17 @@ spec:
         - name: output
           workspace: shared-workspace
 
-    # Use maven ClusterTask for Java builds
+    # Use the maven task from the openshift-pipelines namespace
     - name: build-java
       taskRef:
-        name: maven
-        kind: ClusterTask
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: maven
+          - name: namespace
+            value: openshift-pipelines
       runAfter:
         - fetch-source
       params:
@@ -980,11 +1011,17 @@ spec:
         - name: maven-settings
           workspace: maven-settings
 
-    # Use buildah ClusterTask to build container image
+    # Use the buildah task from the openshift-pipelines namespace
     - name: build-image
       taskRef:
-        name: buildah
-        kind: ClusterTask
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
       runAfter:
         - build-java
       params:
@@ -1000,11 +1037,17 @@ spec:
         - name: source
           workspace: shared-workspace
 
-    # Use openshift-client ClusterTask for deployment
+    # Use the openshift-client task from the openshift-pipelines namespace
     - name: deploy
       taskRef:
-        name: openshift-client
-        kind: ClusterTask
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: openshift-client
+          - name: namespace
+            value: openshift-pipelines
       runAfter:
         - build-image
       params:
@@ -1014,15 +1057,16 @@ spec:
             oc rollout status deployment/myapp -n my-project --timeout=300s
 ```
 
-### Creating Custom ClusterTasks
+### Creating Custom Shared Tasks
 
 ```yaml
-# custom-clustertask.yaml
-# Custom ClusterTask for organization-wide reuse
-apiVersion: tekton.dev/v1beta1
-kind: ClusterTask
+# custom-shared-task.yaml
+# Custom namespaced Task for organization-wide reuse
+apiVersion: tekton.dev/v1
+kind: Task
 metadata:
   name: sonarqube-scan
+  namespace: devops-tasks
   labels:
     app.kubernetes.io/version: "1.0.0"
   annotations:
@@ -1131,12 +1175,13 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: tekton-pipelines-controller
+      app.kubernetes.io/component: controller
+      app.kubernetes.io/part-of: tekton-pipelines
   namespaceSelector:
     matchNames:
       - openshift-pipelines
   endpoints:
-    - port: metrics
+    - port: http-metrics
       interval: 30s
       path: /metrics
 ```
@@ -1150,7 +1195,7 @@ spec:
 #   - Duration of PipelineRuns
 #   - Use for SLO tracking
 #
-# tekton_pipelines_controller_pipelinerun_count
+# tekton_pipelines_controller_pipelinerun_total
 #   - Total number of PipelineRuns
 #   - Track by status (success/failure)
 #
@@ -1158,7 +1203,7 @@ spec:
 #   - Duration of individual TaskRuns
 #   - Identify slow tasks
 #
-# tekton_pipelines_controller_running_pipelineruns_count
+# tekton_pipelines_controller_running_pipelineruns
 #   - Currently running pipelines
 #   - Capacity planning
 
@@ -1174,7 +1219,7 @@ spec:
       rules:
         - alert: PipelineRunFailed
           expr: |
-            increase(tekton_pipelines_controller_pipelinerun_count{status="failed"}[5m]) > 0
+            increase(tekton_pipelines_controller_pipelinerun_total{status="failed"}[5m]) > 0
           for: 1m
           labels:
             severity: warning
@@ -1184,7 +1229,10 @@ spec:
 
         - alert: PipelineRunDurationHigh
           expr: |
-            tekton_pipelines_controller_pipelinerun_duration_seconds{status="success"} > 1800
+            histogram_quantile(
+              0.95,
+              sum(rate(tekton_pipelines_controller_pipelinerun_duration_seconds_bucket{status="success"}[5m])) by (le)
+            ) > 1800
           for: 5m
           labels:
             severity: warning
@@ -1201,8 +1249,9 @@ spec:
 brew install tektoncd-cli
 
 # On Linux:
-curl -LO https://github.com/tektoncd/cli/releases/download/v0.33.0/tkn_0.33.0_Linux_x86_64.tar.gz
-tar xvzf tkn_0.33.0_Linux_x86_64.tar.gz
+TKN_VERSION=0.42.2
+curl -LO "https://github.com/tektoncd/cli/releases/download/v${TKN_VERSION}/tkn_${TKN_VERSION}_Linux_x86_64.tar.gz"
+tar xvzf "tkn_${TKN_VERSION}_Linux_x86_64.tar.gz"
 sudo mv tkn /usr/local/bin/
 
 # List pipelines
@@ -1230,7 +1279,7 @@ tkn pipelinerun delete --keep 5 -n my-project
 
 ## Best Practices Summary
 
-1. **Use ClusterTasks for common operations** - Leverage built-in ClusterTasks for git-clone, buildah, and openshift-client to reduce maintenance overhead and ensure consistency.
+1. **Use shared tasks for common operations** - Leverage built-in tasks such as git-clone, buildah, and openshift-client through the cluster resolver to reduce maintenance overhead and ensure consistency.
 
 2. **Implement workspace isolation** - Use VolumeClaimTemplates for pipeline workspaces to ensure each run gets clean storage and automatic cleanup.
 
