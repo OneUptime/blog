@@ -412,13 +412,16 @@ def process_raw_messages(queue_url: str):
         # No SNS envelope to unwrap
         order_event = json.loads(message['Body'])
 
-        # Message attributes are now SQS message attributes
-        # (only works if your publisher uses SQS directly or
-        # SNS FIFO topics with raw delivery)
-        print(f"Order ID: {order_event['order_id']}")
+        # With raw message delivery, SNS forwards the original
+        # message attributes as SQS message attributes, so they
+        # are accessible via message['MessageAttributes']
+        attributes = message.get('MessageAttributes', {})
+        event_type = attributes.get('event_type', {}).get('StringValue')
+
+        print(f"Order ID: {order_event['order_id']}, Event: {event_type}")
 ```
 
-**Warning:** With raw delivery, you lose access to SNS message attributes in the consumer. If you use filter policies, the filtering still works, but the consumer cannot see which attributes matched.
+**Note:** With raw delivery, you lose the SNS envelope metadata (TopicArn, Timestamp, SNS MessageId, Subject, etc.) in the consumer. However, the SNS message attributes from the publish call ARE forwarded and delivered as SQS message attributes, so filter policies still work and consumers can still inspect attribute values directly via the SQS message attributes API.
 
 ## Complete Terraform Example
 
