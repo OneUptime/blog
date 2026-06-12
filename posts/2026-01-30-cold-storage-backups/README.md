@@ -31,7 +31,7 @@ Cold storage differs from standard object or block storage in three fundamental 
 
 **1. Access Latency**: Retrieving data takes minutes to hours, not milliseconds. Cloud providers achieve low costs by storing data on slower media (tape libraries, high-density HDDs) or in formats that require reconstruction.
 
-**2. Retrieval Costs**: You pay to get data out, not just to store it. Restoring 1 TB from Glacier Deep Archive costs around $20-100 depending on retrieval speed-negligible for disaster recovery but expensive for frequent access.
+**2. Retrieval Costs**: You pay to get data out, not just to store it. Restoring 1 TB from Glacier Deep Archive costs around $2.50-$20 in retrieval fees depending on retrieval speed, before any data transfer charges-negligible for disaster recovery but expensive for frequent access.
 
 **3. Minimum Storage Duration**: Most cold tiers charge for early deletion. AWS Glacier has 90-day and 180-day minimums. Delete a file on day 89, and you still pay for 90 days.
 
@@ -62,7 +62,7 @@ Understanding retrieval options is critical for planning your RTO (Recovery Time
 |---------------|-------------------|-------------|----------|
 | **Expedited** | 1-5 minutes | $0.03 | Urgent partial restores |
 | **Standard** | 3-5 hours | $0.01 | Planned recovery operations |
-| **Bulk** | 5-12 hours | $0.0025 | Large-scale disaster recovery |
+| **Bulk** | 5-12 hours | Free for Glacier Flexible, $0.0025 for Deep Archive | Large-scale disaster recovery |
 
 AWS Glacier Deep Archive only supports Standard (12 hours) and Bulk (48 hours) retrieval. When you need data faster than that, you need a different tier.
 
@@ -251,7 +251,6 @@ For large archives, upload directly to Glacier using multipart uploads:
 ```python
 import boto3
 import hashlib
-from concurrent.futures import ThreadPoolExecutor
 
 class GlacierUploader:
     """
@@ -265,6 +264,7 @@ class GlacierUploader:
         self.glacier = boto3.client('glacier', region_name=region)
         self.vault_name = vault_name
         self.part_size = 1024 * 1024 * 128  # 128 MB parts
+        self.tree_hash_chunk_size = 1024 * 1024  # Glacier tree hashes use 1 MiB chunks
 
     def upload_archive(self, file_path: str, description: str) -> str:
         """
@@ -317,13 +317,21 @@ class GlacierUploader:
 
         try:
             # Upload parts
-            part_hashes = []
+            chunk_hashes = []
             with open(file_path, 'rb') as f:
                 part_number = 0
                 while True:
                     data = f.read(self.part_size)
                     if not data:
                         break
+
+                    part_chunk_hashes = [
+                        hashlib.sha256(
+                            data[offset:offset + self.tree_hash_chunk_size]
+                        ).digest()
+                        for offset in range(0, len(data), self.tree_hash_chunk_size)
+                    ]
+                    part_checksum = self._compute_tree_hash(part_chunk_hashes)
 
                     # Calculate byte range for this part
                     start = part_number * self.part_size
@@ -334,15 +342,16 @@ class GlacierUploader:
                         vaultName=self.vault_name,
                         uploadId=upload_id,
                         range=f'bytes {start}-{end}/*',
+                        checksum=part_checksum,
                         body=data
                     )
 
-                    # Store hash for tree-hash computation
-                    part_hashes.append(hashlib.sha256(data).digest())
+                    # Store 1 MiB chunk hashes for the final archive tree hash
+                    chunk_hashes.extend(part_chunk_hashes)
                     part_number += 1
 
             # Complete the upload
-            tree_hash = self._compute_tree_hash(part_hashes)
+            tree_hash = self._compute_tree_hash(chunk_hashes)
             response = self.glacier.complete_multipart_upload(
                 vaultName=self.vault_name,
                 uploadId=upload_id,
@@ -550,7 +559,7 @@ def rehydrate_from_azure_archive(
     Initiate rehydration of an archived blob.
 
     Standard priority: up to 15 hours
-    High priority: under 1 hour (higher cost)
+    High priority: may complete in under 1 hour for blobs under 10 GB (higher cost)
     """
     blob_service = BlobServiceClient.from_connection_string(connection_string)
     blob_client = blob_service.get_blob_client(container_name, blob_name)
@@ -577,21 +586,18 @@ def configure_gcs_lifecycle_for_archive(
     Google Archive Storage:
     - $0.0012/GB/month (slightly higher than Glacier Deep)
     - No retrieval delay (data available immediately)
-    - Higher retrieval costs ($0.05/GB)
+    - Higher retrieval costs (for example, $0.05/GB in many US locations)
+    - 365-day minimum storage duration
     """
     client = storage.Client()
     bucket = client.get_bucket(bucket_name)
 
     # Define lifecycle rule
-    bucket.lifecycle_rules = [
-        {
-            'action': {'type': 'SetStorageClass', 'storageClass': 'ARCHIVE'},
-            'condition': {
-                'age': archive_after_days,
-                'matchesPrefix': ['backups/']
-            }
-        }
-    ]
+    bucket.add_lifecycle_set_storage_class_rule(
+        'ARCHIVE',
+        age=archive_after_days,
+        matches_prefix=['backups/']
+    )
 
     bucket.patch()
     print(f"Configured {bucket_name} to archive after {archive_after_days} days")
@@ -606,16 +612,16 @@ Backblaze B2 offers simpler pricing without retrieval tiers:
 pip install b2
 
 # Authorize
-b2 authorize-account <applicationKeyId> <applicationKey>
+b2 account authorize <applicationKeyId> <applicationKey>
 
 # Upload backup to B2
-b2 upload-file my-backup-bucket /backups/database.tar.gz backups/2026/01/database.tar.gz
+b2 file upload my-backup-bucket /backups/database.tar.gz backups/2026/01/database.tar.gz
 
 # Download (no retrieval delay!)
-b2 download-file-by-name my-backup-bucket backups/2026/01/database.tar.gz ./restored.tar.gz
+b2 file download b2://my-backup-bucket/backups/2026/01/database.tar.gz ./restored.tar.gz
 ```
 
-B2 costs $0.005/GB/month with free egress to Cloudflare-making it excellent for backups that might need frequent verification.
+B2 starts at $6.95/TB/month with no minimum storage duration, free egress up to 3x average monthly storage, and unlimited free egress through partners such as Cloudflare-making it excellent for backups that might need frequent verification.
 
 ---
 
@@ -735,8 +741,8 @@ flowchart LR
         D[S3 Standard<br/>ms retrieval]
     end
 
-    A -->|Scheduled rehydration<br/>before known need| B
-    A -->|Emergency restore| D
+    A -->|Scheduled restore<br/>temporary copy| D
+    A -->|Emergency restore<br/>temporary copy| D
     B -->|Lifecycle policy| A
     C -->|Lifecycle policy| A
     D -->|After use complete| C
@@ -783,11 +789,11 @@ class PredictiveRehydration:
         """
         now = datetime.utcnow()
 
-        # Retrieval times by tier
+        # Retrieval times by tier for S3 Glacier Flexible Retrieval
         tiers = {
-            'Bulk': {'hours': 48, 'cost_factor': 1},
-            'Standard': {'hours': 12, 'cost_factor': 4},
-            'Expedited': {'hours': 0.25, 'cost_factor': 12}  # 15 minutes
+            'Bulk': {'hours': 12, 'cost_factor': 1},
+            'Standard': {'hours': 5, 'cost_factor': 4},
+            'Expedited': {'hours': 0.083, 'cost_factor': 12}  # 5 minutes
         }
 
         hours_until_needed = (needed_by - now).total_seconds() / 3600
@@ -807,7 +813,7 @@ class PredictiveRehydration:
         return {
             'error': 'Insufficient time for retrieval',
             'hours_available': hours_until_needed,
-            'minimum_required': 0.25 + buffer_hours
+            'minimum_required': 0.083 + buffer_hours
         }
 
 # Example: Annual audit needs 2025 data by February 15
@@ -829,43 +835,27 @@ Track your archive health and costs:
 
 ```python
 import boto3
-from datetime import datetime, timedelta
 
-def get_glacier_metrics(vault_name: str, days: int = 30) -> dict:
+def get_glacier_metrics(vault_name: str) -> dict:
     """
-    Gather metrics about Glacier vault usage.
+    Gather inventory metrics about Glacier vault usage.
 
     Monitor:
     - Storage growth trends
-    - Retrieval frequency
     - Cost projections
     """
     glacier = boto3.client('glacier')
-    cloudwatch = boto3.client('cloudwatch')
 
-    # Get vault inventory summary
+    # Get vault inventory summary. Glacier vault inventory is updated periodically,
+    # not in real time, so use it for trend monitoring rather than alerting.
     vault = glacier.describe_vault(vaultName=vault_name)
-
-    # Get CloudWatch metrics for retrievals
-    end_time = datetime.utcnow()
-    start_time = end_time - timedelta(days=days)
-
-    retrieval_metrics = cloudwatch.get_metric_statistics(
-        Namespace='AWS/S3',  # Glacier metrics are in S3 namespace for S3 Glacier
-        MetricName='NumberOfObjects',
-        Dimensions=[{'Name': 'BucketName', 'Value': vault_name}],
-        StartTime=start_time,
-        EndTime=end_time,
-        Period=86400,  # Daily
-        Statistics=['Sum']
-    )
 
     return {
         'vault_name': vault_name,
         'archive_count': vault['NumberOfArchives'],
         'total_size_bytes': vault['SizeInBytes'],
         'total_size_gb': vault['SizeInBytes'] / (1024**3),
-        'estimated_monthly_cost': (vault['SizeInBytes'] / (1024**3)) * 0.00099,
+        'estimated_monthly_cost': (vault['SizeInBytes'] / (1024**3)) * 0.0036,
         'last_inventory_date': vault.get('LastInventoryDate')
     }
 
@@ -889,9 +879,10 @@ Here is a complete backup script that integrates hot storage for recent backups 
 set -euo pipefail
 
 # Configuration
-BACKUP_SOURCE="/var/lib/postgresql/data"
+# Directory containing a consistent backup created by pg_dump, pg_basebackup,
+# or a storage snapshot. Do not tar a live PostgreSQL data directory directly.
+BACKUP_SOURCE="/backups/postgresql-consistent"
 S3_BUCKET="my-backup-bucket"
-GLACIER_VAULT="long-term-archives"
 RETENTION_HOT_DAYS=7
 RETENTION_WARM_DAYS=30
 HEARTBEAT_URL="https://oneuptime.com/heartbeat/backup_xyz"
