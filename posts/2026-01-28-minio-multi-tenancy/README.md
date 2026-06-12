@@ -96,7 +96,7 @@ mc admin policy ls myminio
 
 ```bash
 # Create user for tenant alpha
-mc admin user add myminio tenant-alpha-user SecurePassword123!
+mc admin user add myminio tenant-alpha-user 'SecurePassword123!'
 
 # Attach the tenant policy
 mc admin policy attach myminio tenant-alpha-policy --user tenant-alpha-user
@@ -111,12 +111,12 @@ For programmatic access, create service accounts:
 
 ```bash
 # Create service account with inherited policy
-mc admin user svcacct add myminio tenant-alpha-user \
+mc admin accesskey create myminio/ tenant-alpha-user \
   --access-key "tenant-alpha-svc" \
   --secret-key "tenant-alpha-secret-key-here"
 
 # Or create with custom policy (more restrictive than parent)
-mc admin user svcacct add myminio tenant-alpha-user \
+mc admin accesskey create myminio/ tenant-alpha-user \
   --access-key "tenant-alpha-readonly" \
   --secret-key "readonly-secret-key" \
   --policy /path/to/readonly-policy.json
@@ -323,13 +323,13 @@ MinIO supports bucket quotas to limit storage consumption:
 
 ```bash
 # Set a 100GB quota on tenant bucket
-mc quota set myminio/tenant-alpha-data --size 100GB
+mc admin bucket quota myminio/tenant-alpha-data --hard 100GB
 
 # Check quota status
-mc quota info myminio/tenant-alpha-data
+mc admin bucket quota myminio/tenant-alpha-data
 
 # Remove quota
-mc quota clear myminio/tenant-alpha-data
+mc admin bucket quota myminio/tenant-alpha-data --clear
 ```
 
 ### Kubernetes Resource Quotas
@@ -352,13 +352,17 @@ spec:
 
 ### Rate Limiting with MinIO
 
-Implement API rate limits per user:
+Implement API rate limits per bucket or prefix:
 
 ```bash
-# Set rate limit for a user (requests per second)
-mc admin user ratelimit set myminio tenant-alpha-user \
+# Set a requests-per-second limit for GetObject on a tenant bucket
+mc qos rule add myminio/tenant-alpha-data \
+  --api "s3.GetObject" \
+  --limit rps \
   --rate 100 \
-  --burst 200
+  --burst 200 \
+  --priority 1 \
+  --id "tenant-alpha-getobject"
 ```
 
 ## Group-Based Access Control
@@ -383,19 +387,6 @@ cat > tenant-admin-policy.json << 'EOF'
         "arn:aws:s3:::tenant-alpha-*",
         "arn:aws:s3:::tenant-alpha-*/*"
       ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "admin:CreateUser",
-        "admin:DeleteUser",
-        "admin:ListUsers",
-        "admin:CreateServiceAccount",
-        "admin:DeleteServiceAccount"
-      ],
-      "Resource": [
-        "arn:minio:iam:::user/tenant-alpha-*"
-      ]
     }
   ]
 }
@@ -411,28 +402,28 @@ mc admin policy attach myminio tenant-alpha-admin-policy --group tenant-alpha-ad
 Integrate with your identity provider for SSO:
 
 ```bash
-# Configure OIDC
-mc admin config set myminio identity_openid \
+# Create the tenant policy first
+mc admin policy create myminio tenant-alpha-oidc-policy tenant-alpha-policy.json
+
+# Configure OIDC with a tenant policy
+mc idp openid add myminio TENANT_ALPHA_OIDC \
   config_url="https://auth.example.com/.well-known/openid-configuration" \
   client_id="minio-client" \
   client_secret="your-client-secret" \
-  claim_name="groups" \
-  scopes="openid,profile,email"
+  scopes="openid,profile,email" \
+  redirect_uri="http://minio.example.com/oauth_callback" \
+  role_policy="tenant-alpha-oidc-policy"
 
 # Restart MinIO
 mc admin service restart myminio
 ```
 
-Map OIDC claims to policies:
+For claim-based OIDC authorization, configure your identity provider to return a claim value that matches the MinIO policy name:
 
-```bash
-# Map OIDC group to MinIO policy
-mc admin policy create myminio tenant-alpha-oidc-policy tenant-alpha-policy.json
-
-# Configure claim-based policy mapping
-mc admin config set myminio identity_openid \
-  claim_userinfo="enabled" \
-  redirect_uri="http://minio.example.com/oauth_callback"
+```json
+{
+  "policy": "tenant-alpha-oidc-policy"
+}
 ```
 
 ## Audit Logging per Tenant
@@ -499,8 +490,8 @@ mc mb ${MINIO_ALIAS}/${TENANT_NAME}-backups
 
 # Set quota if specified
 if [ -n "$STORAGE_QUOTA" ]; then
-  mc quota set ${MINIO_ALIAS}/${TENANT_NAME}-data --size $STORAGE_QUOTA
-  mc quota set ${MINIO_ALIAS}/${TENANT_NAME}-backups --size $STORAGE_QUOTA
+  mc admin bucket quota ${MINIO_ALIAS}/${TENANT_NAME}-data --hard $STORAGE_QUOTA
+  mc admin bucket quota ${MINIO_ALIAS}/${TENANT_NAME}-backups --hard $STORAGE_QUOTA
 fi
 
 # Create tenant policy
@@ -533,7 +524,7 @@ mc admin policy attach ${MINIO_ALIAS} ${TENANT_NAME}-policy --user ${TENANT_NAME
 SVC_ACCESS_KEY="${TENANT_NAME}-svc-$(openssl rand -hex 4)"
 SVC_SECRET_KEY=$(openssl rand -base64 32)
 
-mc admin user svcacct add ${MINIO_ALIAS} ${TENANT_NAME}-admin \
+mc admin accesskey create ${MINIO_ALIAS}/ ${TENANT_NAME}-admin \
   --access-key "$SVC_ACCESS_KEY" \
   --secret-key "$SVC_SECRET_KEY"
 
