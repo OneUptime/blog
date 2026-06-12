@@ -550,8 +550,8 @@ kafka-topics --bootstrap-server kafka:9092 \
 Solutions:
 
 ```properties
-# Increase parallelism
-tasks.max=4
+# Note: Debezium source connectors (PostgreSQL, MySQL) always use a single task,
+# so tasks.max does not increase parallelism. Tune throughput settings instead.
 
 # Increase batch size
 max.batch.size=4096
