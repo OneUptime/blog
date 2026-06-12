@@ -95,7 +95,7 @@ TTL timestamp + INTERVAL 7 DAY WHERE log_level = 'DEBUG',
     timestamp + INTERVAL 365 DAY WHERE log_level IN ('WARN', 'ERROR');
 ```
 
-Multiple TTL rules are evaluated in order. The first matching rule is applied.
+Each conditional `DELETE` rule applies to expired rows that satisfy its `WHERE` clause. Keep conditions mutually exclusive when rows should have exactly one retention period.
 
 ---
 
@@ -205,13 +205,13 @@ CREATE TABLE metrics_hourly
 (
     metric_name String,
     hour DateTime,
-    avg_value Float64,
-    min_value Float64,
-    max_value Float64,
-    count UInt64,
+    avg_value AggregateFunction(avg, Float64),
+    min_value AggregateFunction(min, Float64),
+    max_value AggregateFunction(max, Float64),
+    sample_count AggregateFunction(count),
     datacenter String
 )
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 ORDER BY (metric_name, datacenter, hour)
 TTL hour + INTERVAL 365 DAY;
 ```
@@ -224,10 +224,10 @@ CREATE MATERIALIZED VIEW metrics_hourly_mv TO metrics_hourly AS
 SELECT
     metric_name,
     toStartOfHour(timestamp) as hour,
-    avg(value) as avg_value,
-    min(value) as min_value,
-    max(value) as max_value,
-    count() as count,
+    avgState(value) as avg_value,
+    minState(value) as min_value,
+    maxState(value) as max_value,
+    countState() as sample_count,
     datacenter
 FROM metrics_detailed
 GROUP BY metric_name, hour, datacenter;
@@ -242,10 +242,20 @@ INSERT INTO metrics_detailed VALUES
 SELECT * FROM metrics_detailed WHERE timestamp > now() - INTERVAL 1 HOUR;
 
 -- Query historical aggregated data
-SELECT * FROM metrics_hourly WHERE hour > now() - INTERVAL 30 DAY;
+SELECT
+    metric_name,
+    hour,
+    avgMerge(avg_value) as avg_value,
+    minMerge(min_value) as min_value,
+    maxMerge(max_value) as max_value,
+    countMerge(sample_count) as count,
+    datacenter
+FROM metrics_hourly
+WHERE hour > now() - INTERVAL 30 DAY
+GROUP BY metric_name, hour, datacenter;
 ```
 
-### Alternative: Use TTL with GROUP BY (ClickHouse 22.1+)
+### Alternative: Use TTL with GROUP BY
 
 ```sql
 -- Single table with automatic rollup on TTL expiration
@@ -253,19 +263,19 @@ CREATE TABLE metrics_with_rollup
 (
     metric_name String,
     timestamp DateTime,
+    hour DateTime DEFAULT toStartOfHour(timestamp),
     value Float64,
     count UInt64 DEFAULT 1,
     host String,
     datacenter String
 )
 ENGINE = SummingMergeTree()
-ORDER BY (metric_name, datacenter, toStartOfHour(timestamp))
+ORDER BY (metric_name, datacenter, hour)
 -- After 7 days, aggregate into hourly buckets
 TTL timestamp + INTERVAL 7 DAY
-    GROUP BY metric_name, datacenter, toStartOfHour(timestamp)
+    GROUP BY metric_name, datacenter, hour
     SET value = sum(value),
-        count = sum(count),
-        timestamp = toStartOfHour(any(timestamp));
+        count = sum(count);
 ```
 
 ---
@@ -278,18 +288,18 @@ TTL operations happen during merges. You can control this behavior with several 
 -- Force immediate TTL processing (useful for testing)
 OPTIMIZE TABLE metrics FINAL;
 
--- System settings for TTL merge behavior
--- In users.xml or via SET commands
+-- MergeTree settings for TTL merge behavior
+-- Configure them globally in the <merge_tree> server config,
+-- or per table with ALTER TABLE ... MODIFY SETTING
 
 -- How often to check for TTL merges (default: 14400 seconds = 4 hours)
-SET merge_with_ttl_timeout = 3600;
+ALTER TABLE metrics MODIFY SETTING merge_with_ttl_timeout = 3600;
 
--- Minimum age of part before TTL merge (default: 0)
-SET min_age_to_force_merge_seconds = 86400;
+-- How often to check for recompression or GROUP BY TTL merges
+ALTER TABLE metrics MODIFY SETTING merge_with_recompression_ttl_timeout = 3600;
 
--- Priority of TTL delete vs TTL move merges
--- Higher value = higher priority for TTL operations
-SET merge_selector_algorithm_version = 2;
+-- Force regular merges when every part in the selected range is old enough
+ALTER TABLE metrics MODIFY SETTING min_age_to_force_merge_seconds = 86400;
 
 -- Per-table settings
 ALTER TABLE metrics MODIFY SETTING
@@ -337,7 +347,6 @@ SHOW CREATE TABLE metrics;
 
 -- Monitor TTL merge activity
 SELECT
-    event_time,
     table,
     elapsed,
     progress,
@@ -404,11 +413,11 @@ REMOVE TTL;
 -- Force TTL evaluation after modification
 OPTIMIZE TABLE metrics FINAL;
 
--- Or trigger non-final optimization (less resource intensive)
-OPTIMIZE TABLE metrics;
+-- Or materialize TTL directly
+ALTER TABLE metrics MATERIALIZE TTL;
 ```
 
-Note: After modifying TTL, the changes apply to new merges. Use `OPTIMIZE TABLE` to apply immediately.
+Note: After modifying TTL, the changes apply to new merges. Use `OPTIMIZE TABLE ... FINAL` or `ALTER TABLE ... MATERIALIZE TTL` to apply immediately.
 
 ---
 
