@@ -29,16 +29,18 @@ Key features include:
 
 ## Installing and Configuring Flask-SocketIO
 
-Install Flask-SocketIO with an async server. For production, use eventlet or gevent.
+Install Flask-SocketIO with a production server. For new deployments, use gevent or threaded workers with `simple-websocket`; eventlet is still supported by Flask-SocketIO, but new eventlet usage is discouraged by the eventlet project.
 
-```python
+```text
 # requirements.txt
 
 # Core dependencies for Flask-SocketIO
 flask>=2.0.0
 flask-socketio>=5.3.0
-eventlet>=0.33.0  # Async server (recommended for production)
+gevent>=22.0.0  # Async server
+gevent-websocket>=0.10.1  # WebSocket worker support for Gunicorn + gevent
 python-socketio>=5.0.0
+redis>=5.0.0  # Required when using Redis as a message queue
 ```
 
 Basic application setup with configuration options:
@@ -57,7 +59,7 @@ app.config['SECRET_KEY'] = 'your-secret-key'  # Required for session support
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",  # Allow all origins (configure for production)
-    async_mode='eventlet',  # Use eventlet for async (alternatives: gevent, threading)
+    async_mode='gevent',  # Use gevent for async (alternatives: threading, eventlet)
     ping_timeout=60,  # Seconds before considering connection dead
     ping_interval=25  # Seconds between ping packets
 )
@@ -77,20 +79,21 @@ Event handlers respond to client events. The `@socketio.on` decorator registers 
 # events.py
 # Event handlers for client communication
 from flask_socketio import SocketIO, emit
+from flask import request
 
 socketio = SocketIO()
 
 @socketio.on('connect')
-def handle_connect():
+def handle_connect(auth=None):
     """Called when a client connects"""
     print(f"Client connected: {request.sid}")  # request.sid is unique session ID
     # Connection is accepted by default
     # Return False to reject the connection
 
 @socketio.on('disconnect')
-def handle_disconnect():
+def handle_disconnect(reason):
     """Called when a client disconnects"""
-    print(f"Client disconnected: {request.sid}")
+    print(f"Client disconnected: {request.sid}, reason: {reason}")
 
 @socketio.on('message')
 def handle_message(data):
@@ -249,17 +252,18 @@ Namespaces let you split application logic into separate channels on a single co
 # namespaces.py
 # Organizing events with namespaces
 from flask_socketio import Namespace, emit, join_room
+from flask import request
 
 class ChatNamespace(Namespace):
     """Namespace for chat functionality at /chat"""
 
-    def on_connect(self):
+    def on_connect(self, auth=None):
         """Handle connection to /chat namespace"""
         print(f"Client connected to /chat: {request.sid}")
 
-    def on_disconnect(self):
+    def on_disconnect(self, reason):
         """Handle disconnection from /chat namespace"""
-        print(f"Client disconnected from /chat")
+        print(f"Client disconnected from /chat: {reason}")
 
     def on_send_message(self, data):
         """Handle send_message event in /chat namespace"""
@@ -278,7 +282,7 @@ class ChatNamespace(Namespace):
 class NotificationNamespace(Namespace):
     """Namespace for notifications at /notifications"""
 
-    def on_connect(self):
+    def on_connect(self, auth=None):
         """Client subscribes to notifications"""
         # Add to user-specific room for targeted notifications
         user_id = get_current_user_id()  # Your auth function
@@ -316,7 +320,7 @@ Authenticate WebSocket connections before allowing access. Use connect event han
 ```python
 # auth.py
 # WebSocket authentication patterns
-from flask_socketio import disconnect
+from flask_socketio import disconnect, emit
 from flask import request
 from functools import wraps
 import jwt
@@ -333,10 +337,11 @@ def authenticate_socket(f):
     return decorated
 
 @socketio.on('connect')
-def handle_connect():
-    """Authenticate connection using token from query string"""
-    # Get token from connection query string: io('http://host?token=xxx')
-    token = request.args.get('token')
+def handle_connect(auth=None):
+    """Authenticate connection using token from Socket.IO auth or query string"""
+    # Prefer Socket.IO auth: io('http://host', {auth: {token: 'xxx'}})
+    # request.args still supports query strings such as io('http://host?token=xxx')
+    token = (auth or {}).get('token') or request.args.get('token')
 
     if not token:
         print("Connection rejected: No token provided")
@@ -368,10 +373,10 @@ Session-based authentication using Flask-Login:
 # session_auth.py
 # Session-based WebSocket authentication with Flask-Login
 from flask_login import current_user
-from flask_socketio import disconnect
+from flask_socketio import disconnect, join_room
 
 @socketio.on('connect')
-def handle_connect():
+def handle_connect(auth=None):
     """Authenticate using Flask-Login session"""
     # current_user is available from Flask-Login
     if not current_user.is_authenticated:
@@ -392,6 +397,9 @@ For production deployments with multiple server instances, use Redis as a messag
 ```python
 # scaled_app.py
 # Flask-SocketIO with Redis for horizontal scaling
+from gevent import monkey
+monkey.patch_all()
+
 from flask import Flask
 from flask_socketio import SocketIO
 
@@ -403,7 +411,7 @@ app.config['SECRET_KEY'] = 'your-secret-key'
 socketio = SocketIO(
     app,
     message_queue='redis://localhost:6379',  # Redis connection URL
-    async_mode='eventlet',
+    async_mode='gevent',
     # Optional: specify channel prefix for multiple apps sharing Redis
     channel='flask-socketio'
 )
@@ -412,7 +420,7 @@ socketio = SocketIO(
 def handle_broadcast(data):
     """Message will be broadcast to clients on ALL server instances"""
     # Redis message queue ensures all servers receive this emit
-    socketio.emit('global_message', data, broadcast=True)
+    socketio.emit('global_message', data)
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000)
@@ -421,9 +429,9 @@ if __name__ == '__main__':
 Production deployment with Gunicorn:
 
 ```bash
-# Run with Gunicorn and eventlet workers
-# Use multiple workers for handling more connections
-gunicorn --worker-class eventlet -w 4 --bind 0.0.0.0:5000 app:app
+# Run with Gunicorn and a gevent WebSocket worker
+# Gunicorn's own load balancer does not support multiple workers for Socket.IO
+gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --bind 0.0.0.0:5000 app:app
 ```
 
 Docker Compose setup with Redis:
@@ -440,14 +448,14 @@ services:
 
   web:
     build: .
-    ports:
-      - "5000:5000"
+    expose:
+      - "5000"
     environment:
       - REDIS_URL=redis://redis:6379
     depends_on:
       - redis
     deploy:
-      replicas: 3  # Run 3 instances for load balancing
+      replicas: 3  # Run behind a sticky-session load balancer such as nginx
 ```
 
 ---
@@ -547,7 +555,7 @@ def client(app, socketio):
 
     @socketio.on('broadcast_test')
     def handle_broadcast(data):
-        socketio.emit('broadcasted', data, broadcast=True)
+        socketio.emit('broadcasted', data)
 
     # Create test client - no actual server needed
     return socketio.test_client(app)
@@ -618,7 +626,7 @@ def test_room_messaging(app, socketio):
 
 ## Best Practices Summary
 
-1. **Use eventlet or gevent** - Production deployments need async workers, not threading
+1. **Use a production server** - Use gevent, eventlet, or threaded workers with `simple-websocket`; avoid the Flask development server in production
 2. **Authenticate on connect** - Validate tokens or sessions before accepting connections
 3. **Implement heartbeats** - Flask-SocketIO handles this automatically with ping_timeout and ping_interval
 4. **Use Redis for scaling** - Required when running multiple server instances
