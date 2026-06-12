@@ -160,25 +160,40 @@ resource "aws_cloudwatch_metric_alarm" "cpu_burst_trigger" {
 
 When running on Kubernetes, combine the Horizontal Pod Autoscaler with Cluster Autoscaler for full burst capability.
 
-`k8s/cluster-autoscaler-config.yaml`
+`k8s/cluster-autoscaler-deployment.yaml`
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: cluster-autoscaler-config
+  name: cluster-autoscaler
   namespace: kube-system
-data:
-  # Burst-optimized settings
-  scale-down-delay-after-add: "5m"      # Wait before scaling down new nodes
-  scale-down-delay-after-failure: "1m"  # Quick retry on failure
-  scale-down-unneeded-time: "10m"       # Keep spare capacity longer
-  scale-up-from-zero: "true"            # Allow scaling from zero nodes
-  max-node-provision-time: "5m"         # Fail fast on slow provisioning
-  scan-interval: "10s"                  # Fast detection of pending pods
-  expander: "least-waste"               # Efficient node selection
-  skip-nodes-with-local-storage: "false"
-  balance-similar-node-groups: "true"   # Even distribution
+spec:
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+  template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
+    spec:
+      containers:
+        - name: cluster-autoscaler
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.32.0  # Match your Kubernetes minor version
+          command:
+            - ./cluster-autoscaler
+          args:
+            # Burst-optimized settings
+            - --cloud-provider=aws
+            - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/my-cluster
+            - --scale-down-delay-after-add=5m      # Wait before scaling down new nodes
+            - --scale-down-delay-after-failure=1m  # Quick retry on failure
+            - --scale-down-unneeded-time=10m       # Keep spare capacity longer
+            - --max-node-provision-time=5m         # Fail fast on slow provisioning
+            - --scan-interval=10s                  # Fast detection of pending pods
+            - --expander=least-waste               # Efficient node selection
+            - --skip-nodes-with-local-storage=false
+            - --balance-similar-node-groups=true   # Even distribution
 ```
 
 The flow of burst scaling in Kubernetes:
@@ -290,12 +305,12 @@ spec:
     spec:
       # Only run on spot instances
       nodeSelector:
-        node.kubernetes.io/lifecycle: spot
+        eks.amazonaws.com/capacityType: SPOT
 
       tolerations:
-        - key: "node.kubernetes.io/lifecycle"
+        - key: "eks.amazonaws.com/capacityType"
           operator: "Equal"
-          value: "spot"
+          value: "SPOT"
           effect: "NoSchedule"
 
       serviceAccountName: spot-handler
@@ -303,7 +318,7 @@ spec:
 
       containers:
         - name: handler
-          image: amazon/aws-node-termination-handler:v1.19.0
+          image: public.ecr.aws/aws-ec2/aws-node-termination-handler:v1.25.6
           env:
             - name: NODE_NAME
               valueFrom:
@@ -376,19 +391,7 @@ resource "aws_cloudfront_distribution" "burst_optimized" {
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
 
-    # Long TTLs to absorb burst
-    min_ttl     = 0
-    default_ttl = 3600      # 1 hour default
-    max_ttl     = 86400     # 24 hour max
-
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
-
-    # Cache based on Accept-Encoding for compression
+    # Cache policy defines cache key, compression, and TTL settings
     cache_policy_id = aws_cloudfront_cache_policy.optimized.id
   }
 
@@ -443,7 +446,7 @@ resource "aws_cloudfront_cache_policy" "optimized" {
     headers_config {
       header_behavior = "whitelist"
       headers {
-        items = ["Accept-Encoding", "Origin"]
+        items = ["Origin"]
       }
     }
     query_strings_config {
@@ -514,7 +517,6 @@ graph LR
 
 ```typescript
 import { SQSClient, SendMessageCommand, ReceiveMessageCommand, DeleteMessageCommand } from '@aws-sdk/client-sqs';
-import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 
 interface QueueConfig {
   queueUrl: string;
@@ -533,7 +535,6 @@ interface BurstMetrics {
 
 class BurstBuffer {
   private sqs: SQSClient;
-  private sns: SNSClient;
   private config: QueueConfig;
   private processing: boolean = false;
   private metrics: BurstMetrics = {
@@ -545,7 +546,6 @@ class BurstBuffer {
 
   constructor(config: QueueConfig) {
     this.sqs = new SQSClient({ region: process.env.AWS_REGION });
-    this.sns = new SNSClient({ region: process.env.AWS_REGION });
     this.config = config;
   }
 
@@ -564,8 +564,8 @@ class BurstBuffer {
           StringValue: request.priority || 'normal'
         }
       },
-      // Use message deduplication for idempotency
-      MessageDeduplicationId: request.idempotencyKey,
+      // FIFO queues require a group ID and use a deduplication ID for idempotency
+      MessageDeduplicationId: request.idempotencyKey || request.id,
       MessageGroupId: request.userId || 'default'
     });
 
@@ -973,9 +973,26 @@ Resources:
     Type: AWS::SNS::Topic
     Properties:
       TopicName: burst-budget-alerts
-      Subscription:
-        - Protocol: lambda
-          Endpoint: !GetAtt BurstControllerFunction.Arn
+
+  BurstAlertTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref BurstAlertTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowBudgetsToPublish
+            Effect: Allow
+            Principal:
+              Service: budgets.amazonaws.com
+            Action: SNS:Publish
+            Resource: !Ref BurstAlertTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub arn:${AWS::Partition}:budgets::${AWS::AccountId}:*
 ```
 
 ## Putting It All Together
