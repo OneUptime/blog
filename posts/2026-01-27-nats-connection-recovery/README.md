@@ -68,7 +68,7 @@ NATS clients provide callbacks for monitoring connection state changes. These ar
 // nats-connection.js
 // NATS connection manager with comprehensive status callbacks
 
-const { connect, Events } = require('nats');
+const { connect, Events, DebugEvents } = require('nats');
 
 class NATSConnectionManager {
   constructor(options = {}) {
@@ -116,83 +116,81 @@ class NATSConnectionManager {
   }
 
   setupStatusCallbacks() {
-    // Called when connection is lost
-    // This fires immediately when the TCP connection drops
-    this.nc.on(Events.Disconnect, (err) => {
-      this.isConnected = false;
-      this.lastDisconnectedAt = new Date();
-      this.reconnectAttempts = 0;
+    (async () => {
+      for await (const status of this.nc.status()) {
+        switch (status.type) {
+          // Called when connection is lost
+          // The status data is the server where the event took place
+          case Events.Disconnect:
+            this.isConnected = false;
+            this.lastDisconnectedAt = new Date();
+            this.reconnectAttempts = 0;
 
-      console.error('[NATS] Disconnected:', err?.message || 'Unknown reason');
+            console.error('[NATS] Disconnected from:', status.data);
 
-      // Emit event for application-level handling
-      this.onDisconnect?.(err);
-    });
+            // Emit event for application-level handling
+            this.onDisconnect?.(status.data);
+            break;
 
-    // Called when attempting to reconnect
-    // Fires for each reconnection attempt
-    this.nc.on(Events.Reconnecting, () => {
-      this.reconnectAttempts++;
+          // Called when attempting to reconnect
+          // Fires for each reconnection attempt
+          case DebugEvents.Reconnecting:
+            this.reconnectAttempts++;
 
-      console.log(`[NATS] Reconnecting... attempt ${this.reconnectAttempts}`);
+            console.log(`[NATS] Reconnecting... attempt ${this.reconnectAttempts}`);
 
-      // Emit event for metrics/monitoring
-      this.onReconnecting?.(this.reconnectAttempts);
-    });
+            // Emit event for metrics/monitoring
+            this.onReconnecting?.(this.reconnectAttempts);
+            break;
 
-    // Called when successfully reconnected
-    // Application can resume normal operations
-    this.nc.on(Events.Reconnect, () => {
-      this.isConnected = true;
-      this.lastConnectedAt = new Date();
+          // Called when successfully reconnected
+          // Application can resume normal operations
+          case Events.Reconnect:
+            this.isConnected = true;
+            this.lastConnectedAt = new Date();
 
-      const downtime = this.lastDisconnectedAt
-        ? Date.now() - this.lastDisconnectedAt.getTime()
-        : 0;
+            const downtime = this.lastDisconnectedAt
+              ? Date.now() - this.lastDisconnectedAt.getTime()
+              : 0;
 
-      console.log(`[NATS] Reconnected to ${this.nc.getServer()} after ${downtime}ms`);
-      console.log(`[NATS] Reconnect took ${this.reconnectAttempts} attempts`);
+            console.log(`[NATS] Reconnected to ${this.nc.getServer()} after ${downtime}ms`);
+            console.log(`[NATS] Reconnect took ${this.reconnectAttempts} attempts`);
 
-      // Reset counter after successful reconnect
-      this.reconnectAttempts = 0;
+            // Reset counter after successful reconnect
+            this.reconnectAttempts = 0;
 
-      // Emit event for application-level handling
-      this.onReconnect?.(this.nc.getServer());
-    });
+            // Emit event for application-level handling
+            this.onReconnect?.(this.nc.getServer());
+            break;
 
-    // Called when client receives update about cluster topology
-    // Useful for monitoring cluster health
-    this.nc.on(Events.Update, (update) => {
-      console.log('[NATS] Cluster update:', update);
-      this.onClusterUpdate?.(update);
+          // Called when client receives update about cluster topology
+          // Useful for monitoring cluster health
+          case Events.Update:
+            console.log('[NATS] Cluster update:', status.data);
+            this.onClusterUpdate?.(status.data);
+            break;
+
+          // Called for server-initiated errors
+          // These may or may not cause disconnection
+          case Events.Error:
+            console.error('[NATS] Error:', status.data);
+
+            this.onError?.(status.data);
+            break;
+        }
+      }
+    })().catch((err) => {
+      console.error('[NATS] Status listener failed:', err);
     });
 
     // Called when connection is closed (intentionally or after max retries)
     // No more reconnection attempts will be made
-    this.nc.on(Events.Close, () => {
+    this.nc.closed().then((err) => {
       this.isConnected = false;
 
-      console.log('[NATS] Connection closed');
+      console.log('[NATS] Connection closed', err ? err.message : '');
 
       this.onClose?.();
-    });
-
-    // Called for server-initiated errors
-    // These may or may not cause disconnection
-    this.nc.on(Events.Error, (err) => {
-      console.error('[NATS] Error:', err.message);
-
-      this.onError?.(err);
-    });
-
-    // Called when server sends informational messages
-    // Includes protocol-level information
-    this.nc.on(Events.ServerInfo, (info) => {
-      console.log('[NATS] Server info received:', {
-        serverId: info.server_id,
-        version: info.version,
-        cluster: info.cluster,
-      });
     });
   }
 
@@ -236,7 +234,9 @@ nats.onReconnect = (server) => {
 };
 
 // Connect and start
-await nats.connect();
+(async () => {
+  await nats.connect();
+})().catch(console.error);
 ```
 
 ### Go Implementation
@@ -320,7 +320,17 @@ func (cm *ConnectionManager) Connect() error {
 			}
 		}),
 
-		// Reconnect handler - fires on each attempt
+		// Reconnect error handler - fires when a reconnect attempt fails
+		nats.ReconnectErrHandler(func(nc *nats.Conn, err error) {
+			cm.mu.Lock()
+			cm.reconnectAttempts++
+			attempts := cm.reconnectAttempts
+			cm.mu.Unlock()
+
+			log.Printf("[NATS] Reconnect attempt %d failed: %v", attempts, err)
+		}),
+
+		// Reconnect handler - fires after a successful reconnect
 		nats.ReconnectHandler(func(nc *nats.Conn) {
 			cm.mu.Lock()
 			cm.isConnected = true
@@ -455,8 +465,8 @@ sequenceDiagram
 
     Note over Client: Enters Connected State
 
-    Client->>Server2: Re-subscribe to all topics
-    Client->>Server2: Flush buffered messages
+    Client->>Server2: Re-subscribe to core NATS subscriptions
+    Client->>Server2: Flush buffered core NATS messages
 
     Note over App: onReconnect callback fires
 ```
@@ -544,19 +554,21 @@ function sleep(ms) {
 }
 
 // Usage
-const nc = await connectWithExponentialBackoff({
-  servers: ['nats://nats-1:4222', 'nats://nats-2:4222'],
-  maxAttempts: 20,
-  initialDelay: 1000,
-  maxDelay: 30000,
-});
+(async () => {
+  const nc = await connectWithExponentialBackoff({
+    servers: ['nats://nats-1:4222', 'nats://nats-2:4222'],
+    maxAttempts: 20,
+    initialDelay: 1000,
+    maxDelay: 30000,
+  });
+})().catch(console.error);
 ```
 
 ---
 
 ## 4. Buffered Messages During Disconnect
 
-NATS clients can buffer messages during brief disconnections. Understanding this feature is crucial for data integrity.
+Core NATS clients can buffer messages during brief disconnections. Understanding this feature is crucial for data integrity.
 
 ### How Message Buffering Works
 
@@ -572,7 +584,7 @@ flowchart LR
         C -->|No| E[Queue in Buffer]
         E --> F{Buffer Full?}
         F -->|No| G[Wait for Reconnect]
-        F -->|Yes| H[Drop Oldest / Error]
+        F -->|Yes| H[Publish Error]
         G --> C
     end
 
@@ -581,13 +593,13 @@ flowchart LR
     end
 ```
 
-### Configuring Message Buffering
+### Using Message Buffering
 
 ```javascript
 // buffered-publishing.js
-// Configure and handle message buffering during disconnects
+// Handle message buffering during disconnects
 
-const { connect, ErrorCode } = require('nats');
+const { connect, ErrorCode, headers } = require('nats');
 
 async function setupBufferedConnection() {
   const nc = await connect({
@@ -596,11 +608,6 @@ async function setupBufferedConnection() {
     // Reconnection must be enabled for buffering to work
     reconnect: true,
     maxReconnectAttempts: -1,
-
-    // Buffer configuration
-    // reconnectBufSize: Maximum bytes to buffer during disconnect
-    // Default is 8MB (8 * 1024 * 1024)
-    reconnectBufSize: 16 * 1024 * 1024, // 16MB buffer
 
     // Connection settings
     timeout: 10000,
@@ -618,16 +625,9 @@ class BufferAwarePublisher {
   }
 
   async publish(subject, data, options = {}) {
-    // Check if we are connected
-    if (!this.nc.protocol?.connected) {
-      // Decide how to handle based on message importance
-      if (options.critical) {
-        // For critical messages, throw error to let caller handle
-        throw new Error('Not connected to NATS, cannot publish critical message');
-      }
-
-      // For non-critical, log warning and proceed (will buffer)
-      console.warn(`[NATS] Publishing to buffer while disconnected: ${subject}`);
+    // Do not publish after the connection is closed or draining
+    if (this.nc.isClosed() || this.nc.isDraining()) {
+      throw new Error('NATS connection is closed or draining');
     }
 
     // Track pending messages to prevent buffer overflow
@@ -636,17 +636,18 @@ class BufferAwarePublisher {
     try {
       // Publish with optional headers
       if (options.headers) {
-        const headers = this.nc.headers();
+        const msgHeaders = headers();
         for (const [key, value] of Object.entries(options.headers)) {
-          headers.set(key, value);
+          msgHeaders.set(key, value);
         }
-        this.nc.publish(subject, data, { headers });
+        this.nc.publish(subject, data, { headers: msgHeaders });
       } else {
         this.nc.publish(subject, data);
       }
 
-      // Optionally wait for flush to confirm delivery
-      if (options.waitForFlush) {
+      // Optionally wait for flush to confirm delivery.
+      // This is recommended for critical messages.
+      if (options.waitForFlush || options.critical) {
         await this.nc.flush();
       }
     } catch (err) {
@@ -682,30 +683,33 @@ class BufferAwarePublisher {
   getBufferStatus() {
     return {
       pending: this.pendingCount,
-      connected: this.nc.protocol?.connected || false,
+      closed: this.nc.isClosed(),
+      draining: this.nc.isDraining(),
     };
   }
 }
 
 // Usage with critical message handling
-const nc = await setupBufferedConnection();
-const publisher = new BufferAwarePublisher(nc);
+(async () => {
+  const nc = await setupBufferedConnection();
+  const publisher = new BufferAwarePublisher(nc);
 
-// Non-critical message - will buffer if disconnected
-await publisher.publish('logs.info', JSON.stringify({ msg: 'User logged in' }));
+  // Non-critical message - will buffer if disconnected
+  await publisher.publish('logs.info', JSON.stringify({ msg: 'User logged in' }));
 
-// Critical message - throws if disconnected
-try {
-  await publisher.publish(
-    'payments.process',
-    JSON.stringify({ orderId: '123', amount: 99.99 }),
-    { critical: true, waitForFlush: true }
-  );
-} catch (err) {
-  // Handle critical message failure
-  // Perhaps save to local queue for retry
-  await saveToLocalQueue('payments.process', { orderId: '123', amount: 99.99 });
-}
+  // Critical message - waits for flush and throws if delivery cannot be confirmed
+  try {
+    await publisher.publish(
+      'payments.process',
+      JSON.stringify({ orderId: '123', amount: 99.99 }),
+      { critical: true, waitForFlush: true }
+    );
+  } catch (err) {
+    // Handle critical message failure
+    // Perhaps save to local queue for retry
+    await saveToLocalQueue('payments.process', { orderId: '123', amount: 99.99 });
+  }
+})().catch(console.error);
 ```
 
 ### Handling Buffer Overflow
@@ -733,18 +737,23 @@ class ResilientPublisher extends EventEmitter {
       servers: this.servers,
       reconnect: true,
       maxReconnectAttempts: -1,
-      reconnectBufSize: 8 * 1024 * 1024, // 8MB
     });
 
-    this.nc.on(Events.Disconnect, () => {
-      this.isConnected = false;
-    });
+    (async () => {
+      for await (const status of this.nc.status()) {
+        if (status.type === Events.Disconnect) {
+          this.isConnected = false;
+        }
 
-    this.nc.on(Events.Reconnect, () => {
-      this.isConnected = true;
+        if (status.type === Events.Reconnect) {
+          this.isConnected = true;
 
-      // Drain overflow queue after reconnection
-      this.drainOverflowQueue();
+          // Drain overflow queue after reconnection
+          this.drainOverflowQueue();
+        }
+      }
+    })().catch((err) => {
+      console.error('[NATS] Status listener failed:', err);
     });
 
     this.isConnected = true;
@@ -813,22 +822,24 @@ class ResilientPublisher extends EventEmitter {
 }
 
 // Usage
-const publisher = new ResilientPublisher({
-  servers: ['nats://localhost:4222'],
-  maxOverflowQueue: 10000,
-});
+(async () => {
+  const publisher = new ResilientPublisher({
+    servers: ['nats://localhost:4222'],
+    maxOverflowQueue: 10000,
+  });
 
-publisher.on('overflow', ({ queueSize }) => {
-  // Alert monitoring system
-  metrics.gauge('nats.overflow_queue_size', queueSize);
-});
+  publisher.on('overflow', ({ queueSize }) => {
+    // Alert monitoring system
+    metrics.gauge('nats.overflow_queue_size', queueSize);
+  });
 
-publisher.on('messageLost', ({ subject }) => {
-  // Track lost messages
-  metrics.increment('nats.messages_lost', { subject });
-});
+  publisher.on('messageLost', ({ subject }) => {
+    // Track lost messages
+    metrics.increment('nats.messages_lost', { subject });
+  });
 
-await publisher.connect();
+  await publisher.connect();
+})().catch(console.error);
 ```
 
 ---
@@ -930,16 +941,22 @@ async function connectToCluster(options = {}) {
   console.log(`[NATS] Connected to: ${nc.getServer()}`);
 
   // Monitor server changes
-  nc.on(Events.Reconnect, () => {
-    console.log(`[NATS] Reconnected to: ${nc.getServer()}`);
-  });
+  (async () => {
+    for await (const status of nc.status()) {
+      if (status.type === Events.Reconnect) {
+        console.log(`[NATS] Reconnected to: ${nc.getServer()}`);
+      }
 
-  // Log discovered servers
-  nc.on(Events.Update, (update) => {
-    console.log('[NATS] Cluster topology update:', {
-      added: update.added,
-      deleted: update.deleted,
-    });
+      // Log discovered servers
+      if (status.type === Events.Update) {
+        console.log('[NATS] Cluster topology update:', {
+          added: status.data.added,
+          deleted: status.data.deleted,
+        });
+      }
+    }
+  })().catch((err) => {
+    console.error('[NATS] Status listener failed:', err);
   });
 
   return nc;
@@ -961,18 +978,14 @@ async function connectWithPreferredServer(options = {}) {
   try {
     // Try preferred server first with short timeout
     const nc = await connect({
-      servers: [preferredServer],
+      servers: [preferredServer, ...fallbackServers],
       timeout: 5000,
-      reconnect: false, // Do not reconnect if preferred fails
+      noRandomize: true, // Try the preferred server first
+      reconnect: true,
+      maxReconnectAttempts: -1,
     });
 
-    console.log('[NATS] Connected to preferred server');
-
-    // After connected, set up reconnection to any server
-    nc.on(Events.Disconnect, async () => {
-      // Preferred server lost, connect to cluster
-      await reconnectToCluster(fallbackServers);
-    });
+    console.log(`[NATS] Connected to ${nc.getServer()}`);
 
     return nc;
   } catch (err) {
@@ -1004,26 +1017,32 @@ class PartitionAwareConnection {
 
     let disconnectedAt = null;
 
-    this.nc.on(Events.Disconnect, () => {
-      disconnectedAt = Date.now();
-    });
+    (async () => {
+      for await (const status of this.nc.status()) {
+        if (status.type === Events.Disconnect) {
+          disconnectedAt = Date.now();
+        }
 
-    this.nc.on(Events.Reconnect, () => {
-      if (disconnectedAt) {
-        const partitionDuration = Date.now() - disconnectedAt;
+        if (status.type === Events.Reconnect && disconnectedAt) {
+          const partitionDuration = Date.now() - disconnectedAt;
 
-        // If partition was long, notify application
-        if (partitionDuration > 30000) {
-          console.warn(`[NATS] Long partition detected: ${partitionDuration}ms`);
+          // If partition was long, notify application
+          if (partitionDuration > 30000) {
+            console.warn(`[NATS] Long partition detected: ${partitionDuration}ms`);
 
-          // Application might need to reconcile state
-          this.partitionCallbacks.forEach(cb => cb({
-            duration: partitionDuration,
-            previousServer: this.options.servers[0], // Simplified
-            newServer: this.nc.getServer(),
-          }));
+            // Application might need to reconcile state
+            this.partitionCallbacks.forEach(cb => cb({
+              duration: partitionDuration,
+              previousServer: this.options.servers[0], // Simplified
+              newServer: this.nc.getServer(),
+            }));
+          }
+
+          disconnectedAt = null;
         }
       }
+    })().catch((err) => {
+      console.error('[NATS] Status listener failed:', err);
     });
 
     return this.nc;
@@ -1035,21 +1054,23 @@ class PartitionAwareConnection {
 }
 
 // Usage
-const conn = new PartitionAwareConnection({
-  servers: ['nats://nats-1:4222', 'nats://nats-2:4222'],
-});
+(async () => {
+  const conn = new PartitionAwareConnection({
+    servers: ['nats://nats-1:4222', 'nats://nats-2:4222'],
+  });
 
-conn.onPartitionRecovery(({ duration }) => {
-  console.log(`Recovering from ${duration}ms partition`);
+  conn.onPartitionRecovery(({ duration }) => {
+    console.log(`Recovering from ${duration}ms partition`);
 
-  // Refresh cached data that might be stale
-  refreshCaches();
+    // Refresh cached data that might be stale
+    refreshCaches();
 
-  // Re-sync any distributed state
-  synchronizeState();
-});
+    // Re-sync any distributed state
+    synchronizeState();
+  });
 
-await conn.connect();
+  await conn.connect();
+})().catch(console.error);
 ```
 
 ---
@@ -1062,7 +1083,7 @@ Complete production-ready configuration with all recovery options.
 // production-config.js
 // Production-ready NATS configuration
 
-const { connect, JSONCodec, Events } = require('nats');
+const { connect, JSONCodec, Events, DebugEvents } = require('nats');
 
 // JSON codec for structured messages
 const codec = JSONCodec();
@@ -1093,9 +1114,6 @@ async function createProductionConnection(serviceName) {
     reconnectTimeWait: 2000,         // 2 second base delay
     reconnectJitter: 1000,           // Up to 1 second jitter
     reconnectJitterTLS: 2000,        // More jitter for TLS
-
-    // Buffer for messages during disconnect
-    reconnectBufSize: 16 * 1024 * 1024, // 16MB
 
     // Connection timeouts
     timeout: 30000,                  // 30 second connection timeout
@@ -1129,46 +1147,51 @@ function setupConnectionMonitoring(nc, serviceName) {
     messagesReceived: 0,
   };
 
-  nc.on(Events.Disconnect, (err) => {
-    metrics.disconnections++;
+  (async () => {
+    for await (const status of nc.status()) {
+      if (status.type === Events.Disconnect) {
+        metrics.disconnections++;
 
-    console.error('[NATS] Disconnected', {
-      service: serviceName,
-      error: err?.message,
-      totalDisconnections: metrics.disconnections,
-    });
+        console.error('[NATS] Disconnected', {
+          service: serviceName,
+          server: status.data,
+          totalDisconnections: metrics.disconnections,
+        });
 
-    // Update health check status
-    healthCheck.setUnhealthy('nats', 'Disconnected from NATS');
-  });
+        // Update health check status
+        healthCheck.setUnhealthy('nats', 'Disconnected from NATS');
+      }
 
-  nc.on(Events.Reconnecting, () => {
-    console.log('[NATS] Reconnecting...', {
-      service: serviceName,
-    });
-  });
+      if (status.type === DebugEvents.Reconnecting) {
+        console.log('[NATS] Reconnecting...', {
+          service: serviceName,
+        });
+      }
 
-  nc.on(Events.Reconnect, () => {
-    metrics.reconnections++;
+      if (status.type === Events.Reconnect) {
+        metrics.reconnections++;
 
-    console.log('[NATS] Reconnected', {
-      service: serviceName,
-      server: nc.getServer(),
-      totalReconnections: metrics.reconnections,
-    });
+        console.log('[NATS] Reconnected', {
+          service: serviceName,
+          server: nc.getServer(),
+          totalReconnections: metrics.reconnections,
+        });
 
-    // Update health check status
-    healthCheck.setHealthy('nats');
-  });
+        // Update health check status
+        healthCheck.setHealthy('nats');
+      }
 
-  nc.on(Events.Error, (err) => {
-    metrics.errors++;
+      if (status.type === Events.Error) {
+        metrics.errors++;
 
-    console.error('[NATS] Error', {
-      service: serviceName,
-      error: err.message,
-      code: err.code,
-    });
+        console.error('[NATS] Error', {
+          service: serviceName,
+          error: status.data,
+        });
+      }
+    }
+  })().catch((err) => {
+    console.error('[NATS] Status listener failed:', err);
   });
 
   // Expose metrics for Prometheus/monitoring
@@ -1184,10 +1207,10 @@ class NATSHealthCheck {
 
   async check() {
     // Check if connection is active
-    if (!this.nc.protocol?.connected) {
+    if (this.nc.isClosed() || this.nc.isDraining()) {
       return {
         status: 'unhealthy',
-        message: 'Not connected to NATS',
+        message: 'NATS connection is closed or draining',
         lastError: this.lastError,
       };
     }
@@ -1199,12 +1222,7 @@ class NATSHealthCheck {
       return {
         status: 'healthy',
         server: this.nc.getServer(),
-        stats: {
-          inMsgs: this.nc.stats?.inMsgs || 0,
-          outMsgs: this.nc.stats?.outMsgs || 0,
-          inBytes: this.nc.stats?.inBytes || 0,
-          outBytes: this.nc.stats?.outBytes || 0,
-        },
+        stats: this.nc.stats(),
       };
     } catch (err) {
       this.lastError = err.message;
@@ -1282,10 +1300,10 @@ const metrics = {
     buckets: [0.1, 0.5, 1, 5, 10, 30, 60, 120],
   }),
 
-  // Message buffer size
-  bufferSize: new prometheus.Gauge({
-    name: 'nats_buffer_size_bytes',
-    help: 'Current size of message buffer',
+  // Application overflow queue size
+  overflowQueueSize: new prometheus.Gauge({
+    name: 'nats_overflow_queue_size',
+    help: 'Current size of the application overflow queue',
     labelNames: ['service'],
   }),
 
@@ -1333,42 +1351,52 @@ class MonitoredNATSConnection {
       1
     );
 
-    // Track disconnections
-    this.nc.on(Events.Disconnect, () => {
-      this.disconnectedAt = Date.now();
+    (async () => {
+      for await (const status of this.nc.status()) {
+        // Track disconnections
+        if (status.type === Events.Disconnect) {
+          this.disconnectedAt = Date.now();
 
-      metrics.connectionState.set(
-        { service: this.serviceName, server: 'disconnected' },
-        0
-      );
-    });
+          metrics.connectionState.set(
+            { service: this.serviceName, server: status.data || 'disconnected' },
+            0
+          );
+        }
 
-    // Track reconnections
-    this.nc.on(Events.Reconnect, () => {
-      // Record disconnection duration
-      if (this.disconnectedAt) {
-        const duration = (Date.now() - this.disconnectedAt) / 1000;
-        metrics.disconnectionDuration.observe(
-          { service: this.serviceName },
-          duration
-        );
-        this.disconnectedAt = null;
+        // Track reconnections
+        if (status.type === Events.Reconnect) {
+          // Record disconnection duration
+          if (this.disconnectedAt) {
+            const duration = (Date.now() - this.disconnectedAt) / 1000;
+            metrics.disconnectionDuration.observe(
+              { service: this.serviceName },
+              duration
+            );
+            this.disconnectedAt = null;
+          }
+
+          metrics.reconnections.inc({ service: this.serviceName });
+
+          metrics.connectionState.set(
+            { service: this.serviceName, server: this.nc.getServer() },
+            1
+          );
+        }
+
+        // Track errors
+        if (status.type === Events.Error) {
+          metrics.errors.inc({
+            service: this.serviceName,
+            type: 'async_error',
+          });
+        }
       }
-
-      metrics.reconnections.inc({ service: this.serviceName });
-
-      metrics.connectionState.set(
-        { service: this.serviceName, server: this.nc.getServer() },
-        1
-      );
-    });
-
-    // Track errors
-    this.nc.on(Events.Error, (err) => {
+    })().catch((err) => {
       metrics.errors.inc({
         service: this.serviceName,
-        type: err.code || 'unknown',
+        type: 'status_listener_failed',
       });
+      console.error('[NATS] Status listener failed:', err);
     });
 
     return this.nc;
@@ -1424,7 +1452,7 @@ flowchart TB
         A[Connection State] --> D[Dashboard]
         B[Reconnection Count] --> D
         C[Disconnection Duration] --> D
-        E[Buffer Size] --> D
+        E[Overflow Queue Size] --> D
         F[Publish Latency] --> D
     end
 
@@ -1432,7 +1460,7 @@ flowchart TB
         D --> G{Thresholds}
         G -->|Disconnected > 30s| H[Page On-Call]
         G -->|Reconnections > 10/min| I[Warning Alert]
-        G -->|Buffer > 80%| J[Critical Alert]
+        G -->|Overflow queue growing| J[Critical Alert]
     end
 ```
 
@@ -1448,27 +1476,29 @@ flowchart TB
 
 // PITFALL 1: Not handling connection errors
 // BAD
-const nc = await connect({ servers: ['nats://localhost:4222'] });
+connect({ servers: ['nats://localhost:4222'] });
 // If connection fails, unhandled promise rejection!
 
 // GOOD
-try {
-  const nc = await connect({ servers: ['nats://localhost:4222'] });
-} catch (err) {
-  console.error('Failed to connect:', err);
-  // Implement fallback or retry logic
-}
+(async () => {
+  try {
+    const nc = await connect({ servers: ['nats://localhost:4222'] });
+  } catch (err) {
+    console.error('Failed to connect:', err);
+    // Implement fallback or retry logic
+  }
+})().catch(console.error);
 
 // PITFALL 2: Publishing without checking connection state
 // BAD
-function publishEvent(nc, data) {
-  nc.publish('events', data); // May fail silently if disconnected
+function publishEventUnsafe(nc, data) {
+  nc.publish('events', data); // May throw if the connection is closed or draining
 }
 
 // GOOD
-function publishEvent(nc, data) {
-  if (!nc.protocol?.connected) {
-    throw new Error('Not connected to NATS');
+function publishEventSafe(nc, data) {
+  if (nc.isClosed() || nc.isDraining()) {
+    throw new Error('NATS connection is closed or draining');
   }
   nc.publish('events', data);
 }
@@ -1490,14 +1520,14 @@ process.on('SIGTERM', async () => {
 
 // PITFALL 4: Ignoring subscription errors after reconnect
 // BAD
-const sub = nc.subscribe('orders.*');
+const unmanagedSub = nc.subscribe('orders.*');
 // After reconnect, subscription is automatically restored
 // But any errors during processing might be swallowed
 
 // GOOD
-const sub = nc.subscribe('orders.*');
+const managedSub = nc.subscribe('orders.*');
 (async () => {
-  for await (const msg of sub) {
+  for await (const msg of managedSub) {
     try {
       await processOrder(msg);
     } catch (err) {
@@ -1512,13 +1542,17 @@ const sub = nc.subscribe('orders.*');
 
 // PITFALL 5: Not using request timeout
 // BAD
-const response = await nc.request('api.users.get', data);
-// May hang forever if responder is down
+(async () => {
+  const response = await nc.request('api.users.get', data);
+  // May wait for the client's default request timeout if responder is down
+})().catch(console.error);
 
 // GOOD
-const response = await nc.request('api.users.get', data, {
-  timeout: 5000, // 5 second timeout
-});
+(async () => {
+  const response = await nc.request('api.users.get', data, {
+    timeout: 5000, // 5 second timeout
+  });
+})().catch(console.error);
 ```
 
 ### Best Practices
@@ -1547,8 +1581,14 @@ class NATSClient {
     });
 
     // Re-setup subscriptions after reconnect if needed
-    this.nc.on(Events.Reconnect, () => {
-      this.onReconnect();
+    (async () => {
+      for await (const status of this.nc.status()) {
+        if (status.type === Events.Reconnect) {
+          this.onReconnect();
+        }
+      }
+    })().catch((err) => {
+      console.error('[NATS] Status listener failed:', err);
     });
 
     return this;
@@ -1663,30 +1703,32 @@ class CircuitBreaker {
 }
 
 // Usage
-const client = new NATSClient({
-  servers: ['nats://localhost:4222'],
-  name: 'my-service',
-});
+(async () => {
+  const client = new NATSClient({
+    servers: ['nats://localhost:4222'],
+    name: 'my-service',
+  });
 
-const breaker = new CircuitBreaker();
+  const breaker = new CircuitBreaker();
 
-await client.connect();
+  await client.connect();
 
-// Subscribe with error handling
-client.subscribe('orders.new', async (msg, order) => {
-  console.log('New order:', order);
+  // Subscribe with error handling
+  client.subscribe('orders.new', async (msg, order) => {
+    console.log('New order:', order);
 
-  // Use circuit breaker for downstream calls
-  await breaker.execute(() =>
-    client.request('inventory.reserve', { sku: order.sku })
-  );
-});
+    // Use circuit breaker for downstream calls
+    await breaker.execute(() =>
+      client.request('inventory.reserve', { sku: order.sku })
+    );
+  });
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  await client.close();
-  process.exit(0);
-});
+  // Graceful shutdown
+  process.on('SIGTERM', async () => {
+    await client.close();
+    process.exit(0);
+  });
+})().catch(console.error);
 ```
 
 ---
@@ -1697,7 +1739,7 @@ process.on('SIGTERM', async () => {
 |-----------------|------------|
 | **Connection Callbacks** | Handle disconnect, reconnect, and error events for visibility |
 | **Reconnection** | Use infinite retries with exponential backoff and jitter |
-| **Message Buffering** | Configure buffer size; implement overflow handling |
+| **Message Buffering** | Understand client buffer limits; implement overflow handling |
 | **Cluster Failover** | Provide multiple servers; enable automatic discovery |
 | **Health Checks** | Expose connection state for Kubernetes probes |
 | **Graceful Shutdown** | Always drain before closing to flush pending messages |
