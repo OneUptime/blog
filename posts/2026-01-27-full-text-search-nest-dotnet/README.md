@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, Elasticsearch, NEST, Full-Text Search, Search, Observability
 
-Description: Learn how to implement full-text search in .NET applications using NEST, the official Elasticsearch client, with indexing, querying, faceted search, and relevance tuning.
+Description: Learn how to implement full-text search in .NET applications using NEST 7.x, the legacy high-level Elasticsearch .NET client, with indexing, querying, faceted search, and relevance tuning.
 
 ---
 
-Full-text search lets users find content using natural language queries instead of exact matches. Elasticsearch combined with NEST, its official .NET client, provides powerful search capabilities including fuzzy matching, highlighting, facets, and relevance scoring.
+Full-text search lets users find content using natural language queries instead of exact matches. Elasticsearch combined with NEST 7.x, its legacy high-level .NET client, provides powerful search capabilities including fuzzy matching, highlighting, facets, and relevance scoring. For new Elasticsearch 8.x and 9.x applications, Elastic recommends the newer `Elastic.Clients.Elasticsearch` package instead.
 
 ## Architecture Overview
 
@@ -39,7 +39,11 @@ flowchart LR
 Add the NEST package to your project.
 
 ```bash
-dotnet add package NEST
+# .NET 10 SDK and later
+dotnet package add NEST --version 7.17.5
+
+# .NET 9 SDK and earlier
+dotnet add package NEST --version 7.17.5
 ```
 
 ## Configuring the Elasticsearch Client
@@ -96,7 +100,7 @@ public class ProductDocument
     public string Id { get; set; } = string.Empty;
 
     // Text field for full-text search
-    [Text(Analyzer = "standard", Boost = 2.0)]
+    [Text(Analyzer = "standard")]
     public string Name { get; set; } = string.Empty;
 
     // Text with keyword sub-field for both search and aggregations
@@ -202,7 +206,6 @@ public class SearchIndexService
                     .Text(t => t
                         .Name(n => n.Name)
                         .Analyzer("standard")
-                        .Boost(2.0)
                         .Fields(f => f
                             .Text(st => st
                                 .Name("autocomplete")
@@ -305,13 +308,14 @@ public class ProductIndexer
     }
 
     // Update a document
-    public async Task UpdateAsync(string id, Action<ProductDocument> updateAction)
+    public async Task UpdateAsync(string id, ProductDocument document)
     {
+        document.Id = id;
+        document.UpdatedAt = DateTime.UtcNow;
+
         var response = await _client.UpdateAsync<ProductDocument>(id, u => u
             .Index(IndexName)
-            .Script(s => s
-                .Source("ctx._source.updatedAt = params.now")
-                .Params(p => p.Add("now", DateTime.UtcNow)))
+            .Doc(document)
             .Refresh(Refresh.WaitFor));
 
         if (!response.IsValid)
