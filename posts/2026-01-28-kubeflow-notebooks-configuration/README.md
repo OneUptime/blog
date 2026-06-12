@@ -67,7 +67,7 @@ kubectl get storageclass
 The simplest approach is through the Kubeflow dashboard:
 
 1. Navigate to Notebooks in the left sidebar
-2. Click "New Notebook"
+2. Click "New Server"
 3. Fill in the configuration form
 
 ### Using kubectl and YAML
@@ -87,7 +87,7 @@ spec:
     spec:
       containers:
         - name: ml-dev-notebook
-          image: kubeflownotebookswg/jupyter-scipy:v1.8.0
+          image: ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-scipy:v1.10.0
           resources:
             requests:
               cpu: "1"
@@ -136,7 +136,7 @@ The default images work for basic tasks, but ML projects often need specific pac
 
 ```dockerfile
 # Start from Kubeflow's base image
-FROM kubeflownotebookswg/jupyter-scipy:v1.8.0
+FROM ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-scipy:v1.10.0
 
 # Switch to root for package installation
 USER root
@@ -218,7 +218,7 @@ spec:
     spec:
       containers:
         - name: notebook
-          image: kubeflownotebookswg/jupyter-scipy:v1.8.0
+          image: ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-scipy:v1.10.0
           volumeMounts:
             # User workspace
             - mountPath: /home/jovyan
@@ -337,7 +337,7 @@ spec:
     spec:
       containers:
         - name: notebook
-          image: kubeflownotebookswg/jupyter-scipy:v1.8.0
+          image: ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-scipy:v1.10.0
           env:
             - name: MLFLOW_TRACKING_URI
               value: "http://mlflow.kubeflow.svc:5000"
@@ -376,31 +376,16 @@ kubectl create secret generic git-credentials \
 
 ## Configuring Notebook Idle Culling
 
-Automatically stop idle notebooks to save resources:
+Automatically stop idle notebooks to save resources by enabling culling on the notebook controller:
 
-```yaml
-apiVersion: kubeflow.org/v1
-kind: Notebook
-metadata:
-  name: auto-cull-notebook
-  namespace: kubeflow-user
-  annotations:
-    # Cull after 30 minutes of inactivity
-    notebooks.kubeflow.org/http-rewrite-uri: "/"
-    kubeflow-resource-stopped: "false"
-spec:
-  template:
-    metadata:
-      annotations:
-        # Enable culling
-        notebooks.kubeflow.org/last-activity-check-timestamp: ""
-    spec:
-      containers:
-        - name: notebook
-          image: kubeflownotebookswg/jupyter-scipy:v1.8.0
+```bash
+kubectl -n kubeflow set env deployment/notebook-controller-deployment \
+  ENABLE_CULLING=true \
+  CULL_IDLE_TIME=30 \
+  IDLENESS_CHECK_PERIOD=1
 ```
 
-Configure the culling controller in the Kubeflow installation:
+If your Kubeflow distribution exposes Helm values for the notebook controller, configure the equivalent culling policy there:
 
 ```yaml
 # In your Kubeflow configuration
@@ -429,7 +414,7 @@ spec:
         node-type: high-memory
       containers:
         - name: notebook
-          image: kubeflownotebookswg/jupyter-scipy:v1.8.0
+          image: ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-scipy:v1.10.0
           resources:
             requests:
               memory: "64Gi"
@@ -457,7 +442,7 @@ spec:
         dedicated: ml-workloads
       containers:
         - name: notebook
-          image: kubeflownotebookswg/jupyter-scipy:v1.8.0
+          image: ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-scipy:v1.10.0
 ```
 
 ## Troubleshooting Common Issues
@@ -472,7 +457,7 @@ kubectl get pods -n kubeflow-user -l app=notebook-name
 kubectl describe pod <pod-name> -n kubeflow-user
 
 # Check notebook controller logs
-kubectl logs -n kubeflow -l app=notebook-controller-deployment
+kubectl logs -n kubeflow -l app=notebook-controller
 ```
 
 ### Storage Issues
@@ -509,7 +494,6 @@ Create notebooks programmatically:
 #!/usr/bin/env python3
 """Script to create Kubeflow notebooks with standard configurations."""
 
-import yaml
 from kubernetes import client, config
 
 def create_notebook(name: str, namespace: str, image: str, cpu: str, memory: str, storage: str):
@@ -518,8 +502,25 @@ def create_notebook(name: str, namespace: str, image: str, cpu: str, memory: str
     # Load kubeconfig
     config.load_kube_config()
 
-    # Create custom objects API
+    # Create APIs
+    core_api = client.CoreV1Api()
     api = client.CustomObjectsApi()
+    pvc_name = f"{name}-pvc"
+
+    pvc_spec = client.V1PersistentVolumeClaim(
+        metadata=client.V1ObjectMeta(name=pvc_name, namespace=namespace),
+        spec=client.V1PersistentVolumeClaimSpec(
+            access_modes=["ReadWriteOnce"],
+            resources=client.V1VolumeResourceRequirements(
+                requests={"storage": storage}
+            )
+        )
+    )
+
+    core_api.create_namespaced_persistent_volume_claim(
+        namespace=namespace,
+        body=pvc_spec
+    )
 
     notebook_spec = {
         "apiVersion": "kubeflow.org/v1",
@@ -545,7 +546,7 @@ def create_notebook(name: str, namespace: str, image: str, cpu: str, memory: str
                     }],
                     "volumes": [{
                         "name": "workspace",
-                        "persistentVolumeClaim": {"claimName": f"{name}-pvc"}
+                        "persistentVolumeClaim": {"claimName": pvc_name}
                     }]
                 }
             }
@@ -560,13 +561,13 @@ def create_notebook(name: str, namespace: str, image: str, cpu: str, memory: str
         plural="notebooks",
         body=notebook_spec
     )
-    print(f"Notebook {name} created in namespace {namespace}")
+    print(f"Notebook {name} and PVC {pvc_name} created in namespace {namespace}")
 
 if __name__ == "__main__":
     create_notebook(
         name="dev-notebook",
         namespace="kubeflow-user",
-        image="kubeflownotebookswg/jupyter-scipy:v1.8.0",
+        image="ghcr.io/kubeflow/kubeflow/notebook-servers/jupyter-scipy:v1.10.0",
         cpu="2",
         memory="4Gi",
         storage="20Gi"
