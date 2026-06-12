@@ -73,7 +73,7 @@ spec:
     spec:
       containers:
         - name: mlflow
-          image: ghcr.io/mlflow/mlflow:v2.8.0
+          image: ghcr.io/mlflow/mlflow:v3.13.0
           command:
             - mlflow
             - server
@@ -547,6 +547,14 @@ class ExperimentTracker:
         self.run = mlflow.start_run(run_name=run_name, tags=tags)
         return self
 
+    def __enter__(self):
+        """Enter the active MLflow run context."""
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """End the active MLflow run context."""
+        self.end_run()
+
     def log_epoch(self, epoch: int, metrics: dict):
         """Log metrics for a training epoch."""
         for key, value in metrics.items():
@@ -630,13 +638,11 @@ def check_and_alert(
         f1_threshold: Minimum acceptable F1 score
         accuracy_threshold: Minimum acceptable accuracy
     """
-    import json
     import requests
-    import os
 
-    # Read metrics (simplified - in practice, parse from artifact)
-    f1_score = float(os.environ.get("F1_SCORE", 0))
-    accuracy = float(os.environ.get("ACCURACY", 0))
+    # Read metrics from the Kubeflow Metrics artifact metadata
+    f1_score = float(metrics.metadata.get("f1_score", 0))
+    accuracy = float(metrics.metadata.get("accuracy", 0))
 
     alerts = []
 
@@ -734,7 +740,7 @@ def experiment_monitoring_pipeline(
     # Check and alert
     from experiment_alerts import check_and_alert
 
-    if slack_webhook:
+    with dsl.If(slack_webhook != ""):
         alert_task = check_and_alert(
             metrics=train_task.outputs["metrics"],
             slack_webhook_url=slack_webhook
