@@ -57,8 +57,6 @@ spec:
     - kind: deny
       schedule: '0 9 * * 1-5'
       duration: 8h
-      applications:
-        - '*'
       namespaces:
         - production
 ```
@@ -117,7 +115,7 @@ spec:
 
 ```mermaid
 flowchart TD
-    A[Sync Request] --> B{Any allow window defined?}
+    A[Sync Request] --> B{Any matching allow window defined?}
     B -->|No| C[Sync Allowed]
     B -->|Yes| D{Currently in allow window?}
     D -->|Yes| E{Any deny window active?}
@@ -126,7 +124,7 @@ flowchart TD
     E -->|Yes| F
 ```
 
-When allow windows are defined, syncs are blocked outside those windows. If no allow windows exist, syncs are permitted by default (unless blocked by deny windows).
+When matching allow windows are defined, syncs are blocked outside those windows. If no matching allow windows exist, syncs are permitted by default (unless blocked by deny windows).
 
 ## Deny Windows
 
@@ -187,6 +185,8 @@ syncWindows:
 Wildcards work with `*`:
 - `payment-*` matches `payment-service`, `payment-api`, etc.
 - `*` matches everything
+
+When you specify more than one selector type in the same window, ArgoCD matches them with OR logic by default. For example, `applications: ['*']` plus `namespaces: ['production']` matches all applications because the application selector matches everything. Use only the selector you need, or set `andOperator: true` when the same application must match multiple selector types.
 
 ## Multiple Sync Windows
 
@@ -303,8 +303,6 @@ spec:
       schedule: '0 2 * * 6'
       duration: 6h
       timeZone: 'America/New_York'
-      applications:
-        - '*'
       namespaces:
         - 'production'
 ```
@@ -477,7 +475,7 @@ kubectl get application myapp -n argocd -o yaml
 The ArgoCD UI shows sync window status:
 - Green: Sync allowed
 - Red: Sync blocked by window
-- Yellow: Manual sync only
+- Orange: Manual sync only
 
 ## Troubleshooting
 
