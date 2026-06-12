@@ -672,7 +672,7 @@ async def list_products(
     in_stock: Optional[bool] = Query(None, description="Filter by stock availability"),
     search: Optional[str] = Query(None, max_length=100, description="Search in name"),
     sort_by: Optional[str] = Query(None, description="Field to sort by"),
-    sort_dir: Optional[str] = Query("ASC", regex="^(ASC|DESC)$"),
+    sort_dir: Optional[str] = Query("ASC", pattern="^(ASC|DESC)$"),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100)
 ):
@@ -924,11 +924,8 @@ class QueryParamFilter extends BaseFilterHandler {
 
   protected async process(context: FilterContext): Promise<FilterContext> {
     for (const [key, value] of Object.entries(context.params)) {
-      // Parse field name and operator from key
-      const match = key.match(/^(\w+)(?:_(eq|ne|gt|gte|lt|lte|in|contains))?$/);
-      if (!match) continue;
-
-      const [, field, operator = 'eq'] = match;
+      // Parse field name and operator suffix from keys like total_gte or created_at_lt
+      const { field, operator } = this.parseFieldAndOperator(key);
 
       // Skip if field not allowed
       if (!this.allowedFields.includes(field)) {
@@ -937,7 +934,9 @@ class QueryParamFilter extends BaseFilterHandler {
       }
 
       // Validate and convert value type
-      const convertedValue = this.convertValue(field, value);
+      const convertedValue = operator === 'in'
+        ? this.convertListValue(field, value)
+        : this.convertValue(field, value);
       if (convertedValue === null) {
         context.metadata.errors.push(`Invalid value for ${field}`);
         continue;
@@ -954,6 +953,20 @@ class QueryParamFilter extends BaseFilterHandler {
     return context;
   }
 
+  private parseFieldAndOperator(key: string): { field: string; operator: string } {
+    const operators = ['contains', 'gte', 'lte', 'eq', 'ne', 'gt', 'lt', 'in'];
+    const matchedOperator = operators.find(op => key.endsWith(`_${op}`));
+
+    if (!matchedOperator) {
+      return { field: key, operator: 'eq' };
+    }
+
+    return {
+      field: key.slice(0, -(matchedOperator.length + 1)),
+      operator: matchedOperator
+    };
+  }
+
   private convertValue(field: string, value: unknown): unknown {
     const type = this.fieldTypes[field] || 'string';
 
@@ -962,6 +975,7 @@ class QueryParamFilter extends BaseFilterHandler {
         const num = Number(value);
         return isNaN(num) ? null : num;
       case 'boolean':
+        if (typeof value === 'boolean') return value;
         if (value === 'true') return true;
         if (value === 'false') return false;
         return null;
@@ -971,6 +985,15 @@ class QueryParamFilter extends BaseFilterHandler {
       default:
         return String(value);
     }
+  }
+
+  private convertListValue(field: string, value: unknown): unknown[] | null {
+    const rawValues = Array.isArray(value) ? value : String(value).split(',');
+    const convertedValues = rawValues.map(item =>
+      this.convertValue(field, typeof item === 'string' ? item.trim() : item)
+    );
+
+    return convertedValues.some(item => item === null) ? null : convertedValues;
   }
 }
 
@@ -987,7 +1010,8 @@ class RateLimitFilter extends BaseFilterHandler {
     const limit = this.tierLimits[tier] || this.tierLimits['default'] || 100;
 
     // Enforce maximum limit regardless of what user requests
-    const requestedLimit = context.params['limit'] as number || limit;
+    const parsedLimit = Number(context.params['limit']);
+    const requestedLimit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : limit;
     context.params['limit'] = Math.min(requestedLimit, limit);
 
     context.metadata.appliedFilters.push(`RateLimitFilter (max: ${limit})`);
@@ -1092,31 +1116,36 @@ function buildQueryFromConditions(conditions: QueryCondition[]): object {
 
   for (const condition of conditions) {
     const { field, operator, value } = condition;
+    const current = where[field];
+    const existing =
+      current && typeof current === 'object' && !Array.isArray(current)
+        ? current as Record<string, unknown>
+        : {};
 
     switch (operator) {
       case 'eq':
         where[field] = value;
         break;
       case 'ne':
-        where[field] = { $ne: value };
+        where[field] = { ...existing, $ne: value };
         break;
       case 'gt':
-        where[field] = { $gt: value };
+        where[field] = { ...existing, $gt: value };
         break;
       case 'gte':
-        where[field] = { $gte: value };
+        where[field] = { ...existing, $gte: value };
         break;
       case 'lt':
-        where[field] = { $lt: value };
+        where[field] = { ...existing, $lt: value };
         break;
       case 'lte':
-        where[field] = { $lte: value };
+        where[field] = { ...existing, $lte: value };
         break;
       case 'in':
-        where[field] = { $in: value };
+        where[field] = { ...existing, $in: value };
         break;
       case 'contains':
-        where[field] = { $regex: value, $options: 'i' };
+        where[field] = { ...existing, $regex: value, $options: 'i' };
         break;
     }
   }
@@ -1460,6 +1489,14 @@ interface ProductSearchParams {
 }
 
 function buildProductSearchQuery(params: ProductSearchParams): { sql: string; params: unknown[] } {
+  const sortableFields: Record<string, string> = {
+    name: 'p.name',
+    price: 'p.price',
+    created_at: 'p.created_at',
+    category: 'c.name',
+    brand: 'b.name'
+  };
+
   const query = QueryBuilder
     .select(
       'p.id',
@@ -1506,9 +1543,9 @@ function buildProductSearchQuery(params: ProductSearchParams): { sql: string; pa
   }
 
   // Sorting
-  const sortField = params.sortBy || 'p.created_at';
-  const sortDir = params.sortDir || 'DESC';
-  query.orderBy(sortField, sortDir);
+  const sortField = params.sortBy ? sortableFields[params.sortBy] : 'p.created_at';
+  const sortDir = params.sortDir === 'ASC' ? 'ASC' : 'DESC';
+  query.orderBy(sortField || 'p.created_at', sortDir);
 
   // Pagination
   const page = params.page || 1;
@@ -1640,7 +1677,7 @@ async function cachedQuery<T>(
   }
 
   const result = await queryFn();
-  await redis.setex(cacheKey, ttlSeconds, JSON.stringify(result));
+  await redis.set(cacheKey, JSON.stringify(result), 'EX', ttlSeconds);
   return result;
 }
 ```
