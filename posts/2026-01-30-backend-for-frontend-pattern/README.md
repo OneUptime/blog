@@ -121,7 +121,7 @@ mobile-bff/
 // src/app.ts
 import express from 'express';
 import compression from 'compression';
-import { authMiddleware } from './middleware/auth.middleware';
+import { mobileAuthMiddleware } from './middleware/auth.middleware';
 import { routes } from './routes';
 
 const app = express();
@@ -129,7 +129,7 @@ const app = express();
 // Aggressive compression for mobile
 app.use(compression({ level: 9 }));
 app.use(express.json());
-app.use(authMiddleware);
+app.use(mobileAuthMiddleware);
 app.use('/api/mobile/v1', routes);
 
 export default app;
@@ -515,7 +515,7 @@ const cache = new NodeCache({ stdTTL: 300 });
 async function getCachedDashboard(userId: string) {
   const cacheKey = `dashboard:${userId}`;
 
-  const cached = cache.get(cacheKey);
+  const cached = cache.get<Record<string, any>>(cacheKey);
   if (cached) {
     return { ...cached, _cached: true };
   }
@@ -541,6 +541,7 @@ Each BFF can handle authentication differently based on client needs.
 ```typescript
 // src/middleware/auth.middleware.ts
 import jwt from 'jsonwebtoken';
+import { Request, Response, NextFunction } from 'express';
 
 interface TokenPayload {
   userId: string;
@@ -594,11 +595,13 @@ async function refreshToken(payload: TokenPayload): Promise<string> {
 ```typescript
 // src/middleware/web-auth.middleware.ts
 import session from 'express-session';
-import csrf from 'csurf';
-import RedisStore from 'connect-redis';
+import { doubleCsrf } from 'csrf-csrf';
+import { RedisStore } from 'connect-redis';
 import { createClient } from 'redis';
+import { Request, Response, NextFunction } from 'express';
 
 const redisClient = createClient({ url: process.env.REDIS_URL });
+redisClient.connect().catch(console.error);
 
 export const sessionMiddleware = session({
   store: new RedisStore({ client: redisClient }),
@@ -613,7 +616,15 @@ export const sessionMiddleware = session({
   }
 });
 
-export const csrfProtection = csrf({ cookie: false });
+export const { generateToken, doubleCsrfProtection: csrfProtection } = doubleCsrf({
+  getSecret: () => process.env.CSRF_SECRET!,
+  cookieName: 'csrf-token',
+  cookieOptions: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    sameSite: 'strict'
+  }
+});
 
 export function webAuthMiddleware(req: Request, res: Response, next: NextFunction) {
   if (!req.session?.userId) {
@@ -630,6 +641,8 @@ export function webAuthMiddleware(req: Request, res: Response, next: NextFunctio
 ```typescript
 // src/controllers/auth.controller.ts
 import { OAuth2Client } from 'google-auth-library';
+import { Request, Response } from 'express';
+import crypto from 'crypto';
 
 const oauthClient = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID,
@@ -639,16 +652,25 @@ const oauthClient = new OAuth2Client(
 
 export class AuthController {
   getLoginUrl(req: Request, res: Response) {
+    const state = crypto.randomBytes(32).toString('hex');
+    req.session.oauthState = state;
+    req.session.returnTo = sanitizeReturnTo(req.query.returnTo as string);
+
     const url = oauthClient.generateAuthUrl({
       access_type: 'offline',
       scope: ['email', 'profile'],
-      state: req.query.returnTo as string
+      state
     });
     res.json({ url });
   }
 
   async handleCallback(req: Request, res: Response) {
     const { code, state } = req.query;
+
+    if (!state || state !== req.session.oauthState) {
+      return res.status(400).json({ error: 'Invalid OAuth state' });
+    }
+    delete req.session.oauthState;
 
     const { tokens } = await oauthClient.getToken(code as string);
     oauthClient.setCredentials(tokens);
@@ -670,8 +692,15 @@ export class AuthController {
     req.session.userId = user.id;
     req.session.isAdmin = true;
 
-    res.redirect(state as string || '/admin');
+    res.redirect(req.session.returnTo || '/admin');
   }
+}
+
+function sanitizeReturnTo(returnTo?: string): string {
+  if (!returnTo?.startsWith('/')) {
+    return '/admin';
+  }
+  return returnTo.startsWith('//') ? '/admin' : returnTo;
 }
 ```
 
@@ -770,7 +799,7 @@ Instead of REST endpoints, you can use GraphQL to let clients specify exactly wh
 
 ```typescript
 // src/schema/types.ts
-import { gql } from 'apollo-server-express';
+import gql from 'graphql-tag';
 
 export const typeDefs = gql`
   type User {
@@ -936,23 +965,15 @@ spec:
 ```yaml
 # Kong Gateway configuration
 
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
-metadata:
-  name: mobile-bff-ingress
-route:
-  protocols:
-    - https
-  strip_path: true
-  preserve_host: true
----
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: mobile-bff
   annotations:
-    konghq.com/override: mobile-bff-ingress
     konghq.com/plugins: rate-limiting,cors
+    konghq.com/protocols: "https"
+    konghq.com/strip-path: "true"
+    konghq.com/preserve-host: "true"
 spec:
   ingressClassName: kong
   rules:
