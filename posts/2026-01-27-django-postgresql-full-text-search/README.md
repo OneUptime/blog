@@ -232,7 +232,7 @@ def search_with_highlights(request):
     })
 ```
 
-In your template, use the `safe` filter to render the HTML:
+In your template, use the `safe` filter to render the HTML only if the highlighted content is trusted or has been sanitized:
 
 ```html
 <!-- search_results.html -->
@@ -248,7 +248,7 @@ In your template, use the `safe` filter to render the HTML:
 
 ## Search Configuration for Language Support
 
-PostgreSQL full-text search supports different languages for stemming and stop words. The default is 'english', but you can configure this for other languages.
+PostgreSQL full-text search supports different languages for stemming and stop words. If you do not specify a configuration, PostgreSQL uses the database's `default_text_search_config`, but you can configure this for other languages.
 
 ```python
 # views.py
@@ -256,11 +256,17 @@ from django.contrib.postgres.search import SearchVector, SearchQuery
 
 def search_multilingual(request):
     query = request.GET.get('q', '')
-    language = request.GET.get('lang', 'english')
+    requested_language = request.GET.get('lang', 'english')
 
     # Supported languages include: danish, dutch, english, finnish,
     # french, german, hungarian, italian, norwegian, portuguese,
     # romanian, russian, simple, spanish, swedish, turkish
+    supported_languages = {
+        'danish', 'dutch', 'english', 'finnish', 'french', 'german',
+        'hungarian', 'italian', 'norwegian', 'portuguese', 'romanian',
+        'russian', 'simple', 'spanish', 'swedish', 'turkish',
+    }
+    language = requested_language if requested_language in supported_languages else 'english'
 
     if query:
         articles = Article.objects.annotate(
@@ -375,8 +381,7 @@ class Article(models.Model):
             GinIndex(fields=['search_vector']),
 
             # Trigram index for fuzzy search on title
-            # Requires: from django.contrib.postgres.indexes import GistIndex
-            # and 'gin_trgm_ops' opclass
+            # Requires the pg_trgm extension and the 'gin_trgm_ops' opclass
             GinIndex(
                 name='title_trgm_idx',
                 fields=['title'],
@@ -496,8 +501,7 @@ For the best user experience, combine full-text search for relevance with trigra
 
 ```python
 # views.py
-from django.db.models import F, Value
-from django.db.models.functions import Greatest
+from django.db.models import F, Q
 from django.contrib.postgres.search import (
     SearchVector, SearchQuery, SearchRank, TrigramSimilarity
 )
@@ -513,7 +517,7 @@ def combined_search(request):
         # Combine full-text rank with trigram similarity
         # This handles both relevant matches and typo tolerance
         articles = Article.objects.annotate(
-            # Full-text search rank (0 to 1)
+            # Full-text search rank (higher is more relevant)
             fts_rank=SearchRank(search_vector, search_query),
             # Trigram similarity on title (0 to 1)
             trgm_similarity=TrigramSimilarity('title', query),
@@ -521,7 +525,7 @@ def combined_search(request):
             combined_score=F('fts_rank') * 0.7 + F('trgm_similarity') * 0.3
         ).filter(
             # Match if either full-text or trigram finds something
-            models.Q(fts_rank__gt=0.01) | models.Q(trgm_similarity__gt=0.3)
+            Q(fts_rank__gt=0.01) | Q(trgm_similarity__gt=0.3)
         ).order_by('-combined_score')
     else:
         articles = Article.objects.none()
@@ -584,7 +588,7 @@ Combining multiple search queries with boolean operators:
 
 ```python
 # Combine queries with boolean operators
-from django.contrib.postgres.search import SearchQuery
+from django.contrib.postgres.search import SearchQuery, SearchVector
 
 # AND: both terms must be present
 query_and = SearchQuery('python') & SearchQuery('django')
