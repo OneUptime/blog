@@ -46,8 +46,8 @@ Here is how you might implement this in a Node.js Express handler:
 // Simple to implement but has performance issues at scale
 app.get('/api/users', async (req, res) => {
   // Parse pagination parameters with sensible defaults
-  const page = parseInt(req.query.page) || 1;
-  const limit = Math.min(parseInt(req.query.limit) || 20, 100); // Cap at 100
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100); // Cap at 100
   const offset = (page - 1) * limit;
 
   // Execute paginated query
@@ -95,13 +95,13 @@ The cursor typically encodes the last seen value of the sort field. For a simple
 // Cursor-based pagination implementation
 // Better performance and consistency for large datasets
 app.get('/api/users', async (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
 
-  // Decode cursor (base64-encoded JSON with last seen ID)
+  // Decode cursor (base64url-encoded JSON with last seen ID)
   let cursor = null;
   if (req.query.cursor) {
     try {
-      cursor = JSON.parse(Buffer.from(req.query.cursor, 'base64').toString());
+      cursor = JSON.parse(Buffer.from(req.query.cursor, 'base64url').toString());
     } catch (e) {
       return res.status(400).json({ error: 'Invalid cursor' });
     }
@@ -132,7 +132,7 @@ app.get('/api/users', async (req, res) => {
 
   // Generate next cursor from last item
   const nextCursor = hasMore
-    ? Buffer.from(JSON.stringify({ id: users[users.length - 1].id })).toString('base64')
+    ? Buffer.from(JSON.stringify({ id: users[users.length - 1].id })).toString('base64url')
     : null;
 
   res.json({
@@ -148,7 +148,7 @@ app.get('/api/users', async (req, res) => {
 **Pros:**
 - Consistent performance regardless of position in dataset
 - Handles insertions and deletions gracefully
-- No skipped or duplicated items when data changes
+- Reduces skipped or duplicated items when data changes, as long as the sort key is stable
 
 **Cons:**
 - Cannot jump to arbitrary pages
@@ -174,9 +174,9 @@ Here is a more complete implementation handling multiple sort fields:
 ```python
 # Keyset pagination in Python with SQLAlchemy
 
-# Uses tuple comparison for efficient index-based filtering
+from datetime import datetime
 from flask import Flask, request, jsonify
-from sqlalchemy import and_, or_, tuple_
+from sqlalchemy import and_, or_
 
 app = Flask(__name__)
 
@@ -185,7 +185,7 @@ def list_articles():
     limit = min(int(request.args.get('limit', 20)), 100)
 
     # Parse keyset parameters (last seen values)
-    after_date = request.args.get('after_date')
+    after_date_param = request.args.get('after_date')
     after_id = request.args.get('after_id')
 
     query = Article.query.order_by(
@@ -194,14 +194,19 @@ def list_articles():
     )
 
     # Apply keyset filter if continuing from previous page
-    if after_date and after_id:
-        # Tuple comparison handles the multi-column ordering correctly
+    if after_date_param and after_id:
+        try:
+            after_date = datetime.fromisoformat(after_date_param)
+            after_id = int(after_id)
+        except ValueError:
+            return jsonify({'error': 'Invalid keyset parameters'}), 400
+
         query = query.filter(
             or_(
                 Article.published_at < after_date,
                 and_(
                     Article.published_at == after_date,
-                    Article.id < int(after_id)
+                    Article.id < after_id
                 )
             )
         )
@@ -266,13 +271,22 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
     // Parse seek parameters
     limit := 20
     if l := r.URL.Query().Get("limit"); l != "" {
-        limit = min(parseInt(l), 100)
+        parsedLimit, err := strconv.Atoi(l)
+        if err != nil || parsedLimit < 1 {
+            http.Error(w, "invalid limit", http.StatusBadRequest)
+            return
+        }
+        limit = min(parsedLimit, 100)
     }
 
-    var seekID *int64
+    var seekID any
     if s := r.URL.Query().Get("seek_after"); s != "" {
-        id := parseInt(s)
-        seekID = &id
+        id, err := strconv.ParseInt(s, 10, 64)
+        if err != nil {
+            http.Error(w, "invalid seek_after", http.StatusBadRequest)
+            return
+        }
+        seekID = id
     }
 
     // Build query with seek condition
@@ -294,8 +308,15 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
     users := make([]User, 0, limit)
     for rows.Next() {
         var u User
-        rows.Scan(&u.ID, &u.Name, &u.Email)
+        if err := rows.Scan(&u.ID, &u.Name, &u.Email); err != nil {
+            http.Error(w, err.Error(), 500)
+            return
+        }
         users = append(users, u)
+    }
+    if err := rows.Err(); err != nil {
+        http.Error(w, err.Error(), 500)
+        return
     }
 
     // Check for more results and trim
@@ -314,7 +335,9 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
         resp.LastID = users[len(users)-1].ID
     }
 
-    json.NewEncoder(w).Encode(resp)
+    if err := json.NewEncoder(w).Encode(resp); err != nil {
+        http.Error(w, err.Error(), 500)
+    }
 }
 ```
 
@@ -357,7 +380,7 @@ Here is a quick reference for common use cases:
 
 ## Performance Comparison
 
-Testing with a 10 million row table shows the performance difference clearly:
+Illustrative tests with a 10 million row table often show the performance difference clearly:
 
 | Strategy | Page 1 | Page 100 | Page 10000 |
 |----------|--------|----------|------------|
@@ -365,7 +388,7 @@ Testing with a 10 million row table shows the performance difference clearly:
 | Cursor | 2ms | 2ms | 2ms |
 | Keyset | 2ms | 2ms | 2ms |
 
-The offset performance degrades linearly because the database must scan and discard all skipped rows. Cursor and keyset maintain constant time regardless of position.
+The offset performance typically degrades as the offset grows because the database must step past skipped rows. Cursor and keyset pagination can stay close to constant time with the right indexes.
 
 ## Wrapping Up
 
