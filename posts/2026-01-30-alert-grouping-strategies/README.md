@@ -217,22 +217,22 @@ route:
   routes:
     # Critical alerts: shorter wait for faster response
     # Trade-off: may send multiple notifications for cascading failures
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       group_wait: 10s
       receiver: 'pagerduty-critical'
 
     # Batch processing alerts: longer wait to collect related issues
     # These run on schedules, so a 2 minute wait is acceptable
-    - match:
-        type: batch_job
+    - matchers:
+        - type="batch_job"
       group_wait: 2m
       receiver: 'batch-team'
 
     # Infrastructure alerts: medium wait for correlation
     # Allows time for dependent service alerts to group together
-    - match:
-        category: infrastructure
+    - matchers:
+        - category="infrastructure"
       group_wait: 45s
       receiver: 'infra-team'
 ```
@@ -293,22 +293,22 @@ route:
   routes:
     # High-severity: shorter interval for visibility
     # Engineers need to know scope is expanding quickly
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       group_interval: 1m
       receiver: 'pagerduty'
 
     # Warning alerts: longer interval reduces noise
     # These are important but not urgent
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       group_interval: 10m
       receiver: 'slack-warnings'
 
     # Noisy alert sources: aggressive batching
     # Kubernetes pod restarts can be very chatty
-    - match:
-        alertname: PodRestartingFrequently
+    - matchers:
+        - alertname="PodRestartingFrequently"
       group_interval: 15m
       receiver: 'slack-k8s'
 ```
@@ -341,25 +341,25 @@ global:
   smtp_smarthost: 'smtp.example.com:587'
   smtp_from: 'alertmanager@example.com'
   smtp_auth_username: 'alertmanager'
-  smtp_auth_password: '${SMTP_PASSWORD}'
+  smtp_auth_password_file: '/etc/alertmanager/secrets/smtp_password'
 
 # Inhibition rules prevent notification spam
 # When a critical alert fires, suppress related warnings
 inhibit_rules:
   # If a cluster is down, suppress individual service alerts
-  - source_match:
-      severity: 'critical'
-      alertname: 'ClusterDown'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+      - alertname="ClusterDown"
+    target_matchers:
+      - severity="warning"
     # Only inhibit if the cluster label matches
     equal: ['cluster']
 
   # If database is down, suppress connection errors from services
-  - source_match:
-      alertname: 'DatabaseDown'
-    target_match:
-      alertname: 'DatabaseConnectionError'
+  - source_matchers:
+      - alertname="DatabaseDown"
+    target_matchers:
+      - alertname="DatabaseConnectionError"
     equal: ['database', 'env']
 
 route:
@@ -383,35 +383,35 @@ route:
   # Child routes for specific alert handling
   routes:
     # Critical production alerts go to PagerDuty
-    - match:
-        severity: critical
-        env: production
+    - matchers:
+        - severity="critical"
+        - env="production"
       receiver: 'pagerduty-critical'
       # Faster response for critical issues
       group_wait: 15s
       group_interval: 2m
-      # Continue matching other routes (for slack notification)
+      # Continue matching later sibling routes when applicable
       continue: true
 
     # Database team handles all database alerts
-    - match_re:
-        alertname: '^(Database|MySQL|PostgreSQL|Redis).*'
+    - matchers:
+        - alertname=~"^(Database|MySQL|PostgreSQL|Redis).*"
       receiver: 'database-team'
       group_by: ['alertname', 'database', 'cluster']
       group_wait: 30s
       group_interval: 5m
 
     # Infrastructure alerts grouped by cluster
-    - match:
-        category: infrastructure
+    - matchers:
+        - category="infrastructure"
       receiver: 'infrastructure-team'
       group_by: ['cluster', 'region']
       group_wait: 45s
       group_interval: 5m
 
     # Warning alerts go to Slack with longer intervals
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'slack-warnings'
       group_wait: 1m
       group_interval: 10m
@@ -421,7 +421,7 @@ receivers:
   # Default Slack channel for general alerts
   - name: 'default-slack'
     slack_configs:
-      - api_url: '${SLACK_WEBHOOK_URL}'
+      - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
         channel: '#alerts-general'
         title: '{{ .GroupLabels.alertname }} - {{ .GroupLabels.service }}'
         text: |
@@ -435,9 +435,9 @@ receivers:
   # PagerDuty for critical alerts
   - name: 'pagerduty-critical'
     pagerduty_configs:
-      - service_key: '${PAGERDUTY_SERVICE_KEY}'
+      - routing_key: 'YOUR_PAGERDUTY_ROUTING_KEY'
         severity: critical
-        description: '{{ .GroupLabels.alertname }}: {{ .Annotations.summary }}'
+        description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
         details:
           service: '{{ .GroupLabels.service }}'
           environment: '{{ .GroupLabels.env }}'
@@ -446,7 +446,7 @@ receivers:
   # Database team Slack channel
   - name: 'database-team'
     slack_configs:
-      - api_url: '${SLACK_WEBHOOK_URL}'
+      - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
         channel: '#database-alerts'
         title: 'Database Alert: {{ .GroupLabels.alertname }}'
         text: |
@@ -459,14 +459,14 @@ receivers:
   # Infrastructure team Slack channel
   - name: 'infrastructure-team'
     slack_configs:
-      - api_url: '${SLACK_WEBHOOK_URL}'
+      - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
         channel: '#infra-alerts'
         title: 'Infrastructure Alert: {{ .GroupLabels.cluster }}'
 
   # Warning alerts channel
   - name: 'slack-warnings'
     slack_configs:
-      - api_url: '${SLACK_WEBHOOK_URL}'
+      - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
         channel: '#alerts-warnings'
         color: 'warning'
 ```
