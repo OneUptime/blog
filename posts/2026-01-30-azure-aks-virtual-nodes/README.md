@@ -131,7 +131,7 @@ az network vnet subnet create \
     --resource-group $RESOURCE_GROUP \
     --vnet-name $VNET_NAME \
     --name $ACI_SUBNET_NAME \
-    --address-prefix 10.241.0.0/16 \
+    --address-prefixes 10.241.0.0/16 \
     --delegations Microsoft.ContainerInstance/containerGroups
 ```
 
@@ -193,6 +193,22 @@ az aks enable-addons \
     --name $CLUSTER_NAME \
     --addons virtual-node \
     --subnet-name $ACI_SUBNET_NAME
+
+# Grant the virtual-node add-on identity access to the ACI subnet
+NODE_RESOURCE_GROUP=$(az aks show \
+    --resource-group $RESOURCE_GROUP \
+    --name $CLUSTER_NAME \
+    --query nodeResourceGroup -o tsv)
+
+PRINCIPAL_ID=$(az identity show \
+    --resource-group $NODE_RESOURCE_GROUP \
+    --name aciconnectorlinux-$CLUSTER_NAME \
+    --query principalId -o tsv)
+
+az role assignment create \
+    --assignee $PRINCIPAL_ID \
+    --role "Network Contributor" \
+    --scope $ACI_SUBNET_ID
 ```
 
 ### Verify Virtual Node is Running
@@ -210,7 +226,7 @@ kubectl get nodes
 
 ## Scheduling Pods to Virtual Nodes
 
-There are two ways to schedule pods to virtual nodes: using nodeSelector or tolerations.
+There are two ways to schedule pods to virtual nodes: using nodeSelector or node affinity. In both cases, the pod also needs tolerations for the virtual node taints.
 
 ### Method 1: Using nodeSelector
 
@@ -240,7 +256,7 @@ spec:
   # Schedule to the virtual node
   nodeSelector:
     kubernetes.io/role: agent
-    beta.kubernetes.io/os: linux
+    kubernetes.io/os: linux
     type: virtual-kubelet
   # Virtual nodes have a taint that must be tolerated
   tolerations:
@@ -456,9 +472,9 @@ Virtual nodes have specific limitations you must understand before adoption.
 | DaemonSets | Not applicable |
 | Privileged containers | Not supported |
 | Host networking | Not supported |
-| Persistent volumes | Azure Files only |
-| GPU workloads | Supported (specific SKUs) |
-| Init containers | Supported |
+| Persistent volumes | Azure Files inline volumes only; PV/PVC not supported |
+| GPU workloads | Not supported for virtual network deployments |
+| Init containers | Not supported |
 | Service mesh | Limited support |
 | hostPath volumes | Not supported |
 
@@ -514,7 +530,7 @@ startupProbe:
 
 **4. Use Azure Files for Persistence**
 
-ACI supports Azure Files volumes. Avoid workloads requiring block storage.
+ACI supports Azure Files as inline volumes. Avoid workloads requiring block storage or PersistentVolumeClaims.
 
 ```yaml
 apiVersion: v1
@@ -543,7 +559,7 @@ spec:
 
 **5. Implement Graceful Shutdown**
 
-ACI sends SIGTERM and waits 30 seconds before SIGKILL. Handle signals properly.
+Virtual nodes don't support Kubernetes container lifecycle hooks. Handle shutdown signals in your application code instead of relying on preStop hooks.
 
 ```yaml
 spec:
@@ -551,10 +567,7 @@ spec:
   containers:
     - name: app
       # Your app should handle SIGTERM
-      lifecycle:
-        preStop:
-          exec:
-            command: ["/bin/sh", "-c", "sleep 5"]
+      image: myapp:latest
 ```
 
 ## Cost Optimization
@@ -581,15 +594,13 @@ flowchart TD
 
 ### Calculate ACI Costs
 
-ACI charges per second based on:
-- vCPU: ~$0.000012/vCPU/second
-- Memory: ~$0.0000012/GB/second
+ACI charges per second based on the requested vCPU and memory for the container group. Check the current Azure pricing page for your region before estimating production costs.
 
 ```bash
 # Example: 0.5 vCPU, 1GB memory pod running for 1 hour
-# vCPU cost: 0.5 * 0.000012 * 3600 = $0.0216
-# Memory cost: 1 * 0.0000012 * 3600 = $0.00432
-# Total: ~$0.026/hour per pod
+# vCPU cost: 0.5 * <vCPU-second price> * 3600
+# Memory cost: 1 * <GB-second price> * 3600
+# Total: vCPU cost + memory cost
 
 # Compare with a D2s_v3 VM at ~$0.096/hour that can run 4 similar pods
 # VM cost per pod: ~$0.024/hour
@@ -611,8 +622,10 @@ kubectl describe pod <pod-name>
 # - ACI quota exceeded
 # - Region does not support required container size
 
-# Check ACI quota
-az container list --resource-group MC_${RESOURCE_GROUP}_${CLUSTER_NAME}_${LOCATION}
+# Check ACI quota usage for the region
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+az quota usage list \
+    --scope /subscriptions/$SUBSCRIPTION_ID/providers/Microsoft.ContainerInstance/locations/$LOCATION
 ```
 
 ### Pod Fails to Start
@@ -658,6 +671,20 @@ az aks disable-addons \
     --addons virtual-node
 
 # Delete ACI subnet (optional)
+SAL_ID=$(az network vnet subnet show \
+    --resource-group $RESOURCE_GROUP \
+    --vnet-name $VNET_NAME \
+    --name $ACI_SUBNET_NAME \
+    --query id -o tsv)/providers/Microsoft.ContainerInstance/serviceAssociationLinks/default
+
+az resource delete --ids $SAL_ID --api-version 2021-10-01
+
+az network vnet subnet update \
+    --resource-group $RESOURCE_GROUP \
+    --vnet-name $VNET_NAME \
+    --name $ACI_SUBNET_NAME \
+    --remove delegations
+
 az network vnet subnet delete \
     --resource-group $RESOURCE_GROUP \
     --vnet-name $VNET_NAME \
