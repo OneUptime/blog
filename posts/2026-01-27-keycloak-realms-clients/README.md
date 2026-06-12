@@ -80,7 +80,7 @@ Import it with:
 
 ## Client Types Explained
 
-Keycloak supports three client types, each for different use cases.
+Keycloak supports confidential and public clients for most modern use cases. Bearer-only is still recognized by Keycloak but is deprecated.
 
 ### Confidential Clients
 
@@ -140,7 +140,7 @@ For browser-based SPAs and mobile apps that cannot keep secrets.
 
 ### Bearer-Only Clients
 
-For APIs that only validate tokens and never initiate login flows.
+For legacy APIs that only validate tokens and never initiate login flows.
 
 ```json
 {
@@ -208,7 +208,7 @@ curl -X POST \
 
 Resource Owner Password Flow
 
-Only for trusted applications - avoid in production when possible.
+Only for trusted first-party applications - avoid in production when possible and prefer Authorization Code Flow with PKCE for user sign-in.
 
 ```bash
 curl -X POST \
@@ -279,7 +279,7 @@ CLIENT_ID=$(./kcadm.sh get clients -r mycompany --fields id,clientId | \
   jq -r '.[] | select(.clientId=="frontend-spa") | .id')
 
 # Assign as default scope
-./kcadm.sh update clients/$CLIENT_ID/default-client-scopes/$SCOPE_ID -r mycompany
+./kcadm.sh update clients/$CLIENT_ID/default-client-scopes/$SCOPE_ID -r mycompany -n
 ```
 
 ## Protocol Mappers for Token Customization
@@ -455,7 +455,11 @@ USER_ID=$(./kcadm.sh get users -r mycompany -q username=john.doe --fields id | \
   jq -r '.[0].id')
 
 # Add user to group
-./kcadm.sh update users/$USER_ID/groups/$GROUP_ID -r mycompany
+./kcadm.sh update users/$USER_ID/groups/$GROUP_ID -r mycompany \
+  -s realm=mycompany \
+  -s userId=$USER_ID \
+  -s groupId=$GROUP_ID \
+  -n
 
 # Assign realm role to user
 ./kcadm.sh add-roles -r mycompany \
@@ -507,7 +511,9 @@ TOKEN_RESPONSE=$(curl -s -X POST \
 ACCESS_TOKEN=$(echo $TOKEN_RESPONSE | jq -r '.access_token')
 
 # Decode and inspect JWT (without validation - for debugging only)
-echo $ACCESS_TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
+PAYLOAD=$(echo "$ACCESS_TOKEN" | cut -d'.' -f2 | tr '_-' '/+')
+printf '%s' "$PAYLOAD" | awk '{ while (length($0) % 4) $0 = $0 "="; print }' | \
+  base64 -d 2>/dev/null | jq .
 ```
 
 ### Validate Token at Introspection Endpoint
