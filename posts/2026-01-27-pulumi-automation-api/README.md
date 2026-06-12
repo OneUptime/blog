@@ -48,6 +48,8 @@ flowchart TB
 
 ### Installation
 
+The Automation API uses the Pulumi CLI under the hood, so make sure the Pulumi CLI is installed and available on your `PATH`, or install it programmatically with `PulumiCommand.install()`.
+
 ```bash
 # TypeScript/JavaScript
 
@@ -67,12 +69,10 @@ go get github.com/pulumi/pulumi/sdk/v3/go/auto
 // This example demonstrates creating AWS S3 infrastructure programmatically
 // using the Pulumi Automation API with an inline program definition
 
-import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 import {
     LocalWorkspace,
     InlineProgramArgs,
-    Stack,
 } from "@pulumi/pulumi/automation";
 
 // Define the inline Pulumi program
@@ -81,12 +81,16 @@ import {
 const pulumiProgram = async () => {
     // Create an S3 bucket with versioning enabled
     const bucket = new aws.s3.Bucket("automation-bucket", {
-        versioning: {
-            enabled: true,
-        },
         tags: {
             Environment: "automation-demo",
             ManagedBy: "pulumi-automation-api",
+        },
+    });
+
+    new aws.s3.BucketVersioning("automation-bucket-versioning", {
+        bucket: bucket.id,
+        versioningConfiguration: {
+            status: "Enabled",
         },
     });
 
@@ -154,20 +158,30 @@ def pulumi_program():
     # Create an S3 bucket with server-side encryption
     bucket = aws.s3.Bucket(
         "automation-bucket",
-        versioning=aws.s3.BucketVersioningArgs(
-            enabled=True,
-        ),
-        server_side_encryption_configuration=aws.s3.BucketServerSideEncryptionConfigurationArgs(
-            rule=aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                    sse_algorithm="AES256",
-                ),
-            ),
-        ),
         tags={
             "Environment": "automation-demo",
             "ManagedBy": "pulumi-automation-api",
         },
+    )
+
+    aws.s3.BucketVersioning(
+        "automation-bucket-versioning",
+        bucket=bucket.id,
+        versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+            status="Enabled",
+        ),
+    )
+
+    aws.s3.BucketServerSideEncryptionConfiguration(
+        "automation-bucket-encryption",
+        bucket=bucket.id,
+        rules=[
+            aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                    sse_algorithm="AES256",
+                ),
+            )
+        ],
     )
 
     # Export outputs that can be retrieved after deployment
@@ -257,7 +271,6 @@ import {
     DestroyResult,
     OutputMap,
 } from "@pulumi/pulumi/automation";
-import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 
 // Infrastructure definition for a web application stack
@@ -527,13 +540,21 @@ function createTenantProgram(tenant: TenantConfig) {
         const privateSubnet = new aws.ec2.Subnet(`${tenant.name}-private`, {
             vpcId: vpc.id,
             cidrBlock: "10.0.2.0/24",
+            availabilityZone: `${tenant.region}a`,
             tags: { Name: `${tenant.name}-private`, Tenant: tenant.name },
+        });
+
+        const privateSubnet2 = new aws.ec2.Subnet(`${tenant.name}-private-2`, {
+            vpcId: vpc.id,
+            cidrBlock: "10.0.3.0/24",
+            availabilityZone: `${tenant.region}b`,
+            tags: { Name: `${tenant.name}-private-2`, Tenant: tenant.name },
         });
 
         // Conditionally create database if enabled
         if (tenant.features.database) {
             const dbSubnetGroup = new aws.rds.SubnetGroup(`${tenant.name}-db-subnet`, {
-                subnetIds: [privateSubnet.id],
+                subnetIds: [privateSubnet.id, privateSubnet2.id],
                 tags: { Tenant: tenant.name },
             });
 
@@ -716,7 +737,7 @@ flowchart TB
 // Enables developers to request infrastructure through a simple REST API
 
 import express, { Request, Response } from "express";
-import { LocalWorkspace, Stack } from "@pulumi/pulumi/automation";
+import { LocalWorkspace } from "@pulumi/pulumi/automation";
 import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 
@@ -741,11 +762,13 @@ interface EnvironmentTemplate {
 const templates: Record<string, EnvironmentTemplate> = {
     "web-app": {
         name: "Web Application",
-        description: "EC2 instance with ALB and S3 bucket for static assets",
+        description: "EC2 instance and S3 bucket for static assets",
         program: async () => {
-            const bucket = new aws.s3.Bucket("static-assets", {
-                website: {
-                    indexDocument: "index.html",
+            const bucket = new aws.s3.Bucket("static-assets");
+            const website = new aws.s3.BucketWebsiteConfiguration("static-assets-website", {
+                bucket: bucket.id,
+                indexDocument: {
+                    suffix: "index.html",
                 },
             });
 
@@ -758,8 +781,19 @@ const templates: Record<string, EnvironmentTemplate> = {
                 ],
             });
 
+            const ami = aws.ec2.getAmiOutput({
+                mostRecent: true,
+                owners: ["amazon"],
+                filters: [
+                    {
+                        name: "name",
+                        values: ["amzn2-ami-hvm-*-x86_64-gp2"],
+                    },
+                ],
+            });
+
             const instance = new aws.ec2.Instance("web-server", {
-                ami: "ami-0c55b159cbfafe1f0", // Amazon Linux 2
+                ami: ami.id,
                 instanceType: "t3.micro",
                 vpcSecurityGroupIds: [sg.id],
                 tags: { Name: "web-server" },
@@ -769,13 +803,13 @@ const templates: Record<string, EnvironmentTemplate> = {
                 instanceId: instance.id,
                 publicIp: instance.publicIp,
                 bucketName: bucket.id,
-                websiteUrl: bucket.websiteEndpoint,
+                websiteUrl: website.websiteEndpoint,
             };
         },
     },
     "data-pipeline": {
         name: "Data Pipeline",
-        description: "S3 bucket, Lambda function, and SQS queue for data processing",
+        description: "S3 buckets, IAM role, and SQS queue for data processing",
         program: async () => {
             const inputBucket = new aws.s3.Bucket("input-bucket");
             const outputBucket = new aws.s3.Bucket("output-bucket");
@@ -847,7 +881,7 @@ app.post("/api/environments", async (req: Request, res: Response) => {
 });
 
 // Check deployment status
-app.get("/api/environments/:deploymentId", (req: Request, res: Response) => {
+app.get("/api/environments/:deploymentId", (req: Request<{ deploymentId: string }>, res: Response) => {
     const { deploymentId } = req.params;
     const deployment = deployments.get(deploymentId);
 
@@ -862,7 +896,7 @@ app.get("/api/environments/:deploymentId", (req: Request, res: Response) => {
 });
 
 // Destroy an environment
-app.delete("/api/environments/:deploymentId", async (req: Request, res: Response) => {
+app.delete("/api/environments/:deploymentId", async (req: Request<{ deploymentId: string }>, res: Response) => {
     const { deploymentId } = req.params;
     const deployment = deployments.get(deploymentId);
 
@@ -989,7 +1023,7 @@ For complex architectures, you can reference outputs from other stacks.
 // Demonstrates how to reference outputs from other stacks
 // Useful for layered infrastructure architectures
 
-import { LocalWorkspace, StackReference } from "@pulumi/pulumi/automation";
+import { LocalWorkspace } from "@pulumi/pulumi/automation";
 import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 
@@ -1020,8 +1054,12 @@ const networkStackProgram = async () => {
 };
 
 // Application stack that references the network stack
-const createAppStackProgram = (networkStackRef: StackReference) => {
+const createAppStackProgram = (networkStackName: string) => {
     return async () => {
+        const networkStackRef = new pulumi.StackReference("network-ref", {
+            name: networkStackName,
+        });
+
         // Get outputs from the network stack
         const vpcId = networkStackRef.getOutput("vpcId");
         const publicSubnetId = networkStackRef.getOutput("publicSubnetId");
@@ -1038,8 +1076,19 @@ const createAppStackProgram = (networkStackRef: StackReference) => {
         });
 
         // Create instance in the referenced subnet
+        const ami = aws.ec2.getAmiOutput({
+            mostRecent: true,
+            owners: ["amazon"],
+            filters: [
+                {
+                    name: "name",
+                    values: ["amzn2-ami-hvm-*-x86_64-gp2"],
+                },
+            ],
+        });
+
         const instance = new aws.ec2.Instance("app-server", {
-            ami: "ami-0c55b159cbfafe1f0",
+            ami: ami.id,
             instanceType: "t3.micro",
             subnetId: publicSubnetId,
             vpcSecurityGroupIds: [appSg.id],
@@ -1065,18 +1114,13 @@ async function deployLayeredArchitecture() {
     await networkStack.setConfig("aws:region", { value: "us-west-2" });
     await networkStack.up({ onOutput: console.log });
 
-    // Create a stack reference to the network stack
-    // This allows the app stack to access network stack outputs
-    const networkRef = new StackReference("network-ref", {
-        name: "layered-infra/network",
-    });
-
     // Deploy the application stack using network stack outputs
+    // Replace "my-org" with your Pulumi organization or username.
     console.log("Deploying application stack...");
     const appStack = await LocalWorkspace.createOrSelectStack({
         projectName: "layered-infra",
         stackName: "application",
-        program: createAppStackProgram(networkRef),
+        program: createAppStackProgram("my-org/layered-infra/network"),
     });
 
     await appStack.setConfig("aws:region", { value: "us-west-2" });
@@ -1345,18 +1389,38 @@ class OneUptimeClient {
 
 // Infrastructure program that exports endpoints for monitoring
 const webServiceProgram = async () => {
+    const defaultVpc = aws.ec2.getVpcOutput({ default: true });
+    const defaultSubnets = aws.ec2.getSubnetsOutput({
+        filters: [
+            {
+                name: "vpc-id",
+                values: [defaultVpc.id],
+            },
+        ],
+    });
+
+    const albSecurityGroup = new aws.ec2.SecurityGroup("web-alb-sg", {
+        vpcId: defaultVpc.id,
+        ingress: [
+            { protocol: "tcp", fromPort: 80, toPort: 80, cidrBlocks: ["0.0.0.0/0"] },
+        ],
+        egress: [
+            { protocol: "-1", fromPort: 0, toPort: 0, cidrBlocks: ["0.0.0.0/0"] },
+        ],
+    });
+
     // Create ALB for the service
     const alb = new aws.lb.LoadBalancer("web-alb", {
         loadBalancerType: "application",
-        securityGroups: [], // Add your security groups
-        subnets: [], // Add your subnets
+        securityGroups: [albSecurityGroup.id],
+        subnets: defaultSubnets.ids,
     });
 
     // Create target group
     const targetGroup = new aws.lb.TargetGroup("web-tg", {
         port: 80,
         protocol: "HTTP",
-        vpcId: "", // Add your VPC ID
+        vpcId: defaultVpc.id,
         healthCheck: {
             path: "/health",
             healthyThreshold: 2,
@@ -1365,10 +1429,10 @@ const webServiceProgram = async () => {
     });
 
     // Create listener
-    const listener = new aws.lb.Listener("web-listener", {
+    new aws.lb.Listener("web-listener", {
         loadBalancerArn: alb.arn,
-        port: 443,
-        protocol: "HTTPS",
+        port: 80,
+        protocol: "HTTP",
         defaultActions: [
             {
                 type: "forward",
@@ -1381,7 +1445,7 @@ const webServiceProgram = async () => {
     return {
         loadBalancerDns: alb.dnsName,
         healthCheckPath: pulumi.output("/health"),
-        apiEndpoint: pulumi.interpolate`https://${alb.dnsName}/api`,
+        apiEndpoint: pulumi.interpolate`http://${alb.dnsName}/api`,
     };
 };
 
@@ -1413,7 +1477,7 @@ async function deployWithMonitoring() {
     if (loadBalancerDns) {
         await oneuptime.createMonitor({
             name: "Production - Main Service",
-            url: `https://${loadBalancerDns}`,
+            url: `http://${loadBalancerDns}`,
             type: "website",
             interval: 60, // Check every minute
         });
@@ -1423,7 +1487,7 @@ async function deployWithMonitoring() {
     if (loadBalancerDns && healthCheckPath) {
         await oneuptime.createMonitor({
             name: "Production - Health Check",
-            url: `https://${loadBalancerDns}${healthCheckPath}`,
+            url: `http://${loadBalancerDns}${healthCheckPath}`,
             type: "api",
             interval: 30, // Check every 30 seconds
         });
