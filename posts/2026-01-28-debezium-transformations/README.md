@@ -55,10 +55,11 @@ Use the `Filter` SMT to drop records that match specific conditions. This reduce
 
 ```properties
 # Filter out DELETE operations - only capture inserts and updates
+# The condition expression must evaluate to true for records to be KEPT
 transforms=filterDeletes
 transforms.filterDeletes.type=io.debezium.transforms.Filter
 transforms.filterDeletes.language=jsr223.groovy
-transforms.filterDeletes.condition=value.op == 'd'
+transforms.filterDeletes.condition=value.op != 'd'
 ```
 
 Filter by table name to exclude specific tables from capture:
@@ -68,7 +69,7 @@ Filter by table name to exclude specific tables from capture:
 transforms=filterAudit
 transforms.filterAudit.type=io.debezium.transforms.Filter
 transforms.filterAudit.language=jsr223.groovy
-transforms.filterAudit.condition=value.source.table == 'audit_log'
+transforms.filterAudit.condition=value.source.table != 'audit_log'
 ```
 
 ### Content-Based Filtering
@@ -80,7 +81,7 @@ Filter based on field values to route only relevant changes:
 transforms=filterCompleted
 transforms.filterCompleted.type=io.debezium.transforms.Filter
 transforms.filterCompleted.language=jsr223.groovy
-transforms.filterCompleted.condition=value.after == null || value.after.status != 'completed'
+transforms.filterCompleted.condition=value.after != null && value.after.status == 'completed'
 ```
 
 ---
@@ -102,7 +103,8 @@ transforms.unwrap.add.headers=op
 # Add source metadata fields
 transforms.unwrap.add.fields=table,ts_ms
 
-# Handle deletes by setting the value to null (tombstone)
+# Handle deletes by rewriting the value with a __deleted=true flag
+# (the primary key fields are preserved; other fields are nulled out)
 transforms.unwrap.delete.handling.mode=rewrite
 transforms.unwrap.drop.tombstones=false
 ```
@@ -234,7 +236,8 @@ transforms.convertTimestamps.format=yyyy-MM-dd HH:mm:ss
 Add processing timestamps to track when events were captured:
 
 ```properties
-# Insert current timestamp as processing time
+# Insert the Kafka record's metadata timestamp into a 'processed_at' field
+# (this reads the existing record timestamp, not the wall-clock time)
 transforms=insertTimestamp
 transforms.insertTimestamp.type=org.apache.kafka.connect.transforms.InsertField$Value
 transforms.insertTimestamp.timestamp.field=processed_at
@@ -357,10 +360,10 @@ Combine multiple transformations for complex processing pipelines:
 # Complete transformation chain
 transforms=filter,unwrap,route,mask,rename,timestamp
 
-# 1. Filter out test data
+# 1. Filter out test data (the condition keeps records that should pass through)
 transforms.filter.type=io.debezium.transforms.Filter
 transforms.filter.language=jsr223.groovy
-transforms.filter.condition=value.after != null && value.after.environment == 'test'
+transforms.filter.condition=value.after == null || value.after.environment != 'test'
 
 # 2. Flatten to new record state
 transforms.unwrap.type=io.debezium.transforms.ExtractNewRecordState
@@ -450,10 +453,10 @@ Each SMT adds processing overhead. Measure impact and optimize:
 # Filter first, then transform, then route
 transforms=filterFirst,transform,routeLast
 
-# Filter drops unwanted records early
+# Filter drops unwanted records early (here, records from the 'temp_data' table)
 transforms.filterFirst.type=io.debezium.transforms.Filter
 transforms.filterFirst.language=jsr223.groovy
-transforms.filterFirst.condition=value.source.table == 'temp_data'
+transforms.filterFirst.condition=value.source.table != 'temp_data'
 ```
 
 ---
