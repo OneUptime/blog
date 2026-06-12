@@ -151,10 +151,7 @@ Sidekick allows you to add custom fields to enrich your alerts:
 
 ```yaml
 config:
-  customfields:
-    environment: "production"
-    cluster: "us-east-1"
-    team: "platform-security"
+  customfields: "environment:production\\,cluster:us-east-1\\,team:platform-security"
 
   # Customize the message template
   slack:
@@ -175,7 +172,7 @@ kubectl logs -n falco -l app.kubernetes.io/name=falco-sidekick -f
 kubectl run test-alert --rm -it --image=curlimages/curl -- \
   curl -X POST http://falco-sidekick:2801/test \
   -H "Content-Type: application/json" \
-  -d '{"output":"Test alert from manual trigger","priority":"Warning","rule":"Test Rule"}'
+  -H "Accept: application/json"
 ```
 
 ## Monitoring Sidekick Health
@@ -183,23 +180,23 @@ kubectl run test-alert --rm -it --image=curlimages/curl -- \
 Sidekick exposes Prometheus metrics for monitoring:
 
 ```yaml
-# Enable Prometheus metrics
+# Add extra Falco event fields as Prometheus labels
 config:
   prometheus:
-    enabled: true
+    extralabels: "k8s.ns.name,k8s.pod.name"
 ```
 
 Key metrics to monitor:
 
 ```bash
 # Total events received
-falco_sidekick_events_total
+falcosecurity_falcosidekick_falco_events_total
 
 # Events by output destination
-falco_sidekick_outputs_total{destination="slack",status="ok"}
+falcosecurity_falcosidekick_outputs_total{destination="slack",status="ok"}
 
 # Output failures
-falco_sidekick_outputs_total{destination="pagerduty",status="error"}
+falcosecurity_falcosidekick_outputs_total{destination="pagerduty",status="error"}
 ```
 
 ## Best Practices
