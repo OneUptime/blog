@@ -193,6 +193,7 @@ kind: ClusterRoleTemplateBinding
 metadata:
   name: crtb-owner-jane
   namespace: c-xxxxx  # Cluster ID namespace
+clusterName: c-xxxxx
 clusterRoleTemplateName: cluster-owner
 userPrincipalName: local://u-yyyy
 ---
@@ -203,6 +204,7 @@ kind: ClusterRoleTemplateBinding
 metadata:
   name: crtb-member-team
   namespace: c-xxxxx
+clusterName: c-xxxxx
 clusterRoleTemplateName: cluster-member
 groupPrincipalName: ldap_group://cn=developers,ou=groups,dc=company,dc=com
 ```
@@ -261,10 +263,7 @@ rules:
   - apiGroups: ["policy"]
     resources: ["podsecuritypolicies"]
     verbs: ["get", "list", "watch"]
-  # View secrets metadata (not contents)
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["list"]
+  # Do not grant secrets unless auditors are authorized to read secret data
 ```
 
 ## Project-Level Permissions
@@ -425,18 +424,23 @@ metadata:
 enabled: true
 type: activeDirectoryConfig
 servers:
-  - ldaps://ad.company.com:636
-serviceAccountUsername: cn=rancher-svc,ou=service-accounts,dc=company,dc=com
+  - ad.company.com
+port: 636
+tls: true
+serviceAccountUsername: COMPANY\rancher-svc
 serviceAccountPassword: <encoded-password>
 defaultLoginDomain: COMPANY
 userSearchBase: ou=users,dc=company,dc=com
-userSearchFilter: (objectClass=person)
+userObjectClass: person
+userSearchAttribute: sAMAccountName|name
 userLoginAttribute: sAMAccountName
 userNameAttribute: name
 userMemberAttribute: memberOf
 groupSearchBase: ou=groups,dc=company,dc=com
-groupSearchFilter: (objectClass=group)
+groupObjectClass: group
+groupSearchAttribute: sAMAccountName
 groupNameAttribute: name
+groupDNAttribute: distinguishedName
 groupMemberUserAttribute: distinguishedName
 groupMemberMappingAttribute: member
 ```
@@ -474,15 +478,14 @@ metadata:
 enabled: true
 type: githubConfig
 hostname: github.com  # Or your GitHub Enterprise hostname
+tls: true
 clientId: <github-oauth-app-client-id>
 clientSecret: <encoded-secret>
-# Restrict to specific organizations
-allowedOrganizations:
-  - your-company-org
-# Enable team-based access
-allowedTeams:
-  - your-company-org:platform-team
-  - your-company-org:developers
+# Restrict access by principal IDs discovered from GitHub
+accessMode: restricted
+allowedPrincipalIds:
+  - github_team://123456
+  - github_team://789012
 ```
 
 ## Advanced RBAC Patterns
@@ -595,6 +598,7 @@ metadata:
     incident-id: "1234"
     expires: "2026-01-28T00:00:00Z"
     approved-by: "security-team"
+clusterName: c-xxxxx
 clusterRoleTemplateName: emergency-admin
 userPrincipalName: local://u-oncall
 ```
@@ -629,10 +633,12 @@ done
 
 # List project role bindings
 echo -e "\n=== Project Role Bindings ==="
-for project in $(kubectl get projects.management.cattle.io -A -o jsonpath='{.items[*].metadata.name}'); do
+kubectl get projects.management.cattle.io -A -o jsonpath='{range .items[*]}{.spec.clusterName}:{.metadata.name}{"\t"}{.status.backingNamespace}{"\n"}{end}' |
+while IFS=$'\t' read -r project backing_namespace; do
+  namespace="${backing_namespace:-${project#*:}}"
   echo "Project: $project"
   kubectl get projectroletemplatebindings.management.cattle.io \
-    -n $project -o custom-columns=\
+    -n "$namespace" -o custom-columns=\
 NAME:.metadata.name,\
 ROLE:.roleTemplateName,\
 USER:.userPrincipalName,\
@@ -647,15 +653,14 @@ Configure Rancher to log all RBAC-related API calls:
 ```yaml
 # Rancher Helm values for audit logging
 auditLog:
-  level: 2  # 0=off, 1=metadata, 2=request, 3=request+response
+  enabled: true
+  level: 2  # 0=metadata, 1=headers, 2=request body, 3=request+response body
   maxAge: 30
   maxBackup: 10
   maxSize: 100
-  destination: sidecar  # or 'hostPath'
-  # Format: json for machine parsing
-  format: json
-  # Path if using hostPath
-  path: /var/log/rancher/audit
+  destination: sidecar  # or 'hostpath'
+  # Path if using hostpath
+  hostPath: /var/log/rancher/audit/
 ```
 
 ## RBAC Best Practices Checklist
