@@ -109,6 +109,7 @@ The output object has `PreElement`, `PreContent`, `PostContent`, and `PostElemen
 
 ```csharp
 using Microsoft.AspNetCore.Razor.TagHelpers;
+using System.Text.Encodings.Web;
 
 namespace MyApp.TagHelpers
 {
@@ -129,8 +130,10 @@ namespace MyApp.TagHelpers
             // PreContent: HTML rendered after opening tag, before content
             if (!string.IsNullOrEmpty(Title))
             {
+                var encodedTitle = HtmlEncoder.Default.Encode(Title);
+
                 output.PreContent.SetHtmlContent(
-                    $"<div class=\"panel-header\"><h3>{Title}</h3></div>\n" +
+                    $"<div class=\"panel-header\"><h3>{encodedTitle}</h3></div>\n" +
                     "<div class=\"panel-body\">"
                 );
             }
@@ -299,6 +302,7 @@ Bound attributes map HTML attributes to C# properties on your tag helper. ASP.NE
 
 ```csharp
 using Microsoft.AspNetCore.Razor.TagHelpers;
+using System.Text.Encodings.Web;
 
 namespace MyApp.TagHelpers
 {
@@ -328,12 +332,13 @@ namespace MyApp.TagHelpers
             var percentage = (Value * 100) / Max;
             var stripedClass = Striped ? " progress-bar-striped" : "";
             var colorClass = $"bg-{Color.ToString().ToLower()}";
+            var encodedLabel = HtmlEncoder.Default.Encode(Label ?? "");
 
             output.Content.SetHtmlContent(
                 $"<div class=\"progress-bar {colorClass}{stripedClass}\" " +
                 $"role=\"progressbar\" style=\"width: {percentage}%\" " +
                 $"aria-valuenow=\"{Value}\" aria-valuemin=\"0\" aria-valuemax=\"{Max}\">" +
-                $"{Label}" +
+                $"{encodedLabel}" +
                 "</div>"
             );
         }
@@ -420,6 +425,8 @@ For attributes that bind to model properties (like the built-in `asp-for`), use 
 ```csharp
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Razor.TagHelpers;
+using System;
+using System.Text.Encodings.Web;
 
 namespace MyApp.TagHelpers
 {
@@ -440,11 +447,14 @@ namespace MyApp.TagHelpers
             var displayName = For.Metadata.DisplayName ?? For.Name;
             var value = For.Model?.ToString() ?? "";
             var inputType = GetInputType(For.Metadata.ModelType);
+            var encodedPropertyName = HtmlEncoder.Default.Encode(propertyName);
+            var encodedDisplayName = HtmlEncoder.Default.Encode(displayName);
+            var encodedValue = HtmlEncoder.Default.Encode(value);
 
             output.Content.SetHtmlContent(
-                $"<label for=\"{propertyName}\">{displayName}</label>\n" +
-                $"<input type=\"{inputType}\" id=\"{propertyName}\" " +
-                $"name=\"{propertyName}\" value=\"{value}\" class=\"form-control\" />"
+                $"<label for=\"{encodedPropertyName}\">{encodedDisplayName}</label>\n" +
+                $"<input type=\"{inputType}\" id=\"{encodedPropertyName}\" " +
+                $"name=\"{encodedPropertyName}\" value=\"{encodedValue}\" class=\"form-control\" />"
             );
         }
 
@@ -469,6 +479,7 @@ The async pattern is essential when your tag helper needs to perform I/O operati
 ```csharp
 using Microsoft.AspNetCore.Razor.TagHelpers;
 using System.Net.Http;
+using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
 namespace MyApp.TagHelpers
@@ -513,9 +524,13 @@ namespace MyApp.TagHelpers
                         }
                     );
 
+                    var encodedUrl = HtmlEncoder.Default.Encode(repo.HtmlUrl ?? "");
+                    var encodedFullName = HtmlEncoder.Default.Encode(repo.FullName ?? "");
+                    var encodedDescription = HtmlEncoder.Default.Encode(repo.Description ?? "");
+
                     output.Content.SetHtmlContent(
-                        $"<h4><a href=\"{repo.HtmlUrl}\">{repo.FullName}</a></h4>" +
-                        $"<p>{repo.Description}</p>" +
+                        $"<h4><a href=\"{encodedUrl}\">{encodedFullName}</a></h4>" +
+                        $"<p>{encodedDescription}</p>" +
                         $"<div class=\"repo-stats\">" +
                         $"<span>Stars: {repo.StargazersCount}</span> | " +
                         $"<span>Forks: {repo.ForksCount}</span>" +
@@ -613,8 +628,10 @@ Tag helper components let you inject content into pages globally without modifyi
 
 ```csharp
 using Microsoft.AspNetCore.Mvc.Razor.TagHelpers;
-using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.Razor.TagHelpers;
+using System;
+using System.Text.Encodings.Web;
 
 namespace MyApp.TagHelpers
 {
@@ -641,14 +658,17 @@ namespace MyApp.TagHelpers
 
                 if (!string.IsNullOrEmpty(trackingId))
                 {
+                    var encodedTrackingId = UrlEncoder.Default.Encode(trackingId);
+                    var scriptTrackingId = JavaScriptEncoder.Default.Encode(trackingId);
+
                     // Append analytics script to head
                     output.PostContent.AppendHtml(
-                        $@"<script async src=""https://www.googletagmanager.com/gtag/js?id={trackingId}""></script>
+                        $@"<script async src=""https://www.googletagmanager.com/gtag/js?id={encodedTrackingId}""></script>
                         <script>
                             window.dataLayer = window.dataLayer || [];
                             function gtag(){{dataLayer.push(arguments);}}
                             gtag('js', new Date());
-                            gtag('config', '{trackingId}');
+                            gtag('config', '{scriptTrackingId}');
                         </script>"
                     );
                 }
@@ -664,6 +684,7 @@ Register components in `Program.cs`:
 
 ```csharp
 using MyApp.TagHelpers;
+using Microsoft.AspNetCore.Razor.TagHelpers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -739,6 +760,7 @@ Here is a complete example showing parent-child tag helpers working together:
 ```csharp
 using Microsoft.AspNetCore.Razor.TagHelpers;
 using System.Collections.Generic;
+using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
 namespace MyApp.TagHelpers
@@ -761,13 +783,16 @@ namespace MyApp.TagHelpers
     [HtmlTargetElement("tab-container")]
     public class TabContainerTagHelper : TagHelper
     {
+        public override void Init(TagHelperContext context)
+        {
+            context.Items[typeof(TabContext)] = new TabContext();
+        }
+
         public override async Task ProcessAsync(
             TagHelperContext context,
             TagHelperOutput output)
         {
-            // Create context for child tabs
-            var tabContext = new TabContext();
-            context.Items[typeof(TabContext)] = tabContext;
+            var tabContext = (TabContext)context.Items[typeof(TabContext)];
 
             // Process children first to populate the context
             await output.GetChildContentAsync();
@@ -805,8 +830,6 @@ namespace MyApp.TagHelpers
     [HtmlTargetElement("tab", ParentTag = "tab-container")]
     public class TabTagHelper : TagHelper
     {
-        private static int _tabCounter = 0;
-
         public string Title { get; set; }
 
         [HtmlAttributeName("active")]
@@ -827,8 +850,8 @@ namespace MyApp.TagHelpers
                 // Add to parent's tab collection
                 tabContext.Tabs.Add(new TabItem
                 {
-                    Id = $"tab-{++_tabCounter}",
-                    Title = Title,
+                    Id = $"tab-{context.UniqueId}",
+                    Title = HtmlEncoder.Default.Encode(Title ?? ""),
                     Content = childContent.GetContent(),
                     IsActive = IsActive
                 });
@@ -904,10 +927,7 @@ namespace MyApp.Tests
         public void Process_SetsCorrectCssClass()
         {
             // Arrange
-            var tagHelper = new AlertTagHelper
-            {
-                AlertType = "warning"
-            };
+            var tagHelper = new AlertTagHelper();
 
             var context = new TagHelperContext(
                 tagName: "alert",
@@ -932,7 +952,7 @@ namespace MyApp.Tests
 
             // Assert
             Assert.Equal("div", output.TagName);
-            Assert.Contains("alert-warning",
+            Assert.Contains("alert-box",
                 output.Attributes["class"].Value.ToString());
         }
 
