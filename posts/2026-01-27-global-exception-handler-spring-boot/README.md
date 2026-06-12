@@ -16,8 +16,8 @@ This guide shows you how to build a production-ready exception handling system t
 
 ## The Problem with Default Exception Handling
 
-By default, Spring Boot returns stack traces and internal details that:
-- Expose implementation details to clients
+By default, Spring Boot provides generic error responses that can:
+- Expose more implementation details than you want if error attributes are enabled
 - Provide inconsistent error formats across endpoints
 - Make client-side error handling difficult
 - Risk leaking sensitive information
@@ -37,6 +37,8 @@ package com.example.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.WebRequest;
@@ -698,7 +700,7 @@ Here are example responses your API will return:
   "error": "RESOURCE_NOT_FOUND",
   "message": "User not found with id: abc123",
   "path": "/api/users/abc123",
-  "traceId": "a1b2c3d4e5f6g7h8"
+  "traceId": "a1b2c3d4e5f6a7b8"
 }
 ```
 
@@ -710,7 +712,7 @@ Here are example responses your API will return:
   "error": "VALIDATION_ERROR",
   "message": "Request validation failed",
   "path": "/api/users",
-  "traceId": "a1b2c3d4e5f6g7h8",
+  "traceId": "a1b2c3d4e5f6a7b8",
   "validationErrors": {
     "email": ["must be a valid email address"],
     "name": ["must not be blank", "size must be between 2 and 100"]
@@ -726,7 +728,7 @@ Here are example responses your API will return:
   "error": "DUPLICATE_RESOURCE",
   "message": "User with email 'john@example.com' already exists",
   "path": "/api/users",
-  "traceId": "a1b2c3d4e5f6g7h8"
+  "traceId": "a1b2c3d4e5f6a7b8"
 }
 ```
 
