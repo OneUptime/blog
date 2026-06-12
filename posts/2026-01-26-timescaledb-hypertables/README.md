@@ -77,7 +77,7 @@ Use the `create_hypertable` function to convert the regular table into a hyperta
 -- Parameters:
 --   'metrics': the table name to convert
 --   'time': the column used for time-based partitioning
-SELECT create_hypertable('metrics', 'time');
+SELECT create_hypertable('metrics', by_range('time'));
 ```
 
 This single command transforms your table into a hypertable with automatic time-based partitioning.
@@ -125,22 +125,19 @@ flowchart LR
 -- Use this for moderate ingestion rates (1-10M rows per day)
 SELECT create_hypertable(
     'metrics',
-    'time',
-    chunk_time_interval => INTERVAL '1 day'
+    by_range('time', INTERVAL '1 day')
 );
 
 -- For high-volume ingestion (>100M rows/day), use smaller chunks
 SELECT create_hypertable(
     'high_volume_metrics',
-    'time',
-    chunk_time_interval => INTERVAL '1 hour'
+    by_range('time', INTERVAL '1 hour')
 );
 
 -- For low-volume data with long retention, use larger chunks
 SELECT create_hypertable(
     'audit_logs',
-    'time',
-    chunk_time_interval => INTERVAL '1 week'
+    by_range('time', INTERVAL '1 week')
 );
 ```
 
@@ -154,20 +151,19 @@ You can change the chunk interval for future chunks without affecting existing d
 SELECT set_chunk_time_interval('metrics', INTERVAL '6 hours');
 
 -- Verify the new setting
-SELECT h.table_name,
+SELECT d.hypertable_name,
        d.column_name,
        d.time_interval
 FROM timescaledb_information.dimensions d
-JOIN timescaledb_information.hypertables h
-    ON d.hypertable_id = h.id
-WHERE h.table_name = 'metrics';
+WHERE d.hypertable_name = 'metrics'
+  AND d.dimension_type = 'Time';
 ```
 
 ---
 
 ## Space Partitioning
 
-For very high cardinality data or distributed deployments, add a second partitioning dimension based on a space column.
+For very high cardinality data or deployments that need parallel I/O across tablespaces, add a second partitioning dimension based on a space column.
 
 ```mermaid
 flowchart TB
@@ -199,7 +195,7 @@ Use space partitioning when:
 1. You have many devices/tenants (high cardinality)
 2. Queries filter on specific devices/tenants
 3. You want to distribute data across multiple disks
-4. You're using TimescaleDB in a distributed setup
+4. You need parallel I/O across multiple tablespaces
 
 ```sql
 -- Create hypertable with both time and space partitioning
@@ -207,11 +203,9 @@ Use space partitioning when:
 -- 4 partitions divides data across 4 hash buckets
 SELECT create_hypertable(
     'metrics',
-    'time',
-    partitioning_column => 'device_id',
-    number_partitions => 4,
-    chunk_time_interval => INTERVAL '1 day'
+    by_range('time', INTERVAL '1 day')
 );
+SELECT add_dimension('metrics', by_hash('device_id', 4));
 ```
 
 ### Choosing the Number of Space Partitions
@@ -222,20 +216,13 @@ SELECT create_hypertable(
 -- Example: 4-core machine with 2 disks = 2 partitions
 SELECT create_hypertable(
     'metrics',
-    'time',
-    partitioning_column => 'tenant_id',
-    number_partitions => 2
+    by_range('time')
 );
+SELECT add_dimension('metrics', by_hash('tenant_id', 2));
 
--- For distributed TimescaleDB:
--- Match the number of data nodes
--- Example: 3 data nodes = 3 partitions
-SELECT create_distributed_hypertable(
-    'metrics',
-    'time',
-    partitioning_column => 'tenant_id',
-    number_partitions => 3
-);
+-- Distributed hypertables were sunsetted in TimescaleDB 2.14.x.
+-- For current deployments, use Tiger Cloud scaling or tablespaces
+-- rather than create_distributed_hypertable().
 ```
 
 ---
@@ -322,7 +309,7 @@ CREATE TABLE cpu_metrics (
     PRIMARY KEY (host_id, time)
 );
 
-SELECT create_hypertable('cpu_metrics', 'time');
+SELECT create_hypertable('cpu_metrics', by_range('time'));
 
 -- Query example: Get CPU usage for a host
 SELECT time, user_pct, system_pct
@@ -348,7 +335,7 @@ CREATE TABLE metrics (
     tags        JSONB DEFAULT '{}'
 );
 
-SELECT create_hypertable('metrics', 'time');
+SELECT create_hypertable('metrics', by_range('time'));
 
 -- Create index for efficient filtering by metric name
 CREATE INDEX idx_metrics_host_name_time
@@ -386,8 +373,8 @@ CREATE TABLE custom_metrics (
     value       DOUBLE PRECISION NOT NULL
 );
 
-SELECT create_hypertable('system_metrics', 'time');
-SELECT create_hypertable('custom_metrics', 'time');
+SELECT create_hypertable('system_metrics', by_range('time'));
+SELECT create_hypertable('custom_metrics', by_range('time'));
 ```
 
 ---
@@ -431,11 +418,9 @@ CREATE TABLE tenant_metrics (
 -- This ensures tenant data is co-located in chunks
 SELECT create_hypertable(
     'tenant_metrics',
-    'time',
-    partitioning_column => 'tenant_id',
-    number_partitions => 8,
-    chunk_time_interval => INTERVAL '1 day'
+    by_range('time', INTERVAL '1 day')
 );
+SELECT add_dimension('tenant_metrics', by_hash('tenant_id', 8));
 
 -- Index optimized for tenant queries
 CREATE INDEX idx_tenant_device_time
@@ -463,7 +448,7 @@ CREATE TABLE tenant_acme.metrics (
     value       DOUBLE PRECISION NOT NULL
 );
 
-SELECT create_hypertable('tenant_acme.metrics', 'time');
+SELECT create_hypertable('tenant_acme.metrics', by_range('time'));
 
 -- Function to create tenant schema with hypertable
 CREATE OR REPLACE FUNCTION create_tenant_schema(tenant_name TEXT)
@@ -483,7 +468,7 @@ BEGIN
 
     -- Convert to hypertable
     EXECUTE format(
-        'SELECT create_hypertable(''%I.metrics'', ''time'')',
+        'SELECT create_hypertable(''%I.metrics'', by_range(''time''))',
         tenant_name
     );
 END;
@@ -497,7 +482,7 @@ SELECT create_tenant_schema('tenant_globex');
 
 ## Compression Configuration
 
-TimescaleDB compression reduces storage by 90%+ for time-series data. Configure it based on your query patterns.
+TimescaleDB columnstore compression can reduce storage by 90%+ for time-series data. Configure it based on your query patterns.
 
 ```mermaid
 flowchart LR
@@ -509,24 +494,24 @@ flowchart LR
         CC["Compressed Chunks<br/>~10 GB"]
     end
 
-    Before --> |"compress_chunk()"| After
+    Before --> |"convert_to_columnstore()"| After
 ```
 
 ### Enable Compression
 
 ```sql
--- Enable compression on the hypertable
--- segment_by: columns that identify unique time series
--- order_by: how data is sorted within segments
+-- Enable columnstore compression on the hypertable
+-- segmentby: columns that identify unique time series
+-- orderby: how data is sorted within segments
 ALTER TABLE metrics SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'device_id, metric_name',
-    timescaledb.compress_orderby = 'time DESC'
+    timescaledb.enable_columnstore = true,
+    timescaledb.segmentby = 'device_id, metric_name',
+    timescaledb.orderby = 'time DESC'
 );
 
 -- Create a compression policy to automatically compress old data
 -- Chunks older than 7 days will be compressed
-SELECT add_compression_policy('metrics', INTERVAL '7 days');
+CALL add_columnstore_policy('metrics', after => INTERVAL '7 days');
 ```
 
 ### Compression Strategy by Use Case
@@ -535,25 +520,25 @@ SELECT add_compression_policy('metrics', INTERVAL '7 days');
 -- High-cardinality device data
 -- Segment by device for efficient device-level queries
 ALTER TABLE device_metrics SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'device_id',
-    timescaledb.compress_orderby = 'time DESC'
+    timescaledb.enable_columnstore = true,
+    timescaledb.segmentby = 'device_id',
+    timescaledb.orderby = 'time DESC'
 );
 
 -- Multi-tenant application
 -- Segment by tenant and device for isolation
 ALTER TABLE tenant_metrics SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'tenant_id, device_id',
-    timescaledb.compress_orderby = 'time DESC'
+    timescaledb.enable_columnstore = true,
+    timescaledb.segmentby = 'tenant_id, device_id',
+    timescaledb.orderby = 'time DESC'
 );
 
 -- IoT with multiple sensor types
 -- Segment by device and sensor type
 ALTER TABLE sensor_data SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'device_id, sensor_type',
-    timescaledb.compress_orderby = 'time DESC'
+    timescaledb.enable_columnstore = true,
+    timescaledb.segmentby = 'device_id, sensor_type',
+    timescaledb.orderby = 'time DESC'
 );
 ```
 
@@ -562,22 +547,23 @@ ALTER TABLE sensor_data SET (
 ```sql
 -- Check compression status for all chunks
 SELECT
-    hypertable_name,
     chunk_name,
     before_compression_total_bytes,
     after_compression_total_bytes,
-    compression_ratio
-FROM chunk_compression_stats('metrics')
+    round((1 - after_compression_total_bytes::numeric /
+           before_compression_total_bytes) * 100, 2) AS compression_pct
+FROM chunk_columnstore_stats('metrics')
+WHERE compression_status = 'Compressed'
 ORDER BY chunk_name DESC;
 
 -- Overall compression statistics
 SELECT
-    hypertable_name,
+    'metrics' AS hypertable_name,
     pg_size_pretty(before_compression_total_bytes) AS before,
     pg_size_pretty(after_compression_total_bytes) AS after,
     round((1 - after_compression_total_bytes::numeric /
            before_compression_total_bytes) * 100, 2) AS compression_pct
-FROM hypertable_compression_stats('metrics');
+FROM hypertable_columnstore_stats('metrics');
 ```
 
 ---
@@ -625,15 +611,15 @@ CREATE TABLE metrics (
     device_id   TEXT NOT NULL,
     value       DOUBLE PRECISION NOT NULL
 );
-SELECT create_hypertable('metrics', 'time', chunk_time_interval => INTERVAL '1 day');
+SELECT create_hypertable('metrics', by_range('time', INTERVAL '1 day'));
 
 -- Step 2: Configure compression for data older than 7 days
 ALTER TABLE metrics SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'device_id',
-    timescaledb.compress_orderby = 'time DESC'
+    timescaledb.enable_columnstore = true,
+    timescaledb.segmentby = 'device_id',
+    timescaledb.orderby = 'time DESC'
 );
-SELECT add_compression_policy('metrics', INTERVAL '7 days');
+CALL add_columnstore_policy('metrics', after => INTERVAL '7 days');
 
 -- Step 3: Configure retention to drop data older than 90 days
 SELECT add_retention_policy('metrics', INTERVAL '90 days');
@@ -759,11 +745,9 @@ CREATE TABLE sensor_readings (
 -- Space partition by device_id for query locality
 SELECT create_hypertable(
     'sensor_readings',
-    'time',
-    partitioning_column => 'device_id',
-    number_partitions => 4,
-    chunk_time_interval => INTERVAL '6 hours'
+    by_range('time', INTERVAL '6 hours')
 );
+SELECT add_dimension('sensor_readings', by_hash('device_id', 4));
 
 -- Create indexes for common query patterns
 
@@ -775,19 +759,19 @@ CREATE INDEX idx_readings_device_time
 CREATE INDEX idx_readings_type_time
     ON sensor_readings (sensor_type, time DESC);
 
--- Pattern: Find readings by location (requires PostGIS)
+-- Pattern: Find readings by location using PostgreSQL's POINT type
 CREATE INDEX idx_readings_location
     ON sensor_readings USING GIST (location);
 
 -- Enable compression with appropriate segmentation
 ALTER TABLE sensor_readings SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'device_id, sensor_type',
-    timescaledb.compress_orderby = 'time DESC'
+    timescaledb.enable_columnstore = true,
+    timescaledb.segmentby = 'device_id, sensor_type',
+    timescaledb.orderby = 'time DESC'
 );
 
 -- Compress data older than 1 day
-SELECT add_compression_policy('sensor_readings', INTERVAL '1 day');
+CALL add_columnstore_policy('sensor_readings', after => INTERVAL '1 day');
 
 -- Keep 180 days of data
 SELECT add_retention_policy('sensor_readings', INTERVAL '180 days');
@@ -802,7 +786,6 @@ SELECT
     avg(value) AS avg_value,
     min(value) AS min_value,
     max(value) AS max_value,
-    percentile_cont(0.5) WITHIN GROUP (ORDER BY value) AS median_value,
     count(*) AS reading_count,
     avg(quality) AS avg_quality
 FROM sensor_readings
@@ -851,13 +834,14 @@ SELECT
     pg_size_pretty(total_bytes) AS size,
     is_compressed
 FROM timescaledb_information.chunks
+JOIN chunks_detailed_size('sensor_readings') USING (chunk_schema, chunk_name)
 WHERE hypertable_name = 'sensor_readings'
 ORDER BY range_start DESC
 LIMIT 20;
 
 -- Check total size of hypertable including indexes
 SELECT
-    hypertable_name,
+    'sensor_readings' AS hypertable_name,
     pg_size_pretty(total_bytes) AS total,
     pg_size_pretty(table_bytes) AS table_size,
     pg_size_pretty(index_bytes) AS index_size
