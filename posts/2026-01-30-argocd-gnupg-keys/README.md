@@ -10,6 +10,8 @@ Description: Learn how to create and configure GnuPG keys for ArgoCD to verify s
 
 ArgoCD supports GPG signature verification to ensure that only commits signed by trusted keys are deployed to your Kubernetes clusters. This adds a critical security layer to your GitOps pipeline.
 
+In current ArgoCD versions, GPG verification is configured through Source Integrity policies on an AppProject. Older ArgoCD versions used the `signatureKeys` field, which is now the legacy configuration format.
+
 ## Why Use GPG Signature Verification?
 
 ```mermaid
@@ -104,18 +106,18 @@ gpg --list-secret-keys --keyid-format=long
 You will see output similar to this:
 
 ```text
-/home/user/.gnupg/secring.gpg
+/home/user/.gnupg/pubring.kbx
 -----------------------------
-sec   rsa4096/ABCD1234EFGH5678 2026-01-30 [SC] [expires: 2027-01-30]
-      Key fingerprint = 1234 5678 ABCD EFGH 9012 3456 7890 ABCD EFGH 1234
+sec   rsa4096/ABCD1234EFAB5678 2026-01-30 [SC] [expires: 2027-01-30]
+      1234 5678 ABCD EFAB 9012 3456 7890 ABCD EFAB 1234
 uid                 [ultimate] Your Name (ArgoCD signing key) <your.email@company.com>
-ssb   rsa4096/1234ABCD5678EFGH 2026-01-30 [E] [expires: 2027-01-30]
+ssb   rsa4096/1234ABCD5678EFAB 2026-01-30 [E] [expires: 2027-01-30]
 ```
 
-Export the public key in ASCII armor format. Replace `ABCD1234EFGH5678` with your actual key ID.
+Export the public key in ASCII armor format. Replace `ABCD1234EFAB5678` with your actual key ID.
 
 ```bash
-gpg --armor --export ABCD1234EFGH5678 > argocd-signing-key.asc
+gpg --armor --export ABCD1234EFAB5678 > argocd-signing-key.asc
 ```
 
 ## Step 3: Add GPG Key to ArgoCD
@@ -150,7 +152,7 @@ metadata:
     app.kubernetes.io/name: argocd-gpg-keys-cm
     app.kubernetes.io/part-of: argocd
 data:
-  ABCD1234EFGH5678: |
+  ABCD1234EFAB5678: |
     -----BEGIN PGP PUBLIC KEY BLOCK-----
 
     mQINBGX...
@@ -165,9 +167,9 @@ Apply the ConfigMap to your cluster.
 kubectl apply -f argocd-gpg-keys-cm.yaml
 ```
 
-## Step 4: Configure Git Repository for Signature Verification
+## Step 4: Configure Git Repository Access
 
-Update your ArgoCD repository configuration to require signature verification.
+Update your ArgoCD repository configuration so ArgoCD can access your Git repository.
 
 ```yaml
 apiVersion: v1
@@ -184,9 +186,9 @@ stringData:
   password: <github-token>
 ```
 
-## Step 5: Enable Signature Verification in ArgoCD Application
+## Step 5: Associate the Application with the Verified Project
 
-Configure your ArgoCD Application to verify GPG signatures. Set the `signatureKeys` field to specify which keys are trusted.
+Configure your ArgoCD Application to use the project that will enforce GPG signature verification.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -195,7 +197,7 @@ metadata:
   name: myapp
   namespace: argocd
 spec:
-  project: default
+  project: production
   source:
     repoURL: https://github.com/myorg/myapp.git
     targetRevision: HEAD
@@ -211,7 +213,7 @@ spec:
 
 ## Step 6: Configure Project-Level Signature Requirements
 
-For organization-wide enforcement, configure signature requirements at the AppProject level.
+For organization-wide enforcement, configure signature requirements at the AppProject level with Source Integrity policies.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -226,8 +228,15 @@ spec:
   destinations:
     - namespace: 'production-*'
       server: https://kubernetes.default.svc
-  signatureKeys:
-    - keyID: ABCD1234EFGH5678
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: 'https://github.com/myorg/*'
+          gpg:
+            mode: head
+            keys:
+              - ABCD1234EFAB5678
 ```
 
 This ensures all applications in the `production` project must have commits signed by the specified key.
@@ -264,7 +273,7 @@ Configure Git to sign all commits with your GPG key.
 
 ```bash
 # Set your signing key
-git config --global user.signingkey ABCD1234EFGH5678
+git config --global user.signingkey ABCD1234EFAB5678
 
 # Enable automatic commit signing
 git config --global commit.gpgsign true
@@ -294,15 +303,15 @@ metadata:
   name: argocd-gpg-keys-cm
   namespace: argocd
 data:
-  ABCD1234EFGH5678: |
+  ABCD1234EFAB5678: |
     -----BEGIN PGP PUBLIC KEY BLOCK-----
     (Developer 1 public key)
     -----END PGP PUBLIC KEY BLOCK-----
-  9012IJKL3456MNOP: |
+  9012ABCD3456EFAB: |
     -----BEGIN PGP PUBLIC KEY BLOCK-----
     (Developer 2 public key)
     -----END PGP PUBLIC KEY BLOCK-----
-  QRST7890UVWX1234: |
+  ABCD7890EFAB1234: |
     -----BEGIN PGP PUBLIC KEY BLOCK-----
     (CI/CD service account key)
     -----END PGP PUBLIC KEY BLOCK-----
@@ -331,7 +340,7 @@ Always set expiration dates on your keys. One year is a reasonable default.
 
 ```bash
 # Edit key to change expiration
-gpg --edit-key ABCD1234EFGH5678
+gpg --edit-key ABCD1234EFAB5678
 gpg> expire
 gpg> save
 ```
@@ -342,7 +351,7 @@ Store encrypted backups of your private keys securely.
 
 ```bash
 # Export private key
-gpg --armor --export-secret-keys ABCD1234EFGH5678 > private-key-backup.asc
+gpg --armor --export-secret-keys ABCD1234EFAB5678 > private-key-backup.asc
 
 # Encrypt the backup
 gpg --symmetric --cipher-algo AES256 private-key-backup.asc
@@ -358,13 +367,13 @@ If a key is compromised, revoke it immediately.
 
 ```bash
 # Generate revocation certificate (do this when creating the key)
-gpg --gen-revoke ABCD1234EFGH5678 > revoke-ABCD1234EFGH5678.asc
+gpg --gen-revoke ABCD1234EFAB5678 > revoke-ABCD1234EFAB5678.asc
 
 # If key is compromised, import revocation certificate
-gpg --import revoke-ABCD1234EFGH5678.asc
+gpg --import revoke-ABCD1234EFAB5678.asc
 
 # Remove from ArgoCD
-argocd gpg rm ABCD1234EFGH5678
+argocd gpg rm ABCD1234EFAB5678
 ```
 
 ## Troubleshooting
