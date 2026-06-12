@@ -257,14 +257,14 @@ aws ec2 create-security-group \
   --description "Security group for Route 53 Resolver" \
   --vpc-id vpc-0123456789abcdef0
 
-# Allow DNS traffic (TCP and UDP port 53)
-aws ec2 authorize-security-group-ingress \
+# Allow outbound DNS traffic (TCP and UDP port 53) to your target DNS resolvers
+aws ec2 authorize-security-group-egress \
   --group-id sg-resolver123 \
   --protocol udp \
   --port 53 \
   --cidr 10.0.0.0/8
 
-aws ec2 authorize-security-group-ingress \
+aws ec2 authorize-security-group-egress \
   --group-id sg-resolver123 \
   --protocol tcp \
   --port 53 \
@@ -344,6 +344,21 @@ variable "domain_name" {
   default     = "internal.mycompany.com"
 }
 
+variable "internal_lb_dns_name" {
+  description = "DNS name of an existing internal load balancer"
+  type        = string
+}
+
+variable "internal_lb_zone_id" {
+  description = "Route 53 hosted zone ID of the existing internal load balancer"
+  type        = string
+}
+
+variable "secondary_vpc_id" {
+  description = "ID of an additional VPC to associate with the private zone"
+  type        = string
+}
+
 # main.tf - VPC and Private Hosted Zone
 # Create VPC for our workloads
 resource "aws_vpc" "main" {
@@ -403,8 +418,8 @@ resource "aws_route53_record" "internal_lb" {
   type    = "A"
 
   alias {
-    name                   = aws_lb.internal.dns_name
-    zone_id                = aws_lb.internal.zone_id
+    name                   = var.internal_lb_dns_name
+    zone_id                = var.internal_lb_zone_id
     evaluate_target_health = true
   }
 }
@@ -413,7 +428,7 @@ resource "aws_route53_record" "internal_lb" {
 # Associate a secondary VPC with the private zone
 resource "aws_route53_zone_association" "secondary" {
   zone_id = aws_route53_zone.private.zone_id
-  vpc_id  = aws_vpc.secondary.id
+  vpc_id  = var.secondary_vpc_id
 }
 
 # outputs.tf
@@ -637,7 +652,7 @@ output "private_dns_zone_id" {
 
 - Use a consistent domain hierarchy: `<service>.<environment>.internal.<company>.com`
 - Examples: `api.prod.internal.mycompany.com`, `db.staging.internal.mycompany.com`
-- Avoid using public TLDs for private zones to prevent split-horizon DNS issues
+- Use a subdomain of a domain you control, and make any split-horizon behavior intentional and documented
 
 ### TTL Configuration
 
