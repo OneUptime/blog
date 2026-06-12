@@ -50,7 +50,7 @@ analytics:
       role: TRANSFORMER_PROD
       database: ANALYTICS
       warehouse: COMPUTE_WH_PROD
-      schema: MARTS
+      schema: "{{ env_var('DBT_SCHEMA', 'MARTS') }}"
       threads: 8  # Higher parallelism for production
       client_session_keep_alive: true
       query_tag: "dbt_prod"
@@ -78,6 +78,8 @@ In your `dbt_project.yml`, you can set Snowflake-specific configurations at the 
 ```yaml
 # dbt_project.yml
 name: 'analytics'
+config-version: 2
+profile: 'analytics'
 version: '1.0.0'
 
 models:
@@ -112,7 +114,7 @@ models:
 
 ## Clustering for Query Performance
 
-Snowflake's clustering keys optimize query performance by co-locating similar data. Unlike traditional indexes, clustering is automatic and maintenance-free after initial definition.
+Snowflake's clustering keys optimize query performance by co-locating similar data. Unlike traditional indexes, reclustering is managed automatically after initial definition, but it can consume Snowflake credits and should be monitored.
 
 ```sql
 -- models/marts/core/fct_orders.sql
@@ -173,13 +175,13 @@ LEFT JOIN customers c ON o.customer_id = c.customer_id
 | Tables > 1TB | Small tables (< 100GB) |
 | Frequent range queries on specific columns | Tables with uniform access patterns |
 | Fact tables filtered by date | Dimension tables with full scans |
-| High-cardinality join columns | Staging tables rebuilt daily |
+| Frequently used filter or join columns | Very high-cardinality unique columns |
 
 ---
 
 ## Transient Tables for Cost Optimization
 
-Transient tables in Snowflake have no Fail-safe period, reducing storage costs by up to 50%. They still maintain Time Travel (up to 1 day), making them ideal for intermediate transformations.
+Transient tables in Snowflake have no Fail-safe period, limiting additional Time Travel and Fail-safe storage costs to at most one day. They can maintain Time Travel for 0 or 1 day, making them ideal for intermediate transformations that can be rebuilt from durable upstream data.
 
 ```sql
 -- models/intermediate/int_daily_revenue.sql
@@ -243,7 +245,7 @@ Zero-copy cloning creates instant copies of databases, schemas, or tables withou
 
 {% macro clone_production(schema) %}
 
-  {% set clone_name = schema ~ '_clone_' ~ modules.datetime.datetime.now().strftime('%Y%m%d') %}
+  {% set clone_name = env_var('DBT_SCHEMA', schema ~ '_clone_' ~ modules.datetime.datetime.now().strftime('%Y%m%d')) %}
 
   {% set clone_sql %}
     -- Create zero-copy clone of production schema
@@ -295,14 +297,16 @@ jobs:
         env:
           DBT_SNOWFLAKE_USER: ${{ secrets.DBT_USER }}
           DBT_SNOWFLAKE_PASSWORD: ${{ secrets.DBT_PASSWORD }}
+          DBT_SCHEMA: marts_clone_${{ github.run_id }}
 
       - name: Run dbt
         run: |
           dbt deps
-          dbt build --select state:modified+
+          dbt build
         env:
           DBT_SNOWFLAKE_USER: ${{ secrets.DBT_USER }}
           DBT_SNOWFLAKE_PASSWORD: ${{ secrets.DBT_PASSWORD }}
+          DBT_SCHEMA: marts_clone_${{ github.run_id }}
 ```
 
 ---
@@ -349,21 +353,21 @@ models:
 ### Querying Tagged Queries in Snowflake
 
 ```sql
--- Query to analyze dbt costs by model
--- Run this in Snowflake to see compute usage breakdown
+-- Query to analyze dbt queries by model
+-- Run this in Snowflake to see cloud services credits and scan metrics
 
 SELECT
     PARSE_JSON(query_tag):dbt_model::STRING AS dbt_model,
     PARSE_JSON(query_tag):dbt_target::STRING AS environment,
     COUNT(*) AS query_count,
     SUM(total_elapsed_time) / 1000 AS total_seconds,
-    SUM(credits_used_cloud_services) AS credits_used,
+    SUM(credits_used_cloud_services) AS cloud_services_credits,
     AVG(bytes_scanned) / POWER(1024, 3) AS avg_gb_scanned
 FROM snowflake.account_usage.query_history
 WHERE query_tag LIKE '%dbt_project%'
   AND start_time >= DATEADD('day', -7, CURRENT_TIMESTAMP)
 GROUP BY 1, 2
-ORDER BY credits_used DESC
+ORDER BY cloud_services_credits DESC
 LIMIT 20;
 ```
 
@@ -454,7 +458,7 @@ Following these best practices will help you build maintainable, cost-effective 
 ### Development Workflow
 
 - Clone production schemas for safe testing
-- Use `dbt build --select state:modified+` in CI to test changes
+- Use `dbt build --select state:modified+ --state <prod-artifacts>` in CI to test changes
 - Implement pre-commit hooks for SQL linting
 - Document models with descriptions and column-level docs
 
