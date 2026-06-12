@@ -76,11 +76,11 @@ class WebsiteUser(HttpUser):
         - Tracks success/failure
         - Groups statistics by endpoint
         """
-        response = self.client.get("/")
-
-        # You can add custom validation
-        if response.status_code != 200:
-            response.failure(f"Got status code {response.status_code}")
+        # Use catch_response=True when you want to mark a request
+        # as failed based on custom validation logic.
+        with self.client.get("/", catch_response=True) as response:
+            if response.status_code != 200:
+                response.failure(f"Got status code {response.status_code}")
 
     @task
     def get_api_data(self):
@@ -465,6 +465,7 @@ class DatabaseClient:
         3. Record success/failure with timing
         """
         start_time = time.time()
+        start_perf_counter = time.perf_counter()
         exception = None
         response_length = 0
 
@@ -483,7 +484,7 @@ class DatabaseClient:
             exception = e
 
         # Calculate response time in milliseconds
-        response_time = (time.time() - start_time) * 1000
+        response_time = (time.perf_counter() - start_perf_counter) * 1000
 
         # Report to Locust's statistics system
         self._request_event.fire(
