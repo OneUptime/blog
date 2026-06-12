@@ -33,7 +33,7 @@ else:
 ### Visual Example
 
 ```text
-Time: 11:30 (30 seconds into current minute)
+Time: 12:30 (30 seconds into current minute)
 Previous minute (11:00-11:59): 60 requests
 Current minute (12:00-present): 20 requests
 Limit: 100 requests per minute
@@ -133,15 +133,24 @@ public class SlidingWindowRateLimiter {
 
         data.lock.lock();
         try {
+            long previousWindow = currentWindow - 1;
+
+            // Keep window state current before calculating remaining requests
+            if (data.windowId < previousWindow) {
+                data.previousCount = 0;
+                data.currentCount.set(0);
+                data.windowId = currentWindow;
+            } else if (data.windowId < currentWindow) {
+                data.previousCount = data.currentCount.get();
+                data.currentCount.set(0);
+                data.windowId = currentWindow;
+            }
+
             long windowStart = currentWindow * windowSizeMs;
             double positionInWindow = (double)(now - windowStart) / windowSizeMs;
             double previousWeight = 1.0 - positionInWindow;
 
-            long previousCount = (data.windowId == currentWindow - 1)
-                ? data.previousCount
-                : 0;
-
-            double effectiveCount = (previousCount * previousWeight)
+            double effectiveCount = (data.previousCount * previousWeight)
                                   + data.currentCount.get();
 
             return Math.max(0, (int)(maxRequests - effectiveCount));
@@ -177,7 +186,6 @@ import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
 
 @Component
@@ -226,7 +234,7 @@ public class RedisRateLimiter {
             if effective_count >= max_requests then
                 -- Rate limited
                 local retry_after = window_size - (now - window_start)
-                return {0, math.ceil(effective_count), math.ceil(retry_after)}
+                return {0, 0, math.ceil(retry_after)}
             else
                 -- Increment current window and set expiry
                 redis.call('INCR', current_key)
@@ -428,12 +436,12 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-@Target({ElementType.METHOD, ElementType.TYPE})
+@Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RateLimit {
     int maxRequests() default 100;  // Max requests per window
     int windowSeconds() default 60;  // Window size in seconds
-    String key() default "";  // Custom key expression (SpEL supported)
+    String key() default "";  // Custom key prefix
 }
 ```
 
@@ -546,7 +554,7 @@ public class ApiController {
         return "result";
     }
 
-    // Custom key for per-user rate limiting
+    // Custom key namespace for this endpoint
     @RateLimit(maxRequests = 50, windowSeconds = 60, key = "user-api")
     @GetMapping("/user/{userId}")
     public String getUserData(@PathVariable String userId) {
