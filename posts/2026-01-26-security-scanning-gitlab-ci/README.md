@@ -26,10 +26,10 @@ The fastest way to add security scanning is using GitLab's built-in templates.
 
 ```yaml
 include:
-  - template: Security/SAST.gitlab-ci.yml
-  - template: Security/Secret-Detection.gitlab-ci.yml
-  - template: Security/Dependency-Scanning.gitlab-ci.yml
-  - template: Security/Container-Scanning.gitlab-ci.yml
+  - template: Jobs/SAST.gitlab-ci.yml
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
+  - template: Jobs/Dependency-Scanning.gitlab-ci.yml
+  - template: Jobs/Container-Scanning.gitlab-ci.yml
 
 stages:
   - build
@@ -40,10 +40,11 @@ stages:
 build:
   stage: build
   script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
 
-# Templates add their own jobs to the security stage
+# Templates add their own jobs in their default stages
 
 ```
 
@@ -73,20 +74,17 @@ SAST scans your source code without running it. Configure it for your specific n
 
 ```yaml
 include:
-  - template: Security/SAST.gitlab-ci.yml
+  - template: Jobs/SAST.gitlab-ci.yml
 
 variables:
   # Exclude test files from scanning
   SAST_EXCLUDED_PATHS: "spec, test, tests, tmp"
-  # Set severity threshold
-  SAST_DISABLED: "false"
+  # Exclude a specific analyzer when you use another scanner for that stack
+  SAST_EXCLUDED_ANALYZERS: "spotbugs"
 
-# Override the template job for customization
-sast:
+# Override the Semgrep SAST job for customization
+semgrep-sast:
   stage: test
-  variables:
-    # Language-specific analyzers to use
-    SAST_EXCLUDED_ANALYZERS: "eslint"  # If using custom ESLint config
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -97,15 +95,15 @@ For custom SAST configuration with Semgrep:
 ```yaml
 semgrep-sast:
   stage: test
-  image: returntocorp/semgrep:latest
+  image: semgrep/semgrep:latest
   script:
     # Run Semgrep with custom rules
-    - semgrep scan --config auto --config ./security-rules/ --json -o semgrep-results.json .
+    - semgrep scan --config auto --config ./security-rules/ --gitlab-sast -o gl-sast-report.json .
   artifacts:
     reports:
-      sast: semgrep-results.json
+      sast: gl-sast-report.json
     paths:
-      - semgrep-results.json
+      - gl-sast-report.json
 ```
 
 ## Secret Detection
@@ -114,7 +112,7 @@ Catch accidentally committed secrets before they cause breaches.
 
 ```yaml
 include:
-  - template: Security/Secret-Detection.gitlab-ci.yml
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
 
 variables:
   # Scan historical commits too
@@ -127,11 +125,16 @@ For custom patterns, create a `.gitlab/secret-detection-ruleset.toml`:
 
 ```toml
 [secrets]
-  [[secrets.rules]]
-    id = "internal-api-key"
-    description = "Internal API Key Pattern"
-    regex = '''INTERNAL_KEY_[A-Z0-9]{32}'''
-    tags = ["internal"]
+  [[secrets.passthrough]]
+    type = "raw"
+    target = "gitleaks.toml"
+    value = """
+[[rules]]
+  id = "internal-api-key"
+  description = "Internal API Key Pattern"
+  regex = '''INTERNAL_KEY_[A-Z0-9]{32}'''
+  keywords = ["INTERNAL_KEY_"]
+"""
 ```
 
 ## Dependency Scanning
@@ -140,18 +143,16 @@ Find vulnerabilities in your project's dependencies.
 
 ```yaml
 include:
-  - template: Security/Dependency-Scanning.gitlab-ci.yml
+  - template: Jobs/Dependency-Scanning.gitlab-ci.yml
 
 variables:
-  # Fail on high severity vulnerabilities
-  DS_REMEDIATE: "true"
+  # Increase analyzer logging while tuning the scan
+  SECURE_LOG_LEVEL: "info"
 
-dependency_scanning:
+gemnasium-python-dependency_scanning:
   variables:
-    # For Python projects
+    # For legacy Gemnasium-based Python dependency scanning
     PIP_REQUIREMENTS_FILE: "requirements.txt"
-    # For Node.js projects
-    DS_EXCLUDED_ANALYZERS: "retire.js"  # If using npm audit instead
 ```
 
 Manual dependency scanning with Trivy:
@@ -168,8 +169,8 @@ dependency-scan:
     # Fail on critical vulnerabilities
     - trivy fs --exit-code 1 --severity CRITICAL .
   artifacts:
-    reports:
-      dependency_scanning: dependency-report.json
+    paths:
+      - dependency-report.json
 ```
 
 ## Container Scanning
@@ -178,7 +179,7 @@ Scan Docker images for OS and application vulnerabilities.
 
 ```yaml
 include:
-  - template: Security/Container-Scanning.gitlab-ci.yml
+  - template: Jobs/Container-Scanning.gitlab-ci.yml
 
 variables:
   CS_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
@@ -201,14 +202,14 @@ container-scan:
     entrypoint: [""]
   script:
     # Scan the built image
-    - trivy image --format json --output container-report.json $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-    # Generate SARIF for GitHub/GitLab integration
+    - trivy image --format template --template "@/contrib/gitlab.tpl" --output gl-container-scanning-report.json $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    # Generate SARIF for external upload or later processing
     - trivy image --format sarif --output container-report.sarif $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
     # Fail pipeline on critical/high vulnerabilities
     - trivy image --exit-code 1 --severity CRITICAL,HIGH $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
   artifacts:
     reports:
-      container_scanning: container-report.json
+      container_scanning: gl-container-scanning-report.json
     paths:
       - container-report.sarif
   needs:
@@ -221,13 +222,18 @@ DAST tests your running application for vulnerabilities like XSS and SQL injecti
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
+
+stages:
+  - dast
 
 variables:
   # URL to test
-  DAST_WEBSITE: "https://staging.example.com"
+  DAST_TARGET_URL: "https://staging.example.com"
   # Full scan (slower but more thorough)
-  DAST_FULL_SCAN_ENABLED: "true"
+  DAST_FULL_SCAN: "true"
+  # Use the browser-based GitLab DAST crawler
+  DAST_BROWSER_SCAN: "true"
 
 dast:
   stage: dast
@@ -243,7 +249,7 @@ For API testing with DAST:
 dast-api:
   stage: dast
   image:
-    name: owasp/zap2docker-stable:latest
+    name: ghcr.io/zaproxy/zaproxy:stable
     entrypoint: [""]
   script:
     - mkdir -p /zap/wrk
@@ -268,12 +274,12 @@ iac-scan:
     entrypoint: [""]
   script:
     # Scan IaC files
-    - trivy config --format json --output iac-report.json .
+    - trivy config --format sarif --output iac-report.sarif .
     # Fail on high severity misconfigurations
     - trivy config --exit-code 1 --severity HIGH,CRITICAL .
   artifacts:
     reports:
-      sast: iac-report.json
+      sarif: iac-report.sarif
 ```
 
 Using Checkov for more detailed IaC scanning:
@@ -314,14 +320,18 @@ security-gate:
   script:
     # Check if any critical vulnerabilities were found
     - |
-      if grep -q '"severity":"Critical"' reports/*.json 2>/dev/null; then
+      reports="$(find . -name 'gl-*-report.json' -print)"
+      if [ -n "$reports" ] && grep -Eq '"severity"[[:space:]]*:[[:space:]]*"Critical"' $reports; then
         echo "Critical vulnerabilities found! Blocking deployment."
         exit 1
       fi
   needs:
-    - sast
-    - dependency_scanning
-    - container_scanning
+    - job: semgrep-sast
+      optional: true
+    - job: gemnasium-dependency_scanning
+      optional: true
+    - job: container_scanning
+      optional: true
   allow_failure: false
 ```
 
@@ -333,11 +343,11 @@ Track and manage vulnerabilities over time.
 # Generate compliance report
 compliance-report:
   stage: security
-  image: python:3.11-slim
+  image: alpine:latest
   script:
-    - pip install jq
+    - apk add --no-cache curl jq
     # Combine all security reports
-    - jq -s 'add' reports/*.json > combined-report.json
+    - jq -s '{reports: .}' gl-*-report.json > combined-report.json
     # Upload to vulnerability management system
     - |
       curl -X POST "https://security.example.com/api/reports" \
@@ -357,23 +367,19 @@ compliance-report:
 Create a vulnerability allowlist for known false positives.
 
 ```yaml
-# .gitlab/vulnerability-allowlist.yml
-version: "1.0"
-vulnerabilities:
-  - id: "CVE-2023-12345"
-    reason: "Not exploitable in our configuration"
-    expiry: "2024-12-31"
-  - id: "CVE-2023-67890"
-    reason: "Mitigated by network policy"
+# vulnerability-allowlist.yml
+generalallowlist:
+  CVE-2023-12345: "Not exploitable in our configuration"
+  CVE-2023-67890: "Mitigated by network policy"
 ```
 
 Reference it in your pipeline:
 
 ```yaml
-container-scan:
-  script:
-    # Ignore allowed vulnerabilities
-    - trivy image --ignorefile .trivyignore --exit-code 1 $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+container_scanning:
+  variables:
+    # Fetch the repository so vulnerability-allowlist.yml is available to the analyzer
+    GIT_STRATEGY: fetch
 ```
 
 ## Scheduled Security Scans
@@ -390,9 +396,9 @@ security-audit:
     # Full SAST scan including historical
     - semgrep scan --config auto --json -o sast-full.json .
     # Scan all dependencies including transitive
-    - trivy fs --scanners vuln --json -o deps-full.json .
+    - trivy fs --scanners vuln --format json -o deps-full.json .
     # Deep container scan
-    - trivy image --scanners vuln,secret,config --json -o container-full.json $CI_REGISTRY_IMAGE:latest
+    - trivy image --scanners vuln,secret,misconfig --format json -o container-full.json $CI_REGISTRY_IMAGE:latest
   artifacts:
     paths:
       - "*-full.json"
