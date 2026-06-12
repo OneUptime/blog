@@ -123,7 +123,12 @@ When multiple services restart simultaneously after an outage, they all retry at
 // 'equal': half fixed, half random for predictable bounds
 // 'decorrelated': AWS-recommended approach with wider variation
 function calculateDelayWithJitter(baseDelay, attempt, options = {}) {
-  const { factor = 2, maxDelay = 30000, jitter = 'full' } = options;
+  const {
+    factor = 2,
+    maxDelay = 30000,
+    jitter = 'full',
+    previousDelay = baseDelay,
+  } = options;
 
   // Calculate exponential delay
   let delay = Math.min(baseDelay * Math.pow(factor, attempt - 1), maxDelay);
@@ -141,8 +146,12 @@ function calculateDelayWithJitter(baseDelay, attempt, options = {}) {
       return delay / 2 + Math.random() * delay / 2;
 
     case 'decorrelated':
-      // AWS-style jitter with wider spread
-      return Math.min(maxDelay, Math.random() * delay * 3);
+      // AWS-style jitter based on the previous delay
+      const upperBound = Math.max(baseDelay, previousDelay * 3);
+      return Math.min(
+        maxDelay,
+        baseDelay + Math.random() * (upperBound - baseDelay)
+      );
 
     default:
       return delay;
@@ -150,7 +159,7 @@ function calculateDelayWithJitter(baseDelay, attempt, options = {}) {
 }
 ```
 
-The AWS "decorrelated" jitter strategy generally performs best in high-concurrency scenarios. It produces a wider spread of retry times, which helps distribute load more evenly.
+The AWS "decorrelated" jitter strategy is useful in high-concurrency scenarios when you want a wider spread of retry times. This helps distribute load more evenly.
 
 ## Production Connection Class
 
@@ -171,6 +180,7 @@ class DatabaseConnection {
     this.connection = null;
     this.isConnected = false;
     this.retryCount = 0;
+    this.previousDelay = this.initialDelay;
   }
 
   async connect() {
@@ -191,6 +201,11 @@ class DatabaseConnection {
       } catch (error) {
         this.isConnected = false;
 
+        if (this.connection) {
+          await this.connection.end().catch(() => {});
+          this.connection = null;
+        }
+
         if (!this.isRetryable(error) || attempt === this.maxRetries) {
           throw this.wrapError(error, attempt);
         }
@@ -198,8 +213,13 @@ class DatabaseConnection {
         const delay = calculateDelayWithJitter(
           this.initialDelay,
           attempt,
-          { maxDelay: this.maxDelay, jitter: this.jitter }
+          {
+            maxDelay: this.maxDelay,
+            jitter: this.jitter,
+            previousDelay: this.previousDelay,
+          }
         );
+        this.previousDelay = delay;
 
         console.log(
           `Connection attempt ${attempt} failed: ${error.message}. ` +
@@ -212,15 +232,21 @@ class DatabaseConnection {
   }
 
   async createWithTimeout() {
-    return Promise.race([
-      createConnection(this.config),
-      new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error('Connection timeout')),
-          this.connectionTimeout
-        )
-      ),
-    ]);
+    let timeoutId;
+
+    try {
+      return await Promise.race([
+        createConnection(this.config),
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(
+            () => reject(new Error('Connection timeout')),
+            this.connectionTimeout
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   async healthCheck() {
@@ -375,10 +401,13 @@ class ResilientPool {
   async getConnection() {
     return this.circuitBreaker.execute(async () => {
       let lastError;
+      let previousDelay = this.initialDelay;
 
       for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+        let conn;
+
         try {
-          const conn = await this.pool.getConnection();
+          conn = await this.pool.getConnection();
 
           // Verify connection is healthy
           await conn.ping();
@@ -387,12 +416,25 @@ class ResilientPool {
         } catch (error) {
           lastError = error;
 
+          if (conn) {
+            if (typeof conn.destroy === 'function') {
+              conn.destroy();
+            } else {
+              conn.release();
+            }
+          }
+
+          if (!isRetryableError(error)) {
+            throw error;
+          }
+
           if (attempt < this.maxRetries) {
             const delay = calculateDelayWithJitter(
               this.initialDelay,
               attempt,
-              { jitter: 'decorrelated' }
+              { jitter: 'decorrelated', previousDelay }
             );
+            previousDelay = delay;
             await sleep(delay);
           }
         }
@@ -481,8 +523,12 @@ function recordAttempt(success, delay = 0) {
 function getMetrics() {
   return {
     ...metrics,
-    successRate: metrics.connectionSuccesses / metrics.connectionAttempts,
-    avgRetryDelay: metrics.totalRetryDelayMs / metrics.connectionFailures,
+    successRate: metrics.connectionAttempts === 0
+      ? 0
+      : metrics.connectionSuccesses / metrics.connectionAttempts,
+    avgRetryDelay: metrics.connectionFailures === 0
+      ? 0
+      : metrics.totalRetryDelayMs / metrics.connectionFailures,
   };
 }
 ```
