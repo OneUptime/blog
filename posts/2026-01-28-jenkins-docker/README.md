@@ -61,7 +61,7 @@ If Jenkins runs in Docker, you need access to the Docker daemon. The simplest op
 ## Safer Alternatives
 
 - Use Docker-in-Docker (DinD) in a dedicated agent
-- Use a remote build service like Kaniko or BuildKit
+- Use a daemonless builder like Kaniko or a BuildKit builder
 
 ## Best Practices
 
