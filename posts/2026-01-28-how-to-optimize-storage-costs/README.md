@@ -40,6 +40,31 @@ def audit_s3_storage():
     """
     s3 = boto3.client('s3')
     cloudwatch = boto3.client('cloudwatch')
+    storage_types = [
+        'StandardStorage',
+        'StandardIAStorage',
+        'StandardIASizeOverhead',
+        'StandardIAObjectOverhead',
+        'OneZoneIAStorage',
+        'OneZoneIASizeOverhead',
+        'ExpressOneZoneStorage',
+        'ReducedRedundancyStorage',
+        'GlacierInstantRetrievalStorage',
+        'GlacierIRSizeOverhead',
+        'GlacierStorage',
+        'GlacierStagingStorage',
+        'GlacierObjectOverhead',
+        'GlacierS3ObjectOverhead',
+        'DeepArchiveStorage',
+        'DeepArchiveStagingStorage',
+        'DeepArchiveObjectOverhead',
+        'DeepArchiveS3ObjectOverhead',
+        'IntelligentTieringFAStorage',
+        'IntelligentTieringIAStorage',
+        'IntelligentTieringAAStorage',
+        'IntelligentTieringAIAStorage',
+        'IntelligentTieringDAAStorage'
+    ]
 
     buckets = s3.list_buckets()['Buckets']
     audit_results = []
@@ -48,23 +73,25 @@ def audit_s3_storage():
         bucket_name = bucket['Name']
 
         try:
-            # Get bucket size from CloudWatch
-            response = cloudwatch.get_metric_statistics(
-                Namespace='AWS/S3',
-                MetricName='BucketSizeBytes',
-                Dimensions=[
-                    {'Name': 'BucketName', 'Value': bucket_name},
-                    {'Name': 'StorageType', 'Value': 'StandardStorage'}
-                ],
-                StartTime=datetime.now() - timedelta(days=2),
-                EndTime=datetime.now(),
-                Period=86400,
-                Statistics=['Average']
-            )
-
+            # Get bucket size from CloudWatch across storage classes
             size_bytes = 0
-            if response['Datapoints']:
-                size_bytes = response['Datapoints'][0]['Average']
+            for storage_type in storage_types:
+                response = cloudwatch.get_metric_statistics(
+                    Namespace='AWS/S3',
+                    MetricName='BucketSizeBytes',
+                    Dimensions=[
+                        {'Name': 'BucketName', 'Value': bucket_name},
+                        {'Name': 'StorageType', 'Value': storage_type}
+                    ],
+                    StartTime=datetime.now() - timedelta(days=2),
+                    EndTime=datetime.now(),
+                    Period=86400,
+                    Statistics=['Average']
+                )
+
+                if response['Datapoints']:
+                    latest = max(response['Datapoints'], key=lambda p: p['Timestamp'])
+                    size_bytes += latest['Average']
 
             # Check for lifecycle policy
             has_lifecycle = False
@@ -159,12 +186,12 @@ graph TD
     B -->|Rare Access| E[Glacier IR<br/>$0.004/GB/month]
     B -->|Archive| F[Glacier Deep<br/>$0.00099/GB/month]
 
-    C -->|After 30 days| D
+    C -->|After 31 days| D
     D -->|After 90 days| E
     E -->|After 180 days| F
 ```
 
-Configure intelligent tiering for automatic optimization:
+Configure optional archive tiers for objects stored in S3 Intelligent-Tiering:
 
 ```python
 # S3 Intelligent Tiering configuration
@@ -188,8 +215,9 @@ intelligent_tiering_config = {
 
 def enable_intelligent_tiering(bucket_name):
     """
-    Enable S3 Intelligent Tiering on a bucket.
-    Objects automatically move between tiers based on access patterns.
+    Enable optional S3 Intelligent-Tiering archive tiers on a bucket.
+    Objects must be uploaded or transitioned to the INTELLIGENT_TIERING storage class
+    before this configuration can move them to archive access tiers.
     """
     s3 = boto3.client('s3')
 
@@ -198,7 +226,7 @@ def enable_intelligent_tiering(bucket_name):
         Id='auto-tier-all-objects',
         IntelligentTieringConfiguration=intelligent_tiering_config
     )
-    print(f"Intelligent tiering enabled for {bucket_name}")
+    print(f"Intelligent-Tiering archive tiers enabled for {bucket_name}")
 ```
 
 ## Step 3: Create Lifecycle Policies
@@ -220,7 +248,7 @@ def create_lifecycle_policy(bucket_name, policy_type='standard'):
                     'Status': 'Enabled',
                     'Filter': {'Prefix': ''},
                     'Transitions': [
-                        {'Days': 30, 'StorageClass': 'STANDARD_IA'},
+                        {'Days': 31, 'StorageClass': 'STANDARD_IA'},
                         {'Days': 90, 'StorageClass': 'GLACIER_IR'},
                         {'Days': 365, 'StorageClass': 'DEEP_ARCHIVE'}
                     ]
@@ -234,8 +262,7 @@ def create_lifecycle_policy(bucket_name, policy_type='standard'):
                     'Status': 'Enabled',
                     'Filter': {'Prefix': 'logs/'},
                     'Transitions': [
-                        {'Days': 7, 'StorageClass': 'STANDARD_IA'},
-                        {'Days': 30, 'StorageClass': 'GLACIER_IR'}
+                        {'Days': 31, 'StorageClass': 'STANDARD_IA'}
                     ],
                     'Expiration': {'Days': 90}  # Delete after 90 days
                 }
@@ -309,7 +336,7 @@ def find_orphaned_ebs_volumes():
             'size_gb': volume['Size'],
             'created': volume['CreateTime'],
             'age_days': age_days,
-            'monthly_cost': volume['Size'] * 0.10  # Approximate gp3 cost
+            'monthly_cost': volume['Size'] * 0.08  # Approximate gp3 storage cost
         })
 
     return sorted(orphaned, key=lambda x: x['monthly_cost'], reverse=True)
@@ -356,23 +383,24 @@ def cleanup_incomplete_multipart_uploads(bucket_name, days_threshold=7):
     """
     s3 = boto3.client('s3')
 
-    response = s3.list_multipart_uploads(Bucket=bucket_name)
-
     aborted = []
-    for upload in response.get('Uploads', []):
-        initiated = upload['Initiated'].replace(tzinfo=None)
-        age_days = (datetime.now() - initiated).days
+    paginator = s3.get_paginator('list_multipart_uploads')
 
-        if age_days > days_threshold:
-            s3.abort_multipart_upload(
-                Bucket=bucket_name,
-                Key=upload['Key'],
-                UploadId=upload['UploadId']
-            )
-            aborted.append({
-                'key': upload['Key'],
-                'age_days': age_days
-            })
+    for page in paginator.paginate(Bucket=bucket_name):
+        for upload in page.get('Uploads', []):
+            initiated = upload['Initiated'].replace(tzinfo=None)
+            age_days = (datetime.now() - initiated).days
+
+            if age_days > days_threshold:
+                s3.abort_multipart_upload(
+                    Bucket=bucket_name,
+                    Key=upload['Key'],
+                    UploadId=upload['UploadId']
+                )
+                aborted.append({
+                    'key': upload['Key'],
+                    'age_days': age_days
+                })
 
     return aborted
 
@@ -484,7 +512,7 @@ Resources:
       Statistic: Maximum
       Period: 86400  # Daily
       EvaluationPeriods: 1
-      Threshold: 1000  # Alert if daily S3 cost exceeds $1000
+      Threshold: 1000  # Alert if estimated monthly S3 charges exceed $1000
       ComparisonOperator: GreaterThanThreshold
       AlarmActions:
         - !Ref AlertSNSTopic
