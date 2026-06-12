@@ -21,7 +21,7 @@ MLflow consists of four main components:
 - **MLflow Tracking** - Log parameters, metrics, and artifacts from your ML experiments
 - **MLflow Projects** - Package ML code in a reusable, reproducible format
 - **MLflow Models** - Deploy models to various serving environments
-- **Model Registry** - Centralized model store with versioning and stage transitions
+- **Model Registry** - Centralized model store with versioning, aliases, and metadata
 
 This guide primarily covers MLflow Tracking with an introduction to the Model Registry at the end.
 
@@ -285,7 +285,7 @@ with mlflow.start_run(run_name="sklearn-model"):
     # Log the model with signature inference
     mlflow.sklearn.log_model(
         model,
-        artifact_path="model",  # Directory within artifacts
+        name="model",  # Model artifact name
         input_example=X_train[:5],  # Sample input for schema inference
         registered_model_name=None  # Set a name to auto-register
     )
@@ -334,7 +334,7 @@ with mlflow.start_run(run_name="pytorch-model"):
     # Log the PyTorch model
     mlflow.pytorch.log_model(
         model,
-        artifact_path="pytorch_model",
+        name="pytorch_model",
         input_example=torch.randn(1, input_size).numpy()
     )
 
@@ -606,6 +606,7 @@ if experiment:
 # autolog_sklearn.py
 # Automatic logging for scikit-learn models
 import mlflow
+import mlflow.sklearn
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
@@ -643,6 +644,7 @@ with mlflow.start_run(run_name="autolog-rf"):
 # autolog_pytorch.py
 # Automatic logging for PyTorch Lightning
 import mlflow
+import mlflow.pytorch
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader, TensorDataset
@@ -698,6 +700,7 @@ with mlflow.start_run(run_name="lightning-autolog"):
 # autolog_xgboost.py
 # Automatic logging for XGBoost
 import mlflow
+import mlflow.xgboost
 import xgboost as xgb
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
@@ -750,6 +753,7 @@ with mlflow.start_run(run_name="xgb-autolog"):
 # model_registry.py
 # Register and manage models in MLflow Model Registry
 import mlflow
+import mlflow.sklearn
 from mlflow import MlflowClient
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.datasets import make_classification
@@ -762,22 +766,22 @@ model = RandomForestClassifier(n_estimators=100)
 model.fit(X, y)
 
 # Log and register the model in one step
-with mlflow.start_run(run_name="registered-model"):
+with mlflow.start_run(run_name="registered-model") as run:
     mlflow.log_param("n_estimators", 100)
     mlflow.log_metric("accuracy", 0.92)
 
     # Register by specifying registered_model_name
     model_info = mlflow.sklearn.log_model(
         model,
-        artifact_path="model",
+        name="model",
         registered_model_name="fraud-detection-model"  # Auto-registers
     )
 
     print(f"Model registered: {model_info.model_uri}")
+    run_id = run.info.run_id
 
 # Alternative: Register an existing run's model
 client = MlflowClient()
-run_id = mlflow.active_run().info.run_id if mlflow.active_run() else None
 
 # Register from a specific run
 # result = client.create_registered_model("my-new-model")
@@ -788,11 +792,12 @@ run_id = mlflow.active_run().info.run_id if mlflow.active_run() else None
 # )
 ```
 
-### Managing Model Versions and Stages
+### Managing Model Versions and Aliases
 
 ```python
-# model_stages.py
-# Manage model versions and transition between stages
+# model_aliases.py
+# Manage model versions with aliases
+import mlflow.sklearn
 from mlflow import MlflowClient
 
 client = MlflowClient()
@@ -804,20 +809,15 @@ versions = client.search_model_versions(f"name='{model_name}'")
 print(f"Found {len(versions)} versions of {model_name}")
 
 for v in versions:
-    print(f"  Version {v.version}: stage={v.current_stage}, run_id={v.run_id[:8]}...")
+    print(f"  Version {v.version}: aliases={v.aliases}, run_id={v.run_id[:8]}...")
 
-# Transition a model version to a stage
-# Stages: None, Staging, Production, Archived
+# Assign aliases to model versions
 if versions:
-    latest_version = versions[0].version
+    latest_version = max(versions, key=lambda v: int(v.version)).version
 
-    # Move to Staging
-    client.transition_model_version_stage(
-        name=model_name,
-        version=latest_version,
-        stage="Staging"
-    )
-    print(f"Version {latest_version} moved to Staging")
+    # Point the "champion" alias at the version used for production traffic
+    client.set_registered_model_alias(model_name, "champion", latest_version)
+    print(f"Version {latest_version} assigned the champion alias")
 
     # Add a description to the version
     client.update_model_version(
@@ -826,9 +826,8 @@ if versions:
         description="Improved model with new features. F1 score: 0.94"
     )
 
-# Load a model by stage
-# production_model = mlflow.sklearn.load_model(f"models:/{model_name}/Production")
-# staging_model = mlflow.sklearn.load_model(f"models:/{model_name}/Staging")
+# Load a model by alias
+# champion_model = mlflow.sklearn.load_model(f"models:/{model_name}@champion")
 ```
 
 ### Loading Registered Models
@@ -837,18 +836,15 @@ if versions:
 # load_registered.py
 # Load models from the registry for inference
 import mlflow
+import mlflow.sklearn
 
 model_name = "fraud-detection-model"
 
-# Load the latest version
-latest_model = mlflow.sklearn.load_model(f"models:/{model_name}/latest")
+# Load the model version assigned to an alias
+champion_model = mlflow.sklearn.load_model(f"models:/{model_name}@champion")
 
 # Load a specific version
 # version_1_model = mlflow.sklearn.load_model(f"models:/{model_name}/1")
-
-# Load by stage
-# production_model = mlflow.sklearn.load_model(f"models:/{model_name}/Production")
-# staging_model = mlflow.sklearn.load_model(f"models:/{model_name}/Staging")
 
 # Load by run ID (without registry)
 # run_model = mlflow.sklearn.load_model("runs:/abc123def456/model")
@@ -856,7 +852,7 @@ latest_model = mlflow.sklearn.load_model(f"models:/{model_name}/latest")
 # Use the model for predictions
 import numpy as np
 sample_input = np.random.randn(5, 20)
-predictions = latest_model.predict(sample_input)
+predictions = champion_model.predict(sample_input)
 print(f"Predictions: {predictions}")
 ```
 
@@ -959,6 +955,7 @@ with mlflow.start_run(run_name="reproducible-run"):
 # ci_integration.py
 # Example of MLflow integration in a CI/CD pipeline
 import mlflow
+import mlflow.sklearn
 import os
 
 # Get CI/CD environment variables
@@ -985,7 +982,7 @@ with mlflow.start_run(run_name=f"ci-build-{ci_build_id}"):
     if ci_branch == "main":
         mlflow.sklearn.log_model(
             model,  # Your trained model
-            artifact_path="model",
+            name="model",
             registered_model_name="production-model"
         )
         print("Model registered for production deployment")
@@ -1002,7 +999,7 @@ Key takeaways for effective MLflow experiment tracking:
 3. **Use consistent naming** - Establish team conventions for experiments, runs, and tags
 4. **Leverage auto-logging** - Let MLflow handle the boilerplate for supported frameworks
 5. **Query programmatically** - Use the search API for analysis and automation
-6. **Use the Model Registry** - Track model versions and manage deployment stages
+6. **Use the Model Registry** - Track model versions and manage deployment aliases
 7. **Document your runs** - Add descriptions and tags for future reference
 8. **Enable reproducibility** - Log git commits, data versions, and random seeds
 
