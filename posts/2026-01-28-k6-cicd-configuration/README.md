@@ -145,14 +145,15 @@ jobs:
 
       - name: Install k6
         run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update
           sudo apt-get install k6
 
       - name: Run smoke test
-        run: k6 run k6/scripts/smoke.js
+        run: |
+          mkdir -p k6-results
+          k6 run --summary-export k6-results/smoke-summary.json k6/scripts/smoke.js
         env:
           BASE_URL: ${{ secrets.STAGING_URL }}
 
@@ -173,14 +174,15 @@ jobs:
 
       - name: Install k6
         run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update
           sudo apt-get install k6
 
       - name: Run load test
-        run: k6 run k6/scripts/load.js --out json=k6-results/results.json
+        run: |
+          mkdir -p k6-results
+          k6 run --summary-export k6-results/load-summary.json --out json=k6-results/results.json k6/scripts/load.js
         env:
           BASE_URL: ${{ secrets.STAGING_URL }}
 ```
@@ -199,10 +201,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+
       - name: Run k6 test
-        uses: grafana/k6-action@v0.3.1
+        uses: grafana/run-k6-action@v1
         with:
-          filename: k6/scripts/load.js
+          path: k6/scripts/load.js
           flags: --out json=results.json
         env:
           BASE_URL: https://staging.example.com
@@ -229,10 +234,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+
       - name: Run k6 test
-        uses: grafana/k6-action@v0.3.1
+        uses: grafana/run-k6-action@v1
         with:
-          filename: k6/scripts/${{ matrix.test }}.js
+          path: k6/scripts/${{ matrix.test }}.js
         env:
           BASE_URL: ${{ matrix.environment == 'staging' && secrets.STAGING_URL || secrets.PRODUCTION_URL }}
           ENVIRONMENT: ${{ matrix.environment }}
@@ -249,26 +257,33 @@ stages:
   - deploy
 
 variables:
-  K6_VERSION: "0.49.0"
+  K6_VERSION: "1.8.0"
+
+cache:
+  key: k6-${K6_VERSION}
+  paths:
+    - .k6/
 
 # Cache k6 binary across jobs
 .k6-setup: &k6-setup
   before_script:
     - |
-      if [ ! -f /usr/local/bin/k6 ]; then
+      mkdir -p .k6
+      if [ ! -f .k6/k6 ]; then
         wget -q https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-amd64.tar.gz
         tar -xzf k6-v${K6_VERSION}-linux-amd64.tar.gz
-        mv k6-v${K6_VERSION}-linux-amd64/k6 /usr/local/bin/
+        mv k6-v${K6_VERSION}-linux-amd64/k6 .k6/
       fi
+      export PATH="$CI_PROJECT_DIR/.k6:$PATH"
 
 smoke-test:
   stage: performance
   <<: *k6-setup
   script:
-    - k6 run --out json=smoke-results.json k6/scripts/smoke.js
+    - k6 run --summary-export smoke-summary.json k6/scripts/smoke.js
   artifacts:
     paths:
-      - smoke-results.json
+      - smoke-summary.json
     when: always
   variables:
     BASE_URL: $STAGING_URL
@@ -280,12 +295,12 @@ load-test:
   stage: performance
   <<: *k6-setup
   script:
-    - k6 run --out json=load-results.json k6/scripts/load.js
+    - k6 run --summary-export load-performance.json k6/scripts/load.js
   artifacts:
     paths:
-      - load-results.json
+      - load-performance.json
     reports:
-      performance: load-results.json
+      load_performance: load-performance.json
     when: always
   variables:
     BASE_URL: $STAGING_URL
@@ -319,7 +334,7 @@ pipeline {
     agent any
 
     environment {
-        K6_VERSION = '0.49.0'
+        K6_VERSION = '1.8.0'
         BASE_URL = credentials('staging-url')
     }
 
@@ -338,11 +353,11 @@ pipeline {
 
         stage('Smoke Test') {
             steps {
-                sh 'k6 run k6/scripts/smoke.js --out json=smoke-results.json'
+                sh 'k6 run --summary-export smoke-summary.json k6/scripts/smoke.js'
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'smoke-results.json', fingerprint: true
+                    archiveArtifacts artifacts: 'smoke-summary.json', fingerprint: true
                 }
             }
         }
@@ -352,15 +367,15 @@ pipeline {
                 branch 'main'
             }
             steps {
-                sh 'k6 run k6/scripts/load.js --out json=load-results.json'
+                sh 'k6 run --summary-export load-summary.json k6/scripts/load.js'
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'load-results.json', fingerprint: true
+                    archiveArtifacts artifacts: 'load-summary.json', fingerprint: true
                     // Parse and display results
                     script {
-                        def results = readJSON file: 'load-results.json'
-                        echo "Test completed with ${results.metrics.http_reqs.count} requests"
+                        def results = readJSON file: 'load-summary.json'
+                        echo "Test completed with ${results.metrics.http_reqs.values.count} requests"
                     }
                 }
             }
@@ -572,15 +587,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.k6
-          key: k6-${{ runner.os }}-v0.49.0
+          key: k6-${{ runner.os }}-v1.8.0
 
       - name: Install k6
         run: |
           if [ ! -f ~/.k6/k6 ]; then
             mkdir -p ~/.k6
-            wget -q https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.tar.gz
-            tar -xzf k6-v0.49.0-linux-amd64.tar.gz
-            mv k6-v0.49.0-linux-amd64/k6 ~/.k6/
+            wget -q https://github.com/grafana/k6/releases/download/v1.8.0/k6-v1.8.0-linux-amd64.tar.gz
+            tar -xzf k6-v1.8.0-linux-amd64.tar.gz
+            mv k6-v1.8.0-linux-amd64/k6 ~/.k6/
           fi
           echo "$HOME/.k6" >> $GITHUB_PATH
 ```
