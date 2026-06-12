@@ -10,7 +10,7 @@ Description: Learn how to implement the claim check pattern for handling large m
 
 ## Introduction
 
-When working with message queues like RabbitMQ, Apache Kafka, or AWS SQS, you will often encounter message size limits. Most message brokers impose restrictions on payload sizes, typically ranging from 256 KB to a few megabytes. The **Claim Check Pattern** (also known as Reference-Based Messaging) solves this problem by storing large payloads externally and passing only a reference through the message queue.
+When working with message queues like RabbitMQ, Apache Kafka, or AWS SQS, you will often encounter message size limits. Most message brokers impose restrictions on payload sizes, commonly ranging from about 1 MB to tens of MiB by default, depending on the broker and version. The **Claim Check Pattern** (also known as Reference-Based Messaging) solves this problem by storing large payloads externally and passing only a reference through the message queue.
 
 ## What is the Claim Check Pattern?
 
@@ -92,7 +92,7 @@ The claim ticket should contain enough information to retrieve the payload and v
 // claim-ticket.ts
 // Defines the structure of a claim ticket that references stored payloads
 
-interface ClaimTicket {
+export interface ClaimTicket {
     // Unique identifier for retrieving the payload
     ticketId: string;
 
@@ -502,16 +502,18 @@ class ClaimCheckConsumer {
                 try {
                     // Check the message pattern header
                     const pattern = msg.properties.headers?.['x-message-pattern'];
-                    const correlationId = msg.properties.correlationId;
+                    const correlationId = msg.properties.correlationId || 'unknown';
 
                     let payload: Buffer;
                     let messageType: string;
+                    let claimTicketToDelete: ClaimTicket | undefined;
 
                     if (pattern === 'claim-check') {
                         // Parse the claim ticket and retrieve the payload
                         const result = await this.processClaimTicket(msg);
                         payload = result.payload;
                         messageType = result.messageType;
+                        claimTicketToDelete = result.claimTicket;
                     } else {
                         // Direct message, use the content as-is
                         payload = msg.content;
@@ -520,6 +522,15 @@ class ClaimCheckConsumer {
 
                     // Process the message with the provided handler
                     await handler(payload, messageType, correlationId);
+
+                    // Delete the payload only after successful processing
+                    if (claimTicketToDelete && this.deleteAfterProcessing) {
+                        await this.messageStore.deletePayload(
+                            claimTicketToDelete.storageLocation.bucket,
+                            claimTicketToDelete.storageLocation.key
+                        );
+                        console.log(`Deleted payload for ticket ${claimTicketToDelete.ticketId}`);
+                    }
 
                     // Acknowledge successful processing
                     this.channel!.ack(msg);
@@ -541,7 +552,7 @@ class ClaimCheckConsumer {
      */
     private async processClaimTicket(
         msg: amqp.ConsumeMessage
-    ): Promise<{ payload: Buffer; messageType: string }> {
+    ): Promise<{ payload: Buffer; messageType: string; claimTicket: ClaimTicket }> {
         // Parse the claim ticket from the message body
         const claimTicket: ClaimTicket = JSON.parse(msg.content.toString());
 
@@ -567,18 +578,10 @@ class ClaimCheckConsumer {
             `${payload.length} bytes`
         );
 
-        // Optionally delete the payload after successful retrieval
-        if (this.deleteAfterProcessing) {
-            await this.messageStore.deletePayload(
-                claimTicket.storageLocation.bucket,
-                claimTicket.storageLocation.key
-            );
-            console.log(`Deleted payload for ticket ${claimTicket.ticketId}`);
-        }
-
         return {
             payload,
-            messageType: claimTicket.context.messageType
+            messageType: claimTicket.context.messageType,
+            claimTicket
         };
     }
 }
