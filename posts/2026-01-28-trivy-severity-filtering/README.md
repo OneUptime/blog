@@ -16,11 +16,11 @@ Security scanning without filtering creates noise. Teams get overwhelmed by hund
 
 ## Understanding Severity Levels
 
-Trivy uses five severity levels based on CVSS scores and vulnerability databases.
+Trivy uses five severity levels from vulnerability databases. When the selected data source does not provide severity, Trivy falls back to CVSS score ranges.
 
 | Severity | CVSS Score | Description |
 |----------|------------|-------------|
-| CRITICAL | 9.0 - 10.0 | Immediate action required - active exploits likely |
+| CRITICAL | 9.0 - 10.0 | Immediate action required - highest priority |
 | HIGH | 7.0 - 8.9 | Serious vulnerability - prioritize fixing |
 | MEDIUM | 4.0 - 6.9 | Moderate risk - plan to fix |
 | LOW | 0.1 - 3.9 | Minor risk - fix when convenient |
@@ -101,13 +101,15 @@ exit-code: 1
 format: table
 
 # Ignore vulnerabilities without fixes available
-ignore-unfixed: false
+vulnerability:
+  ignore-unfixed: false
 
 # Timeout for scanning operations
 timeout: 10m
 
 # Cache directory location
-cache-dir: /tmp/trivy-cache
+cache:
+  dir: /tmp/trivy-cache
 ```
 
 Run Trivy with the configuration:
@@ -133,8 +135,9 @@ severity:
 
 exit-code: 1
 
-# Allow unfixed vulnerabilities in dev
-ignore-unfixed: true
+# Ignore unfixed vulnerabilities in dev
+vulnerability:
+  ignore-unfixed: true
 
 # Faster scans, less thorough
 timeout: 5m
@@ -152,8 +155,9 @@ severity:
 
 exit-code: 1
 
-# Report unfixed but don't fail
-ignore-unfixed: false
+# Include unfixed vulnerabilities
+vulnerability:
+  ignore-unfixed: false
 
 timeout: 10m
 ```
@@ -172,7 +176,8 @@ severity:
 exit-code: 1
 
 # All vulnerabilities matter in prod
-ignore-unfixed: false
+vulnerability:
+  ignore-unfixed: false
 
 # Thorough scanning
 timeout: 15m
@@ -210,6 +215,9 @@ on:
 jobs:
   trivy-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -218,7 +226,7 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Trivy scan (Critical only - must pass)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'myapp:${{ github.sha }}'
           severity: 'CRITICAL'
@@ -226,17 +234,18 @@ jobs:
           format: 'table'
 
       - name: Trivy scan (All severities - informational)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         if: always()  # Run even if previous step fails
         with:
           image-ref: 'myapp:${{ github.sha }}'
-          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
+          severity: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
           exit-code: '0'
           format: 'sarif'
           output: 'trivy-results.sarif'
+          limit-severities-for-sarif: true
 
       - name: Upload to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -278,29 +287,29 @@ security-prod:
 
 ---
 
-## Filtering by Vulnerability Type
+## Filtering by Package Type
 
-Beyond severity, filter by the type of vulnerability.
+Beyond severity, filter by the type of package vulnerability.
 
 ```bash
 # Scan only for OS package vulnerabilities
-trivy image --vuln-type os nginx:latest
+trivy image --pkg-types os nginx:latest
 
 # Scan only for language-specific vulnerabilities
-trivy image --vuln-type library nginx:latest
+trivy image --pkg-types library nginx:latest
 
 # Scan for both (default behavior)
-trivy image --vuln-type os,library nginx:latest
+trivy image --pkg-types os,library nginx:latest
 ```
 
 ### Combined Filtering
 
 ```bash
 # Critical OS vulnerabilities only
-trivy image --severity CRITICAL --vuln-type os nginx:latest
+trivy image --severity CRITICAL --pkg-types os nginx:latest
 
 # High and Critical library vulnerabilities
-trivy image --severity CRITICAL,HIGH --vuln-type library python:3.11
+trivy image --severity CRITICAL,HIGH --pkg-types library python:3.11
 ```
 
 ---
@@ -319,9 +328,9 @@ CVE-2023-12345
 # CVE-2023-67890: Mitigated by network policy - no external access
 CVE-2023-67890
 
-# exp:2024-06-01: CVE-2023-11111: Temporary ignore until patch available
-# The exp: prefix sets an expiration date
-exp:2024-06-01 CVE-2023-11111
+# CVE-2023-11111: Temporary ignore until patch available
+# The exp suffix sets an expiration date
+CVE-2023-11111 exp:2024-06-01
 ```
 
 ### Programmatic Ignore File
@@ -334,16 +343,16 @@ vulnerabilities:
   - id: CVE-2023-12345
     paths:
       - /usr/lib/python3.11/*
-    reason: "False positive - function not used in our code"
-    expires: 2024-12-31
+    statement: "False positive - function not used in our code"
+    expired_at: 2024-12-31
 
   - id: CVE-2023-67890
-    reason: "Mitigated by WAF rules"
-    expires: 2024-06-30
+    statement: "Mitigated by WAF rules"
+    expired_at: 2024-06-30
 
 misconfigurations:
   - id: AVD-KSV-0001
-    reason: "Required for legacy application compatibility"
+    statement: "Required for legacy application compatibility"
 ```
 
 Run with ignore file:
