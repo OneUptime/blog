@@ -14,7 +14,7 @@ Transient failures are inevitable in distributed systems. Network blips, tempora
 
 ## Understanding Linkerd Retries
 
-Linkerd operates as a sidecar proxy, intercepting all traffic to and from your services. When a request fails, Linkerd can automatically retry it based on your configuration.
+Linkerd operates as a sidecar proxy, intercepting all traffic to and from your services. When a request fails, Linkerd can automatically retry it based on your configuration. Retries are performed on the client-side, by the outbound side of the Linkerd proxy.
 
 ```mermaid
 sequenceDiagram
@@ -33,17 +33,17 @@ sequenceDiagram
 
 ### What Gets Retried
 
-Linkerd only retries requests that are safe to retry:
+Linkerd only retries requests that you explicitly configure as safe to retry:
 
-- **Idempotent HTTP methods**: GET, HEAD, OPTIONS, TRACE
-- **Specific failure conditions**: Connection errors, 5xx responses (configurable)
+- **Idempotent HTTP methods**: Typically GET, HEAD, OPTIONS, TRACE, PUT, and DELETE when your API semantics are truly idempotent
+- **Specific failure conditions**: Failed responses, as classified by your ServiceProfile
 - **Requests within budget**: Only if retry budget allows
 
-POST, PUT, DELETE, and PATCH are not retried by default because they may not be idempotent.
+No route is retried by default just because of its HTTP method. POST and PATCH are usually not safe to retry unless you design them with idempotency keys or another deduplication mechanism.
 
 ## Basic Retry Configuration
 
-Linkerd uses ServiceProfiles to configure retries. A ServiceProfile defines how Linkerd handles traffic for a specific service.
+Linkerd historically used ServiceProfiles to configure retries. A ServiceProfile defines how Linkerd handles traffic for a specific service. As of Linkerd 2.16, ServiceProfiles are still supported for backwards compatibility, but Gateway API resources and retry annotations are the recommended path for new retry and timeout configuration.
 
 ### Creating a ServiceProfile
 
@@ -202,8 +202,8 @@ flowchart TB
     end
 
     subgraph With Retries
-        F[5s timeout per attempt] --> G[Max 3 attempts]
-        G --> H[Total budget: 15s max]
+        F[5s total route timeout] --> G[Retries within budget]
+        G --> H[Request completes or times out]
     end
 ```
 
@@ -316,14 +316,6 @@ spec:
       timeout: 10s
       isRetryable: true
 
-    # Get single order - read operation, safe to retry
-    - name: GET /orders/{id}
-      condition:
-        method: GET
-        pathRegex: /orders/[^/]+$
-      timeout: 5s
-      isRetryable: true
-
     # Create order - NOT retryable without idempotency keys
     - name: POST /orders
       condition:
@@ -355,6 +347,14 @@ spec:
         pathRegex: /orders/search.*
       timeout: 30s
       isRetryable: true
+
+    # Get single order - read operation, safe to retry
+    - name: GET /orders/{id}
+      condition:
+        method: GET
+        pathRegex: /orders/[^/]+$
+      timeout: 5s
+      isRetryable: true
 ```
 
 ## Monitoring Retries
@@ -364,29 +364,16 @@ Effective monitoring is essential to understand if your retry configuration is w
 ### Key Metrics to Watch
 
 ```bash
-# View retry metrics in Linkerd dashboard
+# View traffic stats in Linkerd dashboard
 linkerd viz stat deploy/orders -n production
 
-# Get detailed route metrics including retries
-linkerd viz routes deploy/orders -n production
+# Get client-side route metrics that show retries as actual vs effective traffic
+linkerd viz routes deploy/client -n production --to deploy/orders -o wide
 ```
 
-### Prometheus Queries for Retry Monitoring
+### Prometheus Metrics Note
 
-```promql
-# Retry rate by deployment
-sum(rate(response_total{classification="retry"}[5m])) by (deployment)
-
-# Retry success rate
-sum(rate(response_total{classification="retry", status_code=~"2.."}[5m]))
-/
-sum(rate(response_total{classification="retry"}[5m]))
-
-# Percentage of requests that required retries
-sum(rate(response_total{classification="retry"}[5m]))
-/
-sum(rate(response_total[5m])) * 100
-```
+Linkerd proxy metrics do not label responses with `classification="retry"`; response classifications are `success` or `failure`. Use `linkerd viz routes --to ... -o wide` to compare effective traffic with actual traffic: when retries are happening, actual request rate is higher than effective request rate.
 
 ### Retry Flow Visualization
 
@@ -408,20 +395,20 @@ flowchart TD
 
 ```yaml
 # prometheus-alerts.yaml
-# Alert when retry rate exceeds normal thresholds
+# Alert when response failure rates exceed normal thresholds
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: linkerd-retry-alerts
+  name: linkerd-response-alerts
   namespace: monitoring
 spec:
   groups:
-    - name: linkerd-retries
+    - name: linkerd-responses
       rules:
-        # Alert if more than 10% of requests need retries
-        - alert: HighRetryRate
+        # Alert if more than 10% of responses are classified as failures
+        - alert: HighFailureRate
           expr: |
-            sum(rate(response_total{classification="retry"}[5m])) by (deployment)
+            sum(rate(response_total{classification="failure"}[5m])) by (deployment)
             /
             sum(rate(response_total[5m])) by (deployment)
             > 0.1
@@ -429,22 +416,22 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "High retry rate for {{ $labels.deployment }}"
-            description: "Retry rate of {{ $value | humanizePercentage }}"
+            summary: "High failure rate for {{ $labels.deployment }}"
+            description: "Failure rate of {{ $value | humanizePercentage }}"
 
-        # Alert if retries are consistently failing
-        - alert: RetrySuccessRateLow
+        # Alert if success rate is consistently low
+        - alert: SuccessRateLow
           expr: |
-            sum(rate(response_total{classification="retry", status_code=~"2.."}[5m])) by (deployment)
+            sum(rate(response_total{classification="success"}[5m])) by (deployment)
             /
-            sum(rate(response_total{classification="retry"}[5m])) by (deployment)
-            < 0.5
+            sum(rate(response_total[5m])) by (deployment)
+            < 0.9
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Low retry success rate for {{ $labels.deployment }}"
-            description: "Only {{ $value | humanizePercentage }} of retries succeed"
+            summary: "Low success rate for {{ $labels.deployment }}"
+            description: "Only {{ $value | humanizePercentage }} of responses succeed"
 ```
 
 ## Best Practices
@@ -509,14 +496,14 @@ Design your APIs to be idempotent so they can safely use retries:
 
 ### 5. Monitor and Iterate
 
-Continuously monitor retry metrics and adjust:
+Continuously monitor retry behavior and adjust:
 
 ```bash
-# Regular health check
-linkerd viz routes deploy/orders -n production --to deploy/payments
+# Regular health check from the client perspective
+linkerd viz routes deploy/orders -n production --to deploy/payments -o wide
 
-# Check if retries are helping
-linkerd viz stat deploy/orders -n production -t 10m
+# Check if retries are helping by comparing actual and effective traffic
+linkerd viz routes deploy/orders -n production --to deploy/payments -o wide -t 10m
 ```
 
 ### 6. Combine with Circuit Breakers
@@ -562,13 +549,13 @@ retryBudget:
 ### Retries Taking Too Long
 
 ```yaml
-# Add per-attempt timeout
+# Add a route timeout
 routes:
   - name: GET /slow-endpoint
     condition:
       method: GET
       pathRegex: /slow-endpoint
-    timeout: 2s  # Each attempt times out at 2s
+    timeout: 2s  # Total route timeout, including retries
     isRetryable: true
 ```
 
@@ -579,7 +566,7 @@ Linkerd retries are a powerful tool for improving reliability without changing a
 1. Enable retries only for idempotent operations
 2. Use retry budgets to prevent retry storms
 3. Set appropriate timeouts for each route
-4. Monitor retry metrics continuously
+4. Monitor retry behavior continuously
 5. Iterate based on real-world observations
 
 For comprehensive monitoring of your Linkerd service mesh and retry behavior, consider using [OneUptime](https://oneuptime.com). OneUptime provides unified observability for your Kubernetes infrastructure, helping you track retry rates, detect anomalies, and maintain service reliability.
