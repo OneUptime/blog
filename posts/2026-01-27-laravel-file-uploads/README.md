@@ -39,12 +39,13 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class FileUploadController extends Controller
 {
     /**
      * Handle a basic file upload request.
-     * Files are stored in storage/app/uploads by default.
+     * Files are stored under the default disk's uploads directory.
      */
     public function store(Request $request)
     {
@@ -75,8 +76,8 @@ class FileUploadController extends Controller
 
         $file = $request->file('file');
 
-        // Generate a custom filename using timestamp and original extension
-        $filename = time() . '_' . $file->getClientOriginalName();
+        // Generate a custom filename using a timestamp and MIME-derived extension
+        $filename = time() . '_' . Str::random(16) . '.' . $file->extension();
 
         // storeAs() lets you specify the exact filename
         $path = $file->storeAs('uploads', $filename);
@@ -174,6 +175,7 @@ class DocumentController extends Controller
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class ImageController extends Controller
 {
@@ -198,7 +200,7 @@ class ImageController extends Controller
 
         return response()->json([
             'message' => 'Avatar uploaded',
-            'url' => Storage::url($path),
+            'url' => Storage::disk('public')->url($path),
         ]);
     }
 
@@ -296,10 +298,11 @@ return [
     'default' => env('FILESYSTEM_DISK', 'local'),
 
     'disks' => [
-        // Local storage - files stored in storage/app
+        // Local storage - files stored relative to the configured root
+        // Laravel 11 defaults to storage/app/private; use storage_path('app') in Laravel 10 apps
         'local' => [
             'driver' => 'local',
-            'root' => storage_path('app'),
+            'root' => storage_path('app/private'),
             'throw' => false,
         ],
 
@@ -441,7 +444,7 @@ class StorageController extends Controller
 Install the S3 driver and configure your credentials:
 
 ```bash
-composer require league/flysystem-aws-s3-v3 "^3.0"
+composer require league/flysystem-aws-s3-v3 "^3.0" --with-all-dependencies
 ```
 
 ```php
@@ -526,6 +529,8 @@ class S3UploadController extends Controller
 ```
 
 ### Google Cloud Storage Configuration
+
+Laravel does not ship with a built-in `gcs` filesystem driver. Install a Flysystem adapter or Laravel package that registers a Google Cloud Storage driver before using a `gcs` disk configuration.
 
 ```bash
 composer require league/flysystem-google-cloud-storage "^3.0"
@@ -687,6 +692,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Document;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 
 class FileUrlController extends Controller
 {
@@ -743,6 +749,20 @@ class FileUrlController extends Controller
 
         return response()->json(['url' => $url]);
     }
+
+    /**
+     * Download a local file from a signed route.
+     */
+    public function signedDownload(Document $document)
+    {
+        $this->authorize('view', $document);
+
+        return Storage::download(
+            $document->path,
+            $document->original_name,
+            ['Content-Type' => $document->mime_type]
+        );
+    }
 }
 ```
 
@@ -750,6 +770,7 @@ class FileUrlController extends Controller
 
 ```php
 // routes/web.php
+use App\Http\Controllers\FileUrlController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/files/{document}/download', [FileUrlController::class, 'signedDownload'])
