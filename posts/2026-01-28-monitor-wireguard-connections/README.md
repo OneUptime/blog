@@ -55,7 +55,7 @@ peer: efgh5678...
 ```
 
 Key metrics to watch:
-- **latest handshake**: Should be recent for active peers (within keepalive interval)
+- **latest handshake**: Should be recent for active peers (usually within a few minutes)
 - **transfer**: Shows data volume in each direction
 - **endpoint**: Client's current public IP and port
 
@@ -75,24 +75,23 @@ mkdir -p /var/log/wireguard
 
 echo "=== WireGuard Monitor - $(date) ===" | tee -a $LOG_FILE
 
-# Parse wg show output
-while read -r line; do
-    if [[ $line == peer:* ]]; then
-        PEER=$(echo $line | awk '{print $2}')
-    elif [[ $line == *"latest handshake"* ]]; then
-        HANDSHAKE=$line
-        # Check for stale connections
-        if [[ $line == *"minute"* ]] || [[ $line == *"hour"* ]] || [[ $line == *"day"* ]]; then
-            echo "WARNING: Stale peer $PEER - $HANDSHAKE" | tee -a $LOG_FILE
-        fi
-    elif [[ $line == *"transfer:"* ]]; then
-        TRANSFER=$line
-        echo "Peer $PEER: $TRANSFER" | tee -a $LOG_FILE
-    elif [[ $line == *"endpoint:"* ]]; then
-        ENDPOINT=$(echo $line | awk '{print $2}')
-        echo "Peer $PEER connected from: $ENDPOINT" | tee -a $LOG_FILE
+# Parse wg show dump output:
+# public-key, preshared-key, endpoint, allowed-ips, latest-handshake, transfer-rx, transfer-tx, persistent-keepalive
+while IFS=$'\t' read -r PEER _ ENDPOINT ALLOWED_IPS LATEST_HANDSHAKE RX_BYTES TX_BYTES _; do
+    NOW=$(date +%s)
+    if [[ $LATEST_HANDSHAKE -gt 0 ]]; then
+        HANDSHAKE_AGE=$((NOW - LATEST_HANDSHAKE))
+    else
+        HANDSHAKE_AGE=-1
     fi
-done < <(sudo wg show $INTERFACE)
+
+    if [[ $HANDSHAKE_AGE -lt 0 || $HANDSHAKE_AGE -gt $ALERT_THRESHOLD ]]; then
+        echo "WARNING: Stale peer $PEER - latest handshake age: ${HANDSHAKE_AGE}s" | tee -a "$LOG_FILE"
+    fi
+
+    echo "Peer $PEER ($ALLOWED_IPS): ${RX_BYTES} bytes received, ${TX_BYTES} bytes sent" | tee -a "$LOG_FILE"
+    echo "Peer $PEER connected from: $ENDPOINT" | tee -a "$LOG_FILE"
+done < <(sudo wg show "$INTERFACE" dump | tail -n +2)
 ```
 
 ## Prometheus Integration
@@ -119,12 +118,11 @@ flowchart LR
 ### Installing WireGuard Exporter
 
 ```bash
-# Download the exporter
-wget https://github.com/MindFlavor/prometheus_wireguard_exporter/releases/latest/download/prometheus_wireguard_exporter
-
-# Make executable and move to path
-chmod +x prometheus_wireguard_exporter
-sudo mv prometheus_wireguard_exporter /usr/local/bin/
+# Build and install the exporter from source
+git clone https://github.com/MindFlavor/prometheus_wireguard_exporter.git
+cd prometheus_wireguard_exporter
+cargo install --path .
+sudo install -m 0755 "$(command -v prometheus_wireguard_exporter)" /usr/local/bin/prometheus_wireguard_exporter
 
 # Create systemd service
 sudo tee /etc/systemd/system/wireguard-exporter.service << 'EOF'
@@ -178,7 +176,7 @@ scrape_configs:
     static_configs:
       - targets: ['wireguard-server:9586']
     scrape_interval: 30s
-    relabel_configs:
+    metric_relabel_configs:
       # Add friendly names using allowed_ips
       - source_labels: [allowed_ips]
         regex: '10\.10\.0\.(\d+)/32'
@@ -208,7 +206,7 @@ Create a dashboard to visualize WireGuard metrics.
     },
     {
       "title": "Total Bandwidth (Received)",
-      "type": "graph",
+      "type": "timeseries",
       "targets": [
         {
           "expr": "rate(wireguard_received_bytes_total[5m])",
@@ -218,7 +216,7 @@ Create a dashboard to visualize WireGuard metrics.
     },
     {
       "title": "Total Bandwidth (Sent)",
-      "type": "graph",
+      "type": "timeseries",
       "targets": [
         {
           "expr": "rate(wireguard_sent_bytes_total[5m])",
@@ -275,12 +273,12 @@ groups:
 
       # Alert when no peers are connected
       - alert: WireGuardNoPeers
-        expr: count(wireguard_latest_handshake_seconds) == 0
+        expr: count((time() - wireguard_latest_handshake_seconds) < 300) == 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "WireGuard interface {{ $labels.interface }} has no peers"
+          summary: "No active WireGuard peers"
 
       # Alert on high bandwidth usage
       - alert: WireGuardHighBandwidth
@@ -310,9 +308,11 @@ For additional metrics, create a custom exporter.
 #!/usr/bin/env python3
 # wg_custom_exporter.py
 
-import subprocess
 import time
-from prometheus_client import start_http_server, Gauge, Counter
+import subprocess
+from prometheus_client import start_http_server, Gauge
+
+INTERFACE = 'wg0'
 
 # Define metrics
 PEER_CONNECTED = Gauge(
@@ -327,35 +327,31 @@ HANDSHAKE_AGE = Gauge(
     ['interface', 'peer', 'allowed_ips']
 )
 
-BYTES_RECEIVED = Counter(
-    'wireguard_bytes_received_total',
-    'Total bytes received from peer',
+BYTES_RECEIVED = Gauge(
+    'wireguard_bytes_received',
+    'Bytes received from peer',
     ['interface', 'peer', 'allowed_ips']
 )
 
-BYTES_SENT = Counter(
-    'wireguard_bytes_sent_total',
-    'Total bytes sent to peer',
+BYTES_SENT = Gauge(
+    'wireguard_bytes_sent',
+    'Bytes sent to peer',
     ['interface', 'peer', 'allowed_ips']
 )
 
 def parse_wg_output():
     """Parse wg show dump output"""
     result = subprocess.run(
-        ['wg', 'show', 'all', 'dump'],
+        ['wg', 'show', INTERFACE, 'dump'],
         capture_output=True,
-        text=True
+        text=True,
+        check=True
     )
 
-    current_interface = None
-
-    for line in result.stdout.strip().split('\n'):
+    for line in result.stdout.strip().split('\n')[1:]:
         parts = line.split('\t')
 
-        if len(parts) == 4:
-            # Interface line
-            current_interface = parts[0]
-        elif len(parts) == 8:
+        if len(parts) == 8:
             # Peer line
             peer_pubkey = parts[0][:16] + '...'  # Truncate for readability
             allowed_ips = parts[3]
@@ -373,13 +369,15 @@ def parse_wg_output():
 
             # Update metrics
             labels = {
-                'interface': current_interface,
+                'interface': INTERFACE,
                 'peer': peer_pubkey,
                 'allowed_ips': allowed_ips
             }
 
             PEER_CONNECTED.labels(**labels).set(connected)
             HANDSHAKE_AGE.labels(**labels).set(handshake_age)
+            BYTES_RECEIVED.labels(**labels).set(rx_bytes)
+            BYTES_SENT.labels(**labels).set(tx_bytes)
 
 def main():
     # Start HTTP server on port 9587
@@ -419,10 +417,11 @@ Send WireGuard logs to your logging infrastructure.
 filebeat.inputs:
   - type: journald
     id: wireguard-journal
-    include_matches:
+    include_matches.match:
       - _SYSTEMD_UNIT=wg-quick@wg0.service
 
-  - type: log
+  - type: filestream
+    id: wireguard-files
     paths:
       - /var/log/wireguard/*.log
     fields:
