@@ -52,22 +52,15 @@ Benefits of Cypress component testing:
 
 ### Installation
 
-First, install Cypress and the component testing dependencies:
+First, install Cypress:
 
 ```bash
 # Install Cypress
 
 npm install --save-dev cypress
-
-# For React projects
-npm install --save-dev @cypress/react
-
-# For Vue projects
-npm install --save-dev @cypress/vue
-
-# For Angular projects
-npm install --save-dev @cypress/angular
 ```
+
+The framework-specific mounting packages (`cypress/react`, `cypress/vue`, and `cypress/angular`) are bundled with Cypress, so you do not need to install them separately unless you need to pin a specific version.
 
 ### Configuration
 
@@ -95,8 +88,8 @@ export default defineConfig({
   component: {
     // The dev server to use (Vite, Webpack, etc.)
     devServer: {
-      framework: 'react',      // 'react', 'vue', or 'angular'
-      bundler: 'vite',         // 'vite' or 'webpack'
+      framework: 'react',      // 'react' or 'vue'; use 'angular' for Angular CLI projects
+      bundler: 'vite',         // 'vite' or 'webpack' for React/Vue; Angular uses 'webpack'
     },
     // Spec file pattern for component tests
     specPattern: 'src/**/*.cy.{js,jsx,ts,tsx}',
@@ -116,7 +109,7 @@ import './commands';
 
 // Import framework-specific mount command
 // For React:
-import { mount } from 'cypress/react18';
+import { mount } from 'cypress/react';
 
 // For Vue:
 // import { mount } from 'cypress/vue';
@@ -381,7 +374,7 @@ describe('UserProfile Component', () => {
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref } from 'vue';
 
 interface Props {
   initialValue?: number;
@@ -415,9 +408,6 @@ const decrement = () => {
   }
 };
 
-watch(count, (newValue) => {
-  emit('change', newValue);
-});
 </script>
 ```
 
@@ -511,6 +501,7 @@ export interface Todo {
 
 @Component({
   selector: 'app-todo-list',
+  standalone: false,
   template: `
     <div class="todo-list" data-testid="todo-list">
       <h2>{{ title }}</h2>
@@ -581,6 +572,7 @@ export class TodoListComponent {
 // todo-list.component.cy.ts
 import { TodoListComponent, Todo } from './todo-list.component';
 import { FormsModule } from '@angular/forms';
+import { createOutputSpy } from 'cypress/angular';
 
 describe('TodoListComponent', () => {
   const sampleTodos: Todo[] = [
@@ -628,15 +620,11 @@ describe('TodoListComponent', () => {
   });
 
   it('emits todoToggled when checkbox is clicked', () => {
-    const onToggleSpy = cy.spy().as('onToggle');
-
     cy.mount(TodoListComponent, {
       imports: [FormsModule],
       componentProperties: {
         todos: sampleTodos,
-        todoToggled: {
-          emit: onToggleSpy,
-        } as any,
+        todoToggled: createOutputSpy<Todo>('onToggle'),
       },
     });
 
@@ -645,15 +633,11 @@ describe('TodoListComponent', () => {
   });
 
   it('emits todoDeleted when delete button is clicked', () => {
-    const onDeleteSpy = cy.spy().as('onDelete');
-
     cy.mount(TodoListComponent, {
       imports: [FormsModule],
       componentProperties: {
         todos: sampleTodos,
-        todoDeleted: {
-          emit: onDeleteSpy,
-        } as any,
+        todoDeleted: createOutputSpy<Todo>('onDelete'),
       },
     });
 
@@ -662,15 +646,11 @@ describe('TodoListComponent', () => {
   });
 
   it('emits todoAdded when form is submitted', () => {
-    const onAddSpy = cy.spy().as('onAdd');
-
     cy.mount(TodoListComponent, {
       imports: [FormsModule],
       componentProperties: {
         todos: [],
-        todoAdded: {
-          emit: onAddSpy,
-        } as any,
+        todoAdded: createOutputSpy<string>('onAdd'),
       },
     });
 
@@ -682,15 +662,11 @@ describe('TodoListComponent', () => {
   });
 
   it('does not emit todoAdded for empty input', () => {
-    const onAddSpy = cy.spy().as('onAdd');
-
     cy.mount(TodoListComponent, {
       imports: [FormsModule],
       componentProperties: {
         todos: [],
-        todoAdded: {
-          emit: onAddSpy,
-        } as any,
+        todoAdded: createOutputSpy<string>('onAdd'),
       },
     });
 
@@ -1063,13 +1039,32 @@ describe('ResponsiveGrid Visual Tests', () => {
 
       // Verify layout changes
       if (name === 'mobile') {
-        cy.get('.grid').should('have.css', 'grid-template-columns', '1fr');
+        cy.get('.grid').should(($grid) => {
+          const columns = getComputedStyle($grid[0])
+            .gridTemplateColumns
+            .split(' ')
+            .filter(Boolean);
+
+          expect(columns).to.have.length(1);
+        });
       } else if (name === 'tablet') {
-        cy.get('.grid').should('have.css', 'grid-template-columns')
-          .and('match', /repeat\(2/);
+        cy.get('.grid').should(($grid) => {
+          const columns = getComputedStyle($grid[0])
+            .gridTemplateColumns
+            .split(' ')
+            .filter(Boolean);
+
+          expect(columns).to.have.length(2);
+        });
       } else {
-        cy.get('.grid').should('have.css', 'grid-template-columns')
-          .and('match', /repeat\(4/);
+        cy.get('.grid').should(($grid) => {
+          const columns = getComputedStyle($grid[0])
+            .gridTemplateColumns
+            .split(' ')
+            .filter(Boolean);
+
+          expect(columns).to.have.length(4);
+        });
       }
 
       cy.percySnapshot(`ResponsiveGrid - ${name}`);
