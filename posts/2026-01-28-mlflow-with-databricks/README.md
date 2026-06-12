@@ -143,13 +143,13 @@ with mlflow.start_run(run_name="spark-rf-model"):
 
 ## Feature Store Integration
 
-Databricks Feature Store works seamlessly with MLflow:
+Databricks Feature Engineering works seamlessly with MLflow:
 
 ```python
-from databricks.feature_store import FeatureStoreClient
+from databricks.feature_engineering import FeatureEngineeringClient, FeatureLookup
 import mlflow
 
-fs = FeatureStoreClient()
+fe = FeatureEngineeringClient()
 
 # Define features to use from feature store
 feature_lookups = [
@@ -166,7 +166,7 @@ feature_lookups = [
 ]
 
 # Create training dataset
-training_set = fs.create_training_set(
+training_set = fe.create_training_set(
     df=labels_df,  # DataFrame with customer_id, product_id, and label
     feature_lookups=feature_lookups,
     label="purchased"
@@ -181,12 +181,12 @@ with mlflow.start_run():
 
     # Log model with feature store metadata
     # This enables automatic feature lookup at inference time
-    fs.log_model(
+    fe.log_model(
         model=model,
         artifact_path="model",
         flavor=mlflow.sklearn,
         training_set=training_set,
-        registered_model_name="recommendation_model"
+        registered_model_name="ml.production.recommendation_model"
     )
 ```
 
@@ -255,7 +255,7 @@ Databricks Model Serving provides managed endpoints for real-time inference:
 
 ```python
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.serving import EndpointCoreConfigInput, ServedModelInput
+from databricks.sdk.service.serving import EndpointCoreConfigInput, ServedEntityInput
 
 w = WorkspaceClient()
 
@@ -265,10 +265,10 @@ endpoint_name = "churn-predictor-endpoint"
 w.serving_endpoints.create_and_wait(
     name=endpoint_name,
     config=EndpointCoreConfigInput(
-        served_models=[
-            ServedModelInput(
-                model_name="ml.production.churn_predictor",
-                model_version="1",
+        served_entities=[
+            ServedEntityInput(
+                entity_name="ml.production.churn_predictor",
+                entity_version="1",
                 workload_size="Small",
                 scale_to_zero_enabled=True
             )
@@ -324,9 +324,10 @@ def train_and_register():
     with mlflow.start_run(run_name=f"scheduled-{datetime.now().isoformat()}"):
         # Load fresh data
         df = spark.read.table("ml.features.customer_training_data")
+        train_df, test_df = df.randomSplit([0.8, 0.2], seed=42)
 
         # Train model
-        model = train_model(df)
+        model = train_model(train_df)
 
         # Log metrics
         metrics = evaluate_model(model, test_df)
