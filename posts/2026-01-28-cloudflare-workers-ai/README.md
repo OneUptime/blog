@@ -567,14 +567,16 @@ export default {
 
     // Generate speech
     const result = await env.AI.run("@cf/myshell-ai/melotts", {
-      text: body.text,
+      prompt: body.text,
       lang: body.lang || "en"
     });
 
-    // Return audio as WAV
-    return new Response(result, {
+    // Decode base64-encoded MP3 audio and return as binary
+    const audioBytes = Uint8Array.from(atob(result.audio), c => c.charCodeAt(0));
+
+    return new Response(audioBytes, {
       headers: {
-        "Content-Type": "audio/wav"
+        "Content-Type": "audio/mpeg"
       }
     });
   }
