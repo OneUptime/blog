@@ -62,10 +62,16 @@ REGION=us-east-1
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
 # Create the S3 bucket for backup storage
-aws s3api create-bucket \
-    --bucket $BUCKET_NAME \
-    --region $REGION \
-    --create-bucket-configuration LocationConstraint=$REGION
+if [ "$REGION" = "us-east-1" ]; then
+    aws s3api create-bucket \
+        --bucket $BUCKET_NAME \
+        --region $REGION
+else
+    aws s3api create-bucket \
+        --bucket $BUCKET_NAME \
+        --region $REGION \
+        --create-bucket-configuration LocationConstraint=$REGION
+fi
 
 # Enable versioning for backup protection
 aws s3api put-bucket-versioning \
@@ -97,13 +103,23 @@ Create the IAM policy for Velero:
             "Action": [
                 "s3:GetObject",
                 "s3:PutObject",
+                "s3:PutObjectTagging",
                 "s3:DeleteObject",
-                "s3:ListBucket",
-                "s3:GetBucketLocation"
+                "s3:AbortMultipartUpload",
+                "s3:ListMultipartUploadParts"
             ],
             "Resource": [
-                "arn:aws:s3:::velero-backups-prod",
                 "arn:aws:s3:::velero-backups-prod/*"
+            ]
+        },
+        {
+            "Sid": "VeleroS3BucketAccess",
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::velero-backups-prod"
             ]
         },
         {
@@ -158,7 +174,7 @@ Install Velero using the CLI:
 # Install Velero with AWS plugin
 velero install \
     --provider aws \
-    --plugins velero/velero-plugin-for-aws:v1.8.0 \
+    --plugins velero/velero-plugin-for-aws:v1.13.0 \
     --bucket $BUCKET_NAME \
     --backup-location-config region=$REGION \
     --snapshot-location-config region=$REGION \
@@ -199,7 +215,7 @@ credentials:
 
 initContainers:
   - name: velero-plugin-for-aws
-    image: velero/velero-plugin-for-aws:v1.8.0
+    image: velero/velero-plugin-for-aws:v1.13.0
     volumeMounts:
       - name: plugins
         mountPath: /target
@@ -251,7 +267,7 @@ AZURE_STORAGE_ACCOUNT_ID=$(az storage account show \
 Create a service principal for Velero:
 
 ```bash
-# Create service principal with custom role
+# Create service principal
 AZURE_CLIENT_SECRET=$(az ad sp create-for-rbac \
     --name "velero-backup-sp" \
     --role "Contributor" \
@@ -261,6 +277,12 @@ AZURE_CLIENT_SECRET=$(az ad sp create-for-rbac \
 AZURE_CLIENT_ID=$(az ad sp list \
     --display-name "velero-backup-sp" \
     --query '[0].appId' -o tsv)
+
+# Grant blob data access when using AAD authentication
+az role assignment create \
+    --assignee $AZURE_CLIENT_ID \
+    --role "Storage Blob Data Contributor" \
+    --scope /subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$AZURE_BACKUP_RESOURCE_GROUP/providers/Microsoft.Storage/storageAccounts/$AZURE_STORAGE_ACCOUNT_NAME
 
 # Create credentials file for Velero
 cat > credentials-velero-azure <<EOF
@@ -279,9 +301,10 @@ EOF
 # Install Velero with Azure plugin
 velero install \
     --provider azure \
-    --plugins velero/velero-plugin-for-microsoft-azure:v1.8.0 \
+    --plugins velero/velero-plugin-for-microsoft-azure:v1.13.0 \
     --bucket $AZURE_BLOB_CONTAINER \
     --backup-location-config \
+        useAAD="true",\
         resourceGroup=$AZURE_BACKUP_RESOURCE_GROUP,\
         storageAccount=$AZURE_STORAGE_ACCOUNT_NAME,\
         subscriptionId=$AZURE_SUBSCRIPTION_ID \
@@ -329,7 +352,7 @@ credentials:
 
 initContainers:
   - name: velero-plugin-for-azure
-    image: velero/velero-plugin-for-microsoft-azure:v1.8.0
+    image: velero/velero-plugin-for-microsoft-azure:v1.13.0
     volumeMounts:
       - name: plugins
         mountPath: /target
@@ -400,7 +423,7 @@ gcloud iam service-accounts keys create credentials-velero-gcp.json \
 # Install Velero with GCP plugin
 velero install \
     --provider gcp \
-    --plugins velero/velero-plugin-for-gcp:v1.8.0 \
+    --plugins velero/velero-plugin-for-gcp:v1.13.0 \
     --bucket $BUCKET_NAME \
     --secret-file ./credentials-velero-gcp.json
 ```
@@ -443,7 +466,7 @@ credentials:
 
 initContainers:
   - name: velero-plugin-for-gcp
-    image: velero/velero-plugin-for-gcp:v1.8.0
+    image: velero/velero-plugin-for-gcp:v1.13.0
     volumeMounts:
       - name: plugins
         mountPath: /target
@@ -469,8 +492,8 @@ flowchart LR
     end
 
     V -->|Active Backups| AWS
-    V -->|DR Replication| GCS
-    V -->|Long-term Archive| AZ
+    V -->|Separate DR Backups| GCS
+    V -->|Long-term Archive Backups| AZ
 ```
 
 Configure multiple storage locations:
@@ -514,7 +537,7 @@ spec:
   config:
     resourceGroup: velero-backups-rg
     storageAccount: veleroarchive
-    storageAccountAccessKeyEnvVar: AZURE_STORAGE_ACCOUNT_ACCESS_KEY
+    storageAccountKeyEnvVar: AZURE_STORAGE_ACCOUNT_ACCESS_KEY
 ```
 
 Create backups to multiple locations:
@@ -621,6 +644,7 @@ aws s3 ls s3://velero-backups-prod/backups/ --recursive
 az storage blob list \
     --container-name velero \
     --account-name velerobackupsprod \
+    --auth-mode login \
     --output table
 
 # GCP
