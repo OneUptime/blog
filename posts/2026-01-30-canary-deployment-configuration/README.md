@@ -138,7 +138,7 @@ spec:
       interval: 30s
       # At least 99% of requests must succeed
       successCondition: result[0] >= 0.99
-      # Fail if we see 3 consecutive failures
+      # Fail after 3 failed measurements
       failureLimit: 3
       provider:
         prometheus:
@@ -181,6 +181,7 @@ spec:
       interval: 30s
       # Error rate must be under 1%
       successCondition: result[0] < 0.01
+      # Fail after 2 failed measurements
       failureLimit: 2
       provider:
         prometheus:
@@ -233,6 +234,9 @@ metadata:
   name: order-service
 spec:
   replicas: 8
+  # Fast-track rollbacks to recent revisions
+  rollbackWindow:
+    revisions: 3
   selector:
     matchLabels:
       app: order-service
@@ -262,7 +266,7 @@ spec:
           weight: 100
       steps:
         - setWeight: 10
-        # Run analysis during this pause
+        # Run analysis at this step; a failed AnalysisRun aborts the rollout
         - analysis:
             templates:
               - templateName: canary-analysis
@@ -273,11 +277,7 @@ spec:
         - pause: {duration: 5m}
         - setWeight: 60
         - pause: {duration: 10m}
-      # Rollback settings
-      rollbackWindow:
-        # How many revisions to keep for rollback
-        revisions: 3
-      # Abort conditions trigger immediate rollback
+      # Delay before scaling down canary pods after an abort
       abortScaleDownDelaySeconds: 30
 ```
 
@@ -289,7 +289,7 @@ steps:
   - analysis:
       templates:
         - templateName: canary-analysis
-      # Analysis runs for this duration
+      # This step blocks until the AnalysisRun completes
       args:
         - name: service-name
           value: order-service
@@ -348,6 +348,8 @@ strategy:
     canaryService: api-canary
     stableService: api-stable
     trafficRouting:
+      managedRoutes:
+        - name: canary-header
       istio:
         virtualService:
           name: api-vsvc
