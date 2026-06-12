@@ -33,7 +33,7 @@ flowchart TD
 
 ## Why Use Cluster Decision Resources?
 
-Traditional ApplicationSet generators like `clusters` or `list` require you to explicitly define target clusters. Cluster Decision Resources enable:
+Traditional ApplicationSet generators like `clusters` or `list` use cluster secrets or static lists to define target clusters. Cluster Decision Resources enable:
 
 - **Dynamic cluster selection** based on real-time conditions
 - **Integration with external systems** like service meshes or cluster registries
@@ -122,7 +122,7 @@ kubectl apply -f clusterdecision-crd.yaml
 
 ### Step 2: Create a Cluster Decision Resource Instance
 
-Create an instance of your Cluster Decision Resource. The status field will be populated by your controller or manually for testing.
+Create an instance of your Cluster Decision Resource. The status field will be populated by your controller or patched manually for testing.
 
 ```yaml
 apiVersion: example.com/v1alpha1
@@ -134,20 +134,13 @@ spec:
   selector:
     env: production
     tier: critical
-status:
-  decisions:
-    - clusterName: prod-us-east
-      reason: "Primary production cluster"
-    - clusterName: prod-us-west
-      reason: "Secondary production cluster"
-    - clusterName: prod-eu-west
-      reason: "EU region production cluster"
 ```
 
-Apply this resource to your cluster.
+Apply this resource to your cluster, then patch the status subresource for testing.
 
 ```bash
 kubectl apply -f production-clusters.yaml
+kubectl patch clusterdecision production-clusters -n argocd --subresource=status --type=merge -p '{"status":{"decisions":[{"clusterName":"prod-us-east","reason":"Primary production cluster"},{"clusterName":"prod-us-west","reason":"Secondary production cluster"},{"clusterName":"prod-eu-west","reason":"EU region production cluster"}]}}'
 ```
 
 ### Step 3: Register Clusters in ArgoCD
@@ -215,26 +208,52 @@ stringData:
 
 ### Step 4: Configure ArgoCD to Use the Cluster Decision Resource
 
-Configure ArgoCD to recognize your Cluster Decision Resource by updating the `argocd-cm` ConfigMap.
+Configure ArgoCD to recognize your Cluster Decision Resource by creating a ConfigMap in the ArgoCD namespace. The ApplicationSet generator references this ConfigMap to find the resource type and the status field that contains decisions.
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: cluster-decision-resource-config
   namespace: argocd
 data:
-  applicationsetcontroller.clusterDecisionResource: |
-    - apiVersion: example.com/v1alpha1
-      kind: ClusterDecision
-      statusListKey: decisions
-      matchKey: clusterName
+  apiVersion: example.com/v1alpha1
+  kind: clusterdecisions
+  statusListKey: decisions
+  matchKey: clusterName
 ```
 
-After updating, restart the ApplicationSet controller.
+Also ensure the ApplicationSet controller can read your custom resource.
 
-```bash
-kubectl rollout restart deployment argocd-applicationset-controller -n argocd
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-applicationset-clusterdecisions
+  namespace: argocd
+rules:
+  - apiGroups:
+      - example.com
+    resources:
+      - clusterdecisions
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-applicationset-clusterdecisions
+  namespace: argocd
+subjects:
+  - kind: ServiceAccount
+    name: argocd-applicationset-controller
+    namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-applicationset-clusterdecisions
 ```
 
 ### Step 5: Create an ApplicationSet Using the Cluster Decision Resource
@@ -250,7 +269,7 @@ metadata:
 spec:
   generators:
     - clusterDecisionResource:
-        configMapRef: argocd-cm
+        configMapRef: cluster-decision-resource-config
         name: production-clusters
         requeueAfterSeconds: 180
   template:
@@ -374,7 +393,7 @@ spec:
     - matrix:
         generators:
           - clusterDecisionResource:
-              configMapRef: argocd-cm
+              configMapRef: cluster-decision-resource-config
               name: production-clusters
           - list:
               elements:
@@ -449,10 +468,10 @@ status:
 
 ### ApplicationSet Not Generating Applications
 
-Check that the Cluster Decision Resource is configured correctly in `argocd-cm`.
+Check that the Cluster Decision Resource is configured correctly in its ConfigMap.
 
 ```bash
-kubectl get configmap argocd-cm -n argocd -o yaml | grep -A 10 clusterDecisionResource
+kubectl get configmap cluster-decision-resource-config -n argocd -o yaml
 ```
 
 ### Verify the Cluster Decision Resource Status
@@ -504,7 +523,7 @@ Set appropriate requeue intervals based on how frequently your cluster decisions
 ```yaml
 generators:
   - clusterDecisionResource:
-      configMapRef: argocd-cm
+      configMapRef: cluster-decision-resource-config
       name: production-clusters
       requeueAfterSeconds: 60  # Check every minute
 ```
@@ -524,7 +543,7 @@ metadata:
 
 ### 4. Monitor Decision Changes
 
-Set up alerts for when cluster decisions change unexpectedly.
+Set up alerts for when cluster decisions change unexpectedly. For example, if your controller exports a decision count metric, alert on changes to that metric.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -536,7 +555,7 @@ spec:
     - name: cluster-decisions
       rules:
         - alert: ClusterDecisionChanged
-          expr: changes(argocd_cluster_decision_count[5m]) > 0
+          expr: changes(cluster_decision_resource_decisions[5m]) > 0
           labels:
             severity: info
           annotations:
