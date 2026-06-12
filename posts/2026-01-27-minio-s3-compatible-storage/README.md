@@ -14,7 +14,7 @@ Object storage has become the default for logs, backups, container images, and d
 
 ## What is MinIO and Why Use It
 
-MinIO is a high-performance, Kubernetes-native object storage server. It implements the S3 API, meaning any tool or SDK built for AWS S3 works with MinIO without code changes.
+MinIO is a high-performance, Kubernetes-native object storage server. It implements the S3 API, meaning tools and SDKs built for AWS S3 can work with MinIO with minimal configuration changes.
 
 Reasons to choose MinIO:
 
@@ -51,17 +51,16 @@ After running this:
 
 For production, use strong credentials and persist them in a secrets manager.
 
-## Single-Node Installation with Binary
+## Single-Node Installation from Source
 
 If you prefer running MinIO directly on the host without Docker:
 
 ```bash
-# Download the MinIO binary (Linux amd64)
-wget https://dl.min.io/server/minio/release/linux-amd64/minio
-chmod +x minio
+# Install the latest community MinIO build from source (requires Go 1.24+)
+go install github.com/minio/minio@latest
 
 # Move to a standard location
-sudo mv minio /usr/local/bin/
+sudo install -m 0755 "$(go env GOPATH)/bin/minio" /usr/local/bin/minio
 
 # Create data directory
 sudo mkdir -p /data/minio
@@ -120,7 +119,7 @@ sudo systemctl status minio
 For production workloads requiring high availability and fault tolerance, run MinIO in distributed mode. This uses erasure coding to survive disk and node failures.
 
 Minimum requirements for distributed mode:
-- At least 4 drives across 1 or more nodes
+- At least 2 drives for distributed mode; use 4 or more drives for practical fault tolerance
 - Equal storage capacity on each drive
 - Reliable network between nodes
 
@@ -187,20 +186,6 @@ services:
       - minio4-data1:/data1
       - minio4-data2:/data2
 
-  # Load balancer for production use
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - minio1
-      - minio2
-      - minio3
-      - minio4
-
 volumes:
   minio1-data1:
   minio1-data2:
@@ -214,14 +199,14 @@ volumes:
 
 ## Creating Buckets and Users
 
-Once MinIO is running, create buckets and service accounts using the web console or the `mc` CLI.
+Once MinIO is running, create buckets and users using the web console or the `mc` CLI.
 
 ### Using the Web Console
 
 1. Open `http://localhost:9001` in your browser
 2. Log in with your root credentials
 3. Navigate to Buckets and click "Create Bucket"
-4. Navigate to Identity > Users to create service accounts
+4. Navigate to Identity > Users to create users
 
 ### Using mc (MinIO Client)
 
@@ -280,7 +265,7 @@ mc rb --force myminio/my-bucket
 
 MinIO supports fine-grained access control through IAM policies compatible with AWS IAM syntax.
 
-### Creating a Service Account
+### Creating a User
 
 ```bash
 # Create a user with access key and secret key
@@ -546,7 +531,7 @@ docker run -d \
   -e "MINIO_ROOT_USER=minioadmin" \
   -e "MINIO_ROOT_PASSWORD=minioadmin123" \
   -v ~/minio/data:/data \
-  -v ~/minio/certs:/root/.minio/certs \
+  -v ~/.minio/certs:/root/.minio/certs:ro \
   quay.io/minio/minio server /data --console-address ":9001"
 ```
 
@@ -569,7 +554,7 @@ MinIO exposes Prometheus metrics for monitoring performance and health.
 
 ### Enabling Prometheus Metrics
 
-Metrics are available at `/minio/v2/metrics/cluster` and `/minio/v2/metrics/node`.
+Metrics are available at `/minio/v2/metrics/cluster`, `/minio/v2/metrics/bucket`, `/minio/v2/metrics/node`, and `/minio/v2/metrics/resource`.
 
 Create a Prometheus scrape config:
 
@@ -599,25 +584,25 @@ mc admin prometheus generate myminio
 
 # Bucket metrics
 minio_bucket_usage_total_bytes       # Total bytes stored per bucket
-minio_bucket_objects_count           # Number of objects per bucket
+minio_bucket_usage_object_total      # Number of objects per bucket
 
 # Request metrics
 minio_s3_requests_total              # Total S3 requests by type
 minio_s3_requests_errors_total       # Failed requests
-minio_s3_requests_ttfb_seconds       # Time to first byte
+minio_s3_requests_ttfb_seconds_distribution  # Time to first byte
 
 # Network metrics
 minio_s3_traffic_received_bytes      # Incoming traffic
 minio_s3_traffic_sent_bytes          # Outgoing traffic
 
 # Disk metrics
-minio_node_disk_free_bytes           # Free disk space
-minio_node_disk_total_bytes          # Total disk space
-minio_node_disk_used_bytes           # Used disk space
+minio_node_drive_free_bytes          # Free disk space
+minio_node_drive_total_bytes         # Total disk space
+minio_node_drive_used_bytes          # Used disk space
 
 # Cluster health (distributed mode)
-minio_cluster_nodes_online           # Number of online nodes
-minio_cluster_nodes_offline          # Number of offline nodes
+minio_cluster_nodes_online_total     # Number of online nodes
+minio_cluster_nodes_offline_total    # Number of offline nodes
 ```
 
 ### Health Check Endpoints
@@ -701,7 +686,7 @@ mc cp --version-id VERSION_ID myminio/my-bucket/file.txt ./restored-file.txt
 
 1. **Security:** Never use default credentials in production. Rotate access keys regularly. Enable TLS for all traffic.
 
-2. **High Availability:** Run distributed mode with at least 4 drives for erasure coding. Place nodes across failure domains.
+2. **High Availability:** Run distributed mode with multiple drives for erasure coding. Place nodes across failure domains.
 
 3. **Monitoring:** Export Prometheus metrics. Alert on disk usage, request errors, and node health.
 
