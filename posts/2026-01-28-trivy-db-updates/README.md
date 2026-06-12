@@ -20,14 +20,14 @@ Trivy uses multiple databases for different types of scans:
 
 | Database | Purpose | Size | Update Frequency |
 |----------|---------|------|------------------|
-| trivy-db | OS and language vulnerabilities | ~40MB | Every 6 hours |
-| trivy-java-db | Java-specific vulnerabilities | ~200MB | Every 6 hours |
-| trivy-checks | Misconfiguration checks | ~10MB | With releases |
+| trivy-db | OS and language vulnerability data | Varies | Based on database metadata |
+| trivy-java-db | Java artifact index for JAR detection | Varies | Based on database metadata |
+| trivy-checks | Misconfiguration checks bundle | Varies | Based on checks bundle updates |
 
 ```mermaid
 flowchart TD
     A[Trivy Scan Request] --> B{Database Current?}
-    B -->|No| C[Download from GitHub]
+    B -->|No| C[Download from OCI Registry]
     C --> D[Extract to Cache]
     D --> E[Run Scan]
     B -->|Yes| E
@@ -60,7 +60,7 @@ trivy image nginx:latest
 2026-01-28T10:00:05.000Z  INFO  Vulnerability DB downloaded
 ```
 
-The database is cached locally and reused until it expires (default: 12 hours).
+The database is cached locally and reused until its metadata says a new update is available.
 
 ---
 
@@ -94,8 +94,9 @@ trivy image --download-db-only
 # Download Java database only
 trivy image --download-java-db-only
 
-# Force fresh download before scan
-trivy image --reset nginx:latest
+# Clear cached vulnerability DB and download it again
+trivy clean --vuln-db
+trivy image --download-db-only
 ```
 
 ---
@@ -105,8 +106,11 @@ trivy image --reset nginx:latest
 ### Default Cache Location
 
 ```bash
-# Linux/macOS
+# Linux
 ~/.cache/trivy/
+
+# macOS
+~/Library/Caches/trivy/
 
 # Contents
 ~/.cache/trivy/db/          # Main vulnerability DB
@@ -139,10 +143,12 @@ db:
   skip-update: false
 
   # Database download URL (for mirrors)
-  repository: ghcr.io/aquasecurity/trivy-db
+  repository:
+    - ghcr.io/aquasecurity/trivy-db:2
 
   # Java database URL
-  java-repository: ghcr.io/aquasecurity/trivy-java-db
+  java-repository:
+    - ghcr.io/aquasecurity/trivy-java-db:1
 ```
 
 ---
@@ -168,13 +174,13 @@ jobs:
           trivy image --download-java-db-only
 
       - name: Scan Image 1
-        run: trivy image --skip-db-update image1:latest
+        run: trivy image --skip-db-update --skip-java-db-update image1:latest
 
       - name: Scan Image 2
-        run: trivy image --skip-db-update image2:latest
+        run: trivy image --skip-db-update --skip-java-db-update image2:latest
 
       - name: Scan Image 3
-        run: trivy image --skip-db-update image3:latest
+        run: trivy image --skip-db-update --skip-java-db-update image3:latest
 ```
 
 ### Cache Database Between Runs
@@ -196,12 +202,14 @@ jobs:
             trivy-db-
 
       - name: Update DB if needed
-        run: trivy image --download-db-only
+        run: |
+          trivy image --download-db-only
+          trivy image --download-java-db-only
 
       - name: Run scans
         run: |
-          trivy image --skip-db-update image1:latest
-          trivy image --skip-db-update image2:latest
+          trivy image --skip-db-update --skip-java-db-update image1:latest
+          trivy image --skip-db-update --skip-java-db-update image2:latest
 ```
 
 ### GitLab CI with Shared Cache
@@ -234,7 +242,7 @@ scan-images:
     matrix:
       - IMAGE: [image1:latest, image2:latest, image3:latest]
   script:
-    - trivy image --skip-db-update $IMAGE
+    - trivy image --skip-db-update --skip-java-db-update $IMAGE
   cache:
     key: trivy-db
     paths:
@@ -252,11 +260,15 @@ For environments without internet access, pre-download and transfer the database
 
 ```bash
 # On system with internet access
-# Download the OCI artifact containing the database
-oras pull ghcr.io/aquasecurity/trivy-db:2 -o ./trivy-db/
+# Download and extract the OCI artifact containing the database
+mkdir -p ./trivy-cache/db
+oras pull ghcr.io/aquasecurity/trivy-db:2
+tar -xzf db.tar.gz -C ./trivy-cache/db
 
 # For Java database
-oras pull ghcr.io/aquasecurity/trivy-java-db:1 -o ./trivy-java-db/
+mkdir -p ./trivy-cache/java-db
+oras pull ghcr.io/aquasecurity/trivy-java-db:1
+tar -xzf javadb.tar.gz -C ./trivy-cache/java-db
 
 # Or use Trivy directly
 trivy image --download-db-only --cache-dir ./trivy-cache
@@ -269,6 +281,7 @@ trivy image --download-db-only --cache-dir ./trivy-cache
 # Then run scans using the local cache
 
 trivy image --skip-db-update \
+  --skip-java-db-update \
   --cache-dir /path/to/trivy-cache \
   nginx:latest
 ```
@@ -276,14 +289,17 @@ trivy image --skip-db-update \
 ### Host Your Own Mirror
 
 ```bash
-# Set up internal registry mirror
-# Push databases to internal registry
-oras push internal-registry.company.com/trivy/trivy-db:2 \
-  ./trivy-db/*
+# Set up internal registry mirror by copying the OCI artifacts
+oras copy ghcr.io/aquasecurity/trivy-db:2 \
+  internal-registry.company.com/trivy/trivy-db:2
+
+oras copy ghcr.io/aquasecurity/trivy-java-db:1 \
+  internal-registry.company.com/trivy/trivy-java-db:1
 
 # Configure Trivy to use internal mirror
 trivy image \
   --db-repository internal-registry.company.com/trivy/trivy-db \
+  --java-db-repository internal-registry.company.com/trivy/trivy-java-db \
   nginx:latest
 ```
 
@@ -294,7 +310,7 @@ trivy image \
 ```mermaid
 flowchart TD
     A[Start Pipeline] --> B[Check Cache Age]
-    B --> C{Cache < 6 hours?}
+    B --> C{Before NextUpdate?}
     C -->|Yes| D[Skip Download]
     C -->|No| E[Download Fresh DB]
     E --> F[Update Cache]
@@ -387,8 +403,8 @@ MAX_AGE_HOURS=12
 
 # Check database age
 if [ -f "$CACHE_DIR/db/metadata.json" ]; then
-    DOWNLOADED_AT=$(jq -r '.DownloadedAt' "$CACHE_DIR/db/metadata.json")
-    DOWNLOADED_TS=$(date -d "$DOWNLOADED_AT" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "$DOWNLOADED_AT" +%s)
+    DOWNLOADED_AT=$(jq -r '.DownloadedAt' "$CACHE_DIR/db/metadata.json" | sed -E 's/\.[0-9]+Z$/Z/')
+    DOWNLOADED_TS=$(date -d "$DOWNLOADED_AT" +%s 2>/dev/null || date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$DOWNLOADED_AT" +%s)
     CURRENT_TS=$(date +%s)
     AGE_HOURS=$(( (CURRENT_TS - DOWNLOADED_TS) / 3600 ))
 
@@ -428,10 +444,11 @@ export HTTP_PROXY=http://proxy.company.com:8080
 export HTTPS_PROXY=http://proxy.company.com:8080
 trivy image nginx:latest
 
-# 3. Rate limiting - use authenticated requests
-export TRIVY_USERNAME=your-github-username
-export TRIVY_PASSWORD=your-github-token
-trivy image nginx:latest
+# 3. Rate limiting - use alternate database repositories
+trivy image \
+  --db-repository public.ecr.aws/aquasecurity/trivy-db \
+  --db-repository ghcr.io/aquasecurity/trivy-db \
+  nginx:latest
 ```
 
 ### Corrupted Database
@@ -441,8 +458,9 @@ trivy image nginx:latest
 rm -rf ~/.cache/trivy/db/
 trivy image --download-db-only
 
-# Or use the reset flag
-trivy image --reset nginx:latest
+# Or use trivy clean
+trivy clean --vuln-db
+trivy image --download-db-only
 ```
 
 ### Version Mismatch
@@ -472,17 +490,20 @@ db:
   download-only: false
 
   # DB repository URL
-  repository: ghcr.io/aquasecurity/trivy-db
+  repository:
+    - ghcr.io/aquasecurity/trivy-db:2
 
   # Repository for Java DB
-  java-repository: ghcr.io/aquasecurity/trivy-java-db
+  java-repository:
+    - ghcr.io/aquasecurity/trivy-java-db:1
 
 cache:
   # Cache directory path
-  dir: ~/.cache/trivy
+  dir: /path/to/cache
 
-  # Clear cache before scan
-  clear: false
+clean:
+  # Remove vulnerability DB when running `trivy clean`
+  vuln-db: false
 
 # Timeout for database operations
 timeout: 5m
