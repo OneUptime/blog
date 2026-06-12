@@ -27,7 +27,7 @@ graph TD
     A --> D[Concurrency]
     A --> E[Type Safety]
     B --> F[No GC Pauses]
-    B --> G[No Memory Leaks]
+    B --> G[No Use-After-Free]
     C --> H[Low Latency]
     C --> I[High Throughput]
     D --> J[Async/Await]
@@ -107,14 +107,14 @@ edition = "2021"
 
 [dependencies]
 # Web framework
-axum = "0.7"
+axum = "0.8"
 # Async runtime
 tokio = { version = "1.0", features = ["full"] }
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
 # Utilities
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -123,9 +123,13 @@ dotenvy = "0.15"
 # Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tower-http = { version = "0.6", features = ["trace"] }
 # Error handling
-thiserror = "1.0"
+thiserror = "2.0"
 anyhow = "1.0"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
 ```
 
 ## Project Structure
@@ -138,7 +142,6 @@ graph TD
     A --> C[migrations/]
     A --> D[Cargo.toml]
     B --> E[main.rs]
-    B --> F[lib.rs]
     B --> G[routes/]
     B --> H[models/]
     B --> I[handlers/]
@@ -152,6 +155,7 @@ graph TD
     I --> Q[tasks.rs]
     J --> R[mod.rs]
     J --> S[pool.rs]
+    J --> T[tasks.rs]
 ```
 
 ## Defining Your Data Models
@@ -170,6 +174,7 @@ use uuid::Uuid;
 // TaskStatus enum represents the possible states of a task
 // Derive macros provide serialization and database mapping
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
+#[serde(rename_all = "lowercase")]
 #[sqlx(type_name = "task_status", rename_all = "lowercase")]
 pub enum TaskStatus {
     Pending,
@@ -326,6 +331,7 @@ use crate::models::task::{CreateTask, Task, TaskStatus, UpdateTask};
 
 // TaskRepository encapsulates all database operations for tasks
 // Using a struct allows for easier testing with mocks
+#[derive(Clone)]
 pub struct TaskRepository {
     pool: PgPool,
 }
@@ -465,7 +471,7 @@ pub async fn list_tasks(State(state): State<AppState>) -> AppResult<Json<Vec<Tas
     Ok(Json(tasks))
 }
 
-// GET /tasks/:id - Get a single task
+// GET /tasks/{id} - Get a single task
 pub async fn get_task(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -490,7 +496,7 @@ pub async fn create_task(
     Ok((StatusCode::CREATED, Json(task)))
 }
 
-// PATCH /tasks/:id - Update a task
+// PATCH /tasks/{id} - Update a task
 pub async fn update_task(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -507,7 +513,7 @@ pub async fn update_task(
     Ok(Json(task))
 }
 
-// DELETE /tasks/:id - Delete a task
+// DELETE /tasks/{id} - Delete a task
 pub async fn delete_task(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -546,9 +552,9 @@ pub fn task_routes() -> Router<AppState> {
         .route("/tasks", get(list_tasks))
         .route("/tasks", post(create_task))
         // Individual resource routes
-        .route("/tasks/:id", get(get_task))
-        .route("/tasks/:id", patch(update_task))
-        .route("/tasks/:id", delete(delete_task))
+        .route("/tasks/{id}", get(get_task))
+        .route("/tasks/{id}", patch(update_task))
+        .route("/tasks/{id}", delete(delete_task))
 }
 ```
 
@@ -687,7 +693,7 @@ Add logging and request tracing middleware:
 ```rust
 // In main.rs, update the router setup
 
-use axum::http::Request;
+use axum::{extract::Request, response::Response};
 use tower_http::trace::TraceLayer;
 use tracing::Span;
 
@@ -702,7 +708,7 @@ let app = Router::new()
                     uri = %request.uri(),
                 )
             })
-            .on_response(|response: &axum::http::Response<_>, latency: std::time::Duration, _span: &Span| {
+            .on_response(|response: &Response, latency: std::time::Duration, _span: &Span| {
                 tracing::info!(
                     status = %response.status(),
                     latency = ?latency,
@@ -724,6 +730,7 @@ Write integration tests in `tests/api_tests.rs`:
 use axum::{
     body::Body,
     http::{Request, StatusCode},
+    Router,
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -827,7 +834,7 @@ Create a multi-stage Dockerfile for efficient builds:
 
 ```dockerfile
 # Build stage
-FROM rust:1.75 as builder
+FROM rust:1.93 as builder
 
 WORKDIR /app
 
