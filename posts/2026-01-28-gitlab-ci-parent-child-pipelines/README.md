@@ -29,10 +29,10 @@ trigger-child:
   stage: build
   trigger:
     include: .gitlab/child-pipeline.yml
-    strategy: depend
+    strategy: mirror
 ```
 
-`strategy: depend` makes the parent wait for the child and collect results.
+`strategy: mirror` makes the trigger job mirror the child pipeline status and makes later stages wait for the child pipeline to finish.
 
 ## Child Pipeline Example
 
@@ -64,7 +64,7 @@ trigger-child:
   stage: build
   trigger:
     include: .gitlab/child-pipeline.yml
-    strategy: depend
+    strategy: mirror
   variables:
     ENVIRONMENT: "staging"
 ```
@@ -73,7 +73,7 @@ trigger-child:
 
 - Keep child pipelines focused and reusable.
 - Use `include` for shared job templates.
-- Use `strategy: depend` for coordinated execution.
+- Use `strategy: mirror` for coordinated execution.
 
 ## Conclusion
 
