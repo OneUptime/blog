@@ -119,7 +119,7 @@ server {
 
 ### Alternative: Cookie-Based Sticky Sessions
 
-IP hash works well in many cases, but can cause uneven distribution when clients share IPs (corporate networks, mobile carriers). Cookie-based stickiness provides better distribution.
+IP hash works well in many cases, but can cause uneven distribution when clients share IPs (corporate networks, mobile carriers). Cookie-based stickiness provides better distribution. In NGINX, the `sticky` directive is available in NGINX Plus; with NGINX Open Source, use `ip_hash` or `hash` unless you install and maintain a third-party sticky-session module.
 
 ```nginx
 upstream websocket_servers {
@@ -215,6 +215,9 @@ wss.on('connection', (ws, req) => {
     localClients.set(clientId, ws);
     clientChannels.set(clientId, new Set());
 
+    // Subscribe this server to direct messages for this local client
+    redisSub.subscribe(`client:${clientId}`);
+
     console.log(`Client ${clientId} connected to ${serverId}`);
 
     // Send the client their ID for future reference
@@ -248,6 +251,7 @@ wss.on('connection', (ws, req) => {
         // Remove from local tracking
         localClients.delete(clientId);
         clientChannels.delete(clientId);
+        redisSub.unsubscribe(`client:${clientId}`);
     });
 
     // Handle errors
@@ -418,8 +422,7 @@ function deliverDirectMessage(clientId, message) {
     }
 }
 
-// Subscribe to direct messages for any client that connects to this server
-// This is handled dynamically when clients connect
+// Direct-message subscriptions are added and removed dynamically as clients connect and disconnect
 
 console.log(`WebSocket server ${serverId} ready on port ${process.env.WS_PORT || 8080}`);
 ```
@@ -512,7 +515,7 @@ echo "* hard nofile 1000000" >> /etc/security/limits.conf
 echo "fs.file-max = 2000000" >> /etc/sysctl.conf
 
 # Optimize TCP settings for many connections
-# Increase the range of local ports available
+# Increase the range of ephemeral local ports available for outbound connections
 echo "net.ipv4.ip_local_port_range = 1024 65535" >> /etc/sysctl.conf
 
 # Enable TCP keepalive to detect dead connections
