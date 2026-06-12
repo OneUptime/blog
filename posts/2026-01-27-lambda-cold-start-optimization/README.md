@@ -20,7 +20,7 @@ A cold start occurs when AWS Lambda creates a new execution environment to handl
 
 - A function is invoked for the first time
 - All existing execution environments are busy handling other requests
-- An execution environment has been idle and was recycled (typically after 5-15 minutes)
+- An execution environment has been idle and was recycled (AWS does not publish a fixed idle retention time)
 - You deploy new code or update configuration
 
 During a cold start, Lambda must:
@@ -42,7 +42,7 @@ Before optimizing, establish a baseline. Lambda provides built-in metrics, but y
 ### Using CloudWatch Logs Insights
 
 ```sql
--- Query to identify cold starts and their duration
+# Query to identify cold starts and their duration
 fields @timestamp, @requestId, @duration, @billedDuration, @memorySize, @maxMemoryUsed
 | filter @type = "REPORT"
 | filter @message like /Init Duration/
@@ -108,7 +108,7 @@ Deployment package size directly correlates with cold start time. Lambda must do
 ### Minimize Dependencies
 
 ```javascript
-// Bad - importing entire AWS SDK v3
+// Bad - importing an entire service client namespace
 const AWS = require('@aws-sdk/client-s3');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 
@@ -130,7 +130,7 @@ esbuild.build({
     platform: 'node',
     target: 'node20',
     outfile: 'dist/handler.js',
-    external: ['@aws-sdk/*'], // Use Lambda's built-in SDK
+    external: ['@aws-sdk/*'], // Or bundle these dependencies to control SDK versions
     treeShaking: true
 });
 ```
@@ -246,7 +246,7 @@ Resources:
         SecurityGroupIds:
           - !Ref LambdaSecurityGroup
         SubnetIds:
-          # Use multiple subnets for ENI reuse
+          # Use subnets in multiple AZs for availability
           - !Ref PrivateSubnet1
           - !Ref PrivateSubnet2
           - !Ref PrivateSubnet3
@@ -260,22 +260,17 @@ Resources:
 If your Lambda only needs to call AWS APIs and public endpoints, skip VPC entirely:
 
 ```python
-# Accessing RDS without VPC - Use RDS Proxy with IAM auth
+# Accessing AWS APIs without VPC - use the standard AWS SDK endpoints
 import boto3
-import json
 
-def get_db_connection():
-    # RDS Proxy public endpoint with IAM authentication
-    client = boto3.client('rds')
-    token = client.generate_db_auth_token(
-        DBHostname='myproxy.proxy-xxxx.us-east-1.rds.amazonaws.com',
-        Port=5432,
-        DBUsername='lambda_user',
-        Region='us-east-1'
-    )
-    # Connect using the token
-    return token
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('my-table')
+
+def handler(event, context):
+    return table.get_item(Key={'id': event['id']})
 ```
+
+For private RDS databases, keep the function in a VPC with network access to the database or RDS Proxy. RDS Proxy itself is not publicly accessible.
 
 ---
 
@@ -322,7 +317,7 @@ Resources:
 Provisioned concurrency charges apply even when instances are idle:
 
 ```text
-Cost = Provisioned GB-seconds * $0.000004463
+Cost = Provisioned GB-seconds * $0.0000041667
      + Request charges (same as on-demand)
      + Duration charges for actual execution
 ```
@@ -330,8 +325,8 @@ Cost = Provisioned GB-seconds * $0.000004463
 For a function with 512MB memory and 10 provisioned instances running 24/7:
 
 ```text
-Monthly cost = 10 * 0.5GB * 86400s * 30 days * $0.000004463
-            = $578/month just for provisioned concurrency
+Monthly cost = 10 * 0.5GB * 86400s * 30 days * $0.0000041667
+            = $54/month just for provisioned concurrency
 ```
 
 Use it strategically for latency-critical paths, not every function.
@@ -411,7 +406,11 @@ Resources:
 
 ```java
 // Snap Start compatible initialization
-public class Handler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
+import org.crac.Context;
+import org.crac.Core;
+import org.crac.Resource;
+
+public class Handler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent>, Resource {
 
     // Static initialization runs once, captured in snapshot
     private static final DynamoDbClient dynamoDb = DynamoDbClient.create();
@@ -419,16 +418,22 @@ public class Handler implements RequestHandler<APIGatewayProxyRequestEvent, APIG
 
     // Use CRaC hooks for resources that need refresh after restore
     static {
-        CRaCSupport.registerResource(() -> {
-            // This runs after restore from snapshot
-            // Refresh time-sensitive resources here
-            return null;
-        });
+        Core.getGlobalContext().register(new Handler());
+    }
+
+    @Override
+    public void beforeCheckpoint(Context<? extends Resource> context) throws Exception {
+        // Release resources before Lambda captures the snapshot
+    }
+
+    @Override
+    public void afterRestore(Context<? extends Resource> context) throws Exception {
+        // Refresh time-sensitive resources after restore
     }
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(
-            APIGatewayProxyRequestEvent event, Context context) {
+            APIGatewayProxyRequestEvent event, com.amazonaws.services.lambda.runtime.Context context) {
         // Handler logic
     }
 }
@@ -456,9 +461,9 @@ Resources:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmName: HighColdStartRate
-      MetricName: InitDuration
-      Namespace: AWS/Lambda
-      Statistic: SampleCount
+      MetricName: ColdStart
+      Namespace: MyApp/Lambda
+      Statistic: Sum
       Period: 300
       EvaluationPeriods: 3
       Threshold: 100
@@ -494,7 +499,7 @@ def handler(event, context):
 4. **Avoid VPC unless necessary** - VPC adds latency; use RDS Proxy or VPC endpoints when needed
 5. **Use provisioned concurrency strategically** - Reserve it for latency-critical, user-facing functions
 6. **Enable Snap Start for Java** - Reduces Java cold starts from seconds to milliseconds
-7. **Monitor cold start metrics** - Track Init Duration and set alerts for regressions
+7. **Monitor cold start metrics** - Track Init Duration in logs and alert on custom cold start metrics
 8. **Right-size memory** - More memory means more CPU, which can speed up initialization
 9. **Keep dependencies current** - AWS regularly optimizes runtime performance
 10. **Test under realistic conditions** - Use load testing to understand cold start behavior at scale
