@@ -58,7 +58,7 @@ Here is a simple Containerfile to start with:
 
 ```dockerfile
 # Use a minimal base image for smaller attack surface
-FROM alpine:3.19
+FROM alpine:3.24
 
 # Set metadata labels following OCI conventions
 LABEL org.opencontainers.image.title="My Application"
@@ -122,7 +122,7 @@ Using Buildah directly gives you scripting capabilities:
 
 # Create a new working container from base image
 # Store the container ID in a variable for later use
-container=$(buildah from alpine:3.19)
+container=$(buildah from alpine:3.24)
 
 # Run commands inside the container
 # --: Separates buildah options from the command to run
@@ -131,6 +131,7 @@ buildah run $container -- apk add --no-cache nodejs npm
 # Copy files into the container
 # Specify source on host and destination in container
 buildah copy $container ./package.json /app/package.json
+buildah copy $container ./package-lock.json /app/package-lock.json
 buildah copy $container ./src /app/src
 
 # Set working directory for subsequent commands
@@ -167,7 +168,7 @@ Multi-stage builds let you use heavy build tools in one stage and copy only the 
 # This stage contains all build dependencies (compilers, dev tools, etc.)
 # Nothing from this stage ends up in the final image except what we copy
 # =============================================================================
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Install build dependencies needed for CGO or native extensions
 RUN apk add --no-cache git ca-certificates
@@ -221,7 +222,7 @@ The multi-stage approach provides dramatic size reductions:
 ```mermaid
 flowchart LR
     subgraph "Build Stage"
-        A[golang:1.22-alpine<br/>~300MB] --> B[Source Code]
+        A[golang:1.26-alpine<br/>~300MB] --> B[Source Code]
         B --> C[Dependencies]
         C --> D[Compiled Binary<br/>~15MB]
     end
@@ -246,7 +247,7 @@ Build arguments let you parameterize your builds without modifying the Container
 ```dockerfile
 # Define build arguments with default values
 # ARG is only available during build, not at runtime
-ARG BASE_IMAGE=node:20-alpine
+ARG BASE_IMAGE=node:24-alpine
 ARG NODE_ENV=production
 ARG APP_VERSION=0.0.0
 
@@ -297,7 +298,7 @@ Pass build arguments when building:
 # Build with custom arguments
 # --build-arg: Pass values to ARG instructions
 podman build \
-    --build-arg BASE_IMAGE=node:20-slim \
+    --build-arg BASE_IMAGE=node:24-slim \
     --build-arg NODE_ENV=production \
     --build-arg APP_VERSION=2.1.0 \
     -t myapp:2.1.0 .
@@ -309,7 +310,7 @@ podman build \
 
 # Use a specific registry mirror for the base image
 podman build \
-    --build-arg BASE_IMAGE=registry.internal.example.com/node:20-alpine \
+    --build-arg BASE_IMAGE=registry.internal.example.com/node:24-alpine \
     -t myapp:internal .
 ```
 
@@ -356,9 +357,8 @@ podman history myapp:v1.0
 podman save myapp:v1.0 -o myapp.tar
 tar -tvf myapp.tar | head -20
 
-# Check image manifest (OCI format details)
-# Shows the digest, media type, and layer information
-podman manifest inspect myapp:v1.0
+# Check image manifest type and digest
+podman image inspect --format '{{.ManifestType}} {{.Digest}}' myapp:v1.0
 
 # View only the config portion
 # Useful for checking environment variables and entrypoint
@@ -424,7 +424,7 @@ Never bake secrets into image layers. Use mounted secrets that exist only during
 # syntax=docker/dockerfile:1.6
 # Enable BuildKit/Buildah secret mounts
 
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -465,12 +465,13 @@ podman builder prune -a
 
 # Build with external cache source
 # --cache-from: Use layers from another image as cache
-podman build --cache-from=registry.example.com/myapp:cache -t myapp:v1.0 .
+podman build --layers --cache-from=registry.example.com/myapp:cache -t myapp:v1.0 .
 
 # Build and export cache for CI/CD
 # --cache-to: Push cache layers to a registry
 podman build \
-    --cache-to=type=registry,ref=registry.example.com/myapp:cache \
+    --layers \
+    --cache-to=registry.example.com/myapp:cache \
     -t myapp:v1.0 .
 ```
 
@@ -482,8 +483,8 @@ Here is a production-ready multi-stage build that incorporates all best practice
 # =============================================================================
 # Build Arguments - Customize the build without modifying the file
 # =============================================================================
-ARG NODE_VERSION=20
-ARG ALPINE_VERSION=3.19
+ARG NODE_VERSION=24
+ARG ALPINE_VERSION=3.24
 ARG APP_VERSION=0.0.0
 ARG BUILD_DATE=unknown
 ARG VCS_REF=unknown
@@ -499,8 +500,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Install ALL dependencies (including devDependencies for build)
-# --frozen-lockfile: Fail if lockfile needs update (reproducible builds)
-RUN npm ci --frozen-lockfile
+# npm ci fails if package.json and package-lock.json are out of sync
+RUN npm ci
 
 # =============================================================================
 # Stage 2: Builder - Compile TypeScript and build assets
@@ -634,7 +635,7 @@ podman build --log-level=debug -t myapp .
 ### Multi-Architecture Build Issues
 
 ```bash
-# Install QEMU for cross-platform emulation
+# On Podman machine/Fedora CoreOS hosts, install QEMU for cross-platform emulation
 # Required for building ARM images on x86 (or vice versa)
 podman machine ssh -- sudo rpm-ostree install qemu-user-static
 
