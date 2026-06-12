@@ -68,34 +68,42 @@ class CostDataCollector:
         end_date = datetime.now().strftime('%Y-%m-%d')
         start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
 
-        response = self.ce.get_cost_and_usage(
-            TimePeriod={'Start': start_date, 'End': end_date},
-            Granularity=granularity,
-            Metrics=['UnblendedCost', 'UsageQuantity'],
-            GroupBy=[
-                {'Type': 'DIMENSION', 'Key': 'SERVICE'}
-            ]
-        )
+        daily_costs_by_date = {}
+        next_token = None
 
-        daily_costs = []
-        for result in response['ResultsByTime']:
-            date = result['TimePeriod']['Start']
-            services = {}
-            total = 0
+        while True:
+            request = {
+                'TimePeriod': {'Start': start_date, 'End': end_date},
+                'Granularity': granularity,
+                'Metrics': ['UnblendedCost', 'UsageQuantity'],
+                'GroupBy': [
+                    {'Type': 'DIMENSION', 'Key': 'SERVICE'}
+                ]
+            }
+            if next_token:
+                request['NextPageToken'] = next_token
 
-            for group in result['Groups']:
-                service = group['Keys'][0]
-                cost = float(group['Metrics']['UnblendedCost']['Amount'])
-                services[service] = cost
-                total += cost
+            response = self.ce.get_cost_and_usage(**request)
 
-            daily_costs.append({
-                'date': date,
-                'total': total,
-                'by_service': services
-            })
+            for result in response['ResultsByTime']:
+                date = result['TimePeriod']['Start']
+                day = daily_costs_by_date.setdefault(date, {
+                    'date': date,
+                    'total': 0,
+                    'by_service': {}
+                })
 
-        return daily_costs
+                for group in result['Groups']:
+                    service = group['Keys'][0]
+                    cost = float(group['Metrics']['UnblendedCost']['Amount'])
+                    day['by_service'][service] = day['by_service'].get(service, 0) + cost
+                    day['total'] += cost
+
+            next_token = response.get('NextPageToken')
+            if not next_token:
+                break
+
+        return [daily_costs_by_date[date] for date in sorted(daily_costs_by_date)]
 
     def get_costs_by_tag(self, tag_key, days=30):
         """
@@ -104,24 +112,35 @@ class CostDataCollector:
         end_date = datetime.now().strftime('%Y-%m-%d')
         start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
 
-        response = self.ce.get_cost_and_usage(
-            TimePeriod={'Start': start_date, 'End': end_date},
-            Granularity='MONTHLY',
-            Metrics=['UnblendedCost'],
-            GroupBy=[
-                {'Type': 'TAG', 'Key': tag_key}
-            ]
-        )
-
         tag_costs = defaultdict(float)
-        for result in response['ResultsByTime']:
-            for group in result['Groups']:
-                tag_value = group['Keys'][0]
-                # Handle untagged resources
-                if tag_value == f"{tag_key}$":
-                    tag_value = "untagged"
-                cost = float(group['Metrics']['UnblendedCost']['Amount'])
-                tag_costs[tag_value] += cost
+        next_token = None
+
+        while True:
+            request = {
+                'TimePeriod': {'Start': start_date, 'End': end_date},
+                'Granularity': 'MONTHLY',
+                'Metrics': ['UnblendedCost'],
+                'GroupBy': [
+                    {'Type': 'TAG', 'Key': tag_key}
+                ]
+            }
+            if next_token:
+                request['NextPageToken'] = next_token
+
+            response = self.ce.get_cost_and_usage(**request)
+
+            for result in response['ResultsByTime']:
+                for group in result['Groups']:
+                    tag_value = group['Keys'][0]
+                    # Handle untagged resources
+                    if tag_value == f"{tag_key}$":
+                        tag_value = "untagged"
+                    cost = float(group['Metrics']['UnblendedCost']['Amount'])
+                    tag_costs[tag_value] += cost
+
+            next_token = response.get('NextPageToken')
+            if not next_token:
+                break
 
         return dict(tag_costs)
 
@@ -177,6 +196,7 @@ Detect unusual spending patterns before they become expensive problems:
 ```python
 import statistics
 from datetime import datetime, timedelta
+from collections import defaultdict
 
 class CostAnomalyDetector:
     """
@@ -196,7 +216,7 @@ class CostAnomalyDetector:
         Uses rolling average and standard deviation.
         """
         if len(daily_costs) < 14:
-            return {'error': 'Need at least 14 days of data for anomaly detection'}
+            return []
 
         anomalies = []
 
@@ -211,7 +231,7 @@ class CostAnomalyDetector:
 
             # Avoid division by zero for stable costs
             if std_dev < 1:
-                std_dev = mean * 0.1  # Use 10% of mean as minimum std
+                std_dev = max(mean * 0.1, 1)  # Use 10% of mean as minimum std
 
             # Calculate z-score
             z_score = (current_cost - mean) / std_dev
@@ -227,7 +247,7 @@ class CostAnomalyDetector:
                     'cost': current_cost,
                     'expected': mean,
                     'deviation': absolute_change,
-                    'deviation_percent': (absolute_change / mean) * 100,
+                    'deviation_percent': (absolute_change / mean) * 100 if mean else 0,
                     'z_score': z_score,
                     'direction': 'increase' if absolute_change > 0 else 'decrease'
                 })
@@ -295,6 +315,8 @@ for sa in service_anomalies[:5]:
 Create budgets with meaningful thresholds:
 
 ```python
+import boto3
+
 def create_monthly_budget(budget_name, amount, email_subscribers):
     """
     Create a monthly budget with alerts at multiple thresholds.
@@ -310,20 +332,7 @@ def create_monthly_budget(budget_name, amount, email_subscribers):
         },
         'BudgetType': 'COST',
         'TimeUnit': 'MONTHLY',
-        'CostFilters': {},
-        'CostTypes': {
-            'IncludeTax': True,
-            'IncludeSubscription': True,
-            'UseBlended': False,
-            'IncludeRefund': False,
-            'IncludeCredit': False,
-            'IncludeUpfront': True,
-            'IncludeRecurring': True,
-            'IncludeOtherSubscription': True,
-            'IncludeSupport': True,
-            'IncludeDiscount': True,
-            'UseAmortized': False
-        }
+        'Metrics': ['UnblendedCost']
     }
 
     # Create notifications at different thresholds
@@ -403,9 +412,14 @@ def create_team_budgets(team_allocations):
             },
             'BudgetType': 'COST',
             'TimeUnit': 'MONTHLY',
-            'CostFilters': {
-                'TagKeyValue': [f"user:Team${team}"]
-            }
+            'FilterExpression': {
+                'Tags': {
+                    'Key': 'user:Team',
+                    'Values': [team],
+                    'MatchOptions': ['EQUALS']
+                }
+            },
+            'Metrics': ['UnblendedCost']
         }
 
         notifications = [
