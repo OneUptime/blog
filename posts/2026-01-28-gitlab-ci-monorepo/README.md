@@ -35,7 +35,7 @@ trigger-backend:
   stage: test
   trigger:
     include: .gitlab/backend.yml
-    strategy: depend
+    strategy: mirror
   rules:
     - changes:
         - services/backend/**
