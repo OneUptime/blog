@@ -102,9 +102,9 @@ This DAG processes daily sales data every night at 2 AM.
 """
 
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.empty import EmptyOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
+from airflow.providers.standard.operators.empty import EmptyOperator
 
 # Define default arguments that apply to all tasks in the DAG
 
@@ -124,7 +124,7 @@ dag = DAG(
     default_args=default_args,
     description="Process daily sales data and generate reports",
     # Schedule to run at 2 AM every day
-    schedule_interval="0 2 * * *",
+    schedule="0 2 * * *",
     # Start date determines the first execution
     start_date=datetime(2026, 1, 1),
     # Prevent running all missed schedules if DAG was paused
@@ -232,10 +232,10 @@ This DAG waits for a file to arrive before processing.
 """
 
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.sensors.filesystem import FileSensor
-from airflow.sensors.external_task import ExternalTaskSensor
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
+from airflow.providers.standard.sensors.filesystem import FileSensor
+from airflow.providers.standard.sensors.external_task import ExternalTaskSensor
 from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 
 default_args = {
@@ -249,7 +249,7 @@ dag = DAG(
     default_args=default_args,
     description="Process files as they arrive in the landing zone",
     # Run every hour but wait for file to exist
-    schedule_interval="@hourly",
+    schedule="@hourly",
     start_date=datetime(2026, 1, 1),
     catchup=False,
     tags=["event-driven", "file-processing"],
@@ -357,9 +357,9 @@ This implements a data pipeline with multiple stages and quality gates.
 """
 
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator, BranchPythonOperator
-from airflow.operators.empty import EmptyOperator
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator, BranchPythonOperator
+from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.utils.trigger_rule import TriggerRule
 
 default_args = {
@@ -372,7 +372,7 @@ dag = DAG(
     dag_id="dependency_based_pipeline",
     default_args=default_args,
     description="Multi-stage pipeline with quality gates and conditional execution",
-    schedule_interval="0 4 * * *",  # 4 AM daily
+    schedule="0 4 * * *",  # 4 AM daily
     start_date=datetime(2026, 1, 1),
     catchup=False,
     tags=["etl", "quality-gates", "dependencies"],
@@ -579,7 +579,8 @@ from dagster import (
     AssetSelection,
     DailyPartitionsDefinition,
     FreshnessPolicy,
-    AutoMaterializePolicy,
+    AutomationCondition,
+    DefaultScheduleStatus,
 )
 from datetime import datetime, timedelta
 
@@ -637,7 +638,7 @@ def raw_transactions(context: AssetExecutionContext):
     partitions_def=daily_partitions,
     group_name="processed_data",
     # Auto-materialize when upstream changes
-    auto_materialize_policy=AutoMaterializePolicy.eager(),
+    automation_condition=AutomationCondition.eager(),
 )
 def cleaned_transactions(context: AssetExecutionContext, raw_transactions):
     """
@@ -716,7 +717,7 @@ daily_transaction_schedule = ScheduleDefinition(
     # Execution timezone
     execution_timezone="UTC",
     # Default status when deployed
-    default_status="running",
+    default_status=DefaultScheduleStatus.RUNNING,
 )
 
 
@@ -791,9 +792,11 @@ def file_arrival_sensor(context: SensorEvaluationContext):
         # Assumes format: transactions_YYYY-MM-DD.csv
         date_str = file_path.stem.split("_")[1]
 
+        file_mtime = file_path.stat().st_mtime
+
         run_requests.append(
             RunRequest(
-                run_key=f"file_{file_path.name}_{mtime}",
+                run_key=f"file_{file_path.name}_{file_mtime}",
                 partition_key=date_str,
                 run_config={
                     "ops": {
@@ -865,9 +868,8 @@ Demonstrates how to safely process historical data.
 """
 
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.models import Variable
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 
 
 def safe_backfill_processor(**context):
@@ -880,10 +882,10 @@ def safe_backfill_processor(**context):
     dag_run = context["dag_run"]
 
     # Check if this is a backfill run
-    is_backfill = dag_run.external_trigger or dag_run.run_type == "backfill"
+    is_backfill = str(dag_run.run_type).lower() == "backfill"
 
     # Get current time for comparison
-    now = datetime.utcnow()
+    now = datetime.now(tz=execution_date.tzinfo)
 
     # Calculate how old this partition is
     data_age_days = (now - execution_date).days
@@ -935,7 +937,7 @@ backfill_dag = DAG(
         "retries": 3,
         "retry_delay": timedelta(minutes=10),
     },
-    schedule_interval="0 5 * * *",
+    schedule="0 5 * * *",
     start_date=datetime(2025, 1, 1),
     # IMPORTANT: Set to False for controlled backfills
     catchup=False,
@@ -953,30 +955,33 @@ with backfill_dag:
     )
 ```
 
-### SLA Monitoring and Alerting
+### Deadline Monitoring and Alerting
 
 ```python
 """
-SLA monitoring patterns for batch jobs.
+Deadline monitoring patterns for batch jobs.
 Ensures jobs complete within expected timeframes.
 """
 
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.email import EmailOperator
+from airflow.sdk import DAG, DeadlineAlert, DeadlineReference, SyncCallback
+from airflow.providers.standard.operators.python import PythonOperator
+from airflow.providers.smtp.operators.smtp import EmailOperator
 
 
-def sla_miss_callback(dag, task_list, blocking_task_list, slas, blocking_tis):
+def deadline_miss_callback(**kwargs):
     """
-    Callback function executed when SLA is missed.
-    This allows custom handling of SLA violations.
+    Callback function executed when a deadline is missed.
+    This allows custom handling of deadline violations.
     """
-    # Log the SLA miss details
-    print(f"SLA MISS DETECTED!")
-    print(f"DAG: {dag.dag_id}")
-    print(f"Tasks that missed SLA: {[t.task_id for t in task_list]}")
-    print(f"Blocking tasks: {[t.task_id for t in blocking_task_list]}")
+    # Log the deadline miss details
+    context = kwargs.get("context", {})
+    dag_run = context.get("dag_run")
+    deadline = context.get("deadline")
+
+    print("DEADLINE MISS DETECTED!")
+    print(f"DAG run: {dag_run}")
+    print(f"Deadline: {deadline}")
 
     # In production, you might:
     # 1. Send a PagerDuty alert
@@ -985,58 +990,58 @@ def sla_miss_callback(dag, task_list, blocking_task_list, slas, blocking_tis):
     # 4. Notify stakeholders via Slack
 
 
-sla_monitored_dag = DAG(
-    dag_id="sla_monitored_pipeline",
+deadline_monitored_dag = DAG(
+    dag_id="deadline_monitored_pipeline",
     default_args={
         "owner": "data-engineering",
         "retries": 2,
         "retry_delay": timedelta(minutes=5),
-        # Define SLA for all tasks (can be overridden per task)
-        "sla": timedelta(hours=2),
     },
-    schedule_interval="0 6 * * *",  # Run at 6 AM
+    schedule="0 6 * * *",  # Run at 6 AM
     start_date=datetime(2026, 1, 1),
     catchup=False,
-    # Register the SLA miss callback
-    sla_miss_callback=sla_miss_callback,
-    tags=["sla-monitored"],
+    # Alert if the DAG run has not completed within 2 hours of its logical date
+    deadline=DeadlineAlert(
+        reference=DeadlineReference.DAGRUN_LOGICAL_DATE,
+        interval=timedelta(hours=2),
+        callback=SyncCallback(deadline_miss_callback),
+    ),
+    tags=["deadline-monitored"],
 )
 
 
 def critical_etl_process(**context):
     """
-    Critical ETL process that must complete within SLA.
+    Critical ETL process that must complete before the DAG deadline.
     """
     print("Running critical ETL process")
     # Simulate processing
     return {"status": "complete"}
 
 
-with sla_monitored_dag:
-    # Task with custom SLA (stricter than DAG default)
+with deadline_monitored_dag:
+    # Critical task in a DAG with a 2-hour completion deadline
     critical_task = PythonOperator(
         task_id="critical_etl",
         python_callable=critical_etl_process,
-        # This specific task must complete within 1 hour
-        sla=timedelta(hours=1),
     )
 
-    # SLA miss notification email
-    notify_sla_miss = EmailOperator(
-        task_id="notify_sla_miss",
+    # Failure notification email
+    notify_failure = EmailOperator(
+        task_id="notify_failure",
         to=["data-team@company.com", "oncall@company.com"],
-        subject="SLA Miss: {{ dag.dag_id }}",
+        subject="Pipeline Failure: {{ dag.dag_id }}",
         html_content="""
-        <h2>SLA Violation Detected</h2>
+        <h2>Pipeline Failure Detected</h2>
         <p>DAG: {{ dag.dag_id }}</p>
         <p>Execution Date: {{ ds }}</p>
         <p>Please investigate immediately.</p>
         """,
-        # Only run if upstream fails or misses SLA
+        # Only run if the upstream task fails
         trigger_rule="one_failed",
     )
 
-    critical_task >> notify_sla_miss
+    critical_task >> notify_failure
 ```
 
 ## Scheduling Pattern Decision Matrix
@@ -1213,7 +1218,7 @@ Effective batch scheduling is about choosing the right patterns for your data ch
 
 2. **Design for failure**: Build idempotent jobs, implement proper retry logic, and create clear alerting mechanisms.
 
-3. **Maintain observability**: Instrument your jobs with metrics, logging, and SLA monitoring to catch issues early.
+3. **Maintain observability**: Instrument your jobs with metrics, logging, and deadline monitoring to catch issues early.
 
 4. **Start simple**: Begin with basic cron schedules and add complexity (sensors, cross-DAG dependencies) only as requirements demand.
 
