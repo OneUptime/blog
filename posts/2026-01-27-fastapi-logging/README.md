@@ -27,7 +27,7 @@ import logging
 from fastapi import FastAPI
 
 # Configure the root logger with a basic format
-# Level DEBUG captures all messages; adjust for production
+# Level INFO captures informational messages and above; adjust for production
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -102,12 +102,14 @@ LOGGING_CONFIG = {
     "formatters": {
         # Detailed format for error logs
         "default": {
-            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            "()": "uvicorn.logging.DefaultFormatter",
+            "fmt": "%(asctime)s - %(name)s - %(levelprefix)s %(message)s",
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
         # Compact format for access logs
         "access": {
-            "format": '%(asctime)s - %(client_addr)s - "%(request_line)s" %(status_code)s',
+            "()": "uvicorn.logging.AccessFormatter",
+            "fmt": '%(asctime)s - %(client_addr)s - "%(request_line)s" %(status_code)s',
             "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
@@ -144,7 +146,7 @@ LOGGING_CONFIG = {
 ### Running Uvicorn with Custom Logging
 
 ```bash
-# Using the config file
+# Using a YAML or JSON version of the config file
 uvicorn main:app --log-config logging_config.yaml
 
 # Or programmatically in Python
@@ -250,7 +252,7 @@ from middleware import RequestLoggingMiddleware
 
 app = FastAPI()
 
-# Add middleware - order matters, first added is outermost
+# Add middleware - order matters, last added is outermost
 app.add_middleware(RequestLoggingMiddleware)
 
 @app.get("/")
@@ -378,11 +380,13 @@ def setup_json_logging():
 
 ```python
 # main.py
+import logging
 from fastapi import FastAPI
 from logging_config import setup_json_logging
 
 # Initialize JSON logging before creating the app
-logger = setup_json_logging()
+setup_json_logging()
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -584,7 +588,7 @@ def demonstrate_log_levels():
     # ERROR - Something failed but application continues
     # Use for: Failed operations, caught exceptions, invalid data
     logger.error("Failed to send email notification")
-    logger.error(f"Database query failed: {error}")
+    logger.error("Database query failed: timeout")
 
     # CRITICAL - Application may not be able to continue
     # Use for: System failures, data corruption, security issues
@@ -834,7 +838,7 @@ def setup_opentelemetry(service_name: str, otlp_endpoint: str):
     trace.set_tracer_provider(provider)
 
     # Instrument logging to include trace context
-    # This adds trace_id and span_id to all log records
+    # This adds otelTraceID and otelSpanID attributes to all log records
     LoggingInstrumentor().instrument(set_logging_format=True)
 
     return trace.get_tracer(service_name)
