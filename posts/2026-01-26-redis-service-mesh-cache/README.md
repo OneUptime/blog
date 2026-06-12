@@ -61,7 +61,7 @@ import httpx
 import json
 import hashlib
 from typing import Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ServiceMeshCacheClient:
     """
@@ -132,13 +132,18 @@ class ServiceMeshCacheClient:
             # Store in cache
             cache_entry = {
                 'data': data,
-                'cached_at': datetime.utcnow().isoformat(),
+                'cached_at': datetime.now(timezone.utc).isoformat(),
                 'source_service': service_url
             }
             self.redis.setex(cache_key, ttl, json.dumps(cache_entry))
+            self.redis.setex(
+                f"{cache_key}:stale",
+                max(ttl * 2, ttl + 60),
+                json.dumps(cache_entry)
+            )
 
-            data['_cache_hit'] = False
-            return data
+            cache_entry['_cache_hit'] = False
+            return cache_entry
 
         except httpx.HTTPError as e:
             # On service error, try stale cache as fallback
@@ -189,6 +194,8 @@ print(f"Data: {result.get('data')}")
 ### Circuit Breaker Integration
 
 ```python
+import redis
+import json
 import time
 from enum import Enum
 from threading import Lock
@@ -333,7 +340,8 @@ except Exception as e:
 import redis
 import json
 import threading
-from typing import Callable
+import time
+from typing import Any, Callable, Optional
 
 class DistributedCacheCoordinator:
     """
@@ -492,12 +500,16 @@ coordinator.invalidate_pattern('mesh_cache:user:*')
 ```python
 from flask import Flask, request, jsonify
 import redis
+import hashlib
+import json
+import time
 
 app = Flask(__name__)
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
-@app.route('/auth/check', methods=['POST'])
-def check_auth():
+@app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
+@app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
+def check_auth(path):
     """
     Envoy ext_authz endpoint with Redis caching.
 
@@ -507,14 +519,15 @@ def check_auth():
     # Extract headers from Envoy request
     headers = request.headers
     auth_token = headers.get('Authorization', '')
-    path = headers.get('X-Original-Uri', '/')
-    method = headers.get('X-Original-Method', 'GET')
+    path = f"/{path}" if path else "/"
+    method = request.method
 
     if not auth_token:
         return jsonify({'status': 'denied', 'reason': 'no_token'}), 403
 
     # Check cache first
-    cache_key = f"auth:{hash(auth_token)}:{method}:{path}"
+    token_hash = hashlib.sha256(auth_token.encode()).hexdigest()
+    cache_key = f"auth:{token_hash}:{method}:{path}"
     cached = r.get(cache_key)
 
     if cached:
@@ -613,6 +626,19 @@ static_resources:
                     socket_address:
                       address: auth-cache
                       port_value: 9001
+    - name: service_cluster
+      connect_timeout: 0.25s
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: service_cluster
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: service-b
+                      port_value: 8080
 ```
 
 ---
@@ -620,6 +646,10 @@ static_resources:
 ## Monitoring Cache Performance
 
 ```python
+import redis
+import time
+from typing import Optional
+
 class ServiceMeshCacheMetrics:
     """
     Collect and expose cache metrics for service mesh observability.
