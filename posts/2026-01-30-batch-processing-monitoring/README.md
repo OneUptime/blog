@@ -140,10 +140,18 @@ def process_records(records: list, job_name: str):
 ### 3. Error Rate Metrics
 
 ```python
+import time
+
 # Track job-level success and failure rates
 job_completion_counter = meter.create_counter(
     name="batch_job_completions_total",
     description="Total batch job completions by status"
+)
+
+last_success_gauge = meter.create_gauge(
+    name="batch_job_last_success_timestamp",
+    description="Unix timestamp of the last successful batch job run",
+    unit="s"
 )
 
 def track_job_completion(job_name: str, job_type: str, success: bool, error_type: str = None):
@@ -167,6 +175,12 @@ def track_job_completion(job_name: str, job_type: str, success: bool, error_type
         attributes["error_type"] = error_type
 
     job_completion_counter.add(1, attributes)
+
+    if success:
+        last_success_gauge.set(time.time(), {
+            "job_name": job_name,
+            "job_type": job_type
+        })
 ```
 
 ---
@@ -287,8 +301,8 @@ Define and monitor SLAs for your batch jobs:
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Callable
+from datetime import datetime
+from typing import Optional
 
 @dataclass
 class BatchJobSLA:
@@ -304,7 +318,7 @@ class BatchJobSLA:
     """
     job_name: str
     max_duration_seconds: int
-    must_complete_by: str  # Time in HH:MM format
+    must_complete_by: Optional[str]  # Time in HH:MM format
     max_failure_rate: float  # 0.0 to 1.0
     min_records_processed: int
 
@@ -415,10 +429,9 @@ def check_sla_compliance(
 For teams using Apache Airflow, here is how to add comprehensive monitoring:
 
 ```python
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.utils.state import State
-from datetime import datetime, timedelta
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
+from datetime import timedelta
 import logging
 
 # Configure structured logging for better observability
@@ -426,7 +439,7 @@ logger = logging.getLogger(__name__)
 
 def create_monitored_dag(
     dag_id: str,
-    schedule_interval: str,
+    schedule: str,
     default_args: dict
 ) -> DAG:
     """
@@ -434,7 +447,7 @@ def create_monitored_dag(
 
     Args:
         dag_id: Unique identifier for the DAG
-        schedule_interval: Cron expression or timedelta for scheduling
+        schedule: Cron expression or timedelta for scheduling
         default_args: Default arguments for all tasks in the DAG
 
     Returns:
@@ -449,7 +462,7 @@ def create_monitored_dag(
         task_instance = context['task_instance']
         dag_id = context['dag'].dag_id
         task_id = task_instance.task_id
-        execution_date = context['execution_date']
+        logical_date = context.get('logical_date')
 
         # Calculate task duration from Airflow's internal tracking
         duration = (
@@ -475,7 +488,7 @@ def create_monitored_dag(
             extra={
                 "dag_id": dag_id,
                 "task_id": task_id,
-                "execution_date": str(execution_date),
+                "logical_date": str(logical_date),
                 "duration_seconds": duration
             }
         )
@@ -532,7 +545,7 @@ def create_monitored_dag(
             extra={
                 "dag_id": dag_id,
                 "duration_seconds": duration,
-                "execution_date": str(dag_run.execution_date)
+                "logical_date": str(dag_run.logical_date)
             }
         )
 
@@ -546,7 +559,7 @@ def create_monitored_dag(
     # Create and return the monitored DAG
     dag = DAG(
         dag_id=dag_id,
-        schedule_interval=schedule_interval,
+        schedule=schedule,
         default_args=monitored_default_args,
         on_success_callback=on_dag_success,
         catchup=False,  # Disable backfill by default
@@ -569,7 +582,7 @@ default_args = {
 # Create the DAG with monitoring enabled
 etl_dag = create_monitored_dag(
     dag_id='daily_customer_etl',
-    schedule_interval='0 2 * * *',  # Run at 2 AM daily
+    schedule='0 2 * * *',  # Run at 2 AM daily
     default_args=default_args
 )
 
@@ -626,20 +639,17 @@ with etl_dag:
     # Create task operators
     extract_task = PythonOperator(
         task_id='extract',
-        python_callable=extract_data,
-        provide_context=True
+        python_callable=extract_data
     )
 
     transform_task = PythonOperator(
         task_id='transform',
-        python_callable=transform_data,
-        provide_context=True
+        python_callable=transform_data
     )
 
     load_task = PythonOperator(
         task_id='load',
-        python_callable=load_data,
-        provide_context=True
+        python_callable=load_data
     )
 
     # Define task dependencies
@@ -655,8 +665,7 @@ For jobs that run for hours, implement heartbeat monitoring:
 ```python
 import threading
 import time
-from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
 class BatchJobHeartbeat:
     """
@@ -677,7 +686,7 @@ class BatchJobHeartbeat:
         job_id: str,
         job_name: str,
         interval_seconds: int = 60,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[Callable[[], int]] = None
     ):
         self.job_id = job_id
         self.job_name = job_name
@@ -736,6 +745,14 @@ class BatchJobHeartbeat:
                 }
             )
 
+            heartbeat_timestamp_gauge.set(
+                time.time(),
+                {
+                    "job_id": self.job_id,
+                    "job_name": self.job_name
+                }
+            )
+
             # Emit progress rate metric
             progress_rate_gauge.set(
                 progress_delta / self.interval_seconds,
@@ -763,6 +780,12 @@ class BatchJobHeartbeat:
 heartbeat_gauge = meter.create_gauge(
     name="batch_job_heartbeat",
     description="Heartbeat signal from running batch jobs"
+)
+
+heartbeat_timestamp_gauge = meter.create_gauge(
+    name="batch_job_heartbeat_timestamp",
+    description="Unix timestamp of the latest heartbeat from running batch jobs",
+    unit="s"
 )
 
 progress_rate_gauge = meter.create_gauge(
@@ -991,7 +1014,7 @@ groups:
       # Alert when job stops sending heartbeats
       - alert: BatchJobHeartbeatMissing
         expr: |
-          absent_over_time(batch_job_heartbeat{job_name=~".+"}[5m])
+          time() - max by (job_name) (batch_job_heartbeat_timestamp) > 300
         for: 5m
         labels:
           severity: critical
@@ -1008,7 +1031,7 @@ groups:
           sum(rate(batch_job_records_processed_total[15m]))
           by (job_name) == 0
           and
-          batch_jobs_running > 0
+          sum(batch_jobs_running) by (job_name) > 0
         for: 10m
         labels:
           severity: warning
@@ -1021,8 +1044,7 @@ groups:
       # Alert when job has not run recently
       - alert: BatchJobNotRunRecently
         expr: |
-          time() - max(batch_job_last_success_timestamp)
-          by (job_name) > 86400
+          time() - max by (job_name) (batch_job_last_success_timestamp) > 86400
         for: 30m
         labels:
           severity: warning
@@ -1284,13 +1306,16 @@ sequenceDiagram
 OneUptime provides native support for batch job monitoring through its OpenTelemetry-compatible ingestion:
 
 ```python
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+import os
+
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
 def configure_oneuptime_export(
     oneuptime_endpoint: str,
+    oneuptime_token: str,
     service_name: str
 ):
     """
@@ -1298,11 +1323,13 @@ def configure_oneuptime_export(
 
     Args:
         oneuptime_endpoint: OneUptime OTLP endpoint URL
+        oneuptime_token: OneUptime telemetry ingestion token
         service_name: Name of your batch processing service
 
     Example:
         configure_oneuptime_export(
-            oneuptime_endpoint="https://otlp.oneuptime.com:4317",
+            oneuptime_endpoint="https://oneuptime.com/otlp",
+            oneuptime_token=os.environ["ONEUPTIME_TELEMETRY_TOKEN"],
             service_name="batch-etl-service"
         )
     """
@@ -1318,10 +1345,12 @@ def configure_oneuptime_export(
         "deployment.environment": os.environ.get("ENVIRONMENT", "production")
     })
 
+    base_endpoint = oneuptime_endpoint.rstrip("/")
+
     # Configure trace export to OneUptime
     trace_exporter = OTLPSpanExporter(
-        endpoint=oneuptime_endpoint,
-        insecure=False  # Use TLS in production
+        endpoint=f"{base_endpoint}/v1/traces",
+        headers={"x-oneuptime-token": oneuptime_token}
     )
     trace_provider = TracerProvider(resource=resource)
     trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
@@ -1329,8 +1358,8 @@ def configure_oneuptime_export(
 
     # Configure metrics export to OneUptime
     metric_exporter = OTLPMetricExporter(
-        endpoint=oneuptime_endpoint,
-        insecure=False
+        endpoint=f"{base_endpoint}/v1/metrics",
+        headers={"x-oneuptime-token": oneuptime_token}
     )
     metric_reader = PeriodicExportingMetricReader(
         metric_exporter,
