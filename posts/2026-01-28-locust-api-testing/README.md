@@ -326,7 +326,8 @@ class GraphQLUser(HttpUser):
         return self.client.post(
             "/graphql",
             json=payload,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            catch_response=True
         )
 
     @task(3)
