@@ -13,7 +13,7 @@ Redis is a fast, in-memory data store that pairs well with Rust's performance-fo
 ## Prerequisites
 
 Before we begin, make sure you have:
-- Rust installed (1.70 or later)
+- Rust installed (1.85 or later)
 - Redis server running locally or accessible remotely
 - Basic familiarity with Rust and Cargo
 
@@ -30,13 +30,14 @@ Add these dependencies to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+redis = { version = "1", features = ["tokio-comp", "connection-manager"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 ```
 
-The `redis` crate is the official Rust client for Redis. We enable `tokio-comp` for async support and `connection-manager` for automatic reconnection handling.
+The `redis` crate provides the redis-rs client for Rust. We enable `tokio-comp` for async support and `connection-manager` for automatic reconnection handling.
 
 ## Architecture Overview
 
@@ -45,7 +46,7 @@ Here's how your Rust application interacts with Redis:
 ```mermaid
 flowchart LR
     A[Rust Application] --> B[Redis Client]
-    B --> C[Connection Pool]
+    B --> C[Multiplexed Connection]
     C --> D[Redis Server]
     D --> E[(In-Memory Store)]
 
@@ -117,9 +118,9 @@ async fn main() -> redis::RedisResult<()> {
 
 The `get_multiplexed_async_connection()` method returns a connection that can be cloned and shared across multiple Tokio tasks safely.
 
-## Connection Pooling
+## Connection Reuse
 
-For applications with high throughput, connection pooling prevents the overhead of creating new connections for each operation:
+For high-throughput async applications, reuse a multiplexed connection instead of creating a new connection for each operation:
 
 ```rust
 use redis::aio::ConnectionManager;
@@ -129,7 +130,7 @@ async fn main() -> redis::RedisResult<()> {
     let client = redis::Client::open("redis://127.0.0.1:6379/")?;
 
     // ConnectionManager handles reconnection automatically
-    // It maintains a single connection that can be cloned
+    // It wraps a multiplexed connection that can be cloned
     let mut manager = ConnectionManager::new(client).await?;
 
     // Clone the manager for use in different parts of your application
@@ -170,7 +171,6 @@ Redis supports multiple data structures. Here's how to work with each:
 
 ```rust
 use redis::AsyncCommands;
-use std::time::Duration;
 
 async fn cache_with_expiry(
     con: &mut impl AsyncCommands,
@@ -180,7 +180,7 @@ async fn cache_with_expiry(
 ) -> redis::RedisResult<()> {
     // SETEX sets a key with an expiration time in one atomic operation
     // This is useful for caching where data should auto-expire
-    con.set_ex(key, value, ttl_seconds).await?;
+    let _: () = con.set_ex(key, value, ttl_seconds).await?;
     Ok(())
 }
 
@@ -202,7 +202,7 @@ where
         None => {
             // Cache miss - fetch the value and store it
             let value = fetch_fn().await;
-            con.set_ex(key, &value, ttl_seconds).await?;
+            let _: () = con.set_ex(key, &value, ttl_seconds).await?;
             Ok(value)
         }
     }
@@ -233,7 +233,7 @@ async fn store_user(
 
     // HSET stores multiple field-value pairs in a hash
     // This is more memory-efficient than storing JSON strings
-    con.hset_multiple(
+    let _: () = con.hset_multiple(
         &key,
         &[
             ("name", &user.name),
@@ -276,7 +276,7 @@ async fn update_user_field(
     let key = format!("user:{}", user_id);
 
     // HSET can update individual fields without touching others
-    con.hset(&key, field, value).await?;
+    let _: usize = con.hset(&key, field, value).await?;
 
     Ok(())
 }
@@ -296,7 +296,7 @@ async fn add_to_queue(
 ) -> redis::RedisResult<()> {
     // RPUSH adds to the end of the list (right side)
     // This creates a FIFO queue when combined with LPOP
-    con.rpush(queue_name, item).await?;
+    let _: usize = con.rpush(queue_name, item).await?;
     Ok(())
 }
 
@@ -329,11 +329,13 @@ async fn add_activity_with_limit(
 ) -> redis::RedisResult<()> {
     let key = format!("activity:{}", user_id);
 
-    // Use a pipeline for atomic operations
-    // This ensures both operations happen together
-    redis::pipe()
+    // Use an atomic pipeline so both operations are wrapped in MULTI/EXEC
+    let _: () = redis::pipe()
+        .atomic()
         .lpush(&key, activity)  // Add new activity at the front
+        .ignore()
         .ltrim(&key, 0, max_items - 1)  // Keep only the most recent items
+        .ignore()
         .query_async(con)
         .await?;
 
@@ -357,7 +359,7 @@ async fn add_tags(
 
     // SADD adds members to a set, ignoring duplicates
     for tag in tags {
-        con.sadd(&key, *tag).await?;
+        let _: usize = con.sadd(&key, *tag).await?;
     }
 
     Ok(())
@@ -438,12 +440,12 @@ async fn cache_product(
     // This allows storing complex nested structures
     let json = serde_json::to_string(product)
         .map_err(|e| redis::RedisError::from((
-            redis::ErrorKind::TypeError,
+            redis::ErrorKind::UnexpectedReturnType,
             "Serialization failed",
             e.to_string(),
         )))?;
 
-    con.set_ex(&key, json, ttl_seconds).await?;
+    let _: () = con.set_ex(&key, json, ttl_seconds).await?;
 
     Ok(())
 }
@@ -460,7 +462,7 @@ async fn get_product(
         Some(data) => {
             let product: Product = serde_json::from_str(&data)
                 .map_err(|e| redis::RedisError::from((
-                    redis::ErrorKind::TypeError,
+                    redis::ErrorKind::UnexpectedReturnType,
                     "Deserialization failed",
                     e.to_string(),
                 )))?;
@@ -471,9 +473,9 @@ async fn get_product(
 }
 ```
 
-## Transactions with MULTI/EXEC
+## Atomic Updates with Lua
 
-Use transactions when you need multiple operations to execute atomically:
+Use a Lua script when a read, condition check, and multiple writes all need to execute atomically:
 
 ```rust
 use redis::AsyncCommands;
@@ -487,23 +489,30 @@ async fn transfer_points(
     let from_key = format!("user:{}:points", from_user);
     let to_key = format!("user:{}:points", to_user);
 
-    // Check if the sender has enough points
-    let current_points: i64 = con.get(&from_key).await.unwrap_or(0);
+    // The balance check and updates run atomically on the Redis server
+    let script = redis::Script::new(
+        r#"
+        local current = tonumber(redis.call("GET", KEYS[1]) or "0")
+        local amount = tonumber(ARGV[1])
 
-    if current_points < points {
-        return Ok(false);
-    }
+        if current < amount then
+            return 0
+        end
 
-    // Use a pipeline with atomic flag for transaction behavior
-    // All operations succeed or none do
-    redis::pipe()
-        .atomic()
-        .decrby(&from_key, points)  // Decrease sender's points
-        .incrby(&to_key, points)     // Increase receiver's points
-        .query_async(con)
+        redis.call("DECRBY", KEYS[1], amount)
+        redis.call("INCRBY", KEYS[2], amount)
+        return 1
+        "#,
+    );
+
+    let transferred: i32 = script
+        .key(&from_key)
+        .key(&to_key)
+        .arg(points)
+        .invoke_async(con)
         .await?;
 
-    Ok(true)
+    Ok(transferred == 1)
 }
 ```
 
@@ -551,7 +560,7 @@ impl SessionStore {
 
         // Store session with expiration
         // Sessions auto-delete when TTL expires
-        con.set_ex(&key, json, self.ttl_seconds).await?;
+        let _: () = con.set_ex(&key, json, self.ttl_seconds).await?;
 
         Ok(())
     }
@@ -576,10 +585,10 @@ impl SessionStore {
         let key = self.make_key(session_id);
 
         // EXPIRE resets the TTL, extending the session lifetime
-        // Returns 1 if key exists, 0 otherwise
-        let result: i32 = con.expire(&key, self.ttl_seconds as i64).await?;
+        // Returns true if the key exists, false otherwise
+        let result: bool = con.expire(&key, self.ttl_seconds as i64).await?;
 
-        Ok(result == 1)
+        Ok(result)
     }
 
     pub async fn destroy(
@@ -590,7 +599,7 @@ impl SessionStore {
         let key = self.make_key(session_id);
 
         // DEL removes the key completely
-        con.del(&key).await?;
+        let _: usize = con.del(&key).await?;
 
         Ok(())
     }
@@ -613,7 +622,7 @@ impl SessionStore {
                 session.data.insert(field.to_string(), value.to_string());
 
                 let updated_json = serde_json::to_string(&session).unwrap();
-                con.set_ex(&key, updated_json, self.ttl_seconds).await?;
+                let _: () = con.set_ex(&key, updated_json, self.ttl_seconds).await?;
 
                 Ok(true)
             }
@@ -670,13 +679,13 @@ pub enum CacheError {
 impl From<RedisError> for CacheError {
     fn from(err: RedisError) -> Self {
         match err.kind() {
-            redis::ErrorKind::IoError => {
+            redis::ErrorKind::Io => {
                 CacheError::Connection(err.to_string())
             }
-            redis::ErrorKind::TypeError => {
+            redis::ErrorKind::UnexpectedReturnType => {
                 CacheError::Serialization(err.to_string())
             }
-            redis::ErrorKind::ResponseError => {
+            redis::ErrorKind::Server(_) => {
                 CacheError::Unknown(err.to_string())
             }
             _ => CacheError::Unknown(err.to_string()),
@@ -693,7 +702,7 @@ where
 {
     match con.get(key).await {
         Ok(value) => Ok(value),
-        Err(e) if e.kind() == redis::ErrorKind::TypeError => {
+        Err(e) if e.kind() == redis::ErrorKind::UnexpectedReturnType => {
             // Key exists but type mismatch
             Ok(None)
         }
@@ -711,17 +720,14 @@ use redis::{Client, ConnectionInfo, RedisConnectionInfo};
 
 fn create_client_with_options() -> redis::RedisResult<Client> {
     // Build connection info with specific options
-    let connection_info = ConnectionInfo {
-        addr: redis::ConnectionAddr::Tcp(
-            "redis.example.com".to_string(),
-            6379,
-        ),
-        redis: RedisConnectionInfo {
-            db: 0,                           // Database number
-            username: Some("app".to_string()), // Redis 6+ ACL username
-            password: Some("secret".to_string()),
-        },
-    };
+    let connection_info: ConnectionInfo = "redis://redis.example.com:6379/"
+        .parse::<ConnectionInfo>()?
+        .set_redis_settings(
+            RedisConnectionInfo::default()
+                .set_db(0)              // Database number
+                .set_username("app")    // Redis 6+ ACL username
+                .set_password("secret"),
+        );
 
     Client::open(connection_info)
 }
@@ -734,6 +740,7 @@ fn create_client_from_url() -> redis::RedisResult<Client> {
 
 fn create_tls_client() -> redis::RedisResult<Client> {
     // For TLS connections, use rediss:// scheme
+    // Enable a TLS feature such as tokio-rustls-comp or tls-rustls
     Client::open("rediss://redis.example.com:6379/")
 }
 ```
@@ -762,16 +769,16 @@ async fn batch_set(
     let mut pipe = redis::pipe();
 
     for (key, value) in pairs {
-        pipe.set(*key, *value);
+        pipe.set(*key, *value).ignore();
     }
 
-    pipe.query_async(con).await?;
+    let _: () = pipe.query_async(con).await?;
 
     Ok(())
 }
 ```
 
-2. **Use Connection Pooling**: Share connections across your application.
+2. **Reuse Async Connections**: Clone and share multiplexed connections across your application.
 
 3. **Set Appropriate TTLs**: Prevent memory bloat by expiring unused keys.
 
@@ -845,7 +852,8 @@ impl RedisCache {
 
     pub async fn delete(&self, key: &str) -> redis::RedisResult<()> {
         let mut con = self.get_connection().await?;
-        con.del(key).await
+        let _: usize = con.del(key).await?;
+        Ok(())
     }
 
     pub async fn exists(&self, key: &str) -> redis::RedisResult<bool> {
@@ -883,7 +891,7 @@ async fn main() -> redis::RedisResult<()> {
 You now have a solid foundation for using Redis with Rust. The key takeaways are:
 
 - Use `redis-rs` with Tokio for async operations in production
-- Connection pooling through `ConnectionManager` prevents connection overhead
+- Reusing multiplexed async connections avoids connection overhead; use `ConnectionManager` when you also want automatic reconnection
 - Choose the right Redis data structure for your use case (strings, hashes, lists, sets)
 - Pipelines reduce network round trips for batch operations
 - Serialize complex objects with Serde for storage
