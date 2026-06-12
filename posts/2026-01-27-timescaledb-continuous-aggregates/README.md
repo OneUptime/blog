@@ -87,7 +87,9 @@ ORDER BY bucket DESC;
 **Real-time aggregation** combines materialized data with fresh raw data that has not been materialized yet:
 
 ```sql
--- Enable real-time aggregation (default in TimescaleDB 2.0+)
+-- Enable real-time aggregation
+-- Note: since TimescaleDB 2.13, materialized_only defaults to true,
+-- so you must explicitly opt in to real-time aggregation
 ALTER MATERIALIZED VIEW metrics_hourly
 SET (timescaledb.materialized_only = false);
 
@@ -226,11 +228,14 @@ SELECT add_compression_policy(
 
 -- Check compression stats
 SELECT
-    hypertable_name,
+    chunk_schema,
     chunk_name,
+    compression_status,
     before_compression_total_bytes,
     after_compression_total_bytes,
-    compression_ratio
+    -- compression ratio is not a column, compute it inline
+    ROUND(before_compression_total_bytes::numeric
+        / NULLIF(after_compression_total_bytes, 0), 2) AS compression_ratio
 FROM chunk_compression_stats('metrics_hourly');
 ```
 
@@ -266,13 +271,20 @@ SELECT
     compression_enabled
 FROM timescaledb_information.continuous_aggregates;
 
--- Check materialization progress
+-- Check refresh job status (TimescaleDB 2.x uses jobs/job_stats
+-- instead of the pre-2.0 continuous_aggregate_stats view)
 SELECT
-    hypertable_name,
-    view_name,
-    completed_threshold,
-    invalidation_threshold
-FROM timescaledb_information.continuous_aggregate_stats;
+    j.job_id,
+    j.application_name,
+    j.hypertable_name,
+    js.last_run_started_at,
+    js.last_successful_finish,
+    js.last_run_status,
+    js.total_runs,
+    js.total_failures
+FROM timescaledb_information.jobs j
+JOIN timescaledb_information.job_stats js USING (job_id)
+WHERE j.proc_name = 'policy_refresh_continuous_aggregate';
 ```
 
 ## Performance Benefits
@@ -311,7 +323,12 @@ Typical improvements:
 
 **Metrics and Monitoring**
 
+Ordered-set aggregates like `PERCENTILE_CONT` are not supported in continuous aggregates because PostgreSQL cannot parallelize them. Use `percentile_agg` from the `timescaledb_toolkit` extension to store an approximation sketch you can query later:
+
 ```sql
+-- Requires the timescaledb_toolkit extension
+CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit;
+
 -- System metrics aggregated by host and minute
 CREATE MATERIALIZED VIEW system_metrics_1m
 WITH (timescaledb.continuous) AS
@@ -319,11 +336,21 @@ SELECT
     time_bucket('1 minute', time) AS bucket,
     host,
     AVG(cpu_percent) AS avg_cpu,
-    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY cpu_percent) AS p95_cpu,
+    -- percentile_agg stores a sketch; query with approx_percentile
+    percentile_agg(cpu_percent) AS cpu_percentile,
     AVG(memory_percent) AS avg_memory,
     MAX(network_bytes_in) - MIN(network_bytes_in) AS network_in_delta
 FROM system_metrics
 GROUP BY bucket, host;
+
+-- Read the p95 back out at query time
+SELECT
+    bucket,
+    host,
+    avg_cpu,
+    approx_percentile(0.95, cpu_percentile) AS p95_cpu
+FROM system_metrics_1m
+WHERE bucket >= NOW() - INTERVAL '1 hour';
 ```
 
 **IoT Sensor Data**
@@ -348,7 +375,7 @@ GROUP BY bucket, location_id, sensor_type;
 **Application Analytics**
 
 ```sql
--- API request analytics by endpoint
+-- API request analytics by endpoint (uses percentile_agg from timescaledb_toolkit)
 CREATE MATERIALIZED VIEW api_stats_5m
 WITH (timescaledb.continuous) AS
 SELECT
@@ -357,10 +384,20 @@ SELECT
     method,
     COUNT(*) AS request_count,
     AVG(response_time_ms) AS avg_latency,
-    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY response_time_ms) AS p99_latency,
+    percentile_agg(response_time_ms) AS latency_percentile,
     SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) AS error_count
 FROM api_requests
 GROUP BY bucket, endpoint, method;
+
+-- Query p99 latency from the stored sketch
+SELECT
+    bucket,
+    endpoint,
+    avg_latency,
+    approx_percentile(0.99, latency_percentile) AS p99_latency,
+    error_count
+FROM api_stats_5m
+WHERE bucket >= NOW() - INTERVAL '1 hour';
 ```
 
 ## Best Practices Summary
@@ -379,7 +416,7 @@ GROUP BY bucket, endpoint, method;
 
 7. **Plan schema changes carefully** - altering aggregate definitions requires drop and recreate.
 
-8. **Use PERCENTILE_CONT sparingly** - percentile calculations are expensive; consider approximations for high-volume data.
+8. **Avoid ordered-set aggregates in the view definition** - functions like `PERCENTILE_CONT` are not supported inside continuous aggregates because they cannot be parallelized. Use `percentile_agg` from the `timescaledb_toolkit` extension and read percentiles back with `approx_percentile` at query time.
 
 Continuous aggregates transform TimescaleDB from a capable time-series database into a real-time analytics engine. The combination of automatic refresh, real-time queries, hierarchical aggregation, and compression delivers sub-second query performance on datasets that would otherwise take minutes to analyze.
 
