@@ -41,7 +41,7 @@ Set memory limit as a fraction of available RAM:
 ```ini
 # /etc/rabbitmq/rabbitmq.conf
 
-# Trigger alarm at 60% of available RAM (default is 40%)
+# Trigger alarm at 60% of available RAM (the default)
 
 vm_memory_high_watermark.relative = 0.6
 ```
@@ -58,15 +58,13 @@ vm_memory_high_watermark.absolute = 4GB
 vm_memory_high_watermark.absolute = 4294967296
 ```
 
-### Memory Paging Threshold
+### Classic Queue Storage Behavior
 
-When memory exceeds the paging threshold, RabbitMQ pages messages to disk:
+Current RabbitMQ versions keep classic queue memory use low by writing messages to disk and keeping only a small subset in memory for fast delivery. Older `vm_memory_high_watermark_paging_ratio` tuning is no longer part of current RabbitMQ configuration.
 
 ```ini
-# Start paging at 50% of the high watermark (default)
-vm_memory_high_watermark_paging_ratio = 0.5
-
-# With high_watermark at 0.6 (60%), paging starts at 30% of RAM
+# Control when publishers are blocked due to memory pressure
+vm_memory_high_watermark.relative = 0.6
 ```
 
 ## Configuring Disk Alarms
@@ -91,11 +89,11 @@ disk_free_limit.absolute = 2147483648
 Set disk limit relative to RAM:
 
 ```ini
-# Require free disk equal to 1.5x RAM (default is 1.0x)
+# Require free disk equal to 1.5x RAM
 disk_free_limit.relative = 1.5
 ```
 
-This is useful because RabbitMQ might need to write all in-memory data to disk during shutdown.
+Absolute limits are easier to reason about and are recommended for production, but relative limits are still supported.
 
 ## Viewing Current Alarm Status
 
@@ -121,21 +119,11 @@ from requests.auth import HTTPBasicAuth
 def check_alarms(host, user, password):
     """Check current alarm status"""
 
-    # Get overview
-    url = f"http://{host}:15672/api/overview"
-    response = requests.get(url, auth=HTTPBasicAuth(user, password))
-    data = response.json()
-
-    # Check for alarms
-    if data.get('object_totals', {}).get('queues', 0) == 0:
-        print("No queues found")
-
-    # Memory alarm
-    mem_alarm = any(
-        'memory' in str(a).lower()
-        for node in data.get('listeners', [])
-        for a in node.get('alarms', [])
-    )
+    # Optional cluster-wide alarm health check:
+    # GET /api/health/checks/alarms returns 200 when clear, 503 when alarms exist.
+    health_url = f"http://{host}:15672/api/health/checks/alarms"
+    health_response = requests.get(health_url, auth=HTTPBasicAuth(user, password))
+    print(f"Cluster alarm health: {health_response.status_code}")
 
     # Get node details
     nodes_url = f"http://{host}:15672/api/nodes"
@@ -314,32 +302,24 @@ async function createConnection() {
 
 ## Tuning Memory Usage
 
-### Lazy Queues
+### Classic Queue Storage Behavior
 
-Store messages on disk instead of memory:
+In current RabbitMQ versions, classic queues use low-memory storage behavior by default. The old `x-queue-mode: lazy` argument is ignored by RabbitMQ 3.12 and later, so do not rely on it for new deployments:
 
 ```python
 channel.queue_declare(
     queue='large_queue',
-    durable=True,
-    arguments={
-        'x-queue-mode': 'lazy'  # Messages go directly to disk
-    }
+    durable=True
 )
 ```
 
-### Quorum Queues with Memory Limits
+### Quorum Queues with WAL Limits
 
-```python
-channel.queue_declare(
-    queue='bounded_queue',
-    durable=True,
-    arguments={
-        'x-queue-type': 'quorum',
-        'x-max-in-memory-length': 10000,  # Max 10k messages in memory
-        'x-max-in-memory-bytes': 104857600  # Max 100MB in memory
-    }
-)
+Quorum queues keep very little message data in memory and persist data to disk before acknowledging writes. Their main storage-related memory tuning option is the Raft write-ahead log segment size:
+
+```ini
+# Flush the current quorum queue WAL file once it reaches 32 MiB
+raft.wal_max_size_bytes = 32000000
 ```
 
 ### Message TTL
@@ -411,8 +391,8 @@ disk_free_limit.relative = 2.0
 # Account for container memory limits
 vm_memory_high_watermark.absolute = 3GB
 
-# Kubernetes/Docker specific
-vm_memory_calculation_strategy = allocated
+# Override detected memory when the node cannot infer the container limit
+total_memory_available_override_value = 4GB
 
 # Disk limit
 disk_free_limit.absolute = 2GB
@@ -442,8 +422,8 @@ rabbitmqctl list_connections name state recv_oct send_oct | head -20
 # Detailed memory usage
 rabbitmqctl status | grep -A 30 "Memory"
 
-# Or via API
-curl -u admin:password http://localhost:15672/api/nodes | jq '.[].memory'
+# Or via diagnostics
+rabbitmq-diagnostics memory_breakdown
 ```
 
 ### Clear Memory Quickly
@@ -465,7 +445,7 @@ rabbitmqctl delete_queue queue_name
 - [ ] Enable Prometheus metrics for monitoring
 - [ ] Set up alerts for both memory and disk alarms
 - [ ] Handle `Connection.Blocked` in your clients
-- [ ] Use lazy queues or quorum queues for large message volumes
+- [ ] Use current classic queue behavior, quorum queues, or streams for large message volumes
 - [ ] Set queue length limits and TTLs to prevent unbounded growth
 - [ ] Monitor queue depths and consumer lag
 
