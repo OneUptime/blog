@@ -53,7 +53,8 @@ The `ItemReader` interface is minimal but powerful:
 ```java
 /**
  * Core interface for reading items in batch processing.
- * Implementations must be thread-safe if used in multi-threaded steps.
+ * Implementations are usually stateful and are not required to be thread-safe.
+ * Use a thread-safe implementation or a synchronizing decorator in multi-threaded steps.
  *
  * @param <T> The type of object returned by the reader
  */
@@ -71,11 +72,11 @@ public interface ItemReader<T> {
 
 ## 2. Built-in JDBC Readers
 
-Spring Batch provides two JDBC-based readers: cursor-based for streaming and paging-based for chunked processing.
+Spring Batch provides two common JDBC-based readers: cursor-based for streaming and paging-based for chunked processing.
 
 ### 2.1 Cursor-Based Reader
 
-Use cursor-based reading when you need to stream through large result sets without loading them into memory. The database maintains a server-side cursor, and records are fetched one at a time.
+Use cursor-based reading when you need to stream through large result sets without loading them into memory. Spring Batch opens a JDBC cursor over a `ResultSet`, and each call to `read()` maps the next row.
 
 ```java
 /**
@@ -149,7 +150,7 @@ public JdbcPagingItemReader<Order> orderPagingReader(
 
 /**
  * Query provider handles pagination syntax differences between databases.
- * This example uses PostgreSQL-specific syntax.
+ * This example lets Spring Batch choose database-specific pagination syntax.
  */
 @Bean
 public PagingQueryProvider orderQueryProvider(DataSource dataSource) throws Exception {
@@ -161,7 +162,7 @@ public PagingQueryProvider orderQueryProvider(DataSource dataSource) throws Exce
 
     // Sort keys determine pagination boundaries
     // Must be unique to ensure no records are skipped or duplicated
-    Map<String, Order> sortKeys = new HashMap<>();
+    Map<String, Order> sortKeys = new LinkedHashMap<>();
     sortKeys.put("id", Order.ASCENDING);
     factory.setSortKeys(sortKeys);
 
@@ -238,12 +239,13 @@ public JsonItemReader<Product> jsonReader() {
 
 ## 4. Message Queue Reader
 
-JMS readers integrate with message brokers like ActiveMQ or RabbitMQ. Each read operation receives and acknowledges a message.
+JMS readers integrate with JMS brokers like ActiveMQ. Each read operation receives a message through a `JmsTemplate`; acknowledgement and rollback behavior depend on the JMS session and transaction configuration.
 
 ```java
 /**
  * Reads messages from a JMS queue.
- * Messages are consumed (removed from queue) after successful processing.
+ * Messages are received from the queue according to the JmsTemplate's session
+ * and transaction settings.
  */
 @Bean
 public JmsItemReader<PaymentEvent> jmsReader(JmsTemplate jmsTemplate) {
@@ -262,7 +264,9 @@ public JmsTemplate jmsTemplate(ConnectionFactory connectionFactory) {
     JmsTemplate template = new JmsTemplate(connectionFactory);
     template.setDefaultDestinationName("payment-events-queue");
     template.setReceiveTimeout(5000);          // 5 second timeout per read
-    template.setMessageConverter(new MappingJackson2MessageConverter());
+    JacksonJsonMessageConverter converter = new JacksonJsonMessageConverter();
+    converter.setTargetType(MessageType.TEXT);
+    template.setMessageConverter(converter);
     return template;
 }
 ```
@@ -305,28 +309,33 @@ public class RestApiItemReader implements ItemReader<UserProfile>, ItemStream {
     @Override
     public UserProfile read() throws Exception {
         // Check if we need to fetch the next page
-        if (currentBatch == null || currentIndex >= currentBatch.size()) {
+        while (currentBatch == null || currentIndex >= currentBatch.size()) {
+            if (currentBatch != null) {
+                currentPage++;
+                currentIndex = 0;
+            }
+
             if (exhausted) {
                 return null;  // Signal end of data
             }
-            fetchNextPage();
+
+            fetchCurrentPage();
 
             // Check if the fetched page was empty
             if (currentBatch == null || currentBatch.isEmpty()) {
                 exhausted = true;
                 return null;
             }
-            currentIndex = 0;
         }
 
         return currentBatch.get(currentIndex++);
     }
 
     /**
-     * Fetches the next page of data from the REST API.
+     * Fetches the current page of data from the REST API.
      * Updates pagination state based on response.
      */
-    private void fetchNextPage() {
+    private void fetchCurrentPage() {
         String url = String.format("%s/users?page=%d&size=%d",
                                    apiBaseUrl, currentPage, pageSize);
 
@@ -340,10 +349,9 @@ public class RestApiItemReader implements ItemReader<UserProfile>, ItemStream {
         ApiResponse<UserProfile> body = response.getBody();
         if (body != null && body.getData() != null) {
             currentBatch = body.getData();
-            currentPage++;
 
             // Check if this is the last page
-            if (body.getTotalPages() <= currentPage) {
+            if (body.getTotalPages() <= currentPage + 1) {
                 exhausted = true;
             }
         } else {
@@ -361,6 +369,7 @@ public class RestApiItemReader implements ItemReader<UserProfile>, ItemStream {
         if (executionContext.containsKey("currentPage")) {
             currentPage = executionContext.getInt("currentPage");
             currentIndex = executionContext.getInt("currentIndex");
+            exhausted = executionContext.get("exhausted", Boolean.class, false);
         }
     }
 
@@ -368,6 +377,7 @@ public class RestApiItemReader implements ItemReader<UserProfile>, ItemStream {
     public void update(ExecutionContext executionContext) {
         executionContext.putInt("currentPage", currentPage);
         executionContext.putInt("currentIndex", currentIndex);
+        executionContext.put("exhausted", exhausted);
     }
 
     @Override
@@ -388,19 +398,17 @@ When you need to read from multiple sources in sequence, use a composite reader.
  */
 @Bean
 public CompositeItemReader<Transaction> compositeReader(
-        ItemReader<Transaction> primaryDbReader,
-        ItemReader<Transaction> secondaryDbReader,
-        ItemReader<Transaction> archiveFileReader) {
+        ItemStreamReader<Transaction> primaryDbReader,
+        ItemStreamReader<Transaction> secondaryDbReader,
+        ItemStreamReader<Transaction> archiveFileReader) {
 
-    List<ItemReader<? extends Transaction>> readers = Arrays.asList(
+    List<ItemStreamReader<? extends Transaction>> readers = Arrays.asList(
         primaryDbReader,
         secondaryDbReader,
         archiveFileReader
     );
 
-    CompositeItemReader<Transaction> composite = new CompositeItemReader<>();
-    composite.setDelegates(readers);
-    return composite;
+    return new CompositeItemReader<>(readers);
 }
 ```
 
@@ -434,7 +442,7 @@ flowchart TD
 | Connection Usage | Holds connection for entire read | Releases between pages |
 | Memory | Streams, low memory | Page buffer in memory |
 | Performance | Single query, faster | Multiple queries, slower |
-| Restartability | Requires database support | Natural checkpoint at page boundary |
+| Restartability | Tracks item count and reopens the cursor on restart | Tracks item count and re-queries pages on restart |
 | Best For | Short jobs, streaming | Long jobs, distributed |
 
 ## 7. Handling Large Datasets
@@ -588,13 +596,19 @@ public JdbcPagingItemReader<Order> partitionedOrderReader(
  */
 @Bean
 public ItemReader<Customer> resilientReader(ItemReader<Customer> baseReader) {
-    return new RetryingItemReader<>(baseReader,
-        RetryPolicy.builder()
-            .maxRetries(3)
-            .backoffMillis(1000)
-            .retryOn(TransientDataAccessException.class)
-            .retryOn(IOException.class)
-            .build());
+    RetryTemplate retryTemplate = new RetryTemplate();
+
+    Map<Class<? extends Throwable>, Boolean> retryableExceptions = new HashMap<>();
+    retryableExceptions.put(TransientDataAccessException.class, true);
+    retryableExceptions.put(IOException.class, true);
+    retryTemplate.setRetryPolicy(new SimpleRetryPolicy(3, retryableExceptions));
+
+    ExponentialBackOffPolicy backOffPolicy = new ExponentialBackOffPolicy();
+    backOffPolicy.setInitialInterval(1000);
+    backOffPolicy.setMultiplier(2.0);
+    retryTemplate.setBackOffPolicy(backOffPolicy);
+
+    return new RetryingItemReader<>(baseReader, retryTemplate);
 }
 
 /**
@@ -604,38 +618,16 @@ public ItemReader<Customer> resilientReader(ItemReader<Customer> baseReader) {
 public class RetryingItemReader<T> implements ItemReader<T> {
 
     private final ItemReader<T> delegate;
-    private final RetryPolicy retryPolicy;
+    private final RetryTemplate retryTemplate;
 
-    public RetryingItemReader(ItemReader<T> delegate, RetryPolicy retryPolicy) {
+    public RetryingItemReader(ItemReader<T> delegate, RetryTemplate retryTemplate) {
         this.delegate = delegate;
-        this.retryPolicy = retryPolicy;
+        this.retryTemplate = retryTemplate;
     }
 
     @Override
     public T read() throws Exception {
-        int attempts = 0;
-        Exception lastException = null;
-
-        while (attempts <= retryPolicy.getMaxRetries()) {
-            try {
-                return delegate.read();
-            } catch (Exception e) {
-                if (!retryPolicy.shouldRetry(e)) {
-                    throw e;  // Non-retryable exception
-                }
-
-                lastException = e;
-                attempts++;
-
-                if (attempts <= retryPolicy.getMaxRetries()) {
-                    // Exponential backoff: 1s, 2s, 4s, etc.
-                    long sleepTime = retryPolicy.getBackoffMillis() * (1L << (attempts - 1));
-                    Thread.sleep(sleepTime);
-                }
-            }
-        }
-
-        throw new RetryExhaustedException("Max retries exceeded", lastException);
+        return retryTemplate.execute(context -> delegate.read());
     }
 }
 ```
@@ -652,6 +644,14 @@ public class ValidatingItemReader<T> implements ItemReader<T> {
     private final ItemReader<T> delegate;
     private final Validator<T> validator;
     private final boolean skipInvalid;
+
+    public ValidatingItemReader(ItemReader<T> delegate,
+                                Validator<T> validator,
+                                boolean skipInvalid) {
+        this.delegate = delegate;
+        this.validator = validator;
+        this.skipInvalid = skipInvalid;
+    }
 
     @Override
     public T read() throws Exception {
@@ -686,7 +686,7 @@ public class ValidatingItemReader<T> implements ItemReader<T> {
 ```java
 /**
  * Unit test for custom REST API reader.
- * Uses MockRestServiceServer to simulate API responses.
+ * Uses Mockito to simulate API responses.
  */
 @ExtendWith(MockitoExtension.class)
 class RestApiItemReaderTest {
