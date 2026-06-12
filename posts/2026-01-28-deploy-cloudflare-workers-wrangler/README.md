@@ -22,12 +22,12 @@ flowchart LR
     Test --> Preview["Preview Deploy<br/>(wrangler deploy --env preview)"]
     Preview --> Prod["Production Deploy<br/>(wrangler deploy)"]
 
-    subgraph CI/CD
+    subgraph CICD["CI/CD"]
         GitHub["GitHub Actions"]
         GitLab["GitLab CI"]
     end
 
-    CI/CD --> Prod
+    CICD --> Prod
 ```
 
 ---
@@ -74,8 +74,8 @@ wrangler whoami
 Create a new Workers project:
 
 ```bash
-# Create new project with TypeScript template
-wrangler init my-worker --type=typescript
+# Create new project (uses create-cloudflare under the hood; you'll be prompted to pick TypeScript)
+npm create cloudflare@latest my-worker
 
 # Navigate to project
 cd my-worker
@@ -145,14 +145,11 @@ new_classes = ["Counter"]
 Run your Worker locally:
 
 ```bash
-# Start local dev server
+# Start local dev server (runs in local Workerd by default in Wrangler 3+)
 wrangler dev
 
 # Start with specific port
 wrangler dev --port 8787
-
-# Start in local-only mode (no Cloudflare network)
-wrangler dev --local
 
 # Start with remote resources (KV, D1, etc.)
 wrangler dev --remote
@@ -175,17 +172,18 @@ curl http://localhost:8787/api/test
 
 ### Local Environment Variables
 
-Override variables for local development:
+Override variables for local development by creating a `.dev.vars` file in your project root (dotenv format). `wrangler dev` will load it and merge over the `[vars]` defined in `wrangler.toml`:
 
 ```toml
 # wrangler.toml
 [vars]
 ENVIRONMENT = "production"
+```
 
-# Override for local dev
-[dev.vars]
-ENVIRONMENT = "development"
-DEBUG = "true"
+```ini
+# .dev.vars (do not commit this file)
+ENVIRONMENT="development"
+DEBUG="true"
 ```
 
 ---
@@ -475,33 +473,33 @@ deploy_production:
 
 ---
 
-Resource Management
+## Resource Management
 
 ### KV Namespace Operations
 
-Manage KV namespaces with Wrangler:
+Manage KV namespaces with Wrangler (note: the older `kv:namespace` colon-style syntax is deprecated; use the space-separated form below):
 
 ```bash
 # Create KV namespace
-wrangler kv:namespace create MY_KV
+wrangler kv namespace create MY_KV
 
 # Create preview namespace
-wrangler kv:namespace create MY_KV --preview
+wrangler kv namespace create MY_KV --preview
 
 # List namespaces
-wrangler kv:namespace list
+wrangler kv namespace list
 
 # Put a value
-wrangler kv:key put --namespace-id <id> "key" "value"
+wrangler kv key put --namespace-id <id> "key" "value"
 
 # Get a value
-wrangler kv:key get --namespace-id <id> "key"
+wrangler kv key get --namespace-id <id> "key"
 
 # Delete a key
-wrangler kv:key delete --namespace-id <id> "key"
+wrangler kv key delete --namespace-id <id> "key"
 
 # Bulk upload from JSON
-wrangler kv:bulk put --namespace-id <id> data.json
+wrangler kv bulk put --namespace-id <id> data.json
 ```
 
 ### D1 Database Operations
@@ -564,10 +562,6 @@ compatibility_date = "2024-01-01"
 command = "npm run build"
 cwd = "."
 watch_dir = "src"
-
-[build.upload]
-format = "modules"
-main = "./dist/index.js"
 ```
 
 ### TypeScript Configuration
@@ -607,8 +601,8 @@ main = "src/index.ts"
 [define]
 global.process = "undefined"
 
-# Node.js compatibility
-node_compat = true
+# Node.js compatibility (node_compat is deprecated; use the nodejs_compat flag instead)
+compatibility_flags = ["nodejs_compat"]
 
 # Custom rules for assets
 [[rules]]
@@ -679,14 +673,14 @@ wrangler versions upload
 # List versions
 wrangler versions list
 
-# Deploy with percentage rollout
-wrangler versions deploy <version-id>:10% <current-version-id>:90%
+# Deploy with percentage rollout (use @ to separate version id from percent)
+wrangler versions deploy <version-id>@10% <current-version-id>@90%
 
 # Increase rollout
-wrangler versions deploy <version-id>:50% <current-version-id>:50%
+wrangler versions deploy <version-id>@50% <current-version-id>@50%
 
 # Complete rollout
-wrangler versions deploy <version-id>:100%
+wrangler versions deploy <version-id>@100%
 ```
 
 ### Multi-Worker Deployments
