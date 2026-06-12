@@ -612,7 +612,7 @@ class SupervisedAgentConfig:
     max_api_calls: int = 1000
     failure_threshold: int = 5
     auto_approve_threshold: float = 0.3
-    blocked_patterns: list[str] = None
+    blocked_patterns: list[str] | None = None
 
     def __post_init__(self):
         if self.blocked_patterns is None:
