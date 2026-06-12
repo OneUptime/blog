@@ -8,7 +8,7 @@ Description: Learn how to implement file uploads in Ruby on Rails using ActiveSt
 
 ---
 
-> ActiveStorage provides a simple, unified API for file uploads in Rails. It handles cloud storage, direct uploads, and image transformations out of the box - no external gems required.
+> ActiveStorage provides a simple, unified API for file uploads in Rails. It handles cloud storage, direct uploads, and image transformations with Rails' built-in APIs, while cloud adapters and image processing require the appropriate supporting gems.
 
 File uploads are a common requirement in web applications. Rails' ActiveStorage, introduced in Rails 5.2, provides an elegant solution that integrates seamlessly with your models and supports multiple cloud storage providers. This guide covers everything you need to implement production-ready file uploads.
 
@@ -17,7 +17,7 @@ File uploads are a common requirement in web applications. Rails' ActiveStorage,
 ActiveStorage is a built-in Rails framework for attaching files to Active Record models. Key benefits include:
 
 - **Zero configuration for development** - Works with local disk storage immediately
-- **Cloud storage support** - Native integration with S3, GCS, and Azure
+- **Cloud storage support** - Native integration with S3 and GCS, with support for additional services through adapters
 - **Direct uploads** - Upload files directly from browser to cloud storage
 - **Image variants** - Built-in image transformations using libvips or ImageMagick
 - **Mirroring** - Upload to multiple services simultaneously for redundancy
@@ -28,16 +28,16 @@ ActiveStorage is a built-in Rails framework for attaching files to Active Record
 
 Run the installation generator and migrate:
 
-```ruby
+```bash
 # Generate ActiveStorage tables
 
-rails active_storage:install
+bin/rails active_storage:install
 
 # Run the migration
-rails db:migrate
+bin/rails db:migrate
 ```
 
-This creates two tables: `active_storage_blobs` (file metadata) and `active_storage_attachments` (polymorphic join table).
+This creates the ActiveStorage tables: `active_storage_blobs` (file metadata), `active_storage_attachments` (polymorphic join table), and `active_storage_variant_records` (tracked variants, in current Rails versions).
 
 ### Configure Storage Services
 
@@ -66,13 +66,9 @@ google:
   credentials: <%= ENV['GCS_CREDENTIALS'] %>
   bucket: <%= ENV['GCS_BUCKET'] %>
 
-# Microsoft Azure Storage
-azure:
-  service: AzureStorage
-  storage_account_name: <%= ENV['AZURE_ACCOUNT'] %>
-  storage_access_key: <%= ENV['AZURE_ACCESS_KEY'] %>
-  container: <%= ENV['AZURE_CONTAINER'] %>
 ```
+
+For Azure Storage on Rails 8.1 and later, use an external ActiveStorage service adapter such as `azure-blob` with `service: AzureBlob`; the built-in `AzureStorage` service was deprecated in Rails 8.0 and removed in Rails 8.1.
 
 Set the active service per environment:
 
@@ -95,10 +91,10 @@ For cloud storage, add the appropriate gem:
 gem "aws-sdk-s3", require: false
 
 # For Google Cloud Storage
-gem "google-cloud-storage", require: false
+gem "google-cloud-storage", "~> 1.11", require: false
 
-# For Azure Storage
-gem "azure-storage-blob", "~> 2.0", require: false
+# For Azure Storage on Rails 8.1+
+gem "azure-blob", require: false
 
 # For image processing
 gem "image_processing", "~> 1.2"
@@ -178,7 +174,7 @@ end
 @post.images.find(attachment_id).purge
 
 # Remove all attachments
-@post.images.purge_all
+@post.images.purge
 ```
 
 ### Form Helpers
@@ -328,8 +324,10 @@ end
 <%# Or define inline %>
 <%= image_tag @user.avatar.variant(resize_to_limit: [200, 200]) %>
 
-<%# Use representation for any file type (generates preview for PDFs, videos) %>
-<%= image_tag @user.document.representation(resize_to_limit: [400, 400]) %>
+<%# Use representation for representable file types (generates preview for PDFs, videos) %>
+<% if @user.document.representable? %>
+  <%= image_tag @user.document.representation(resize_to_limit: [400, 400]) %>
+<% end %>
 ```
 
 ### Common Transformations
@@ -368,6 +366,7 @@ Generate variants immediately after upload:
 class User < ApplicationRecord
   has_one_attached :avatar do |attachable|
     attachable.variant :thumb, resize_to_limit: [100, 100], preprocessed: true
+    attachable.variant :medium, resize_to_limit: [300, 300]
   end
 end
 
@@ -487,7 +486,7 @@ end
 url_for(@user.avatar)
 
 # Temporary direct URL to storage service (expires)
-@user.avatar.url(expires_in: 1.hour)
+@user.avatar.blob.url(expires_in: 1.hour)
 
 # Variant URL
 url_for(@user.avatar.variant(:thumb))
@@ -536,9 +535,40 @@ Add a CDN host for better performance:
 # config/environments/production.rb
 config.active_storage.service = :amazon
 config.active_storage.resolve_model_to_route = :rails_storage_proxy
+```
 
-# Configure CDN
-Rails.application.routes.default_url_options[:host] = "cdn.yourdomain.com"
+Generate CDN URLs through a dedicated route:
+
+```ruby
+# config/routes.rb
+direct :cdn_image do |model, options|
+  expires_in = options.delete(:expires_in) { ActiveStorage.urls_expire_in }
+
+  if model.respond_to?(:signed_id)
+    route_for(
+      :rails_service_blob_proxy,
+      model.signed_id(expires_in: expires_in),
+      model.filename,
+      options.merge(host: ENV["CDN_HOST"])
+    )
+  else
+    signed_blob_id = model.blob.signed_id(expires_in: expires_in)
+    variation_key = model.variation.key
+    filename = model.blob.filename
+
+    route_for(
+      :rails_blob_representation_proxy,
+      signed_blob_id,
+      variation_key,
+      filename,
+      options.merge(host: ENV["CDN_HOST"])
+    )
+  end
+end
+```
+
+```erb
+<%= cdn_image_url(@user.avatar.variant(resize_to_limit: [128, 128])) %>
 ```
 
 ## Testing File Uploads
@@ -690,7 +720,7 @@ end
 | **Configure CORS** | Required for direct uploads to cloud storage |
 | **Test thoroughly** | Test uploads, validations, and variants |
 | **Use CDN** | Serve files through a CDN for better performance |
-| **Purge unused files** | Clean up orphaned blobs with `rails active_storage:purge:unattached` |
+| **Purge unused files** | Clean up orphaned blobs with a custom task using `ActiveStorage::Blob.unattached.where(created_at: ..2.days.ago).find_each(&:purge_later)` |
 
 ActiveStorage simplifies file uploads in Rails while providing the flexibility to scale from local development to production cloud storage. By following these patterns, you can implement robust file handling that performs well under load.
 
