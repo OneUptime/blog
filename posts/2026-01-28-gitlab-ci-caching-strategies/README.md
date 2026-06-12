@@ -20,15 +20,16 @@ Use cache for dependencies, artifacts for build outputs.
 ## Basic Cache Example
 
 ```yaml
-cache:
-  key: "npm-${CI_COMMIT_REF_SLUG}"
-  paths:
-    - node_modules/
+default:
+  cache:
+    key: "npm-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - .npm/
 
 build:
   stage: build
   script:
-    - npm ci
+    - npm ci --cache .npm --prefer-offline
     - npm run build
 ```
 
@@ -37,14 +38,18 @@ build:
 Fallback keys help reuse cache across branches.
 
 ```yaml
-cache:
-  key:
-    files:
-      - package-lock.json
-    prefix: npm
-  paths:
-    - ~/.npm
-  policy: pull-push
+default:
+  cache:
+    key:
+      files:
+        - package-lock.json
+      prefix: npm
+    fallback_keys:
+      - npm-${CI_DEFAULT_BRANCH}
+      - npm-default
+    paths:
+      - .npm/
+    policy: pull-push
 ```
 
 ## Split Caches by Job Type
@@ -52,10 +57,11 @@ cache:
 Separate caches prevent collisions:
 
 ```yaml
-cache:
-  key: "lint-${CI_COMMIT_REF_SLUG}"
-  paths:
-    - .eslintcache
+lint:
+  cache:
+    key: "lint-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - .eslintcache
 ```
 
 ## Avoid Caching Large Build Outputs
