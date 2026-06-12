@@ -80,8 +80,8 @@ kubectl get secret -n linkerd linkerd-identity-issuer -o jsonpath='{.data.crt\.p
 ### Document Current State
 
 ```bash
-# Export current Linkerd configuration
-linkerd install --ignore-cluster > linkerd-current-config.yaml
+# Export the upgrade manifest that preserves current Linkerd configuration
+linkerd upgrade > linkerd-current-config.yaml
 
 # List all meshed namespaces and pods
 kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\t"}{.spec.containers[*].name}{"\n"}{end}' | \
@@ -98,11 +98,12 @@ Never skip this step. Your staging environment should mirror production.
 
 ```bash
 # Apply upgrade to staging first
-linkerd upgrade | kubectl apply -f - --context staging-cluster
+linkerd --context staging-cluster upgrade --crds | kubectl --context staging-cluster apply -f -
+linkerd --context staging-cluster upgrade | kubectl --context staging-cluster apply -f -
 
 # Run full validation suite
-linkerd check --context staging-cluster
-linkerd check --proxy --context staging-cluster
+linkerd --context staging-cluster check
+linkerd --context staging-cluster check --proxy
 
 # Run your integration tests against staging
 ./run-integration-tests.sh --env staging
@@ -116,7 +117,8 @@ Linkerd upgrades follow a specific order: CLI first, then control plane, then da
 
 ```bash
 # Download the new CLI version (replace with target version)
-curl -sL https://run.linkerd.io/install | sh
+export LINKERD2_VERSION=edge-26.6.1
+curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install-edge | sh
 
 # Verify new version
 linkerd version --client
@@ -130,15 +132,21 @@ linkerd check --pre
 The control plane upgrade is straightforward but critical.
 
 ```bash
+# Upgrade CRDs first
+linkerd upgrade --crds | kubectl apply -f -
+
 # Generate upgrade manifest
-# This preserves your existing configuration
+# This preserves your existing configuration and TLS secrets
 linkerd upgrade > linkerd-upgrade.yaml
 
 # Review the changes (critical step!)
-diff <(linkerd install --ignore-cluster) linkerd-upgrade.yaml
+kubectl diff -f linkerd-upgrade.yaml
 
 # Apply the upgrade
 kubectl apply -f linkerd-upgrade.yaml
+
+# Remove resources that are no longer part of the new version
+linkerd prune | kubectl delete -f -
 
 # Wait for control plane to be ready
 kubectl rollout status deploy -n linkerd
@@ -160,6 +168,9 @@ kubectl rollout status deploy -n linkerd-viz
 
 # Verify viz is healthy
 linkerd viz check
+
+# Remove old viz resources if the new version no longer needs them
+linkerd viz prune | kubectl delete -f -
 
 # Upgrade multicluster if used
 linkerd multicluster install | kubectl apply -f -
@@ -208,15 +219,14 @@ fi
 
 echo "Starting rolling proxy update for namespace: $NAMESPACE"
 
-# Get all deployments in the namespace that are meshed
+# Get all deployments in the namespace; only meshed pods will receive a new proxy
 DEPLOYMENTS=$(kubectl get deployments -n "$NAMESPACE" \
-  -l linkerd.io/control-plane-ns=linkerd \
   -o jsonpath='{.items[*].metadata.name}')
 
 DEPLOY_ARRAY=($DEPLOYMENTS)
 TOTAL=${#DEPLOY_ARRAY[@]}
 
-echo "Found $TOTAL meshed deployments"
+echo "Found $TOTAL deployments"
 
 for ((i=0; i<TOTAL; i+=BATCH_SIZE)); do
   BATCH=("${DEPLOY_ARRAY[@]:i:BATCH_SIZE}")
@@ -271,8 +281,8 @@ spec:
 ### Verify Proxy Versions After Update
 
 ```bash
-# Check proxy versions across all pods
-linkerd viz stat deploy -n production --all-namespaces | grep -v "MESHED"
+# Check data plane health and list old proxies
+linkerd check --proxy
 
 # Get detailed proxy version info
 kubectl get pods -n production -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[?(@.name=="linkerd-proxy")].image}{"\n"}{end}'
@@ -302,18 +312,18 @@ flowchart TB
     issuer --> proxy1cert
     issuer --> proxy2cert
 
-    trust -.->|"Valid: 10 years"| trust
-    issuer -.->|"Valid: 1 year"| issuer
+    trust -.->|"Default: 365 days, or custom"| trust
+    issuer -.->|"Usually: 1 year"| issuer
     proxy1cert -.->|"Valid: 24 hours"| proxy1cert
 ```
 
 ### Rotate Identity Issuer Certificate
 
 ```bash
-# Generate new issuer certificate signed by existing trust anchor
-# First, extract the trust anchor
-kubectl get secret -n linkerd linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' | \
-  base64 -d > trust-anchor.crt
+# Generate new issuer certificate signed by the existing trust anchor
+# You must have the trust anchor private key available as trust-anchor.key.
+kubectl -n linkerd get cm linkerd-identity-trust-roots \
+  -o=jsonpath='{.data.ca-bundle\.crt}' > trust-anchor.crt
 
 # Generate new issuer key and certificate
 step certificate create identity.linkerd.cluster.local issuer-new.crt issuer-new.key \
@@ -323,16 +333,14 @@ step certificate create identity.linkerd.cluster.local issuer-new.crt issuer-new
   --ca-key trust-anchor.key \
   --no-password --insecure
 
-# Update the issuer secret
-kubectl create secret tls linkerd-identity-issuer \
-  --cert=issuer-new.crt \
-  --key=issuer-new.key \
-  --namespace=linkerd \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Update the issuer certificate and key through Linkerd's upgrade command
+linkerd upgrade \
+  --identity-issuer-certificate-file=./issuer-new.crt \
+  --identity-issuer-key-file=./issuer-new.key \
+  | kubectl apply -f -
 
-# Restart identity service to pick up new certificate
-kubectl rollout restart deploy/linkerd-identity -n linkerd
-kubectl rollout status deploy/linkerd-identity -n linkerd
+# Verify Linkerd saw the new issuer
+kubectl get events --field-selector reason=IssuerUpdated -n linkerd
 
 # Verify new certificate
 linkerd check --proxy | grep -i cert
@@ -349,14 +357,13 @@ step certificate create root.linkerd.cluster.local trust-anchor-new.crt trust-an
   --not-after 87600h \
   --no-password --insecure
 
-# Step 2: Create bundle with both old and new trust anchors
-cat trust-anchor-old.crt trust-anchor-new.crt > trust-bundle.crt
+# Step 2: Read the current trust anchor and create a bundle with both old and new trust anchors
+kubectl -n linkerd get cm linkerd-identity-trust-roots \
+  -o=jsonpath='{.data.ca-bundle\.crt}' > trust-anchor-old.crt
+step certificate bundle trust-anchor-new.crt trust-anchor-old.crt trust-bundle.crt
 
 # Step 3: Update trust roots with bundle
-kubectl create configmap linkerd-identity-trust-roots \
-  --from-file=ca-bundle.crt=trust-bundle.crt \
-  --namespace=linkerd \
-  --dry-run=client -o yaml | kubectl apply -f -
+linkerd upgrade --identity-trust-anchors-file=./trust-bundle.crt | kubectl apply -f -
 
 # Step 4: Restart all proxies to pick up new bundle
 # (Use the rolling update script from earlier)
@@ -370,24 +377,22 @@ step certificate create identity.linkerd.cluster.local issuer-new.crt issuer-new
   --ca-key trust-anchor-new.key \
   --no-password --insecure
 
-# Step 6: Update issuer and restart identity
-kubectl create secret tls linkerd-identity-issuer \
-  --cert=issuer-new.crt \
-  --key=issuer-new.key \
-  --namespace=linkerd \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Step 6: Update issuer
+linkerd upgrade \
+  --identity-issuer-certificate-file=./issuer-new.crt \
+  --identity-issuer-key-file=./issuer-new.key \
+  | kubectl apply -f -
 
-kubectl rollout restart deploy/linkerd-identity -n linkerd
+kubectl get events --field-selector reason=IssuerUpdated -n linkerd
 
 # Step 7: Roll proxies again to get certificates from new issuer
 ./rolling-proxy-update.sh production 5 30
 
 # Step 8: Remove old trust anchor from bundle (after all proxies updated)
-cp trust-anchor-new.crt trust-bundle.crt
-kubectl create configmap linkerd-identity-trust-roots \
-  --from-file=ca-bundle.crt=trust-bundle.crt \
-  --namespace=linkerd \
-  --dry-run=client -o yaml | kubectl apply -f -
+linkerd upgrade --identity-trust-anchors-file=./trust-anchor-new.crt | kubectl apply -f -
+
+# Step 9: Roll proxies one final time so every proxy has the final trust bundle
+./rolling-proxy-update.sh production 5 30
 ```
 
 ## Rollback Strategies
@@ -446,11 +451,11 @@ fi
 
 # Download previous CLI version
 echo "Downloading Linkerd CLI $PREVIOUS_VERSION..."
-curl -sL https://run.linkerd.io/install | LINKERD2_VERSION=$PREVIOUS_VERSION sh
+curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install-edge | LINKERD2_VERSION=$PREVIOUS_VERSION sh
 
 # Generate rollback manifest
 echo "Generating rollback manifest..."
-linkerd install --ignore-cluster > linkerd-rollback.yaml
+linkerd upgrade > linkerd-rollback.yaml
 
 # Apply rollback
 echo "Applying rollback..."
@@ -477,19 +482,19 @@ echo "Consider rolling back pods if proxy compatibility issues exist."
 
 NAMESPACE=$1
 DEPLOYMENT=$2
-PREVIOUS_IMAGE="cr.l5d.io/linkerd/proxy:stable-2.13.6"
+PREVIOUS_VERSION="stable-2.13.6"
 
 if [[ -z "$NAMESPACE" || -z "$DEPLOYMENT" ]]; then
   echo "Usage: $0 <namespace> <deployment>"
   exit 1
 fi
 
-# Patch the deployment to use specific proxy image
+# Patch the deployment to use a specific proxy version
 kubectl patch deployment "$DEPLOYMENT" -n "$NAMESPACE" --type='json' -p="[
   {
-    \"op\": \"replace\",
-    \"path\": \"/spec/template/metadata/annotations/linkerd.io~1proxy-version\",
-    \"value\": \"stable-2.13.6\"
+    \"op\": \"add\",
+    \"path\": \"/spec/template/metadata/annotations/config.linkerd.io~1proxy-version\",
+    \"value\": \"$PREVIOUS_VERSION\"
   }
 ]"
 
@@ -524,15 +529,15 @@ kubectl get secrets -n linkerd -o yaml > "$BACKUP_DIR/linkerd-secrets.yaml"
 kubectl get configmaps -n linkerd -o yaml > "$BACKUP_DIR/linkerd-configmaps.yaml"
 
 # Backup CRDs
-kubectl get crd -o yaml | grep -A1000 'linkerd' > "$BACKUP_DIR/linkerd-crds.yaml"
+kubectl get crd -o name | grep 'linkerd.io' | xargs kubectl get -o yaml > "$BACKUP_DIR/linkerd-crds.yaml"
 
 # Backup viz extension if present
 if kubectl get namespace linkerd-viz &>/dev/null; then
   kubectl get all -n linkerd-viz -o yaml > "$BACKUP_DIR/linkerd-viz.yaml"
 fi
 
-# Export current install config
-linkerd install --ignore-cluster > "$BACKUP_DIR/linkerd-install.yaml"
+# Export current upgrade manifest
+linkerd upgrade > "$BACKUP_DIR/linkerd-upgrade.yaml"
 
 # Record current versions
 linkerd version > "$BACKUP_DIR/versions.txt"
