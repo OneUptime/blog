@@ -8,28 +8,28 @@ Description: A practical guide to deploying containerized applications on Google
 
 ---
 
-Cloud Run lets you run containers without managing servers. You push a container image, Cloud Run handles scaling, load balancing, and TLS. Pay only for the requests you serve.
+Cloud Run lets you run containers without managing servers. You push a container image, Cloud Run handles scaling, load balancing, and TLS. With request-based billing, you pay for resources while instances start, shut down, and process requests.
 
 ## How Cloud Run Handles Requests
 
 ```mermaid
 flowchart LR
     Client[Client] --> LB[Load Balancer]
-    LB --> CloudRun[Cloud Run Service]
+    LB --> Router
 
-    subgraph CloudRun[Cloud Run Service]
+    subgraph CloudRunService[Cloud Run Service]
         direction TB
         Router[Request Router]
-        Router --> Rev1[Revision 1 - 90%]
-        Router --> Rev2[Revision 2 - 10%]
+        Router --> Revision1[Revision 1 - 90%]
+        Router --> Revision2[Revision 2 - 10%]
 
-        subgraph Rev1[Revision 1]
+        subgraph Revision1[Revision 1]
             I1[Instance 1]
             I2[Instance 2]
             I3[Instance N...]
         end
 
-        subgraph Rev2[Revision 2]
+        subgraph Revision2[Revision 2]
             I4[Instance 1]
         end
     end
@@ -48,11 +48,15 @@ When a request arrives:
 ```bash
 # Build and push your container image
 
-gcloud builds submit --tag gcr.io/PROJECT_ID/myapp:v1
+gcloud artifacts repositories create myapp \
+  --repository-format=docker \
+  --location=us-central1
+
+gcloud builds submit --tag us-central1-docker.pkg.dev/PROJECT_ID/myapp/myapp:v1
 
 # Deploy to Cloud Run
 gcloud run deploy myapp \
-  --image gcr.io/PROJECT_ID/myapp:v1 \
+  --image us-central1-docker.pkg.dev/PROJECT_ID/myapp/myapp:v1 \
   --region us-central1 \
   --platform managed \
   --allow-unauthenticated
@@ -62,7 +66,7 @@ gcloud run deploy myapp \
 
 ```bash
 gcloud run deploy myapp \
-  --image gcr.io/PROJECT_ID/myapp:v1 \
+  --image us-central1-docker.pkg.dev/PROJECT_ID/myapp/myapp:v1 \
   --region us-central1 \
   --platform managed \
   --port 8080 \
@@ -124,7 +128,7 @@ resource "google_cloud_run_v2_service" "myapp" {
 
   template {
     containers {
-      image = "gcr.io/${var.project_id}/myapp:v1"
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/myapp/myapp:v1"
 
       ports {
         container_port = 8080
@@ -146,7 +150,7 @@ resource "google_cloud_run_v2_service" "myapp" {
         name = "DB_PASSWORD"
         value_source {
           secret_key_ref {
-            secret  = google_secret_manager_secret.db_password.secret_id
+            secret  = "projects/${var.project_id}/secrets/${google_secret_manager_secret.db_password.secret_id}"
             version = "latest"
           }
         }
@@ -167,6 +171,11 @@ resource "google_cloud_run_v2_service" "myapp" {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
     percent = 100
   }
+
+  depends_on = [
+    google_secret_manager_secret_version.db_password,
+    google_secret_manager_secret_iam_member.db_password_access
+  ]
 }
 
 resource "google_service_account" "myapp" {
@@ -180,6 +189,23 @@ resource "google_secret_manager_secret" "db_password" {
   replication {
     auto {}
   }
+}
+
+resource "google_secret_manager_secret_version" "db_password" {
+  secret      = google_secret_manager_secret.db_password.id
+  secret_data = var.db_password
+}
+
+variable "db_password" {
+  description = "Database password"
+  type        = string
+  sensitive   = true
+}
+
+resource "google_secret_manager_secret_iam_member" "db_password_access" {
+  secret_id = google_secret_manager_secret.db_password.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.myapp.email}"
 }
 
 # Allow unauthenticated access (public API)
@@ -231,7 +257,7 @@ resource "google_cloud_run_v2_service" "myapp_with_vpc" {
 
   template {
     containers {
-      image = "gcr.io/${var.project_id}/myapp:v1"
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/myapp/myapp:v1"
     }
 
     vpc_access {
@@ -266,7 +292,7 @@ flowchart TD
 ```bash
 # Deploy new revision without shifting traffic
 gcloud run deploy myapp \
-  --image gcr.io/PROJECT_ID/myapp:v2 \
+  --image us-central1-docker.pkg.dev/PROJECT_ID/myapp/myapp:v2 \
   --region us-central1 \
   --no-traffic
 
@@ -296,7 +322,7 @@ resource "google_cloud_run_v2_service" "myapp" {
   template {
     revision = "myapp-v2"
     containers {
-      image = "gcr.io/${var.project_id}/myapp:v2"
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/myapp/myapp:v2"
     }
   }
 
@@ -364,14 +390,14 @@ flowchart LR
 ```bash
 # Low concurrency for CPU-heavy tasks
 gcloud run deploy image-processor \
-  --image gcr.io/PROJECT_ID/processor:v1 \
+  --image us-central1-docker.pkg.dev/PROJECT_ID/myapp/processor:v1 \
   --concurrency 1 \
   --cpu 2 \
   --memory 2Gi
 
 # High concurrency for I/O-bound workloads
 gcloud run deploy api-gateway \
-  --image gcr.io/PROJECT_ID/gateway:v1 \
+  --image us-central1-docker.pkg.dev/PROJECT_ID/myapp/gateway:v1 \
   --concurrency 250 \
   --cpu 1 \
   --memory 512Mi
@@ -386,7 +412,7 @@ resource "google_cloud_run_v2_service" "processor" {
 
   template {
     containers {
-      image = "gcr.io/${var.project_id}/processor:v1"
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/myapp/processor:v1"
 
       resources {
         limits = {
@@ -415,15 +441,15 @@ Cloud Run offers two CPU allocation modes that affect billing and performance.
 
 ```mermaid
 flowchart TB
-    subgraph Throttled[CPU Throttled - Default]
+    subgraph Throttled[Request-Based Billing - Default]
         direction TB
         T1[Request arrives] --> T2[CPU allocated]
         T2 --> T3[Request processed]
         T3 --> T4[CPU deallocated]
-        T4 --> T5[Billed per request]
+        T4 --> T5[Billed during startup, shutdown, and requests]
     end
 
-    subgraph Always[CPU Always Allocated]
+    subgraph Always[Instance-Based Billing]
         direction TB
         A1[Instance starts] --> A2[CPU always available]
         A2 --> A3[Process requests]
@@ -434,12 +460,12 @@ flowchart TB
 
 ### When to Use Each Mode
 
-**CPU Throttled (Default)**
+**Request-Based Billing (Default)**
 - Standard web applications
 - APIs with predictable request patterns
 - Cost optimization for bursty traffic
 
-**CPU Always Allocated**
+**Instance-Based Billing**
 - Background processing between requests
 - WebSocket connections
 - Streaming responses
@@ -448,15 +474,15 @@ flowchart TB
 ### gcloud CPU Configuration
 
 ```bash
-# CPU throttled (default) - CPU only during request processing
+# Request-based billing (default) - CPU only during request processing
 gcloud run deploy myapp \
-  --image gcr.io/PROJECT_ID/myapp:v1 \
+  --image us-central1-docker.pkg.dev/PROJECT_ID/myapp/myapp:v1 \
   --cpu 1 \
   --cpu-throttling
 
-# CPU always allocated - for background work
+# Instance-based billing - CPU always allocated for background work
 gcloud run deploy worker \
-  --image gcr.io/PROJECT_ID/worker:v1 \
+  --image us-central1-docker.pkg.dev/PROJECT_ID/myapp/worker:v1 \
   --cpu 2 \
   --no-cpu-throttling \
   --min-instances 1
@@ -465,14 +491,14 @@ gcloud run deploy worker \
 ### Terraform CPU Allocation
 
 ```hcl
-# CPU throttled service
+# Request-based billing service
 resource "google_cloud_run_v2_service" "api" {
   name     = "api"
   location = var.region
 
   template {
     containers {
-      image = "gcr.io/${var.project_id}/api:v1"
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/myapp/api:v1"
 
       resources {
         limits = {
@@ -485,14 +511,14 @@ resource "google_cloud_run_v2_service" "api" {
   }
 }
 
-# CPU always allocated service
+# Instance-based billing service
 resource "google_cloud_run_v2_service" "worker" {
   name     = "worker"
   location = var.region
 
   template {
     containers {
-      image = "gcr.io/${var.project_id}/worker:v1"
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/myapp/worker:v1"
 
       resources {
         limits = {
@@ -543,7 +569,7 @@ gcloud compute networks vpc-access connectors create myapp-connector \
 
 # Deploy with VPC connector
 gcloud run deploy myapp \
-  --image gcr.io/PROJECT_ID/myapp:v1 \
+  --image us-central1-docker.pkg.dev/PROJECT_ID/myapp/myapp:v1 \
   --region us-central1 \
   --vpc-connector myapp-connector \
   --vpc-egress private-ranges-only
@@ -641,7 +667,7 @@ resource "google_cloud_run_v2_service" "myapp" {
 
   template {
     containers {
-      image = "gcr.io/${var.project_id}/myapp:v1"
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/myapp/myapp:v1"
 
       env {
         name  = "DB_HOST"
@@ -668,7 +694,7 @@ resource "google_cloud_run_v2_service" "myapp" {
 
   template {
     containers {
-      image = "gcr.io/${var.project_id}/myapp:v1"
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/myapp/myapp:v1"
 
       startup_probe {
         http_get {
@@ -697,15 +723,17 @@ resource "google_cloud_run_v2_service" "myapp" {
 
 ## Custom Domains
 
+Cloud Run domain mappings are in Preview and not recommended for production services. For production custom domains, use a global external Application Load Balancer, Firebase Hosting, or another supported front end.
+
 ```bash
 # Map a custom domain
-gcloud run domain-mappings create \
+gcloud beta run domain-mappings create \
   --service myapp \
   --domain api.example.com \
   --region us-central1
 
 # Get DNS records to configure
-gcloud run domain-mappings describe \
+gcloud beta run domain-mappings describe \
   --domain api.example.com \
   --region us-central1
 ```
@@ -752,7 +780,7 @@ resource "google_cloud_run_v2_service" "myapp" {
 
   template {
     containers {
-      image = "gcr.io/${var.project_id}/myapp:v1"
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/myapp/myapp:v1"
 
       env {
         name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
@@ -779,7 +807,7 @@ resource "google_cloud_run_v2_service" "myapp" {
 ```bash
 # Cost-optimized configuration
 gcloud run deploy myapp \
-  --image gcr.io/PROJECT_ID/myapp:v1 \
+  --image us-central1-docker.pkg.dev/PROJECT_ID/myapp/myapp:v1 \
   --concurrency 100 \
   --min-instances 0 \
   --max-instances 10 \
