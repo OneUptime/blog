@@ -177,10 +177,13 @@ class ExecutionSummary:
     def add_stage(self, stage: StageMetrics) -> None:
         """Register a stage's metrics in the summary."""
         self.stages[stage.stage_name] = stage
+        self.total_records_failed = sum(
+            stage_metrics.records_failed
+            for stage_metrics in self.stages.values()
+        )
         # Update totals based on the final stage (usually load or validation)
         if stage.stage_name in ['load', 'validation', 'output']:
             self.total_records_processed = stage.records_output
-            self.total_records_failed += stage.records_failed
 
     def determine_final_status(self) -> None:
         """
@@ -202,7 +205,7 @@ Data quality reports track the health of your data over time. They help identify
 ```python
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Callable, Dict, List, Any
 from enum import Enum
 
 
@@ -323,7 +326,7 @@ class DataQualityChecker:
     def add_validity_check(
         self,
         field_name: str,
-        validator: callable,
+        validator: Callable[[Any], bool],
         threshold: float = 99.0
     ) -> None:
         """
@@ -1114,17 +1117,18 @@ flowchart LR
 ### Integration with Airflow
 
 ```python
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.sdk import DAG, get_current_context
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 
-def run_batch_job_with_reporting(**context):
+def run_batch_job_with_reporting():
     """
     Example Airflow task that runs a batch job with full reporting.
     This demonstrates how to integrate the reporting system with Airflow.
     """
     import re
+    context = get_current_context()
 
     # Initialize the reporting system
     reporting = BatchReportingSystem(
@@ -1217,7 +1221,7 @@ with DAG(
     'daily_sales_etl_with_reporting',
     default_args=default_args,
     description='Daily sales ETL with comprehensive batch reporting',
-    schedule_interval='0 2 * * *',  # Run at 2 AM daily
+    schedule='0 2 * * *',  # Run at 2 AM daily
     start_date=datetime(2026, 1, 1),
     catchup=False,
     tags=['etl', 'sales', 'reporting'],
@@ -1226,7 +1230,6 @@ with DAG(
     run_etl = PythonOperator(
         task_id='run_batch_job',
         python_callable=run_batch_job_with_reporting,
-        provide_context=True,
     )
 ```
 
@@ -1342,7 +1345,10 @@ class DashboardMetrics:
                 stage.stage_name: {
                     'duration_seconds': stage.duration_seconds,
                     'records_per_second': stage.records_per_second,
-                    'success_rate': stage.success_rate
+                    'success_rate': (
+                        report.execution_summary.stages[stage.stage_name].success_rate
+                        if stage.stage_name in report.execution_summary.stages else None
+                    )
                 }
                 for stage in report.performance_report.stages
             }
