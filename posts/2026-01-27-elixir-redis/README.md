@@ -41,7 +41,9 @@ defp deps do
     {:redix, "~> 1.3"},
     # Connection pooling (choose one)
     {:nimble_pool, "~> 1.0"},
-    # Alternative: {:poolboy, "~> 1.5"}
+    # Alternative: {:poolboy, "~> 1.5"},
+    # Test mocks
+    {:mox, "~> 1.2", only: :test}
   ]
 end
 ```
@@ -88,9 +90,9 @@ end
 # GET retrieves the value for a key
 {:ok, "Alice"} = Redix.command(:redix, ["GET", "user:1:name"])
 
-# SETEX sets a key with expiration in seconds
+# SET with EX sets a key with expiration in seconds
 # Useful for cache entries that should auto-expire
-{:ok, "OK"} = Redix.command(:redix, ["SETEX", "session:abc123", "3600", "user_data"])
+{:ok, "OK"} = Redix.command(:redix, ["SET", "session:abc123", "user_data", "EX", "3600"])
 
 # DEL removes one or more keys
 # Returns the number of keys deleted
@@ -120,9 +122,9 @@ end
 {:ok, 1} = Redix.command(:redix, ["HSET", "user:1", "name", "Alice"])
 {:ok, 1} = Redix.command(:redix, ["HSET", "user:1", "email", "alice@example.com"])
 
-# HMSET sets multiple fields at once
-{:ok, "OK"} = Redix.command(:redix, [
-  "HMSET", "user:2",
+# HSET can set multiple fields at once
+{:ok, 3} = Redix.command(:redix, [
+  "HSET", "user:2",
   "name", "Bob",
   "email", "bob@example.com",
   "role", "admin"
@@ -203,7 +205,7 @@ defmodule MyApp.RedisPool do
   end
 
   @impl NimblePool
-  def handle_checkin(conn, _old_conn, pool_state) do
+  def handle_checkin(conn, _from, _old_conn, pool_state) do
     {:ok, conn, pool_state}
   end
 
@@ -265,8 +267,8 @@ Using the pool:
 Redis Pub/Sub enables real-time messaging between processes. Redix.PubSub handles subscriptions with automatic reconnection.
 
 ```elixir
-# lib/my_app/pub_sub.ex
-defmodule MyApp.PubSub do
+# lib/my_app/redis_pub_sub.ex
+defmodule MyApp.RedisPubSub do
   use GenServer
   require Logger
 
@@ -295,21 +297,21 @@ defmodule MyApp.PubSub do
   def init(opts) do
     # Start the PubSub connection
     {:ok, pubsub} = Redix.PubSub.start_link(opts)
-    {:ok, %{pubsub: pubsub, subscriptions: MapSet.new()}}
+    {:ok, %{pubsub: pubsub, subscriptions: %{}}}
   end
 
   @impl true
   def handle_call({:subscribe, channel}, _from, state) do
     # Subscribe and register this process to receive messages
-    :ok = Redix.PubSub.subscribe(state.pubsub, channel, self())
-    new_state = %{state | subscriptions: MapSet.put(state.subscriptions, channel)}
+    {:ok, ref} = Redix.PubSub.subscribe(state.pubsub, channel, self())
+    new_state = %{state | subscriptions: Map.put(state.subscriptions, channel, ref)}
     {:reply, :ok, new_state}
   end
 
   @impl true
   def handle_call({:unsubscribe, channel}, _from, state) do
     :ok = Redix.PubSub.unsubscribe(state.pubsub, channel, self())
-    new_state = %{state | subscriptions: MapSet.delete(state.subscriptions, channel)}
+    new_state = %{state | subscriptions: Map.delete(state.subscriptions, channel)}
     {:reply, :ok, new_state}
   end
 
@@ -342,12 +344,12 @@ Usage example:
 
 ```elixir
 # Subscribe to channels
-MyApp.PubSub.subscribe("notifications")
-MyApp.PubSub.subscribe("chat:room:1")
+MyApp.RedisPubSub.subscribe("notifications")
+MyApp.RedisPubSub.subscribe("chat:room:1")
 
 # Publish messages from anywhere in your app
-MyApp.PubSub.publish("notifications", "New order received")
-MyApp.PubSub.publish("chat:room:1", Jason.encode!(%{user: "Alice", text: "Hello!"}))
+MyApp.RedisPubSub.publish("notifications", "New order received")
+MyApp.RedisPubSub.publish("chat:room:1", Jason.encode!(%{user: "Alice", text: "Hello!"}))
 ```
 
 ---
@@ -372,7 +374,7 @@ defmodule MyApp.Cache do
 
   # Set a value with optional TTL
   def set(key, value, ttl \\ @default_ttl) do
-    MyApp.RedisPool.command(["SETEX", key, to_string(ttl), value])
+    MyApp.RedisPool.command(["SET", key, value, "EX", to_string(ttl)])
   end
 
   # Delete a cached value
@@ -434,12 +436,22 @@ end
 
 # Cache with pattern-based invalidation
 def invalidate_user_cache(user_id) do
-  # Get all keys matching the pattern
-  {:ok, keys} = MyApp.RedisPool.command(["KEYS", "user:#{user_id}:*"])
+  delete_matching("user:#{user_id}:*")
+end
 
-  # Delete all matching keys
+defp delete_matching(pattern, cursor \\ "0") do
+  # SCAN iterates without blocking Redis like KEYS can in production
+  {:ok, [next_cursor, keys]} =
+    MyApp.RedisPool.command(["SCAN", cursor, "MATCH", pattern, "COUNT", "100"])
+
   if Enum.any?(keys) do
     MyApp.RedisPool.command(["DEL" | keys])
+  end
+
+  if next_cursor == "0" do
+    :ok
+  else
+    delete_matching(pattern, next_cursor)
   end
 end
 ```
@@ -460,7 +472,7 @@ defmodule MyApp.SessionStore do
   def create(session_id, data) when is_map(data) do
     key = @prefix <> session_id
     encoded = Jason.encode!(data)
-    MyApp.RedisPool.command(["SETEX", key, to_string(@session_ttl), encoded])
+    MyApp.RedisPool.command(["SET", key, encoded, "EX", to_string(@session_ttl)])
   end
 
   # Get session data
@@ -480,7 +492,7 @@ defmodule MyApp.SessionStore do
 
     # Update and refresh TTL
     encoded = Jason.encode!(data)
-    MyApp.RedisPool.command(["SETEX", key, to_string(@session_ttl), encoded])
+    MyApp.RedisPool.command(["SET", key, encoded, "EX", to_string(@session_ttl)])
   end
 
   # Delete a session
@@ -565,10 +577,10 @@ defmodule MyApp.Leaderboard do
 
   # Get top N players (highest scores first)
   def top(count \\ 10) do
-    # ZREVRANGE returns members in descending score order
+    # ZRANGE with REV returns members in descending score order
     # WITHSCORES includes the scores in the result
     {:ok, result} = MyApp.RedisPool.command([
-      "ZREVRANGE", @key, "0", to_string(count - 1), "WITHSCORES"
+      "ZRANGE", @key, "0", to_string(count - 1), "REV", "WITHSCORES"
     ])
 
     # Convert flat list to list of tuples
@@ -603,7 +615,7 @@ defmodule MyApp.Leaderboard do
       stop = rank + neighbor_count - 1
 
       {:ok, result} = MyApp.RedisPool.command([
-        "ZREVRANGE", @key, to_string(start), to_string(stop), "WITHSCORES"
+        "ZRANGE", @key, to_string(start), to_string(stop), "REV", "WITHSCORES"
       ])
 
       neighbors =
@@ -800,6 +812,10 @@ Mock Redis for unit tests:
 
 ```elixir
 # test/support/mocks.ex
+defmodule MyApp.RedisClient.Behaviour do
+  @callback get(String.t()) :: {:ok, String.t() | nil} | {:error, term()}
+end
+
 Mox.defmock(MyApp.RedisMock, for: MyApp.RedisClient.Behaviour)
 
 # Use in tests
