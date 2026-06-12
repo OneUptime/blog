@@ -280,7 +280,7 @@ flowchart TD
 
 ```python
 from typing import List, Tuple
-import hashlib
+from difflib import SequenceMatcher
 
 class ContextManager:
     """Manages context preparation for answer generation."""
@@ -328,17 +328,20 @@ class ContextManager:
         documents: List[RetrievedDocument]
     ) -> List[RetrievedDocument]:
         """Remove near-duplicate documents."""
-        seen_hashes = set()
         unique_docs = []
 
         for doc in documents:
-            # Create content hash for deduplication
-            content_hash = hashlib.md5(
-                doc.content.strip().lower().encode()
-            ).hexdigest()
+            normalized_content = doc.content.strip().lower()
+            is_duplicate = any(
+                SequenceMatcher(
+                    None,
+                    normalized_content,
+                    existing.content.strip().lower()
+                ).ratio() >= self.dedup_similarity
+                for existing in unique_docs
+            )
 
-            if content_hash not in seen_hashes:
-                seen_hashes.add(content_hash)
+            if not is_duplicate:
                 unique_docs.append(doc)
 
         return unique_docs
@@ -662,7 +665,7 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 
 class CitationVerifier:
-    """Verify that citations actually support their claims."""
+    """Estimate whether citations are semantically related to their claims."""
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self.model = SentenceTransformer(model_name)
@@ -673,7 +676,7 @@ class CitationVerifier:
         claim: str,
         source_content: str
     ) -> Tuple[bool, float]:
-        """Check if source content supports the claim."""
+        """Check if source content is similar to the cited claim."""
 
         # Encode claim and source
         claim_embedding = self.model.encode(claim)
@@ -684,8 +687,8 @@ class CitationVerifier:
             np.linalg.norm(claim_embedding) * np.linalg.norm(source_embedding)
         )
 
-        is_supported = similarity >= self.similarity_threshold
-        return is_supported, float(similarity)
+        is_related = similarity >= self.similarity_threshold
+        return is_related, float(similarity)
 
     def verify_all_citations(
         self,
@@ -1157,9 +1160,8 @@ Answer:"""
 A complete production-ready answer generation service:
 
 ```python
-import asyncio
 import logging
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import time
 
@@ -1313,7 +1315,9 @@ Improved Answer (with citations):"""
 ### API Endpoint Example
 
 ```python
-from fastapi import FastAPI, HTTPException
+from typing import Dict, List, Optional
+
+from fastapi import FastAPI
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -1381,6 +1385,8 @@ flowchart TD
 ```
 
 ```python
+from typing import Optional, Tuple
+
 class PromptOptimizer:
     """Optimize prompts through experimentation."""
 
@@ -1474,6 +1480,12 @@ class PromptOptimizer:
 ### Quality Metrics Dashboard
 
 ```python
+import time
+from dataclasses import dataclass
+from typing import Optional
+
+import numpy as np
+
 @dataclass
 class QualityMetrics:
     faithfulness_score: float
