@@ -14,7 +14,7 @@ This guide walks through creating Fargate profiles using both eksctl and Terrafo
 
 ## How Fargate Scheduling Works
 
-When a pod gets created in EKS, the Fargate scheduler evaluates it against your profiles. If the pod matches a profile selector (namespace plus optional labels), Fargate provisions a dedicated microVM for that pod. If no profile matches, the pod runs on your managed or self-managed node groups instead.
+When a pod gets created in EKS, the Fargate scheduler evaluates it against your profiles. If the pod matches a profile selector (namespace plus optional labels), Fargate provisions a dedicated microVM for that pod. If no profile matches, the default Kubernetes scheduler tries to place the pod on your managed or self-managed node groups instead. If no eligible nodes exist, the pod stays Pending.
 
 ```mermaid
 flowchart TD
@@ -25,8 +25,11 @@ flowchart TD
     D -->|No Labels Required| E
     E --> F[Provision Fargate microVM]
     F --> G[Pod Runs on Fargate]
-    B -->|No| H[Schedule on EC2 Node Group]
+    B -->|No| H[Default Scheduler Tries EC2 Nodes]
     D -->|No| H
+    H --> I{Eligible Node Exists?}
+    I -->|Yes| J[Pod Runs on EC2 Node]
+    I -->|No| K[Pod Remains Pending]
 ```
 
 Each Fargate pod runs in isolation. No sharing compute with other pods. This makes Fargate excellent for multi-tenant workloads and batch jobs where you want strong isolation without managing node taints.
@@ -37,7 +40,7 @@ Before creating Fargate profiles, you need:
 
 - An existing EKS cluster (version 1.24 or later recommended)
 - IAM permissions to create roles and manage EKS
-- eksctl 0.170.0+ or Terraform 1.0+ with the AWS provider
+- eksctl 0.170.0+ or Terraform 1.3+ with the AWS provider
 - kubectl configured to talk to your cluster
 
 ## Creating Fargate Profiles with eksctl
@@ -160,7 +163,7 @@ provider "aws" {
 
 ### IAM Role for Fargate Pod Execution
 
-Fargate needs an IAM role to pull container images and write logs. This role gets assumed by the Fargate infrastructure, not your pods.
+Fargate needs an IAM role to pull container images. If you configure Fargate log routing, that same role also needs destination-specific log permissions. This role gets assumed by the Fargate infrastructure, not your pods.
 
 ```hcl
 # iam.tf
@@ -377,17 +380,13 @@ Selectors determine which pods land on Fargate. Getting them right is critical.
 
 ```mermaid
 flowchart TD
-    A[Pod Created] --> B[Iterate Through Fargate Profiles]
-    B --> C{Namespace Matches?}
-    C -->|No| D[Try Next Profile]
-    C -->|Yes| E{Profile Has Labels?}
-    E -->|No| F[Match: Schedule on Fargate]
-    E -->|Yes| G{Pod Has All Labels?}
-    G -->|Yes| F
-    G -->|No| D
-    D --> H{More Profiles?}
-    H -->|Yes| B
-    H -->|No| I[Schedule on EC2 Nodes]
+    A[Pod Created] --> B[Find Profiles with Matching Selectors]
+    B --> C{Any Matching Profiles?}
+    C -->|No| D[Default Scheduler Tries EC2 Nodes]
+    C -->|Yes| E{Multiple Matches?}
+    E -->|No| F[Schedule on Matching Profile]
+    E -->|Yes| G[Choose First by Profile Name Sort]
+    G --> F
 ```
 
 ### Rules to Remember
@@ -398,9 +397,9 @@ flowchart TD
 
 3. **Multiple selectors in one profile use OR logic.** A pod matching any selector runs on Fargate.
 
-4. **Multiple profiles are evaluated in order.** First matching profile wins.
+4. **Overlapping profiles are chosen by profile name.** If multiple Fargate profiles match, EKS chooses the matching profile that sorts first alphanumerically by profile name. You can force a specific matching profile by adding the pod label `eks.amazonaws.com/fargate-profile: profile-name`.
 
-5. **Wildcards do not exist.** You cannot use `*` for namespaces or labels.
+5. **Limited wildcards are supported.** You can use `*` and `?` in namespace names, label keys, and label values. Regular expressions and other pattern matching forms are not supported.
 
 ### Example Selector Scenarios
 
@@ -448,7 +447,7 @@ Two IAM roles matter for Fargate:
 
 ### Pod Execution Role
 
-This role allows Fargate to pull images from ECR and write logs to CloudWatch. It is assumed by the Fargate service, not your application.
+This role allows Fargate to pull images from ECR. If you enable Fargate log routing, attach additional permissions for the log destination, such as CloudWatch Logs. It is assumed by the Fargate service, not your application.
 
 Required policy: `AmazonEKSFargatePodExecutionRolePolicy`
 
@@ -543,16 +542,25 @@ Fargate pods only run in private subnets. You must specify subnet IDs when creat
 
 ### Security Groups
 
-Fargate pods use the cluster security group by default. You can specify additional security groups via pod annotations:
+Fargate pods use the cluster security group by default. To assign different security groups to selected pods, create a `SecurityGroupPolicy` resource:
 
 ```yaml
-apiVersion: v1
-kind: Pod
+apiVersion: vpcresources.k8s.aws/v1beta1
+kind: SecurityGroupPolicy
 metadata:
-  name: my-pod
-  annotations:
-    eks.amazonaws.com/security-groups: sg-12345678,sg-87654321
+  name: my-pod-security-groups
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: my-app
+  securityGroups:
+    groupIds:
+      - sg-12345678
+      - sg-87654321
 ```
+
+If you use custom security groups with Fargate, make sure the selected groups allow the pods to communicate with the Kubernetes control plane, CoreDNS, and any other required services. The cluster security group is commonly included as one of the groups.
 
 ## Limitations to Know
 
@@ -576,7 +584,9 @@ Fargate is powerful but not universal. Know these constraints:
 
 ### CloudWatch Container Insights
 
-Enable Container Insights for Fargate metrics:
+The `aws eks update-cluster-config --logging` command enables EKS control plane logs. It does not enable Container Insights metrics. For Container Insights on EKS Fargate workloads, use AWS Distro for OpenTelemetry. For EC2-backed workloads, the Amazon CloudWatch Observability EKS add-on is the recommended path.
+
+Enable EKS control plane logs:
 
 ```bash
 aws eks update-cluster-config \
@@ -586,36 +596,34 @@ aws eks update-cluster-config \
 
 ### Fluent Bit for Log Forwarding
 
-Deploy Fluent Bit as a sidecar since you cannot run it as a DaemonSet:
+EKS Fargate includes a built-in Fluent Bit log router. You configure it with a ConfigMap named `aws-logging` in the `aws-observability` namespace. Do not deploy Fluent Bit as a DaemonSet or sidecar for this path.
 
 ```yaml
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: aws-observability
+  labels:
+    aws-observability: enabled
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: fluent-bit-config
-  namespace: production
+  name: aws-logging
+  namespace: aws-observability
 data:
-  fluent-bit.conf: |
-    [SERVICE]
-        Flush         1
-        Log_Level     info
-        Daemon        off
-
-    [INPUT]
-        Name              tail
-        Path              /var/log/containers/*.log
-        Parser            docker
-        Tag               kube.*
-        Refresh_Interval  5
-
+  flb_log_cw: "false"
+  output.conf: |
     [OUTPUT]
         Name              cloudwatch_logs
-        Match             *
+        Match             kube.*
         region            us-west-2
         log_group_name    /aws/eks/my-cluster/fargate
         log_stream_prefix fargate-
         auto_create_group true
 ```
+
+Attach the required CloudWatch Logs permissions to the Fargate pod execution role before expecting logs to arrive.
 
 ## Troubleshooting
 
