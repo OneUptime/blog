@@ -19,7 +19,7 @@ Install:
 
 ## Step 2: Configure Jenkins GitHub Credentials
 
-Create a GitHub token and add it to Jenkins as a credential. Use a least-privilege token that only needs repo webhook access.
+Create a GitHub token and add it to Jenkins as a credential. Use least-privilege access: grant repository read access for private repository discovery, and grant webhook administration only if Jenkins will manage hooks automatically.
 
 ## Step 3: Create a Multibranch Pipeline
 
