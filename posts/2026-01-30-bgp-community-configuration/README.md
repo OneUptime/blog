@@ -51,10 +51,10 @@ BGP defines several well-known communities with special meanings:
 
 | Community | Value | Description |
 |-----------|-------|-------------|
-| NO_EXPORT | 65535:65281 | Do not advertise outside the AS |
-| NO_ADVERTISE | 65535:65282 | Do not advertise to any peer |
-| NO_EXPORT_SUBCONFED | 65535:65283 | Do not advertise outside the local confederation |
-| NOPEER | 65535:65284 | Do not advertise to bilateral peers |
+| NO_EXPORT | 65535:65281 | Do not advertise outside a BGP confederation boundary |
+| NO_ADVERTISE | 65535:65282 | Do not advertise to any BGP peer |
+| NO_EXPORT_SUBCONFED | 65535:65283 | Do not advertise to external BGP peers, including peers in other member ASes of a confederation |
+| NOPEER | 65535:65284 | Advisory: need not advertise to bilateral peers |
 
 ### Extended Communities (RFC 4360)
 
@@ -376,22 +376,20 @@ route-map CUSTOMER_IN permit 10
  on-match next
 
 route-map CUSTOMER_IN permit 20
- description Process high preference request
- match community HIGH_PREF
- set local-preference 150
- on-match next
-
-route-map CUSTOMER_IN permit 30
- description Process low preference request
- match community LOW_PREF
- set local-preference 50
- on-match next
-
-route-map CUSTOMER_IN permit 40
  description Process blackhole request
  match community BLACKHOLE
  set local-preference 200
  set ip next-hop 192.0.2.1
+
+route-map CUSTOMER_IN permit 30
+ description Process high preference request
+ match community HIGH_PREF
+ set local-preference 150
+
+route-map CUSTOMER_IN permit 40
+ description Process low preference request
+ match community LOW_PREF
+ set local-preference 50
 
 route-map CUSTOMER_IN permit 1000
  description Accept remaining routes
@@ -401,21 +399,25 @@ route-map CUSTOMER_IN permit 1000
 route-map TRANSIT_OUT permit 10
  description Remove internal action communities
  set comm-list ACTION_COMMUNITIES delete
+ on-match next
 
 route-map TRANSIT_OUT permit 20
  description Prepend 1x if requested
  match community PREPEND_1X
  set as-path prepend 65001
+ on-match next
 
 route-map TRANSIT_OUT permit 30
  description Prepend 2x if requested
  match community PREPEND_2X
  set as-path prepend 65001 65001
+ on-match next
 
 route-map TRANSIT_OUT permit 40
  description Prepend 3x if requested
  match community PREPEND_3X
  set as-path prepend 65001 65001 65001
+ on-match next
 
 route-map TRANSIT_OUT permit 50
  description Only advertise customer routes
@@ -707,20 +709,20 @@ show route community-name CUSTOMER_ROUTES
 # Show route details including communities
 show route 10.0.0.0/24 detail
 
-# Show all routes with any community
-show route community *
+# Show community attributes on BGP routes
+show route protocol bgp detail | match Communities
 ```
 
 #### FRRouting
 
 ```frr
 ! Show routes with communities
-show ip bgp community
-show ip bgp community 65001:1000
+show bgp ipv4 community
+show bgp ipv4 community 65001:1000
 
 ! Show large communities
-show ip bgp large-community
-show ip bgp large-community 4200000001:1:0
+show bgp ipv4 large-community
+show bgp ipv4 large-community 4200000001:1:0
 
 ! Detailed route view
 show ip bgp 10.0.0.0/24
@@ -853,7 +855,7 @@ Track which communities are being used and their frequency:
 debug ip bgp updates
 debug ip bgp events
 
-! Use NetFlow/IPFIX to track community usage
+! Use BGP monitoring or routing telemetry to track community usage
 ```
 
 ## Conclusion
