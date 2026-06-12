@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Redis Cluster, Resharding, Scaling, Hash Slot, DevOps
 
-Description: Learn how to reshard Redis Cluster to redistribute hash slots, add or remove nodes, and rebalance data without downtime.
+Description: Learn how to reshard Redis Cluster to redistribute hash slots, add or remove nodes, and rebalance data without a full cluster outage.
 
 ---
 
-> Redis Cluster distributes data across nodes using hash slots. When you add or remove nodes, resharding moves slots between nodes to balance your data. Done right, this happens with zero downtime.
+> Redis Cluster distributes data across nodes using hash slots. When you add or remove nodes, resharding moves slots between nodes to balance your data. Done right, this happens without a full cluster outage.
 
 ## Redis Cluster Architecture Basics
 
@@ -29,13 +29,13 @@ Redis Cluster uses a shared-nothing architecture where data is automatically par
 
 Redis Cluster has exactly 16,384 hash slots. Every key belongs to one slot, determined by:
 
-```bash
+```text
 # Hash slot calculation
 
-SLOT = CRC16(key) mod 16384
+HASH_SLOT = CRC16(key) mod 16384
 ```
 
-When you run a command, Redis computes the slot and routes it to the correct node. For multi-key operations, all keys must be in the same slot (use hash tags like `{user}:profile` and `{user}:orders`).
+When you run a command, Redis computes the slot and a cluster-aware client routes it to the correct node. For multi-key operations, all keys must be in the same slot (use hash tags like `{user}:profile` and `{user}:orders`). During manual resharding, multi-key operations can be temporarily unavailable even when the keys belong to the same slot.
 
 ## When to Reshard
 
@@ -65,9 +65,9 @@ redis-cli -c -h 192.168.1.10 -p 7000 cluster info
 Example output from `cluster nodes`:
 
 ```text
-a1b2c3d4... 192.168.1.10:7000@17000 master - 0 0 1 connected 0-5460
-e5f6g7h8... 192.168.1.11:7001@17001 master - 0 0 2 connected 5461-10922
-i9j0k1l2... 192.168.1.12:7002@17002 master - 0 0 3 connected 10923-16383
+a1b2c3d4e5f60718293a4b5c6d7e8f9012345678 192.168.1.10:7000@17000 master - 0 0 1 connected 0-5460
+b2c3d4e5f60718293a4b5c6d7e8f90123456789a 192.168.1.11:7001@17001 master - 0 0 2 connected 5461-10922
+c3d4e5f60718293a4b5c6d7e8f90123456789ab1 192.168.1.12:7002@17002 master - 0 0 3 connected 10923-16383
 ```
 
 ## Adding a New Node to the Cluster
@@ -140,7 +140,19 @@ REMOVE_NODE_ID=$(redis-cli -h 192.168.1.13 -p 7003 cluster myid)
 TARGET_NODE_ID=$(redis-cli -h 192.168.1.10 -p 7000 cluster myid)
 
 # Count slots on the node to remove
-SLOT_COUNT=$(redis-cli -h 192.168.1.13 -p 7003 cluster info | grep cluster_slots_assigned | cut -d: -f2 | tr -d '\r')
+SLOT_COUNT=$(redis-cli -h 192.168.1.10 -p 7000 cluster nodes | awk -v id="$REMOVE_NODE_ID" '
+    $1 == id {
+        count = 0
+        for (i = 9; i <= NF; i++) {
+            if ($i ~ /^[0-9]+$/) count++
+            else if ($i ~ /^[0-9]+-[0-9]+$/) {
+                split($i, range, "-")
+                count += range[2] - range[1] + 1
+            }
+        }
+        print count
+    }
+')
 
 # Move all slots to target node
 redis-cli --cluster reshard 192.168.1.10:7000 \
