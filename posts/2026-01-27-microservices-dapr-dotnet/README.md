@@ -35,7 +35,7 @@ Install the Dapr CLI and initialize:
 
 curl -fsSL https://raw.githubusercontent.com/dapr/cli/master/install/install.sh | bash
 
-# Initialize Dapr locally (installs Redis, Zipkin for development)
+# Initialize Dapr locally (installs the runtime and default development containers, including Redis and Zipkin)
 dapr init
 
 # Verify installation
@@ -381,7 +381,7 @@ public class ShoppingCartService
 
         cart.UpdatedAt = DateTime.UtcNow;
 
-        // Save with optimistic concurrency using ETags
+        // Save the updated cart state
         await _daprClient.SaveStateAsync(StoreName, $"cart-{userId}", cart);
     }
 
@@ -442,14 +442,14 @@ Run your service with the Dapr sidecar:
 dapr run --app-id order-service \
          --app-port 5000 \
          --dapr-http-port 3500 \
-         --components-path ./components \
+         --resources-path ./components \
          -- dotnet run
 
 # Run the inventory service
 dapr run --app-id inventory-service \
          --app-port 5001 \
          --dapr-http-port 3501 \
-         --components-path ./components \
+         --resources-path ./components \
          -- dotnet run
 ```
 
