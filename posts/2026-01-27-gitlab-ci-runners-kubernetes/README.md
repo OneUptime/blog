@@ -39,15 +39,9 @@ For most production deployments, the Helm chart provides more flexibility. The o
 The operator simplifies runner management by using Custom Resource Definitions (CRDs):
 
 ```bash
-# Add the GitLab Helm repository
-
-helm repo add gitlab https://charts.gitlab.io
-helm repo update
-
-# Install the operator
-helm install gitlab-runner-operator gitlab/gitlab-runner-operator \
-  --namespace gitlab-runner \
-  --create-namespace
+# The official GitLab Runner Operator is distributed through OperatorHub/OLM,
+# not the GitLab Helm chart repository. Install cert-manager v1.7.1 or later,
+# then install the "GitLab Runner" Operator from OperatorHub.io.
 ```
 
 Once installed, create a Runner resource:
@@ -64,25 +58,21 @@ spec:
   # Your GitLab instance URL
   gitlabUrl: https://gitlab.com
 
-  # Secret containing the runner registration token
-  token: gitlab-runner-secret
+  # Default image for jobs that do not specify one
+  buildImage: alpine
 
-  # Runner configuration
-  config: |
-    [[runners]]
-      [runners.kubernetes]
-        namespace = "gitlab-runner"
-        image = "alpine:latest"
+  # Secret containing the runner authentication token
+  token: gitlab-runner-secret
 ```
 
-Create the registration token secret:
+Create the authentication token secret:
 
 ```bash
-# Create secret with your runner registration token
-# Get this token from GitLab: Settings > CI/CD > Runners
+# Create secret with your runner authentication token
+# Get this token when you create a new runner in GitLab
 kubectl create secret generic gitlab-runner-secret \
   --namespace gitlab-runner \
-  --from-literal=runner-registration-token="YOUR_REGISTRATION_TOKEN"
+  --from-literal=runner-token="glrt-YOUR_AUTH_TOKEN"
 ```
 
 Apply the runner configuration:
@@ -105,7 +95,9 @@ helm install gitlab-runner gitlab/gitlab-runner \
   --namespace gitlab-runner \
   --create-namespace \
   --set gitlabUrl=https://gitlab.com \
-  --set runnerRegistrationToken="YOUR_REGISTRATION_TOKEN"
+  --set runnerToken="glrt-YOUR_AUTH_TOKEN" \
+  --set rbac.create=true \
+  --set serviceAccount.create=true
 ```
 
 ### Production-Ready Helm Values
@@ -119,29 +111,29 @@ Create a comprehensive values file for production deployments:
 # GitLab instance URL - use your self-hosted URL or gitlab.com
 gitlabUrl: https://gitlab.com
 
-# Runner registration token from GitLab CI/CD settings
-# Better practice: use existingSecret instead of plaintext
-runnerRegistrationToken: ""
+# Runner authentication token from GitLab CI/CD settings
+# Better practice: use runners.secret instead of plaintext
+runnerToken: ""
 
-# Reference an existing secret for the registration token
-# Secret should have key 'runner-registration-token'
-# existingSecret: gitlab-runner-secret
+# Reference an existing secret for the runner token
+# Secret should have key 'runner-token'
+# The runners.secret value is set below.
 
 # Number of runner pods to maintain
 replicas: 1
 
-# Runner tags for job matching
-# Jobs request runners by tag in .gitlab-ci.yml
-runnerTags: "kubernetes,docker"
+# Create RBAC rules for the runner to create job pods
+rbac:
+  create: true
 
-# Allow runner to pick up untagged jobs
-untagged: true
-
-# Lock runner to specific project (optional)
-# locked: false
+serviceAccount:
+  create: true
 
 # Runner configuration using TOML format
 runners:
+  # Secret containing runner-token
+  secret: gitlab-runner-secret
+
   # Runner name shown in GitLab UI
   name: "kubernetes-runner"
 
@@ -259,8 +251,8 @@ runners:
         # This is required but creates security risks
         privileged = true
 
-        # Mount Docker socket alternative (more secure)
-        # Uncomment if using Kubernetes Docker runtime
+        # Host Docker socket alternative (also high risk)
+        # Uncomment only on dedicated CI nodes that expose a Docker socket
         # [[runners.kubernetes.volumes.host_path]]
         #   name = "docker-sock"
         #   mount_path = "/var/run/docker.sock"
@@ -268,7 +260,7 @@ runners:
 
         # DinD service container
         [[runners.kubernetes.services]]
-          name = "docker"
+          name = "docker:24.0-dind"
           alias = "docker"
           entrypoint = ["dockerd-entrypoint.sh"]
           command = ["--tls=false"]
@@ -297,7 +289,6 @@ runners:
         [[runners.kubernetes.volumes.secret]]
           name = "docker-config"
           mount_path = "/kaniko/.docker"
-          secret_name = "docker-registry-credentials"
 ```
 
 Example `.gitlab-ci.yml` for Kaniko:
@@ -326,19 +317,21 @@ GitLab offers multiple ways to register runners. Choose based on your security r
 
 ```bash
 # Create secret with registration token
+# Legacy registration tokens are deprecated and must be explicitly enabled in GitLab 17.0+
 kubectl create secret generic gitlab-runner-secret \
   --namespace gitlab-runner \
   --from-literal=runner-registration-token="GR1348941_YOUR_TOKEN"
 ```
 
-### Authentication Token (Recommended for GitLab 15.10+)
+### Authentication Token (Recommended for GitLab 16.0+)
 
 ```bash
 # Create secret with authentication token
 # Get this from GitLab: Settings > CI/CD > Runners > New project runner
 kubectl create secret generic gitlab-runner-secret \
   --namespace gitlab-runner \
-  --from-literal=runner-token="glrt-YOUR_AUTH_TOKEN"
+  --from-literal=runner-token="glrt-YOUR_AUTH_TOKEN" \
+  --from-literal=runner-registration-token=""
 ```
 
 Update Helm values for authentication token:
@@ -419,11 +412,11 @@ spec:
 
 ### KEDA-Based Autoscaling
 
-For more sophisticated scaling based on GitLab job queue:
+For more sophisticated scaling based on runner Prometheus metrics:
 
 ```yaml
 # keda-scaledobject.yaml
-# KEDA ScaledObject for queue-based autoscaling
+# KEDA ScaledObject for metric-based autoscaling
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -446,9 +439,9 @@ spec:
       metadata:
         # Prometheus server URL
         serverAddress: http://prometheus.monitoring:9090
-        # Query for pending jobs
+        # Query for concurrent requests for new jobs reported by GitLab Runner
         query: |
-          sum(gitlab_runner_jobs{state="pending"})
+          sum(gitlab_runner_request_concurrency)
         threshold: "5"
 ```
 
@@ -474,7 +467,7 @@ affinity:
           topologyKey: topology.kubernetes.io/zone
 ```
 
-Resource Limits and Requests
+## Resource Limits and Requests
 
 Proper resource configuration prevents job failures and cluster resource exhaustion.
 
@@ -509,9 +502,15 @@ runners:
         # Ephemeral storage limits
         ephemeral_storage_limit = "10Gi"
         ephemeral_storage_request = "1Gi"
+
+        # Allow projects to override resources up to these maximums
+        cpu_request_overwrite_max_allowed = "4"
+        cpu_limit_overwrite_max_allowed = "8"
+        memory_request_overwrite_max_allowed = "8Gi"
+        memory_limit_overwrite_max_allowed = "16Gi"
 ```
 
-Resource Overrides in .gitlab-ci.yml
+### Resource Overrides in .gitlab-ci.yml
 
 Jobs can override default resources using variables:
 
@@ -600,8 +599,9 @@ kind: Namespace
 metadata:
   name: gitlab-runner
   labels:
-    # Enforce restricted pod security standard
-    pod-security.kubernetes.io/enforce: restricted
+    # Baseline works with more CI images by default; use restricted only after
+    # configuring job images and runner security contexts to satisfy it.
+    pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
 ```
@@ -704,8 +704,9 @@ metadata:
 spec:
   # Apply to job pods
   podSelector:
-    matchLabels:
-      app: gitlab-runner-job
+    matchExpressions:
+      - key: job.runner.gitlab.com/pod
+        operator: Exists
 
   policyTypes:
     - Ingress
@@ -723,7 +724,8 @@ spec:
         - protocol: TCP
           port: 53
 
-    # Allow GitLab API access
+    # Allow HTTPS egress for GitLab, registries, and package mirrors
+    # Scope this CIDR further for your environment where possible.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -757,22 +759,21 @@ runners:
           name = "ci-secrets"
           mount_path = "/secrets"
           read_only = true
-          secret_name = "gitlab-ci-secrets"
 
-        # Use projected volumes for multiple secrets
-        [[runners.kubernetes.volumes.projected]]
-          name = "credentials"
-          mount_path = "/credentials"
-          [[runners.kubernetes.volumes.projected.sources.secret]]
-            name = "docker-config"
-            items = [
-              { key = "config.json", path = "docker/config.json" }
-            ]
-          [[runners.kubernetes.volumes.projected.sources.secret]]
-            name = "npm-config"
-            items = [
-              { key = ".npmrc", path = "npm/.npmrc" }
-            ]
+        # Mount multiple Kubernetes secrets as separate volumes
+        [[runners.kubernetes.volumes.secret]]
+          name = "docker-config"
+          mount_path = "/credentials/docker"
+          read_only = true
+          [runners.kubernetes.volumes.secret.items]
+            "config.json" = "config.json"
+
+        [[runners.kubernetes.volumes.secret]]
+          name = "npm-config"
+          mount_path = "/credentials/npm"
+          read_only = true
+          [runners.kubernetes.volumes.secret.items]
+            ".npmrc" = ".npmrc"
 ```
 
 ## Monitoring Runners
@@ -787,7 +788,7 @@ metrics:
   enabled: true
   portName: metrics
   port: 9252
-  serviceMonitor:
+  podMonitor:
     enabled: true
     interval: 30s
     labels:
@@ -799,17 +800,17 @@ metrics:
 Key metrics to monitor:
 
 ```promql
-# Running jobs
-gitlab_runner_jobs{state="running"}
+# Configured runner concurrency
+gitlab_runner_concurrent
 
-# Pending jobs (indicates need to scale)
-gitlab_runner_jobs{state="pending"}
+# Current request concurrency
+gitlab_runner_request_concurrency
 
-# Job duration
-histogram_quantile(0.95, gitlab_runner_job_duration_seconds_bucket)
+# Request concurrency limit hits
+increase(gitlab_runner_request_concurrency_exceeded_total[1h])
 
-# Failed jobs
-increase(gitlab_runner_failed_jobs_total[1h])
+# Runner errors
+increase(gitlab_runner_errors_total[1h])
 
 # API request errors
 increase(gitlab_runner_api_request_statuses_total{status!="200"}[5m])
@@ -826,8 +827,8 @@ kubectl logs -n gitlab-runner deployment/gitlab-runner
 # Verify runner appears in GitLab
 # Settings > CI/CD > Runners
 
-# Check runner tags match job requirements
-kubectl get pods -n gitlab-runner -o yaml | grep -A5 "tags"
+# Check runner tags in GitLab match the job's tags
+# Settings > CI/CD > Runners
 ```
 
 ### Job Pods Stuck in Pending
@@ -859,7 +860,7 @@ kubectl get serviceaccount -n gitlab-runner
 
 2. **Set resource limits** - Always define CPU and memory limits for job pods to prevent resource exhaustion
 
-3. **Enable autoscaling** - Use HPA or KEDA to scale runners based on job queue depth
+3. **Enable autoscaling** - Use HPA or KEDA to scale runner managers based on resource usage or runner metrics
 
 4. **Avoid privileged mode** - Use Kaniko or buildah for Docker builds instead of Docker-in-Docker
 
