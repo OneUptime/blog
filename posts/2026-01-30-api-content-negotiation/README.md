@@ -88,7 +88,7 @@ app.get('/api/users', (req, res) => {
       res.json(users);
     },
 
-    // Handle XML requests (application/xml or text/xml)
+    // Handle XML requests (application/xml)
     'application/xml': () => {
       res.type('application/xml');
       res.send(toXml(users, 'users'));
@@ -160,7 +160,7 @@ function toCsv(data) {
   // Create data rows with proper escaping
   const dataRows = data.map(item => {
     return headers.map(header => {
-      const value = String(item[header] || '');
+      const value = String(item[header] ?? '');
       // Escape values containing commas, quotes, or newlines
       if (value.includes(',') || value.includes('"') || value.includes('\n')) {
         return `"${value.replace(/"/g, '""')}"`;
@@ -296,7 +296,7 @@ flowchart TD
 
 ## Handling Quality Values and Wildcards
 
-Production APIs need to properly parse the Accept header, including quality values and wildcards. Here is a robust parser.
+Production APIs need to properly parse the Accept header, including quality values and wildcards. Here is a parser that handles common Accept header patterns.
 
 ```javascript
 // Parse the Accept header into an array of media types with quality values
@@ -462,9 +462,9 @@ Here is how to implement content negotiation in Python with Flask and in Go with
 # Uses the request.accept_mimetypes object for matching
 
 from flask import Flask, request, Response, jsonify
-import json
 import csv
 from io import StringIO
+from xml.sax.saxutils import escape
 
 app = Flask(__name__)
 
@@ -479,7 +479,7 @@ def to_xml(data):
     for item in data:
         xml += '  <user>\n'
         for key, value in item.items():
-            xml += f'    <{key}>{value}</{key}>\n'
+            xml += f'    <{key}>{escape(str(value))}</{key}>\n'
         xml += '  </user>\n'
     xml += '</users>'
     return xml
@@ -498,10 +498,11 @@ def to_csv(data):
 def get_users():
     # Check what content type the client accepts
     # The best_match method returns the best matching type from the list
-    best = request.accept_mimetypes.best_match(
-        ['application/json', 'application/xml', 'text/csv'],
-        default='application/json'
-    )
+    supported = ['application/json', 'application/xml', 'text/csv']
+    if not request.headers.get('Accept'):
+        best = 'application/json'
+    else:
+        best = request.accept_mimetypes.best_match(supported)
 
     if best == 'application/json':
         return jsonify(users)
@@ -531,6 +532,7 @@ import (
     "encoding/json"
     "encoding/xml"
     "net/http"
+    "strconv"
     "strings"
 )
 
@@ -551,7 +553,7 @@ var users = []User{
 }
 
 // parseAccept extracts media types from the Accept header
-// Returns them in order of preference
+// Returns them in header order and omits quality-value handling for simplicity
 func parseAccept(accept string) []string {
     if accept == "" {
         return []string{"application/json"}
@@ -602,7 +604,7 @@ func usersHandler(w http.ResponseWriter, r *http.Request) {
         writer.Write([]string{"id", "name", "email"})
         for _, u := range users {
             writer.Write([]string{
-                string(rune(u.ID + '0')),
+                strconv.Itoa(u.ID),
                 u.Name,
                 u.Email,
             })
@@ -641,7 +643,7 @@ flowchart LR
 
 ### 1. Always Return the Content-Type Header
 
-Every response must include a `Content-Type` header so clients know how to parse the response.
+Every response with a body must include a `Content-Type` header so clients know how to parse the response.
 
 ```javascript
 // Always set Content-Type explicitly
@@ -672,9 +674,9 @@ Always specify the character encoding for text-based formats.
 
 ```javascript
 // Include charset in Content-Type
-res.type('application/json; charset=utf-8');
-res.type('application/xml; charset=utf-8');
-res.type('text/csv; charset=utf-8');
+res.set('Content-Type', 'application/json; charset=utf-8');
+res.set('Content-Type', 'application/xml; charset=utf-8');
+res.set('Content-Type', 'text/csv; charset=utf-8');
 ```
 
 ### 4. Handle Missing Accept Headers
@@ -691,10 +693,12 @@ const acceptHeader = req.get('Accept') || 'application/json';
 Include content negotiation details in your API documentation.
 
 ```javascript
-// Add supported types to OPTIONS response
+// Reuse this list in your API documentation or route metadata
+const supportedResponseTypes = ['application/json', 'application/xml', 'text/csv'];
+
 app.options('/api/users', (req, res) => {
   res.setHeader('Allow', 'GET, POST, OPTIONS');
-  res.setHeader('Accept', 'application/json, application/xml, text/csv');
+  res.setHeader('Vary', 'Accept');
   res.status(204).end();
 });
 ```
