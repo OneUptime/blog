@@ -124,37 +124,44 @@ func (p *CustomLogPlugin) Reconfigure(ctx context.Context, config interface{}) {
 
 func (p *CustomLogPlugin) Log(ctx context.Context, event logs.EventV1) error {
     // Send to your logging backend
-    data, _ := json.Marshal(event)
+    data, err := json.Marshal(event)
+    if err != nil {
+        return err
+    }
 
     // Example: Send to Kafka, Elasticsearch, etc.
-    sendToBackend(data)
+    if err := sendToBackend(data); err != nil {
+        return err
+    }
 
+    return nil
+}
+
+func sendToBackend(data []byte) error {
+    // Implement backend delivery here.
     return nil
 }
 ```
 
 ## Prometheus Metrics
 
-OPA exposes metrics in Prometheus format at `/metrics`.
+OPA exposes metrics in Prometheus format at `/metrics` when it runs as a server.
 
 ### Key Metrics
 
 ```bash
 # Request latency histogram
-http_request_duration_seconds_bucket{handler="/v1/data/api/authz/allow",le="0.001"}
-http_request_duration_seconds_bucket{handler="/v1/data/api/authz/allow",le="0.01"}
-http_request_duration_seconds_bucket{handler="/v1/data/api/authz/allow",le="0.1"}
+http_request_duration_seconds_bucket{code="200",handler="v1/data",method="post",le="0.001"}
+http_request_duration_seconds_bucket{code="200",handler="v1/data",method="post",le="0.01"}
+http_request_duration_seconds_bucket{code="200",handler="v1/data",method="post",le="0.1"}
 
 # Request count by status
-http_request_count{code="200",handler="/v1/data/api/authz/allow",method="post"}
-http_request_count{code="500",handler="/v1/data/api/authz/allow",method="post"}
+http_request_duration_seconds_count{code="200",handler="v1/data",method="post"}
+http_request_duration_seconds_count{code="500",handler="v1/data",method="post"}
 
-# Policy evaluation time
-opa_rego_query_eval_ns_total
-
-# Bundle status
-opa_bundle_loaded_bytes{name="main"}
-opa_bundle_last_successful_activation{name="main"}
+# Bundle status (when status.prometheus is enabled)
+bundle_loaded_counter{name="main"}
+last_success_bundle_activation{name="main"}
 ```
 
 ### Scrape Configuration
@@ -171,6 +178,13 @@ scrape_configs:
         target_label: instance
         regex: '([^:]+):\d+'
         replacement: '${1}'
+```
+
+Enable status metrics in OPA if you want bundle and plugin status series:
+
+```yaml
+status:
+  prometheus: true
 ```
 
 ### Kubernetes ServiceMonitor
@@ -193,9 +207,9 @@ spec:
       interval: 15s
 ```
 
-## Custom Metrics in Policies
+## Decision Details in Policies
 
-Add custom counters within your policies:
+OPA policies cannot increment Prometheus counters directly during evaluation. Add decision details to the policy result, then export counters from your application or decision-log pipeline:
 
 ```rego
 # policy_with_metrics.rego
@@ -237,6 +251,8 @@ has_required_permission if {
 
 ### OPA Overview Dashboard
 
+The allow/deny panels assume your application or log pipeline exports a counter such as `opa_decision_result_total` from decision logs.
+
 ```json
 {
   "dashboard": {
@@ -244,20 +260,20 @@ has_required_permission if {
     "panels": [
       {
         "title": "Decision Rate",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
-            "expr": "sum(rate(http_request_count{handler=~\"/v1/data.*\"}[5m])) by (code)",
+            "expr": "sum(rate(http_request_duration_seconds_count{handler=\"v1/data\"}[5m])) by (code)",
             "legendFormat": "{{code}}"
           }
         ]
       },
       {
         "title": "Decision Latency (p99)",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
-            "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{handler=~\"/v1/data.*\"}[5m])) by (le))",
+            "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{handler=\"v1/data\"}[5m])) by (le))",
             "legendFormat": "p99"
           }
         ]
@@ -267,11 +283,11 @@ has_required_permission if {
         "type": "piechart",
         "targets": [
           {
-            "expr": "sum(rate(opa_decision_allow_total[5m]))",
+            "expr": "sum(rate(opa_decision_result_total{result=\"allow\"}[5m]))",
             "legendFormat": "Allow"
           },
           {
-            "expr": "sum(rate(opa_decision_deny_total[5m]))",
+            "expr": "sum(rate(opa_decision_result_total{result=\"deny\"}[5m]))",
             "legendFormat": "Deny"
           }
         ]
@@ -281,7 +297,7 @@ has_required_permission if {
         "type": "stat",
         "targets": [
           {
-            "expr": "opa_bundle_last_successful_activation",
+            "expr": "last_success_bundle_activation",
             "legendFormat": "Last Activation"
           }
         ]
@@ -313,9 +329,9 @@ groups:
       # High error rate
       - alert: OPAHighErrorRate
         expr: |
-          sum(rate(http_request_count{handler=~"/v1/data.*",code=~"5.."}[5m]))
+          sum(rate(http_request_duration_seconds_count{handler="v1/data",code=~"5.."}[5m]))
           /
-          sum(rate(http_request_count{handler=~"/v1/data.*"}[5m]))
+          sum(rate(http_request_duration_seconds_count{handler="v1/data"}[5m]))
           > 0.01
         for: 5m
         labels:
@@ -328,7 +344,7 @@ groups:
       - alert: OPAHighLatency
         expr: |
           histogram_quantile(0.99,
-            sum(rate(http_request_duration_seconds_bucket{handler=~"/v1/data.*"}[5m])) by (le)
+            sum(rate(http_request_duration_seconds_bucket{handler="v1/data"}[5m])) by (le)
           ) > 0.1
         for: 5m
         labels:
@@ -340,7 +356,7 @@ groups:
       # Bundle not updating
       - alert: OPABundleStale
         expr: |
-          time() - opa_bundle_last_successful_activation > 3600
+          time() * 1e9 - last_success_bundle_activation > 3600 * 1e9
         for: 10m
         labels:
           severity: warning
@@ -349,11 +365,12 @@ groups:
           description: "Bundle {{ $labels.name }} last updated {{ $value | humanizeDuration }} ago"
 
       # Unusual deny rate
+      # Assumes opa_decision_result_total is exported from decision logs.
       - alert: OPAHighDenyRate
         expr: |
-          sum(rate(opa_decision_deny_total[5m]))
+          sum(rate(opa_decision_result_total{result="deny"}[5m]))
           /
-          sum(rate(opa_decision_total[5m]))
+          sum(rate(opa_decision_result_total[5m]))
           > 0.5
         for: 15m
         labels:
@@ -365,60 +382,55 @@ groups:
 
 ## Centralized Logging
 
-### Send Logs to Elasticsearch
+### Send Logs to a Log Collector
 
 ```yaml
-# opa-config-elasticsearch.yaml
+# opa-config-log-collector.yaml
 decision_logs:
-  service: elasticsearch
+  service: log-collector
   reporting:
     min_delay_seconds: 5
     max_delay_seconds: 30
 
 services:
-  elasticsearch:
-    url: https://elasticsearch.example.com
+  log-collector:
+    url: https://logs.example.com
     credentials:
       bearer:
-        token: "${ES_TOKEN}"
-    headers:
-      Content-Type: application/json
+        token: "${LOG_SERVICE_TOKEN}"
 ```
 
-### Fluentd Sidecar
+### Fluentd DaemonSet
 
 ```yaml
-# opa-with-fluentd.yaml
+# fluentd-opa-logs.yaml
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
-  name: opa
+  name: fluentd
 spec:
+  selector:
+    matchLabels:
+      app: fluentd
   template:
+    metadata:
+      labels:
+        app: fluentd
     spec:
       containers:
-        - name: opa
-          image: openpolicyagent/opa:latest
-          args:
-            - "run"
-            - "--server"
-            - "--config-file=/config/config.yaml"
-            - "--log-format=json"
-          volumeMounts:
-            - name: logs
-              mountPath: /var/log/opa
-
         - name: fluentd
           image: fluent/fluentd:latest
           volumeMounts:
-            - name: logs
-              mountPath: /var/log/opa
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
             - name: fluentd-config
               mountPath: /fluentd/etc
 
       volumes:
-        - name: logs
-          emptyDir: {}
+        - name: varlog
+          hostPath:
+            path: /var/log
         - name: fluentd-config
           configMap:
             name: fluentd-config
@@ -430,11 +442,14 @@ spec:
 <!-- fluentd.conf -->
 <source>
   @type tail
-  path /var/log/opa/*.log
-  pos_file /var/log/opa/opa.log.pos
+  path /var/log/containers/*opa*.log
+  pos_file /var/log/opa-containers.log.pos
   tag opa.decisions
   <parse>
-    @type json
+    @type regexp
+    expression /^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<message>.*)$/
+    time_key time
+    time_format %Y-%m-%dT%H:%M:%S.%N%:z
   </parse>
 </source>
 
@@ -537,7 +552,7 @@ flowchart TB
 
 ### 1. Sample Decision Logs in Production
 
-Full logging can be expensive. Sample non-sensitive decisions:
+Full logging can be expensive. Mask sensitive fields and use a drop decision if you need sampling:
 
 ```yaml
 decision_logs:
@@ -545,9 +560,10 @@ decision_logs:
   reporting:
     min_delay_seconds: 30
     max_delay_seconds: 60
-  # Log all denies, sample allows
-  mask_decision:
-    - "/input/sensitive_field"
+  # Use a Rego decision at data.system.log.mask to remove sensitive fields.
+  mask_decision: "/system/log/mask"
+  # Use a Rego decision at data.system.log.drop to drop selected events.
+  drop_decision: "/system/log/drop"
 ```
 
 ### 2. Set Up SLOs
@@ -568,7 +584,7 @@ Include a correlation ID in both application and OPA logs:
 
 ```javascript
 // In your application
-const decisionId = uuid();
+const decisionId = crypto.randomUUID();
 const response = await opa.query({
     input: { ...input, correlation_id: decisionId }
 });
