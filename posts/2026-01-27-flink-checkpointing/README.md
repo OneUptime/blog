@@ -16,7 +16,7 @@ Apache Flink is a powerful distributed stream processing framework, but its true
 
 ## What is Checkpointing?
 
-Checkpointing is Flink's mechanism for achieving fault tolerance. It periodically captures the state of your streaming application - including operator states, in-flight records, and source offsets - and stores them in durable storage. If a failure occurs, Flink can restore from the latest checkpoint and resume processing without data loss.
+Checkpointing is Flink's mechanism for achieving fault tolerance. It periodically captures the state of your streaming application - including operator states and source offsets - and stores them in durable storage. With unaligned checkpoints, Flink can also include in-flight buffer data in the checkpoint. If a failure occurs, Flink can restore from the latest checkpoint and resume processing without data loss.
 
 Key concepts:
 
@@ -35,6 +35,7 @@ Key concepts:
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
+import org.apache.flink.configuration.ExternalizedCheckpointRetention;
 
 public class FlinkCheckpointingExample {
     public static void main(String[] args) throws Exception {
@@ -64,8 +65,8 @@ public class FlinkCheckpointingExample {
         // Enable externalized checkpoints for recovery after job cancellation
         // RETAIN_ON_CANCELLATION keeps checkpoints when job is cancelled
         // DELETE_ON_CANCELLATION removes them (default behavior)
-        env.getCheckpointConfig().setExternalizedCheckpointCleanup(
-            CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION
+        env.getCheckpointConfig().setExternalizedCheckpointRetention(
+            ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION
         );
 
         // Enable unaligned checkpoints for better performance under backpressure
@@ -104,7 +105,7 @@ execution.checkpointing.max-concurrent-checkpoints: 1
 
 # Whether to enable unaligned checkpoints
 # Recommended for jobs experiencing backpressure
-execution.checkpointing.unaligned: true
+execution.checkpointing.unaligned.enabled: true
 
 # Externalized checkpoint retention policy
 # retain-on-cancellation: Keep checkpoints when job is cancelled
@@ -113,10 +114,10 @@ execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATIO
 
 # Checkpoint storage location (required for production)
 # Use a distributed filesystem like S3, HDFS, or GCS
-state.checkpoints.dir: s3://my-bucket/flink/checkpoints
+execution.checkpointing.dir: s3://my-bucket/flink/checkpoints
 
 # Number of recent checkpoints to retain
-state.checkpoints.num-retained: 3
+execution.checkpointing.num-retained: 3
 ```
 
 ---
@@ -165,19 +166,20 @@ State backends determine how Flink stores and checkpoints state. Choose based on
 Best for: Small to medium state sizes (up to a few GB), development, and testing.
 
 ```java
-import org.apache.flink.runtime.state.hashmap.HashMapStateBackend;
-import org.apache.flink.runtime.state.storage.FileSystemCheckpointStorage;
+import org.apache.flink.configuration.CheckpointingOptions;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.StateBackendOptions;
 
 // Configure HashMap state backend
 // State is stored on the JVM heap - fast but limited by available memory
-HashMapStateBackend stateBackend = new HashMapStateBackend();
-env.setStateBackend(stateBackend);
+Configuration config = new Configuration();
+config.set(StateBackendOptions.STATE_BACKEND, "hashmap");
 
 // Configure checkpoint storage location
 // Even with HashMap backend, checkpoints go to durable storage
-env.getCheckpointConfig().setCheckpointStorage(
-    new FileSystemCheckpointStorage("s3://my-bucket/flink/checkpoints")
-);
+config.set(CheckpointingOptions.CHECKPOINT_STORAGE, "filesystem");
+config.set(CheckpointingOptions.CHECKPOINTS_DIRECTORY, "s3://my-bucket/flink/checkpoints");
+env.configure(config);
 ```
 
 ```yaml
@@ -185,10 +187,10 @@ env.getCheckpointConfig().setCheckpointStorage(
 state.backend: hashmap
 
 # Checkpoint storage (always use distributed storage in production)
-state.checkpoints.dir: s3://my-bucket/flink/checkpoints
+execution.checkpointing.dir: s3://my-bucket/flink/checkpoints
 
 # Savepoint storage
-state.savepoints.dir: s3://my-bucket/flink/savepoints
+execution.checkpointing.savepoint-dir: s3://my-bucket/flink/savepoints
 ```
 
 ### RocksDB State Backend
@@ -196,34 +198,32 @@ state.savepoints.dir: s3://my-bucket/flink/savepoints
 Best for: Large state sizes (GBs to TBs), production workloads with state that exceeds available memory.
 
 ```java
-import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend;
-import org.apache.flink.contrib.streaming.state.PredefinedOptions;
-import org.apache.flink.runtime.state.storage.FileSystemCheckpointStorage;
+import org.apache.flink.configuration.CheckpointingOptions;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.StateBackendOptions;
 
 // Configure RocksDB state backend
 // State is stored on local disk with in-memory caching
 // Can handle state much larger than available memory
-EmbeddedRocksDBStateBackend rocksDBBackend = new EmbeddedRocksDBStateBackend();
+Configuration config = new Configuration();
+config.set(StateBackendOptions.STATE_BACKEND, "rocksdb");
+config.set(CheckpointingOptions.CHECKPOINT_STORAGE, "filesystem");
+config.set(CheckpointingOptions.CHECKPOINTS_DIRECTORY, "s3://my-bucket/flink/checkpoints");
 
 // Enable incremental checkpoints for faster checkpoint times with large state
 // Only the changes since the last checkpoint are written
-rocksDBBackend.enableIncrementalCheckpointing(true);
+config.set(CheckpointingOptions.INCREMENTAL_CHECKPOINTS, true);
 
 // Use predefined RocksDB options optimized for different scenarios
 // SPINNING_DISK_OPTIMIZED: For HDDs - reduces write amplification
 // FLASH_SSD_OPTIMIZED: For SSDs - maximizes throughput
-rocksDBBackend.setPredefinedOptions(PredefinedOptions.FLASH_SSD_OPTIMIZED);
+config.setString("state.backend.rocksdb.predefined-options", "FLASH_SSD_OPTIMIZED");
 
-// Set the number of background threads for RocksDB operations
+// Set the number of background flush and compaction jobs for RocksDB
 // Higher values can improve compaction and flush performance
-rocksDBBackend.setNumberOfTransferThreads(4);
+config.setString("state.backend.rocksdb.thread.num", "4");
 
-env.setStateBackend(rocksDBBackend);
-
-// Configure checkpoint storage
-env.getCheckpointConfig().setCheckpointStorage(
-    new FileSystemCheckpointStorage("s3://my-bucket/flink/checkpoints")
-);
+env.configure(config);
 ```
 
 ```yaml
@@ -231,7 +231,7 @@ env.getCheckpointConfig().setCheckpointStorage(
 state.backend: rocksdb
 
 # Enable incremental checkpointing (highly recommended for RocksDB)
-state.backend.incremental: true
+execution.checkpointing.incremental: true
 
 # RocksDB-specific configurations
 # Number of threads for background operations
@@ -256,8 +256,8 @@ state.backend.rocksdb.predefined-options: FLASH_SSD_OPTIMIZED
 state.backend.rocksdb.localdir: /mnt/ssd/flink-rocksdb
 
 # Checkpoint storage location
-state.checkpoints.dir: s3://my-bucket/flink/checkpoints
-state.savepoints.dir: s3://my-bucket/flink/savepoints
+execution.checkpointing.dir: s3://my-bucket/flink/checkpoints
+execution.checkpointing.savepoint-dir: s3://my-bucket/flink/savepoints
 ```
 
 ### State Backend Comparison
@@ -277,25 +277,24 @@ state.savepoints.dir: s3://my-bucket/flink/savepoints
 Incremental checkpoints only store the changes since the last checkpoint, dramatically reducing checkpoint time and storage for large state.
 
 ```java
-import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend;
+import org.apache.flink.configuration.CheckpointingOptions;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.StateBackendOptions;
 
-// Create RocksDB backend with incremental checkpointing enabled
-EmbeddedRocksDBStateBackend rocksDBBackend = new EmbeddedRocksDBStateBackend(true);
-env.setStateBackend(rocksDBBackend);
-
-// Alternatively, enable after creation
-EmbeddedRocksDBStateBackend backend = new EmbeddedRocksDBStateBackend();
-backend.enableIncrementalCheckpointing(true);
+Configuration config = new Configuration();
+config.set(StateBackendOptions.STATE_BACKEND, "rocksdb");
+config.set(CheckpointingOptions.INCREMENTAL_CHECKPOINTS, true);
+env.configure(config);
 ```
 
 ```yaml
 # Enable incremental checkpoints in flink-conf.yaml
 state.backend: rocksdb
-state.backend.incremental: true
+execution.checkpointing.incremental: true
 
 # Retain multiple checkpoints for incremental checkpoint chains
 # More retained checkpoints = more flexibility but more storage
-state.checkpoints.num-retained: 5
+execution.checkpointing.num-retained: 5
 ```
 
 ### Incremental Checkpoint Benefits
@@ -310,13 +309,14 @@ state.checkpoints.num-retained: 5
 ```java
 // Incremental checkpoints create chains - ensure proper cleanup
 // Retain enough checkpoints for recovery flexibility
-env.getCheckpointConfig().setCheckpointStorage(
-    new FileSystemCheckpointStorage("s3://my-bucket/flink/checkpoints")
-);
+Configuration config = new Configuration();
+config.set(CheckpointingOptions.CHECKPOINT_STORAGE, "filesystem");
+config.set(CheckpointingOptions.CHECKPOINTS_DIRECTORY, "s3://my-bucket/flink/checkpoints");
+env.configure(config);
 
 // Configure number of retained checkpoints
 // Higher values provide more recovery points but use more storage
-// state.checkpoints.num-retained: 3 (default)
+// execution.checkpointing.num-retained: 1 (default)
 ```
 
 ---
@@ -331,10 +331,6 @@ Savepoints are manually triggered, portable snapshots used for planned operation
 # Trigger a savepoint via CLI
 # The job continues running after savepoint completes
 flink savepoint <jobId> s3://my-bucket/flink/savepoints/
-
-# Trigger savepoint and cancel the job
-# Useful for planned maintenance or upgrades
-flink savepoint <jobId> s3://my-bucket/flink/savepoints/ --cancel
 
 # Stop job with savepoint (graceful shutdown)
 # Waits for all pending records to be processed
@@ -359,17 +355,17 @@ flink run -s s3://my-bucket/flink/savepoints/savepoint-abc123 \
 # flink-conf.yaml savepoint settings
 
 # Default savepoint directory
-state.savepoints.dir: s3://my-bucket/flink/savepoints
+execution.checkpointing.savepoint-dir: s3://my-bucket/flink/savepoints
 
 # Savepoint format: CANONICAL (portable) or NATIVE (backend-specific)
 # CANONICAL is recommended for maximum compatibility across Flink versions
-execution.savepoint.format: CANONICAL
+# Savepoint format is selected when triggering the savepoint, for example:
+# flink savepoint --type canonical <jobId> s3://my-bucket/flink/savepoints/
 ```
 
 ### Programmatic Savepoint Handling
 
 ```java
-import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
 // Configure savepoint settings programmatically
@@ -405,42 +401,42 @@ Configure how Flink recovers from failures to balance between recovery speed and
 ### Restart Strategies
 
 ```java
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
-import org.apache.flink.api.common.time.Time;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
+import java.time.Duration;
 
-StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+Configuration config = new Configuration();
 
 // Fixed-delay restart strategy
 // Attempts to restart a fixed number of times with a fixed delay between attempts
 // Good for transient failures that resolve themselves
-env.setRestartStrategy(RestartStrategies.fixedDelayRestart(
-    3,                      // Maximum number of restart attempts
-    Time.seconds(10)        // Delay between restart attempts
-));
+config.set(RestartStrategyOptions.RESTART_STRATEGY, "fixed-delay");
+config.set(RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_ATTEMPTS, 3);
+config.set(RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(10));
 
 // Exponential-delay restart strategy
 // Increases delay between restarts exponentially - prevents thundering herd
 // Best for failures that may take time to resolve
-env.setRestartStrategy(RestartStrategies.exponentialDelayRestart(
-    Time.seconds(1),        // Initial delay
-    Time.minutes(5),        // Maximum delay
-    2.0,                    // Backoff multiplier
-    Time.hours(1),          // Reset backoff after successful run of this duration
-    0.1                     // Jitter factor to prevent synchronized restarts
-));
+config.set(RestartStrategyOptions.RESTART_STRATEGY, "exponential-delay");
+config.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_INITIAL_BACKOFF, Duration.ofSeconds(1));
+config.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_MAX_BACKOFF, Duration.ofMinutes(5));
+config.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_BACKOFF_MULTIPLIER, 2.0);
+config.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_RESET_BACKOFF_THRESHOLD, Duration.ofHours(1));
+config.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_JITTER_FACTOR, 0.1);
 
 // Failure-rate restart strategy
 // Allows a certain number of failures within a time interval
 // Good for jobs that can tolerate occasional failures
-env.setRestartStrategy(RestartStrategies.failureRateRestart(
-    5,                      // Maximum failures per interval
-    Time.minutes(5),        // Failure rate interval
-    Time.seconds(10)        // Delay between restart attempts
-));
+config.set(RestartStrategyOptions.RESTART_STRATEGY, "failure-rate");
+config.set(RestartStrategyOptions.RESTART_STRATEGY_FAILURE_RATE_MAX_FAILURES_PER_INTERVAL, 5);
+config.set(RestartStrategyOptions.RESTART_STRATEGY_FAILURE_RATE_FAILURE_RATE_INTERVAL, Duration.ofMinutes(5));
+config.set(RestartStrategyOptions.RESTART_STRATEGY_FAILURE_RATE_DELAY, Duration.ofSeconds(10));
 
 // No restart - job fails permanently on any failure
 // Use only for batch jobs or when manual intervention is required
-env.setRestartStrategy(RestartStrategies.noRestart());
+config.set(RestartStrategyOptions.RESTART_STRATEGY, "none");
+
+StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment(config);
 ```
 
 ### Recovery Configuration via YAML
@@ -449,12 +445,12 @@ env.setRestartStrategy(RestartStrategies.noRestart());
 # flink-conf.yaml restart strategy configuration
 
 # Fixed-delay restart strategy
-restart-strategy: fixed-delay
+restart-strategy.type: fixed-delay
 restart-strategy.fixed-delay.attempts: 3
 restart-strategy.fixed-delay.delay: 10s
 
 # Exponential-delay restart strategy (recommended for production)
-restart-strategy: exponential-delay
+restart-strategy.type: exponential-delay
 restart-strategy.exponential-delay.initial-backoff: 1s
 restart-strategy.exponential-delay.max-backoff: 5min
 restart-strategy.exponential-delay.backoff-multiplier: 2.0
@@ -462,7 +458,7 @@ restart-strategy.exponential-delay.reset-backoff-threshold: 1h
 restart-strategy.exponential-delay.jitter-factor: 0.1
 
 # Failure-rate restart strategy
-restart-strategy: failure-rate
+restart-strategy.type: failure-rate
 restart-strategy.failure-rate.max-failures-per-interval: 5
 restart-strategy.failure-rate.failure-rate-interval: 5min
 restart-strategy.failure-rate.delay: 10s
@@ -487,7 +483,19 @@ jobmanager.execution.failover-strategy: full
 
 ```java
 // Complete recovery configuration example
-StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+Configuration config = new Configuration();
+config.set(RestartStrategyOptions.RESTART_STRATEGY, "exponential-delay");
+config.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_INITIAL_BACKOFF, Duration.ofSeconds(1));
+config.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_MAX_BACKOFF, Duration.ofMinutes(5));
+config.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_BACKOFF_MULTIPLIER, 2.0);
+config.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_RESET_BACKOFF_THRESHOLD, Duration.ofHours(1));
+config.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_JITTER_FACTOR, 0.1);
+config.set(StateBackendOptions.STATE_BACKEND, "rocksdb");
+config.set(CheckpointingOptions.CHECKPOINT_STORAGE, "filesystem");
+config.set(CheckpointingOptions.CHECKPOINTS_DIRECTORY, "s3://my-bucket/flink/checkpoints");
+config.set(CheckpointingOptions.INCREMENTAL_CHECKPOINTS, true);
+
+StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment(config);
 
 // Enable checkpointing
 env.enableCheckpointing(30000);
@@ -496,8 +504,8 @@ env.getCheckpointConfig().setMinPauseBetweenCheckpoints(5000);
 env.getCheckpointConfig().setCheckpointTimeout(600000);
 
 // Retain checkpoints on cancellation for manual recovery
-env.getCheckpointConfig().setExternalizedCheckpointCleanup(
-    CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION
+env.getCheckpointConfig().setExternalizedCheckpointRetention(
+    ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION
 );
 
 // Configure tolerable checkpoint failures
@@ -505,23 +513,8 @@ env.getCheckpointConfig().setExternalizedCheckpointCleanup(
 // Set to 0 for strict consistency requirements
 env.getCheckpointConfig().setTolerableCheckpointFailureNumber(3);
 
-// Use exponential backoff for restart strategy
-env.setRestartStrategy(RestartStrategies.exponentialDelayRestart(
-    Time.seconds(1),
-    Time.minutes(5),
-    2.0,
-    Time.hours(1),
-    0.1
-));
-
-// Configure RocksDB with incremental checkpoints
-EmbeddedRocksDBStateBackend rocksDBBackend = new EmbeddedRocksDBStateBackend(true);
-env.setStateBackend(rocksDBBackend);
-
-// Set checkpoint storage
-env.getCheckpointConfig().setCheckpointStorage(
-    new FileSystemCheckpointStorage("s3://my-bucket/flink/checkpoints")
-);
+// Restart strategy, RocksDB, incremental checkpoints, and checkpoint storage
+// are configured through the Configuration passed to the environment above.
 ```
 
 ---
