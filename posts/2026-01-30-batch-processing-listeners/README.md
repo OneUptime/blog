@@ -142,7 +142,7 @@ public class JobCompletionListener implements JobExecutionListener {
 
 ### Using Annotations
 
-For simpler cases, use `@BeforeJob` and `@AfterJob` annotations on any POJO. This approach requires less boilerplate and works well for straightforward logging scenarios.
+For simpler cases, use `@BeforeJob` and `@AfterJob` annotations on any POJO and register that POJO as a job listener. This approach requires less boilerplate and works well for straightforward logging scenarios.
 
 `listeners/AnnotatedJobListener.java`
 
@@ -158,7 +158,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Simplified job listener using annotations instead of interface.
- * Spring Batch wraps this POJO with a listener adapter automatically.
+ * Spring Batch wraps this registered POJO with a listener adapter automatically.
  */
 @Component
 public class AnnotatedJobListener {
@@ -301,8 +301,7 @@ public class ChunkMetricsListener implements ChunkListener {
     private final AtomicInteger chunkCount = new AtomicInteger(0);
 
     /**
-     * Called before chunk processing begins.
-     * Transaction has been started but no items read yet.
+     * Called before chunk processing begins, inside the transaction.
      */
     @Override
     public void beforeChunk(ChunkContext context) {
@@ -316,8 +315,7 @@ public class ChunkMetricsListener implements ChunkListener {
     }
 
     /**
-     * Called after chunk processing completes successfully.
-     * All items have been written and transaction committed.
+     * Called after chunk processing completes successfully, outside the transaction.
      */
     @Override
     public void afterChunk(ChunkContext context) {
@@ -367,7 +365,7 @@ Item listeners provide the finest granularity, hooking into individual read, pro
 
 ### ItemReadListener
 
-`listeners/ItemReadListener.java`
+`listeners/CustomerReadListener.java`
 
 ```java
 package com.example.batch.listeners;
@@ -400,7 +398,7 @@ public class CustomerReadListener implements ItemReadListener<CustomerRecord> {
 
     /**
      * Called after an item is successfully read.
-     * Receives the item that was read (null signals end of input).
+     * This method is not called when the reader returns null at end of input.
      */
     @Override
     public void afterRead(CustomerRecord item) {
@@ -424,7 +422,7 @@ public class CustomerReadListener implements ItemReadListener<CustomerRecord> {
 
 ### ItemProcessListener
 
-`listeners/ItemProcessListener.java`
+`listeners/CustomerProcessListener.java`
 
 ```java
 package com.example.batch.listeners;
@@ -482,7 +480,7 @@ public class CustomerProcessListener
 
 ### ItemWriteListener
 
-`listeners/ItemWriteListener.java`
+`listeners/CustomerWriteListener.java`
 
 ```java
 package com.example.batch.listeners;
@@ -527,16 +525,17 @@ public class CustomerWriteListener implements ItemWriteListener<EnrichedCustomer
 
     /**
      * Called when write operation fails.
-     * The entire chunk write is rolled back on error.
+     * The chunk write normally rolls back on error.
      */
     @Override
     public void onWriteError(Exception ex, Chunk<? extends EnrichedCustomer> items) {
         log.error("Failed to write {} items: {}",
                 items.size(), ex.getMessage(), ex);
 
-        // Log which items failed for retry or manual processing
+        // Log attempted items for retry or manual processing.
+        // Spring Batch does not identify which item caused the write error.
         items.getItems().forEach(item ->
-                log.error("Failed item: {}", item.getCustomerId()));
+                log.error("Attempted item: {}", item.getCustomerId()));
     }
 }
 ```
@@ -856,9 +855,10 @@ public class AuditLoggingListener implements ItemWriteListener<SensitiveRecord> 
 
     @Override
     public void onWriteError(Exception ex, Chunk<? extends SensitiveRecord> items) {
-        // Log failed writes for investigation
+        // Log attempted writes for investigation.
+        // Spring Batch does not identify which item caused the write error.
         items.getItems().forEach(item ->
-                auditLog.error("AUDIT: Failed to write record id={}, error={}",
+                auditLog.error("AUDIT: Attempted write for record id={} failed, error={}",
                         item.getId(), ex.getMessage()));
     }
 }
