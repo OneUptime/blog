@@ -431,7 +431,7 @@ def check_drift(directory):
         if line:
             try:
                 data = json.loads(line)
-                if data.get('@level') == 'info' and 'planned_change' in data:
+                if data.get('@level') == 'info' and data.get('type') == 'planned_change':
                     changes.append(data)
             except json.JSONDecodeError:
                 pass
