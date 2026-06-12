@@ -135,21 +135,21 @@ First, add the necessary dependencies. For a Spring Boot application:
     <dependency>
         <groupId>io.micrometer</groupId>
         <artifactId>micrometer-core</artifactId>
-        <version>1.12.0</version>
+        <version>1.17.0</version>
     </dependency>
 
     <!-- Prometheus Registry for scraping -->
     <dependency>
         <groupId>io.micrometer</groupId>
         <artifactId>micrometer-registry-prometheus</artifactId>
-        <version>1.12.0</version>
+        <version>1.17.0</version>
     </dependency>
 
     <!-- OTLP Registry for push-based export -->
     <dependency>
         <groupId>io.micrometer</groupId>
         <artifactId>micrometer-registry-otlp</artifactId>
-        <version>1.12.0</version>
+        <version>1.17.0</version>
     </dependency>
 </dependencies>
 ```
@@ -159,9 +159,9 @@ For Gradle:
 ```groovy
 // build.gradle
 dependencies {
-    implementation 'io.micrometer:micrometer-core:1.12.0'
-    implementation 'io.micrometer:micrometer-registry-prometheus:1.12.0'
-    implementation 'io.micrometer:micrometer-registry-otlp:1.12.0'
+    implementation 'io.micrometer:micrometer-core:1.17.0'
+    implementation 'io.micrometer:micrometer-registry-prometheus:1.17.0'
+    implementation 'io.micrometer:micrometer-registry-otlp:1.17.0'
 }
 ```
 
@@ -173,9 +173,8 @@ package com.example.batch.config;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
-import io.micrometer.core.instrument.Tags;
-import io.micrometer.prometheus.PrometheusConfig;
-import io.micrometer.prometheus.PrometheusMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -234,6 +233,7 @@ public class BatchJobMetrics {
     // Gauges for current state visibility
     private final AtomicReference<String> currentStatus = new AtomicReference<>("idle");
     private final AtomicReference<Double> lastDurationSeconds = new AtomicReference<>(0.0);
+    private final AtomicReference<Double> lastCompletionTimestampSeconds = new AtomicReference<>(0.0);
 
     public BatchJobMetrics(MeterRegistry registry, String jobName) {
         this.registry = registry;
@@ -248,6 +248,12 @@ public class BatchJobMetrics {
         Gauge.builder("batch.job.duration.last", lastDurationSeconds, AtomicReference::get)
             .tag("job", jobName)
             .description("Duration of the last completed job run in seconds")
+            .baseUnit("seconds")
+            .register(registry);
+
+        Gauge.builder("batch.job.completed.timestamp", lastCompletionTimestampSeconds, AtomicReference::get)
+            .tag("job", jobName)
+            .description("Unix timestamp of the last completed job run")
             .baseUnit("seconds")
             .register(registry);
     }
@@ -314,11 +320,13 @@ public class BatchJobMetrics {
                 .tag("job", jobName)
                 .tag("status", status)
                 .description("Time taken to complete batch job execution")
+                .publishPercentileHistogram()
                 .register(registry)
                 .record(duration);
         }
 
         currentStatus.set(status);
+        lastCompletionTimestampSeconds.set(Instant.now().getEpochSecond() * 1.0);
 
         // Increment completion counter
         Counter.builder("batch.job.completed")
@@ -398,7 +406,7 @@ public class BatchItemMetrics {
         this.itemProcessingTimer = Timer.builder("batch.item.duration")
             .tag("job", jobName)
             .description("Time taken to process individual items")
-            .publishPercentiles(0.5, 0.95, 0.99)
+            .publishPercentileHistogram()
             .register(registry);
 
         // Gauges for current batch progress
@@ -563,7 +571,7 @@ public class BatchResourceMetrics {
             .description("System CPU load average")
             .register(registry);
 
-        // I/O counters
+        // I/O byte gauges
         Gauge.builder("batch.resource.io.bytes_read", bytesRead, AtomicLong::get)
             .tag("job", jobName)
             .description("Total bytes read during job execution")
@@ -650,6 +658,7 @@ Track errors and retry behavior for reliability analysis:
 package com.example.batch.metrics;
 
 import io.micrometer.core.instrument.*;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -685,7 +694,7 @@ public class BatchErrorMetrics {
     public void recordError(String step, String errorType, boolean recoverable) {
         consecutiveFailures.incrementAndGet();
 
-        Counter.builder("batch.errors.total")
+        Counter.builder("batch.errors")
             .tag("job", jobName)
             .tag("step", step)
             .tag("error_type", errorType)
@@ -703,7 +712,7 @@ public class BatchErrorMetrics {
      * @param delayMs Delay before this retry in milliseconds
      */
     public void recordRetry(String step, int attemptNumber, long delayMs) {
-        Counter.builder("batch.retries.total")
+        Counter.builder("batch.retries")
             .tag("job", jobName)
             .tag("step", step)
             .tag("attempt", String.valueOf(attemptNumber))
@@ -712,13 +721,12 @@ public class BatchErrorMetrics {
             .increment();
 
         // Track retry delay distribution
-        DistributionSummary.builder("batch.retries.delay")
+        Timer.builder("batch.retries.delay")
             .tag("job", jobName)
             .tag("step", step)
             .description("Distribution of retry delays")
-            .baseUnit("milliseconds")
             .register(registry)
-            .record(delayMs);
+            .record(Duration.ofMillis(delayMs));
     }
 
     /**
@@ -830,7 +838,6 @@ public class CompleteBatchMetrics {
     // Throughput tracking
     private final AtomicLong itemsInWindow = new AtomicLong(0);
     private final AtomicReference<Instant> windowStart = new AtomicReference<>(Instant.now());
-    private static final Duration THROUGHPUT_WINDOW = Duration.ofSeconds(10);
 
     public CompleteBatchMetrics(MeterRegistry registry, String jobName) {
         this.registry = registry;
@@ -975,7 +982,7 @@ public class CompleteBatchMetrics {
     }
 
     /**
-     * Calculate current throughput based on sliding window.
+     * Calculate average throughput for the current job run.
      */
     private double calculateThroughput() {
         Instant start = windowStart.get();
@@ -1045,7 +1052,7 @@ graph TB
 # Job duration over time (P95)
 
 histogram_quantile(0.95,
-  rate(batch_job_duration_seconds_bucket{job="data-sync"}[5m])
+  sum by (job, le) (rate(batch_job_duration_seconds_bucket{job="data-sync"}[5m]))
 )
 
 # Current throughput
@@ -1086,7 +1093,7 @@ rate(batch_job_started_total{job="data-sync"}[1h]) * 3600
       "type": "timeseries",
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, rate(batch_job_duration_seconds_bucket{job=\"$job\"}[5m]))",
+          "expr": "histogram_quantile(0.95, sum by (job, le) (rate(batch_job_duration_seconds_bucket{job=\"$job\"}[5m])))",
           "legendFormat": "P95 Duration"
         }
       ],
@@ -1145,7 +1152,7 @@ groups:
       # Alert when a job takes too long
       - alert: BatchJobDurationHigh
         expr: |
-          histogram_quantile(0.95, rate(batch_job_duration_seconds_bucket[5m])) > 3600
+          histogram_quantile(0.95, sum by (job, le) (rate(batch_job_duration_seconds_bucket[5m]))) > 3600
         for: 5m
         labels:
           severity: warning
@@ -1205,7 +1212,7 @@ groups:
       # Alert when job has not run
       - alert: BatchJobNotRunning
         expr: |
-          time() - batch_job_completed_timestamp > 86400
+          time() - batch_job_completed_timestamp_seconds > 86400
         labels:
           severity: warning
         annotations:
@@ -1391,4 +1398,3 @@ By combining Micrometer instrumentation with proper visualization and alerting, 
 - [18 SRE Metrics Worth Tracking (And Why)](https://oneuptime.com/blog/post/2025-11-28-sre-metrics-to-track/view)
 - [Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view)
 - [Monitoring Backup Jobs with OneUptime](https://oneuptime.com/blog/post/2025-09-25-monitoring-backup-jobs-with-oneuptime/view)
-
