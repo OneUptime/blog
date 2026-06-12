@@ -93,7 +93,7 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t myapp:${{ github.sha }} .
+          docker build -t myregistry/myapp:${{ github.sha }} .
 
       - name: Push to registry
         run: |
@@ -168,9 +168,10 @@ request-production-approval:
     - echo "Author: $CI_COMMIT_AUTHOR"
   # Manual job blocks the pipeline until triggered
   when: manual
-  # Only specific users can trigger this job
-  only:
-    - main
+  allow_failure: false
+  # Run this approval gate only on the default branch
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 deploy-production:
   stage: production
@@ -183,8 +184,10 @@ deploy-production:
   # Requires the approval job to complete first
   needs:
     - request-production-approval
-  # Protected environment adds another approval layer
+  # Serialize production deployments
   resource_group: production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 ```
 
 The `when: manual` directive creates a pause point. Protected environments in GitLab settings add role-based approval requirements.
@@ -277,6 +280,13 @@ const app = new App({
 
 // Store pending approvals
 const pendingApprovals = new Map();
+const allowedApprovers = new Set(
+  (process.env.SLACK_APPROVER_IDS || '').split(',').filter(Boolean)
+);
+
+function generateId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 // Handle deployment approval request
 app.command('/request-deploy', async ({ command, ack, client }) => {
@@ -336,12 +346,25 @@ app.action(/^approve_/, async ({ action, ack, client, body }) => {
   const approval = pendingApprovals.get(deploymentId);
   const approverId = body.user.id;
 
+  if (!approval) {
+    return;
+  }
+
   // Prevent self-approval
   if (approval.requesterId === approverId) {
     await client.chat.postEphemeral({
       channel: body.channel.id,
       user: approverId,
       text: 'You cannot approve your own deployment request.',
+    });
+    return;
+  }
+
+  if (!allowedApprovers.has(approverId)) {
+    await client.chat.postEphemeral({
+      channel: body.channel.id,
+      user: approverId,
+      text: 'You are not authorized to approve deployment requests.',
     });
     return;
   }
@@ -359,6 +382,38 @@ app.action(/^approve_/, async ({ action, ack, client, body }) => {
     channel: body.channel.id,
     ts: body.message.ts,
     text: `Deployment approved by <@${approverId}>`,
+  });
+});
+
+// Handle rejection button click
+app.action(/^reject_/, async ({ action, ack, client, body }) => {
+  await ack();
+
+  const deploymentId = action.action_id.replace('reject_', '');
+  const approval = pendingApprovals.get(deploymentId);
+  const approverId = body.user.id;
+
+  if (!approval) {
+    return;
+  }
+
+  if (!allowedApprovers.has(approverId)) {
+    await client.chat.postEphemeral({
+      channel: body.channel.id,
+      user: approverId,
+      text: 'You are not authorized to reject deployment requests.',
+    });
+    return;
+  }
+
+  approval.status = 'rejected';
+  approval.rejectedBy = approverId;
+  approval.rejectedAt = new Date();
+
+  await client.chat.update({
+    channel: body.channel.id,
+    ts: body.message.ts,
+    text: `Deployment rejected by <@${approverId}>`,
   });
 });
 
