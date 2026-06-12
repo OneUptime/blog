@@ -55,7 +55,7 @@ Worker nodes:
 - Connect to master via TCP sockets
 - Spawn simulated users as instructed
 - Send statistics back to master
-- Operate independently if master disconnects
+- Maintain heartbeats with the master and stop if the master connection is lost
 
 ---
 
@@ -169,8 +169,6 @@ Use Docker Compose for local distributed testing:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   master:
     build: .
@@ -202,10 +200,10 @@ Start the distributed test:
 
 ```bash
 # Start master and workers
-docker-compose up --scale worker=8
+docker compose up --scale worker=8
 
 # View logs
-docker-compose logs -f master
+docker compose logs -f master
 ```
 
 ---
@@ -366,27 +364,21 @@ kubectl port-forward svc/locust-master 8089:8089
 
 ## Handling Worker Failures
 
-Configure master to handle worker disconnections gracefully:
+Configure the master to observe worker reports and connections:
 
 ```python
 # locustfile.py with event handlers
 from locust import HttpUser, task, between, events
 
 @events.worker_report.add_listener
-def on_worker_report(client_id, data):
+def on_worker_report(client_id, data, **kwargs):
     """Process statistics from workers."""
     print(f"Worker {client_id} reported: {data['user_count']} users")
 
 @events.worker_connect.add_listener
-def on_worker_connect(client_id, message):
+def on_worker_connect(client_id, **kwargs):
     """Handle new worker connections."""
     print(f"Worker connected: {client_id}")
-
-@events.worker_disconnect.add_listener
-def on_worker_disconnect(client_id):
-    """Handle worker disconnections."""
-    print(f"Worker disconnected: {client_id}")
-    # Add alerting logic here if needed
 
 class ApiUser(HttpUser):
     wait_time = between(1, 3)
@@ -509,7 +501,7 @@ def on_quitting(environment):
 
 ---
 
-Distributed mode transforms Locust from a simple load testing tool into a scalable performance testing platform. By properly configuring master-worker communication, containerizing your setup, and deploying to Kubernetes, you can generate millions of requests per second across your infrastructure. Start with a simple two-node setup, validate your configuration, then scale workers based on your target load requirements.
+Distributed mode transforms Locust from a simple load testing tool into a scalable performance testing platform. By properly configuring master-worker communication, containerizing your setup, and deploying to Kubernetes, you can generate large request volumes across your infrastructure. Start with a simple two-node setup, validate your configuration, then scale workers based on your target load requirements.
 
 ---
 
