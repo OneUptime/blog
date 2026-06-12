@@ -8,11 +8,11 @@ Description: Learn how to use the ArgoCD Matrix Generator to create powerful com
 
 ---
 
-The Matrix Generator in ArgoCD ApplicationSets combines multiple generators to create the Cartesian product of their outputs. This lets you deploy applications across every combination of clusters and environments without writing repetitive YAML.
+The Matrix Generator in ArgoCD ApplicationSets combines two generators to create the Cartesian product of their outputs. This lets you deploy applications across every combination of clusters and environments without writing repetitive YAML.
 
 ## What Is the Matrix Generator?
 
-The Matrix Generator takes two or more child generators and produces all possible combinations of their outputs. If you have 3 clusters and 4 environments, the Matrix Generator creates 12 Applications automatically.
+The Matrix Generator takes two child generators and produces all possible combinations of their outputs. If you have 3 clusters and 4 environments, the Matrix Generator creates 12 Applications automatically.
 
 ```mermaid
 flowchart TD
@@ -138,27 +138,15 @@ spec:
 
 Read configuration from JSON or YAML files in Git and combine with clusters.
 
-The config.json file defines application-specific settings.
+Each JSON file defines application-specific settings. For example, `frontend.json` might look like this:
 
 ```json
 {
-  "apps": [
-    {
-      "name": "frontend",
-      "port": 3000,
-      "resources": "small"
-    },
-    {
-      "name": "backend",
-      "port": 8080,
-      "resources": "large"
-    },
-    {
-      "name": "worker",
-      "port": 9090,
-      "resources": "medium"
-    }
-  ]
+  "app": {
+    "name": "frontend",
+    "port": 3000,
+    "resources": "small"
+  }
 }
 ```
 
@@ -182,7 +170,7 @@ spec:
               repoURL: https://github.com/myorg/config.git
               revision: HEAD
               files:
-                - path: 'config/apps/config.json'
+                - path: 'config/apps/*.json'
   template:
     metadata:
       name: '{{name}}-{{app.name}}'
@@ -312,7 +300,7 @@ spec:
 
 ## Filtering Matrix Results
 
-Use conditions to filter out specific combinations that should not be deployed.
+Use a post selector to filter out combinations that should not be deployed.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -328,15 +316,19 @@ spec:
               elements:
                 - cluster: dev-cluster
                   url: https://dev.example.com
-                  allowedEnvs: "dev,staging"
                 - cluster: prod-cluster
                   url: https://prod.example.com
-                  allowedEnvs: "production"
           - list:
               elements:
                 - env: dev
                 - env: staging
                 - env: production
+      selector:
+        matchExpressions:
+          - key: env
+            operator: NotIn
+            values:
+              - production
   template:
     metadata:
       name: 'myapp-{{cluster}}-{{env}}'
@@ -349,9 +341,6 @@ spec:
       destination:
         server: '{{url}}'
         namespace: 'myapp-{{env}}'
-  # Use goTemplate to filter combinations
-  goTemplate: true
-  goTemplateOptions: ["missingkey=error"]
 ```
 
 ## Real-World Example: Multi-Region Deployment
@@ -385,15 +374,9 @@ First, label your clusters with appropriate metadata.
 ```bash
 # Add cluster with labels
 
-argocd cluster add us-east-1-context --name us-east-1
-kubectl -n argocd patch secret us-east-1 \
-  --type='json' \
-  -p='[{"op": "add", "path": "/metadata/labels/region", "value": "us-east"}]'
+argocd cluster add us-east-1-context --name us-east-1 --label region=us-east
 
-argocd cluster add eu-west-1-context --name eu-west-1
-kubectl -n argocd patch secret eu-west-1 \
-  --type='json' \
-  -p='[{"op": "add", "path": "/metadata/labels/region", "value": "eu-west"}]'
+argocd cluster add eu-west-1-context --name eu-west-1 --label region=eu-west
 ```
 
 Define the ApplicationSet that uses these labeled clusters.
@@ -459,7 +442,7 @@ spec:
 
 ## Handling Merge Conflicts in Matrix
 
-When both generators produce the same parameter name, the second generator takes precedence. Use unique parameter names to avoid conflicts.
+When both generators produce the same parameter name, overlapping values can be overridden or can fail if the values conflict, such as the auto-generated `path` parameters from two Git generators. Use unique parameter names to avoid conflicts.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -494,7 +477,7 @@ Check what Applications the Matrix Generator produces before applying.
 
 ```bash
 # Preview generated applications
-argocd appset generate myapp-matrix -o yaml
+argocd appset generate myapp-matrix.yaml -o yaml
 
 # Check ApplicationSet status
 kubectl get applicationset myapp-matrix -n argocd -o yaml
