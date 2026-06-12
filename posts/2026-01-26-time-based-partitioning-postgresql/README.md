@@ -139,8 +139,8 @@ $$ LANGUAGE plpgsql;
 
 -- Create next 3 months of partitions
 SELECT create_monthly_partition('events', CURRENT_DATE);
-SELECT create_monthly_partition('events', CURRENT_DATE + INTERVAL '1 month');
-SELECT create_monthly_partition('events', CURRENT_DATE + INTERVAL '2 months');
+SELECT create_monthly_partition('events', (CURRENT_DATE + INTERVAL '1 month')::DATE);
+SELECT create_monthly_partition('events', (CURRENT_DATE + INTERVAL '2 months')::DATE);
 ```
 
 ### Scheduled Partition Creation
@@ -154,7 +154,7 @@ CREATE EXTENSION IF NOT EXISTS pg_cron;
 SELECT cron.schedule(
     'create-event-partitions',
     '0 0 1 * *',  -- Run at midnight on the 1st
-    $$SELECT create_monthly_partition('events', CURRENT_DATE + INTERVAL '2 months')$$
+    $$SELECT create_monthly_partition('events', (CURRENT_DATE + INTERVAL '2 months')::DATE)$$
 );
 
 -- Verify scheduled jobs
@@ -328,8 +328,8 @@ SELECT create_monthly_partition('events', d::DATE)
 FROM generate_series('2023-01-01'::DATE, CURRENT_DATE, '1 month') d;
 
 -- Create future partitions
-SELECT create_monthly_partition('events', CURRENT_DATE + INTERVAL '1 month');
-SELECT create_monthly_partition('events', CURRENT_DATE + INTERVAL '2 months');
+SELECT create_monthly_partition('events', (CURRENT_DATE + INTERVAL '1 month')::DATE);
+SELECT create_monthly_partition('events', (CURRENT_DATE + INTERVAL '2 months')::DATE);
 ```
 
 ### Step 2: Migrate Data
@@ -373,7 +373,10 @@ SELECT
 INSERT INTO events (id, event_type, user_id, payload, created_at)
 SELECT id, event_type, user_id, payload, created_at
 FROM events_old
-WHERE created_at >= (SELECT MAX(created_at) FROM events);
+WHERE created_at > (SELECT MAX(created_at) FROM events);
+
+-- Reset the sequence after inserting explicit id values
+SELECT setval(pg_get_serial_sequence('events', 'id'), (SELECT MAX(id) FROM events));
 
 -- Drop old table (when ready)
 DROP TABLE events_old;
@@ -391,20 +394,11 @@ SELECT
     child.relname AS partition_name,
     pg_size_pretty(pg_relation_size(child.oid)) AS size,
     pg_size_pretty(pg_total_relation_size(child.oid)) AS total_size,
-    (SELECT COUNT(*) FROM events WHERE created_at >=
-        CASE WHEN child.relname ~ '_[0-9]{4}_[0-9]{2}$'
-             THEN TO_DATE(RIGHT(child.relname, 7), 'YYYY_MM')
-             ELSE '1970-01-01'::DATE
-        END
-        AND created_at <
-        CASE WHEN child.relname ~ '_[0-9]{4}_[0-9]{2}$'
-             THEN TO_DATE(RIGHT(child.relname, 7), 'YYYY_MM') + INTERVAL '1 month'
-             ELSE '2100-01-01'::DATE
-        END
-    ) AS row_count
+    COALESCE(stats.n_live_tup, 0) AS estimated_rows
 FROM pg_inherits
 JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
 JOIN pg_class child ON pg_inherits.inhrelid = child.oid
+LEFT JOIN pg_stat_all_tables stats ON stats.relid = child.oid
 WHERE parent.relname = 'events'
 ORDER BY child.relname;
 ```
@@ -425,7 +419,7 @@ GROUP BY DATE_TRUNC('month', created_at)
 ORDER BY month;
 
 -- Create missing partitions and move data
--- (Requires detaching default, creating partition, reattaching)
+-- (Requires moving matching rows out of the default partition before creating the missing partition)
 ```
 
 ---
