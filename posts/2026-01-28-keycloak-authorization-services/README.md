@@ -61,8 +61,9 @@ First, create or configure a client in Keycloak that will use authorization:
 
 1. Open the Keycloak admin console and navigate to your realm
 2. Go to **Clients** and select (or create) your application client
-3. In the client settings, enable **Authorization Enabled**
-4. Save the client
+3. For a server-side resource server, enable **Client authentication**
+4. In the client settings, enable **Authorization Enabled**
+5. Save the client
 
 Once enabled, you will see an **Authorization** tab appear on the client configuration page.
 
@@ -144,7 +145,7 @@ Restrict access to specific hours or date ranges:
 
 ### JavaScript policy (custom logic)
 
-For complex rules that cannot be expressed with built-in policy types:
+For complex rules that cannot be expressed with built-in policy types. In current Keycloak versions, JavaScript policies should be deployed to the server rather than uploaded directly through the admin console:
 
 ```javascript
 // Custom policy: user can only access their own documents
@@ -172,7 +173,7 @@ Permissions tie everything together by connecting resources and scopes to polici
 {
   "name": "document-read-permission",
   "description": "Permission to read documents",
-  "type": "resource",
+  "type": "scope",
   "resources": ["document"],
   "scopes": ["read"],
   "policies": ["manager-policy", "business-hours-policy"],
@@ -192,7 +193,7 @@ The **decisionStrategy** determines how multiple policies are evaluated:
 
 Once configured, your application needs to check permissions at runtime. There are two main approaches.
 
-### Option A: Token introspection with permissions
+### Option A: Request an RPT with permissions
 
 Request a token with permissions included:
 
@@ -201,19 +202,19 @@ Request a token with permissions included:
 
 curl -X POST \
   "https://keycloak.example.com/realms/myrealm/protocol/openid-connect/token" \
+  -H "Authorization: Bearer ${access_token}" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=urn:ietf:params:oauth:grant-type:uma-ticket" \
-  -d "client_id=my-app" \
-  -d "client_secret=my-secret" \
   -d "audience=my-app" \
+  -d "response_include_resource_name=true" \
   -d "permission=document#read"
 ```
 
-The response includes whether access is granted and which permissions apply.
+If access is granted, the response includes a Requesting Party Token (RPT) in the `access_token` field with the permissions that apply. If you only need the overall allow/deny result, add `response_mode=decision`.
 
 ### Option B: Policy enforcement in application code
 
-Use the Keycloak adapter to check permissions programmatically. Here is a Node.js example:
+Use a policy enforcer to check permissions programmatically. For legacy Node.js applications, Keycloak's deprecated `keycloak-connect` adapter exposes an `enforcer` middleware for resource-based authorization:
 
 ```javascript
 // keycloak-authorization.js
@@ -240,7 +241,7 @@ const keycloak = new Keycloak({
 
 // Middleware to protect routes
 app.get('/api/documents/:id',
-  keycloak.protect('document:read'),
+  keycloak.enforcer('document:read'),
   async (req, res) => {
     // User has permission - fetch and return document
     const doc = await fetchDocument(req.params.id);
@@ -278,13 +279,16 @@ public class SecurityConfig {
         converter.setJwtGrantedAuthoritiesConverter(jwt -> {
             Map<String, Object> authorization = jwt.getClaimAsMap("authorization");
             List<Map<String, Object>> permissions =
-                (List<Map<String, Object>>) authorization.get("permissions");
+                authorization == null
+                    ? List.of()
+                    : (List<Map<String, Object>>) authorization.getOrDefault("permissions", List.of());
 
             return permissions.stream()
                 .flatMap(p -> ((List<String>) p.get("scopes")).stream()
-                    .map(scope -> new SimpleGrantedAuthority(
-                        "SCOPE_" + p.get("rsname") + ":" + scope
-                    ))
+                    .map(scope -> {
+                        Object resourceName = p.getOrDefault("resource_set_name", p.get("rsname"));
+                        return new SimpleGrantedAuthority("SCOPE_" + resourceName + ":" + scope);
+                    })
                 )
                 .collect(Collectors.toList());
         });
@@ -337,15 +341,15 @@ This is invaluable for debugging complex policy interactions before deploying to
 You can also test via the API:
 
 ```bash
-# Evaluate permissions for a specific user
+# Evaluate permissions for the subject represented by the access token
 curl -X POST \
   "https://keycloak.example.com/realms/myrealm/protocol/openid-connect/token" \
+  -H "Authorization: Bearer ${access_token}" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=urn:ietf:params:oauth:grant-type:uma-ticket" \
-  -d "client_id=my-app" \
-  -d "client_secret=my-secret" \
   -d "audience=my-app" \
   -d "response_mode=decision" \
+  -d "response_include_resource_name=true" \
   -d "permission=document#read"
 ```
 
