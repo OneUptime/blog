@@ -24,11 +24,11 @@ my-panel-plugin/
 │   ├── module.ts           # Plugin entry point
 │   ├── SimplePanel.tsx     # Main panel component
 │   ├── SimpleEditor.tsx    # Options editor component
-│   └── types.ts            # TypeScript interfaces
-├── plugin.json             # Plugin metadata
+│   ├── types.ts            # TypeScript interfaces
+│   └── plugin.json         # Plugin metadata
 ├── package.json
 ├── tsconfig.json
-└── webpack.config.ts
+└── docker-compose.yaml
 ```
 
 ### Key Concepts
@@ -48,10 +48,6 @@ my-panel-plugin/
 First, install the Grafana plugin development tools and scaffold a new panel plugin:
 
 ```bash
-# Install the Grafana create-plugin tool
-
-npm install -g @grafana/create-plugin
-
 # Create a new panel plugin
 npx @grafana/create-plugin@latest
 
@@ -66,13 +62,16 @@ cd custom-chart-panel
 # Install dependencies
 npm install
 
-# Start development server
+# Build the plugin in development/watch mode
 npm run dev
+
+# Start the Grafana development environment
+docker compose up
 ```
 
-### Plugin Metadata (plugin.json)
+### Plugin Metadata (src/plugin.json)
 
-The `plugin.json` file defines your plugin's metadata:
+The `src/plugin.json` file defines your plugin's metadata:
 
 ```json
 {
@@ -140,7 +139,6 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
           options: [
             { value: 'bar', label: 'Bar Chart' },
             { value: 'line', label: 'Line Chart' },
-            { value: 'pie', label: 'Pie Chart' },
           ],
         },
       })
@@ -185,7 +183,7 @@ export interface SimpleOptions {
   // Whether to show the legend
   showLegend: boolean;
   // Type of chart to render
-  chartType: 'bar' | 'line' | 'pie';
+  chartType: 'bar' | 'line';
   // Primary color for chart elements
   primaryColor: string;
   // Opacity percentage (0-100)
@@ -218,7 +216,7 @@ export interface ChartSeries {
 import React, { useMemo } from 'react';
 import { PanelProps, FieldType, getDisplayProcessor } from '@grafana/data';
 import { useTheme2, useStyles2 } from '@grafana/ui';
-import { css, cx } from '@emotion/css';
+import { css } from '@emotion/css';
 import { SimpleOptions, ChartDataPoint } from './types';
 
 // Define the props type using Grafana's PanelProps generic
@@ -233,8 +231,6 @@ export const SimplePanel: React.FC<Props> = ({
   data,
   width,
   height,
-  fieldConfig,
-  timeRange,
 }) => {
   // Access the current Grafana theme (light/dark mode aware)
   const theme = useTheme2();
@@ -527,7 +523,6 @@ Understanding how to work with Grafana's data structures is essential for buildi
 
 import {
   DataFrame,
-  Field,
   FieldType,
   PanelData,
   getFieldDisplayName,
@@ -627,9 +622,8 @@ interface TimeSeriesData {
 
 import {
   Field,
-  FieldConfig,
   ThresholdsMode,
-  getColorForTheme,
+  getDisplayProcessor,
 } from '@grafana/data';
 import { GrafanaTheme2 } from '@grafana/data';
 
@@ -668,8 +662,8 @@ export function getColorForValue(
     }
   }
 
-  // Convert the threshold color to the actual color value
-  return getColorForTheme(matchedStep.color, theme);
+  // Convert the named threshold color to the actual theme color value
+  return theme.visualization.getColorByName(matchedStep.color);
 }
 
 /**
@@ -680,18 +674,12 @@ export function formatFieldValue(
   field: Field,
   theme: GrafanaTheme2
 ): string {
-  const config = field.config;
+  const displayProcessor = getDisplayProcessor({
+    field,
+    theme,
+  });
 
-  // Apply decimals configuration
-  const decimals = config.decimals ?? 2;
-  let formatted = value.toFixed(decimals);
-
-  // Apply unit suffix if configured
-  if (config.unit) {
-    formatted = `${formatted} ${config.unit}`;
-  }
-
-  return formatted;
+  return displayProcessor(value).text;
 }
 ```
 
@@ -704,20 +692,16 @@ For complex configuration needs, you can create a custom options editor componen
 ```typescript
 // src/components/CustomEditor.tsx
 
-import React, { useState, useCallback } from 'react';
-import {
-  StandardEditorProps,
-  FieldConfigEditorProps,
-} from '@grafana/data';
+import React, { useCallback } from 'react';
+import { StandardEditorProps } from '@grafana/data';
 import {
   Input,
   Button,
   IconButton,
   useStyles2,
-  VerticalGroup,
-  HorizontalGroup,
   InlineField,
   InlineFieldRow,
+  Stack,
 } from '@grafana/ui';
 import { css } from '@emotion/css';
 
@@ -726,11 +710,6 @@ interface ThresholdConfig {
   value: number;
   color: string;
   label: string;
-}
-
-interface CustomThresholdsEditorProps {
-  value: ThresholdConfig[];
-  onChange: (value: ThresholdConfig[]) => void;
 }
 
 /**
@@ -774,7 +753,7 @@ export const CustomThresholdsEditor: React.FC<
 
   return (
     <div className={styles.container}>
-      <VerticalGroup spacing="sm">
+      <Stack direction="column" gap={1}>
         {/* Render each threshold configuration */}
         {value.map((threshold, index) => (
           <div key={index} className={styles.thresholdRow}>
@@ -833,7 +812,7 @@ export const CustomThresholdsEditor: React.FC<
         >
           Add Threshold
         </Button>
-      </VerticalGroup>
+      </Stack>
     </div>
   );
 };
@@ -865,7 +844,7 @@ const getEditorStyles = (theme: any) => ({
 ```typescript
 // src/module.ts (updated)
 
-import { PanelPlugin } from '@grafana/data';
+import { FieldConfigProperty, PanelPlugin } from '@grafana/data';
 import { SimplePanel } from './SimplePanel';
 import { SimpleOptions } from './types';
 import { CustomThresholdsEditor } from './components/CustomEditor';
@@ -892,12 +871,12 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
   // Use standard field config options (color, thresholds, etc.)
   .useFieldConfig({
     standardOptions: {
-      color: {},
-      thresholds: {},
-      unit: {},
-      decimals: {},
-      min: {},
-      max: {},
+      [FieldConfigProperty.Color]: {},
+      [FieldConfigProperty.Thresholds]: {},
+      [FieldConfigProperty.Unit]: {},
+      [FieldConfigProperty.Decimals]: {},
+      [FieldConfigProperty.Min]: {},
+      [FieldConfigProperty.Max]: {},
     },
   });
 ```
@@ -911,7 +890,8 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
 npm run dev
 
 # The plugin will be built to dist/ and watched for changes
-# Make sure your Grafana instance is configured to load plugins from this path
+# In a separate terminal, start the Grafana development environment
+docker compose up
 ```
 
 ### Production Build
@@ -928,16 +908,14 @@ npm run build
 For distributing plugins outside of development, Grafana requires plugins to be signed.
 
 ```bash
-# Install the Grafana plugin signing tool
-npm install -g @grafana/sign-plugin
+# Export a Grafana Cloud access policy token with plugins:write scope
+export GRAFANA_ACCESS_POLICY_TOKEN=<YOUR_ACCESS_POLICY_TOKEN>
 
-# Sign your plugin (requires Grafana Cloud account)
-npx @grafana/sign-plugin@latest
+# Sign your plugin using the sign script scaffolded by create-plugin
+npm run sign
 
-# For private plugins, you can use a private signature
-# Configure in grafana.ini:
-# [plugins]
-# allow_loading_unsigned_plugins = myorg-customchart-panel
+# For private plugins, include the Grafana root URL where the plugin will be installed
+npm run sign -- --rootUrls https://example.com/grafana
 ```
 
 ### Testing Your Plugin
