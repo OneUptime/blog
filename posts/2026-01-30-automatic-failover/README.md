@@ -477,7 +477,7 @@ class FailoverState(Enum):
 @dataclass
 class FailoverConfig:
     """Configuration for failover behavior."""
-    # Number of consecutive failures before failover
+    # Number of failures in the configured time window before failover
     failure_threshold: int = 3
 
     # Time window for counting failures (seconds)
@@ -828,8 +828,9 @@ class PostgresFailoverManager:
                     replay_lsn,
                     pg_wal_lsn_diff(sent_lsn, replay_lsn) as lag_bytes
                 FROM pg_stat_replication
-                WHERE client_addr = %s
-            """, (self.standby.host,))
+                ORDER BY replay_lsn DESC NULLS LAST
+                LIMIT 1
+            """)
 
             result = cursor.fetchone()
             cursor.close()
@@ -879,7 +880,7 @@ class PostgresFailoverManager:
             cursor.execute("""
                 SELECT
                     status,
-                    received_lsn,
+                    latest_end_lsn,
                     last_msg_receipt_time
                 FROM pg_stat_wal_receiver
             """)
@@ -889,13 +890,19 @@ class PostgresFailoverManager:
             conn.close()
 
             if wal_receiver is None:
-                logger.warning("WAL receiver not active")
-                return False
+                logger.warning(
+                    "WAL receiver not active; standby is still promotable, "
+                    "but replication freshness could not be confirmed"
+                )
+                return True
 
             status = wal_receiver[0]
             if status != 'streaming':
-                logger.warning(f"WAL receiver status: {status}")
-                return False
+                logger.warning(
+                    f"WAL receiver status: {status}; standby is still "
+                    f"promotable, but replication freshness could not be confirmed"
+                )
+                return True
 
             logger.info("Standby is ready for promotion")
             return True
@@ -1141,6 +1148,7 @@ class HAProxyManager:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             sock.connect(self.socket_path)
             sock.send(f"{command}\n".encode())
+            sock.shutdown(socket.SHUT_WR)
 
             # Read response
             response = b""
@@ -1371,17 +1379,13 @@ class DNSFailoverManager:
 
     def activate_health_check_failover(
         self,
-        health_check_id: str,
-        primary_record: str,
-        failover_record: str
+        health_check_id: str
     ) -> bool:
         """
-        Configure Route 53 health check based failover.
+        Update Route 53 health check settings used by DNS failover.
 
         Args:
             health_check_id: ID of the Route 53 health check
-            primary_record: Primary DNS record set ID
-            failover_record: Failover DNS record set ID
 
         Returns:
             True if configuration succeeded
@@ -1391,7 +1395,6 @@ class DNSFailoverManager:
             self.client.update_health_check(
                 HealthCheckId=health_check_id,
                 FailureThreshold=2,
-                RequestInterval=10,
                 Disabled=False
             )
 
@@ -1935,6 +1938,13 @@ echo "Failover drill completed at $(date)"
 Prevent cascading failures with circuit breakers:
 
 ```python
+import time
+
+
+class CircuitOpenError(Exception):
+    """Raised when the circuit breaker blocks a call."""
+
+
 class CircuitBreaker:
     """
     Circuit breaker pattern implementation.
