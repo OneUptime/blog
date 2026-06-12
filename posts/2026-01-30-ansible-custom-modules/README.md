@@ -39,19 +39,22 @@ A well-organized module follows this structure:
 
 ```text
 my_ansible_collection/
+├── galaxy.yml
 ├── plugins/
 │   └── modules/
 │       └── my_custom_module.py
 └── tests/
-    └── unit/
-        └── test_my_custom_module.py
+    └── units/
+        └── plugins/
+            └── modules/
+                └── test_my_custom_module.py
 ```
 
 For quick prototyping, you can also place modules in a `library/` directory next to your playbook.
 
 ## Building Your First Custom Module
 
-Let us create a practical module that manages application configuration files. This module will create, update, or remove JSON configuration files with validation.
+Let us create a practical module that manages application configuration files. This module will create, update, or remove JSON configuration files.
 
 Here is the complete module implementation with inline comments explaining each section:
 
@@ -74,7 +77,6 @@ short_description: Manage JSON application configuration files
 version_added: "1.0.0"
 description:
     - Creates, updates, or removes JSON configuration files
-    - Validates configuration against a schema before writing
     - Supports atomic writes to prevent corruption
 
 options:
@@ -140,12 +142,13 @@ path:
 backup_file:
     description: Path to backup file if created
     type: str
-    returned: when backup is enabled
+    returned: when a backup is created
     sample: /etc/myapp/config.json.2026-01-30@12:30:45
 changed_keys:
     description: List of configuration keys that were modified
     type: list
-    returned: when state is present
+    elements: str
+    returned: when changes are needed for state=present
     sample: ['database_host', 'log_level']
 '''
 
