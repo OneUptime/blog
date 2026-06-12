@@ -49,7 +49,7 @@ flowchart TB
 Key benefits of SLM:
 
 - **Automated snapshots** on a schedule you define
-- **Retention policies** that automatically delete old snapshots
+- **Retention policies** that automatically delete old SLM-created snapshots
 - **Centralized management** through Kibana or the REST API
 - **Consistency** across your cluster without manual intervention
 
@@ -60,10 +60,10 @@ Before creating snapshots, you need to configure a repository where Elasticsearc
 ### S3 Repository (AWS)
 
 ```bash
-# First, install the S3 repository plugin on all nodes
-
-# This step requires a cluster restart
-bin/elasticsearch-plugin install repository-s3
+# In current Elasticsearch versions, the S3 repository type is built in.
+# For older versions where it is not bundled, install the plugin on all nodes
+# and restart each node:
+# bin/elasticsearch-plugin install repository-s3
 
 # Add AWS credentials to the Elasticsearch keystore
 # Run on each node in the cluster
@@ -92,8 +92,10 @@ bin/elasticsearch-keystore add s3.client.default.secret_key
 ### Google Cloud Storage Repository
 
 ```bash
-# Install the GCS repository plugin on all nodes
-bin/elasticsearch-plugin install repository-gcs
+# In current Elasticsearch versions, the GCS repository type is built in.
+# For older versions where it is not bundled, install the plugin on all nodes
+# and restart each node:
+# bin/elasticsearch-plugin install repository-gcs
 
 # Add service account credentials
 bin/elasticsearch-keystore add-file gcs.client.default.credentials_file /path/to/service-account.json
@@ -116,8 +118,10 @@ bin/elasticsearch-keystore add-file gcs.client.default.credentials_file /path/to
 ### Azure Blob Storage Repository
 
 ```bash
-# Install the Azure repository plugin on all nodes
-bin/elasticsearch-plugin install repository-azure
+# In current Elasticsearch versions, the Azure repository type is built in.
+# For older versions where it is not bundled, install the plugin on all nodes
+# and restart each node:
+# bin/elasticsearch-plugin install repository-azure
 
 # Add Azure credentials to keystore
 bin/elasticsearch-keystore add azure.client.default.account
@@ -345,7 +349,7 @@ flowchart TB
 {
   "retention": {
     // Delete snapshots older than this duration
-    // Supports: d (days), h (hours), m (minutes), s (seconds)
+    // Supports Elasticsearch time units such as ms, s, m, h, and d
     "expire_after": "30d",
 
     // Always keep at least this many snapshots
@@ -361,7 +365,7 @@ flowchart TB
 
 ### How Retention Works
 
-The retention process evaluates snapshots in this order:
+SLM retention applies to snapshots created by SLM policies. Manual snapshots are ignored and do not count toward retention limits. The retention process evaluates policy snapshots in this order:
 
 1. If snapshot count exceeds `max_count`, delete oldest until at `max_count`
 2. If snapshot is older than `expire_after` AND count is above `min_count`, delete it
@@ -428,7 +432,7 @@ The retention process evaluates snapshots in this order:
 ### Manually Trigger Retention
 
 ```bash
-# Execute retention for all policies immediately
+# Execute retention for all SLM policies immediately
 # Useful after changing retention rules
 # POST _slm/_execute_retention
 ```
@@ -460,7 +464,7 @@ The retention process evaluates snapshots in this order:
       "repository": "my-s3-repository"
     },
     "last_success": {
-      "snapshot_name": "daily-snap-2026.01.26",
+      "snapshot_name": "daily-snap-2026.01.26-abc123def456",
       "time": 1706324400000
     },
     "last_failure": null,
@@ -481,9 +485,10 @@ The retention process evaluates snapshots in this order:
 # Trigger a policy manually (useful for testing)
 # POST _slm/policy/daily-snapshots/_execute
 
-# Response includes the snapshot name
+# Response includes the generated snapshot name.
+# Elasticsearch appends a UUID to avoid name conflicts.
 {
-  "snapshot_name": "daily-snap-2026.01.27-manual"
+  "snapshot_name": "daily-snap-2026.01.27-abc123def456"
 }
 ```
 
@@ -559,7 +564,7 @@ flowchart TB
 # GET _snapshot/my-s3-repository/daily-*
 
 # Get detailed snapshot information
-# GET _snapshot/my-s3-repository/daily-snap-2026.01.26
+# GET _snapshot/my-s3-repository/daily-snap-2026.01.26-abc123def456
 ```
 
 ```json
@@ -567,7 +572,7 @@ flowchart TB
 {
   "snapshots": [
     {
-      "snapshot": "daily-snap-2026.01.26",
+      "snapshot": "daily-snap-2026.01.26-abc123def456",
       "uuid": "abc123...",
       "version_id": 8090099,
       "version": "8.9.0",
@@ -597,7 +602,7 @@ flowchart TB
 
 ```json
 // Restore all indices from a snapshot
-// POST _snapshot/my-s3-repository/daily-snap-2026.01.26/_restore
+// POST _snapshot/my-s3-repository/daily-snap-2026.01.26-abc123def456/_restore
 {
   "indices": "*",
   "ignore_unavailable": true,
@@ -610,7 +615,7 @@ flowchart TB
 
 ```json
 // Restore only specific indices
-// POST _snapshot/my-s3-repository/daily-snap-2026.01.26/_restore
+// POST _snapshot/my-s3-repository/daily-snap-2026.01.26-abc123def456/_restore
 {
   "indices": [
     "users",
@@ -626,7 +631,7 @@ flowchart TB
 
 ```json
 // Restore indices with new names (useful for testing)
-// POST _snapshot/my-s3-repository/daily-snap-2026.01.26/_restore
+// POST _snapshot/my-s3-repository/daily-snap-2026.01.26-abc123def456/_restore
 {
   "indices": "users",
   "ignore_unavailable": true,
@@ -641,7 +646,7 @@ flowchart TB
 
 ```json
 // Restore with different replica count or other settings
-// POST _snapshot/my-s3-repository/daily-snap-2026.01.26/_restore
+// POST _snapshot/my-s3-repository/daily-snap-2026.01.26-abc123def456/_restore
 {
   "indices": "logs-*",
   "ignore_unavailable": true,
@@ -676,7 +681,7 @@ For disaster recovery to a new cluster:
 # GET _snapshot/recovery_repo/_all
 
 # Restore the desired snapshot
-# POST _snapshot/recovery_repo/daily-snap-2026.01.26/_restore
+# POST _snapshot/recovery_repo/daily-snap-2026.01.26-abc123def456/_restore
 ```
 
 ### Monitoring Restore Progress
@@ -702,7 +707,7 @@ For disaster recovery to a new cluster:
         "start_time_in_millis": 1706400000000,
         "source": {
           "repository": "my-s3-repository",
-          "snapshot": "daily-snap-2026.01.26"
+          "snapshot": "daily-snap-2026.01.26-abc123def456"
         },
         "target": {
           "id": "node-1",
@@ -918,11 +923,10 @@ With OneUptime, you can create custom alerts when snapshots fail, retention runs
 ### Slow Snapshots
 
 ```json
-// Increase snapshot throughput
+// Increase recovery throughput after checking repository and cluster capacity
 // PUT _cluster/settings
 {
   "persistent": {
-    "snapshot.max_concurrent_operations": 1000,
     "indices.recovery.max_bytes_per_sec": "200mb"
   }
 }
