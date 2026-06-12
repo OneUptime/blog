@@ -655,10 +655,11 @@ jobs:
 package test
 
 import (
+	"fmt"
 	"testing"
-	"time"
 
 	"github.com/gruntwork-io/terratest/modules/aws"
+	"github.com/gruntwork-io/terratest/modules/random"
 	"github.com/gruntwork-io/terratest/modules/terraform"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -719,8 +720,8 @@ func TestVPCModule(t *testing.T) {
 
 	// Verify subnets have correct tags
 	for _, subnetID := range publicSubnetIDs {
-		subnet := aws.GetSubnetById(t, subnetID, awsRegion)
-		assert.Contains(t, aws.GetTagsForSubnet(t, subnetID, awsRegion), "public")
+		tags := aws.GetTagsForSubnet(t, subnetID, awsRegion)
+		assert.Contains(t, tags, "Tier", "Public subnet should have a 'Tier' tag")
 	}
 }
 
