@@ -8,7 +8,7 @@ Description: Learn how to set up Jenkins Blue Ocean, convert freestyle jobs to p
 
 ---
 
-Blue Ocean is a modern UI for Jenkins pipelines. It makes pipeline status, logs, and pull request builds easier to understand. This guide walks through installation and common workflows.
+Blue Ocean is a visual UI for Jenkins pipelines. It makes pipeline status, logs, and pull request builds easier to understand. Jenkins has announced that Blue Ocean will be deprecated in July 2026, so new installations should also evaluate alternatives such as Pipeline: Stage View and Pipeline Graph View. This guide walks through installation and common workflows.
 
 ## Step 1: Install Blue Ocean
 
@@ -63,4 +63,4 @@ If you have freestyle jobs, move them to Jenkinsfile pipelines to get full Blue 
 
 ## Conclusion
 
-Blue Ocean improves pipeline visibility without changing Jenkins fundamentals. If you rely on Jenkins, it is a simple upgrade that makes pipelines easier to operate and troubleshoot.
+Blue Ocean improves pipeline visibility without changing Jenkins fundamentals. If you already rely on Jenkins and understand its deprecation status, it can make pipelines easier to operate and troubleshoot.
