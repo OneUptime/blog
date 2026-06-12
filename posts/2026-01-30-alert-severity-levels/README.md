@@ -78,8 +78,8 @@ Critical alerts represent active incidents affecting users or revenue. These dem
 # All new requests are failing
 alert: DatabaseConnectionPoolExhausted
 expr: |
-  pg_stat_activity_count{state="active"}
-  / pg_settings_max_connections
+  sum by (instance) (pg_stat_activity_count{state="active"})
+  / max by (instance) (pg_settings_max_connections)
   > 0.95
 for: 2m
 labels:
@@ -207,7 +207,7 @@ labels:
   severity: info
 annotations:
   summary: "Replica count changed"
-  description: "{{ $labels.deployment }} scaled to {{ $value }} replicas"
+  description: "{{ $labels.deployment }} replica count changed in the last 5 minutes (changes: {{ $value }})"
 ```
 
 ---
@@ -337,8 +337,8 @@ route:
   # Child routes for severity-based routing
   routes:
     # Critical alerts: immediate paging
-    - match:
-        severity: critical
+    - matchers:
+        - severity = "critical"
       receiver: 'critical-pager'
       group_wait: 10s
       group_interval: 1m
@@ -346,16 +346,16 @@ route:
       continue: true  # Also send to other matching routes
 
     # Warning alerts: Slack and ticketing
-    - match:
-        severity: warning
+    - matchers:
+        - severity = "warning"
       receiver: 'warning-slack'
       group_wait: 1m
       group_interval: 10m
       repeat_interval: 2h
 
     # Info alerts: low priority notification
-    - match:
-        severity: info
+    - matchers:
+        - severity = "info"
       receiver: 'info-logger'
       group_wait: 5m
       group_interval: 30m
