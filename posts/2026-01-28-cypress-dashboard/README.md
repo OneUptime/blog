@@ -8,7 +8,7 @@ Description: Learn how to set up and use Cypress Dashboard for test recording, p
 
 ---
 
-Cypress Dashboard is a cloud service that records your test runs, enabling parallel test execution, flaky test detection, and detailed analytics. This guide walks through setup, configuration, and getting the most value from your recorded tests.
+Cypress Dashboard (rebranded as Cypress Cloud in November 2022) is a cloud service that records your test runs, enabling parallel test execution, flaky test detection, and detailed analytics. This guide walks through setup, configuration, and getting the most value from your recorded tests.
 
 ## What Cypress Dashboard Provides
 
@@ -57,7 +57,7 @@ flowchart TB
 
 ### Step 1: Create a Dashboard Account
 
-Visit [dashboard.cypress.io](https://dashboard.cypress.io) and create an account. You can sign up with GitHub, GitLab, or email.
+Visit [cloud.cypress.io](https://cloud.cypress.io) and create an account. You can sign up with GitHub, GitLab, or email.
 
 ### Step 2: Create a Project
 
