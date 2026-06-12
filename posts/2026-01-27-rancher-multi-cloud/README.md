@@ -67,7 +67,7 @@ kubectl create namespace cattle-system
 
 # Install cert-manager for TLS certificate management
 # Rancher requires cert-manager for automated certificate handling
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager to be ready before proceeding
 kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=300s
@@ -92,67 +92,53 @@ Rancher needs credentials to provision and manage clusters in each cloud provide
 
 ### AWS Cloud Credentials
 
-```yaml
-# aws-cloud-credential.yaml
+```hcl
+# aws-cloud-credential.tf
 # This credential allows Rancher to create EKS clusters and EC2 instances
-apiVersion: provisioning.cattle.io/v1
-kind: CloudCredential
-metadata:
-  name: aws-credential
-  namespace: fleet-default
-spec:
+resource "rancher2_cloud_credential" "aws" {
+  name = "aws-credential"
+
   # AWS credentials for programmatic access
-  # Use IAM roles with least privilege principle
-  amazonec2credentialConfig:
-    accessKey: "AKIAIOSFODNN7EXAMPLE"      # AWS Access Key ID
-    secretKey: "wJalrXUtnFEMI/K7MDENG..."  # AWS Secret Access Key
-    defaultRegion: "us-west-2"              # Default region for operations
+  # Use IAM roles and policies with least privilege where possible
+  amazonec2_credential_config {
+    access_key     = var.aws_access_key
+    secret_key     = var.aws_secret_key
+    default_region = "us-west-2"
+  }
+}
 ```
 
 ### GCP Cloud Credentials
 
-```yaml
-# gcp-cloud-credential.yaml
+```hcl
+# gcp-cloud-credential.tf
 # Service account credentials for GKE cluster management
-apiVersion: provisioning.cattle.io/v1
-kind: CloudCredential
-metadata:
-  name: gcp-credential
-  namespace: fleet-default
-spec:
-  googlecredentialConfig:
-    # Service account JSON key (base64 encoded)
-    # Create a service account with Kubernetes Engine Admin role
-    authEncodedJson: |
-      {
-        "type": "service_account",
-        "project_id": "my-project-id",
-        "private_key_id": "key-id",
-        "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
-        "client_email": "rancher@my-project-id.iam.gserviceaccount.com",
-        "client_id": "123456789",
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token"
-      }
+resource "rancher2_cloud_credential" "gcp" {
+  name = "gcp-credential"
+
+  google_credential_config {
+    # Create a service account with the permissions required for GKE management
+    auth_encoded_json = file("service-account.json")
+  }
+}
 ```
 
 ### Azure Cloud Credentials
 
-```yaml
-# azure-cloud-credential.yaml
+```hcl
+# azure-cloud-credential.tf
 # Service principal credentials for AKS management
-apiVersion: provisioning.cattle.io/v1
-kind: CloudCredential
-metadata:
-  name: azure-credential
-  namespace: fleet-default
-spec:
-  azurecredentialConfig:
-    clientId: "00000000-0000-0000-0000-000000000000"      # Application (client) ID
-    clientSecret: "your-client-secret"                     # Client secret value
-    subscriptionId: "00000000-0000-0000-0000-000000000000" # Azure subscription
-    tenantId: "00000000-0000-0000-0000-000000000000"       # Directory (tenant) ID
-    environment: "AzurePublicCloud"                        # Azure environment
+resource "rancher2_cloud_credential" "azure" {
+  name = "azure-credential"
+
+  azure_credential_config {
+    client_id       = var.azure_client_id       # Application (client) ID
+    client_secret   = var.azure_client_secret   # Client secret value
+    subscription_id = var.azure_subscription_id # Azure subscription
+    tenant_id       = var.azure_tenant_id       # Directory (tenant) ID
+    environment     = "AzurePublicCloud"        # Azure environment
+  }
+}
 ```
 
 ## Provisioning Clusters Across Clouds
@@ -161,154 +147,152 @@ With credentials configured, you can provision managed Kubernetes clusters in ea
 
 ### Provisioning an EKS Cluster
 
-```yaml
-# eks-cluster.yaml
+```hcl
+# eks-cluster.tf
 # Creates a managed EKS cluster in AWS with node groups
-apiVersion: provisioning.cattle.io/v1
-kind: Cluster
-metadata:
-  name: production-aws
-  namespace: fleet-default
-spec:
-  cloudCredentialSecretName: aws-credential
-  kubernetesVersion: v1.29.0+eks.1
+resource "rancher2_cluster" "production_aws" {
+  name        = "production-aws"
+  description = "Production EKS cluster"
 
-  # EKS-specific configuration
-  eksConfig:
-    region: us-west-2
-    amazonCredentialSecret: aws-credential
+  eks_config_v2 {
+    cloud_credential_id = rancher2_cloud_credential.aws.id
+    region              = "us-west-2"
+    kubernetes_version  = "1.29"
 
     # VPC and networking configuration
-    subnets:
-      - subnet-0123456789abcdef0
-      - subnet-0123456789abcdef1
-    securityGroups:
-      - sg-0123456789abcdef0
+    subnets         = ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"]
+    security_groups = ["sg-0123456789abcdef0"]
 
     # Enable private API endpoint for security
-    privateAccess: true
-    publicAccess: true
-    publicAccessSources:
-      - "10.0.0.0/8"  # Restrict public access to known CIDRs
+    private_access        = true
+    public_access         = true
+    public_access_sources = ["10.0.0.0/8"] # Restrict public access to known CIDRs
 
     # Managed node groups for workloads
-    nodeGroups:
-      - nodegroupName: general-workers
-        instanceType: m5.xlarge
-        desiredSize: 3
-        minSize: 2
-        maxSize: 10
-        diskSize: 100
-        labels:
-          workload-type: general
+    node_groups {
+      name          = "general-workers"
+      instance_type = "m5.xlarge"
+      desired_size  = 3
+      min_size      = 2
+      max_size      = 10
+      disk_size     = 100
+      labels = {
+        "workload-type" = "general"
+      }
+    }
 
-      - nodegroupName: compute-intensive
-        instanceType: c5.2xlarge
-        desiredSize: 2
-        minSize: 0
-        maxSize: 20
-        labels:
-          workload-type: compute
+    node_groups {
+      name          = "compute-intensive"
+      instance_type = "c5.2xlarge"
+      desired_size  = 2
+      min_size      = 0
+      max_size      = 20
+      labels = {
+        "workload-type" = "compute"
+      }
+    }
+  }
+}
 ```
 
 ### Provisioning a GKE Cluster
 
-```yaml
-# gke-cluster.yaml
+```hcl
+# gke-cluster.tf
 # Creates a managed GKE cluster in Google Cloud
-apiVersion: provisioning.cattle.io/v1
-kind: Cluster
-metadata:
-  name: production-gcp
-  namespace: fleet-default
-spec:
-  cloudCredentialSecretName: gcp-credential
-  kubernetesVersion: v1.29.0+gke.1
+resource "rancher2_cluster" "production_gcp" {
+  name        = "production-gcp"
+  description = "Production GKE cluster"
 
-  gkeConfig:
-    projectID: my-project-id
-    region: us-central1
-    googleCredentialSecret: gcp-credential
+  gke_config_v2 {
+    name                     = "production-gcp"
+    google_credential_secret = rancher2_cloud_credential.gcp.id
+    project_id               = "my-project-id"
+    region                   = "us-central1"
+    kubernetes_version       = "1.29"
+    network                  = "default"
+    subnetwork               = "default"
 
     # Use VPC-native cluster for better networking
-    ipAllocationPolicy:
-      clusterIpv4CidrBlock: "/16"
-      servicesIpv4CidrBlock: "/22"
-      useIpAliases: true
-
-    # Enable Workload Identity for secure pod authentication
-    workloadIdentityConfig:
-      workloadPool: "my-project-id.svc.id.goog"
+    ip_allocation_policy {
+      cluster_ipv4_cidr_block  = "/16"
+      services_ipv4_cidr_block = "/22"
+      use_ip_aliases           = true
+    }
 
     # Node pools configuration
-    nodePools:
-      - name: default-pool
-        initialNodeCount: 3
-        minNodeCount: 2
-        maxNodeCount: 10
-        autoscaling: true
-        config:
-          machineType: e2-standard-4
-          diskSizeGb: 100
-          diskType: pd-ssd
-          imageType: COS_CONTAINERD
-          labels:
-            environment: production
-          oauthScopes:
-            - https://www.googleapis.com/auth/cloud-platform
+    node_pools {
+      name                = "default-pool"
+      initial_node_count  = 3
+      version             = "1.29"
+      max_pods_constraint = 110
+
+      autoscaling {
+        enabled        = true
+        min_node_count = 2
+        max_node_count = 10
+      }
+
+      config {
+        machine_type = "e2-standard-4"
+        disk_size_gb = 100
+        disk_type    = "pd-ssd"
+        image_type   = "COS_CONTAINERD"
+        labels = {
+          environment = "production"
+        }
+        oauth_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+      }
+    }
+  }
+}
 ```
 
 ### Provisioning an AKS Cluster
 
-```yaml
-# aks-cluster.yaml
+```hcl
+# aks-cluster.tf
 # Creates a managed AKS cluster in Azure
-apiVersion: provisioning.cattle.io/v1
-kind: Cluster
-metadata:
-  name: production-azure
-  namespace: fleet-default
-spec:
-  cloudCredentialSecretName: azure-credential
-  kubernetesVersion: v1.29.0
+resource "rancher2_cluster" "production_azure" {
+  name        = "production-azure"
+  description = "Production AKS cluster"
 
-  aksConfig:
-    azureCredentialSecret: azure-credential
-    resourceGroup: rancher-clusters-rg
-    resourceLocation: eastus
-    dnsPrefix: prod-azure-aks
+  aks_config_v2 {
+    cloud_credential_id = rancher2_cloud_credential.azure.id
+    resource_group      = "rancher-clusters-rg"
+    resource_location   = "eastus"
+    dns_prefix          = "prod-azure-aks"
+    kubernetes_version  = "1.29.0"
 
     # Network configuration using Azure CNI
-    networkPlugin: azure
-    networkPolicy: calico
-    loadBalancerSku: standard
-
-    # Enable Azure AD integration for RBAC
-    aadProfile:
-      managed: true
-      enableAzureRbac: true
+    network_plugin   = "azure"
+    network_policy   = "calico"
+    load_balancer_sku = "standard"
+    outbound_type     = "loadBalancer"
 
     # Node pools
-    nodePools:
-      - name: systempool
-        mode: System
-        count: 3
-        minCount: 2
-        maxCount: 5
-        vmSize: Standard_D4s_v3
-        osDiskSizeGb: 128
-        enableAutoScaling: true
+    node_pools {
+      name                 = "systempool"
+      mode                 = "System"
+      count                = 3
+      orchestrator_version = "1.29.0"
+      vm_size              = "Standard_D4s_v3"
+      os_disk_size_gb      = 128
+    }
 
-      - name: workerpool
-        mode: User
-        count: 3
-        minCount: 0
-        maxCount: 20
-        vmSize: Standard_D8s_v3
-        osDiskSizeGb: 256
-        enableAutoScaling: true
-        nodeLabels:
-          workload: applications
+    node_pools {
+      name                 = "workerpool"
+      mode                 = "User"
+      count                = 3
+      orchestrator_version = "1.29.0"
+      vm_size              = "Standard_D8s_v3"
+      os_disk_size_gb      = 256
+      labels = {
+        workload = "applications"
+      }
+    }
+  }
+}
 ```
 
 ## Importing Existing Clusters
@@ -548,17 +532,20 @@ Enable cross-cloud communication between clusters using Submariner or service me
 
 ```yaml
 # submariner-broker.yaml
-# Deploy Submariner broker for cross-cluster networking
+# Deploy the Submariner broker with the operator, or use subctl deploy-broker
 apiVersion: submariner.io/v1alpha1
 kind: Broker
 metadata:
   name: submariner-broker
-  namespace: submariner-broker
+  namespace: submariner-k8s-broker
 spec:
-  # Enable service discovery across clusters
+  # Enable support for overlapping cluster CIDRs
   globalnetEnabled: true
   globalnetCIDRRange: 242.0.0.0/8
   defaultGlobalnetClusterSize: 65536
+  components:
+    - service-discovery
+    - connectivity
 ---
 # Join each cluster to the Submariner broker
 apiVersion: submariner.io/v1alpha1
@@ -567,10 +554,12 @@ metadata:
   name: submariner
   namespace: submariner-operator
 spec:
+  namespace: submariner-operator
   broker: k8s
   brokerK8sApiServer: https://broker.example.com:6443
   brokerK8sApiServerToken: "token"
-  brokerK8sRemoteNamespace: submariner-broker
+  brokerK8sRemoteNamespace: submariner-k8s-broker
+  brokerK8sCA: "<base64-encoded-ca>"
 
   # Cluster identification
   clusterID: aws-production
@@ -578,10 +567,13 @@ spec:
   # Network configuration
   serviceCIDR: 10.96.0.0/12
   clusterCIDR: 10.244.0.0/16
+  serviceDiscoveryEnabled: true
 
   # Gateway configuration
   natEnabled: true
   cableDriver: libreswan
+  ceIPSecDebug: false
+  debug: false
 ```
 
 ### Cross-Cloud Service Export
@@ -637,7 +629,7 @@ metadata:
   name: rancher-charts
 spec:
   gitRepo: https://git.rancher.io/charts
-  gitBranch: release-v2.8
+  gitBranch: release-v2.14
 ---
 # Install monitoring stack
 apiVersion: catalog.cattle.io/v1
