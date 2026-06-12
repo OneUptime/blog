@@ -37,10 +37,11 @@ flowchart LR
     Auth --> Mirror
 ```
 
-Podman uses two main configuration files:
+Podman uses these main configuration files:
 - `/etc/containers/registries.conf` - Registry configuration (system-wide)
 - `~/.config/containers/registries.conf` - Registry configuration (user-specific)
-- `~/.config/containers/auth.json` - Authentication credentials
+- `${XDG_RUNTIME_DIR}/containers/auth.json` - Default authentication credentials on Linux
+- `~/.config/containers/auth.json` - Persistent authentication credentials and fallback location
 
 ## Basic Registry Configuration
 
@@ -70,14 +71,15 @@ podman info | grep -A 20 registries
 unqualified-search-registries = ["docker.io", "quay.io", "ghcr.io"]
 
 # Short name mode controls how Podman handles unqualified image names
-# "enforcing" - always prompt for registry selection
-# "permissive" - use first matching registry without prompting
+# "enforcing" - prompt when multiple registries are configured and a TTY is available; error in non-interactive ambiguous cases
+# "permissive" - prompt like enforcing when possible; otherwise try all configured registries
+# "disabled" - try all configured registries without prompting
 short-name-mode = "enforcing"
 ```
 
 ### Understanding Unqualified Image Names
 
-When you run `podman pull nginx`, Podman doesn't know which registry to use. The `unqualified-search-registries` option tells Podman where to look.
+When you run `podman pull nginx`, Podman doesn't know which registry to use. The `unqualified-search-registries` option tells Podman where to look, while `short-name-mode` controls whether Podman prompts, errors, or searches the configured registries.
 
 ```bash
 # Without qualified name - searches registries in order
@@ -92,7 +94,10 @@ flowchart TB
     Pull["podman pull nginx"] --> Check{Qualified?}
     Check -->|No| Search["Search unqualified-search-registries"]
     Check -->|Yes| Direct["Pull from specified registry"]
-    Search --> R1["Try docker.io"]
+    Search --> Mode{Prompt required?}
+    Mode -->|Yes| Prompt["Prompt for registry selection"]
+    Mode -->|No| R1["Try docker.io"]
+    Prompt --> Success
     R1 -->|Not found| R2["Try quay.io"]
     R2 -->|Not found| R3["Try ghcr.io"]
     R3 -->|Not found| Fail["Error: image not found"]
@@ -158,15 +163,12 @@ openssl s_client -connect registry.internal.company.com:443 -CApath /etc/ssl/cer
 
 [[registry]]
 location = "secure-registry.company.com"
+insecure = false
 
 # Specify custom CA certificate for this registry only
 # This avoids modifying system-wide certificate trust
-[[registry.mirror]]
-location = "secure-registry.company.com"
-insecure = false
-
-# Custom certificate directory
-# Place your CA cert here: /etc/containers/certs.d/secure-registry.company.com/ca.crt
+# Place your CA cert in the per-registry certificate directory:
+# /etc/containers/certs.d/secure-registry.company.com/ca.crt
 ```
 
 Create the certificate directory structure:
@@ -177,6 +179,10 @@ sudo mkdir -p /etc/containers/certs.d/secure-registry.company.com/
 
 # Copy your CA certificate
 sudo cp my-ca.crt /etc/containers/certs.d/secure-registry.company.com/ca.crt
+
+# For rootless users, you can also use:
+mkdir -p ~/.config/containers/certs.d/secure-registry.company.com/
+cp my-ca.crt ~/.config/containers/certs.d/secure-registry.company.com/ca.crt
 
 # Verify the setup
 podman pull secure-registry.company.com/myimage:latest
@@ -243,9 +249,7 @@ location = "docker.io"
 location = "cache.internal:5000"
 insecure = false
 
-# Fallback to original registry if cache fails
-[[registry.mirror]]
-location = "docker.io"
+# Podman tries the primary location, docker.io, if no mirror contains the image
 ```
 
 ### Setting Up a Registry Mirror with Podman
@@ -274,38 +278,34 @@ For environments without internet access:
 # Only allow pulls from internal mirror
 [[registry]]
 prefix = "docker.io"
-location = "internal-registry.airgap.local:5000"
+location = "internal-registry.airgap.local:5000/docker.io"
 blocked = false
 
 [[registry]]
 prefix = "quay.io"
-location = "internal-registry.airgap.local:5000"
+location = "internal-registry.airgap.local:5000/quay.io"
 blocked = false
 
 [[registry]]
 prefix = "gcr.io"
-location = "internal-registry.airgap.local:5000"
+location = "internal-registry.airgap.local:5000/gcr.io"
 blocked = false
 
-# Block direct access to public registries
-[[registry]]
-location = "docker.io"
-blocked = true
-
-[[registry]]
-location = "quay.io"
-blocked = true
+# These mappings rewrite pulls for the listed public registries to the internal registry
 ```
 
 ## Credential Management
 
-Podman stores credentials in `auth.json`, compatible with Docker's credential format.
+Podman stores credentials in `auth.json`, compatible with Docker's credential format. On Linux, the default read/write auth file is `${XDG_RUNTIME_DIR}/containers/auth.json`; use `--authfile ~/.config/containers/auth.json` or `REGISTRY_AUTH_FILE` when you need credentials to persist across reboot.
 
 ### Login to a Registry
 
 ```bash
 # Interactive login - prompts for username and password
 podman login docker.io
+
+# Persistent login on Linux
+podman login --authfile ~/.config/containers/auth.json docker.io
 
 # Login with credentials from command line (not recommended for scripts)
 podman login -u myuser -p mypassword registry.example.com
@@ -352,13 +352,15 @@ flowchart TB
     end
 
     subgraph Locations["auth.json Locations"]
+        Runtime["${XDG_RUNTIME_DIR}/containers/auth.json"]
         User["~/.config/containers/auth.json"]
-        Root["/run/containers/0/auth.json"]
+        Docker["~/.docker/config.json"]
         Custom["REGISTRY_AUTH_FILE"]
     end
 
     Read --> User
-    Read --> Root
+    Read --> Runtime
+    Read --> Docker
     Read --> Custom
 ```
 
@@ -367,10 +369,9 @@ flowchart TB
 Credential helpers provide secure storage for registry credentials.
 
 ```bash
-# Install credential helper (example: pass-based helper)
-sudo dnf install podman-docker-credential-helpers
+# Install the Docker credential helper package for your distribution
 
-# Or for Debian/Ubuntu
+# Debian/Ubuntu example
 sudo apt install golang-docker-credential-helpers
 ```
 
@@ -411,6 +412,7 @@ mkdir -p ~/.config/containers
 
 # Use podman login with stdin to avoid password in process list
 echo "${REGISTRY_PASSWORD}" | podman login \
+    --authfile ~/.config/containers/auth.json \
     --username "${REGISTRY_USER}" \
     --password-stdin \
     "${REGISTRY_URL}"
@@ -473,10 +475,7 @@ location = "docker.io"
 location = "mirror.internal.company.com:5000"
 insecure = false
 
-# Fall back to Docker Hub
-[[registry.mirror]]
-location = "docker.io"
-insecure = false
+# Podman falls back to Docker Hub automatically if no mirror contains the image
 
 # Quay.io with mirror
 [[registry]]
@@ -487,9 +486,7 @@ location = "quay.io"
 location = "mirror.internal.company.com:5000/quay"
 insecure = false
 
-[[registry.mirror]]
-location = "quay.io"
-insecure = false
+# Podman falls back to Quay.io automatically if no mirror contains the image
 
 # GitHub Container Registry
 [[registry]]
