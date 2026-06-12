@@ -33,9 +33,8 @@ The simplest debugging approach is enabling verbose mode, which logs every opera
 
 ```python
 # Enable verbose mode globally
-
-import langchain
-langchain.verbose = True
+from langchain.globals import set_verbose
+set_verbose(True)
 
 # Or enable it per chain
 from langchain.chains import LLMChain
