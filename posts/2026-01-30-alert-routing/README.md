@@ -201,7 +201,7 @@ import re
 def match_content(alert, content_rule):
     """
     Check if alert content matches the rule criteria.
-    Searches title, message, and all annotation values.
+    Searches title, message, annotation values, and source-specific rules.
     """
     # Build searchable text from alert fields
     searchable_text = " ".join([
@@ -209,6 +209,7 @@ def match_content(alert, content_rule):
         alert.get("message", ""),
         " ".join(alert.get("annotations", {}).values())
     ]).lower()
+    source_text = alert.get("source", "").lower()
 
     # Check for keyword matches
     if "content_contains" in content_rule:
@@ -220,6 +221,12 @@ def match_content(alert, content_rule):
     if "content_regex" in content_rule:
         pattern = content_rule["content_regex"]
         if re.search(pattern, searchable_text, re.IGNORECASE):
+            return True
+
+    # Check for source matches
+    if "source_contains" in content_rule:
+        sources = content_rule["source_contains"]
+        if any(source.lower() in source_text for source in sources):
             return True
 
     return False
@@ -292,7 +299,8 @@ def route_by_ownership(alert, service_catalog):
         return None  # Fall through to catch-all
 
     # Look up service in catalog
-    service = service_catalog.get(service_id)
+    services = service_catalog.get("services", service_catalog)
+    service = services.get(service_id)
 
     if not service:
         return None  # Unknown service, fall through
@@ -369,27 +377,29 @@ def route_alert(alert, config):
     Main routing function. Evaluates rules in priority order
     and returns the final destination.
     """
+    routing_config = config.get("routing_config", config)
+
     # Step 1: Try label-based rules
-    for rule in config["rules"]:
+    for rule in routing_config["rules"]:
         if match_labels(alert.get("labels", {}), rule["match"]["labels"]):
             return rule["route_to"]
 
     # Step 2: Try content-based fallback
-    if config["content_fallback"]["enabled"]:
-        for rule in config["content_fallback"]["rules"]:
+    if routing_config["content_fallback"]["enabled"]:
+        for rule in routing_config["content_fallback"]["rules"]:
             if match_content(alert, rule["match"]):
                 return rule["route_to"]
 
     # Step 3: Try service ownership fallback
-    if config["ownership_fallback"]["enabled"]:
-        catalog = load_catalog(config["ownership_fallback"]["catalog_source"])
+    if routing_config["ownership_fallback"]["enabled"]:
+        catalog = load_catalog(routing_config["ownership_fallback"]["catalog_source"])
         destination = route_by_ownership(alert, catalog)
         if destination:
             return destination
 
     # Step 4: Use catch-all
     log_unrouted_alert(alert)  # Track for analysis
-    return config["catch_all"]["route_to"]
+    return routing_config["catch_all"]["route_to"]
 ```
 
 ---
