@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Lambda, Serverless, Performance
 
-Description: Eliminate cold starts in AWS Lambda functions using SnapStart to capture and restore initialization snapshots for near-instant invocations.
+Description: Reduce cold start latency in AWS Lambda functions using SnapStart to capture and restore initialization snapshots for faster invocations.
 
 ---
 
 AWS Lambda cold starts have long been the Achilles heel of serverless architectures. When a function has not been invoked recently, Lambda must provision a new execution environment, download your code, and run initialization logic before handling the first request. For Java runtimes or functions with heavy dependencies, this delay can stretch into multiple seconds.
 
-SnapStart changes the equation. Instead of repeating initialization on every cold start, Lambda takes a snapshot of the initialized execution environment and caches it. Subsequent cold starts restore from that snapshot, slashing startup latency by up to 90 percent.
+SnapStart changes the equation. Instead of repeating initialization on every cold start, Lambda takes a snapshot of the initialized execution environment and caches it. Subsequent cold starts restore from that snapshot, reducing startup latency by up to 10x in optimal scenarios.
 
 ---
 
@@ -21,10 +21,10 @@ SnapStart is an AWS Lambda feature that snapshots the memory and disk state of y
 Key benefits:
 
 - **Faster cold starts**: Initialization happens once at publish time, not at invocation time.
-- **Consistent latency**: Users no longer experience the lottery of hitting a cold environment.
-- **Lower total cost**: Reduced init time means less billed duration on first invocations.
+- **More consistent latency**: Users are less exposed to the variability of full initialization.
+- **Potential cost tradeoffs**: Reduced initialization time can help, but SnapStart also has caching and restoration charges for non-Java runtimes.
 
-SnapStart is available for Java 11, Java 17, Java 21, Python 3.12+, and .NET 8 runtimes.
+SnapStart is available for Java 11 and later, Python 3.12+, and .NET 8 and later runtimes.
 
 ---
 
@@ -37,7 +37,7 @@ flowchart TD
     A[Deploy Function] --> B[Lambda Initializes Environment]
     B --> C[Run Init Code and Static Blocks]
     C --> D[Create Memory and Disk Snapshot]
-    D --> E[Snapshot Cached in S3]
+    D --> E[Snapshot Encrypted and Cached by Lambda]
 
     F[Invoke Function] --> G{Execution Environment Available?}
     G -->|Yes| H[Reuse Warm Environment]
@@ -56,10 +56,10 @@ With SnapStart enabled, the initialization phase (boxes B, C, D, E) happens at p
 
 Before enabling SnapStart, verify your function meets these requirements:
 
-1. **Supported runtime**: Java 11, 17, or 21; Python 3.12+; or .NET 8.
-2. **x86_64 architecture**: ARM64 (Graviton) is not supported yet.
+1. **Supported runtime**: Java 11 or later; Python 3.12+; or .NET 8 or later.
+2. **Supported architecture**: x86_64 is supported, and ARM64 is supported for Java SnapStart functions.
 3. **No provisioned concurrency**: SnapStart and provisioned concurrency are mutually exclusive.
-4. **Ephemeral storage only**: Do not rely on EFS mounts during init.
+4. **No EFS or S3 Files mounts**: SnapStart does not support Amazon EFS, Amazon S3 Files, or ephemeral storage greater than 512 MB.
 
 ### Enable SnapStart via AWS CLI
 
@@ -111,6 +111,7 @@ resource "aws_lambda_function" "my_function" {
   memory_size   = 512
   timeout       = 30
   role          = aws_iam_role.lambda_role.arn
+  publish       = true
 
   # Enable SnapStart
   snap_start {
@@ -164,11 +165,11 @@ The snapshot captures:
 - **Disk state**: Files written to `/tmp` during init.
 - **Loaded classes**: JVM class metadata and JIT-compiled code (for Java).
 
-The snapshot does not capture:
+State that needs restore-aware handling:
 
 - **Network connections**: TCP sockets, database pools, HTTP clients.
 - **Thread state**: Background threads and timers.
-- **Random number generator state**: Security-sensitive PRNG seeds.
+- **Unique state safety**: Random seeds, unique IDs, secrets, timestamps, and other initialization state can be reused across restored environments unless refreshed after restore.
 
 ---
 
@@ -247,13 +248,13 @@ public class DatabaseClient implements Resource {
 
 ### Python: Runtime Hooks
 
-Python 3.12+ SnapStart uses the `snapshot_restore` module:
+Python 3.12+ SnapStart uses the `snapshot_restore_py` module:
 
 ```python
 # handler.py
 import os
 import psycopg2
-from snapshot_restore import register_before_snapshot, register_after_restore
+from snapshot_restore_py import register_before_snapshot, register_after_restore
 
 # Global state that will be snapshotted
 config = None
@@ -363,7 +364,7 @@ Random number generators seeded during init will produce the same sequence acros
 # handler.py
 import secrets
 import random
-from snapshot_restore import register_after_restore
+from snapshot_restore_py import register_after_restore
 
 # Global RNG initialized during init
 rng = random.Random()
@@ -380,7 +381,7 @@ def handler(event, context):
 
 ### 3. Close Network Connections Before Snapshot
 
-Open sockets cannot be serialized. Close them in `beforeCheckpoint` and reopen in `afterRestore`.
+The state of connections established during initialization is not guaranteed after restore. Validate or close them in `beforeCheckpoint` and reopen them in `afterRestore`.
 
 ```java
 // HttpClientWrapper.java
@@ -453,15 +454,15 @@ public class Handler implements RequestHandler<APIGatewayProxyRequestEvent, APIG
 }
 ```
 
-### 5. Test Locally with SnapStart Emulation
+### 5. Test Locally and Validate SnapStart in AWS
 
-Use the AWS SAM CLI to test SnapStart behavior locally:
+Use the AWS SAM CLI to test function logic locally, then publish and invoke a version in AWS to validate actual SnapStart snapshot and restore behavior:
 
 ```bash
 # Build the function
 sam build
 
-# Invoke with SnapStart simulation
+# Invoke locally to test function logic
 sam local invoke MyFunction \
     --event event.json \
     --env-vars env.json
@@ -475,27 +476,24 @@ curl http://localhost:3000/endpoint
 
 ## Monitoring SnapStart Performance
 
-Track these CloudWatch metrics to measure SnapStart effectiveness:
+Track these CloudWatch log fields and metrics to measure SnapStart effectiveness:
 
 | Metric | Description |
 |--------|-------------|
-| `InitDuration` | Time spent in init phase (should be zero for restored environments) |
-| `RestoreDuration` | Time to restore from snapshot |
+| `InitDuration` | Time spent in init phase, reported in `INIT_REPORT` logs for SnapStart functions |
+| `RestoreDuration` | Time to restore from snapshot, load the runtime, and run after-restore hooks |
 | `Duration` | Handler execution time |
 | `ConcurrentExecutions` | Number of active environments |
 
 Create a CloudWatch dashboard to compare cold start performance:
 
 ```bash
-# Query cold start durations before and after SnapStart
-aws cloudwatch get-metric-statistics \
-    --namespace AWS/Lambda \
-    --metric-name InitDuration \
-    --dimensions Name=FunctionName,Value=my-function \
-    --start-time 2026-01-01T00:00:00Z \
-    --end-time 2026-01-30T00:00:00Z \
-    --period 86400 \
-    --statistics Average Maximum
+# Query restore durations from CloudWatch Logs Insights
+aws logs start-query \
+    --log-group-name /aws/lambda/my-function \
+    --start-time 1767225600 \
+    --end-time 1769731200 \
+    --query-string 'filter @type = "REPORT" | parse @message /Restore Duration: (?<restoreDuration>.*?) ms/ | stats avg(restoreDuration), max(restoreDuration)'
 ```
 
 ---
@@ -582,6 +580,7 @@ public class ProductHandler implements RequestHandler<APIGatewayProxyRequestEven
     // Static initialization captured in snapshot
     private static final DynamoDbClient dynamoClient;
     private static final String TABLE_NAME;
+    private static final Resource RESTORE_HOOK;
 
     static {
         // Initialize SDK client during init phase
@@ -596,7 +595,7 @@ public class ProductHandler implements RequestHandler<APIGatewayProxyRequestEven
         }
 
         // Register CRaC hook for connection management
-        Core.getGlobalContext().register(new Resource() {
+        RESTORE_HOOK = new Resource() {
             @Override
             public void beforeCheckpoint(org.crac.Context<? extends Resource> context) {
                 // DynamoDB client handles this internally
@@ -607,7 +606,8 @@ public class ProductHandler implements RequestHandler<APIGatewayProxyRequestEven
                 // Refresh any cached credentials if needed
                 System.out.println("Environment restored at " + System.currentTimeMillis());
             }
-        });
+        };
+        Core.getGlobalContext().register(RESTORE_HOOK);
     }
 
     @Override
@@ -651,7 +651,7 @@ public class ProductHandler implements RequestHandler<APIGatewayProxyRequestEven
 
 ## Summary
 
-AWS Lambda SnapStart eliminates cold start latency by snapshotting the initialized execution environment. To use it effectively:
+AWS Lambda SnapStart reduces cold start latency by snapshotting the initialized execution environment. To use it effectively:
 
 1. **Enable SnapStart** in your function configuration and publish a version.
 2. **Implement runtime hooks** to close connections before snapshot and reopen after restore.
