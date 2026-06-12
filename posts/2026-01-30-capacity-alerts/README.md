@@ -924,8 +924,7 @@ routing:
       - channel: slack
         target: "#capacity-alerts"
     critical:
-      - channel: pagerduty
-        service: infrastructure
+      - pagerduty: infrastructure
       - channel: slack
         target: "#capacity-critical"
 
@@ -1031,11 +1030,20 @@ class CapacityAlertRouter:
         targets = []
         for channel_config in channels:
             if isinstance(channel_config, dict):
-                for channel_type, target in channel_config.items():
+                if "channel" in channel_config:
                     targets.append(NotificationTarget(
-                        channel=channel_type,
-                        target=target
+                        channel=channel_config["channel"],
+                        target=channel_config.get(
+                            "target",
+                            channel_config.get("service", "")
+                        )
                     ))
+                else:
+                    for channel_type, target in channel_config.items():
+                        targets.append(NotificationTarget(
+                            channel=channel_type,
+                            target=target
+                        ))
             elif isinstance(channel_config, str):
                 targets.append(NotificationTarget(
                     channel="slack",
@@ -1275,6 +1283,11 @@ class CapacityPlaybook:
         """
         Generate a summary for the incident report.
         """
+        def indent_output(output: Optional[str]) -> str:
+            return "\n".join(
+                f"    {line}" for line in (output or "").splitlines()
+            )
+
         summary = f"""
 # Capacity Incident: {self.name}
 
@@ -1282,16 +1295,16 @@ class CapacityPlaybook:
 
 """
         for step in diagnosis_results:
-            summary += f"### {step.name}\n```\n{step.output}\n```\n\n"
+            summary += f"### {step.name}\n\n{indent_output(step.output)}\n\n"
 
         summary += "## Actions Taken\n\n"
         for action in actions_taken:
             status = "Executed" if action.executed else "Skipped"
             summary += f"- **{action.name}** [{action.risk} risk]: {status}\n"
             if action.result:
-                summary += f"  ```\n  {action.result}\n  ```\n"
+                summary += f"\n{indent_output(action.result)}\n"
 
-        summary += f"\n## Recommended Long-term Fixes\n\n"
+        summary += "\n## Recommended Long-term Fixes\n\n"
         for fix in self.playbook.get("long_term_fixes", []):
             summary += f"- {fix}\n"
 
