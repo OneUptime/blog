@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Lambda, Serverless, Event-Driven, SQS, SNS, EventBridge
 
-Description: Learn how to use Lambda Destinations to route function execution results to SQS, SNS, EventBridge, or other Lambda functions for robust event-driven architectures.
+Description: Learn how to use Lambda Destinations to route function execution results to SQS, SNS, EventBridge, S3, or other Lambda functions for robust event-driven architectures.
 
 ---
 
@@ -48,7 +48,7 @@ Lambda Destinations improve upon the older Dead Letter Queue (DLQ) feature:
 | Feature | Dead Letter Queue | Destinations |
 |---------|------------------|--------------|
 | Trigger | Failures only | Success and failure |
-| Targets | SQS, SNS only | SQS, SNS, EventBridge, Lambda |
+| Targets | Standard SQS queues and standard SNS topics only | Standard SQS queues, standard SNS topics, EventBridge, Lambda, and S3 for failures |
 | Payload | Original event only | Full execution context |
 | Metadata | Limited | Includes response, error, timestamps |
 
@@ -289,6 +289,22 @@ resource "aws_lambda_function_event_invoke_config" "processor" {
   }
 }
 
+resource "aws_iam_role_policy" "processor_eventbridge_destination" {
+  name = "processor-eventbridge-destination"
+  role = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "events:PutEvents"
+        Resource = aws_cloudwatch_event_bus.orders.arn
+      }
+    ]
+  })
+}
+
 # Rule for high-value orders
 resource "aws_cloudwatch_event_rule" "high_value" {
   name           = "high-value-orders"
@@ -299,7 +315,7 @@ resource "aws_cloudwatch_event_rule" "high_value" {
     detail-type = ["Lambda Function Invocation Result - Success"]
     detail = {
       responsePayload = {
-        orderTotal = [{
+        total = [{
           numeric = [">=", 1000]
         }]
       }
@@ -312,6 +328,14 @@ resource "aws_cloudwatch_event_target" "high_value" {
   event_bus_name = aws_cloudwatch_event_bus.orders.name
   target_id      = "premium-handler"
   arn            = aws_lambda_function.premium_handler.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_high_value" {
+  statement_id  = "AllowExecutionFromEventBridgeHighValue"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.premium_handler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.high_value.arn
 }
 ```
 
@@ -376,13 +400,48 @@ resource "aws_lambda_function_event_invoke_config" "resize" {
   }
 }
 
-# Permission for validate to invoke resize
-resource "aws_lambda_permission" "validate_to_resize" {
-  statement_id  = "AllowValidateInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.resize.function_name
-  principal     = "lambda.amazonaws.com"
-  source_arn    = aws_lambda_function.validate.arn
+# Permission for validate to invoke resize as a destination
+resource "aws_iam_role_policy" "validate_destinations" {
+  name = "validate-destinations"
+  role = aws_iam_role.validate.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "lambda:InvokeFunction"
+        Resource = aws_lambda_function.resize.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "sqs:SendMessage"
+        Resource = aws_sqs_queue.validation_errors.arn
+      }
+    ]
+  })
+}
+
+# Permission for resize to invoke store_metadata as a destination
+resource "aws_iam_role_policy" "resize_destinations" {
+  name = "resize-destinations"
+  role = aws_iam_role.resize.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "lambda:InvokeFunction"
+        Resource = aws_lambda_function.store_metadata.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "sqs:SendMessage"
+        Resource = aws_sqs_queue.processing_errors.arn
+      }
+    ]
+  })
 }
 ```
 
@@ -516,21 +575,23 @@ Destinations only work with asynchronous invocations:
 
 ```javascript
 // Invoke asynchronously - destinations will fire
-const AWS = require('aws-sdk');
-const lambda = new AWS.Lambda();
+const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
+const lambda = new LambdaClient({});
 
-await lambda.invoke({
-  FunctionName: 'order-processor',
-  InvocationType: 'Event',  // Async - destinations work
-  Payload: JSON.stringify({ orderId: '123' })
-}).promise();
+async function invokeOrderProcessor() {
+  await lambda.send(new InvokeCommand({
+    FunctionName: 'order-processor',
+    InvocationType: 'Event',  // Async - destinations work
+    Payload: Buffer.from(JSON.stringify({ orderId: '123' }))
+  }));
 
-// Synchronous - destinations will NOT fire
-await lambda.invoke({
-  FunctionName: 'order-processor',
-  InvocationType: 'RequestResponse',  // Sync - no destinations
-  Payload: JSON.stringify({ orderId: '123' })
-}).promise();
+  // Synchronous - destinations will NOT fire
+  await lambda.send(new InvokeCommand({
+    FunctionName: 'order-processor',
+    InvocationType: 'RequestResponse',  // Sync - no destinations
+    Payload: Buffer.from(JSON.stringify({ orderId: '123' }))
+  }));
+}
 ```
 
 ### Event Sources That Work with Destinations
@@ -543,7 +604,7 @@ await lambda.invoke({
 | CloudWatch Events | Async | Yes |
 | API Gateway | Sync | No |
 | SQS | Sync (polling) | No |
-| Kinesis | Sync (polling) | No |
+| Kinesis | Sync (polling) | No for function-level async destinations |
 
 ## Retry Behavior with Destinations
 
@@ -586,7 +647,7 @@ sequenceDiagram
     Source->>Lambda: Retry (attempt 3)
     Lambda-->>Lambda: Error
     Lambda->>Failure: Send to failure destination
-    Note over Failure: Includes all 3 attempt details
+    Note over Failure: Includes final failure details and invoke count
 ```
 
 ## Best Practices
