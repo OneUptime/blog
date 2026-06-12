@@ -46,7 +46,7 @@ ceph osd crush dump | head -50
 
 ## Understanding CRUSH Map Structure
 
-A CRUSH map consists of four main components:
+A CRUSH map consists of six main sections:
 
 | Component | Purpose | Example |
 |-----------|---------|---------|
@@ -54,6 +54,8 @@ A CRUSH map consists of four main components:
 | Buckets | Logical containers that group devices | hosts, racks, datacenters |
 | Rules | Placement policies for pools | replicate_ssd, erasure_hdd |
 | Tunables | Algorithm parameters | optimal, hammer, jewel |
+| Types | Bucket type definitions | osd, host, rack, root |
+| Choose args | Alternative weight sets | per-pool weight sets |
 
 ### Hierarchy of Bucket Types
 
@@ -328,34 +330,32 @@ CRUSH rules control how data is placed. Each rule specifies:
 | chooseleaf | Select N leaves under type | chooseleaf firstn 0 type host |
 | emit | Output selected OSDs | emit |
 
-The `firstn 0` means "use the pool's replication count."
+The `firstn 0` means "use the pool's replication count, limited by the number of matching buckets available."
 
 ### Standard Replication Rules
 
 Add these rules to your CRUSH map:
 
 ```text
-# Rule for replicated pools - distribute across racks
+# Rule for replicated pools - distribute across hosts
 rule replicated_rack {
     id 0
     type replicated
     # Start at the root of our hierarchy
     step take default
-    # Choose OSDs from different hosts, ensuring rack distribution
+    # Choose OSDs from different hosts
     step chooseleaf firstn 0 type host
     step emit
 }
 
-# Rule specifically for 3-way replication across racks
-# Ensures at least one replica in each rack
+# Rule for rack-level failure domains
+# Requires at least as many racks as the pool replication size
 rule replicated_cross_rack {
     id 1
     type replicated
     step take default
-    # First, choose racks
-    step choose firstn 0 type rack
-    # Then choose one OSD from different hosts within each rack
-    step chooseleaf firstn 1 type host
+    # Choose one OSD from each selected rack
+    step chooseleaf firstn 0 type rack
     step emit
 }
 ```
@@ -386,12 +386,12 @@ rule hdd_only {
 }
 
 # Rule for SSD pools with rack-level failure domain
+# Requires at least as many racks with SSDs as the pool replication size
 rule ssd_cross_rack {
     id 4
     type replicated
     step take default class ssd
-    step choose firstn 0 type rack
-    step chooseleaf firstn 1 type host
+    step chooseleaf firstn 0 type rack
     step emit
 }
 ```
@@ -409,17 +409,17 @@ rule erasure_hdd {
     step take default class hdd
     # For EC, we need at least k+m OSDs
     # Use host-level failure domain
-    step chooseleaf firstn 0 type host
+    step chooseleaf indep 0 type host
     step emit
 }
 
 # Erasure coding across racks for maximum durability
+# Requires at least as many racks as the EC profile's k+m chunks
 rule erasure_cross_rack {
     id 6
     type erasure
     step take default class hdd
-    step choose firstn 0 type rack
-    step chooseleaf firstn 1 type host
+    step chooseleaf indep 0 type rack
     step emit
 }
 ```
@@ -561,8 +561,7 @@ rule replicated_cross_rack {
     id 1
     type replicated
     step take default
-    step choose firstn 0 type rack
-    step chooseleaf firstn 1 type host
+    step chooseleaf firstn 0 type rack
     step emit
 }
 
@@ -586,8 +585,7 @@ rule ssd_cross_rack {
     id 4
     type replicated
     step take default class ssd
-    step choose firstn 0 type rack
-    step chooseleaf firstn 1 type host
+    step chooseleaf firstn 0 type rack
     step emit
 }
 
@@ -595,7 +593,7 @@ rule erasure_hdd {
     id 5
     type erasure
     step take default class hdd
-    step chooseleaf firstn 0 type host
+    step chooseleaf indep 0 type host
     step emit
 }
 
@@ -603,8 +601,7 @@ rule erasure_cross_rack {
     id 6
     type erasure
     step take default class hdd
-    step choose firstn 0 type rack
-    step chooseleaf firstn 1 type host
+    step chooseleaf indep 0 type rack
     step emit
 }
 ```
@@ -750,15 +747,19 @@ ceph osd pool create fast_pool 128 128 replicated ssd_only
 # Create a replicated pool with HDD rule
 ceph osd pool create archive_pool 256 256 replicated hdd_only
 
+# Associate each replicated pool with an application before use
+ceph osd pool application enable fast_pool rbd
+ceph osd pool application enable archive_pool rgw
+
 # Create an erasure coded pool
 # First, create an EC profile
-ceph osd erasure-code-profile set ec_4_2 \
-    k=4 m=2 \
+ceph osd erasure-code-profile set ec_2_2 \
+    k=2 m=2 \
     crush-failure-domain=host \
     crush-device-class=hdd
 
 # Create the EC pool
-ceph osd pool create ec_data 256 256 erasure ec_4_2
+ceph osd pool create ec_data 256 256 erasure ec_2_2
 
 # Associate the EC pool with a CRUSH rule
 ceph osd pool set ec_data crush_rule erasure_hdd
@@ -816,8 +817,7 @@ rule replicated_cross_dc {
     id 10
     type replicated
     step take default
-    step choose firstn 0 type datacenter
-    step chooseleaf firstn 1 type host
+    step chooseleaf firstn 0 type datacenter
     step emit
 }
 ```
