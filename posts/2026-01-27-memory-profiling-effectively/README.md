@@ -41,7 +41,7 @@ Unlike CPU profiling, memory problems often appear only after extended runtime. 
 
 ### tracemalloc - Built-in Allocation Tracking
 
-tracemalloc is Python's built-in memory tracer. It tracks every allocation with source location information:
+tracemalloc is Python's built-in memory tracer. It tracks Python memory blocks allocated after tracing starts, with source location information:
 
 ```python
 # tracemalloc_example.py
@@ -152,13 +152,13 @@ from memory_profiler import profile
 
 @profile
 def inefficient_processing():
-    # Line 1: Allocates ~80MB for 10M integers
+    # Line 1: Allocates hundreds of MB for 10M integers
     data = list(range(10000000))
 
-    # Line 2: Allocates another ~80MB for squared values
+    # Line 2: Allocates more memory for squared values
     squared = [x ** 2 for x in data]
 
-    # Line 3: Allocates ~80MB for filtered results
+    # Line 3: Allocates another list for filtered references
     filtered = [x for x in squared if x % 2 == 0]
 
     # Line 4: Single integer result
@@ -198,9 +198,9 @@ Line #    Mem usage    Increment   Line Contents
 ================================================
      5     38.5 MiB     38.5 MiB   @profile
      6                             def inefficient_processing():
-     7    118.5 MiB     80.0 MiB       data = list(range(10000000))
-     8    198.5 MiB     80.0 MiB       squared = [x ** 2 for x in data]
-     9    278.5 MiB     80.0 MiB       filtered = [x for x in squared if x % 2 == 0]
+     7    390.5 MiB    352.0 MiB       data = list(range(10000000))
+     8    780.5 MiB    390.0 MiB       squared = [x ** 2 for x in data]
+     9    818.5 MiB     38.0 MiB       filtered = [x for x in squared if x % 2 == 0]
 ```
 
 ---
@@ -214,7 +214,6 @@ Node.js uses V8, which provides powerful heap profiling tools:
 ```javascript
 // heap_snapshot.js
 const v8 = require('v8');
-const fs = require('fs');
 
 class HeapProfiler {
     constructor() {
@@ -225,13 +224,13 @@ class HeapProfiler {
     takeSnapshot(filename) {
         const snapshotPath = `${filename}.heapsnapshot`;
 
-        // Write heap snapshot stream to file
-        const snapshotStream = v8.writeHeapSnapshot(snapshotPath);
+        // Write heap snapshot to file
+        const snapshotFile = v8.writeHeapSnapshot(snapshotPath);
 
-        console.log(`Heap snapshot written to: ${snapshotStream}`);
-        this.snapshots.push(snapshotStream);
+        console.log(`Heap snapshot written to: ${snapshotFile}`);
+        this.snapshots.push(snapshotFile);
 
-        return snapshotStream;
+        return snapshotFile;
     }
 
     // Get current heap statistics
@@ -278,6 +277,7 @@ npm install heapdump
 // heapdump_example.js
 const heapdump = require('heapdump');
 const path = require('path');
+const fs = require('fs');
 
 class MemoryMonitor {
     constructor(options = {}) {
@@ -306,6 +306,8 @@ class MemoryMonitor {
     }
 
     dumpHeap(reason) {
+        fs.mkdirSync(this.dumpPath, { recursive: true });
+
         const filename = path.join(
             this.dumpPath,
             `heap-${reason}-${Date.now()}.heapsnapshot`
@@ -480,6 +482,7 @@ go tool pprof heap.prof
 package main
 
 import (
+    "fmt"
     "os"
     "runtime"
     "runtime/pprof"
@@ -529,6 +532,7 @@ func runMemoryIntensiveTask() {
 package main
 
 import (
+    "fmt"
     "runtime"
     "time"
 )
@@ -594,7 +598,7 @@ func (ld *LeakDetector) checkForLeak() {
 
 ### Using VisualVM
 
-VisualVM is a free profiling tool bundled with the JDK:
+VisualVM is a free profiling tool. It was bundled with Oracle JDK 6-8 and is now distributed as a standalone tool:
 
 ```java
 // MemoryLeakExample.java
@@ -630,7 +634,8 @@ public class MemoryLeakExample {
             if (i % 100 == 0) {
                 System.out.println("Iteration " + i +
                     ", Heap used: " +
-                    Runtime.getRuntime().totalMemory() / 1024 / 1024 + " MB");
+                    (Runtime.getRuntime().totalMemory() -
+                     Runtime.getRuntime().freeMemory()) / 1024 / 1024 + " MB");
             }
         }
     }
@@ -661,6 +666,7 @@ java -Dcom.sun.management.jmxremote \
 // MemoryMonitor.java
 import java.lang.management.*;
 import java.util.*;
+import javax.management.*;
 
 public class MemoryMonitor {
     private final MemoryMXBean memoryBean;
@@ -704,18 +710,20 @@ public class MemoryMonitor {
 
         if (tenuredPool != null) {
             long maxMemory = tenuredPool.getUsage().getMax();
-            long threshold = (long) (maxMemory * thresholdPercent);
-            tenuredPool.setUsageThreshold(threshold);
+            if (maxMemory > 0) {
+                long threshold = (long) (maxMemory * thresholdPercent);
+                tenuredPool.setUsageThreshold(threshold);
 
-            // Register notification listener
-            NotificationEmitter emitter = (NotificationEmitter) memoryBean;
-            emitter.addNotificationListener(
-                (notification, handback) -> {
-                    System.out.println("ALERT: Memory threshold exceeded!");
-                    printMemoryStats();
-                },
-                null, null
-            );
+                // Register notification listener
+                NotificationEmitter emitter = (NotificationEmitter) memoryBean;
+                emitter.addNotificationListener(
+                    (notification, handback) -> {
+                        System.out.println("ALERT: Memory threshold exceeded!");
+                        printMemoryStats();
+                    },
+                    null, null
+                );
+            }
         }
     }
 
@@ -760,14 +768,15 @@ _cache = {}  # Never cleaned
 def process(key, value):
     _cache[key] = value  # Leak!
 
-# 2. Circular references with __del__
+# 2. Finalizers that resurrect objects
 class Node:
     def __init__(self):
         self.parent = None
         self.children = []
 
     def __del__(self):
-        print("Deleted")  # Prevents GC of cycles
+        global last_deleted
+        last_deleted = self  # Resurrects the object and keeps it alive
 
 # 3. Closures capturing large objects
 def create_handler(large_data):
@@ -836,7 +845,7 @@ import time
 memory_rss = Gauge('process_memory_rss_bytes', 'RSS memory in bytes')
 memory_vms = Gauge('process_memory_vms_bytes', 'VMS memory in bytes')
 memory_heap = Gauge('python_heap_bytes', 'Python heap memory in bytes')
-gc_collections = Gauge('python_gc_collections_total', 'GC collections', ['generation'])
+gc_collections = Gauge('python_gc_collections', 'GC collections since interpreter start', ['generation'])
 
 class MemoryMetricsCollector:
     def __init__(self, interval=10):
@@ -865,8 +874,8 @@ class MemoryMetricsCollector:
             memory_heap.set(current)
 
             # GC stats
-            for i, count in enumerate(gc.get_count()):
-                gc_collections.labels(generation=str(i)).set(count)
+            for i, stats in enumerate(gc.get_stats()):
+                gc_collections.labels(generation=str(i)).set(stats['collections'])
 
             time.sleep(self.interval)
 
@@ -892,7 +901,7 @@ if __name__ == "__main__":
 ```javascript
 // memory_metrics.js
 const promClient = require('prom-client');
-const v8 = require('v8');
+const { PerformanceObserver } = require('perf_hooks');
 
 // Create metrics
 const heapUsedGauge = new promClient.Gauge({
@@ -926,14 +935,13 @@ function collectMemoryMetrics() {
     externalMemoryGauge.set(mem.external);
 }
 
-// Track GC events (requires --expose-gc)
-let lastGC = Date.now();
+// Track GC events
 const gcObserver = new PerformanceObserver((list) => {
     const entries = list.getEntries();
 
     for (const entry of entries) {
         gcDurationHistogram.observe(
-            { gc_type: entry.detail.kind },
+            { gc_type: String(entry.detail.kind) },
             entry.duration / 1000
         );
     }
@@ -1059,7 +1067,7 @@ class WeakCache:
         self.data = weakref.WeakValueDictionary()
 
     def set(self, key, value):
-        self.data[key] = value  # Value can be GC'd if no other refs
+        self.data[key] = value  # Weak-referenceable value can be GC'd if no other refs
 ```
 
 ---
@@ -1087,4 +1095,3 @@ Key practices:
 ---
 
 *Need to monitor memory usage across your entire infrastructure? [OneUptime](https://oneuptime.com) provides comprehensive observability with metrics, traces, and logs to help you identify and resolve memory issues before they impact users.*
-
