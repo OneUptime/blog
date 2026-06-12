@@ -109,8 +109,8 @@ Before installing Flux, ensure you have:
 
 kubectl cluster-info
 
-# Verify kubectl version (1.20+)
-kubectl version --client
+# Verify Kubernetes cluster and client versions
+kubectl version
 
 # Install Flux CLI
 # macOS
@@ -234,7 +234,7 @@ spec:
   # Branch, tag, or semver range to track
   ref:
     branch: main
-  # Optional: specific path in repository
+  # Optional: ignore patterns for files that should not be included
   # ignore: |
   #   # Exclude all markdown files
   #   /*.md
@@ -412,11 +412,18 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   replicas: ${REPLICAS}
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
+          image: myorg/my-app:latest
           env:
             - name: ENVIRONMENT
               value: ${ENVIRONMENT}
@@ -580,7 +587,7 @@ spec:
     - kind: Secret
       name: my-app-secrets
       valuesKey: secrets.yaml
-  # Inline values (lowest priority)
+  # Inline values overwrite values from valuesFrom
   values:
     replicaCount: 2
 ```
@@ -761,7 +768,7 @@ Set up notifications to stay informed about Flux reconciliation events.
 ```yaml
 # notification-provider.yaml
 # Configure Slack as notification destination
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -787,7 +794,7 @@ stringData:
 ```yaml
 # alert.yaml
 # Define which events trigger notifications
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-alerts
@@ -846,7 +853,7 @@ stringData:
 Get the webhook URL:
 
 ```bash
-# Get the webhook URL to configure in GitHub
+# Export the Receiver manifest to store in Git
 flux create receiver github-receiver \
   --type github \
   --event ping \
@@ -855,8 +862,11 @@ flux create receiver github-receiver \
   --resource GitRepository/flux-system \
   --export
 
+# After applying the Receiver, get the generated webhook path
+kubectl -n flux-system get receiver/github-receiver
+
 # The webhook URL format:
-# http://<ingress-address>/hook/<receiver-token>
+# http://<ingress-or-load-balancer-address>/<generated-receiver-path>
 ```
 
 ## Troubleshooting
@@ -922,6 +932,15 @@ While Flux handles continuous delivery, you need observability into your deploym
 ```yaml
 # Example: Monitor Flux-deployed applications with OneUptime
 # Deploy OneUptime agent alongside your applications
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: oneuptime
+  namespace: flux-system
+spec:
+  interval: 30m
+  url: https://helm-chart.oneuptime.com
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -930,16 +949,19 @@ metadata:
 spec:
   interval: 10m
   targetNamespace: monitoring
+  install:
+    createNamespace: true
   chart:
     spec:
-      chart: oneuptime-kubernetes-agent
+      chart: kubernetes-agent
       sourceRef:
         kind: HelmRepository
         name: oneuptime
   values:
     oneuptime:
       url: https://oneuptime.com
-      secretKey: ${ONEUPTIME_SECRET_KEY}
+      apiKey: ${ONEUPTIME_API_KEY}
+    clusterName: production
 ```
 
 ---
