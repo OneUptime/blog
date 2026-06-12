@@ -42,12 +42,14 @@ The workflow is simple:
 
 You need ArgoCD running in your cluster. If you don't have it yet, check out our [ArgoCD GitOps guide](https://oneuptime.com/blog/post/2026-01-06-kubernetes-gitops-argocd).
 
+These examples use the annotation-based configuration from the ArgoCD Image Updater v0.x release line. ArgoCD Image Updater v1.x uses `ImageUpdater` custom resources instead.
+
 ### Install with Kubectl
 
 ```bash
 # Install Image Updater in the argocd namespace
 
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/latest-annotation-based/manifests/install.yaml
 
 # Verify the installation
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-image-updater
@@ -66,6 +68,7 @@ helm repo update
 # Install Image Updater with custom values
 helm install argocd-image-updater argo/argocd-image-updater \
   --namespace argocd \
+  --version 0.14.0 \
   --set config.registries[0].name=Docker\ Hub \
   --set config.registries[0].prefix=docker.io \
   --set config.registries[0].api_url=https://registry-1.docker.io
@@ -73,6 +76,7 @@ helm install argocd-image-updater argo/argocd-image-updater \
 # Or use a values file for more complex configuration
 helm install argocd-image-updater argo/argocd-image-updater \
   --namespace argocd \
+  --version 0.14.0 \
   -f values.yaml
 ```
 
@@ -84,7 +88,7 @@ replicaCount: 1
 
 # Image Updater configuration
 config:
-  # How often to check for new images (default: 2m)
+  # Registry configuration
   registries:
     - name: Docker Hub
       prefix: docker.io
@@ -147,14 +151,12 @@ metadata:
   name: myapp
   namespace: argocd
   annotations:
-    # Enable Image Updater for this application
-    argocd-image-updater.argoproj.io/image-list: myapp=docker.io/myorg/myapp
+    # Enable Image Updater for this application and constrain updates
+    argocd-image-updater.argoproj.io/image-list: myapp=docker.io/myorg/myapp:1.x
     # Use semver strategy with constraint
     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
     # Only update to versions matching this constraint
     argocd-image-updater.argoproj.io/myapp.allow-tags: regexp:^[0-9]+\.[0-9]+\.[0-9]+$
-    # Constraint: allow minor and patch updates, not major
-    argocd-image-updater.argoproj.io/myapp.semver-constraint: ~1.x
 spec:
   project: default
   source:
@@ -168,7 +170,7 @@ spec:
 
 ### Latest Strategy
 
-Select the most recently built image, regardless of tag name.
+Select the image with the most recent build date, regardless of tag name.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -178,7 +180,7 @@ metadata:
   namespace: argocd
   annotations:
     argocd-image-updater.argoproj.io/image-list: myapp=docker.io/myorg/myapp
-    # Use latest strategy - picks most recently pushed image
+    # Use latest strategy - picks the image with the most recent build date
     argocd-image-updater.argoproj.io/myapp.update-strategy: latest
     # Only consider tags starting with 'dev-'
     argocd-image-updater.argoproj.io/myapp.allow-tags: regexp:^dev-.*$
@@ -271,11 +273,8 @@ kind: Secret
 metadata:
   name: dockerhub-creds
   namespace: argocd
-  labels:
-    argocd.argoproj.io/secret-type: repository
 stringData:
-  username: myuser
-  password: mytoken
+  creds: myuser:mytoken
 
 ---
 # Reference credentials in ConfigMap
@@ -290,7 +289,7 @@ data:
       - name: Docker Hub
         prefix: docker.io
         api_url: https://registry-1.docker.io
-        credentials: secret:argocd/dockerhub-creds#username:password
+        credentials: secret:argocd/dockerhub-creds#creds
         default: true
 ```
 
@@ -305,7 +304,7 @@ metadata:
   namespace: argocd
 stringData:
   # Use a Personal Access Token with read:packages scope
-  creds: ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  creds: myuser:ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 ---
 # ConfigMap configuration
@@ -353,9 +352,10 @@ ECR login script:
 # This script returns ECR credentials
 
 aws ecr get-login-password --region us-east-1 | \
-  base64 | \
-  jq -R '{username: "AWS", password: .}'
+  awk '{print "AWS:" $0}'
 ```
+
+When you install with Helm, mount this script with `authScripts.enabled: true` and `authScripts.scripts.ecr-login.sh`.
 
 ### Google Container Registry (GCR) / Artifact Registry
 
@@ -367,13 +367,8 @@ metadata:
   name: gcr-creds
   namespace: argocd
 stringData:
-  # Base64 encoded service account JSON key
-  credentials: |
-    {
-      "type": "service_account",
-      "project_id": "my-project",
-      ...
-    }
+  # Use _json_key as the username and the service account JSON as the password
+  credentials: '_json_key:{"type":"service_account","project_id":"my-project","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"image-updater@my-project.iam.gserviceaccount.com","client_id":"...","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token"}'
 
 ---
 apiVersion: v1
@@ -404,10 +399,10 @@ ArgoCD Image Updater can update your Git repository in different ways.
 flowchart TD
     Updater[Image Updater] --> Method{Write-Back Method}
 
-    Method -->|argocd| ArgoCD[ArgoCD API]
+    Method -->|argocd| ArgoCD[Application Parameters]
     Method -->|git| Git[Direct Git Commit]
 
-    ArgoCD --> Override[.argocd-source.yaml]
+    ArgoCD --> Override[Application Override]
     Git --> Kustomize[kustomization.yaml]
     Git --> Helm[values.yaml]
 
@@ -418,7 +413,7 @@ flowchart TD
 
 ### Method 1: ArgoCD Write-Back (Default)
 
-Creates a `.argocd-source-<app>.yaml` file that overrides the image tag without modifying your actual manifests.
+Updates the ArgoCD Application parameters directly without modifying your Git repository.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -573,29 +568,21 @@ metadata:
   name: production-api
   namespace: argocd
   annotations:
-    # Image list with alias
-    argocd-image-updater.argoproj.io/image-list: api=docker.io/myorg/api
+    # Image list with alias and semver constraint
+    argocd-image-updater.argoproj.io/image-list: api=docker.io/myorg/api:^2.0
 
     # Update strategy - semver with constraint
     argocd-image-updater.argoproj.io/api.update-strategy: semver
-    argocd-image-updater.argoproj.io/api.semver-constraint: ^2.0
 
     # Tag filtering - only release tags
     argocd-image-updater.argoproj.io/api.allow-tags: regexp:^v[0-9]+\.[0-9]+\.[0-9]+$
-    argocd-image-updater.argoproj.io/api.ignore-tags: regexp:.*-rc.*,.*-beta.*,.*-alpha.*
+    argocd-image-updater.argoproj.io/api.ignore-tags: "*-rc*,*-beta*,*-alpha*"
 
     # Git write-back configuration
     argocd-image-updater.argoproj.io/write-back-method: git
     argocd-image-updater.argoproj.io/git-branch: main
     argocd-image-updater.argoproj.io/write-back-target: kustomization
 
-    # Custom commit message
-    argocd-image-updater.argoproj.io/commit-message: |
-      chore(deps): update {{.AppName}} image to {{.NewVersion}}
-
-      Image: {{.Image}}
-      Previous: {{.OldVersion}}
-      New: {{.NewVersion}}
 spec:
   project: production
   source:
@@ -623,17 +610,15 @@ metadata:
   annotations:
     # Multiple images with different strategies
     argocd-image-updater.argoproj.io/image-list: |
-      frontend=docker.io/myorg/frontend,
-      backend=docker.io/myorg/backend,
+      frontend=docker.io/myorg/frontend:2.x,
+      backend=docker.io/myorg/backend:^3.0,
       worker=docker.io/myorg/worker
 
     # Frontend - semver, stable releases only
     argocd-image-updater.argoproj.io/frontend.update-strategy: semver
-    argocd-image-updater.argoproj.io/frontend.semver-constraint: ~2.x
 
     # Backend - semver with different constraint
     argocd-image-updater.argoproj.io/backend.update-strategy: semver
-    argocd-image-updater.argoproj.io/backend.semver-constraint: ^3.0
 
     # Worker - latest strategy for dev builds
     argocd-image-updater.argoproj.io/worker.update-strategy: latest
@@ -661,9 +646,9 @@ spec:
 ```
 
 Key metrics to monitor:
-- `argocd_image_updater_images_checked_total` - Total images checked
+- `argocd_image_updater_images_watched_total` - Total images watched
 - `argocd_image_updater_images_updated_total` - Total images updated
-- `argocd_image_updater_errors_total` - Errors during updates
+- `argocd_image_updater_images_errors_total` - Errors during image updates
 - `argocd_image_updater_registry_requests_total` - Registry API calls
 
 ## Troubleshooting
@@ -675,9 +660,12 @@ Key metrics to monitor:
 kubectl logs -n argocd -l app.kubernetes.io/name=argocd-image-updater -f
 
 # Increase log verbosity for debugging
-kubectl set env deployment/argocd-image-updater \
+kubectl patch configmap argocd-image-updater-config \
   -n argocd \
-  ARGOCD_IMAGE_UPDATER_LOG_LEVEL=debug
+  --type merge \
+  -p '{"data":{"log.level":"debug"}}'
+
+kubectl rollout restart deployment/argocd-image-updater -n argocd
 ```
 
 ### Verify Application Annotations
@@ -686,10 +674,10 @@ kubectl set env deployment/argocd-image-updater \
 # Check if annotations are correctly set
 kubectl get application myapp -n argocd -o yaml | grep -A 20 annotations
 
-# Force an immediate check
+# Force updates for an image that is not shown in the Application status
 kubectl annotate application myapp \
   -n argocd \
-  argocd-image-updater.argoproj.io/force-update=$(date +%s)
+  argocd-image-updater.argoproj.io/myapp.force-update=true
 ```
 
 ### Common Issues
@@ -747,7 +735,7 @@ argocd-image-updater.argoproj.io/myapp.update-strategy: semver
 
 # Production - track stable releases only
 argocd-image-updater.argoproj.io/myapp.allow-tags: regexp:^v[0-9]+\.[0-9]+\.[0-9]+$
-argocd-image-updater.argoproj.io/myapp.ignore-tags: regexp:.*-(rc|beta|alpha).*
+argocd-image-updater.argoproj.io/myapp.ignore-tags: "*-rc*,*-beta*,*-alpha*"
 argocd-image-updater.argoproj.io/myapp.update-strategy: semver
 ```
 
