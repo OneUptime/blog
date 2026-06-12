@@ -85,9 +85,6 @@ module.exports = defineConfig({
   e2e: {
     screenshotOnRunFailure: true,
     screenshotsFolder: 'cypress/screenshots',
-
-    // Take full-page screenshots instead of viewport only
-    screenshotOnRunFailure: true,
   },
 });
 ```
