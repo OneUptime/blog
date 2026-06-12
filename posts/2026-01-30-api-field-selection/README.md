@@ -44,8 +44,8 @@ Different APIs implement field selection in various ways:
 | Pattern | Example | Used By |
 |---------|---------|---------|
 | Comma-separated | `?fields=id,name,email` | Most REST APIs |
-| Nested with dots | `?fields=id,profile.avatar` | JSON:API |
-| Bracket notation | `?fields[user]=id,name` | Sparse fieldsets |
+| Nested with dots | `?fields=id,profile.avatar` | Custom REST APIs |
+| Bracket notation | `?fields[user]=id,name` | JSON:API sparse fieldsets |
 | GraphQL-style | `?select={id,name}` | Some REST APIs |
 
 ## Basic Implementation (Node.js/Express)
@@ -208,8 +208,10 @@ function fieldSelectionMiddleware(resourceType) {
           error: {
             code: 'INVALID_FIELDS',
             message: error.message,
-            invalid_fields: error.invalidFields,
-            allowed_fields: error.allowedFields
+            details: {
+              invalid_fields: error.invalidFields,
+              allowed_fields: error.allowedFields
+            }
           }
         });
       }
@@ -413,15 +415,13 @@ module.exports = UserRepository;
 
 ## Python Implementation (FastAPI)
 
-Here is a complete implementation using FastAPI with Pydantic for validation.
+Here is a complete implementation using FastAPI with query parameter validation.
 
 ```python
 # field_selection.py
 
 from typing import Optional, List, Dict, Any, Set
 from fastapi import FastAPI, Query, HTTPException
-from pydantic import BaseModel, Field
-from functools import wraps
 
 app = FastAPI()
 
@@ -554,7 +554,7 @@ async def list_users(
     fields: Optional[str] = Query(
         None,
         description="Comma-separated list of fields to return",
-        example="id,name,email"
+        examples=["id,name,email"]
     )
 ):
     """
@@ -858,8 +858,9 @@ function cacheMiddleware(cache, ttlSeconds = 300) {
   };
 }
 
-// Add Vary header to inform CDNs about field selection
-function addVaryHeader(req, res, next) {
+// Add Vary only if field selection is controlled by a request header.
+// For ?fields= query parameters, the URI already differs and should be part of the cache key.
+function addVaryHeaderForFieldHeader(req, res, next) {
   res.vary('X-Fields');
   next();
 }
