@@ -88,6 +88,7 @@ import json
 import time
 from ansible.module_utils.urls import open_url
 from ansible.module_utils.six.moves.urllib.error import HTTPError, URLError
+from ansible.module_utils.six.moves.urllib.parse import urlencode
 
 # Constants for the API client configuration
 
@@ -177,9 +178,7 @@ class APIClient:
 
         # Add query parameters if provided
         if params:
-            query_string = '&'.join(
-                '{0}={1}'.format(k, v) for k, v in params.items()
-            )
+            query_string = urlencode(params)
             url = '{0}?{1}'.format(url, query_string)
 
         headers = self._build_headers()
@@ -1161,6 +1160,7 @@ class DebugLogger:
 
         if data is not None:
             try:
+                json.dumps(data)
                 entry['data'] = data
             except (TypeError, ValueError):
                 entry['data'] = str(data)
