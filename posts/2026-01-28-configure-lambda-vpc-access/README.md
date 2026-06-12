@@ -366,10 +366,8 @@ const dbConfig = {
   database: process.env.DB_NAME,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
-  // Connection pool settings for Lambda
-  connectionTimeoutMillis: 5000,
-  idleTimeoutMillis: 10000,
-  max: 1  // Single connection per Lambda instance
+  // Single connection per Lambda instance
+  connectionTimeoutMillis: 5000
 };
 
 let client = null;
@@ -540,12 +538,19 @@ resource "aws_cloudwatch_metric_alarm" "eni_usage" {
   alarm_name          = "lambda-eni-usage"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "NetworkInterfaceCount"
-  namespace           = "AWS/EC2"
+  metric_name         = "ResourceCount"
+  namespace           = "AWS/Usage"
   period              = 300
   statistic           = "Maximum"
   threshold           = 200
   alarm_description   = "ENI usage approaching limits"
+
+  dimensions = {
+    Service  = "VPC"
+    Class    = "None"
+    Resource = "NetworkInterface"
+    Type     = "Resource"
+  }
 }
 ```
 
