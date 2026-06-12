@@ -72,10 +72,11 @@ function parseFilters(query, allowedFields) {
 
         // Parse field name and operator
         // Format: field_operator (e.g., price_gte, status_in)
-        const match = key.match(/^(\w+)(?:_(\w+))?$/);
-        if (!match) continue;
-
-        const [, field, operator = 'eq'] = match;
+        const operators = ['contains', 'gte', 'lte', 'ne', 'gt', 'lt', 'in'];
+        const operator = operators.find(op => key.endsWith(`_${op}`)) || 'eq';
+        const field = operator === 'eq'
+            ? key
+            : key.slice(0, -(operator.length + 1));
 
         // Security: only allow filtering on specified fields
         if (!allowedFields.includes(field)) {
@@ -392,26 +393,28 @@ Here is the same pattern implemented in FastAPI:
 ```python
 # main.py
 
-from fastapi import FastAPI, Query, HTTPException
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Query
 from typing import Optional, List
 from pydantic import BaseModel
 from enum import Enum
 import databases
-import sqlalchemy
 
 # Database setup
 DATABASE_URL = "postgresql://user:password@localhost/shop"
 database = databases.Database(DATABASE_URL)
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await database.connect()
+    try:
+        yield
+    finally:
+        await database.disconnect()
 
-# Define allowed filter and sort fields as enums for validation
-class ProductSortField(str, Enum):
-    name = "name"
-    price = "price"
-    created_at = "created_at"
-    stock_quantity = "stock_quantity"
+app = FastAPI(lifespan=lifespan)
 
+# Define allowed filter fields as enums for validation
 class ProductCategory(str, Enum):
     electronics = "electronics"
     clothing = "clothing"
@@ -564,7 +567,7 @@ async def get_products(
 
     # Execute count query
     count_query = f"SELECT COUNT(*) FROM products WHERE {where_clause}"
-    total = await database.fetch_val(count_query, params)
+    total = await database.fetch_val(query=count_query, values=params)
 
     # Execute data query
     data_query = f"""
@@ -577,13 +580,13 @@ async def get_products(
     params["limit"] = limit
     params["offset"] = offset
 
-    rows = await database.fetch_all(data_query, params)
+    rows = await database.fetch_all(query=data_query, values=params)
 
     # Build response
     total_pages = (total + limit - 1) // limit
 
     return ProductListResponse(
-        data=[Product(**dict(row)) for row in rows],
+        data=[Product(**dict(row._mapping)) for row in rows],
         pagination=PaginationMeta(
             page=page,
             limit=limit,
@@ -684,7 +687,7 @@ function nestedFiltersToSQL(filters) {
 By default, multiple filters use AND logic. To support OR:
 
 ```javascript
-// GET /products?or[0][category]=electronics&or[0][category]=clothing
+// GET /products?or[0][category]=electronics&or[1][category]=clothing
 // GET /products?category_in=electronics,clothing (simpler alternative)
 
 function parseOrFilters(query) {
@@ -836,7 +839,7 @@ async function getCachedOrFetch(cacheKey, fetchFn) {
     const data = await fetchFn();
 
     // Cache the result
-    await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(data));
+    await redis.set(cacheKey, JSON.stringify(data), 'EX', CACHE_TTL);
 
     return data;
 }
@@ -947,7 +950,7 @@ paths:
 
 Provide helpful error messages:
 
-```javascript
+```jsonc
 // Example error responses for invalid filters
 
 // Invalid filter field
