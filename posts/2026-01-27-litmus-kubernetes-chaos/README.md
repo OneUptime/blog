@@ -76,8 +76,12 @@ kubectl apply -f https://litmuschaos.github.io/litmus/litmus-operator-v3.0.0.yam
 # Verify the operator is running
 kubectl get pods -n litmus
 
-# Install generic chaos experiments
-kubectl apply -f https://hub.litmuschaos.io/api/chaos/3.0.0?file=charts/generic/experiments.yaml
+# Install the chaos faults used in this guide in the target namespace
+export CHAOS_NAMESPACE=default
+
+for fault in pod-delete pod-network-loss pod-network-latency pod-cpu-hog pod-memory-hog node-drain; do
+  kubectl apply -n "$CHAOS_NAMESPACE" -f "https://hub.litmuschaos.io/api/chaos/3.0.0?file=faults/kubernetes/${fault}/fault.yaml"
+done
 ```
 
 ## Understanding ChaosEngine
@@ -172,10 +176,10 @@ ChaosExperiments are templates that define what type of chaos to inject and the 
 
 ```bash
 # List all installed chaos experiments
-kubectl get chaosexperiments -n litmus
+kubectl get chaosexperiments -n default
 
 # Describe a specific experiment to see its parameters
-kubectl describe chaosexperiment pod-delete -n litmus
+kubectl describe chaosexperiment pod-delete -n default
 ```
 
 ### Custom ChaosExperiment Definition
@@ -186,7 +190,7 @@ apiVersion: litmuschaos.io/v1alpha1
 kind: ChaosExperiment
 metadata:
   name: custom-pod-delete
-  namespace: litmus
+  namespace: default
 spec:
   definition:
     # Scope determines where the experiment can run
@@ -533,13 +537,6 @@ spec:
             - name: NODE_LABEL
               value: ""
 
-            # App namespace for identifying affected workloads
-            - name: APP_NAMESPACE
-              value: "production"
-
-            # App label for identifying affected workloads
-            - name: APP_LABEL
-              value: "app=critical-service"
 ```
 
 ## Configuring Probes
@@ -587,8 +584,8 @@ spec:
               initialDelay: 5s        # Wait before first probe
               stopOnFailure: false    # Continue experiment on probe failure
 
-          # HTTP probe with body validation
-          - name: api-response-check
+          # HTTP probe to check a second endpoint at the start and end of chaos
+          - name: api-status-check
             type: httpProbe
             mode: Edge                # Check at start and end of chaos
             httpProbe/inputs:
@@ -596,12 +593,8 @@ spec:
               insecureSkipVerify: false
               method:
                 get:
-                  criteria: contains
+                  criteria: ==
                   responseCode: "200"
-              # Validate response body
-              responseBody:
-                criteria: contains
-                value: '"status":"healthy"'
             runProperties:
               probeTimeout: 10s
               interval: 5s
@@ -635,7 +628,7 @@ spec:
             mode: Edge
             cmdProbe/inputs:
               # Command to execute
-              command: "pg_isready -h localhost -p 5432"
+              command: "pg_isready -h localhost -p 5432 >/dev/null && echo 0 || echo 1"
               # Where to run the command
               source:
                 image: postgres:15
@@ -798,26 +791,24 @@ apiVersion: litmuschaos.io/v1alpha1
 kind: ChaosSchedule
 metadata:
   name: weekly-resilience-test
-  namespace: litmus
+  namespace: production
 spec:
-  # Schedule in cron format
+  # Repeat schedule
   schedule:
-    now: false
     # Run every Monday at 2 AM
     repeat:
       timeRange:
-        startTime: "2024-01-01T00:00:00Z"
-        endTime: "2025-12-31T23:59:59Z"
+        startTime: "2026-01-01T00:00:00Z"
+        endTime: "2027-12-31T23:59:59Z"
       properties:
-        minChaosInterval: 1h      # Minimum time between runs
+        minChaosInterval:
+          hour:
+            everyNthHour: 168     # Minimum time between runs
+            minuteOfTheHour: 0
       workDays:
         includedDays: "Mon"       # Mon,Tue,Wed,Thu,Fri,Sat,Sun
       workHours:
         includedHours: "2-3"      # Run between 2 AM and 3 AM
-
-  # Execution policy
-  executionType: kubernetes
-  concurrencyPolicy: Forbid       # Forbid, Allow, Replace
 
   # ChaosEngine template
   engineTemplateSpec:
@@ -1010,26 +1001,25 @@ spec:
     matchNames:
       - litmus
   endpoints:
-    - port: metrics
+    - port: tcp
       interval: 30s
-      path: /metrics
 ```
 
 ### Grafana Dashboard Queries
 
 ```promql
 # Active chaos experiments
-sum(litmuschaos_experiment_running_status)
+sum(litmuschaos_awaited_experiments)
 
 # Experiment success rate
-sum(litmuschaos_experiment_verdict{verdict="Pass"}) /
-sum(litmuschaos_experiment_verdict) * 100
+sum(litmuschaos_passed_experiments) /
+(sum(litmuschaos_passed_experiments) + sum(litmuschaos_failed_experiments)) * 100
 
 # Average experiment duration
-avg(litmuschaos_experiment_duration_seconds)
+avg(litmuschaos_experiment_total_duration)
 
 # Failed probes by experiment
-sum by (experiment_name) (litmuschaos_probe_status{status="Failed"})
+litmuschaos_probe_success_percentage < 100
 ```
 
 ### Alerting on Chaos Experiment Failures
@@ -1048,51 +1038,58 @@ spec:
         # Alert when a chaos experiment fails
         - alert: ChaosExperimentFailed
           expr: |
-            litmuschaos_experiment_verdict{verdict="Fail"} == 1
+            litmuschaos_experiment_verdict{chaosresult_verdict="Fail"} == 1
           for: 1m
           labels:
             severity: warning
           annotations:
             summary: "Chaos experiment failed"
             description: |
-              Experiment {{ $labels.experiment_name }} in namespace
-              {{ $labels.namespace }} has failed. This indicates a
+              Experiment {{ $labels.chaosengine_name }} in namespace
+              {{ $labels.chaosresult_namespace }} has failed. This indicates a
               potential resilience issue.
 
         # Alert when probe validation fails
         - alert: ChaosProbeValidationFailed
           expr: |
-            litmuschaos_probe_status{status="Failed"} == 1
+            litmuschaos_experiment_verdict{probe_success_percentage!="100.000000"} == 1
           for: 1m
           labels:
             severity: critical
           annotations:
             summary: "Chaos probe validation failed"
             description: |
-              Probe {{ $labels.probe_name }} for experiment
-              {{ $labels.experiment_name }} failed. SLO violation detected.
+              Probe validation for chaos result
+              {{ $labels.chaosresult_name }} failed. SLO violation detected.
 ```
 
-### OpenTelemetry Integration
+### OpenTelemetry Correlation
 
 ```yaml
-# Configure Litmus to export traces
+# Collector pipeline for application traces you can correlate with chaos windows
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: litmus-otel-config
-  namespace: litmus
+  name: otel-collector-config
+  namespace: observability
 data:
   config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+          http:
+
     exporters:
       otlp:
-        endpoint: "otel-collector.observability.svc:4317"
+        endpoint: "tempo.observability.svc:4317"
         tls:
           insecure: true
 
     service:
       pipelines:
         traces:
+          receivers: [otlp]
           exporters: [otlp]
 ```
 
