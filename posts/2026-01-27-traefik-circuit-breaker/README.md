@@ -96,13 +96,13 @@ spec:
       LatencyAtQuantileMS(50.0) > 100 ||
       LatencyAtQuantileMS(75.0) > 200
 
-    # Time to wait before attempting recovery (default: 10s)
+    # Interval used to evaluate the expression (default: 100ms)
     checkPeriod: 15s
 
-    # Time to wait in half-open state for probe results (default: 10s)
+    # Duration the circuit stays open before transitioning to recovering (default: 10s)
     fallbackDuration: 30s
 
-    # Time window for calculating metrics (default: 10s)
+    # Duration of the recovering state before returning to closed (default: 10s)
     recoveryDuration: 60s
 ```
 
@@ -177,6 +177,8 @@ data:
         address: ":80"
       websecure:
         address: ":443"
+      metrics:
+        address: ":8082"
 
     providers:
       kubernetesIngress: {}
@@ -188,10 +190,6 @@ data:
         entryPoint: metrics
         addEntryPointsLabels: true
         addServicesLabels: true
-
-    entryPoints:
-      metrics:
-        address: ":8082"
 
 ---
 apiVersion: apps/v1
@@ -330,7 +328,7 @@ Route to a fallback service when the primary is unavailable:
 
 ```yaml
 # fallback-service.yaml
-# Route to fallback service using weighted load balancing
+# Route to fallback service using the failover service kind
 
 apiVersion: traefik.io/v1alpha1
 kind: TraefikService
@@ -338,20 +336,18 @@ metadata:
   name: api-with-fallback
   namespace: production
 spec:
-  weighted:
-    services:
-      # Primary service - normal traffic
-      - name: api-service
-        port: 8080
-        weight: 100
-        healthCheck:
-          path: /health
-          interval: 5s
-          timeout: 2s
-      # Fallback service - receives traffic when primary fails health checks
-      - name: api-fallback
-        port: 8080
-        weight: 0  # Only receives traffic during failover
+  # The failover kind routes to the fallback service when the primary
+  # returns one of the configured error status codes.
+  failover:
+    service:
+      name: api-service
+      port: 8080
+    fallback:
+      name: api-fallback
+      port: 8080
+    errors:
+      status:
+        - "500-599"
 
 ---
 # Fallback service deployment - serves cached/degraded responses
@@ -829,8 +825,6 @@ spec:
       - name: circuit-breaker
       # 3. Retry - handle transient failures
       - name: retry
-      # 4. Timeout - bound response time
-      - name: timeout
 
 ---
 apiVersion: traefik.io/v1alpha1
@@ -845,15 +839,21 @@ spec:
     period: 1s
 
 ---
+# Backend timeouts are configured via a ServersTransport CRD (not a Middleware),
+# then referenced from the IngressRoute service's serversTransport field.
 apiVersion: traefik.io/v1alpha1
-kind: Middleware
+kind: ServersTransport
 metadata:
-  name: timeout
+  name: backend-timeouts
   namespace: production
 spec:
-  # Requests timeout after 30 seconds
-  forwardAuth:
-    responseHeadersTimeout: 30s
+  forwardingTimeouts:
+    # Time to wait until a connection to a backend server can be established
+    dialTimeout: 5s
+    # Time to wait for the backend's response headers after sending the request
+    responseHeaderTimeout: 30s
+    # Maximum time a keep-alive connection stays idle before closing
+    idleConnTimeout: 90s
 ```
 
 ## Integration with OneUptime
