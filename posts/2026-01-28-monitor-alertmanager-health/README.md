@@ -131,11 +131,11 @@ rate(alertmanager_alerts_invalid_total[5m])
 # Number of connected cluster peers
 alertmanager_cluster_members
 
-# Cluster peer health - should match total cluster size
-alertmanager_cluster_peers_joined_total - alertmanager_cluster_peers_left_total
+# Cluster peer health - count alive peers
+sum by (instance) (alertmanager_cluster_peer_info{state="alive"})
 
-# Message propagation failures
-rate(alertmanager_cluster_messages_publish_failures_total[5m])
+# Failed cluster peers
+alertmanager_cluster_failed_peers
 ```
 
 ## 3. Create Alerting Rules for Alertmanager
@@ -182,7 +182,7 @@ groups:
           summary: "Alertmanager cluster has fewer than 3 members"
           description: "Alertmanager cluster has only {{ $value }} members, expected 3."
 
-      # Alert when cluster is completely down
+      # Alert when cluster has too few members for high availability
       - alert: AlertmanagerClusterDown
         expr: |
           alertmanager_cluster_members < 2
@@ -190,8 +190,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Alertmanager cluster lost quorum"
-          description: "Alertmanager cluster has only {{ $value }} member(s). Deduplication may not work correctly."
+          summary: "Alertmanager cluster has too few members"
+          description: "Alertmanager cluster has only {{ $value }} member(s). High availability and deduplication may not work correctly."
 
       # Alert on high alert queue
       - alert: AlertmanagerHighAlertVolume
@@ -218,7 +218,7 @@ groups:
       # Alert on gossip failures
       - alert: AlertmanagerClusterGossipFailures
         expr: |
-          rate(alertmanager_cluster_messages_publish_failures_total[5m]) > 0
+          alertmanager_cluster_failed_peers > 0
         for: 5m
         labels:
           severity: warning
@@ -379,8 +379,8 @@ route:
   receiver: 'default'
   routes:
     # Route dead man's switch to a dedicated receiver
-    - match:
-        alertname: DeadMansSwitch
+    - matchers:
+        - alertname="DeadMansSwitch"
       receiver: 'deadmans-switch'
       # Don't group with other alerts
       group_wait: 0s
