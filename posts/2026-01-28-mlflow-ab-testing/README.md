@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MLflow, A/B Testing, MLOps, Machine Learning, Experimentation, Python
 
-Description: Learn how to implement A/B testing for machine learning models using MLflow for experiment tracking, traffic splitting, and statistical analysis.
+Description: Learn how to implement A/B testing for machine learning models using MLflow for experiment tracking, variant metadata, and statistical analysis.
 
 ---
 
-A/B testing machine learning models requires careful experiment design, traffic management, and statistical rigor. MLflow provides the infrastructure to track model variants, log predictions, and analyze results. This guide shows how to build a complete A/B testing system for ML models using MLflow.
+A/B testing machine learning models requires careful experiment design, traffic management, and statistical rigor. MLflow provides the infrastructure to track model variants, store experiment metadata, and log analysis results. This guide shows how to build a complete A/B testing system for ML models using MLflow.
 
 ## Why A/B Test ML Models?
 
@@ -117,7 +117,6 @@ class TrafficSplitter:
 splitter = TrafficSplitter(control_percentage=50, salt="rec-model-test-001")
 
 # Verify distribution
-import random
 test_users = [f"user_{i}" for i in range(10000)]
 distribution = splitter.get_variant_distribution(test_users)
 print(f"Distribution: {distribution}")
@@ -131,7 +130,7 @@ Create a serving layer that routes requests and logs predictions:
 ```python
 import mlflow
 import mlflow.pyfunc
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 class ABTestingModelServer:
@@ -160,7 +159,7 @@ class ABTestingModelServer:
         Logs the prediction for later analysis.
         """
         variant = self.splitter.get_variant(user_id)
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
 
         # Select model based on variant
         if variant == "control":
@@ -197,7 +196,7 @@ class ABTestingModelServer:
         prediction,
         timestamp: str
     ):
-        """Log prediction to MLflow for later analysis."""
+        """Log prediction for later analysis."""
         # In production, batch these writes for efficiency
         prediction_record = {
             "user_id": user_id,
@@ -207,7 +206,7 @@ class ABTestingModelServer:
             "features": features
         }
 
-        # Log to a file artifact (batch in production)
+        # Log to a local JSONL file (batch and log as an MLflow artifact in production)
         # For real-time, consider streaming to a database
         with open(f"/tmp/predictions_{variant}.jsonl", "a") as f:
             f.write(json.dumps(prediction_record) + "\n")
@@ -235,7 +234,8 @@ Track conversions and other business metrics:
 
 ```python
 import mlflow
-from datetime import datetime
+from datetime import datetime, timezone
+import json
 
 class OutcomeTracker:
     """
@@ -260,7 +260,7 @@ class OutcomeTracker:
             "variant": variant,
             "converted": converted,
             "revenue": revenue,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metadata": metadata or {}
         }
 
@@ -281,7 +281,7 @@ class OutcomeTracker:
             "variant": variant,
             "event_type": event_type,
             "value": value,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         with open(f"/tmp/engagement_{variant}.jsonl", "a") as f:
@@ -317,6 +317,7 @@ import numpy as np
 from scipy import stats
 import pandas as pd
 import mlflow
+import json
 
 def load_experiment_data(variant: str) -> pd.DataFrame:
     """Load outcomes data for a variant."""
@@ -358,8 +359,12 @@ def run_ab_test_analysis(experiment_name: str):
     p_value = 2 * (1 - stats.norm.cdf(abs(z_stat)))  # Two-tailed test
 
     # Confidence interval for the difference
-    ci_lower = (treatment_rate - control_rate) - 1.96 * pooled_se
-    ci_upper = (treatment_rate - control_rate) + 1.96 * pooled_se
+    diff_se = np.sqrt(
+        control_rate * (1 - control_rate) / control_n +
+        treatment_rate * (1 - treatment_rate) / treatment_n
+    )
+    ci_lower = (treatment_rate - control_rate) - 1.96 * diff_se
+    ci_upper = (treatment_rate - control_rate) + 1.96 * diff_se
 
     # Log results to MLflow
     with mlflow.start_run(run_name="analysis-results"):
@@ -548,6 +553,7 @@ Set up monitoring to catch issues during the test:
 
 ```python
 import mlflow
+from scipy import stats
 
 def check_test_health(experiment_name: str) -> dict:
     """
@@ -596,7 +602,7 @@ def check_test_health(experiment_name: str) -> dict:
         for check_name, check_result in checks.items():
             mlflow.log_param(f"{check_name}_healthy", check_result["is_healthy"])
             for key, value in check_result.items():
-                if isinstance(value, (int, float)):
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
                     mlflow.log_metric(f"{check_name}_{key}", value)
 
     return checks
