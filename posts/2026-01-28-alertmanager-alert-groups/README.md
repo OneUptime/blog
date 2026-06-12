@@ -101,30 +101,30 @@ route:
 
   routes:
     # Database alerts grouped by cluster and instance
-    - match:
-        team: database
+    - matchers:
+        - team = "database"
       receiver: 'database-team'
       group_by: ['alertname', 'cluster', 'instance']
       group_wait: 1m
       group_interval: 10m
 
     # Security alerts should never be grouped - each one matters
-    - match:
-        category: security
+    - matchers:
+        - category = "security"
       receiver: 'security-team'
-      group_by: ['...']  # Special value: don't aggregate at all
+      group_by: ['...']  # Special value: group by all labels, so each alert is its own group
       group_wait: 0s     # Send immediately
 
     # Network alerts grouped by datacenter
-    - match_re:
-        alertname: Network.*
+    - matchers:
+        - alertname =~ "Network.*"
       receiver: 'network-team'
       group_by: ['datacenter', 'alertname']
       group_wait: 2m  # Network issues often cascade, wait longer
 
     # Critical alerts for any service go to on-call
-    - match:
-        severity: critical
+    - matchers:
+        - severity = "critical"
       receiver: 'pagerduty-oncall'
       group_by: ['cluster', 'service']
       group_wait: 15s  # Shorter wait for critical issues
@@ -183,25 +183,25 @@ Inhibition prevents certain alerts from firing when others are already active. T
 
 inhibit_rules:
   # If a critical alert is firing, suppress warnings for the same service
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
     # Only inhibit if these labels match between source and target
     equal: ['alertname', 'cluster', 'service']
 
   # If a cluster is down, suppress individual node alerts
-  - source_match:
-      alertname: 'ClusterDown'
-    target_match_re:
-      alertname: 'Node.*'
+  - source_matchers:
+      - alertname = "ClusterDown"
+    target_matchers:
+      - alertname =~ "Node.*"
     equal: ['cluster']
 
   # If entire region is down, suppress datacenter alerts
-  - source_match:
-      alertname: 'RegionDown'
-    target_match:
-      alertname: 'DatacenterDown'
+  - source_matchers:
+      - alertname = "RegionDown"
+    target_matchers:
+      - alertname = "DatacenterDown"
     equal: ['region']
 ```
 
