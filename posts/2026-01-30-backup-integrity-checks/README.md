@@ -125,7 +125,7 @@ backup_integrity.py - Multi-algorithm backup verification
 import hashlib
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -137,7 +137,7 @@ class BackupIntegrityChecker:
 
     def __init__(self, backup_path: str):
         self.backup_path = Path(backup_path)
-        self.manifest_path = self.backup_path.with_suffix('.manifest.json')
+        self.manifest_path = self.backup_path.with_suffix(self.backup_path.suffix + '.manifest.json')
 
     def calculate_hashes(self, file_path: Path) -> Dict[str, str]:
         """Calculate multiple hashes for a file."""
@@ -159,7 +159,7 @@ class BackupIntegrityChecker:
 
         manifest = {
             'backup_file': str(self.backup_path),
-            'created_at': datetime.utcnow().isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
             'file_size': self.backup_path.stat().st_size,
             'hashes': hashes
         }
@@ -270,7 +270,7 @@ import json
 import logging
 import hashlib
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 import smtplib
 from email.mime.text import MIMEText
@@ -329,7 +329,7 @@ class BackupMonitor:
 
         result = {
             'file': str(backup_path),
-            'checked_at': datetime.utcnow().isoformat(),
+            'checked_at': datetime.now(timezone.utc).isoformat(),
             'size': backup_path.stat().st_size,
             'status': 'unknown'
         }
@@ -341,7 +341,7 @@ class BackupMonitor:
             manifest = {
                 'hash': current_hash,
                 'size': result['size'],
-                'created_at': datetime.utcnow().isoformat()
+                'created_at': datetime.now(timezone.utc).isoformat()
             }
             with open(manifest_path, 'w') as f:
                 json.dump(manifest, f, indent=2)
@@ -392,7 +392,7 @@ class BackupMonitor:
 
         # Save results
         self.save_results({
-            'last_check': datetime.utcnow().isoformat(),
+            'last_check': datetime.now(timezone.utc).isoformat(),
             'results': results
         })
 
@@ -542,7 +542,7 @@ fi
 # 6. Database dump validation (if applicable)
 echo ""
 echo "Step 5: Validating database dumps..."
-for dump in $(find "$TEMP_DIR" -name "*.sql" -o -name "*.sql.gz"); do
+while IFS= read -r -d '' dump; do
     if [[ "$dump" == *.gz ]]; then
         if gzip -t "$dump" 2>/dev/null; then
             echo "  $dump: OK (gzip valid)"
@@ -551,14 +551,14 @@ for dump in $(find "$TEMP_DIR" -name "*.sql" -o -name "*.sql.gz"); do
             exit 1
         fi
     else
-        # Check SQL has proper ending
+        # Check for a common MySQL dump completion marker
         if tail -1 "$dump" | grep -q "Dump completed"; then
             echo "  $dump: OK (complete)"
         else
             echo "  $dump: WARNING (may be truncated)"
         fi
     fi
-done
+done < <(find "$TEMP_DIR" -type f \( -name "*.sql" -o -name "*.sql.gz" \) -print0)
 
 echo ""
 echo "=== Verification Complete ==="
@@ -634,6 +634,17 @@ class BlockVerifier:
         """Verify file against block manifest, return corrupted block numbers."""
         corrupted_blocks = []
 
+        current_size = file_path.stat().st_size
+        if current_size != manifest['file_size']:
+            print(f"  File size: MISMATCH")
+            print(f"    Expected: {manifest['file_size']}")
+            print(f"    Actual: {current_size}")
+            return False, [-1]
+
+        current_file_hash = self._calculate_file_hash(file_path)
+        if current_file_hash != manifest['file_hash']:
+            print(f"  File hash: MISMATCH")
+
         with open(file_path, 'rb') as f:
             for block_info in manifest['blocks']:
                 f.seek(block_info['offset'])
@@ -648,7 +659,7 @@ class BlockVerifier:
                     print(f"    Expected: {block_info['hash'][:16]}...")
                     print(f"    Actual: {current_hash[:16]}...")
 
-        return len(corrupted_blocks) == 0, corrupted_blocks
+        return len(corrupted_blocks) == 0 and current_file_hash == manifest['file_hash'], corrupted_blocks
 
     def report_corruption(self, file_path: Path, corrupted_blocks: List[int], manifest: Dict):
         """Generate detailed corruption report."""
@@ -658,7 +669,7 @@ class BlockVerifier:
         print(f"Corrupted blocks: {len(corrupted_blocks)}")
         print(f"Corruption rate: {100 * len(corrupted_blocks) / manifest['total_blocks']:.2f}%")
 
-        if corrupted_blocks:
+        if corrupted_blocks and corrupted_blocks[0] != -1:
             print("\nCorrupted regions:")
 
             # Group consecutive blocks
@@ -889,6 +900,10 @@ class TieredVerifier:
         all_backups = list(self.backup_dir.glob('*.tar.gz'))
 
         # Random 10% sample
+        if not all_backups:
+            print("  No backups found")
+            return
+
         sample_size = max(1, len(all_backups) // 10)
         sample = random.sample(all_backups, sample_size)
 
@@ -980,7 +995,7 @@ spec:
 
         # Alert on any failure
         - alert: BackupIntegrityFailure
-          expr: backup_verification_failed_total > 0
+          expr: increase(backup_verification_failed_total[5m]) > 0
           for: 5m
           labels:
             severity: critical
@@ -1003,7 +1018,11 @@ spec:
         # Alert on high corruption rate
         - alert: BackupCorruptionRateHigh
           expr: |
-            (backup_verification_failed_total / backup_verification_total) > 0.05
+            (
+              increase(backup_verification_failed_total[1h])
+              /
+              increase(backup_verification_total[1h])
+            ) > 0.05
           for: 15m
           labels:
             severity: critical
