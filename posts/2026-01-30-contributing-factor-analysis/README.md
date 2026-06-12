@@ -317,7 +317,7 @@ class FishboneAnalysis:
                 lines.append(f"    subgraph {category.value}")
                 for i, factor in enumerate(category_factors):
                     # Create a short ID and truncate long descriptions
-                    factor_id = f"{category.name[:1]}{i}"
+                    factor_id = f"{category.name}{i}"
                     desc = factor.description[:30]
                     if len(factor.description) > 30:
                         desc += "..."
@@ -328,7 +328,7 @@ class FishboneAnalysis:
         lines.append(f"    Incident[{self.incident_summary[:20]}...]")
         for category in FactorCategory:
             for i, factor in enumerate(self.factors[category]):
-                factor_id = f"{category.name[:1]}{i}"
+                factor_id = f"{category.name}{i}"
                 lines.append(f"    {factor_id} --> Incident")
 
         return "\n".join(lines)
@@ -720,7 +720,7 @@ class FactorNode:
     connections: Set[str] = field(default_factory=set)
 
     def connect_to(self, other_id: str):
-        """Create a bidirectional connection to another factor."""
+        """Create a connection to another factor."""
         self.connections.add(other_id)
 
 
