@@ -17,7 +17,7 @@ Building a GraphQL API with Express.js gives you the flexibility of GraphQL's qu
 ### Installation
 
 ```bash
-npm install express @apollo/server graphql cors body-parser
+npm install express @apollo/server @as-integrations/express5 graphql cors
 npm install --save-dev @types/node @types/express typescript
 ```
 
@@ -27,9 +27,8 @@ npm install --save-dev @types/node @types/express typescript
 // server.js
 const express = require('express');
 const { ApolloServer } = require('@apollo/server');
-const { expressMiddleware } = require('@apollo/server/express4');
+const { expressMiddleware } = require('@as-integrations/express5');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 
 // Define your GraphQL schema
 const typeDefs = `#graphql
@@ -61,7 +60,7 @@ async function startServer() {
   app.use(
     '/graphql',
     cors(),
-    bodyParser.json(),
+    express.json(),
     expressMiddleware(server)
   );
 
@@ -423,7 +422,7 @@ async function startServer() {
   app.use(
     '/graphql',
     cors(),
-    bodyParser.json(),
+    express.json(),
     expressMiddleware(server, {
       // Pass context function
       context: createContext,
@@ -438,7 +437,8 @@ async function startServer() {
 
 ```javascript
 // auth.js
-const { GraphQLError } = require('graphql');
+const { defaultFieldResolver, GraphQLError } = require('graphql');
+const { getDirective, MapperKind, mapSchema } = require('@graphql-tools/utils');
 
 // Directive-based authentication
 function authDirective(directiveName) {
@@ -678,8 +678,9 @@ const resolvers = {
 // server.js
 const { createServer } = require('http');
 const { WebSocketServer } = require('ws');
-const { useServer } = require('graphql-ws/lib/use/ws');
+const { useServer } = require('graphql-ws/use/ws');
 const { makeExecutableSchema } = require('@graphql-tools/schema');
+const { ApolloServerPluginDrainHttpServer } = require('@apollo/server/plugin/drainHttpServer');
 const { PubSub } = require('graphql-subscriptions');
 
 // Create PubSub instance for publishing events
@@ -724,6 +725,7 @@ async function startServer() {
   const server = new ApolloServer({
     schema,
     plugins: [
+      ApolloServerPluginDrainHttpServer({ httpServer }),
       // Graceful shutdown
       {
         async serverWillStart() {
@@ -742,7 +744,7 @@ async function startServer() {
   app.use(
     '/graphql',
     cors(),
-    bodyParser.json(),
+    express.json(),
     expressMiddleware(server, {
       context: async ({ req }) => ({
         ...await createContext({ req }),
@@ -815,7 +817,7 @@ const resolvers = {
 
 ```javascript
 // server.js
-const { graphqlUploadExpress } = require('graphql-upload');
+import graphqlUploadExpress from 'graphql-upload/graphqlUploadExpress.mjs';
 
 // Add upload scalar to schema
 const typeDefs = `#graphql
@@ -839,10 +841,11 @@ const typeDefs = `#graphql
 
 ```javascript
 // resolvers.js
-const { GraphQLUpload } = require('graphql-upload');
-const { createWriteStream, mkdir } = require('fs');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+import { createWriteStream } from 'fs';
+import { mkdir } from 'fs/promises';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
+import GraphQLUpload from 'graphql-upload/GraphQLUpload.mjs';
 
 const resolvers = {
   Upload: GraphQLUpload,
@@ -858,7 +861,7 @@ const resolvers = {
 
       // Generate unique filename
       const uniqueFilename = `${uuidv4()}-${filename}`;
-      const uploadDir = path.join(__dirname, '../uploads');
+      const uploadDir = path.resolve('uploads');
       const filePath = path.join(uploadDir, uniqueFilename);
 
       // Ensure upload directory exists
@@ -910,18 +913,18 @@ const resolvers = {
 
 ```javascript
 // server.js
-const { graphqlUploadExpress } = require('graphql-upload');
+import graphqlUploadExpress from 'graphql-upload/graphqlUploadExpress.mjs';
 
 app.use(
   '/graphql',
   cors(),
   graphqlUploadExpress({ maxFileSize: 10000000, maxFiles: 10 }), // 10MB max
-  bodyParser.json(),
+  express.json(),
   expressMiddleware(server, { context: createContext })
 );
 
 // Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.resolve('uploads')));
 ```
 
 ## Testing GraphQL Endpoints
@@ -930,7 +933,6 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 ```javascript
 // resolvers.test.js
-const { createTestClient } = require('apollo-server-testing');
 const { ApolloServer } = require('@apollo/server');
 const typeDefs = require('./schema');
 const resolvers = require('./resolvers');
@@ -1152,6 +1154,16 @@ const server = new ApolloServer({
 
 // Add cache hints in schema
 const typeDefs = `#graphql
+  enum CacheControlScope {
+    PUBLIC
+    PRIVATE
+  }
+
+  directive @cacheControl(
+    maxAge: Int
+    scope: CacheControlScope
+  ) on FIELD_DEFINITION | OBJECT
+
   type Query {
     # Cache public data for 1 hour
     publicPosts: [Post!]! @cacheControl(maxAge: 3600)
@@ -1190,13 +1202,12 @@ const server = new ApolloServer({
 
 ```javascript
 // server.js
-const rateLimit = require('express-rate-limit');
-const { RedisStore } = require('rate-limit-redis');
+const { rateLimit } = require('express-rate-limit');
 
 // General rate limiter
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window
+  limit: 100, // 100 requests per window
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -1204,7 +1215,7 @@ const limiter = rateLimit({
 // Stricter limiter for mutations
 const mutationLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 10, // 10 mutations per minute
+  limit: 10, // 10 mutations per minute
   skip: (req) => {
     // Only apply to mutations
     const body = req.body;
