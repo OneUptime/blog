@@ -12,7 +12,7 @@ Running tests in parallel can dramatically reduce your test suite execution time
 
 ## Understanding Playwright Parallelism
 
-Playwright uses worker processes to run tests in parallel. Each worker is an independent process with its own browser instance, ensuring complete test isolation.
+Playwright uses worker processes to run tests in parallel. Each worker is an independent process with its own browser instance, while Playwright creates isolated browser contexts for individual tests.
 
 ```mermaid
 flowchart TB
@@ -58,7 +58,7 @@ export default defineConfig({
   // Use 50% of CPU cores by default
   workers: process.env.CI ? 4 : '50%',
 
-  // Fail the build on CI if tests are flaky
+  // Fail the build on CI if test.only is left in source code
   forbidOnly: !!process.env.CI,
 
   // Retry failed tests
@@ -209,6 +209,7 @@ Parallel tests must be isolated. They cannot share state or depend on each other
 // fixtures/dbFixture.ts
 import { test as base } from '@playwright/test';
 import { v4 as uuidv4 } from 'uuid';
+import { createTestUser, deleteTestUser } from './test-db';
 
 type DbFixture = {
   testId: string;
@@ -265,7 +266,7 @@ test('user can change password', async ({ page, testUser }) => {
 
 ### Isolating Browser State
 
-Each worker gets a fresh browser context by default. For additional isolation within a worker:
+Each test gets a fresh browser context by default. For additional isolation within a test:
 
 ```typescript
 // tests/isolated-contexts.spec.ts
@@ -309,6 +310,7 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   workers: 4,
   fullyParallel: true,
+  reporter: process.env.CI ? 'blob' : 'html',
 });
 ```
 
@@ -358,13 +360,13 @@ jobs:
       - name: Run tests
         run: npx playwright test --shard=${{ matrix.shard }}/4
 
-      - name: Upload test results
+      - name: Upload blob report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.shard }}
-          path: test-results/
-          retention-days: 7
+          name: blob-report-${{ matrix.shard }}
+          path: blob-report/
+          retention-days: 1
 
   merge-reports:
     needs: test
@@ -381,15 +383,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Download all test results
+      - name: Download all blob reports
         uses: actions/download-artifact@v4
         with:
-          pattern: test-results-*
+          pattern: blob-report-*
           merge-multiple: true
-          path: all-test-results/
+          path: all-blob-reports/
 
       - name: Merge reports
-        run: npx playwright merge-reports --reporter=html ./all-test-results
+        run: npx playwright merge-reports --reporter=html ./all-blob-reports
 
       - name: Upload merged report
         uses: actions/upload-artifact@v4
