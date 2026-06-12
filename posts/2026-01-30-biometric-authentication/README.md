@@ -8,9 +8,9 @@ Description: Learn to build biometric authentication using WebAuthn and FIDO2 fo
 
 ---
 
-Passwords are the weakest link in application security. Users pick simple ones, reuse them across services, and fall for phishing attacks that harvest credentials at scale. Biometric authentication changes this equation by replacing something you know with something you are.
+Passwords are the weakest link in application security. Users pick simple ones, reuse them across services, and fall for phishing attacks that harvest credentials at scale. Biometric authentication changes this equation by using something you are to unlock a cryptographic credential.
 
-This guide walks through building biometric authentication using the WebAuthn API and FIDO2 protocol. By the end, you will have working code that registers fingerprint or face recognition credentials and verifies them on subsequent logins.
+This guide walks through building biometric authentication using the WebAuthn API and FIDO2 protocol. By the end, you will have working code that registers credentials protected by fingerprint or face recognition and verifies them on subsequent logins.
 
 ---
 
@@ -51,7 +51,7 @@ sequenceDiagram
     Server->>Browser: Return session token
 ```
 
-The authenticator generates a key pair during registration. The private key never leaves the device. Your server only stores the public key. During login, the authenticator signs a challenge with the private key, and the server verifies that signature.
+The authenticator generates a key pair during registration. The private key is not sent to your server. Your server only stores the public key. During login, the authenticator signs a challenge with the private key, and the server verifies that signature.
 
 ---
 
@@ -91,6 +91,7 @@ import {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } from '@simplewebauthn/server';
+import { isoUint8Array } from '@simplewebauthn/server/helpers';
 
 // Configuration for your relying party
 const rpName = 'Your App Name';
@@ -109,12 +110,12 @@ export async function getRegistrationOptions(userId, userName) {
   const options = await generateRegistrationOptions({
     rpName,
     rpID,
-    userID: userId,
+    userID: isoUint8Array.fromUTF8String(userId),
     userName,
     // Prevent re-registering existing authenticators
     excludeCredentials: existingCredentials.map(cred => ({
-      id: cred.credentialID,
-      type: 'public-key',
+      id: cred.id,
+      transports: cred.transports,
     })),
     // Prefer platform authenticators (built-in biometrics)
     authenticatorSelection: {
@@ -122,6 +123,22 @@ export async function getRegistrationOptions(userId, userName) {
       userVerification: 'required',
       residentKey: 'preferred',
     },
+  });
+
+  return options;
+}
+
+// Generate authentication options for an existing user
+export async function getAuthenticationOptions(userId) {
+  const existingCredentials = userCredentials.get(userId) || [];
+
+  const options = await generateAuthenticationOptions({
+    rpID,
+    allowCredentials: existingCredentials.map(cred => ({
+      id: cred.id,
+      transports: cred.transports,
+    })),
+    userVerification: 'required',
   });
 
   return options;
@@ -143,14 +160,15 @@ export async function verifyRegistration(userId, response, expectedChallenge) {
   });
 
   if (verification.verified && verification.registrationInfo) {
-    const { credentialPublicKey, credentialID, counter } = verification.registrationInfo;
+    const { credential } = verification.registrationInfo;
 
     // Store the credential for this user
     const credentials = userCredentials.get(userId) || [];
     credentials.push({
-      credentialID,
-      credentialPublicKey,
-      counter,
+      id: credential.id,
+      publicKey: credential.publicKey,
+      counter: credential.counter,
+      transports: credential.transports,
       createdAt: new Date(),
     });
     userCredentials.set(userId, credentials);
@@ -183,7 +201,7 @@ async function registerBiometric(userId, userName) {
 
     // Trigger the browser's WebAuthn dialog
     // This prompts the user for biometric verification
-    const credential = await startRegistration(options);
+    const credential = await startRegistration({ optionsJSON: options });
 
     // Send the credential to the server for verification
     const verifyResponse = await fetch('/api/auth/register/verify', {
@@ -192,7 +210,6 @@ async function registerBiometric(userId, userName) {
       body: JSON.stringify({
         userId,
         credential,
-        challenge: options.challenge,
       }),
     });
 
@@ -223,7 +240,7 @@ async function loginWithBiometric(userId) {
     const options = await optionsResponse.json();
 
     // Trigger biometric verification
-    const assertion = await startAuthentication(options);
+    const assertion = await startAuthentication({ optionsJSON: options });
 
     // Verify the assertion on the server
     const verifyResponse = await fetch('/api/auth/login/verify', {
@@ -232,7 +249,6 @@ async function loginWithBiometric(userId) {
       body: JSON.stringify({
         userId,
         assertion,
-        challenge: options.challenge,
       }),
     });
 
@@ -289,14 +305,14 @@ Building biometric auth requires attention to several security details.
 
 **Validate the origin strictly.** The server must verify that the origin in the response matches your expected domain exactly. This prevents phishing sites from using credentials created for your application.
 
-**Handle counter values.** Authenticators maintain a signature counter that increments with each use. Store and verify this counter to detect cloned authenticators.
+**Handle counter values.** Authenticators may maintain a signature counter that increments with each use. Store and verify this counter to help detect cloned authenticators, but be aware that some passkeys and platform authenticators always report `0`.
 
 ```javascript
 // Verify counter to detect cloned authenticators
 export async function verifyAuthentication(userId, response, expectedChallenge) {
   const credentials = userCredentials.get(userId) || [];
   const credential = credentials.find(c =>
-    c.credentialID === response.id
+    c.id === response.id
   );
 
   if (!credential) {
@@ -308,10 +324,11 @@ export async function verifyAuthentication(userId, response, expectedChallenge) 
     expectedChallenge,
     expectedOrigin: origin,
     expectedRPID: rpID,
-    authenticator: {
-      credentialID: credential.credentialID,
-      credentialPublicKey: credential.credentialPublicKey,
+    credential: {
+      id: credential.id,
+      publicKey: credential.publicKey,
       counter: credential.counter,
+      transports: credential.transports,
     },
   });
 
@@ -334,7 +351,7 @@ Before deploying biometric authentication to production, verify these requiremen
 
 | Requirement | Details |
 |-------------|---------|
-| HTTPS required | WebAuthn only works on secure origins |
+| HTTPS required | WebAuthn only works in secure contexts; localhost is a local development exception |
 | Valid domain | Set rpID to your production domain |
 | Database storage | Replace in-memory maps with persistent storage |
 | Rate limiting | Prevent brute force attempts on challenges |
