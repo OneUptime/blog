@@ -38,7 +38,7 @@ First, add Sidekiq to your Gemfile:
 ```ruby
 # Gemfile
 
-gem 'sidekiq', '~> 7.2'  # Use the latest stable version
+gem 'sidekiq', '~> 8.1'  # Use the latest stable version
 ```
 
 Run `bundle install` and then configure your Rails application to use Sidekiq as the Active Job adapter:
@@ -258,7 +258,7 @@ For recurring jobs, add the `sidekiq-cron` gem:
 
 ```ruby
 # Gemfile
-gem 'sidekiq-cron', '~> 1.10'
+gem 'sidekiq-cron', '~> 2.3'
 ```
 
 Configure your scheduled jobs:
@@ -304,7 +304,7 @@ NotificationJob.perform_later(user.id, "Your order shipped!")
 NotificationJob.set(wait: 10.minutes).perform_later(user.id, "Reminder")
 ```
 
-The choice between Sidekiq-native workers and Active Job depends on your needs. Active Job provides portability across queue backends, while Sidekiq-native workers give you access to Sidekiq-specific features like custom retry logic and batch processing.
+The choice between Sidekiq-native workers and Active Job depends on your needs. Active Job provides portability across queue backends, while Sidekiq-native workers give you access to Sidekiq-specific features like custom retry logic. Batch processing is available with Sidekiq Pro.
 
 ## Monitoring with the Web UI
 
@@ -353,17 +353,19 @@ production:
 
 ### 2. Set Timeouts
 
-Prevent jobs from running forever:
+Sidekiq does not enforce a per-job runtime timeout. Prevent jobs from hanging by setting timeouts on network calls, shell commands, and other external operations:
 
 ```ruby
 class LongRunningJob
   include Sidekiq::Job
 
-  # Kill the job if it runs longer than 10 minutes
-  sidekiq_options timeout: 600
+  def perform(url)
+    response = Faraday.get(url) do |request|
+      request.options.open_timeout = 5
+      request.options.timeout = 30
+    end
 
-  def perform(data_id)
-    # Processing that might hang
+    process_response(response)
   end
 end
 ```
@@ -425,19 +427,18 @@ end
 
 ### 5. Graceful Shutdown
 
-Sidekiq handles SIGTERM gracefully, but ensure your jobs can be interrupted:
+Sidekiq handles SIGTERM gracefully, but ensure your jobs are idempotent and can be safely retried if they are interrupted during shutdown:
 
 ```ruby
 class BatchProcessingJob
   include Sidekiq::Job
 
   def perform(batch_id)
-    records = Record.where(batch_id: batch_id).find_each do |record|
-      # Check if Sidekiq is shutting down
-      raise Sidekiq::Shutdown if Sidekiq.stopping?
-
+    Record.where(batch_id: batch_id).find_each do |record|
       process_record(record)
     end
+  ensure
+    # Release any locks or temporary resources here.
   end
 end
 ```
