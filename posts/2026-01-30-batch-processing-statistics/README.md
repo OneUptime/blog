@@ -146,9 +146,6 @@ public class StepExecutionStatistics {
         return getTotalSkipCount() == 0 && rollbackCount == 0;
     }
 
-    // Getters and setters omitted for brevity
-    // Include standard getters/setters for all fields
-
     public Long getStepExecutionId() { return stepExecutionId; }
     public void setStepExecutionId(Long id) { this.stepExecutionId = id; }
 
@@ -160,6 +157,30 @@ public class StepExecutionStatistics {
 
     public long getWriteCount() { return writeCount; }
     public void setWriteCount(long count) { this.writeCount = count; }
+
+    public long getFilterCount() { return filterCount; }
+    public void setFilterCount(long count) { this.filterCount = count; }
+
+    public long getProcessCount() { return processCount; }
+    public void setProcessCount(long count) { this.processCount = count; }
+
+    public long getSkipCount() { return skipCount; }
+    public void setSkipCount(long count) { this.skipCount = count; }
+
+    public long getReadSkipCount() { return readSkipCount; }
+    public void setReadSkipCount(long count) { this.readSkipCount = count; }
+
+    public long getWriteSkipCount() { return writeSkipCount; }
+    public void setWriteSkipCount(long count) { this.writeSkipCount = count; }
+
+    public long getProcessSkipCount() { return processSkipCount; }
+    public void setProcessSkipCount(long count) { this.processSkipCount = count; }
+
+    public long getCommitCount() { return commitCount; }
+    public void setCommitCount(long count) { this.commitCount = count; }
+
+    public long getRollbackCount() { return rollbackCount; }
+    public void setRollbackCount(long count) { this.rollbackCount = count; }
 
     public LocalDateTime getStartTime() { return startTime; }
     public void setStartTime(LocalDateTime time) { this.startTime = time; }
@@ -173,6 +194,9 @@ public class StepExecutionStatistics {
 
     public String getExitStatus() { return exitStatus; }
     public void setExitStatus(String status) { this.exitStatus = status; }
+
+    public String getExitDescription() { return exitDescription; }
+    public void setExitDescription(String description) { this.exitDescription = description; }
 }
 ```
 
@@ -237,6 +261,7 @@ public class JobExecutionStatistics {
         this.totalReadCount += stepStats.getReadCount();
         this.totalWriteCount += stepStats.getWriteCount();
         this.totalSkipCount += stepStats.getTotalSkipCount();
+        this.totalFilterCount += stepStats.getFilterCount();
     }
 
     /**
@@ -286,8 +311,14 @@ public class JobExecutionStatistics {
     public Long getJobExecutionId() { return jobExecutionId; }
     public void setJobExecutionId(Long id) { this.jobExecutionId = id; }
 
+    public Long getJobInstanceId() { return jobInstanceId; }
+    public void setJobInstanceId(Long id) { this.jobInstanceId = id; }
+
     public String getJobName() { return jobName; }
     public void setJobName(String name) { this.jobName = name; }
+
+    public String getJobParameters() { return jobParameters; }
+    public void setJobParameters(String parameters) { this.jobParameters = parameters; }
 
     public LocalDateTime getStartTime() { return startTime; }
     public void setStartTime(LocalDateTime time) { this.startTime = time; }
@@ -302,8 +333,13 @@ public class JobExecutionStatistics {
     public String getExitStatus() { return exitStatus; }
     public void setExitStatus(String status) { this.exitStatus = status; }
 
+    public String getExitDescription() { return exitDescription; }
+    public void setExitDescription(String description) { this.exitDescription = description; }
+
     public long getTotalWriteCount() { return totalWriteCount; }
     public long getTotalReadCount() { return totalReadCount; }
+    public long getTotalSkipCount() { return totalSkipCount; }
+    public long getTotalFilterCount() { return totalFilterCount; }
 }
 ```
 
@@ -350,9 +386,6 @@ import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -376,8 +409,9 @@ public class BatchStatisticsCollector {
 
         // Set job identification
         stats.setJobExecutionId(jobExecution.getId());
+        stats.setJobInstanceId(jobExecution.getJobInstance().getInstanceId());
         stats.setJobName(jobExecution.getJobInstance().getJobName());
-        stats.setStartTime(convertToLocalDateTime(jobExecution.getStartTime()));
+        stats.setStartTime(jobExecution.getStartTime());
 
         // Store job parameters for reference
         stats.setJobParameters(jobExecution.getJobParameters().toString());
@@ -401,7 +435,11 @@ public class BatchStatisticsCollector {
         stats.setReadCount(stepExecution.getReadCount());
         stats.setWriteCount(stepExecution.getWriteCount());
         stats.setFilterCount(stepExecution.getFilterCount());
-        stats.setProcessCount(stepExecution.getProcessSkipCount());
+        stats.setProcessCount(
+            stepExecution.getWriteCount() +
+            stepExecution.getFilterCount() +
+            stepExecution.getWriteSkipCount() +
+            stepExecution.getProcessSkipCount());
 
         // Skip counts by phase
         stats.setReadSkipCount(stepExecution.getReadSkipCount());
@@ -414,8 +452,8 @@ public class BatchStatisticsCollector {
         stats.setRollbackCount(stepExecution.getRollbackCount());
 
         // Timing information
-        stats.setStartTime(convertToLocalDateTime(stepExecution.getStartTime()));
-        stats.setEndTime(convertToLocalDateTime(stepExecution.getEndTime()));
+        stats.setStartTime(stepExecution.getStartTime());
+        stats.setEndTime(stepExecution.getEndTime());
 
         // Exit status
         stats.setExitStatus(stepExecution.getExitStatus().getExitCode());
@@ -445,11 +483,13 @@ public class BatchStatisticsCollector {
             // Job was not tracked, create minimal statistics
             stats = new JobExecutionStatistics();
             stats.setJobExecutionId(jobExecution.getId());
+            stats.setJobInstanceId(jobExecution.getJobInstance().getInstanceId());
             stats.setJobName(jobExecution.getJobInstance().getJobName());
+            stats.setStartTime(jobExecution.getStartTime());
         }
 
         // Set final timing and status
-        stats.setEndTime(convertToLocalDateTime(jobExecution.getEndTime()));
+        stats.setEndTime(jobExecution.getEndTime());
         stats.setExitStatus(jobExecution.getExitStatus().getExitCode());
         stats.setExitDescription(jobExecution.getExitStatus().getExitDescription());
 
@@ -457,18 +497,6 @@ public class BatchStatisticsCollector {
         stats.finalizeStatistics();
 
         return stats;
-    }
-
-    /**
-     * Convert legacy Date to LocalDateTime.
-     */
-    private LocalDateTime convertToLocalDateTime(Date date) {
-        if (date == null) {
-            return null;
-        }
-        return date.toInstant()
-            .atZone(ZoneId.systemDefault())
-            .toLocalDateTime();
     }
 }
 ```
@@ -483,8 +511,8 @@ Spring Batch listeners hook into job and step lifecycle events. This listener in
 package com.example.batch.statistics.listener;
 
 import com.example.batch.statistics.model.JobExecutionStatistics;
+import com.example.batch.statistics.repository.BatchStatisticsRepository;
 import com.example.batch.statistics.service.BatchStatisticsCollector;
-import com.example.batch.statistics.service.StatisticsPersistenceService;
 import com.example.batch.statistics.service.MetricsPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -503,15 +531,15 @@ public class StatisticsJobExecutionListener implements JobExecutionListener {
         StatisticsJobExecutionListener.class);
 
     private final BatchStatisticsCollector collector;
-    private final StatisticsPersistenceService persistenceService;
+    private final BatchStatisticsRepository repository;
     private final MetricsPublisher metricsPublisher;
 
     public StatisticsJobExecutionListener(
             BatchStatisticsCollector collector,
-            StatisticsPersistenceService persistenceService,
+            BatchStatisticsRepository repository,
             MetricsPublisher metricsPublisher) {
         this.collector = collector;
-        this.persistenceService = persistenceService;
+        this.repository = repository;
         this.metricsPublisher = metricsPublisher;
     }
 
@@ -542,7 +570,7 @@ public class StatisticsJobExecutionListener implements JobExecutionListener {
 
         // Persist to database
         try {
-            persistenceService.saveJobStatistics(stats);
+            repository.saveJobStatistics(stats);
         } catch (Exception e) {
             log.error("Failed to persist job statistics for execution {}: {}",
                 jobExecution.getId(), e.getMessage());
@@ -577,15 +605,16 @@ public class StatisticsJobExecutionListener implements JobExecutionListener {
             stats.getTotalReadCount(),
             stats.getTotalWriteCount(),
             stats.getTotalSkipCount());
-        log.info("Throughput: {:.2f} items/second", stats.getOverallThroughput());
+        log.info("Throughput: {} items/second",
+            String.format("%.2f", stats.getOverallThroughput()));
 
         // Log step summaries
         for (var step : stats.getStepStatistics()) {
-            log.info("  Step '{}': {} items in {}, {:.2f} items/sec",
+            log.info("  Step '{}': {} items in {}, {} items/sec",
                 step.getStepName(),
                 step.getWriteCount(),
                 formatDuration(step.getDuration()),
-                step.getItemsPerSecond());
+                String.format("%.2f", step.getItemsPerSecond()));
         }
         log.info("=============================");
     }
@@ -656,15 +685,15 @@ public class StatisticsStepExecutionListener implements StepExecutionListener {
             stats.getTotalSkipCount(),
             stats.getDuration() != null ? stats.getDuration().toMillis() : 0);
 
-        // Return original exit status (do not modify)
-        return stepExecution.getExitStatus();
+        // Return null to leave the original exit status unchanged
+        return null;
     }
 }
 ```
 
 ## 4. Statistics Persistence
 
-Store statistics in a database for historical analysis. This service handles persistence with retry logic for resilience.
+Store statistics in a database for historical analysis. This repository handles persistence and retrieval for reporting.
 
 ```mermaid
 erDiagram
@@ -708,13 +737,18 @@ erDiagram
 package com.example.batch.statistics.repository;
 
 import com.example.batch.statistics.model.JobExecutionStatistics;
+import org.springframework.jdbc.core.PreparedStatementCreator;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Repository for persisting and querying batch statistics.
@@ -743,21 +777,25 @@ public class BatchStatisticsRepository {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
-        jdbcTemplate.update(jobSql,
-            stats.getJobExecutionId(),
-            stats.getJobName(),
-            toTimestamp(stats.getStartTime()),
-            toTimestamp(stats.getEndTime()),
-            stats.getTotalDuration() != null ? stats.getTotalDuration().toMillis() : null,
-            stats.getTotalReadCount(),
-            stats.getTotalWriteCount(),
-            stats.getTotalSkipCount(),
-            stats.getExitStatus(),
-            Timestamp.valueOf(LocalDateTime.now()));
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update((PreparedStatementCreator) connection -> {
+            PreparedStatement ps = connection.prepareStatement(jobSql,
+                new String[] { "id" });
+            ps.setLong(1, stats.getJobExecutionId());
+            ps.setString(2, stats.getJobName());
+            ps.setTimestamp(3, toTimestamp(stats.getStartTime()));
+            ps.setTimestamp(4, toTimestamp(stats.getEndTime()));
+            ps.setObject(5, stats.getTotalDuration() != null ?
+                stats.getTotalDuration().toMillis() : null);
+            ps.setLong(6, stats.getTotalReadCount());
+            ps.setLong(7, stats.getTotalWriteCount());
+            ps.setLong(8, stats.getTotalSkipCount());
+            ps.setString(9, stats.getExitStatus());
+            ps.setTimestamp(10, Timestamp.valueOf(LocalDateTime.now()));
+            return ps;
+        }, keyHolder);
 
-        // Get the generated ID
-        Long jobStatsId = jdbcTemplate.queryForObject(
-            "SELECT LAST_INSERT_ID()", Long.class);
+        Long jobStatsId = Objects.requireNonNull(keyHolder.getKey()).longValue();
 
         // Insert step statistics
         String stepSql = """
@@ -809,8 +847,8 @@ public class BatchStatisticsRepository {
                 JobExecutionStatistics stats = new JobExecutionStatistics();
                 stats.setJobExecutionId(rs.getLong("job_execution_id"));
                 stats.setJobName(rs.getString("job_name"));
-                stats.setStartTime(rs.getTimestamp("start_time").toLocalDateTime());
-                stats.setEndTime(rs.getTimestamp("end_time").toLocalDateTime());
+                stats.setStartTime(toLocalDateTime(rs.getTimestamp("start_time")));
+                stats.setEndTime(toLocalDateTime(rs.getTimestamp("end_time")));
                 stats.setExitStatus(rs.getString("exit_status"));
                 return stats;
             },
@@ -821,6 +859,10 @@ public class BatchStatisticsRepository {
 
     private Timestamp toTimestamp(LocalDateTime dateTime) {
         return dateTime != null ? Timestamp.valueOf(dateTime) : null;
+    }
+
+    private LocalDateTime toLocalDateTime(Timestamp timestamp) {
+        return timestamp != null ? timestamp.toLocalDateTime() : null;
     }
 }
 ```
@@ -841,7 +883,6 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -865,30 +906,23 @@ public class MetricsPublisher {
         String exitStatus = stats.getExitStatus();
 
         // Record job duration as a timer
-        Timer.builder("batch.job.duration")
-            .tag("job", jobName)
-            .tag("status", exitStatus)
-            .register(meterRegistry)
-            .record(stats.getTotalDuration());
+        if (stats.getTotalDuration() != null) {
+            Timer.builder("batch.job.duration")
+                .tag("job", jobName)
+                .tag("status", exitStatus)
+                .register(meterRegistry)
+                .record(stats.getTotalDuration());
+        }
 
         // Record total items processed
-        Counter.builder("batch.job.items.total")
-            .tag("job", jobName)
-            .tag("type", "read")
-            .register(meterRegistry)
-            .increment(stats.getTotalReadCount());
+        incrementCounter("batch.job.items.total", stats.getTotalReadCount(),
+            "job", jobName, "type", "read");
 
-        Counter.builder("batch.job.items.total")
-            .tag("job", jobName)
-            .tag("type", "written")
-            .register(meterRegistry)
-            .increment(stats.getTotalWriteCount());
+        incrementCounter("batch.job.items.total", stats.getTotalWriteCount(),
+            "job", jobName, "type", "written");
 
-        Counter.builder("batch.job.items.total")
-            .tag("job", jobName)
-            .tag("type", "skipped")
-            .register(meterRegistry)
-            .increment(stats.getTotalSkipCount());
+        incrementCounter("batch.job.items.total", stats.getTotalSkipCount(),
+            "job", jobName, "type", "skipped");
 
         // Record job execution count by status
         Counter.builder("batch.job.executions")
@@ -919,28 +953,29 @@ public class MetricsPublisher {
         }
 
         // Record step item counts
-        Counter.builder("batch.step.items")
-            .tag("step", stepName)
-            .tag("type", "read")
-            .register(meterRegistry)
-            .increment(stats.getReadCount());
+        incrementCounter("batch.step.items", stats.getReadCount(),
+            "step", stepName, "type", "read");
 
-        Counter.builder("batch.step.items")
-            .tag("step", stepName)
-            .tag("type", "written")
-            .register(meterRegistry)
-            .increment(stats.getWriteCount());
+        incrementCounter("batch.step.items", stats.getWriteCount(),
+            "step", stepName, "type", "written");
 
         // Record commit and rollback counts
-        Counter.builder("batch.step.commits")
-            .tag("step", stepName)
-            .register(meterRegistry)
-            .increment(stats.getCommitCount());
+        incrementCounter("batch.step.commits", stats.getCommitCount(),
+            "step", stepName);
 
-        Counter.builder("batch.step.rollbacks")
-            .tag("step", stepName)
+        incrementCounter("batch.step.rollbacks", stats.getRollbackCount(),
+            "step", stepName);
+    }
+
+    private void incrementCounter(String name, long amount, String... tags) {
+        if (amount <= 0) {
+            return;
+        }
+
+        Counter.builder(name)
+            .tags(tags)
             .register(meterRegistry)
-            .increment(stats.getRollbackCount());
+            .increment(amount);
     }
 }
 ```
@@ -1058,13 +1093,20 @@ public class HistoricalAnalysisService {
 
         double avgDuration = historical.get("avgDurationMs");
         double stdDev = historical.get("stdDevDurationMs");
-        long latestDuration = latestExecution.getTotalDuration().toMillis();
+        long latestDuration = latestExecution.getTotalDuration() != null ?
+            latestExecution.getTotalDuration().toMillis() : 0;
 
         AnomalyReport report = new AnomalyReport();
         report.setJobName(jobName);
         report.setLatestDurationMs(latestDuration);
         report.setHistoricalAvgMs(avgDuration);
         report.setHistoricalStdDevMs(stdDev);
+
+        if (avgDuration == 0.0 || stdDev == 0.0) {
+            report.setAnomaly(false);
+            report.setMessage("Not enough historical variance to calculate an anomaly score.");
+            return report;
+        }
 
         // Check if duration is outside normal range
         double zScore = (latestDuration - avgDuration) / stdDev;
@@ -1160,16 +1202,22 @@ public class HistoricalAnalysisService {
 
         PerformanceComparison comparison = new PerformanceComparison();
         comparison.setJobName(jobName);
-        comparison.setPeriod1AvgDurationMs((Double) period1.get("avg_duration"));
-        comparison.setPeriod2AvgDurationMs((Double) period2.get("avg_duration"));
+        comparison.setPeriod1AvgDurationMs(toDouble(period1.get("avg_duration")));
+        comparison.setPeriod2AvgDurationMs(toDouble(period2.get("avg_duration")));
 
         // Calculate improvement percentage
-        double improvement = ((comparison.getPeriod1AvgDurationMs() -
-            comparison.getPeriod2AvgDurationMs()) /
-            comparison.getPeriod1AvgDurationMs()) * 100;
-        comparison.setDurationChangePercent(improvement);
+        if (comparison.getPeriod1AvgDurationMs() > 0) {
+            double improvement = ((comparison.getPeriod1AvgDurationMs() -
+                comparison.getPeriod2AvgDurationMs()) /
+                comparison.getPeriod1AvgDurationMs()) * 100;
+            comparison.setDurationChangePercent(improvement);
+        }
 
         return comparison;
+    }
+
+    private double toDouble(Object value) {
+        return value instanceof Number number ? number.doubleValue() : 0.0;
     }
 
     /**
