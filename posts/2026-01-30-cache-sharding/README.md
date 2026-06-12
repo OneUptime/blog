@@ -15,7 +15,7 @@ A single cache server works fine until it does not. Once your dataset outgrows a
 | Problem | How Sharding Solves It |
 | --- | --- |
 | Memory limit on a single server | Each shard holds a fraction of the total dataset |
-| Read throughput ceiling | Requests fan out to many nodes in parallel |
+| Read throughput ceiling | Requests are distributed across many nodes |
 | Single point of failure | Losing one shard does not wipe the entire cache |
 | Network bottleneck | Each shard has its own NIC bandwidth |
 
@@ -50,7 +50,7 @@ This function converts any key into a shard index between 0 and the total shard 
 # Modulo hashing: simple but rigid
 
 def get_shard(key: str, num_shards: int) -> int:
-    # Python's built-in hash is deterministic per process
+    # Python's built-in hash is salted per process and is not stable between runs
     # Use a stable hash like MD5 or xxHash in production
     import hashlib
     digest = hashlib.md5(key.encode()).hexdigest()
@@ -113,7 +113,7 @@ class ConsistentHashRing:
 
 ### 3. Hash Slot (Redis Cluster Approach)
 
-Redis Cluster predefines 16,384 hash slots. Each key maps to a slot via `CRC16(key) mod 16384`, and each node owns a contiguous range of slots. You can migrate slots between nodes without rehashing keys.
+Redis Cluster predefines 16,384 hash slots. Each key maps to a slot via `CRC16(key) mod 16384`, and each master node owns a subset of slots. You can migrate slots between nodes without rehashing keys.
 
 The following snippet shows how to compute the slot for a given key following the Redis Cluster specification.
 
@@ -130,7 +130,7 @@ def redis_slot(key: str) -> int:
     return crc16.crc16xmodem(key.encode()) % 16384
 ```
 
-**Pros:** Battle-tested at scale; slot migration is atomic.
+**Pros:** Battle-tested at scale; slots can be migrated incrementally.
 **Cons:** Requires Redis Cluster topology and client awareness.
 
 ## Strategy Comparison
@@ -148,10 +148,10 @@ Redis Cluster is the most common production choice when you need sharding out of
 The Redis client library handles slot redirection. You only need to provide the initial cluster nodes.
 
 ```python
-from redis.cluster import RedisCluster
+from redis.cluster import ClusterNode, RedisCluster
 
 # Provide at least one startup node; the client discovers the rest
-nodes = [{"host": "redis-0.example.com", "port": 6379}]
+nodes = [ClusterNode("redis-0.example.com", 6379)]
 
 rc = RedisCluster(startup_nodes=nodes, decode_responses=True)
 
