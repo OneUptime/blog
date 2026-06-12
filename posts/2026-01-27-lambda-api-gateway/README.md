@@ -32,9 +32,9 @@ API Gateway offers two flavors: REST API (v1) and HTTP API (v2). Choosing the ri
 | **Lambda proxy** | Yes | Yes |
 | **Request validation** | Yes | No (use Lambda) |
 | **API keys / usage plans** | Yes | No |
-| **Resource policies** | Yes | Limited |
+| **Resource policies** | Yes | No |
 | **Private integrations** | Yes | Yes |
-| **WebSocket** | REST API only | No |
+| **WebSocket** | Use a separate WebSocket API | Use a separate WebSocket API |
 | **JWT authorizers** | Requires Lambda | Native support |
 
 **When to pick REST API:**
@@ -42,12 +42,12 @@ API Gateway offers two flavors: REST API (v1) and HTTP API (v2). Choosing the ri
 - You need request/response transformation templates.
 - You require API keys, usage plans, or caching.
 - You want fine-grained resource policies for cross-account access.
-- You need WebSocket support.
+- You need REST API-only features such as private API endpoints or AWS WAF integration.
 
 **When to pick HTTP API:**
 
 - Cost and latency are priorities.
-- You only need Lambda proxy integration.
+- You only need simple proxy integrations.
 - JWT authorization is sufficient.
 - You want simpler configuration.
 
@@ -63,6 +63,8 @@ aws apigatewayv2 get-apis --query 'Items[].Name'
 Proxy integration is the simplest way to connect API Gateway to Lambda. The entire HTTP request (headers, query strings, body, path parameters) is passed to Lambda as a single event object. Lambda returns a response object that API Gateway translates back to HTTP.
 
 ### Lambda Proxy Event Structure
+
+REST APIs and HTTP APIs with payload format version 1.0 use this event shape. HTTP APIs with payload format version 2.0 use a different event shape with fields such as `routeKey`, `rawPath`, and `requestContext.http`.
 
 ```javascript
 // event object received by Lambda (Node.js)
@@ -441,7 +443,7 @@ REST API requires explicit OPTIONS method configuration.
 ```javascript
 // handler.js - Include CORS headers in every response
 const corsHeaders = {
-  'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN || '*',
+  'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN || 'https://example.com',
   'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Request-Id',
   'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
   'Access-Control-Allow-Credentials': 'true',
@@ -492,7 +494,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handler.handler
-      Runtime: nodejs18.x
+      Runtime: nodejs22.x
       Events:
         GetUsers:
           Type: Api
@@ -663,7 +665,7 @@ Globals:
   Function:
     Timeout: 30
     MemorySize: 256
-    Runtime: nodejs18.x
+    Runtime: nodejs22.x
     Environment:
       Variables:
         TABLE_NAME: !Ref UsersTable
@@ -873,13 +875,13 @@ export class ApiStack extends cdk.Stack {
     // Shared Lambda layer for common dependencies
     const commonLayer = new lambda.LayerVersion(this, 'CommonLayer', {
       code: lambda.Code.fromAsset(path.join(__dirname, '../layers/common')),
-      compatibleRuntimes: [lambda.Runtime.NODEJS_18_X],
+      compatibleRuntimes: [lambda.Runtime.NODEJS_22_X],
       description: 'Common utilities and dependencies',
     });
 
     // Lambda function defaults
     const functionDefaults = {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       memorySize: 256,
       timeout: cdk.Duration.seconds(30),
       layers: [commonLayer],
@@ -1029,11 +1031,11 @@ cdk destroy
 
 **Security:**
 
-- Always use HTTPS via custom domains with ACM certificates.
+- Use HTTPS for all clients; API Gateway default endpoints use HTTPS, and custom domains should use ACM certificates.
 - Implement authentication using Cognito, JWT authorizers, or Lambda authorizers.
 - Apply least-privilege IAM roles to Lambda functions.
 - Enable AWS WAF for protection against common web exploits.
-- Use resource policies to restrict API access by IP or VPC.
+- Use REST API resource policies to restrict API access by IP or VPC.
 
 **Performance:**
 
