@@ -29,13 +29,13 @@ flowchart LR
 Install Molecule with your preferred driver. Docker is the most common choice for local development:
 
 ```bash
-pip install molecule molecule-docker
+pip install molecule ansible-core "molecule-plugins[docker]"
 
 # For other drivers
 
-pip install molecule-vagrant
-pip install molecule-podman
-pip install molecule-ec2
+pip install "molecule-plugins[vagrant]"
+pip install "molecule-plugins[podman]"
+pip install "molecule-plugins[ec2]"
 ```
 
 Verify the installation:
@@ -82,17 +82,19 @@ Each stage serves a purpose:
 
 ## Creating Your First Scenario
 
-Initialize a new role with Molecule:
+Initialize a new role, then add a Molecule scenario:
 
 ```bash
-molecule init role my_role --driver-name docker
+ansible-galaxy role init my_role
+cd my_role
+molecule init scenario
 ```
 
 Or add Molecule to an existing role:
 
 ```bash
 cd my_existing_role
-molecule init scenario --driver-name docker
+molecule init scenario
 ```
 
 This creates the default scenario structure:
@@ -105,6 +107,8 @@ my_role/
 ├── molecule/
 │   └── default/
 │       ├── converge.yml
+│       ├── create.yml
+│       ├── destroy.yml
 │       ├── molecule.yml
 │       └── verify.yml
 ├── tasks/
@@ -121,6 +125,7 @@ The `molecule.yml` file is the heart of each scenario. Here is a complete exampl
 dependency:
   name: galaxy
   options:
+    role-file: requirements.yml
     requirements-file: requirements.yml
 
 driver:
@@ -164,8 +169,6 @@ provisioner:
     verify: verify.yml
   env:
     ANSIBLE_VERBOSITY: 1
-  lint:
-    name: ansible-lint
 
 verifier:
   name: ansible
@@ -256,13 +259,18 @@ Use `prepare.yml` to set up prerequisites your role expects:
 ---
 - name: Prepare
   hosts: all
+  gather_facts: false
   become: true
   tasks:
-    - name: Install Python for Ansible
+    - name: Install Python for Ansible on Debian-based images
       ansible.builtin.raw: |
-        test -e /usr/bin/python3 || (apt-get update && apt-get install -y python3)
+        if [ -f /etc/debian_version ] && ! command -v python3 >/dev/null 2>&1; then
+          apt-get update && apt-get install -y python3
+        fi
       changed_when: false
-      when: ansible_os_family == 'Debian'
+
+    - name: Gather facts after Python is available
+      ansible.builtin.setup:
 
     - name: Create required directories
       ansible.builtin.file:
@@ -306,8 +314,8 @@ molecule/
 ### Creating Additional Scenarios
 
 ```bash
-molecule init scenario clustered --driver-name docker
-molecule init scenario upgrade --driver-name docker
+molecule init scenario clustered
+molecule init scenario upgrade
 ```
 
 ### Default Scenario: Single Node
@@ -547,7 +555,7 @@ For custom infrastructure (existing servers, cloud APIs):
 
 ```yaml
 driver:
-  name: delegated
+  name: default
   options:
     managed: false
 
@@ -682,7 +690,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install molecule molecule-docker ansible ansible-lint
+          pip install molecule ansible-core "molecule-plugins[docker]" ansible-lint
 
       - name: Run Molecule
         run: molecule test --scenario-name ${{ matrix.scenario }}
@@ -699,9 +707,9 @@ molecule:
   variables:
     DOCKER_HOST: tcp://docker:2375
   before_script:
-    - pip install molecule molecule-docker ansible
+    - pip install molecule ansible-core "molecule-plugins[docker]"
   script:
-    - molecule test
+    - molecule test --scenario-name "$MOLECULE_SCENARIO"
   parallel:
     matrix:
       - MOLECULE_SCENARIO: [default, clustered, upgrade]
@@ -709,16 +717,12 @@ molecule:
 
 ## Testing with Ansible Lint
 
-Integrate ansible-lint into your Molecule workflow:
+Run ansible-lint alongside your Molecule workflow:
 
 ```yaml
-# molecule.yml
-provisioner:
-  name: ansible
-  lint:
-    name: ansible-lint
-    options:
-      c: .ansible-lint
+# .github/workflows/molecule.yml
+- name: Run ansible-lint
+  run: ansible-lint -c .ansible-lint
 ```
 
 Create `.ansible-lint` configuration:
