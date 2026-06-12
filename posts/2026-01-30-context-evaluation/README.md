@@ -59,7 +59,7 @@ A well-designed context structure supports both built-in and custom attributes. 
 // context.ts - Core context data structures
 
 // Built-in user attributes with known types
-interface UserContext {
+export interface UserContext {
   key: string;                    // Unique identifier (required)
   email?: string;
   name?: string;
@@ -74,7 +74,7 @@ interface UserContext {
 }
 
 // Device and application context
-interface DeviceContext {
+export interface DeviceContext {
   key?: string;                   // Device identifier
   platform?: 'ios' | 'android' | 'web' | 'desktop';
   os?: string;
@@ -88,7 +88,7 @@ interface DeviceContext {
 }
 
 // Request-level context
-interface RequestContext {
+export interface RequestContext {
   requestId?: string;
   sessionId?: string;
   referrer?: string;
@@ -98,7 +98,7 @@ interface RequestContext {
 }
 
 // Supported context value types
-type ContextValue =
+export type ContextValue =
   | string
   | number
   | boolean
@@ -107,7 +107,7 @@ type ContextValue =
   | number[];
 
 // The complete evaluation context
-interface EvaluationContext {
+export interface EvaluationContext {
   user: UserContext;
   device?: DeviceContext;
   request?: RequestContext;
@@ -117,7 +117,7 @@ interface EvaluationContext {
 }
 
 // Builder pattern for constructing context
-class ContextBuilder {
+export class ContextBuilder {
   private context: EvaluationContext;
 
   constructor(userKey: string) {
@@ -219,8 +219,8 @@ The evaluation engine processes targeting rules against the context to determine
 
 import hashlib
 import re
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 from enum import Enum
 from datetime import datetime
 
@@ -379,7 +379,11 @@ class ContextEvaluator:
             return False
 
         # Get the operator handler
-        operator = Operator(condition["operator"])
+        try:
+            operator = Operator(condition["operator"])
+        except ValueError:
+            return False
+
         handler = self._operator_handlers.get(operator)
 
         if not handler:
@@ -470,9 +474,14 @@ class ContextEvaluator:
             return False
 
     def _parse_semver(self, version: str) -> tuple:
-        """Parse semantic version string."""
-        parts = str(version).split(".")
-        return tuple(int(p) for p in parts[:3])
+        """Parse a semantic version string into numeric parts."""
+        version_without_build = str(version).split("+", 1)[0]
+        version_core = version_without_build.split("-", 1)[0]
+        parts = version_core.split(".")
+        if len(parts) > 3:
+            raise ValueError("Invalid semantic version")
+        parsed = [int(p) for p in parts]
+        return tuple((parsed + [0, 0, 0])[:3])
 
     def _semver_equals(self, attr: Any, target: Any) -> bool:
         try:
@@ -523,16 +532,20 @@ class ContextEvaluator:
     def _evaluate_rollout(self, flag: Dict, context: Dict) -> str:
         """Determine variation based on percentage rollout."""
         rollout = flag["rollout"]
+        distribution = rollout.get("distribution", [])
+        if not distribution:
+            return flag.get("defaultVariation", "off")
+
         bucket_key = self._get_bucket_key(context)
         bucket = self._get_bucket(flag["key"], bucket_key)
 
         cumulative = 0.0
-        for dist in rollout.get("distribution", []):
+        for dist in distribution:
             cumulative += dist["weight"]
             if bucket < cumulative:
                 return dist["variation"]
 
-        return rollout["distribution"][-1]["variation"]
+        return distribution[-1]["variation"]
 
     def _get_bucket_key(self, context: Dict) -> str:
         """Get the key to use for bucket assignment."""
@@ -549,7 +562,7 @@ class ContextEvaluator:
         hash_input = f"{salt}:{key}"
         hash_bytes = hashlib.sha256(hash_input.encode()).digest()
         hash_int = int.from_bytes(hash_bytes[:4], "big")
-        return (hash_int / 0xFFFFFFFF) * 100
+        return (hash_int / 0x100000000) * 100
 ```
 
 This evaluation engine supports a comprehensive set of operators and handles edge cases like missing attributes, type coercion, and semantic versioning.
@@ -562,6 +575,7 @@ Custom attributes extend the context with application-specific data. Here is how
 // custom-attributes.ts - Handling custom attributes
 
 import { z } from 'zod';
+import type { EvaluationContext } from './context';
 
 // Schema for validating custom attribute values
 const ContextValueSchema = z.union([
@@ -989,12 +1003,14 @@ class ServerAnonymousContext {
    */
   static setResponseCookie(
     res: { setHeader: (name: string, value: string) => void },
-    anonymousId: string
+    anonymousId: string,
+    secure: boolean = true
   ): void {
     const maxAge = ANONYMOUS_ID_TTL_DAYS * 24 * 60 * 60;
+    const secureAttribute = secure ? '; Secure' : '';
     res.setHeader(
       'Set-Cookie',
-      `${ANONYMOUS_ID_COOKIE}=${anonymousId}; Max-Age=${maxAge}; Path=/; SameSite=Lax; Secure`
+      `${ANONYMOUS_ID_COOKIE}=${anonymousId}; Max-Age=${maxAge}; Path=/; SameSite=Lax${secureAttribute}`
     );
   }
 
@@ -1013,8 +1029,9 @@ class ServerAnonymousContext {
 export {
   AnonymousContextManager,
   ServerAnonymousContext,
-  AnonymousContext,
 };
+
+export type { AnonymousContext };
 ```
 
 This implementation ensures anonymous users get consistent flag evaluations across page views and sessions while respecting privacy by not requiring user identification.
@@ -1031,7 +1048,6 @@ import json
 import time
 from typing import Any, Dict, Optional, Tuple
 from dataclasses import dataclass
-from functools import lru_cache
 import redis
 
 @dataclass
@@ -1065,7 +1081,7 @@ class ContextCache:
         relevant_context = self._extract_relevant_context(context)
 
         # Create stable JSON representation
-        context_str = json.dumps(relevant_context, sort_keys=True)
+        context_str = json.dumps(relevant_context, sort_keys=True, default=str)
 
         # Hash for shorter key
         context_hash = hashlib.sha256(context_str.encode()).hexdigest()[:16]
@@ -1149,10 +1165,10 @@ class ContextCache:
         # Set in Redis cache
         if self._redis:
             try:
-                self._redis.setex(
+                self._redis.set(
                     cache_key,
-                    self.config.ttl_seconds,
-                    json.dumps(result)
+                    json.dumps(result, default=str),
+                    ex=self.config.ttl_seconds
                 )
             except redis.RedisError:
                 pass  # Memory cache is still set
@@ -1281,9 +1297,9 @@ flowchart LR
     end
 
     subgraph "Performance Gains"
-        E[Rule Compilation: 10x]
-        F[Attribute Index: 5x]
-        G[Batching: 3x per flag]
+        E[Rule Compilation]
+        F[Attribute Index]
+        G[Batching]
         H[Lazy Load: Memory savings]
     end
 
@@ -1312,6 +1328,11 @@ interface CompiledRule {
   rolloutPercentage?: number;
 }
 
+interface RolloutDistribution {
+  variation: string;
+  weight: number;
+}
+
 interface CompiledFlag {
   key: string;
   version: string;
@@ -1320,6 +1341,9 @@ interface CompiledFlag {
   defaultVariation: string;
   variations: Record<string, any>;
   requiredAttributes: Set<string>;
+  rollout?: {
+    distribution: RolloutDistribution[];
+  };
 }
 
 class OptimizedEvaluator {
@@ -1383,6 +1407,7 @@ class OptimizedEvaluator {
       defaultVariation: flag.defaultVariation,
       variations: flag.variations,
       requiredAttributes,
+      rollout: flag.rollout,
     };
   }
 
@@ -1422,8 +1447,12 @@ class OptimizedEvaluator {
         return (v) => Number(v) < numTarget2;
 
       case 'matches_regex':
-        const regex = new RegExp(targetValue);
-        return (v) => regex.test(String(v));
+        try {
+          const regex = new RegExp(targetValue);
+          return (v) => regex.test(String(v));
+        } catch {
+          return () => false;
+        }
 
       case 'semver_greater':
         const targetParts = this.parseSemver(targetValue);
@@ -1486,6 +1515,15 @@ class OptimizedEvaluator {
       }
     }
 
+    if (flag.rollout) {
+      const variation = this.evaluateRollout(flag, context);
+      return {
+        variation,
+        value: flag.variations[variation],
+        reason: 'ROLLOUT',
+      };
+    }
+
     return {
       variation: flag.defaultVariation,
       value: flag.variations[flag.defaultVariation],
@@ -1534,6 +1572,26 @@ class OptimizedEvaluator {
     const key = context.user?.key || context.device?.key || 'anonymous';
     const bucket = this.getBucket(`${flagKey}:${ruleId}`, key);
     return bucket < percentage;
+  }
+
+  private evaluateRollout(flag: CompiledFlag, context: any): string {
+    const distribution = flag.rollout?.distribution || [];
+    if (distribution.length === 0) {
+      return flag.defaultVariation;
+    }
+
+    const key = context.user?.key || context.device?.key || 'anonymous';
+    const bucket = this.getBucket(flag.key, key);
+    let cumulative = 0;
+
+    for (const item of distribution) {
+      cumulative += item.weight;
+      if (bucket < cumulative) {
+        return item.variation;
+      }
+    }
+
+    return distribution[distribution.length - 1].variation;
   }
 
   private getBucket(salt: string, key: string): number {
@@ -1587,20 +1645,28 @@ Here is a complete example showing how all these pieces work together in a real 
 // app.ts - Complete integration example
 
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import { OptimizedEvaluator } from './optimized-evaluator';
-import { AnonymousContextManager, ServerAnonymousContext } from './anonymous-context';
-import { ContextCache, CacheConfig } from './context-cache';
+import { ServerAnonymousContext } from './anonymous-context';
 import { ContextBuilder } from './context';
+import type { EvaluationContext } from './context';
 
 const app = express();
 
+declare global {
+  namespace Express {
+    interface Request {
+      flagContext: EvaluationContext;
+    }
+  }
+}
+
+app.use(cookieParser());
+
 // Initialize components
 const evaluator = new OptimizedEvaluator();
-const cache = new ContextCache({
-  enabled: true,
-  ttl_seconds: 60,
-  redis_url: process.env.REDIS_URL,
-});
+const evaluationCache = new Map<string, { value: any; expiresAt: number }>();
+const CACHE_TTL_MS = 60_000;
 
 // Load and compile flags (in production, fetch from flag service)
 const flags = [
@@ -1686,7 +1752,7 @@ app.use((req, res, next) => {
     };
 
     // Set cookie for anonymous tracking
-    ServerAnonymousContext.setResponseCookie(res, anonContext.key);
+    ServerAnonymousContext.setResponseCookie(res, anonContext.key, req.secure);
   }
 
   next();
@@ -1708,16 +1774,20 @@ function evaluateFlag(flagKey: string, context: any): any {
   }
 
   // Check cache
-  const cached = cache.get(flagKey, context, flag.version);
-  if (cached) {
-    return cached;
+  const cacheKey = `${flagKey}:${flag.version}:${JSON.stringify(context)}`;
+  const cached = evaluationCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
   }
 
   // Evaluate
   const result = evaluator.evaluate(flagKey, context);
 
   // Cache result
-  cache.set(flagKey, context, flag.version, result);
+  evaluationCache.set(cacheKey, {
+    value: result,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
 
   return result;
 }
