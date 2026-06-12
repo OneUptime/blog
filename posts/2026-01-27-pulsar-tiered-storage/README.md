@@ -84,6 +84,9 @@ Add these settings to your `broker.conf` file:
 # This activates the offload mechanism in the broker
 managedLedgerOffloadDriver=aws-s3
 
+# Directory containing the tiered-storage offloader package
+offloadersDirectory=./offloaders
+
 # S3 bucket configuration
 # Use a dedicated bucket for Pulsar offload data
 s3ManagedLedgerOffloadBucket=pulsar-tiered-storage-prod
@@ -101,8 +104,11 @@ s3ManagedLedgerOffloadRegion=us-east-1
 # No additional config needed - uses instance profile
 
 # Option 2: Access keys (for non-AWS deployments)
-s3ManagedLedgerOffloadCredentialId=AKIAIOSFODNN7EXAMPLE
-s3ManagedLedgerOffloadCredentialSecret=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+# Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in the broker environment
+
+# Option 3: Assume a specific role
+# s3ManagedLedgerOffloadRole=arn:aws:iam::123456789012:role/pulsar-s3-offload
+# s3ManagedLedgerOffloadRoleSessionName=pulsar-s3-offload
 
 # Maximum block size for offloaded data (default: 64MB)
 # Larger blocks = fewer API calls but more memory usage
@@ -129,6 +135,7 @@ Create an IAM policy with minimal required permissions:
                 "s3:GetObject",
                 "s3:DeleteObject",
                 "s3:ListBucket",
+                "s3:ListBucketMultipartUploads",
                 "s3:GetBucketLocation",
                 "s3:AbortMultipartUpload",
                 "s3:ListMultipartUploadParts"
@@ -137,6 +144,15 @@ Create an IAM policy with minimal required permissions:
                 "arn:aws:s3:::pulsar-tiered-storage-prod",
                 "arn:aws:s3:::pulsar-tiered-storage-prod/*"
             ]
+        },
+        {
+            "Sid": "PulsarTieredStorageKms",
+            "Effect": "Allow",
+            "Action": [
+                "kms:Decrypt",
+                "kms:GenerateDataKey"
+            ],
+            "Resource": "arn:aws:kms:us-east-1:ACCOUNT_ID:key/KEY_ID"
         }
     ]
 }
@@ -188,10 +204,13 @@ For GCP deployments, configure GCS as your offload target.
 # Enable GCS offloader
 managedLedgerOffloadDriver=google-cloud-storage
 
+# Directory containing the tiered-storage offloader package
+offloadersDirectory=./offloaders
+
 # GCS bucket name
 gcsManagedLedgerOffloadBucket=pulsar-tiered-storage-prod
 
-# GCS region (optional, defaults to us-multi-region)
+# GCS bucket location
 gcsManagedLedgerOffloadRegion=us-central1
 
 # Service account credentials (JSON key file path)
@@ -215,9 +234,9 @@ gcloud iam service-accounts create pulsar-tiered-storage \
     --display-name="Pulsar Tiered Storage"
 
 # Grant storage permissions on the bucket
-gsutil iam ch \
-    serviceAccount:pulsar-tiered-storage@PROJECT_ID.iam.gserviceaccount.com:objectAdmin \
-    gs://pulsar-tiered-storage-prod
+gcloud storage buckets add-iam-policy-binding gs://pulsar-tiered-storage-prod \
+    --member="serviceAccount:pulsar-tiered-storage@PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/storage.objectAdmin"
 
 # Create and download key (for non-GKE deployments)
 gcloud iam service-accounts keys create /etc/pulsar/gcs-credentials.json \
@@ -260,29 +279,18 @@ For Azure deployments, use Azure Blob Storage as your cold tier.
 # Enable Azure Blob offloader
 managedLedgerOffloadDriver=azureblob
 
-# Azure storage account name
-managedLedgerOffloadBucket=pulsartieredstorage
+# Directory containing the tiered-storage offloader package
+offloadersDirectory=./offloaders
 
-# Container name within the storage account
-azureBlobStorageContainer=pulsar-offload
+# Blob container to place offloaded ledgers into
+managedLedgerOffloadBucket=pulsar-offload
 
-# Authentication (choose one method):
-
-# Option 1: Account key
-azureBlobStorageAccountKey=BASE64_ENCODED_ACCOUNT_KEY
-
-# Option 2: SAS token
-# azureBlobStorageSasToken=?sv=2021-06-08&ss=b&srt=sco&sp=rwdlacitfx...
-
-# Option 3: Managed Identity (recommended for Azure VMs/AKS)
-# azureBlobStorageUseManagedIdentity=true
+# Authentication
+# Set AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCESS_KEY in the broker environment
 
 # Block and buffer sizes
-azureBlobStorageMaxBlockSizeInBytes=67108864
-azureBlobStorageReadBufferSizeInBytes=1048576
-
-# Azure endpoint (optional, for sovereign clouds)
-# azureBlobStorageEndpoint=https://pulsartieredstorage.blob.core.windows.net
+managedLedgerOffloadMaxBlockSizeInBytes=67108864
+managedLedgerOffloadReadBufferSizeInBytes=1048576
 ```
 
 ### Azure Storage Account Setup
@@ -316,28 +324,19 @@ az storage blob service-properties delete-policy update \
     --days-retained 7
 ```
 
-### AKS Managed Identity Setup
+### AKS Secret Setup
 
 ```yaml
-# Pod identity binding for AKS
-apiVersion: aadpodidentity.k8s.io/v1
-kind: AzureIdentity
+# Kubernetes Secret with Azure Storage credentials
+apiVersion: v1
+kind: Secret
 metadata:
-  name: pulsar-blob-identity
+  name: pulsar-azure-storage
   namespace: pulsar
-spec:
-  type: 0  # User-assigned managed identity
-  resourceID: /subscriptions/SUB_ID/resourcegroups/pulsar-storage-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/pulsar-offload-identity
-  clientID: CLIENT_ID_OF_MANAGED_IDENTITY
----
-apiVersion: aadpodidentity.k8s.io/v1
-kind: AzureIdentityBinding
-metadata:
-  name: pulsar-blob-identity-binding
-  namespace: pulsar
-spec:
-  azureIdentity: pulsar-blob-identity
-  selector: pulsar-broker
+type: Opaque
+stringData:
+  AZURE_STORAGE_ACCOUNT: pulsartieredstorage
+  AZURE_STORAGE_ACCESS_KEY: BASE64_ENCODED_ACCOUNT_KEY
 ```
 
 ---
@@ -369,6 +368,7 @@ Offload data older than a specific duration:
 # Offload data older than 1 hour
 # Useful for time-series data with predictable access patterns
 bin/pulsar-admin namespaces set-offload-threshold \
+    --size -1 \
     --time 1h \
     tenant/namespace
 
@@ -391,7 +391,7 @@ bin/pulsar-admin topics set-offload-policies \
     --bucket pulsar-high-volume-offload \
     --region us-east-1 \
     --offloadThresholdInBytes 1073741824 \
-    --offloadDeletionLagInMillis 14400000  # 4 hours
+    --offloadDeletionLagInMillis 4h
 
 # Check current offload status
 bin/pulsar-admin topics offload-status \
@@ -403,14 +403,15 @@ bin/pulsar-admin topics offload-status \
 Force immediate offload for specific topics:
 
 ```bash
-# Trigger manual offload up to a specific message ID
+# Trigger manual offload while retaining 10GB in BookKeeper
 bin/pulsar-admin topics offload \
     persistent://tenant/namespace/topic-name \
-    --message-id 1234:5678
+    --size-threshold 10G
 
 # Trigger offload of all eligible data
 bin/pulsar-admin topics offload \
-    persistent://tenant/namespace/topic-name
+    persistent://tenant/namespace/topic-name \
+    --size-threshold 0
 ```
 
 ---
@@ -433,13 +434,13 @@ flowchart LR
         C1[7 - 30 days<br/>Infrequent Access<br/>$]
     end
 
-    subgraph Archive["Archive Tier (Glacier)"]
-        A1[30+ days<br/>Rare Access<br/>cents]
+    subgraph Archive["Archive Tier (Separate backup copy)"]
+        A1[Compliance copy<br/>Not used for live consumes<br/>cents]
     end
 
     Hot -->|Offload| Warm
     Warm -->|Lifecycle| Cold
-    Cold -->|Lifecycle| Archive
+    Cold -->|Copy separately| Archive
 ```
 
 ### S3 Lifecycle Policies
@@ -463,14 +464,6 @@ Configure S3 lifecycle rules to move data to cheaper storage classes:
                 {
                     "Days": 30,
                     "StorageClass": "GLACIER_IR"
-                },
-                {
-                    "Days": 90,
-                    "StorageClass": "GLACIER"
-                },
-                {
-                    "Days": 365,
-                    "StorageClass": "DEEP_ARCHIVE"
                 }
             ],
             "Expiration": {
@@ -551,11 +544,11 @@ def estimate_monthly_cost(
     hot_retention_hours: int,        # Hours to keep in BookKeeper
     warm_retention_days: int,        # Days in S3 Standard
     cold_retention_days: int,        # Days in S3 Standard-IA
-    archive_retention_days: int,     # Days in Glacier
+    archive_retention_days: int,     # Days in S3 Glacier Instant Retrieval
     read_ratio: float = 0.1,         # % of data read from cold storage
     s3_standard_per_gb: float = 0.023,
     s3_ia_per_gb: float = 0.0125,
-    glacier_per_gb: float = 0.004,
+    glacier_ir_per_gb: float = 0.004,
     bookkeeper_per_gb: float = 0.10  # SSD-backed storage
 ) -> dict:
     """
@@ -573,7 +566,7 @@ def estimate_monthly_cost(
     hot_cost = hot_data_gb * bookkeeper_per_gb
     warm_cost = warm_data_gb * s3_standard_per_gb
     cold_cost = cold_data_gb * s3_ia_per_gb
-    archive_cost = archive_data_gb * glacier_per_gb
+    archive_cost = archive_data_gb * glacier_ir_per_gb
 
     # API and retrieval costs (estimated)
     # PUT requests for offload (~$0.005 per 1000 requests)
@@ -614,20 +607,17 @@ print(f"Monthly cost breakdown: {result}")
 # Output shows significant savings vs. keeping all data in hot tier
 ```
 
-### Compression Configuration
+### Metadata Compression Configuration
 
-Enable compression to reduce storage costs further:
+Enable managed-ledger metadata compression to reduce metadata-store usage when topics have many ledgers, including offloaded ledgers:
 
 ```properties
-# broker.conf - Enable compression for offloaded data
-managedLedgerOffloadAutoTriggerSizeThresholdBytes=10737418240
-
-# LZ4 offers good balance of speed and compression
+# broker.conf - Enable compression for managed ledger metadata
 # Options: LZ4, ZLIB, ZSTD, SNAPPY
-managedLedgerOffloadCompressionType=LZ4
+managedLedgerInfoCompressionType=LZ4
 
-# For archival workloads, ZSTD provides better compression
-# managedLedgerOffloadCompressionType=ZSTD
+# Compress metadata only when it exceeds this size in bytes
+managedLedgerInfoCompressionThresholdInBytes=16384
 ```
 
 ---
@@ -653,9 +643,9 @@ scrape_configs:
 |--------|-------------|-----------------|
 | `pulsar_storage_offloaded_size` | Total bytes offloaded | N/A (track trend) |
 | `pulsar_storage_backlog_size` | Unacked message size | > 80% of quota |
-| `pulsar_offload_error_total` | Offload failures | > 0 |
-| `pulsar_offload_rate` | Offload throughput | < expected rate |
-| `pulsar_read_from_offloaded` | Reads from cold storage | Unexpected spikes |
+| `pulsar_storage_write_rate` | BookKeeper write rate | Unexpected drops |
+| `pulsar_storage_read_rate` | BookKeeper read rate | Unexpected spikes |
+| `pulsar_storage_read_cache_misses_rate` | BookKeeper read cache miss rate | Unexpected spikes |
 
 ### Grafana Dashboard Query Examples
 
@@ -663,13 +653,11 @@ scrape_configs:
 # Offload rate over time (bytes per minute)
 rate(pulsar_storage_offloaded_size[5m]) * 60
 
-# Percentage of reads from offloaded storage
-sum(rate(pulsar_read_from_offloaded_total[5m]))
-/
-sum(rate(pulsar_read_total[5m])) * 100
+# Read pressure on BookKeeper storage
+sum(pulsar_storage_read_rate)
 
-# Offload errors by topic
-sum by (topic) (increase(pulsar_offload_error_total[1h]))
+# Read cache misses
+sum(pulsar_storage_read_cache_misses_rate)
 
 # Storage distribution (hot vs cold)
 # Hot storage
@@ -770,41 +758,39 @@ flowchart TB
 
 ### Configuration Checklist
 
-```yaml
+```properties
 # production-broker.conf best practices
 # Save this as a reference for production deployments
 
 # 1. Offload driver configuration
-managedLedgerOffloadDriver: aws-s3
-s3ManagedLedgerOffloadBucket: pulsar-prod-offload
-s3ManagedLedgerOffloadRegion: us-east-1
+managedLedgerOffloadDriver=aws-s3
+offloadersDirectory=./offloaders
+s3ManagedLedgerOffloadBucket=pulsar-prod-offload
+s3ManagedLedgerOffloadRegion=us-east-1
 
 # 2. Performance tuning
 # Larger blocks = fewer API calls, better throughput
-s3ManagedLedgerOffloadMaxBlockSizeInBytes: 134217728  # 128MB
+s3ManagedLedgerOffloadMaxBlockSizeInBytes=134217728
 
 # Buffer size for reads - tune based on consumer patterns
-s3ManagedLedgerOffloadReadBufferSizeInBytes: 4194304  # 4MB
+s3ManagedLedgerOffloadReadBufferSizeInBytes=4194304
 
 # 3. Offload thresholds
 # Size-based: offload when topic exceeds this size
-managedLedgerOffloadAutoTriggerSizeThresholdBytes: 10737418240  # 10GB
+managedLedgerOffloadAutoTriggerSizeThresholdBytes=10737418240
 
-# Time-based: check for offload-eligible data this often
-managedLedgerOffloadRunFrequencySecs: 300  # 5 minutes
+# Time-based: offload data older than this threshold
+managedLedgerOffloadThresholdInSeconds=7200
 
 # 4. Deletion lag - keep in BookKeeper after offload for safety
-managedLedgerOffloadDeletionLagMs: 14400000  # 4 hours
+managedLedgerOffloadDeletionLagMs=14400000
 
-# 5. Concurrency limits
-# Max concurrent offload operations per broker
-managedLedgerOffloadMaxConcurrentOffloads: 2
+# 5. Thread pool limits
+managedLedgerOffloadMaxThreads=2
+managedLedgerOffloadReadThreads=2
 
-# 6. Compression
-managedLedgerOffloadCompressionType: LZ4
-
-# 7. Memory limits for offload operations
-managedLedgerOffloadMaxMemory: 1073741824  # 1GB
+# 6. Prefetch tuning
+managedLedgerOffloadPrefetchRounds=1
 ```
 
 ### Kubernetes Deployment
@@ -904,12 +890,12 @@ kubectl logs pulsar-broker-0 -n pulsar | grep -i offload
 ### Slow Offload Performance
 
 ```bash
-# Check current offload rate
-curl -s http://localhost:8080/metrics | grep pulsar_offload
+# Check current offloaded size and storage rates
+curl -s http://localhost:8080/metrics | grep -E 'pulsar_storage_offloaded_size|pulsar_storage_(read|write)_rate'
 
 # Increase concurrency if CPU/network permits
 # In broker.conf:
-# managedLedgerOffloadMaxConcurrentOffloads=4
+# managedLedgerOffloadMaxThreads=4
 
 # Increase block size for better throughput (trade-off: more memory)
 # s3ManagedLedgerOffloadMaxBlockSizeInBytes=134217728
@@ -918,12 +904,12 @@ curl -s http://localhost:8080/metrics | grep pulsar_offload
 ### High Read Latency from Cold Storage
 
 ```bash
-# Monitor cold storage reads
-curl -s http://localhost:8080/metrics | grep read_from_offloaded
+# Monitor storage read pressure and cache misses
+curl -s http://localhost:8080/metrics | grep -E 'pulsar_storage_read_rate|pulsar_storage_read_cache_misses_rate'
 
 # Solutions:
 # 1. Increase read buffer size
-# 2. Enable S3 Transfer Acceleration
+# 2. Keep brokers and buckets in the same region
 # 3. Move frequently accessed data to hotter tier
 # 4. Use S3 Intelligent-Tiering for unpredictable access patterns
 ```
