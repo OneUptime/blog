@@ -89,6 +89,9 @@ ceph osd crush tree --show-shadow
 When built-in classes are not enough, create your own:
 
 ```bash
+# Remove the existing auto-detected class before assigning the custom class
+ceph osd crush rm-device-class osd.6 osd.7 osd.8
+
 # Create a custom class for archive-grade HDDs
 ceph osd crush set-device-class archive osd.6 osd.7 osd.8
 
@@ -224,6 +227,8 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
@@ -244,6 +249,8 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
@@ -264,6 +271,8 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
@@ -323,7 +332,7 @@ ceph osd crush rule dump nvme-rule
 
 3. **Test failover per tier.** Kill an NVMe OSD and verify hot-pool stays healthy. Kill an HDD OSD and confirm cold-pool rebuilds without impacting latency-sensitive workloads.
 
-4. **Size PGs correctly.** Each pool needs enough placement groups for the number of OSDs in that class. Use the Ceph PG calculator or aim for 100-200 PGs per OSD.
+4. **Size PGs correctly.** Each pool needs enough placement groups for the number of OSDs in that class. Use Ceph's PG autoscaler or PG calculator; for clusters with more than 50 OSDs, Ceph recommends roughly 100-250 PG replicas per OSD.
 
 5. **Avoid cross-tier data movement.** If you need to migrate data between tiers, use `rados cppool` or application-level tools rather than changing pool rules mid-flight.
 
