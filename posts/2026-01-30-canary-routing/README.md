@@ -195,7 +195,9 @@ for pct in "${PERCENTAGES[@]}"; do
         sleep "$WAIT_BETWEEN_STEPS"
 
         # Check canary health before proceeding
-        ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query?query=rate(http_requests_total{version='canary',status=~'5..'}[5m])" | jq '.data.result[0].value[1]')
+        ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query" \
+            --data-urlencode 'query=sum(rate(http_requests_total{version="canary",status=~"5.."}[5m])) / sum(rate(http_requests_total{version="canary"}[5m]))' \
+            | jq -r '.data.result[0].value[1] // "0"')
 
         if (( $(echo "$ERROR_RATE > 0.01" | bc -l) )); then
             echo "Error rate ${ERROR_RATE} exceeds threshold. Rolling back..."
@@ -347,7 +349,7 @@ class CanaryRouter {
         return isCanary;
     }
 
-    // Update canary percentage without resetting assignments
+    // Update canary percentage and recalculate deterministic assignments
     setCanaryPercent(percent) {
         this.canaryPercent = percent;
         this.userAssignments.clear();  // Reset on percentage change
@@ -562,6 +564,9 @@ spec:
             - containerPort: 8080
   strategy:
     canary:
+      canaryService: api-canary
+      stableService: api-stable
+
       # Traffic split steps
       steps:
         - setWeight: 5
@@ -570,18 +575,24 @@ spec:
             templates:
               - templateName: success-rate
             args:
-              - name: service-name
-                value: api
+              - name: version
+                value: canary
         - setWeight: 25
         - pause: { duration: 10m }
         - analysis:
             templates:
               - templateName: success-rate
+            args:
+              - name: version
+                value: canary
         - setWeight: 50
         - pause: { duration: 10m }
         - analysis:
             templates:
               - templateName: success-rate
+            args:
+              - name: version
+                value: canary
         - setWeight: 100
 
       # Automatic rollback on failure
@@ -600,7 +611,7 @@ metadata:
   namespace: production
 spec:
   args:
-    - name: service-name
+    - name: version
   metrics:
     - name: success-rate
       interval: 1m
@@ -611,9 +622,9 @@ spec:
         prometheus:
           address: http://prometheus:9090
           query: |
-            sum(rate(http_requests_total{app="{{args.service-name}}",status=~"2.."}[5m]))
+            sum(rate(http_requests_total{version="{{args.version}}",status=~"2.."}[5m]))
             /
-            sum(rate(http_requests_total{app="{{args.service-name}}"}[5m]))
+            sum(rate(http_requests_total{version="{{args.version}}"}[5m]))
 
     - name: error-rate
       interval: 1m
@@ -624,9 +635,9 @@ spec:
         prometheus:
           address: http://prometheus:9090
           query: |
-            sum(rate(http_requests_total{app="{{args.service-name}}",status=~"5.."}[5m]))
+            sum(rate(http_requests_total{version="{{args.version}}",status=~"5.."}[5m]))
             /
-            sum(rate(http_requests_total{app="{{args.service-name}}"}[5m]))
+            sum(rate(http_requests_total{version="{{args.version}}"}[5m]))
 ```
 
 ### Custom Promotion Controller
@@ -887,17 +898,20 @@ For distributed tracing, tag spans with version information:
 ```javascript
 // tracing.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+    ATTR_SERVICE_NAME,
+    ATTR_SERVICE_VERSION
+} = require('@opentelemetry/semantic-conventions');
 
 const VERSION = process.env.APP_VERSION || 'unknown';
 const IS_CANARY = process.env.IS_CANARY === 'true';
 
 const sdk = new NodeSDK({
-    resource: new Resource({
-        [SemanticResourceAttributes.SERVICE_NAME]: 'api',
-        [SemanticResourceAttributes.SERVICE_VERSION]: VERSION,
-        'deployment.environment': process.env.NODE_ENV,
+    resource: resourceFromAttributes({
+        [ATTR_SERVICE_NAME]: 'api',
+        [ATTR_SERVICE_VERSION]: VERSION,
+        'deployment.environment.name': process.env.NODE_ENV,
         'deployment.canary': IS_CANARY
     })
 });
