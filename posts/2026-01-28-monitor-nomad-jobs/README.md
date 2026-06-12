@@ -12,7 +12,7 @@ Nomad exposes detailed metrics for jobs, allocations, and nodes. With Prometheus
 
 ## Key Metrics to Track
 
-- Job status and desired vs running allocations
+- Job status and queued vs running allocations
 - Allocation failures and restarts
 - CPU and memory usage per task
 - Node health and resource pressure
@@ -26,6 +26,8 @@ telemetry {
   collection_interval = "10s"
   disable_hostname = true
   prometheus_metrics = true
+  publish_allocation_metrics = true
+  publish_node_metrics = true
 }
 ```
 
@@ -38,37 +40,40 @@ Add targets for Nomad servers and clients.
 ```yaml
 scrape_configs:
   - job_name: "nomad"
+    metrics_path: /v1/metrics
+    params:
+      format: ["prometheus"]
     static_configs:
       - targets:
           - "nomad-server-1:4646"
           - "nomad-client-1:4646"
 ```
 
-The metrics endpoint is on port `4646`.
+The HTTP API is on port `4646`, and Prometheus metrics are exposed at `/v1/metrics?format=prometheus`.
 
 ## Step 3: Build Alerts
 
 Example alerts:
 
-- Job has fewer running allocations than desired
+- Job has queued allocations
 - Allocation restart count spikes
 - Task CPU throttling is high
 
-A simple alert for allocation shortages:
+A simple alert for queued allocations:
 
 ```yaml
-- alert: NomadJobAllocationsMissing
-  expr: nomad_job_summary_running < nomad_job_summary_desired
+- alert: NomadJobAllocationsQueued
+  expr: nomad_nomad_job_summary_queued > 0
   for: 5m
   labels:
     severity: warning
   annotations:
-    summary: "Nomad job missing allocations"
+    summary: "Nomad job has queued allocations"
 ```
 
 ## Step 4: Use Grafana Dashboards
 
-Nomad publishes official dashboards. Load them or create your own to track:
+Grafana Labs and the Nomad community publish dashboards you can load, or you can create your own to track:
 
 - Job stability
 - Allocation lifecycle
