@@ -150,7 +150,7 @@ print(f"Anchor: {path.anchor}")  # /
 # On Windows
 win_path = Path("C:/Users/Alice/Documents")
 print(f"Drive: {win_path.drive}")  # C:
-print(f"Root: {win_path.root}")    # /
+print(f"Root: {win_path.root}")    # \
 ```
 
 ---
@@ -414,9 +414,9 @@ latest_log = paths.get_latest_file(paths.logs, "*.log")
 ```python
 # safe_write.py
 # Write files safely with atomic operations
+import os
 from pathlib import Path
 import tempfile
-import shutil
 
 def safe_write(path: Path, content: str, encoding: str = "utf-8"):
     """
@@ -434,9 +434,10 @@ def safe_write(path: Path, content: str, encoding: str = "utf-8"):
         prefix=f".{path.stem}_",
         suffix=path.suffix
     )
+    os.close(temp_fd)  # Close the fd from mkstemp; we will reopen via pathlib
+    temp_path = Path(temp_path)
 
     try:
-        temp_path = Path(temp_path)
         temp_path.write_text(content, encoding=encoding)
 
         # Atomic rename (on same filesystem)
