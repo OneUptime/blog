@@ -166,7 +166,7 @@ flowchart TB
 
 ## Instrumentation in Practice
 
-Let us implement RED metrics across popular languages. Each example includes OpenTelemetry, which provides vendor-neutral instrumentation.
+Let us implement RED metrics across popular languages. The Python and Node.js examples use OpenTelemetry for vendor-neutral instrumentation; the Go and Java examples use the standard Prometheus and Micrometer libraries commonly used in those ecosystems.
 
 ### Python with OpenTelemetry
 
@@ -185,7 +185,7 @@ from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 # Define service metadata that will be attached to all metrics
 resource = Resource(attributes={
     SERVICE_NAME: "payment-service",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
     "service.version": "1.2.3"
 })
 
@@ -218,6 +218,7 @@ meter = metrics.get_meter("payment-service")
 # These metrics capture rate, errors, and duration for every request
 
 import time
+import inspect
 from functools import wraps
 from opentelemetry import metrics
 
@@ -245,7 +246,10 @@ error_counter = meter.create_counter(
 request_duration = meter.create_histogram(
     name="http_request_duration_seconds",
     description="HTTP request latency in seconds",
-    unit="s"
+    unit="s",
+    explicit_bucket_boundaries_advisory=[
+        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10
+    ]
 )
 
 
@@ -260,6 +264,46 @@ def track_request(endpoint: str, method: str):
             pass
     """
     def decorator(func):
+        if inspect.iscoroutinefunction(func):
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                # Record request start time
+                start_time = time.perf_counter()
+
+                # Common labels for all metrics from this request
+                labels = {
+                    "endpoint": endpoint,
+                    "method": method
+                }
+
+                try:
+                    # Execute the actual async handler
+                    result = await func(*args, **kwargs)
+
+                    # Record successful request
+                    request_counter.add(1, labels)
+
+                    return result
+
+                except Exception as e:
+                    # Record the error with additional context
+                    error_labels = {
+                        **labels,
+                        "error_type": type(e).__name__
+                    }
+                    request_counter.add(1, labels)
+                    error_counter.add(1, error_labels)
+
+                    # Re-raise to let the framework handle it
+                    raise
+
+                finally:
+                    # Always record duration, even for failures
+                    duration = time.perf_counter() - start_time
+                    request_duration.record(duration, labels)
+
+            return async_wrapper
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             # Record request start time
@@ -327,16 +371,25 @@ async def create_payment(payment_data: dict):
 // Configure OpenTelemetry metrics for a Node.js application
 // This provides vendor-neutral metrics that work with any OTLP backend
 
-const { MeterProvider, PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
+const { metrics } = require('@opentelemetry/api');
+const {
+    AggregationType,
+    InstrumentType,
+    MeterProvider,
+    PeriodicExportingMetricReader
+} = require('@opentelemetry/sdk-metrics');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+    ATTR_SERVICE_NAME,
+    ATTR_SERVICE_VERSION
+} = require('@opentelemetry/semantic-conventions');
 
 // Define service metadata attached to all metrics
-const resource = new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'order-service',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '2.1.0'
+const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'order-service',
+    'deployment.environment.name': 'production',
+    [ATTR_SERVICE_VERSION]: '2.1.0'
 });
 
 // Configure OTLP exporter pointing to your collector
@@ -353,11 +406,26 @@ const reader = new PeriodicExportingMetricReader({
 // Initialize meter provider
 const meterProvider = new MeterProvider({
     resource,
-    readers: [reader]
+    readers: [reader],
+    views: [
+        {
+            instrumentName: 'http_request_duration_seconds',
+            instrumentType: InstrumentType.HISTOGRAM,
+            aggregation: {
+                type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+                options: {
+                    boundaries: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+                }
+            }
+        }
+    ]
 });
 
+// Set this MeterProvider as the global provider for manual instrumentation
+metrics.setGlobalMeterProvider(meterProvider);
+
 // Export the meter for use throughout the application
-const meter = meterProvider.getMeter('order-service');
+const meter = metrics.getMeter('order-service');
 
 module.exports = { meter, meterProvider };
 ```
@@ -382,12 +450,10 @@ const errorCounter = meter.createCounter('http_request_errors_total', {
 });
 
 // Histogram for latency (Duration)
-// Bucket boundaries in seconds, optimized for web traffic
+// Bucket boundaries are configured in metrics-setup.js with a Metric View
 const requestDuration = meter.createHistogram('http_request_duration_seconds', {
     description: 'HTTP request latency in seconds',
-    unit: 's',
-    // Explicit boundaries help with percentile accuracy
-    boundaries: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+    unit: 's'
 });
 
 /**
@@ -659,12 +725,19 @@ package com.example.metrics;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
-import io.micrometer.core.instrument.Counter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
-public class MetricsConfig {
+public class MetricsConfig implements WebMvcConfigurer {
+
+    private final REDMetricsInterceptor redMetricsInterceptor;
+
+    public MetricsConfig(REDMetricsInterceptor redMetricsInterceptor) {
+        this.redMetricsInterceptor = redMetricsInterceptor;
+    }
 
     /**
      * Creates a Timer for tracking request duration.
@@ -681,6 +754,15 @@ public class MetricsConfig {
                 .publishPercentiles(0.5, 0.95, 0.99)  // Also publish client-side percentiles
                 .register(registry);
     }
+
+    /**
+     * Registers the RED metrics interceptor with Spring MVC.
+     * Without this, the interceptor bean exists but does not observe requests.
+     */
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(redMetricsInterceptor);
+    }
 }
 ```
 
@@ -694,6 +776,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -786,8 +869,7 @@ public class REDMetricsInterceptor implements HandlerInterceptor {
      */
     private String getEndpointPattern(HttpServletRequest request) {
         // Try to get the matched pattern from Spring
-        Object pattern = request.getAttribute(
-                "org.springframework.web.servlet.HandlerMapping.bestMatchingPattern");
+        Object pattern = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
 
         if (pattern != null) {
             return pattern.toString();
@@ -1211,6 +1293,7 @@ flowchart LR
 # alert_rules.yaml
 # Example alerting rules based on RED metrics
 # These can be adapted for any Prometheus-compatible system
+# Assumes your scrape config or metrics pipeline adds a service label
 
 groups:
   - name: red-alerts
@@ -1289,8 +1372,8 @@ class TestREDMetrics:
             mock_counter.add.assert_called_once()
             call_args = mock_counter.add.call_args
             assert call_args[0][0] == 1  # Increment by 1
-            assert call_args[1]["endpoint"] == "/api/test"
-            assert call_args[1]["method"] == "GET"
+            assert call_args[0][1]["endpoint"] == "/api/test"
+            assert call_args[0][1]["method"] == "GET"
 
     def test_failed_request_increments_error_counter(self):
         """Verify that failed requests increment both request and error counters."""
@@ -1310,7 +1393,7 @@ class TestREDMetrics:
 
             # Verify error type is captured
             error_call = mock_error.add.call_args
-            assert error_call[1]["error_type"] == "ValueError"
+            assert error_call[0][1]["error_type"] == "ValueError"
 
     def test_duration_is_recorded(self):
         """Verify that request duration is recorded in histogram."""
