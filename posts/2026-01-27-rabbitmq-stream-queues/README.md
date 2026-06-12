@@ -8,7 +8,7 @@ Description: A comprehensive guide to building RabbitMQ Stream Queues for high-t
 
 ---
 
-> Stream queues bring the best of both worlds: RabbitMQ's operational simplicity with Kafka-like replay capabilities. They are designed for scenarios where you need to consume messages multiple times, replay from any point, or handle millions of messages per second.
+> Stream queues bring the best of both worlds: RabbitMQ's operational simplicity with Kafka-like replay capabilities. They are designed for scenarios where you need to consume messages multiple times, replay from any point, or handle very high throughput.
 
 RabbitMQ Stream Queues were introduced in RabbitMQ 3.9 as a new queue type optimized for high-throughput, persistent, replicated messaging with support for offset-based consumption. Unlike classic or quorum queues, streams allow multiple consumers to read from any point in the log without affecting other consumers.
 
@@ -40,16 +40,16 @@ Stream queues differ fundamentally from classic RabbitMQ queues:
 | Message Storage | Memory + Disk | Disk (Raft) | Append-only Log |
 | Consumption Model | Destructive | Destructive | Non-destructive |
 | Replay Capability | No | No | Yes |
-| Consumer Offset Tracking | Server-managed | Server-managed | Client-managed |
+| Consumer Offset Tracking | Server-managed | Server-managed | Client-managed or server-stored |
 | Throughput | Medium | Medium | Very High |
-| Message Ordering | Per-queue | Per-queue | Per-partition |
-| Replication | Mirroring (deprecated) | Raft consensus | Raft consensus |
+| Message Ordering | Per-queue | Per-queue | Per-stream partition |
+| Replication | Mirroring (deprecated) | Raft-based quorum | Quorum replication |
 
 When to use stream queues:
 
 - **Event sourcing**: Replay events to rebuild application state
 - **Audit logs**: Maintain immutable records that multiple systems can consume
-- **High-throughput ingestion**: Handle millions of messages per second
+- **High-throughput ingestion**: Handle workloads that need much higher throughput than regular queues
 - **Fan-out patterns**: Multiple independent consumers reading the same data
 - **Time-travel debugging**: Replay from a specific point to investigate issues
 
@@ -97,11 +97,10 @@ Key architectural concepts:
 ```bash
 # Create a stream queue with default settings
 
-rabbitmqadmin declare queue name=events queue_type=stream
+rabbitmqadmin queues declare --name "events" --type "stream" --durable true
 
-# Create a stream with specific retention policies
-rabbitmqadmin declare queue name=events queue_type=stream \
-    arguments='{"x-max-length-bytes": 10737418240, "x-max-age": "7D", "x-stream-max-segment-size-bytes": 104857600}'
+# Create a stream with time-based retention
+rabbitmqadmin streams declare --name "events" --expiration "7D"
 ```
 
 ### Using the HTTP API
@@ -156,7 +155,7 @@ async function createStream(config: StreamConfig): Promise<void> {
 
     // x-max-age: Time-based retention
     // Messages older than this are eligible for deletion
-    // Format: "Y" (years), "M" (months), "D" (days), "h" (hours), "m" (minutes), "s" (seconds)
+    // Format: values such as "7D", "12h", "30m", or "45s"
     if (config.maxAge) {
         args['x-max-age'] = config.maxAge;
     }
@@ -269,7 +268,7 @@ Publishing to streams works similarly to classic queues, but with some optimizat
 // stream-publisher.ts
 // High-throughput publisher for RabbitMQ stream queues
 
-import amqp, { Channel, Connection } from 'amqplib';
+import amqp, { ConfirmChannel, Connection } from 'amqplib';
 
 interface PublisherConfig {
     streamName: string;
@@ -279,7 +278,7 @@ interface PublisherConfig {
 
 class StreamPublisher {
     private connection: Connection | null = null;
-    private channel: Channel | null = null;
+    private channel: ConfirmChannel | null = null;
     private pendingMessages: number = 0;
     private config: PublisherConfig;
 
@@ -290,11 +289,9 @@ class StreamPublisher {
     async connect(): Promise<void> {
         // Connect to RabbitMQ
         this.connection = await amqp.connect('amqp://localhost');
-        this.channel = await this.connection.createChannel();
-
-        // Enable publisher confirms for reliability
-        // This ensures messages are persisted before acknowledging
-        await this.channel.confirmChannel();
+        // Open a confirm channel for reliable publishing
+        // This lets us wait until RabbitMQ has confirmed published messages
+        this.channel = await this.connection.createConfirmChannel();
 
         // Assert the stream exists
         await this.channel.assertQueue(this.config.streamName, {
@@ -321,6 +318,11 @@ class StreamPublisher {
                 persistent: true,  // Ensure durability
                 contentType: 'application/json',
                 timestamp: Date.now(),
+            },
+            (err) => {
+                if (err) {
+                    console.error('Message was nacked:', err);
+                }
             }
         );
 
@@ -391,11 +393,11 @@ For maximum performance, use the native stream protocol with the RabbitMQ Stream
 // stream-native-publisher.ts
 // Native stream protocol publisher for maximum throughput
 
-import { Client, Producer } from 'rabbitmq-stream-js-client';
+import { connect } from 'rabbitmq-stream-js-client';
 
 async function nativeStreamPublisher() {
     // Connect using the native stream protocol (port 5552)
-    const client = await Client.connect({
+    const client = await connect({
         hostname: 'localhost',
         port: 5552,           // Stream protocol port (not AMQP 5672)
         username: 'guest',
@@ -413,11 +415,10 @@ async function nativeStreamPublisher() {
     });
 
     // Create a producer with sub-batching for maximum throughput
-    const producer = await client.declareProducer({
+    const producer = await client.declarePublisher({
         stream: 'high-throughput-events',
-        // Sub-entry batching: groups multiple messages into one network call
-        // This dramatically improves throughput at the cost of slight latency
-        maxFrameSize: 1048576,  // 1 MB max frame
+        // maxChunkLength controls how many messages the client buffers per chunk
+        maxChunkLength: 1000,
     });
 
     const startTime = Date.now();
@@ -429,17 +430,17 @@ async function nativeStreamPublisher() {
         const messages = [];
         for (let i = 0; i < batchSize; i++) {
             const msgNum = batch * batchSize + i;
-            messages.push(
-                Buffer.from(JSON.stringify({
+            messages.push({
+                content: Buffer.from(JSON.stringify({
                     id: msgNum,
                     timestamp: Date.now(),
                     data: `event-${msgNum}`,
-                }))
-            );
+                })),
+            });
         }
 
-        // Send batch and wait for confirmation
-        await producer.sendBatch(messages);
+        // Send messages as sub-entries in one batch
+        await producer.sendSubEntries(messages);
     }
 
     const duration = Date.now() - startTime;
@@ -490,7 +491,7 @@ graph LR
 // stream-consumer.ts
 // Demonstrates different offset-based consumption patterns
 
-import { Client, Consumer, OffsetSpecification } from 'rabbitmq-stream-js-client';
+import { connect, Offset } from 'rabbitmq-stream-js-client';
 
 // Define offset specification types
 type OffsetSpec =
@@ -505,40 +506,41 @@ async function createConsumer(
     consumerName: string,
     offsetSpec: OffsetSpec
 ): Promise<void> {
-    const client = await Client.connect({
+    const client = await connect({
         hostname: 'localhost',
         port: 5552,
         username: 'guest',
         password: 'guest',
+        vhost: '/',
     });
 
     // Convert our offset spec to the library format
-    let offset: OffsetSpecification;
+    let offset: Offset;
     switch (offsetSpec.type) {
         case 'first':
             // Start from the very first message in the stream
             // Use this for: full replay, initial data load, event sourcing rebuild
-            offset = OffsetSpecification.first();
+            offset = Offset.first();
             break;
         case 'last':
             // Start from the last chunk written to the stream
             // Use this for: catching up to recent state
-            offset = OffsetSpecification.last();
+            offset = Offset.last();
             break;
         case 'next':
             // Only receive new messages (nothing historical)
             // Use this for: real-time processing, notifications
-            offset = OffsetSpecification.next();
+            offset = Offset.next();
             break;
         case 'offset':
             // Start from a specific offset number
             // Use this for: resuming after crash, checkpointing
-            offset = OffsetSpecification.offset(offsetSpec.value);
+            offset = Offset.offset(offsetSpec.value);
             break;
         case 'timestamp':
             // Start from messages published at or after this time
             // Use this for: time-travel debugging, replaying from incident
-            offset = OffsetSpecification.timestamp(offsetSpec.value);
+            offset = Offset.timestamp(offsetSpec.value);
             break;
     }
 
@@ -547,11 +549,11 @@ async function createConsumer(
 
     const consumer = await client.declareConsumer({
         stream: streamName,
-        name: consumerName,  // Named consumers can store offsets server-side
+        consumerRef: consumerName,  // Consumer references can store offsets server-side
         offset: offset,
     }, (message) => {
         // message.offset contains the message's position in the stream
-        const offset = message.offset;
+        const offset = message.offset ?? BigInt(0);
         const content = message.content.toString();
 
         console.log(`[${consumerName}] Offset ${offset}: ${content}`);
@@ -608,7 +610,7 @@ main().catch(console.error);
 // checkpoint-consumer.ts
 // Consumer with durable offset checkpointing
 
-import { Client, OffsetSpecification } from 'rabbitmq-stream-js-client';
+import { connect, Offset } from 'rabbitmq-stream-js-client';
 import { createClient } from 'redis';
 
 interface CheckpointStore {
@@ -656,19 +658,20 @@ async function checkpointedConsumer() {
     console.log(`Last checkpoint: ${lastCheckpoint ?? 'none'}`);
 
     // Connect to stream
-    const client = await Client.connect({
+    const client = await connect({
         hostname: 'localhost',
         port: 5552,
         username: 'guest',
         password: 'guest',
+        vhost: '/',
     });
 
     // Determine starting offset
     // If we have a checkpoint, start from the next offset
     // Otherwise, start from the beginning
     const startOffset = lastCheckpoint
-        ? OffsetSpecification.offset(lastCheckpoint + BigInt(1))
-        : OffsetSpecification.first();
+        ? Offset.offset(lastCheckpoint + BigInt(1))
+        : Offset.first();
 
     let messagesProcessed = 0;
     let lastOffset: bigint = lastCheckpoint ?? BigInt(0);
@@ -679,12 +682,13 @@ async function checkpointedConsumer() {
     }, async (message) => {
         // Process the message
         const order = JSON.parse(message.content.toString());
-        console.log(`Processing order ${order.id} at offset ${message.offset}`);
+        const offset = message.offset ?? lastOffset;
+        console.log(`Processing order ${order.id} at offset ${offset}`);
 
         // Your business logic here
         // await processOrder(order);
 
-        lastOffset = message.offset;
+        lastOffset = offset;
         messagesProcessed++;
 
         // Periodic checkpointing
@@ -884,7 +888,7 @@ graph TD
 // single-active-consumer.ts
 // Ensures only one consumer processes messages at a time with automatic failover
 
-import { Client, OffsetSpecification } from 'rabbitmq-stream-js-client';
+import { connect, Offset } from 'rabbitmq-stream-js-client';
 
 interface SingleActiveConfig {
     streamName: string;
@@ -893,24 +897,33 @@ interface SingleActiveConfig {
 }
 
 async function createSingleActiveConsumer(config: SingleActiveConfig) {
-    const client = await Client.connect({
+    const client = await connect({
         hostname: 'localhost',
         port: 5552,
         username: 'guest',
         password: 'guest',
+        vhost: '/',
     });
 
-    // Single Active Consumer is enabled by setting a consumer name
-    // RabbitMQ coordinates so only one consumer with this name is active
+    // Single Active Consumer is enabled with singleActive and a shared consumerRef
+    // RabbitMQ coordinates so only one consumer with this reference is active
     const consumer = await client.declareConsumer({
         stream: config.streamName,
-        // The 'name' property enables Single Active Consumer
-        // All consumers with the same name compete for active status
-        name: config.consumerGroup,
-        offset: OffsetSpecification.first(),
-        // Optional: configure what happens during consumer handoff
-        properties: {
-            // 'single-active-consumer': true is implicit when name is set
+        // All consumers with the same reference compete for active status
+        consumerRef: config.consumerGroup,
+        singleActive: true,
+        offset: Offset.first(),
+        // Optional: resume from the server-stored offset during handoff
+        consumerUpdateListener: async (consumerRef, streamName) => {
+            try {
+                const storedOffset = await client.queryOffset({
+                    reference: consumerRef,
+                    stream: streamName,
+                });
+                return Offset.offset(storedOffset + BigInt(1));
+            } catch {
+                return Offset.first();
+            }
         },
     }, (message) => {
         console.log(`[${config.instanceId}] Processing: ${message.content.toString()}`);
@@ -942,28 +955,26 @@ For true horizontal scaling, use Super Streams (partitioned streams):
 // super-stream.ts
 // Partitioned streams for parallel processing
 
-import { Client } from 'rabbitmq-stream-js-client';
+import { connect } from 'rabbitmq-stream-js-client';
 
 async function createSuperStream() {
-    const client = await Client.connect({
+    const client = await connect({
         hostname: 'localhost',
         port: 5552,
         username: 'guest',
         password: 'guest',
+        vhost: '/',
     });
 
     // Create a super stream with 3 partitions
     // Messages are distributed across partitions by routing key
     await client.createSuperStream({
         streamName: 'orders',
-        numberOfPartitions: 3,
-        // Optional: binding keys for routing
-        // bindingKeys: ['region-us', 'region-eu', 'region-asia'],
         arguments: {
             'max-length-bytes': 10 * 1024 * 1024 * 1024,
             'max-age': '7D',
         },
-    });
+    }, undefined, 3);
 
     console.log('Super stream "orders" created with 3 partitions');
 
@@ -977,20 +988,27 @@ async function createSuperStream() {
 }
 
 async function publishToSuperStream() {
-    const client = await Client.connect({
+    const client = await connect({
         hostname: 'localhost',
         port: 5552,
         username: 'guest',
         password: 'guest',
+        vhost: '/',
     });
 
     // Create producer that routes to partitions
-    const producer = await client.declareSuperStreamProducer({
-        superStream: 'orders',
-        // Route by a key in the message (e.g., customer ID)
-        // All messages with the same key go to the same partition
-        routingStrategy: 'hash',
-    });
+    const routingKeyExtractor = (_content: string, opts: any) =>
+        opts.messageProperties?.messageId;
+
+    const producer = await client.declareSuperStreamPublisher(
+        {
+            superStream: 'orders',
+            // Route by a key in the message (e.g., customer ID)
+            // All messages with the same key go to the same partition
+            routingStrategy: 'hash',
+        },
+        routingKeyExtractor
+    );
 
     // Publish with routing key
     for (let i = 0; i < 1000; i++) {
@@ -1001,7 +1019,7 @@ async function publishToSuperStream() {
                 customerId,
                 amount: Math.random() * 100
             })),
-            { routingKey: customerId }  // Route by customer
+            { messageProperties: { messageId: customerId } }  // Route by customer
         );
     }
 
@@ -1024,11 +1042,11 @@ Stream queues are optimized for specific workloads:
 
 | Metric | Typical Performance | Notes |
 |--------|---------------------|-------|
-| Write Throughput | 1M+ msg/sec | With batching and native protocol |
-| Read Throughput | 500K+ msg/sec per consumer | Non-blocking reads |
-| Latency (P99) | < 5ms | End-to-end with confirms |
-| Storage Efficiency | ~1 byte overhead per message | Minimal metadata |
-| Replication | 3-way by default | Raft-based quorum |
+| Write Throughput | Very high | Depends on batching, message size, disks, replication, and protocol |
+| Read Throughput | Very high | Non-destructive reads let multiple consumers read independently |
+| Latency | Workload-dependent | Confirms, batching, replication, and fsync behavior affect latency |
+| Storage Efficiency | High for append workloads | Streams use append-only segment files |
+| Replication | One replica per configured RabbitMQ node by default | Controlled initially with `x-initial-cluster-size` |
 
 ### Performance Tuning
 
@@ -1036,14 +1054,15 @@ Stream queues are optimized for specific workloads:
 // performance-tuning.ts
 // Configuration for maximum throughput
 
-import { Client } from 'rabbitmq-stream-js-client';
+import { connect, creditsOnChunkReceived, Offset } from 'rabbitmq-stream-js-client';
 
 async function highPerformanceSetup() {
-    const client = await Client.connect({
+    const client = await connect({
         hostname: 'localhost',
         port: 5552,
         username: 'guest',
         password: 'guest',
+        vhost: '/',
         // Connection-level tuning
         frameMax: 1048576,      // 1 MB frames for large batches
         heartbeat: 60,          // 60 second heartbeat
@@ -1065,23 +1084,20 @@ async function highPerformanceSetup() {
     });
 
     // High-throughput producer configuration
-    const producer = await client.declareProducer({
+    const producer = await client.declarePublisher({
         stream: 'high-perf-events',
-        // Sub-entry batching: critical for performance
-        // Groups multiple messages into single network frames
-        // Trade-off: slightly higher latency for much higher throughput
-        subEntrySize: 100,     // Batch up to 100 messages per sub-entry
-        maxFrameSize: 1048576, // 1 MB max frame size
+        // Larger chunks can improve throughput at the cost of latency
+        maxChunkLength: 1000,
     });
 
     // High-throughput consumer configuration
     const consumer = await client.declareConsumer({
         stream: 'high-perf-events',
-        offset: { type: 'first' },
+        offset: Offset.first(),
         // Credit-based flow control
         // Higher credit = more messages buffered = higher throughput
         // Lower credit = less memory usage = better backpressure
-        initialCredits: 50,  // Start with 50 message chunks
+        creditPolicy: creditsOnChunkReceived(50, 10),  // Start with 50 chunks, then add credits as chunks arrive
     }, (message) => {
         // Process message
     });
@@ -1099,47 +1115,30 @@ async function highPerformanceSetup() {
 
 # Configuration
 STREAM_NAME="benchmark-stream"
-MESSAGE_COUNT=1000000
 MESSAGE_SIZE=256
 BATCH_SIZE=10000
+TEST_DURATION=30
 
-# Using PerfTest (official RabbitMQ tool)
-# Install: https://github.com/rabbitmq/rabbitmq-perf-test
+# Using Stream PerfTest (official RabbitMQ stream protocol tool)
+# Install: https://github.com/rabbitmq/rabbitmq-stream-perf-test
 
 echo "=== RabbitMQ Stream Benchmark ==="
-echo "Messages: $MESSAGE_COUNT"
+echo "Duration: ${TEST_DURATION}s"
 echo "Message size: $MESSAGE_SIZE bytes"
 echo "Batch size: $BATCH_SIZE"
 echo ""
 
-# Create stream
-rabbitmqadmin declare queue name=$STREAM_NAME queue_type=stream \
-    arguments='{"x-max-length-bytes": 10737418240}'
-
-# Run producer benchmark
-echo "Starting producer benchmark..."
-rabbitmq-perf-test \
-    --uri "rabbitmq-stream://guest:guest@localhost:5552" \
-    --stream-producer \
+# Run producer and consumer benchmark for 30 seconds
+echo "Starting stream benchmark..."
+timeout ${TEST_DURATION}s java -jar stream-perf-test.jar \
+    --uris "rabbitmq-stream://guest:guest@localhost:5552/%2f" \
+    --streams $STREAM_NAME \
     --producers 1 \
-    --consumers 0 \
-    --stream $STREAM_NAME \
-    --size $MESSAGE_SIZE \
-    --confirm 1000 \
-    --sub-entry-size $BATCH_SIZE \
-    --time 30
-
-# Run consumer benchmark
-echo ""
-echo "Starting consumer benchmark..."
-rabbitmq-perf-test \
-    --uri "rabbitmq-stream://guest:guest@localhost:5552" \
-    --stream-consumer \
-    --producers 0 \
     --consumers 1 \
-    --stream $STREAM_NAME \
-    --offset first \
-    --time 30
+    --size $MESSAGE_SIZE \
+    --batch-size $BATCH_SIZE \
+    --confirms 10000 \
+    --max-length-bytes 10737418240
 ```
 
 ---
@@ -1152,7 +1151,6 @@ rabbitmq-perf-test \
 // stream-metrics.ts
 // Export stream metrics for monitoring
 
-import { Client } from 'rabbitmq-stream-js-client';
 import { register, Gauge, Counter } from 'prom-client';
 
 // Define Prometheus metrics
