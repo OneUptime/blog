@@ -35,7 +35,7 @@ This guide covers everything you need to know about item writers in Spring Batch
 
 ## 1. What is an Item Writer?
 
-An item writer is the output component in a batch processing pipeline. It receives a list (chunk) of processed items and writes them to a destination.
+An item writer is the output component in a batch processing pipeline. It receives a chunk of processed items and writes them to a destination.
 
 | Concept | Description |
 |---------|-------------|
@@ -300,7 +300,7 @@ public JmsTemplate jmsTemplate(ConnectionFactory connectionFactory) {
     // Target queue for notification messages
     template.setDefaultDestinationName("notifications-queue");
     // Convert objects to JSON messages automatically
-    template.setMessageConverter(new MappingJackson2MessageConverter());
+    template.setMessageConverter(new JacksonJsonMessageConverter());
     return template;
 }
 ```
@@ -324,7 +324,7 @@ public class EnhancedJmsItemWriter implements ItemWriter<OrderEvent> {
     public void write(Chunk<? extends OrderEvent> chunk) throws Exception {
         for (OrderEvent event : chunk) {
             jmsTemplate.send("order-events", session -> {
-                // Create JSON message from event object
+                // Create an object message from the event
                 ObjectMessage message = session.createObjectMessage();
                 message.setObject(event);
 
@@ -333,10 +333,8 @@ public class EnhancedJmsItemWriter implements ItemWriter<OrderEvent> {
                 message.setStringProperty("region", event.getRegion());
                 message.setIntProperty("priority", event.getPriority());
 
-                // Set message expiration for time-sensitive events
-                if (event.isTimeSensitive()) {
-                    message.setJMSExpiration(System.currentTimeMillis() + 300000); // 5 minutes
-                }
+                // Configure per-template or per-producer time-to-live for
+                // time-sensitive events rather than setting provider-managed headers.
 
                 return message;
             });
@@ -395,7 +393,18 @@ public class RestApiItemWriter implements ItemWriter<CustomerRecord> {
                     return;
                 }
 
-                log.warn("API returned non-success status: {}", response.getStatusCode());
+                attempt++;
+                log.warn("API returned non-success status (attempt {}/{}): {}",
+                    attempt, maxRetries, response.getStatusCode());
+
+                if (attempt >= maxRetries) {
+                    throw new ItemWriterException(
+                        "Failed to write to API after " + maxRetries + " attempts: " +
+                        response.getStatusCode()
+                    );
+                }
+
+                Thread.sleep((long) Math.pow(2, attempt) * 1000);
 
             } catch (RestClientException e) {
                 attempt++;
@@ -469,45 +478,44 @@ public class ElasticsearchItemWriter implements ItemWriter<SearchableDocument> {
 
     private static final Logger log = LoggerFactory.getLogger(ElasticsearchItemWriter.class);
 
-    private final RestHighLevelClient elasticsearchClient;
+    private final ElasticsearchClient elasticsearchClient;
     private final String indexName;
-    private final ObjectMapper objectMapper;
 
     public ElasticsearchItemWriter(
-            RestHighLevelClient elasticsearchClient,
-            @Value("${elasticsearch.index-name}") String indexName,
-            ObjectMapper objectMapper) {
+            ElasticsearchClient elasticsearchClient,
+            @Value("${elasticsearch.index-name}") String indexName) {
         this.elasticsearchClient = elasticsearchClient;
         this.indexName = indexName;
-        this.objectMapper = objectMapper;
     }
 
     @Override
     public void write(Chunk<? extends SearchableDocument> chunk) throws Exception {
         // Use bulk API for efficient indexing
-        BulkRequest bulkRequest = new BulkRequest();
+        BulkRequest.Builder bulkRequest = new BulkRequest.Builder();
 
         for (SearchableDocument document : chunk) {
             // Create index request for each document
-            IndexRequest indexRequest = new IndexRequest(indexName)
-                .id(document.getId())
-                .source(objectMapper.writeValueAsString(document), XContentType.JSON);
-
-            bulkRequest.add(indexRequest);
+            bulkRequest.operations(operation -> operation
+                .index(index -> index
+                    .index(indexName)
+                    .id(document.getId())
+                    .document(document)
+                )
+            );
         }
 
         // Execute bulk request
-        BulkResponse bulkResponse = elasticsearchClient.bulk(bulkRequest, RequestOptions.DEFAULT);
+        BulkResponse bulkResponse = elasticsearchClient.bulk(bulkRequest.build());
 
         // Check for failures
-        if (bulkResponse.hasFailures()) {
-            log.error("Bulk indexing had failures: {}", bulkResponse.buildFailureMessage());
+        if (bulkResponse.errors()) {
+            log.error("Bulk indexing had failures");
 
             // Collect failed document IDs for potential retry
             List<String> failedIds = new ArrayList<>();
-            for (BulkItemResponse item : bulkResponse) {
-                if (item.isFailed()) {
-                    failedIds.add(item.getId());
+            for (BulkResponseItem item : bulkResponse.items()) {
+                if (item.error() != null) {
+                    failedIds.add(item.id());
                 }
             }
 
@@ -515,7 +523,7 @@ public class ElasticsearchItemWriter implements ItemWriter<SearchableDocument> {
         }
 
         log.info("Successfully indexed {} documents in {}ms",
-            chunk.size(), bulkResponse.getTook().getMillis());
+            chunk.size(), bulkResponse.took());
     }
 }
 ```
@@ -703,11 +711,12 @@ public Step transactionProcessingStep(
         JdbcBatchItemWriter<Transaction> writer) {
 
     return new StepBuilder("transactionProcessingStep", jobRepository)
-        .<Transaction, Transaction>chunk(500, transactionManager)  // Larger chunks for throughput
+        .<Transaction, Transaction>chunk(500)  // Larger chunks for throughput
+        .transactionManager(transactionManager)
         .reader(reader)
         .processor(processor)
         .writer(writer)
-        // Commit interval matches chunk size by default
+        // Commit interval matches chunk size
         .build();
 }
 ```
@@ -734,31 +743,37 @@ spring:
         prepareThreshold: 5
 ```
 
-### Multi-threaded Writing
+### Local Chunking for Parallel Writes
 
 ```java
-// Configure parallel step execution for improved throughput
+// Configure local chunking so chunks can be processed and written in worker threads
 @Bean
-public Step parallelWriteStep(
-        JobRepository jobRepository,
-        PlatformTransactionManager transactionManager,
-        ItemReader<DataRecord> reader,
-        ItemWriter<DataRecord> writer,
+public ChunkTaskExecutorItemWriter<DataRecord> parallelChunkWriter(
+        ChunkProcessor<DataRecord> chunkProcessor,
         TaskExecutor taskExecutor) {
 
-    return new StepBuilder("parallelWriteStep", jobRepository)
-        .<DataRecord, DataRecord>chunk(100, transactionManager)
-        // Thread-safe reader required for parallel execution
-        .reader(synchronizedItemReader(reader))
-        .writer(writer)
-        // Execute with multiple threads
-        .taskExecutor(taskExecutor)
-        // Limit concurrent threads to prevent resource exhaustion
-        .throttleLimit(4)
-        .build();
+    return new ChunkTaskExecutorItemWriter<>(chunkProcessor, taskExecutor);
 }
 
-// Task executor for parallel step execution
+// Chunk processor that performs the write inside each worker thread
+@Bean
+public ChunkProcessor<DataRecord> dataRecordChunkProcessor(
+        JdbcBatchItemWriter<DataRecord> writer,
+        TransactionTemplate transactionTemplate) {
+
+    return (chunk, contribution) -> transactionTemplate.executeWithoutResult(status -> {
+        try {
+            writer.write(chunk);
+            contribution.incrementWriteCount(chunk.size());
+        } catch (Exception e) {
+            status.setRollbackOnly();
+            contribution.incrementWriteSkipCount(chunk.size());
+            throw new ItemWriterException("Failed to write chunk", e);
+        }
+    });
+}
+
+// Task executor for parallel chunk execution
 @Bean
 public TaskExecutor batchTaskExecutor() {
     ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
@@ -820,18 +835,19 @@ public Step faultTolerantWriteStep(
         SkipListener<Record, Record> skipListener) {
 
     return new StepBuilder("faultTolerantWriteStep", jobRepository)
-        .<Record, Record>chunk(100, transactionManager)
+        .<Record, Record>chunk(100)
+        .transactionManager(transactionManager)
         .reader(reader)
         .writer(writer)
         // Enable fault tolerance
         .faultTolerant()
         // Skip specific exceptions during write
-        .skipPolicy(new LimitCheckingItemSkipPolicy(
-            100,  // Maximum items to skip before failing
-            Map.of(
-                DataIntegrityViolationException.class, true,  // Skip duplicate key errors
-                DeadlockLoserDataAccessException.class, true  // Skip deadlock victims
-            )
+        .skipPolicy(new LimitCheckingExceptionHierarchySkipPolicy(
+            Set.of(
+                DataIntegrityViolationException.class,  // Skip duplicate key errors
+                PessimisticLockingFailureException.class // Skip locking failures
+            ),
+            100  // Maximum items to skip before failing
         ))
         // Retry transient failures
         .retryLimit(3)
