@@ -33,6 +33,7 @@ docker pull ollama/ollama
 # Run Ollama container
 docker run -d \
   --name ollama \
+  -v ollama:/root/.ollama \
   -p 11434:11434 \
   ollama/ollama
 ```
@@ -64,10 +65,10 @@ For production workloads, GPU acceleration is essential. Here is how to configur
 
 ```bash
 # Install NVIDIA Container Toolkit (Ubuntu/Debian)
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/libnvidia-container/gpgkey | \
-  sudo apt-key add -
-curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
   sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
 sudo apt-get update
@@ -85,6 +86,7 @@ sudo systemctl restart docker
 docker run -d \
   --name ollama-gpu \
   --gpus all \
+  -v ollama:/root/.ollama \
   -p 11434:11434 \
   ollama/ollama
 
@@ -92,6 +94,7 @@ docker run -d \
 docker run -d \
   --name ollama-gpu \
   --gpus '"device=0"' \
+  -v ollama:/root/.ollama \
   -p 11434:11434 \
   ollama/ollama
 
@@ -99,6 +102,7 @@ docker run -d \
 docker run -d \
   --name ollama-gpu \
   --gpus '"device=0,1"' \
+  -v ollama:/root/.ollama \
   -p 11434:11434 \
   ollama/ollama
 ```
@@ -138,7 +142,7 @@ services:
     restart: unless-stopped
     # Health check to ensure Ollama is responding
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -179,7 +183,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -220,7 +224,7 @@ services:
 
 ### Pre-loading Models
 
-Create a script to automatically pull models on startup:
+Use a sidecar container to automatically pull models after Ollama starts:
 
 ```yaml
 # docker-compose.yml with model initialization
@@ -235,11 +239,9 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-      # Mount initialization script
-      - ./init-models.sh:/init-models.sh:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -253,8 +255,8 @@ services:
     # Pull required models
     entrypoint: >
       sh -c "
-        curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2\"}' &&
-        curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"codellama\"}'
+        curl -X POST http://ollama:11434/api/pull -d '{\"model\": \"llama3.2\"}' &&
+        curl -X POST http://ollama:11434/api/pull -d '{\"model\": \"codellama\"}'
       "
     restart: "no"
 
@@ -292,10 +294,8 @@ services:
   ollama:
     image: ollama/ollama:latest
     environment:
-      # Bind to all interfaces (required for container networking)
-      - OLLAMA_HOST=0.0.0.0
-      # Set custom port (default: 11434)
-      - OLLAMA_PORT=11434
+      # Bind to all interfaces on the default port (required for container networking)
+      - OLLAMA_HOST=0.0.0.0:11434
       # Enable debug logging
       - OLLAMA_DEBUG=1
       # Set number of parallel requests
@@ -330,19 +330,19 @@ curl http://localhost:11434/api/chat -d '{
 }'
 
 # Generate embeddings
-curl http://localhost:11434/api/embeddings -d '{
-  "model": "llama3.2",
-  "prompt": "Docker containers are lightweight"
+curl http://localhost:11434/api/embed -d '{
+  "model": "all-minilm",
+  "input": "Docker containers are lightweight"
 }'
 
 # Pull a model
 curl http://localhost:11434/api/pull -d '{
-  "name": "codellama"
+  "model": "codellama"
 }'
 
 # Delete a model
 curl -X DELETE http://localhost:11434/api/delete -d '{
-  "name": "codellama"
+  "model": "codellama"
 }'
 ```
 
@@ -363,7 +363,7 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     environment:
-      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_HOST=0.0.0.0:11434
       - OLLAMA_NUM_PARALLEL=4
       - OLLAMA_MAX_LOADED_MODELS=2
     deploy:
@@ -429,10 +429,10 @@ services:
               device_ids: ["0"]
               capabilities: [gpu]
     environment:
-      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_HOST=0.0.0.0:11434
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -451,10 +451,10 @@ services:
               device_ids: ["1"]
               capabilities: [gpu]
     environment:
-      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_HOST=0.0.0.0:11434
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -538,7 +538,7 @@ services:
               count: all
               capabilities: [gpu]
     environment:
-      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_HOST=0.0.0.0:11434
     restart: unless-stopped
     networks:
       - app-network
