@@ -117,7 +117,7 @@ Different alert types benefit from different time windows:
 
 ```python
 from enum import Enum
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 class AlertSeverity(Enum):
     CRITICAL = "critical"
@@ -338,6 +338,7 @@ flowchart TD
 
 ```python
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Optional
 
 @dataclass
@@ -472,43 +473,55 @@ for link in links:
 Explore mode provides ad-hoc querying. Link directly to pre-built queries:
 
 ```python
+from datetime import datetime, timedelta
 import json
 from urllib.parse import quote
 
 def generate_explore_link(
     grafana_url: str,
-    datasource: str,
+    datasource_uid: str,
+    datasource_type: str,
     query: str,
     time_from: datetime,
-    time_to: datetime
+    time_to: datetime,
+    org_id: int = 1
 ) -> str:
     """
     Generate a Grafana Explore link with a pre-built query.
 
     Useful for logs, traces, and ad-hoc metric exploration.
     """
-    # Explore state is JSON encoded in the URL
-    explore_state = {
-        "datasource": datasource,
-        "queries": [{"refId": "A", "expr": query}],
-        "range": {
-            "from": str(int(time_from.timestamp() * 1000)),
-            "to": str(int(time_to.timestamp() * 1000))
+    # Explore panes are JSON encoded in the URL
+    panes = {
+        "left": {
+            "datasource": datasource_uid,
+            "queries": [{
+                "refId": "A",
+                "datasource": {
+                    "uid": datasource_uid,
+                    "type": datasource_type
+                },
+                "expr": query
+            }],
+            "range": {
+                "from": str(int(time_from.timestamp() * 1000)),
+                "to": str(int(time_to.timestamp() * 1000))
+            }
         }
     }
 
     # Encode as JSON and URL-encode
-    state_json = json.dumps(explore_state)
-    encoded_state = quote(state_json)
+    encoded_panes = quote(json.dumps(panes))
 
-    return f"{grafana_url}/explore?left={encoded_state}"
+    return f"{grafana_url}/explore?panes={encoded_panes}&schemaVersion=1&orgId={org_id}"
 
 
 # Example: Link to logs for a specific service
 log_query = '{namespace="production", app="payment-api"} |= "error"'
 explore_url = generate_explore_link(
     grafana_url="https://grafana.example.com",
-    datasource="Loki",
+    datasource_uid="loki",
+    datasource_type="loki",
     query=log_query,
     time_from=datetime.now() - timedelta(hours=1),
     time_to=datetime.now()
@@ -520,15 +533,38 @@ explore_url = generate_explore_link(
 Link to specific traces from alerts:
 
 ```python
+import json
+from urllib.parse import quote
+
 def generate_trace_link(
     grafana_url: str,
     trace_id: str,
-    datasource: str = "Tempo"
+    datasource_uid: str = "tempo",
+    datasource_type: str = "tempo",
+    org_id: int = 1
 ) -> str:
     """
     Generate a direct link to a specific trace.
     """
-    return f"{grafana_url}/explore?orgId=1&left=%5B%22now-1h%22,%22now%22,%22{datasource}%22,%7B%22query%22:%22{trace_id}%22%7D%5D"
+    panes = {
+        "left": {
+            "datasource": datasource_uid,
+            "queries": [{
+                "refId": "A",
+                "datasource": {
+                    "uid": datasource_uid,
+                    "type": datasource_type
+                },
+                "query": trace_id
+            }],
+            "range": {
+                "from": "now-1h",
+                "to": "now"
+            }
+        }
+    }
+    encoded_panes = quote(json.dumps(panes))
+    return f"{grafana_url}/explore?panes={encoded_panes}&schemaVersion=1&orgId={org_id}"
 
 
 # Example
@@ -545,6 +581,9 @@ Navigate directly to specific panels or rows:
 ### Panel Focus
 
 ```python
+from datetime import datetime
+from urllib.parse import urlencode
+
 def generate_panel_link(
     base_url: str,
     dashboard_uid: str,
@@ -573,31 +612,33 @@ def generate_panel_link(
     return f"{base_url}/d/{dashboard_uid}/{dashboard_slug}?{urlencode(params)}"
 ```
 
-### Row Expansion
+### Row Context
 
 ```python
-def generate_row_link(
+from datetime import datetime
+from urllib.parse import urlencode
+
+def generate_row_context_link(
     base_url: str,
     dashboard_uid: str,
     dashboard_slug: str,
-    row_title: str,
+    row_panel_id: int,
     time_from: datetime,
     time_to: datetime
 ) -> str:
     """
-    Generate link that expands a specific row.
+    Generate a link that focuses on a panel inside a row.
 
-    Rows are identified by title in the URL.
+    Grafana does not provide a documented row-title URL parameter for
+    expanding rows. Use a known panel ID from the row instead.
     """
     params = {
         "from": int(time_from.timestamp() * 1000),
         "to": int(time_to.timestamp() * 1000),
+        "viewPanel": row_panel_id
     }
 
-    # Row anchor uses lowercase, hyphenated title
-    row_anchor = row_title.lower().replace(" ", "-")
-
-    return f"{base_url}/d/{dashboard_uid}/{dashboard_slug}?{urlencode(params)}#{row_anchor}"
+    return f"{base_url}/d/{dashboard_uid}/{dashboard_slug}?{urlencode(params)}"
 ```
 
 ## Integration with Alert Managers
@@ -799,17 +840,26 @@ class DashboardLinkGenerator:
         query = f'{{namespace="{namespace}", app="{service}"}}'
 
         explore_state = {
-            "datasource": "Loki",
-            "queries": [{"refId": "A", "expr": query}],
-            "range": {
-                "from": str(int(time_from.timestamp() * 1000)),
-                "to": str(int(time_to.timestamp() * 1000))
+            "left": {
+                "datasource": "loki",
+                "queries": [{
+                    "refId": "A",
+                    "datasource": {
+                        "uid": "loki",
+                        "type": "loki"
+                    },
+                    "expr": query
+                }],
+                "range": {
+                    "from": str(int(time_from.timestamp() * 1000)),
+                    "to": str(int(time_to.timestamp() * 1000))
+                }
             }
         }
 
         from urllib.parse import quote
         encoded = quote(json.dumps(explore_state))
-        return f"{self.grafana_url}/explore?left={encoded}"
+        return f"{self.grafana_url}/explore?panes={encoded}&schemaVersion=1&orgId=1"
 
 
 # Example configuration
