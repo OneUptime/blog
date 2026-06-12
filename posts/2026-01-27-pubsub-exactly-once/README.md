@@ -38,13 +38,13 @@ flowchart TB
 
 - **At-most-once**: Messages may be lost but never duplicated. Fire and forget.
 - **At-least-once**: Messages are never lost but may be duplicated. Retry until acknowledged.
-- **Exactly-once**: Messages are delivered exactly one time. The holy grail.
+- **Exactly-once**: Successfully acknowledged messages are not delivered again, so consumers can build processing that behaves as if each message is handled once. The holy grail.
 
 Most Pub/Sub systems provide at-least-once delivery by default. Achieving exactly-once requires additional patterns on top of this foundation.
 
 ## Google Cloud Pub/Sub Exactly-Once Delivery
 
-Google Cloud Pub/Sub offers a native exactly-once delivery feature that handles deduplication at the subscription level.
+Google Cloud Pub/Sub offers a native exactly-once delivery feature for pull subscriptions, including StreamingPull subscribers. It prevents redelivery after a successful acknowledgment and lets subscribers detect acknowledgment failures. The guarantee is scoped to a cloud region and is based on the Pub/Sub message ID.
 
 ### Enabling Exactly-Once Delivery
 
@@ -66,9 +66,10 @@ def create_subscription_with_exactly_once(
     Exactly-once delivery ensures that Pub/Sub will not redeliver
     a message that has been successfully acknowledged.
     """
+    publisher = pubsub_v1.PublisherClient()
     subscriber = pubsub_v1.SubscriberClient()
 
-    topic_path = subscriber.topic_path(project_id, topic_id)
+    topic_path = publisher.topic_path(project_id, topic_id)
     subscription_path = subscriber.subscription_path(project_id, subscription_id)
 
     # Create subscription with exactly-once delivery
@@ -132,17 +133,20 @@ def subscribe_with_exactly_once(
             # Process the message
             process_message(message)
 
-            # Acknowledge the message
-            # With exactly-once, this may fail if another worker acked first
-            message.ack()
+            # Acknowledge the message and wait for the acknowledgment result.
+            # With exactly-once, ack_with_response() is how the Python client
+            # tells you whether Pub/Sub accepted the ack.
+            ack_future = message.ack_with_response()
+            ack_future.result(timeout=60)
             logger.info(f"Successfully acknowledged: {message.message_id}")
 
         except subscriber_exceptions.AcknowledgeError as e:
             # Handle acknowledgment failures
-            # This happens when exactly-once detects a duplicate ack attempt
+            # This can happen if the ack deadline expired or an older ack ID
+            # was used after the message had already been redelivered.
             logger.warning(
                 f"Ack failed for {message.message_id}: {e}. "
-                "Message may have been processed by another worker."
+                "Message may be redelivered."
             )
 
         except Exception as e:
@@ -316,11 +320,13 @@ class IdempotencyHandler:
             cached_result = self.get_previous_result(idempotency_key)
             return (False, cached_result)
 
-        # Use Redis transaction to prevent race conditions
-        # SETNX ensures only one worker processes the message
-        acquired = self.redis.setnx(
+        # Use an atomic Redis SET with NX and EX to ensure only one worker
+        # processes the message and the lock expires if the worker dies.
+        acquired = self.redis.set(
             f"{idempotency_key}:lock",
-            "processing"
+            "processing",
+            nx=True,
+            ex=300
         )
 
         if not acquired:
@@ -329,9 +335,6 @@ class IdempotencyHandler:
             return (False, None)
 
         try:
-            # Set lock expiry to prevent deadlocks
-            self.redis.expire(f"{idempotency_key}:lock", 300)  # 5 minute timeout
-
             # Process the message
             result = processor()
 
@@ -368,7 +371,7 @@ def create_idempotent_callback(handler: IdempotencyHandler):
             logger.info(f"Skipped duplicate: {message.message_id}")
 
         # Always ack - we've handled the duplicate case
-        message.ack()
+        message.ack_with_response().result(timeout=60)
 
     return callback
 ```
@@ -380,8 +383,7 @@ def create_idempotent_callback(handler: IdempotencyHandler):
 # Implement idempotency using database constraints
 
 from sqlalchemy import create_engine, Column, String, DateTime, JSON, UniqueConstraint
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 from typing import Callable, Any, Optional
@@ -395,8 +397,8 @@ class ProcessedMessage(Base):
     """
     Track processed messages in the database.
 
-    Using a database table with unique constraints ensures
-    exactly-once semantics even across service restarts.
+    Using a database table with unique constraints supports
+    idempotent processing decisions even across service restarts.
     """
     __tablename__ = 'processed_messages'
 
@@ -482,7 +484,8 @@ class DatabaseIdempotencyHandler:
         """
         Process a message idempotently with automatic transaction management.
 
-        Uses INSERT with ON CONFLICT to handle race conditions.
+        Uses an optimistic insert and handles IntegrityError to
+        detect duplicates safely.
         """
         session = self.Session()
 
@@ -710,15 +713,11 @@ class BusinessKeyDeduplicator:
         """
         redis_key = f"{namespace}:{business_key}"
 
-        # SETNX returns True if key was set (new message)
-        # Returns False if key already existed (duplicate)
-        is_new = self.redis.setnx(redis_key, "1")
+        # SET with NX and EX atomically creates the key with an expiry.
+        # It returns True if the key was set and None if it already existed.
+        is_new = self.redis.set(redis_key, "1", nx=True, ex=self.ttl_seconds)
 
-        if is_new:
-            # Set expiry for cleanup
-            self.redis.expire(redis_key, self.ttl_seconds)
-
-        return is_new
+        return bool(is_new)
 ```
 
 ## Configuration Best Practices
@@ -742,8 +741,7 @@ def create_exactly_once_publisher(
     Create a publisher configured for exactly-once semantics.
 
     Key settings:
-    - Enable message ordering for deterministic delivery
-    - Configure retry settings for transient failures
+    - Enable message ordering on the publisher when using ordering keys
     - Set appropriate timeouts
     """
     # Batch settings - balance throughput with latency
@@ -753,16 +751,11 @@ def create_exactly_once_publisher(
         max_latency=0.01,        # 10ms max wait time
     )
 
-    # Retry settings for transient failures
-    retry_settings = {
-        'initial': 0.1,          # Initial retry delay (100ms)
-        'maximum': 60.0,         # Max retry delay (60s)
-        'multiplier': 2.0,       # Exponential backoff multiplier
-        'deadline': 300.0,       # Total retry deadline (5 min)
-    }
-
     publisher = pubsub_v1.PublisherClient(
         batch_settings=batch_settings,
+        publisher_options=types.PublisherOptions(
+            enable_message_ordering=True,
+        ),
     )
 
     return publisher
@@ -820,6 +813,7 @@ def publish_with_deduplication(
 
 from google.cloud import pubsub_v1
 from google.cloud.pubsub_v1 import types
+from typing import Optional
 
 
 def create_exactly_once_subscriber_config() -> types.FlowControl:
@@ -839,7 +833,7 @@ def create_exactly_once_subscriber_config() -> types.FlowControl:
         # Maximum total size of outstanding messages
         max_bytes=100 * 1024 * 1024,  # 100 MB
 
-        # Maximum number of outstanding lease extensions
+        # Maximum time to keep extending a message lease
         max_lease_duration=3600,  # 1 hour max
     )
 
@@ -862,7 +856,7 @@ def create_subscription_config(
         # Exactly-once delivery
         "enable_exactly_once_delivery": enable_exactly_once,
 
-        # Message ordering (required for exactly-once in many cases)
+        # Message ordering, if your workload needs per-key ordered delivery
         "enable_message_ordering": enable_ordering,
 
         # How long subscriber has to ack before redelivery
@@ -963,12 +957,13 @@ class ExactlyOnceProcessor:
     def _acquire_lock(self, idempotency_key: str) -> bool:
         """Try to acquire processing lock."""
         lock_key = f"{idempotency_key}:lock"
-        # Lock expires after ack deadline to prevent deadlocks
+        # Lock expires to prevent deadlocks. Keep it at least 5 minutes so
+        # automatic lease extension has time to cover normal processing.
         return self.redis.set(
             lock_key,
             "1",
             nx=True,
-            ex=self.config.ack_deadline_seconds
+            ex=max(self.config.ack_deadline_seconds, 300)
         )
 
     def _release_lock(self, idempotency_key: str) -> None:
@@ -998,7 +993,7 @@ class ExactlyOnceProcessor:
             # Check if already processed
             if self._is_processed(idempotency_key):
                 logger.info(f"Duplicate detected, skipping: {message.message_id}")
-                message.ack()
+                message.ack_with_response().result(timeout=60)
                 return
 
             # Try to acquire lock
@@ -1016,8 +1011,10 @@ class ExactlyOnceProcessor:
                 # Mark as processed
                 self._mark_processed(idempotency_key, result)
 
-                # Acknowledge
-                message.ack()
+                # Acknowledge and wait for the result so exactly-once delivery
+                # failures are visible to the application.
+                ack_future = message.ack_with_response()
+                ack_future.result(timeout=60)
                 logger.info(f"Successfully processed: {message.message_id}")
 
             except sub_exceptions.AcknowledgeError as e:
@@ -1027,7 +1024,10 @@ class ExactlyOnceProcessor:
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid JSON in message: {e}")
                 # Ack to prevent infinite retries of bad data
-                message.ack()
+                try:
+                    message.ack_with_response().result(timeout=60)
+                except sub_exceptions.AcknowledgeError as ack_error:
+                    logger.warning(f"Ack failed for invalid message: {ack_error}")
 
             except Exception as e:
                 logger.error(f"Processing error: {e}")
