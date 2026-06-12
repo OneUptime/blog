@@ -327,6 +327,8 @@ Keep README sections in sync with code:
 jobs:
   update-readme:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -351,7 +353,7 @@ jobs:
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add README.md
           git diff --staged --quiet || git commit -m "docs: update auto-generated sections"
           git push
@@ -369,7 +371,7 @@ const cliHelp = fs.readFileSync('cli-help.txt', 'utf8');
 // Replace content between markers
 const updated = readme.replace(
   /<!-- CLI_HELP_START -->[\s\S]*<!-- CLI_HELP_END -->/,
-  `<!-- CLI_HELP_START -->\n```\n${cliHelp}\n```\n<!-- CLI_HELP_END -->`
+  `<!-- CLI_HELP_START -->\n\`\`\`\n${cliHelp}\n\`\`\`\n<!-- CLI_HELP_END -->`
 );
 
 fs.writeFileSync('README.md', updated);
@@ -391,6 +393,9 @@ on:
 jobs:
   preview:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -485,6 +490,8 @@ Maintain documentation for multiple versions:
 jobs:
   versioned-docs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -501,7 +508,7 @@ jobs:
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Deploy versioned docs
         run: |
