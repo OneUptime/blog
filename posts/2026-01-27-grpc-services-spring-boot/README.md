@@ -54,6 +54,14 @@ Add the gRPC starter and build plugin to your `pom.xml`:
         <artifactId>grpc-stub</artifactId>
         <version>${grpc.version}</version>
     </dependency>
+
+    <!-- Java 9+ compatibility for gRPC generated code -->
+    <dependency>
+        <groupId>jakarta.annotation</groupId>
+        <artifactId>jakarta.annotation-api</artifactId>
+        <version>1.3.5</version>
+        <optional>true</optional>
+    </dependency>
 </dependencies>
 
 <build>
@@ -176,6 +184,11 @@ message ListUsersResponse {
     string next_page_token = 2;  // Token for next page, empty if last page
 }
 
+// Response for batch user creation
+message BatchCreateResponse {
+    int32 created_count = 1;
+}
+
 // The User service definition
 service UserService {
     // Get a single user by ID
@@ -189,6 +202,9 @@ service UserService {
 
     // Stream all users (server streaming)
     rpc StreamUsers(ListUsersRequest) returns (stream User);
+
+    // Create multiple users (client streaming)
+    rpc BatchCreateUsers(stream CreateUserRequest) returns (BatchCreateResponse);
 }
 ```
 
@@ -608,7 +624,13 @@ public StreamObserver<CreateUserRequest> batchCreateUsers(
         @Override
         public void onNext(CreateUserRequest request) {
             // Process each user creation request
-            createUser(request);
+            UserEntity entity = new UserEntity();
+            entity.setId(UUID.randomUUID().toString());
+            entity.setEmail(request.getEmail());
+            entity.setName(request.getName());
+            entity.setCreatedAt(System.currentTimeMillis());
+            entity.setStatus(UserStatus.ACTIVE);
+            userRepository.save(entity);
             count++;
         }
 
