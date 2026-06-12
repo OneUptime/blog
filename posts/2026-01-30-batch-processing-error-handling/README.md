@@ -49,22 +49,17 @@ Skip policies allow your batch job to continue processing even when individual r
 @EnableBatchProcessing
 public class BatchConfiguration {
 
-    @Autowired
-    private JobBuilderFactory jobBuilderFactory;
-
-    @Autowired
-    private StepBuilderFactory stepBuilderFactory;
-
     @Bean
     public Step processRecordsStep(
+            JobRepository jobRepository,
+            PlatformTransactionManager transactionManager,
             ItemReader<InputRecord> reader,
             ItemProcessor<InputRecord, OutputRecord> processor,
-            ItemWriter<OutputRecord> writer,
-            SkipPolicy customSkipPolicy) {
+            ItemWriter<OutputRecord> writer) {
 
-        return stepBuilderFactory.get("processRecordsStep")
+        return new StepBuilder("processRecordsStep", jobRepository)
                 // Process records in chunks of 100
-                .<InputRecord, OutputRecord>chunk(100)
+                .<InputRecord, OutputRecord>chunk(100, transactionManager)
                 .reader(reader)
                 .processor(processor)
                 .writer(writer)
@@ -76,8 +71,6 @@ public class BatchConfiguration {
                 .skip(DataFormatException.class)
                 // Never skip these critical exceptions
                 .noSkip(DatabaseConnectionException.class)
-                // Use custom skip policy for complex logic
-                .skipPolicy(customSkipPolicy)
                 .build();
     }
 }
@@ -360,17 +353,23 @@ public class DeadLetterQueueService {
     public void send(ErrorRecord errorRecord) {
         try {
             String id = UUID.randomUUID().toString();
+            String jobName = errorRecord.getJobName() != null
+                    ? errorRecord.getJobName()
+                    : "unknown";
+            Instant timestamp = errorRecord.getTimestamp() != null
+                    ? errorRecord.getTimestamp()
+                    : Instant.now();
 
             jdbcTemplate.update(
                     INSERT_DLQ_SQL,
                     id,
-                    errorRecord.getJobName(),
+                    jobName,
                     errorRecord.getPhase(),
                     errorRecord.getOriginalRecord(),
                     errorRecord.getErrorMessage(),
                     errorRecord.getExceptionType(),
                     truncateStackTrace(errorRecord.getStackTrace()),
-                    Timestamp.from(errorRecord.getTimestamp()),
+                    Timestamp.from(timestamp),
                     DLQStatus.PENDING.name()
             );
 
@@ -469,13 +468,13 @@ CREATE TABLE dead_letter_queue (
     processed_at TIMESTAMP,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     failure_reason VARCHAR(500),
-    retry_count INT DEFAULT 0,
-
-    -- Indexes for efficient querying
-    INDEX idx_dlq_status (status),
-    INDEX idx_dlq_created (created_at),
-    INDEX idx_dlq_job (job_name)
+    retry_count INT DEFAULT 0
 );
+
+-- Indexes for efficient querying
+CREATE INDEX idx_dlq_status ON dead_letter_queue (status);
+CREATE INDEX idx_dlq_created ON dead_letter_queue (created_at);
+CREATE INDEX idx_dlq_job ON dead_letter_queue (job_name);
 ```
 
 ## Retry Mechanism Implementation
@@ -491,13 +490,15 @@ public class RetryConfiguration {
 
     @Bean
     public Step retryableStep(
+            JobRepository jobRepository,
+            PlatformTransactionManager transactionManager,
             ItemReader<InputRecord> reader,
             ItemProcessor<InputRecord, OutputRecord> processor,
             ItemWriter<OutputRecord> writer,
             RetryListener retryListener) {
 
-        return stepBuilderFactory.get("retryableStep")
-                .<InputRecord, OutputRecord>chunk(100)
+        return new StepBuilder("retryableStep", jobRepository)
+                .<InputRecord, OutputRecord>chunk(100, transactionManager)
                 .reader(reader)
                 .processor(processor)
                 .writer(writer)
@@ -510,27 +511,14 @@ public class RetryConfiguration {
                 // Do not retry these exceptions
                 .noRetry(ValidationException.class)
                 .noRetry(NonTransientDataAccessException.class)
-                // Custom retry policy with exponential backoff
-                .retryPolicy(exponentialBackoffRetryPolicy())
+                // Custom backoff policy for transient failures
+                .backOffPolicy(exponentialBackOffPolicy())
                 // Add listener for retry events
                 .listener(retryListener)
                 // Skip after retries exhausted
                 .skipLimit(500)
                 .skip(TransientDataAccessException.class)
                 .build();
-    }
-
-    @Bean
-    public RetryPolicy exponentialBackoffRetryPolicy() {
-        Map<Class<? extends Throwable>, Boolean> retryableExceptions = new HashMap<>();
-        retryableExceptions.put(TransientDataAccessException.class, true);
-        retryableExceptions.put(SocketTimeoutException.class, true);
-
-        // Create policy that retries up to 3 times
-        SimpleRetryPolicy simpleRetryPolicy = new SimpleRetryPolicy(
-                3, retryableExceptions, true);
-
-        return simpleRetryPolicy;
     }
 
     @Bean
@@ -788,18 +776,13 @@ Here is a complete configuration bringing all error handling components together
 @Slf4j
 public class CompleteBatchConfiguration {
 
-    @Autowired
-    private JobBuilderFactory jobBuilderFactory;
-
-    @Autowired
-    private StepBuilderFactory stepBuilderFactory;
-
     @Bean
     public Job dataProcessingJob(
+            JobRepository jobRepository,
             Step processStep,
             JobExecutionListener jobListener) {
 
-        return jobBuilderFactory.get("dataProcessingJob")
+        return new JobBuilder("dataProcessingJob", jobRepository)
                 .incrementer(new RunIdIncrementer())
                 .listener(jobListener)
                 .start(processStep)
@@ -808,6 +791,8 @@ public class CompleteBatchConfiguration {
 
     @Bean
     public Step processStep(
+            JobRepository jobRepository,
+            PlatformTransactionManager transactionManager,
             ItemReader<InputRecord> reader,
             ItemProcessor<InputRecord, OutputRecord> processor,
             ItemWriter<OutputRecord> writer,
@@ -816,8 +801,8 @@ public class CompleteBatchConfiguration {
             ChunkErrorHandler chunkListener,
             CustomSkipPolicy skipPolicy) {
 
-        return stepBuilderFactory.get("processStep")
-                .<InputRecord, OutputRecord>chunk(100)
+        return new StepBuilder("processStep", jobRepository)
+                .<InputRecord, OutputRecord>chunk(100, transactionManager)
                 .reader(reader)
                 .processor(processor)
                 .writer(writer)
