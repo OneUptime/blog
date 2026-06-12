@@ -121,17 +121,18 @@ async function storeUserBad(user) {
 
 // GOOD: Hash for related fields
 async function storeUserGood(user) {
-  await redis.hset(`u:${user.id}`, {
-    n: user.name,
-    e: user.email,
-    a: user.age,
-  });
+  await redis.hset(
+    `u:${user.id}`,
+    'n', user.name,
+    'e', user.email,
+    'a', user.age
+  );
   // Single key overhead: ~50 bytes
-  // Fields use ziplist encoding if small enough
+  // Fields use compact listpack encoding if small enough
 }
 
 // BETTER: Aggregate users into buckets
-// Redis uses ziplist encoding for small hashes (huge memory savings)
+// Redis uses compact listpack encoding for small hashes (huge memory savings)
 async function storeUserBetter(user) {
   // Group users into buckets of 100
   const bucket = Math.floor(user.id / 100);
@@ -150,10 +151,14 @@ async function getUserBetter(userId) {
   return data ? JSON.parse(data) : null;
 }
 
-// Configure hash optimization in redis.conf:
-// hash-max-ziplist-entries 512  (default)
-// hash-max-ziplist-value 64     (default)
-// When hash has <= 512 entries and values <= 64 bytes, uses ziplist
+// Configure hash optimization in redis.conf (Redis 7.0+):
+// hash-max-listpack-entries 512  (default)
+// hash-max-listpack-value 64     (default)
+// When hash has <= 512 entries and entries are <= 64 bytes, uses listpack
+//
+// Redis 6.2 and earlier used the older names:
+// hash-max-ziplist-entries 512
+// hash-max-ziplist-value 64
 
 module.exports = { storeUserGood, storeUserBetter, getUserBetter };
 ```
@@ -287,6 +292,8 @@ maxmemory 2gb
 # Options:
 # - volatile-lru: Evict keys with TTL, least recently used first
 # - allkeys-lru: Evict any key, least recently used first
+# - volatile-lrm: Evict keys with TTL, least recently modified first
+# - allkeys-lrm: Evict any key, least recently modified first
 # - volatile-lfu: Evict keys with TTL, least frequently used first
 # - allkeys-lfu: Evict any key, least frequently used first
 # - volatile-random: Evict random keys with TTL
@@ -342,12 +349,8 @@ class TTLCache {
   async getWithRefresh(key) {
     const fullKey = this.prefix + key;
 
-    // Get value and refresh TTL atomically
-    const pipeline = redis.pipeline();
-    pipeline.get(fullKey);
-    pipeline.expire(fullKey, this.ttl);
-
-    const [[, data]] = await pipeline.exec();
+    // Get value and refresh TTL in a single command (Redis 6.2+)
+    const data = await redis.getex(fullKey, 'EX', this.ttl);
     return data ? JSON.parse(data) : null;
   }
 }
@@ -392,11 +395,11 @@ module.exports = { TTLCache, findKeysWithoutTTL, setDefaultTTL };
 
 ## Use Redis Hashes for Small Objects
 
-Hashes with fewer entries use ziplist encoding, which is highly memory-efficient.
+Hashes with fewer entries use compact listpack encoding in Redis 7.0+, which is highly memory-efficient.
 
 ```javascript
 // hash-optimization.js
-// Leverage hash ziplist encoding for memory savings
+// Leverage compact hash encoding for memory savings
 const Redis = require('ioredis');
 const redis = new Redis();
 
