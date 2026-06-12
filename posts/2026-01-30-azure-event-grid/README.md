@@ -94,16 +94,16 @@ echo "Key: $TOPIC_KEY"
 
 ## Publishing Events
 
-Events follow the CloudEvents 1.0 schema or the Event Grid schema. Here is how to publish using both.
+Events follow the CloudEvents 1.0 schema or the Event Grid schema. Choose the input schema when you create the topic, then publish events that match that schema.
 
 ### Event Grid Schema
 
 ```bash
 # Publish an event using Event Grid schema
-az eventgrid event publish \
-  --endpoint $TOPIC_ENDPOINT \
-  --access-key $TOPIC_KEY \
-  --events '[{
+curl -X POST "$TOPIC_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -H "aeg-sas-key: $TOPIC_KEY" \
+  -d '[{
     "id": "1001",
     "eventType": "Order.Created",
     "subject": "orders/12345",
@@ -120,10 +120,29 @@ az eventgrid event publish \
 ### CloudEvents Schema
 
 ```bash
+# Create a CloudEvents topic
+az eventgrid topic create \
+  --name myapp-cloudevents \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION \
+  --input-schema cloudeventschemav1_0
+
+CLOUDEVENTS_ENDPOINT=$(az eventgrid topic show \
+  --name myapp-cloudevents \
+  --resource-group $RESOURCE_GROUP \
+  --query "endpoint" \
+  --output tsv)
+
+CLOUDEVENTS_KEY=$(az eventgrid topic key list \
+  --name myapp-cloudevents \
+  --resource-group $RESOURCE_GROUP \
+  --query "key1" \
+  --output tsv)
+
 # Publish using CloudEvents schema
-curl -X POST "$TOPIC_ENDPOINT" \
+curl -X POST "$CLOUDEVENTS_ENDPOINT" \
   -H "Content-Type: application/cloudevents+json; charset=utf-8" \
-  -H "aeg-sas-key: $TOPIC_KEY" \
+  -H "aeg-sas-key: $CLOUDEVENTS_KEY" \
   -d '{
     "specversion": "1.0",
     "type": "Order.Created",
@@ -375,7 +394,7 @@ az eventgrid event-subscription create \
 ```
 
 Parameters:
-- `max-delivery-attempts`: Number of retries (1-30, default 30)
+- `max-delivery-attempts`: Maximum number of delivery attempts (1-30, default 30)
 - `event-ttl`: Time to live in minutes (1-1440, default 1440)
 
 ### Process Dead-Lettered Events
