@@ -47,13 +47,13 @@ flowchart LR
     style DE fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-The plugin works by storing delayed messages in a Mnesia table (RabbitMQ's internal database) and checking periodically for messages that are ready to be delivered.
+The plugin works by storing delayed messages in a Mnesia table (RabbitMQ's internal database) and using broker-side timers to release messages when they are ready to be delivered.
 
 ---
 
 ## 2. Installing the Plugin
 
-The delayed message exchange is not built into RabbitMQ core. You need to install the `rabbitmq_delayed_message_exchange` plugin.
+The delayed message exchange is not built into RabbitMQ core. You need to install the `rabbitmq_delayed_message_exchange` plugin and choose a plugin release that matches your RabbitMQ release series. The upstream plugin repository was archived in April 2026, so check compatibility before adopting it for new RabbitMQ versions.
 
 ### Enable the Plugin
 
@@ -74,10 +74,12 @@ rabbitmq-plugins list | grep delayed
 If you're using Docker, you can enable the plugin in your Dockerfile:
 
 ```dockerfile
-# Dockerfile for RabbitMQ with delayed message exchange
 FROM rabbitmq:3.12-management
 
-# Enable the delayed message exchange plugin
+# Download the plugin release that matches RabbitMQ 3.12.x
+ADD https://github.com/rabbitmq/rabbitmq-delayed-message-exchange/releases/download/v3.12.0/rabbitmq_delayed_message_exchange-3.12.0.ez /plugins/
+
+# Enable the delayed message exchange plugin offline
 RUN rabbitmq-plugins enable --offline rabbitmq_delayed_message_exchange
 ```
 
@@ -88,17 +90,16 @@ Or use docker-compose:
 version: '3.8'
 services:
   rabbitmq:
-    image: rabbitmq:3.12-management
+    build: .
+    image: rabbitmq-delayed:3.12-management
     ports:
       - "5672:5672"   # AMQP protocol
       - "15672:15672" # Management UI
     environment:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: admin
-    # Enable the delayed message exchange plugin on startup
-    command: >
-      bash -c "rabbitmq-plugins enable rabbitmq_delayed_message_exchange &&
-               rabbitmq-server"
+    # Build from the Dockerfile above, or mount/copy a compatible .ez file
+    # into /plugins before enabling this community plugin.
 ```
 
 ### Kubernetes Deployment
@@ -136,8 +137,8 @@ sequenceDiagram
     E->>M: Store message with delivery time
     Note over M: Message stored on disk
 
-    loop Every second
-        T->>M: Check for ready messages
+    loop Broker timer
+        T->>M: Release due messages
     end
 
     T->>M: Message ready (30s elapsed)
@@ -150,11 +151,11 @@ Key characteristics:
 
 1. **Storage**: Delayed messages are stored in Mnesia, not in the queue. This means they don't count against queue limits until delivered.
 
-2. **Precision**: The plugin checks for ready messages approximately every second, so delays are accurate to within ~1 second.
+2. **Precision**: Delivery is timer-based and should be treated as approximate. Don't rely on millisecond-level precision.
 
-3. **Persistence**: Delayed messages survive broker restarts if marked as persistent.
+3. **Persistence**: Delayed messages are persisted in a node-local Mnesia disk replica and survive a node restart.
 
-4. **Maximum Delay**: The maximum delay is approximately 49 days (2^32-1 milliseconds).
+4. **Maximum Delay**: The maximum delay is approximately 49.7 days (2^32-1 milliseconds).
 
 ---
 
@@ -287,10 +288,10 @@ async function publishScheduledMessage(
     throw new Error('Delivery time must be in the future');
   }
 
-  // Maximum delay is ~49 days (2^32-1 milliseconds)
-  const MAX_DELAY = 2147483647;
+  // Maximum delay is ~49.7 days (2^32-1 milliseconds)
+  const MAX_DELAY = 4294967295;
   if (delayMs > MAX_DELAY) {
-    throw new Error(`Delay exceeds maximum of ${MAX_DELAY}ms (~49 days)`);
+    throw new Error(`Delay exceeds maximum of ${MAX_DELAY}ms (~49.7 days)`);
   }
 
   await publishDelayedMessage(channel, task, delayMs);
@@ -557,14 +558,14 @@ async function scheduleReminder(
     delayMs = 0;
   }
 
-  // Maximum delay check (~49 days)
-  const MAX_DELAY = 2147483647;
+  // Maximum delay check (~49.7 days)
+  const MAX_DELAY = 4294967295;
   if (delayMs > MAX_DELAY) {
     // For very long delays, we'll need a different strategy
     // See the "Alternatives" section for handling this
     throw new Error(
       `Reminder scheduled too far in future. ` +
-      `Max delay is ~49 days. Consider using a scheduled job system.`
+      `Max delay is ~49.7 days. Consider using a scheduled job system.`
     );
   }
 
@@ -704,7 +705,7 @@ Delayed messages can implement rate limiting by spacing out message processing o
 
 ```typescript
 // rate-limiting.ts
-import amqp, { Channel, ConsumeMessage } from 'amqplib';
+import amqp, { Channel } from 'amqplib';
 
 const DELAYED_EXCHANGE = 'rate.limited.exchange';
 const RATE_LIMITED_QUEUE = 'api.calls.queue';
@@ -820,11 +821,11 @@ Before adopting delayed message exchanges, understand their constraints:
 
 ### 9.1 Maximum Delay
 
-The `x-delay` header is a 32-bit signed integer representing milliseconds. The maximum value is 2,147,483,647 ms (approximately 24.8 days, though some documentation says ~49 days for unsigned interpretation).
+The `x-delay` header represents milliseconds. The plugin accepts delays up to Erlang's maximum timer value: 4,294,967,295 ms (approximately 49.7 days).
 
 ```typescript
 // Maximum delay constant
-const MAX_DELAY_MS = 2147483647; // ~24.8 days
+const MAX_DELAY_MS = 4294967295; // ~49.7 days
 
 // Validation function
 function validateDelay(delayMs: number): void {
@@ -882,7 +883,7 @@ flowchart TD
     end
 
     subgraph "Performance Considerations"
-        P[Plugin Timer] -->|"Every ~1 second"| C[Check Ready Messages]
+        P[Plugin Timer] -->|"When due"| C[Release Ready Messages]
         C --> R[Release to Queues]
         H[High Volume] --> L[Increased Latency]
     end
@@ -892,9 +893,9 @@ Key limitations:
 
 1. **Memory Usage**: Delayed messages are stored in Mnesia tables. Large numbers of delayed messages increase memory usage.
 
-2. **Cluster Considerations**: The plugin stores messages on the node that received them. In a cluster, messages are not replicated until delivered.
+2. **Cluster Considerations**: The plugin stores delayed messages as a single node-local copy on the node that received them.
 
-3. **Timer Precision**: Messages are checked approximately every second. Don't expect millisecond precision.
+3. **Timer Precision**: Delivery is timer-based and approximate. Don't expect millisecond precision.
 
 4. **Ordering**: Messages with the same delay are not guaranteed to be delivered in publish order.
 
@@ -913,7 +914,7 @@ flowchart TD
     style F fill:#f66,stroke:#333
 ```
 
-In a cluster, delayed messages are stored only on the node that receives them. If that node fails before the delay expires, the messages are lost (unless using HA queues for the underlying delivery).
+In a cluster, delayed messages are stored only on the node that receives them. If that node is lost before the delay expires, the delayed messages stored on that node are lost. HA or quorum queues can protect messages after they are routed to queues, but not while they are still waiting inside the delayed exchange.
 
 ---
 
@@ -972,7 +973,7 @@ Cons:
 
 ### 10.2 External Scheduler
 
-For delays longer than ~24 days or when you need cancellation:
+For delays longer than ~49 days or when you need cancellation:
 
 ```typescript
 // external-scheduler.ts
@@ -1057,9 +1058,9 @@ startScheduler();
 |---------|------------------|-----------|-------------------|
 | Plugin Required | Yes | No | No |
 | Per-Message Delay | Yes | No (fixed per queue) | Yes |
-| Max Delay | ~24 days | ~24 days | Unlimited |
+| Max Delay | ~49 days | TTL value limit depends on AMQP integer encoding | Unlimited |
 | Cancellation | No | No | Yes |
-| Precision | ~1 second | ~1 second | Depends on cron interval |
+| Precision | Approximate | Approximate | Depends on cron interval |
 | Complexity | Low | Medium | High |
 | Best For | Variable short delays | Fixed delay tiers | Long delays, cancellable |
 
@@ -1079,7 +1080,9 @@ const RABBITMQ_API = 'http://localhost:15672/api';
 const AUTH = { username: 'admin', password: 'admin' };
 
 /**
- * Fetches exchange statistics including delayed message count.
+ * Fetches exchange statistics.
+ * Note: RabbitMQ does not expose individual delayed messages or an
+ * exact pending delayed-message count through the management API.
  */
 async function getDelayedExchangeStats(exchangeName: string) {
   const response = await axios.get(
@@ -1092,8 +1095,8 @@ async function getDelayedExchangeStats(exchangeName: string) {
 }
 
 /**
- * Lists all delayed messages (via message stats).
- * Note: RabbitMQ doesn't expose individual delayed messages via API.
+ * Lists queue stats for messages that have already been routed to queues.
+ * Delayed messages waiting inside the exchange are not counted here.
  */
 async function monitorDelayedMessages() {
   // Get overall queue stats
@@ -1136,7 +1139,8 @@ const deliveredCounter = meter.createCounter('delayed_messages_delivered', {
   description: 'Number of delayed messages delivered',
 });
 
-// Gauge for pending messages (requires periodic sampling)
+// Gauge for pending messages (track this in your application when scheduling
+// and delivering messages; RabbitMQ does not expose an exact pending count)
 const pendingGauge = meter.createObservableGauge(
   'delayed_messages_pending',
   {
@@ -1175,15 +1179,15 @@ export function recordDelayedMessageDelivered(
 
 For production monitoring of your RabbitMQ delayed message system, integrate with [OneUptime](https://oneuptime.com) to:
 
-- **Track queue depth**: Monitor how many messages are waiting for delayed delivery
+- **Track queue depth**: Monitor delivered queue depth and application-level delayed-message counters
 - **Alert on failures**: Get notified when messages fail and hit the dead letter queue
 - **Visualize message flow**: See traces of messages through your delayed exchange system
 - **Set up SLOs**: Define service level objectives for message delivery times
 
 ```typescript
 // oneuptime-integration.ts
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 
 // Configure exporters to send telemetry to OneUptime
 const traceExporter = new OTLPTraceExporter({
@@ -1269,7 +1273,7 @@ describe('Delayed Message Exchange', () => {
 
 - **Estimate storage**: Each delayed message consumes memory until delivered
 - **Plan for bursts**: If you schedule thousands of messages for the same time, they all arrive at once
-- **Monitor queue depth**: High pending counts may indicate issues
+- **Monitor queue depth**: High delivered queue depth or high application-level pending counts may indicate issues
 - **Set TTL on delivered queues**: Prevent unbounded queue growth
 
 ---
@@ -1279,9 +1283,9 @@ describe('Delayed Message Exchange', () => {
 | Use Case | Approach | Key Consideration |
 |----------|----------|-------------------|
 | Retry with backoff | Republish with increasing x-delay | Cap maximum delay, use dead letter queue |
-| Scheduled reminders | Publish with calculated delay | Check maximum delay limit (~24 days) |
+| Scheduled reminders | Publish with calculated delay | Check maximum delay limit (~49 days) |
 | Rate limiting | Spread messages with incremental delays | Calculate intervals based on rate limit |
-| Long delays (> 24 days) | External scheduler | Database + cron job |
+| Long delays (> 49 days) | External scheduler | Database + cron job |
 | Cancellable tasks | External scheduler or consumer-side check | Trade-off between complexity and flexibility |
 
 The RabbitMQ delayed message exchange plugin is a powerful tool for implementing time-based message delivery. It shines for variable, short-to-medium delays without the complexity of additional infrastructure. For longer delays or when you need message cancellation, consider combining it with external scheduling systems.
