@@ -84,18 +84,16 @@ test-frontend:
   script:
     - npm run test:frontend
   needs:
-    - build-frontend  # Only waits for frontend build
-  dependencies:
-    - build-frontend  # Only downloads frontend artifacts
+    - job: build-frontend  # Only waits for frontend build
+      artifacts: true      # Only downloads frontend artifacts
 
 test-backend:
   stage: test
   script:
     - npm run test:backend
   needs:
-    - build-backend  # Only waits for backend build
-  dependencies:
-    - build-backend  # Only downloads backend artifacts
+    - job: build-backend  # Only waits for backend build
+      artifacts: true     # Only downloads backend artifacts
 ```
 
 Now frontend tests start as soon as frontend build completes, saving 3 minutes.
@@ -141,7 +139,7 @@ deploy:
     - test-integration
 ```
 
-Jobs in `needs` must complete successfully before this job runs.
+Jobs in `needs` must complete successfully before this job runs, unless the needed job is allowed to fail.
 
 ## needs with Artifacts
 
@@ -157,17 +155,18 @@ lint:
       artifacts: false  # Don't need build artifacts for linting
 ```
 
-Or specify to only download artifacts without waiting:
+Or specify multiple dependencies with artifact download settings:
 
 ```yaml
 report:
   stage: report
   script:
     - ./generate-report.sh
-  dependencies:
-    - test-unit
-    - test-integration
-  needs: []  # Start immediately, just need artifacts
+  needs:
+    - job: test-unit
+      artifacts: true
+    - job: test-integration
+      artifacts: true
 ```
 
 ## Empty needs Array
@@ -179,6 +178,11 @@ stages:
   - prepare
   - build
   - test
+
+build:
+  stage: build
+  script:
+    - npm run build
 
 lint:
   stage: test
@@ -212,7 +216,11 @@ stages:
 build-api:
   stage: build
   script:
-    - docker build -t api:${CI_COMMIT_SHA} ./api
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+    - docker build -t ${CI_REGISTRY_IMAGE}/api:${CI_COMMIT_SHA} ./api
+    - docker push ${CI_REGISTRY_IMAGE}/api:${CI_COMMIT_SHA}
+    - mkdir -p api
+    - echo "${CI_REGISTRY_IMAGE}/api:${CI_COMMIT_SHA}" > api/image-id.txt
   artifacts:
     paths:
       - api/image-id.txt
@@ -220,7 +228,11 @@ build-api:
 build-web:
   stage: build
   script:
-    - docker build -t web:${CI_COMMIT_SHA} ./web
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+    - docker build -t ${CI_REGISTRY_IMAGE}/web:${CI_COMMIT_SHA} ./web
+    - docker push ${CI_REGISTRY_IMAGE}/web:${CI_COMMIT_SHA}
+    - mkdir -p web
+    - echo "${CI_REGISTRY_IMAGE}/web:${CI_COMMIT_SHA}" > web/image-id.txt
   artifacts:
     paths:
       - web/image-id.txt
@@ -228,7 +240,11 @@ build-web:
 build-worker:
   stage: build
   script:
-    - docker build -t worker:${CI_COMMIT_SHA} ./worker
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+    - docker build -t ${CI_REGISTRY_IMAGE}/worker:${CI_COMMIT_SHA} ./worker
+    - docker push ${CI_REGISTRY_IMAGE}/worker:${CI_COMMIT_SHA}
+    - mkdir -p worker
+    - echo "${CI_REGISTRY_IMAGE}/worker:${CI_COMMIT_SHA}" > worker/image-id.txt
   artifacts:
     paths:
       - worker/image-id.txt
@@ -237,21 +253,27 @@ build-worker:
 test-api:
   stage: test
   script:
-    - docker run api:${CI_COMMIT_SHA} npm test
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+    - docker pull ${CI_REGISTRY_IMAGE}/api:${CI_COMMIT_SHA}
+    - docker run ${CI_REGISTRY_IMAGE}/api:${CI_COMMIT_SHA} npm test
   needs:
     - build-api
 
 test-web:
   stage: test
   script:
-    - docker run web:${CI_COMMIT_SHA} npm test
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+    - docker pull ${CI_REGISTRY_IMAGE}/web:${CI_COMMIT_SHA}
+    - docker run ${CI_REGISTRY_IMAGE}/web:${CI_COMMIT_SHA} npm test
   needs:
     - build-web
 
 test-worker:
   stage: test
   script:
-    - docker run worker:${CI_COMMIT_SHA} npm test
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+    - docker pull ${CI_REGISTRY_IMAGE}/worker:${CI_COMMIT_SHA}
+    - docker run ${CI_REGISTRY_IMAGE}/worker:${CI_COMMIT_SHA} npm test
   needs:
     - build-worker
 
@@ -299,9 +321,21 @@ graph TD
 
 ## Optional Dependencies
 
-Allow jobs to run even if optional dependencies fail.
+Allow jobs to run when a needed job might not be added to the pipeline.
 
 ```yaml
+test-unit:
+  stage: test
+  script:
+    - npm test
+
+test-e2e:
+  stage: test
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - npm run test:e2e
+
 deploy:
   stage: deploy
   script:
@@ -310,7 +344,7 @@ deploy:
     - job: test-unit
       optional: false  # Required
     - job: test-e2e
-      optional: true   # Continue even if e2e fails
+      optional: true   # Waits if present; ignored if not added
 ```
 
 ## Cross-Stage Dependencies
@@ -331,16 +365,22 @@ build:
 
 test:
   stage: test
+  script:
+    - npm test
   needs:
     - build
 
 security-scan:
   stage: analyze
+  script:
+    - npm audit
   needs:
     - build  # Skips test stage, depends only on build
 
 deploy:
   stage: deploy
+  script:
+    - ./deploy.sh
   needs:
     - test
     - security-scan
@@ -353,17 +393,27 @@ Security scanning runs in parallel with tests, both depending on build.
 Control pipeline resource usage with DAG.
 
 ```yaml
-variables:
-  # GitLab-wide setting for needs
-  CI_DEBUG_SERVICES: "true"
+build:
+  stage: build
+  script:
+    - npm run build
 
 test-1:
+  stage: test
+  script:
+    - npm run test:1
   needs: [build]
 
 test-2:
+  stage: test
+  script:
+    - npm run test:2
   needs: [build]
 
 test-3:
+  stage: test
+  script:
+    - npm run test:3
   needs: [build]
   # All three tests run in parallel after build
 ```
@@ -372,6 +422,9 @@ If too many parallel jobs overwhelm runners, add artificial dependencies:
 
 ```yaml
 test-2:
+  stage: test
+  script:
+    - npm run test:2
   needs:
     - build
     - test-1  # Forces sequential execution
@@ -379,7 +432,7 @@ test-2:
 
 ## DAG with Matrix Jobs
 
-Combine DAG with parallel matrix execution.
+Combine DAG with parallel matrix execution. GitLab 18.6 and later supports matrix expressions for 1:1 mappings.
 
 ```yaml
 build:
@@ -399,7 +452,7 @@ test:
     - job: build
       parallel:
         matrix:
-          - PLATFORM: $PLATFORM  # Match platform
+          - PLATFORM: ['$[[ matrix.PLATFORM ]]']  # Match platform
   script:
     - ./test.sh ${PLATFORM}
 ```
