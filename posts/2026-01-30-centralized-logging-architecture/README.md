@@ -92,13 +92,13 @@ Two popular stacks dominate centralized logging: the ELK stack and the Loki stac
 
 **ELK Stack** (Elasticsearch, Logstash, Kibana) is the classic choice. Elasticsearch provides full-text search with powerful query capabilities. Logstash handles processing. Kibana offers visualization and exploration.
 
-**Loki Stack** (Promtail, Loki, Grafana) takes a different approach. Instead of indexing log content, Loki indexes only metadata (labels). This reduces storage costs significantly but limits full-text search.
+**Loki Stack** (Grafana Alloy, Loki, Grafana) takes a different approach. Instead of indexing log content, Loki indexes only metadata (labels). This reduces storage costs significantly but makes label selection the primary way to narrow searches before applying line filters.
 
 The following comparison helps you choose.
 
 | Factor | ELK | Loki |
 |--------|-----|------|
-| Search capability | Full-text search | Label-based filtering |
+| Search capability | Full-text search | Label-based filtering with line filters |
 | Storage cost | Higher | Lower |
 | Query speed | Fast for text search | Fast for label queries |
 | Operational complexity | Higher | Lower |
@@ -108,7 +108,7 @@ For most teams starting out, Loki offers a simpler path with lower resource requ
 
 ## Implementation: Loki Stack
 
-Let us build a centralized logging system using the Loki stack. This setup uses Promtail for shipping, Loki for storage, and Grafana for querying.
+Let us build a centralized logging system using the Loki stack. This setup uses Grafana Alloy for shipping, Loki for storage, and Grafana for querying.
 
 ### Step 1: Deploy Loki
 
@@ -127,28 +127,21 @@ server:
   http_listen_port: 3100
   grpc_listen_port: 9096
 
-# Ingester configuration controls how logs are batched and written
-ingester:
-  wal:
-    enabled: true
-    dir: /loki/wal
-  lifecycler:
-    ring:
-      kvstore:
-        store: inmemory
-      replication_factor: 1
-  chunk_idle_period: 1h
-  max_chunk_age: 1h
-  chunk_target_size: 1048576
-  chunk_retain_period: 30s
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
 
 # Schema configuration defines how data is stored over time
 schema_config:
   configs:
     - from: 2024-01-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: filesystem
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
@@ -156,17 +149,16 @@ schema_config:
 # Storage configuration points to local filesystem
 # For production, use S3, GCS, or Azure Blob Storage
 storage_config:
-  boltdb_shipper:
-    active_index_directory: /loki/boltdb-shipper-active
-    cache_location: /loki/boltdb-shipper-cache
-    shared_store: filesystem
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
   filesystem:
     directory: /loki/chunks
 
 # Compactor handles index compaction and retention enforcement
 compactor:
   working_directory: /loki/compactor
-  shared_store: filesystem
+  delete_request_store: filesystem
   retention_enabled: true
   retention_delete_delay: 2h
 
@@ -189,97 +181,107 @@ docker run -d \
   -p 3100:3100 \
   -v /path/to/loki-config.yaml:/etc/loki/config.yaml \
   -v /path/to/loki-data:/loki \
-  grafana/loki:2.9.0 \
+  grafana/loki:latest \
   -config.file=/etc/loki/config.yaml
 ```
 
-### Step 2: Configure Promtail
+### Step 2: Configure Grafana Alloy
 
-Promtail runs on each node and ships logs to Loki. It tails log files, parses them, and adds labels for filtering.
+Grafana Alloy runs on each node and ships logs to Loki. It tails log files, parses them, and adds labels for filtering.
 
-Create a Promtail configuration that watches your application logs.
+Create an Alloy configuration that watches your application logs.
 
-```yaml
-# promtail-config.yaml
-# Promtail ships logs from this node to Loki
+```hcl
+// config.alloy
+// Alloy ships logs from this node to Loki.
 
-server:
-  http_listen_port: 9080
-  grpc_listen_port: 0
+local.file_match "application" {
+  path_targets = [{
+    __path__ = "/var/log/myapp/*.log",
+    job      = "myapp",
+    env      = "production",
+  }]
+}
 
-# Position file tracks which log lines have been sent
-# This enables resume after restarts
-positions:
-  filename: /tmp/positions.yaml
+local.file_match "nginx" {
+  path_targets = [{
+    __path__ = "/var/log/nginx/access.log",
+    job      = "nginx",
+    env      = "production",
+  }]
+}
 
-# Loki endpoint for pushing logs
-clients:
-  - url: http://loki:3100/loki/api/v1/push
-    batchwait: 1s
-    batchsize: 1048576
+loki.source.file "application" {
+  targets    = local.file_match.application.targets
+  forward_to = [loki.process.application.receiver]
+}
 
-scrape_configs:
-  # Scrape application logs
-  - job_name: application
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: myapp
-          env: production
-          __path__: /var/log/myapp/*.log
+loki.source.file "nginx" {
+  targets    = local.file_match.nginx.targets
+  forward_to = [loki.process.nginx.receiver]
+}
 
-    # Pipeline stages parse and transform logs
-    pipeline_stages:
-      # Parse JSON logs and extract fields
-      - json:
-          expressions:
-            level: level
-            message: message
-            trace_id: trace_id
-            service: service
+loki.process "application" {
+  // Parse JSON logs and extract fields
+  stage.json {
+    expressions = {
+      level    = "level",
+      message  = "message",
+      trace_id = "trace_id",
+      service  = "service",
+    }
+  }
 
-      # Add extracted fields as labels for filtering
-      - labels:
-          level:
-          service:
+  // Add low-cardinality fields as labels for filtering
+  stage.labels {
+    values = {
+      level   = "level",
+      service = "service",
+    }
+  }
 
-      # Add trace_id to log line for correlation
-      - output:
-          source: message
+  forward_to = [loki.write.default.receiver]
+}
 
-  # Scrape nginx access logs
-  - job_name: nginx
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: nginx
-          env: production
-          __path__: /var/log/nginx/access.log
+loki.process "nginx" {
+  // Parse nginx combined log format using regex
+  stage.regex {
+    expression = "^(?P<ip>\\S+) - (?P<user>\\S+) \\[(?P<timestamp>[^\\]]+)\\] \"(?P<method>\\S+) (?P<path>\\S+) (?P<protocol>\\S+)\" (?P<status>\\d+) (?P<size>\\d+)"
+  }
 
-    pipeline_stages:
-      # Parse nginx combined log format using regex
-      - regex:
-          expression: '^(?P<ip>\S+) - (?P<user>\S+) \[(?P<timestamp>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) (?P<protocol>\S+)" (?P<status>\d+) (?P<size>\d+)'
+  stage.labels {
+    values = {
+      method = "method",
+      status = "status",
+    }
+  }
 
-      - labels:
-          method:
-          status:
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url        = "http://loki:3100/loki/api/v1/push"
+    batch_wait = "1s"
+    batch_size = "1MiB"
+  }
+}
 ```
 
-Run Promtail on each application server.
+Run Alloy on each application server.
 
 ```bash
-# Run Promtail container
+# Run Alloy container
 # Mount log directories and configuration
 
 docker run -d \
-  --name promtail \
-  -v /path/to/promtail-config.yaml:/etc/promtail/config.yaml \
+  --name alloy \
+  -p 12345:12345 \
+  -v /path/to/config.alloy:/etc/alloy/config.alloy \
   -v /var/log:/var/log:ro \
-  grafana/promtail:2.9.0 \
-  -config.file=/etc/promtail/config.yaml
+  grafana/alloy:latest \
+  run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data \
+  /etc/alloy/config.alloy
 ```
 
 ### Step 3: Set Up Grafana
@@ -303,9 +305,9 @@ datasources:
       derivedFields:
         # Link trace IDs to your tracing system
         - datasourceUid: tempo
-          matcherRegex: "trace_id=(\\w+)"
+          matcherRegex: '"trace_id"\\s*:\\s*"(\\w+)"'
           name: TraceID
-          url: "$${__value.raw}"
+          url: '$${__value.raw}'
 ```
 
 ## Implementation: ELK Stack
@@ -403,7 +405,6 @@ filter {
 output {
   elasticsearch {
     hosts => ["http://elasticsearch:9200"]
-    index => "logs-%{[service]}-%{+YYYY.MM.dd}"
 
     # Index lifecycle management for retention
     ilm_enabled => true
@@ -524,7 +525,7 @@ As log volume grows, you will need to scale the system. Here are the typical bot
 
 Centralized logging transforms debugging from a scavenger hunt into a structured investigation. By collecting logs from all services into one searchable location, you reduce incident response time and gain visibility into system behavior.
 
-The key components are log shippers (Promtail, Fluentd), optional buffering (Kafka), processing (Logstash, Vector), and storage with query capabilities (Loki, Elasticsearch).
+The key components are log shippers (Grafana Alloy, Fluentd), optional buffering (Kafka), processing (Logstash, Vector), and storage with query capabilities (Loki, Elasticsearch).
 
 Start simple with a single-node setup, structure your logs as JSON from day one, and add correlation IDs to connect logs with traces. As you scale, the architecture can grow with you.
 
