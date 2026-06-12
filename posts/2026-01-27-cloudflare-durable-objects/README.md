@@ -8,13 +8,13 @@ Description: Learn how to implement Cloudflare Durable Objects for stateful serv
 
 ---
 
-> Durable Objects provide a unique programming model that combines the benefits of serverless with the simplicity of traditional stateful applications. Each object is a single-threaded, globally unique instance that maintains state and handles requests sequentially, eliminating the complexity of distributed coordination.
+> Durable Objects provide a unique programming model that combines the benefits of serverless with the simplicity of traditional stateful applications. Each object is a single-threaded, globally unique instance that maintains state and serializes access to its own durable storage, simplifying distributed coordination.
 
 ## What Are Durable Objects?
 
 Durable Objects are Cloudflare's solution for stateful serverless computing. Unlike traditional serverless functions that are stateless and ephemeral, Durable Objects provide:
 
-- **Strong consistency**: Each object processes requests sequentially, eliminating race conditions
+- **Strong consistency**: Each object has strongly consistent, transactional storage and single-threaded execution for coordination
 - **Global uniqueness**: Only one instance of an object with a given ID exists worldwide
 - **Durable storage**: Persistent key-value storage that survives restarts
 - **Edge deployment**: Objects run close to users for low latency
@@ -106,14 +106,14 @@ compatibility_date = "2024-01-01"
 
 # Define Durable Object bindings
 [durable_objects]
-bindings = [
-  { name = "COUNTER", class_name = "Counter" }
-]
+[[durable_objects.bindings]]
+name = "COUNTER"
+class_name = "Counter"
 
 # Specify which classes are Durable Objects for migration tracking
 [[migrations]]
 tag = "v1"
-new_classes = ["Counter"]
+new_sqlite_classes = ["Counter"]
 ```
 
 ### Accessing Durable Objects from a Worker
@@ -217,9 +217,8 @@ export class StorageDemo {
     // DELETE Multiple: Remove several keys atomically
     await storage.delete(['user:123', 'user:124']);
 
-    // DELETE by prefix: Remove all matching keys
-    // Returns the number of keys deleted
-    const deletedCount = await storage.deleteAll();
+    // DELETE ALL: Remove all stored data for this object
+    await storage.deleteAll();
 
     return new Response(JSON.stringify({
       user,
@@ -255,7 +254,7 @@ export class BankAccount {
 
       // Validate the transfer
       if (fromBalance < amount) {
-        // Returning without writing rolls back the transaction
+        // Return without making changes
         return { success: false, error: 'Insufficient funds' };
       }
 
@@ -618,7 +617,7 @@ export class ChatRoom {
 
     // getWebSockets() returns all accepted WebSockets (Hibernation API)
     for (const ws of this.state.getWebSockets()) {
-      if (ws !== exclude && ws.readyState === WebSocket.READY_STATE_OPEN) {
+      if (ws !== exclude && ws.readyState === WebSocket.OPEN) {
         ws.send(payload);
       }
     }
@@ -990,11 +989,11 @@ Understanding Durable Objects billing helps optimize costs:
 
 | Resource | Free Tier | Paid Plan |
 |----------|-----------|-----------|
-| Requests | 1M/month | $0.15/million |
-| Duration | 400K GB-s/month | $12.50/million GB-s |
-| Storage | 1 GB | $0.20/GB-month |
-| Storage reads | 1M/month | $0.20/million |
-| Storage writes | 1M/month | $1.00/million |
+| Requests | 100K/day | 1M/month included, then $0.15/million |
+| Duration | 13K GB-s/day | 400K GB-s/month included, then $12.50/million GB-s |
+| SQLite stored data | 5 GB total | 5 GB-month included, then $0.20/GB-month |
+| SQLite rows read | 5M/day | First 25B/month included, then $0.001/million rows |
+| SQLite rows written | 100K/day | First 50M/month included, then $1.00/million rows |
 
 ### Cost Optimization Tips
 
@@ -1008,7 +1007,7 @@ export class OptimizedDurableObject {
   private cache: Map<string, { value: unknown; cachedAt: number }> = new Map();
   private cacheTtlMs = 60 * 1000; // 1 minute cache TTL
 
-  // Batch writes to reduce storage operations
+  // Batch writes to reduce round trips and latency
   private pendingWrites: Map<string, unknown> = new Map();
   private flushTimeout: number | null = null;
 
@@ -1034,7 +1033,7 @@ export class OptimizedDurableObject {
     return value;
   }
 
-  // Batched write - combines multiple writes into one operation
+  // Batched write - combines multiple writes into one API call
   private async batchedPut(key: string, value: unknown): Promise<void> {
     this.pendingWrites.set(key, value);
 
@@ -1052,7 +1051,7 @@ export class OptimizedDurableObject {
 
     if (this.pendingWrites.size === 0) return;
 
-    // Write all pending changes in a single operation
+    // Write all pending changes in a single API call
     const writes = Object.fromEntries(this.pendingWrites);
     this.pendingWrites.clear();
 
@@ -1079,15 +1078,15 @@ export class OptimizedDurableObject {
 
 2. **Leverage in-memory caching**: Durable Objects persist between requests. Cache frequently accessed data in instance variables to reduce storage reads.
 
-3. **Batch storage operations**: Use multi-key put() and get() operations instead of individual calls to reduce costs and latency.
+3. **Batch storage operations**: Use multi-key put() and get() operations instead of individual calls to reduce latency. Billing may still be based on the number of keys or rows touched.
 
 4. **Use the Hibernation API for WebSockets**: This allows objects to sleep while maintaining connections, significantly reducing duration charges.
 
 5. **Set appropriate alarm timeouts**: Use alarms for session expiration, lock cleanup, and periodic tasks instead of external cron jobs.
 
-6. **Design for single-threaded execution**: Requests are processed sequentially. Keep request handlers fast to avoid queuing delays.
+6. **Design for single-threaded execution**: Durable Object execution is single-threaded, but request events can still interleave around asynchronous work. Keep request handlers fast to avoid queuing delays.
 
-7. **Use stable IDs**: Use idFromName() for human-readable identifiers. The ID determines which data center runs the object.
+7. **Use stable IDs**: Use idFromName() for human-readable identifiers. Requests for the same ID are routed to the data center that currently owns that object, and Cloudflare caches object location after lookup.
 
 8. **Handle object migration**: Objects may move between data centers. Never store data center-specific information.
 
