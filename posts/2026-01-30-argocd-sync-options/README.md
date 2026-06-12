@@ -12,11 +12,11 @@ ArgoCD sync options give you fine-grained control over how your applications dep
 
 ## Understanding Sync Options
 
-Sync options modify how ArgoCD applies resources to your cluster. They can be set at three levels:
+Sync options modify how ArgoCD applies resources to your cluster. They are usually set at two levels, with some related behavior configurable globally:
 
 1. **Application level** - Applies to all resources in the app
 2. **Resource level** - Applies to specific resources via annotations
-3. **Global level** - Applies to all applications (via ArgoCD config)
+3. **Global configuration** - Applies to classes of resources through ArgoCD config, such as resource customizations
 
 ```mermaid
 flowchart TD
@@ -88,11 +88,11 @@ flowchart LR
     end
 
     subgraph Replace["kubectl replace"]
-        R1[Delete and recreate] --> R2[Full replacement]
+        R1[Replace live object] --> R2[Create if missing]
     end
 
     subgraph SSA["Server-Side Apply"]
-        S1[Field ownership tracking] --> S2[Conflict detection]
+        S1[Field ownership tracking] --> S2[Force conflicting fields]
     end
 ```
 
@@ -116,7 +116,7 @@ Cons:
 
 ### When to Use Replace
 
-Replace deletes the resource and recreates it. Use this when you need a clean slate.
+Replace uses `kubectl replace` or `kubectl create` instead of `kubectl apply`. Use this when apply is not suitable.
 
 ```yaml
 syncPolicy:
@@ -143,11 +143,11 @@ data:
     setting: value
 ```
 
-Warning: Replace causes brief downtime for the resource. Do not use on Deployments unless necessary.
+Warning: Replace can be destructive and may cause resources to be recreated, which can cause downtime. Do not use on Deployments unless necessary.
 
 ### When to Use Server-Side Apply
 
-Server-side apply tracks field ownership and detects conflicts automatically. Use this for shared resources or complex manifests.
+Server-side apply tracks field ownership on the Kubernetes API server. ArgoCD applies these changes with server-side apply and force-conflicts, so use it when field ownership tracking or server-side apply behavior is needed.
 
 ```yaml
 syncPolicy:
@@ -156,9 +156,9 @@ syncPolicy:
 ```
 
 Benefits:
-- Proper conflict detection when multiple controllers manage a resource
-- Better handling of lists and maps
-- Required for some CRDs with complex schemas
+- Avoids the client-side `last-applied-configuration` annotation size limit
+- Supports patching resources that are not fully managed by ArgoCD
+- Uses Kubernetes managed fields for field ownership tracking
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -282,10 +282,8 @@ kind: Deployment
 metadata:
   name: myapp
   annotations:
-    # Skip this resource during sync
-    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
-    # Or combine multiple options
-    argocd.argoproj.io/sync-options: Validate=false,Replace=true
+    # Combine multiple options in one annotation
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true,Validate=false,Replace=true
 ```
 
 ## Handling Sync Conflicts
@@ -342,7 +340,7 @@ flowchart TD
     SelfHeal -->|Yes| Continuous[Continuous Reconciliation]
     Continuous --> Drift{Drift Detected?}
     Drift -->|Yes| Correct[Correct Drift]
-    Drift -->|No| Wait[Wait 3 minutes]
+    Drift -->|No| Wait[Wait reconciliation interval]
     Wait --> Drift
     Correct --> Wait
 ```
@@ -366,7 +364,7 @@ Warning: Self-heal can fight with controllers that modify resources. Use `ignore
 
 ### Allow Empty
 
-By default, ArgoCD rejects syncs that would delete all resources:
+By default, automated pruning rejects syncs that would delete all resources:
 
 ```yaml
 syncPolicy:
@@ -407,7 +405,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"  # Applied last
 ```
 
-Lower numbers sync first. Resources in the same wave sync in parallel.
+Lower numbers sync first. Within a wave, ArgoCD orders resources by kind and name.
 
 ## Complete Example
 
