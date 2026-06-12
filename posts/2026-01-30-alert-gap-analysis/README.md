@@ -419,7 +419,7 @@ WITH incident_alerts AS (
         a.service = i.service_name
         AND a.fired_at BETWEEN
             i.user_impact_started_at - INTERVAL '30 minutes'
-            AND i.user_impact_started_at
+            AND COALESCE(i.detected_at, i.user_impact_started_at + INTERVAL '30 minutes')
     WHERE i.created_at > NOW() - INTERVAL '90 days'
 )
 SELECT
@@ -640,12 +640,12 @@ class SLOAlertAlignmentChecker:
     """Checks that alerts properly protect SLO budgets."""
 
     # Recommended burn rate configurations
-    # (burn_rate, short_window_hours, long_window_hours, budget_consumed)
+    # (burn_rate, long_window_minutes, short_window_minutes, budget_consumed)
     RECOMMENDED_BURN_RATES = [
-        (14.4, 1, 6, 0.02),    # 2% budget in 1 hour
-        (6, 1, 6, 0.05),       # 5% budget in 6 hours
-        (3, 6, 24, 0.10),      # 10% budget in 1 day
-        (1, 24, 72, 0.10),     # 10% budget in 3 days
+        (14.4, 60, 5, 0.02),       # 2% budget in 1 hour
+        (6, 360, 30, 0.05),        # 5% budget in 6 hours
+        (3, 1440, 120, 0.10),      # 10% budget in 1 day
+        (1, 4320, 360, 0.10),      # 10% budget in 3 days
     ]
 
     def __init__(self):
@@ -710,7 +710,7 @@ class SLOAlertAlignmentChecker:
             # Check: Are burn rates calibrated correctly?
             for alert in slo_alerts:
                 expected_burn = self._calculate_expected_burn_rate(
-                    slo, alert.short_window_minutes
+                    slo, alert.long_window_minutes
                 )
                 if alert.burn_rate_threshold < expected_burn * 0.5:
                     issues.append(
@@ -728,7 +728,7 @@ class SLOAlertAlignmentChecker:
     def _calculate_expected_burn_rate(
         self, slo: SLO, window_minutes: int
     ) -> float:
-        """Calculate expected burn rate for budget exhaustion in window."""
+        """Calculate burn rate for 2% budget consumption in window."""
         total_budget_minutes = slo.error_budget_minutes
         # Burn rate = how many times faster than normal we're consuming budget
         # If we want to detect 2% budget burn in window_minutes
@@ -740,14 +740,14 @@ class SLOAlertAlignmentChecker:
         """Generate recommended alert configurations for an SLO."""
         recommendations = []
 
-        for burn_rate, short_h, long_h, budget_pct in self.RECOMMENDED_BURN_RATES:
+        for burn_rate, long_min, short_min, budget_pct in self.RECOMMENDED_BURN_RATES:
             severity = "critical" if burn_rate >= 10 else "warning"
             recommendations.append(
                 {
                     "name": f"{slo.service}_{slo.sli_type}_burn_{int(burn_rate)}x",
                     "burn_rate": burn_rate,
-                    "short_window": f"{short_h}h",
-                    "long_window": f"{long_h}h",
+                    "short_window": f"{short_min}m",
+                    "long_window": f"{long_min}m",
                     "severity": severity,
                     "budget_consumed_before_alert": f"{budget_pct * 100:.0f}%",
                     "time_to_exhaustion_at_rate": f"{slo.window_days / burn_rate:.1f} days",
@@ -776,8 +776,8 @@ checker.add_alert(
         name="api_burn_rate_fast",
         service="api-gateway",
         slo_name="api-availability",
-        short_window_minutes=60,
-        long_window_minutes=360,
+        short_window_minutes=5,
+        long_window_minutes=60,
         burn_rate_threshold=14.4,
         severity="critical",
     )
@@ -918,7 +918,9 @@ failure_modes:
       - alert: DownstreamLatencyHigh
         expr: |
           histogram_quantile(0.99,
-            rate(http_client_request_duration_seconds_bucket[5m])
+            sum by (le) (
+              rate(http_client_request_duration_seconds_bucket[5m])
+            )
           ) > 1.0
         for: 5m
         labels:
