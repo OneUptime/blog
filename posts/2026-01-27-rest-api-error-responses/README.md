@@ -46,7 +46,7 @@ HTTP status codes provide the first layer of error information. Use them correct
 | 404 | Not Found | Resource does not exist |
 | 405 | Method Not Allowed | HTTP method not supported for this endpoint |
 | 409 | Conflict | Request conflicts with current state (duplicate, version mismatch) |
-| 422 | Unprocessable Entity | Valid syntax but semantic errors (validation failures) |
+| 422 | Unprocessable Content | Valid syntax but semantic errors (validation failures) |
 | 429 | Too Many Requests | Rate limit exceeded |
 
 ### Server Errors (5xx)
@@ -72,9 +72,9 @@ HTTP/1.1 404 Not Found
 
 ---
 
-## Standard Error Response Structure (RFC 7807)
+## Standard Error Response Structure (RFC 9457)
 
-RFC 7807 defines a standard format called "Problem Details for HTTP APIs." Adopting this format improves interoperability.
+RFC 9457 defines a standard format called "Problem Details for HTTP APIs" and obsoletes the earlier RFC 7807. Adopting this format improves interoperability.
 
 ### Basic Structure
 
@@ -90,9 +90,9 @@ RFC 7807 defines a standard format called "Problem Details for HTTP APIs." Adopt
 
 ### Field Definitions
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| type | Yes | URI identifying the error type (use for programmatic handling) |
+| Field | Recommended | Description |
+|-------|-------------|-------------|
+| type | Yes | URI reference identifying the error type (use for programmatic handling) |
 | title | Yes | Human-readable summary (same for all instances of this type) |
 | status | Yes | HTTP status code |
 | detail | No | Human-readable explanation specific to this occurrence |
@@ -175,7 +175,7 @@ class APIError extends Error {
     this.extras = extras;
   }
 
-  // Convert to RFC 7807 response format
+  // Convert to RFC 9457 response format
   toResponse(instance) {
     return {
       type: `https://api.example.com/errors/${this.type}`,
@@ -232,6 +232,8 @@ module.exports = { APIError, Errors };
 
 ```javascript
 // errorHandler.js
+const { APIError } = require('./errors');
+
 const errorHandler = (err, req, res, next) => {
   // Handle known API errors
   if (err instanceof APIError) {
@@ -328,7 +330,7 @@ class ValidationError(Exception):
     def __init__(self, errors: List[dict]):
         self.errors = errors
 
-# Transform Pydantic validation errors to RFC 7807 format
+# Transform Pydantic validation errors to RFC 9457 format
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
     request: Request,
@@ -587,7 +589,7 @@ Document every error your API can return.
 ```markdown
 ## Error: payment.card_declined
 
-**HTTP Status:** 422 Unprocessable Entity
+**HTTP Status:** 422 Unprocessable Content
 
 **Description:** The payment card was declined by the issuing bank.
 
@@ -747,7 +749,7 @@ components:
 | Practice | Why It Matters |
 |----------|----------------|
 | Use correct HTTP status codes | Clients can handle errors programmatically |
-| Adopt RFC 7807 format | Industry standard, good tooling support |
+| Adopt RFC 9457 format | Industry standard, good tooling support |
 | Include stable error codes | Enables client-side logic and localization |
 | Return all validation errors at once | Better user experience |
 | Add trace IDs | Bridges client reports to server logs |
@@ -762,7 +764,7 @@ components:
 
 Good error responses are a feature, not an afterthought. They reduce support burden, speed up integration, and improve the developer experience for everyone consuming your API.
 
-Start with RFC 7807 as your foundation, add domain-specific error codes, implement proper validation error handling, and document everything. Your API consumers will thank you.
+Start with RFC 9457 as your foundation, add domain-specific error codes, implement proper validation error handling, and document everything. Your API consumers will thank you.
 
 ---
 
