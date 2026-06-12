@@ -14,7 +14,7 @@ Traefik is a powerful cloud-native reverse proxy and load balancer. While it com
 
 ## Understanding Traefik Plugins
 
-Traefik plugins are middleware components written in Go that run as WebAssembly (Wasm) modules. They intercept HTTP requests and responses, allowing you to modify, validate, or transform traffic.
+Traefik plugins are middleware components written in Go and executed on the fly by Yaegi, an embedded Go interpreter, so they do not need to be pre-compiled or linked into Traefik. They intercept HTTP requests and responses, allowing you to modify, validate, or transform traffic.
 
 ```mermaid
 flowchart LR
@@ -460,7 +460,7 @@ import: github.com/yourusername/traefik-custom-plugin
 # Brief description
 summary: Adds custom headers to incoming requests
 
-# Path to documentation
+# Sample configuration used to test the plugin
 testData:
   headers:
     X-Test: "value"
@@ -565,7 +565,6 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"strings"
 )
 
 // ValidationRule defines a single validation rule
