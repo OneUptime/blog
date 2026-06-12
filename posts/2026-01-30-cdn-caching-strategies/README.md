@@ -108,8 +108,7 @@ app.get('/api/products', (req, res) => {
 
 ```nginx
 location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2)$ {
-    expires 1y;
-    add_header Cache-Control "public, immutable";
+    add_header Cache-Control "public, max-age=31536000, immutable";
 }
 
 location / {
@@ -227,7 +226,7 @@ These should hit the same cache entry. Most CDNs have a setting to normalize que
 
 Marketing parameters shouldn't create separate cache entries.
 
-**Cloudflare Page Rules example:**
+**Cloudflare Cache Rules/settings example:**
 
 ```text
 URL: example.com/*
@@ -307,7 +306,7 @@ curl -X PURGE "https://example.com/page.html" \
 curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/purge_cache" \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
-  --data '{"prefixes":["https://example.com/products/"]}'
+  --data '{"prefixes":["example.com/products"]}'
 ```
 
 **Cache tags (surrogate keys):**
@@ -387,10 +386,10 @@ With shielding, all edge POPs route through a single shield POP. A cache miss re
 
 ### Configuring Origin Shield
 
-**Cloudflare (Argo Tiered Cache):**
+**Cloudflare (Tiered Cache):**
 
 ```text
-Dashboard > Speed > Optimization > Argo Tiered Cache > Enable
+Dashboard > Caching > Tiered Cache > Enable
 ```
 
 **AWS CloudFront:**
@@ -407,12 +406,11 @@ Origins:
 **Fastly:**
 
 ```vcl
-sub vcl_recv {
+sub vcl_miss {
   if (req.backend.is_shield) {
-    # Request is at shield, fetch from origin
+    # The assigned backend is a shield POP
   } else {
-    # Request is at edge, route to shield
-    set req.backend = shield_backend;
+    # The assigned backend is your origin
   }
 }
 ```
@@ -473,9 +471,13 @@ Track these metrics to understand your caching effectiveness:
 ### Cloudflare Analytics
 
 ```bash
-# Get cache analytics via API
-curl -X GET "https://api.cloudflare.com/client/v4/zones/{zone_id}/analytics/dashboard" \
-  -H "Authorization: Bearer {token}"
+# Query Cloudflare analytics via GraphQL API
+curl --silent "https://api.cloudflare.com/client/v4/graphql" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  --data '{
+    "query": "{ viewer { zones(filter: { zoneTag: \"{zone_id}\" }) { httpRequestsAdaptiveGroups(limit: 10, filter: { datetime_geq: \"2026-01-01T00:00:00Z\", datetime_lt: \"2026-01-02T00:00:00Z\", requestSource: \"eyeball\" }) { count sum { edgeResponseBytes } dimensions { datetimeHour } } } } }"
+  }'
 ```
 
 ### Custom Logging
@@ -490,7 +492,9 @@ Cache status values:
 - `HIT`: Served from cache
 - `MISS`: Fetched from origin
 - `STALE`: Served stale content
-- `BYPASS`: Cache bypassed (query string, cookie, etc.)
+- `UPDATING`: Serving stale while updating cached content
+- `REVALIDATED`: Revalidated cached content
+- `BYPASS`: Cache bypassed by configuration
 - `EXPIRED`: Cache expired, revalidating
 
 ## Common Caching Mistakes
@@ -553,14 +557,12 @@ Here's a complete caching configuration for a typical web application:
 # Versioned static assets - cache forever
 location ~* \.(js|css)$ {
     if ($uri ~* "\.[a-f0-9]{8,}\.") {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
+        add_header Cache-Control "public, max-age=31536000, immutable";
     }
 }
 
 # Images with fallback
 location ~* \.(png|jpg|jpeg|gif|ico|svg|webp)$ {
-    expires 1d;
     add_header Cache-Control "public, max-age=86400, stale-while-revalidate=3600";
 }
 
@@ -580,8 +582,7 @@ location /api/private/ {
 
 # Fonts
 location ~* \.(woff|woff2|ttf|otf|eot)$ {
-    expires 1y;
-    add_header Cache-Control "public, immutable";
+    add_header Cache-Control "public, max-age=31536000, immutable";
     add_header Access-Control-Allow-Origin "*";
 }
 ```
