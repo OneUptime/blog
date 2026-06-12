@@ -125,6 +125,11 @@ gcloud run services add-iam-policy-binding order-processor \
     --role="roles/run.invoker" \
     --region=us-central1
 
+# Allow Pub/Sub to create OIDC tokens for authenticated push delivery
+gcloud projects add-iam-policy-binding PROJECT_ID \
+    --member="serviceAccount:service-PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com" \
+    --role="roles/iam.serviceAccountTokenCreator"
+
 # Create subscription with OIDC authentication
 gcloud pubsub subscriptions create order-processor \
     --topic=order-events \
@@ -136,6 +141,8 @@ gcloud pubsub subscriptions create order-processor \
 ### Terraform Configuration with Authentication
 
 ```hcl
+data "google_project" "current" {}
+
 # Service account that Pub/Sub will use to authenticate
 resource "google_service_account" "pubsub_invoker" {
   account_id   = "pubsub-invoker"
@@ -148,6 +155,19 @@ resource "google_cloud_run_service_iam_member" "invoker" {
   location = google_cloud_run_service.order_processor.location
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.pubsub_invoker.email}"
+}
+
+# Pub/Sub service agent that creates OIDC tokens for push authentication
+resource "google_project_service_identity" "pubsub_agent" {
+  provider = google-beta
+  project  = data.google_project.current.project_id
+  service  = "pubsub.googleapis.com"
+}
+
+resource "google_project_iam_member" "pubsub_token_creator" {
+  project = data.google_project.current.project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = "serviceAccount:${google_project_service_identity.pubsub_agent.email}"
 }
 
 # Push subscription with OIDC token configuration
@@ -255,16 +275,18 @@ flowchart TD
     A[Message Published] --> B[Push to Endpoint]
     B -->|2xx Response| C[Message Acknowledged]
     B -->|Non-2xx or Timeout| D{Retry Policy}
-    D -->|Within Limits| E[Exponential Backoff]
+    D -->|Before message retention expires| E[Exponential Backoff]
     E --> B
-    D -->|Max Retries Exceeded| F{Dead Letter Topic?}
-    F -->|Yes| G[Send to DLQ]
-    F -->|No| H[Message Dropped]
+    D -->|Approximate max delivery attempts reached| F{Dead Letter Topic?}
+    F -->|Yes| G[Forward to DLQ]
+    F -->|No| H[Retry until message expires]
 ```
 
 ### Retry Policy Configuration
 
 ```hcl
+data "google_project" "current" {}
+
 resource "google_pubsub_subscription" "order_processor" {
   name  = "order-processor"
   topic = google_pubsub_topic.order_events.name
@@ -320,24 +342,29 @@ resource "google_pubsub_topic_iam_member" "dead_letter_publisher" {
   role   = "roles/pubsub.publisher"
   member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
+
+# Grant Pub/Sub permission to acknowledge messages on the source subscription
+resource "google_pubsub_subscription_iam_member" "dead_letter_subscriber" {
+  subscription = google_pubsub_subscription.order_processor.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
 ```
 
 ### Understanding Exponential Backoff
 
 ```javascript
-// Example of how Pub/Sub calculates retry delays
-function calculateRetryDelay(attemptNumber, minBackoff, maxBackoff) {
-  // Base delay doubles with each attempt
+// Simplified illustration of exponential backoff.
+// Pub/Sub chooses retry delays between the configured minimum and maximum.
+function estimateRetryDelay(attemptNumber, minBackoff, maxBackoff) {
+  // A simple exponential model for planning capacity
   const baseDelay = minBackoff * Math.pow(2, attemptNumber - 1);
 
-  // Add jitter to prevent thundering herd
-  const jitter = Math.random() * baseDelay * 0.1;
-
   // Cap at maximum backoff
-  return Math.min(baseDelay + jitter, maxBackoff);
+  return Math.min(baseDelay, maxBackoff);
 }
 
-// Retry timeline example with 10s min, 600s max:
+// Possible retry timeline example with 10s min, 600s max:
 // Attempt 1: immediate
 // Attempt 2: ~10s delay
 // Attempt 3: ~20s delay
@@ -353,6 +380,8 @@ Cloud Run is the most common target for push subscriptions due to its automatic 
 ### Complete Cloud Run + Pub/Sub Setup
 
 ```hcl
+data "google_project" "current" {}
+
 # Cloud Run service that processes Pub/Sub messages
 resource "google_cloud_run_service" "order_processor" {
   name     = "order-processor"
@@ -388,7 +417,7 @@ resource "google_cloud_run_service" "order_processor" {
       # Concurrency: how many requests per container instance
       container_concurrency = 80
 
-      # Timeout must be less than ack_deadline
+      # Keep request handling below the Pub/Sub ack deadline to avoid retries
       timeout_seconds = 55
     }
 
@@ -432,6 +461,19 @@ resource "google_cloud_run_service_iam_member" "pubsub_invoker" {
   member   = "serviceAccount:${google_service_account.pubsub_invoker.email}"
 }
 
+# Allow Pub/Sub to create OIDC tokens for push authentication
+resource "google_project_service_identity" "pubsub_agent" {
+  provider = google-beta
+  project  = data.google_project.current.project_id
+  service  = "pubsub.googleapis.com"
+}
+
+resource "google_project_iam_member" "pubsub_token_creator" {
+  project = data.google_project.current.project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = "serviceAccount:${google_project_service_identity.pubsub_agent.email}"
+}
+
 # Pub/Sub topic and subscription
 resource "google_pubsub_topic" "order_events" {
   name = "order-events"
@@ -469,6 +511,18 @@ resource "google_pubsub_subscription" "order_processor" {
 
 resource "google_pubsub_topic" "order_events_dlq" {
   name = "order-events-dlq"
+}
+
+resource "google_pubsub_topic_iam_member" "order_events_dlq_publisher" {
+  topic  = google_pubsub_topic.order_events_dlq.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+resource "google_pubsub_subscription_iam_member" "order_processor_dead_letter_subscriber" {
+  subscription = google_pubsub_subscription.order_processor.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 ```
 
@@ -546,8 +600,8 @@ def handle_pubsub():
         payload = json.loads(data) if data else {}
     except Exception as e:
         logging.error(f"Failed to decode message {message_id}: {e}")
-        # Return 400 to prevent retries for malformed messages
-        return jsonify({'error': 'Invalid message data'}), 400
+        # Return 204 to acknowledge malformed messages you don't want retried
+        return '', 204
 
     logging.info(f"Processing message {message_id}: {payload}")
 
@@ -564,9 +618,9 @@ def handle_pubsub():
         return jsonify({'error': str(e)}), 500
 
     except PermanentError as e:
-        # Return 4xx for permanent errors (no retry)
+        # Return 204 for permanent errors you have logged or handled elsewhere
         logging.error(f"Permanent error for {message_id}: {e}")
-        return jsonify({'error': str(e)}), 400
+        return '', 204
 
 
 class RetryableError(Exception):
@@ -745,7 +799,7 @@ resource "google_monitoring_alert_policy" "push_latency" {
 
       duration        = "300s"
       comparison      = "COMPARISON_GT"
-      threshold_value = 30000  # 30 seconds in milliseconds
+      threshold_value = 30000000  # 30 seconds in microseconds
 
       aggregations {
         alignment_period   = "60s"
@@ -793,7 +847,7 @@ For comprehensive monitoring of your Pub/Sub push subscriptions, integrate with 
 
 ```javascript
 // Add custom metrics for OneUptime monitoring
-const { trace, metrics } = require('@opentelemetry/api');
+const { metrics } = require('@opentelemetry/api');
 
 const meter = metrics.getMeter('pubsub-processor');
 
@@ -830,7 +884,11 @@ app.post('/pubsub', verifyPubSubToken, async (req, res) => {
       retryable: error instanceof RetryableError,
     });
 
-    throw error;
+    if (error instanceof RetryableError) {
+      return res.status(500).send('Retry later');
+    }
+
+    return res.status(204).send();
   }
 });
 ```
