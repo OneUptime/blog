@@ -45,8 +45,7 @@ choco install k6
 
 **Linux (Debian/Ubuntu):**
 ```bash
-sudo gpg -k
-sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
 sudo apt-get update
 sudo apt-get install k6
@@ -228,10 +227,8 @@ export const options = {
 
   thresholds: {
     // 95% of requests must complete below 500ms
-    http_req_duration: ['p(95)<500'],
-
     // 99% of requests must complete below 1500ms
-    'http_req_duration': ['p(99)<1500'],
+    http_req_duration: ['p(95)<500', 'p(99)<1500'],
 
     // Request failure rate must be below 1%
     http_req_failed: ['rate<0.01'],
@@ -294,7 +291,7 @@ const baseUrl = __ENV.BASE_URL || 'https://default.example.com';
 k6 run --out json=results.json script.js
 ```
 
-**Output to InfluxDB for Grafana dashboards:**
+**Output to InfluxDB v1 for Grafana dashboards:**
 ```bash
 k6 run --out influxdb=http://localhost:8086/k6 script.js
 ```
@@ -372,8 +369,7 @@ jobs:
 
       - name: Install k6
         run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update
           sudo apt-get install k6
