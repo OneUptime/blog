@@ -107,7 +107,15 @@ exports.handler = async (event, context) => {
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+
+# Standard LogRecord attributes (anything outside this set was passed via `extra=`)
+_STANDARD_LOG_RECORD_ATTRS = {
+    'name', 'msg', 'args', 'levelname', 'levelno', 'pathname', 'filename',
+    'module', 'exc_info', 'exc_text', 'stack_info', 'lineno', 'funcName',
+    'created', 'msecs', 'relativeCreated', 'thread', 'threadName',
+    'processName', 'process', 'message', 'asctime', 'taskName'
+}
 
 class LambdaJsonFormatter(logging.Formatter):
     def __init__(self):
@@ -117,7 +125,7 @@ class LambdaJsonFormatter(logging.Formatter):
 
     def format(self, record):
         log_record = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'level': record.levelname,
             'message': record.getMessage(),
             'functionName': self.function_name,
@@ -129,9 +137,10 @@ class LambdaJsonFormatter(logging.Formatter):
         if record.exc_info:
             log_record['exception'] = self.formatException(record.exc_info)
 
-        # Add extra fields
-        if hasattr(record, 'extra'):
-            log_record.update(record.extra)
+        # Add extra fields (logging merges `extra={...}` kwargs directly onto the record)
+        for key, value in record.__dict__.items():
+            if key not in _STANDARD_LOG_RECORD_ATTRS and not key.startswith('_'):
+                log_record[key] = value
 
         return json.dumps(log_record)
 
@@ -322,6 +331,9 @@ exports.handler = async (event, context) => {
 
 ```python
 # handler.py
+import json
+import traceback
+
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core import patch_all
 
@@ -350,7 +362,7 @@ def handler(event, context):
         result = process_order(event)
         return {'statusCode': 200, 'body': json.dumps(result)}
     except Exception as e:
-        segment.add_exception(e)
+        segment.add_exception(e, traceback.extract_stack())
         raise
 ```
 
