@@ -231,7 +231,11 @@ const path = require('path');
 
 // Define allowed MIME types and extensions
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-const ALLOWED_DOCUMENT_TYPES = ['application/pdf', 'application/msword'];
+const ALLOWED_DOCUMENT_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
 
 // File filter function for images
 const imageFileFilter = (req, file, cb) => {
@@ -273,7 +277,8 @@ const documentUpload = multer({
   storage: multer.diskStorage({
     destination: './uploads/documents/',
     filename: (req, file, cb) => {
-      cb(null, Date.now() + '-' + file.originalname);
+      const safeName = path.basename(file.originalname).replace(/[^\w.-]/g, '_');
+      cb(null, Date.now() + '-' + safeName);
     },
   }),
   fileFilter: (req, file, cb) => {
@@ -293,7 +298,6 @@ const documentUpload = multer({
 For enhanced security, validate file contents by checking magic bytes.
 
 ```javascript
-const fileType = require('file-type');
 const fs = require('fs');
 
 // Middleware to validate file contents after upload
@@ -303,12 +307,14 @@ async function validateFileContent(req, res, next) {
   }
 
   try {
+    const { fileTypeFromBuffer } = await import('file-type');
+
     // Read file and detect actual type from magic bytes
     const buffer = fs.readFileSync(req.file.path);
-    const type = await fileType.fromBuffer(buffer);
+    const type = await fileTypeFromBuffer(buffer);
 
     // Define allowed types
-    const allowedMimes = ['image/jpeg', 'image/png', 'image/gif'];
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
     if (!type || !allowedMimes.includes(type.mime)) {
       // Delete the invalid file
@@ -524,6 +530,7 @@ For large files, use presigned URLs to upload directly to S3.
 ```javascript
 const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const path = require('path');
 
 const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
@@ -532,7 +539,8 @@ app.post('/upload/presigned-url', async (req, res) => {
   const { filename, contentType } = req.body;
 
   // Generate unique key
-  const key = `uploads/${Date.now()}-${filename}`;
+  const safeName = path.basename(filename).replace(/[^\w.-]/g, '_');
+  const key = `uploads/${Date.now()}-${safeName}`;
 
   // Create presigned URL for PUT request
   const command = new PutObjectCommand({
@@ -558,8 +566,12 @@ app.post('/upload/presigned-url', async (req, res) => {
 });
 
 // Generate presigned URL for download
-app.get('/download/:key', async (req, res) => {
-  const { key } = req.params;
+app.get('/download', async (req, res) => {
+  const { key } = req.query;
+
+  if (!key) {
+    return res.status(400).json({ error: 'Missing S3 object key' });
+  }
 
   const command = new GetObjectCommand({
     Bucket: process.env.S3_BUCKET_NAME,
@@ -598,7 +610,8 @@ const uploadProgress = new Map();
 
 // Upload endpoint with progress tracking
 app.post('/upload/progress', (req, res) => {
-  const uploadId = Date.now().toString();
+  // Let the client provide an uploadId so it can poll while the upload is in progress
+  const uploadId = req.query.uploadId || Date.now().toString();
   const contentLength = parseInt(req.headers['content-length'], 10);
 
   // Initialize progress tracking
@@ -613,7 +626,8 @@ app.post('/upload/progress', (req, res) => {
 
   bb.on('file', (name, file, info) => {
     const { filename } = info;
-    const savePath = path.join('./uploads', `${uploadId}-${filename}`);
+    const safeName = path.basename(filename).replace(/[^\w.-]/g, '_');
+    const savePath = path.join('./uploads', `${uploadId}-${safeName}`);
     const writeStream = fs.createWriteStream(savePath);
 
     // Track bytes uploaded
@@ -629,15 +643,15 @@ app.post('/upload/progress', (req, res) => {
     writeStream.on('finish', () => {
       const progress = uploadProgress.get(uploadId);
       progress.status = 'complete';
-      progress.filename = `${uploadId}-${filename}`;
+      progress.filename = `${uploadId}-${safeName}`;
       uploadProgress.set(uploadId, progress);
     });
   });
 
-  bb.on('finish', () => {
+  bb.on('close', () => {
     res.json({
       uploadId,
-      message: 'Upload started',
+      message: 'Upload complete',
       progressUrl: `/upload/progress/${uploadId}`,
     });
   });
@@ -759,6 +773,7 @@ app.post('/upload',
 const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
+const path = require('path');
 
 const app = express();
 
@@ -772,7 +787,8 @@ const upload = multer({
   storage: multer.diskStorage({
     destination: './uploads/',
     filename: (req, file, cb) => {
-      cb(null, Date.now() + '-' + file.originalname);
+      const safeName = path.basename(file.originalname).replace(/[^\w.-]/g, '_');
+      cb(null, Date.now() + '-' + safeName);
     },
   }),
   limits: { fileSize: 10 * 1024 * 1024 },
