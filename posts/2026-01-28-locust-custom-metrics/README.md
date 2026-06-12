@@ -139,6 +139,8 @@ Measure specific operations within your test flow:
 from locust import HttpUser, task, between, events
 import time
 from contextlib import contextmanager
+from collections import defaultdict
+import threading
 
 class TimingMetrics:
     """Track timing for arbitrary code blocks."""
@@ -353,7 +355,7 @@ graph TB
 
 ## Percentile Tracking
 
-Track response time percentiles beyond what Locust provides by default:
+Track custom percentiles alongside what Locust provides by default:
 
 ```python
 # locustfile.py - Detailed percentile tracking
@@ -431,6 +433,8 @@ When your application calls external services, track those latencies separately:
 # locustfile.py - External service tracking
 from locust import HttpUser, task, between, events
 import time
+from collections import defaultdict
+import threading
 
 class ExternalServiceMetrics:
     """Track metrics for external service dependencies."""
@@ -516,6 +520,7 @@ from locust import HttpUser, task, between, events
 import csv
 import time
 from datetime import datetime
+import threading
 
 class CSVMetricsExporter:
     """Export custom metrics to CSV files."""
