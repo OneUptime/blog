@@ -8,7 +8,7 @@ Description: A comprehensive guide to building custom Ansible strategy plugins t
 
 ---
 
-Ansible strategy plugins control how tasks execute across your inventory. While built-in strategies like `linear`, `free`, and `serial` cover common use cases, custom strategy plugins let you implement specialized execution patterns that match your infrastructure requirements.
+Ansible strategy plugins control how tasks execute across your inventory. While built-in strategies like `linear`, `free`, and `host_pinned` cover common use cases, custom strategy plugins let you implement specialized execution patterns that match your infrastructure requirements.
 
 ## Understanding Strategy Plugins
 
@@ -42,10 +42,11 @@ flowchart TB
 
 | Strategy | Behavior |
 |----------|----------|
-| linear | Execute task on all hosts before moving to next task |
-| free | Execute tasks as fast as possible per host, no waiting |
-| serial | Execute play in batches of hosts |
-| host_pinned | Like free, but tasks stay on same worker |
+| linear | Execute each task in lockstep across the current host batch before moving to the next task |
+| free | Execute tasks as fast as possible per host batch, without waiting for every host to finish the current task |
+| host_pinned | Like free, but a host keeps its worker slot until it finishes the play |
+
+Use the play-level `serial` keyword with these strategies when you need to execute a play in batches of hosts.
 
 ## Strategy Plugin Architecture
 
@@ -192,11 +193,16 @@ class StrategyModule(StrategyBase):
                     continue
 
                 # Get next task for host
-                task_action = iterator.get_next_task_for_host(host)
-                task = task_action[0]
+                _, task = iterator.get_next_task_for_host(host)
 
                 if task is None:
                     continue
+
+                task_vars = self._variable_manager.get_vars(
+                    play=iterator._play,
+                    host=host,
+                    task=task
+                )
 
                 # Check for any pending results
                 self._process_pending_results(iterator)
@@ -214,8 +220,8 @@ class StrategyModule(StrategyBase):
             # Check if more work remains
             work_to_do = False
             for host in hosts_left:
-                task_action = iterator.get_next_task_for_host(host, peek=True)
-                if task_action[0] is not None:
+                _, task = iterator.get_next_task_for_host(host, peek=True)
+                if task is not None:
                     work_to_do = True
                     break
 
@@ -324,7 +330,6 @@ class StrategyModule(StrategyBase):
             f"Running health checks on {len(hosts)} hosts..."
         )
 
-        # Find health check task in iterator
         for host in hosts:
             task_vars = self._variable_manager.get_vars(
                 play=iterator._play,
@@ -348,11 +353,11 @@ class StrategyModule(StrategyBase):
         results = self._wait_on_pending_results(iterator)
 
         for result in results:
-            if result.is_failed():
+            if result.utr.failed:
                 display.error(
-                    f"Health check failed: {result._host.name}"
+                    f"Health check failed: {result.host.name}"
                 )
-                self._failed_hosts.add(result._host)
+                self._failed_hosts.add(result.host)
                 return False
 
         return True
@@ -409,8 +414,7 @@ class StrategyModule(StrategyBase):
                 work_to_do = True
 
                 while work_to_do and not self._tqm._terminated:
-                    task_action = iterator.get_next_task_for_host(host)
-                    task = task_action[0]
+                    _, task = iterator.get_next_task_for_host(host)
 
                     if task is None:
                         work_to_do = False
@@ -584,8 +588,6 @@ class StrategyModule(StrategyBase):
         result = self._tqm.RUN_OK
 
         hosts = self._inventory.get_hosts(iterator._play.hosts)
-        host_map = {h.name: h for h in hosts}
-
         if not hosts:
             return result
 
@@ -650,8 +652,7 @@ class StrategyModule(StrategyBase):
         work_to_do = True
 
         while work_to_do:
-            task_action = iterator.get_next_task_for_host(host)
-            task = task_action[0]
+            _, task = iterator.get_next_task_for_host(host)
 
             if task is None:
                 work_to_do = False
@@ -700,7 +701,7 @@ all:
 
 ## Strategy: Rate-Limited Execution
 
-Control execution rate to avoid overwhelming infrastructure.
+Control execution rate to avoid overwhelming infrastructure. For concurrency limits, prefer the built-in `forks`, `serial`, and task-level `throttle` controls. A custom strategy can still add pacing behavior around task queueing.
 
 ```python
 """
@@ -715,20 +716,14 @@ DOCUMENTATION = """
     name: rate_limited
     short_description: Rate-limited task execution
     description:
-        - Limits concurrent task execution
-        - Configurable delay between tasks
+        - Adds a configurable delay before queueing tasks
+        - Use with forks, serial, or throttle to limit concurrency
         - Prevents infrastructure overload
     author: Your Name
     version_added: "2.16"
     options:
-        rate_limit:
-            description: Maximum concurrent tasks
-            default: 5
-            type: int
-            env:
-                - name: ANSIBLE_RATE_LIMIT
         task_delay:
-            description: Delay in seconds between task batches
+            description: Delay in seconds before queueing each task
             default: 1.0
             type: float
             env:
@@ -749,43 +744,26 @@ class StrategyModule(LinearStrategy):
 
     def __init__(self, tqm):
         super(StrategyModule, self).__init__(tqm)
-        self._rate_limit = 5
         self._task_delay = 1.0
-        self._active_tasks = 0
         self._load_options()
 
     def _load_options(self):
         """Load configuration options."""
         import os
 
-        rate_limit = os.environ.get('ANSIBLE_RATE_LIMIT')
-        if rate_limit:
-            self._rate_limit = int(rate_limit)
-
         task_delay = os.environ.get('ANSIBLE_TASK_DELAY')
         if task_delay:
             self._task_delay = float(task_delay)
 
         display.display(
-            f"Rate limiting: max {self._rate_limit} concurrent, "
-            f"{self._task_delay}s delay"
+            f"Rate limiting: {self._task_delay}s delay before tasks"
         )
 
     def _queue_task(self, host, task, task_vars, play_context):
-        """Queue task with rate limiting."""
-        # Wait if at rate limit
-        while self._active_tasks >= self._rate_limit:
-            display.vvv(
-                f"Rate limit reached ({self._active_tasks}/"
-                f"{self._rate_limit}), waiting..."
-            )
-            time.sleep(0.1)
-            self._process_pending_results(None)
-
-        self._active_tasks += 1
+        """Queue task with a configurable delay."""
         display.vvv(
-            f"Queuing task for {host.name} "
-            f"({self._active_tasks}/{self._rate_limit} active)"
+            f"Queuing task for {host.name} after "
+            f"{self._task_delay}s delay"
         )
 
         # Add configured delay
@@ -795,17 +773,6 @@ class StrategyModule(LinearStrategy):
         return super(StrategyModule, self)._queue_task(
             host, task, task_vars, play_context
         )
-
-    def _process_pending_results(self, iterator, one_pass=False):
-        """Process results and update active task count."""
-        results = super(StrategyModule, self)._process_pending_results(
-            iterator, one_pass
-        )
-
-        if results:
-            self._active_tasks = max(0, self._active_tasks - len(results))
-
-        return results
 ```
 
 ## Testing Strategy Plugins
@@ -1011,8 +978,10 @@ DOCUMENTATION = """
 
 def __init__(self, tqm):
     super().__init__(tqm)
-    # Options are automatically loaded from DOCUMENTATION
-    self._my_option = self.get_option('my_option')
+    # StrategyBase does not provide get_option(); read strategy-specific
+    # settings from environment variables, ansible.cfg, or play variables.
+    import os
+    self._my_option = os.environ.get('ANSIBLE_MY_OPTION', 'default_value')
 ```
 
 ### Performance Considerations
