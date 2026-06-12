@@ -147,7 +147,7 @@ Grant the managed identity access to the Azure resources your application needs.
 
 ```bash
 # Create a Key Vault for testing
-KEYVAULT_NAME="kv-workload-demo-$(openssl rand -hex 4)"
+KEYVAULT_NAME="kv-workload-demo-$(openssl rand -hex 3)"
 
 az keyvault create \
     --resource-group $RESOURCE_GROUP \
@@ -168,6 +168,16 @@ az role assignment create \
     --assignee-principal-type ServicePrincipal \
     --role "Key Vault Secrets User" \
     --scope $KEYVAULT_ID
+
+# Assign Key Vault Secrets Officer role to your signed-in user so you can create the test secret
+CALLER_OBJECT_ID=$(az ad signed-in-user show --query id -o tsv)
+
+az role assignment create \
+    --assignee $CALLER_OBJECT_ID \
+    --role "Key Vault Secrets Officer" \
+    --scope $KEYVAULT_ID
+
+# If the role assignment has not propagated yet, wait a few minutes before creating the test secret.
 
 # Add a test secret to the Key Vault
 az keyvault secret set \
@@ -217,7 +227,7 @@ Common role assignments for different Azure services:
 | Service Bus | Azure Service Bus Data Sender | Send messages |
 | Service Bus | Azure Service Bus Data Receiver | Receive messages |
 | Event Hubs | Azure Event Hubs Data Sender | Send events |
-| Cosmos DB | Cosmos DB Account Reader | Read Cosmos DB data |
+| Cosmos DB | Cosmos DB Built-in Data Reader | Read Cosmos DB for NoSQL data |
 
 ## Step 4: Create the Federated Credential
 
@@ -272,7 +282,7 @@ az aks get-credentials \
 kubectl create namespace $NAMESPACE
 ```
 
-Create the service account with the required annotation and label. The annotation tells the workload identity webhook which Azure identity to use:
+Create the service account with the required annotation. The annotation tells the workload identity webhook which Azure identity to use:
 
 ```yaml
 # service-account.yaml
@@ -284,9 +294,6 @@ metadata:
   annotations:
     # This annotation is required - it specifies which Azure identity to use
     azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
-  labels:
-    # This label enables the mutating webhook for pods using this SA
-    azure.workload.identity/use: "true"
 ```
 
 Apply the service account using a heredoc with your actual client ID:
@@ -301,8 +308,6 @@ metadata:
   namespace: ${NAMESPACE}
   annotations:
     azure.workload.identity/client-id: "${IDENTITY_CLIENT_ID}"
-  labels:
-    azure.workload.identity/use: "true"
 EOF
 ```
 
@@ -442,14 +447,11 @@ Now verify that your pod can authenticate to Azure and access resources:
 ```bash
 # Log in to Azure using workload identity (no credentials needed)
 kubectl exec -n ${NAMESPACE} ${POD_NAME} -- \
-    az login --federated-token "$(cat /var/run/secrets/azure/tokens/azure-identity-token)" \
-    --service-principal \
-    -u $AZURE_CLIENT_ID \
-    -t $AZURE_TENANT_ID
-
-# A simpler approach - use the identity directly
-kubectl exec -n ${NAMESPACE} ${POD_NAME} -- \
-    az login --identity --username ${IDENTITY_CLIENT_ID}
+    /bin/bash -c 'az login \
+        --service-principal \
+        --username "$AZURE_CLIENT_ID" \
+        --tenant "$AZURE_TENANT_ID" \
+        --federated-token "$(cat "$AZURE_FEDERATED_TOKEN_FILE")"'
 ```
 
 Test Key Vault access:
@@ -781,14 +783,11 @@ kubectl get pod ${POD_NAME} -n ${NAMESPACE} \
     -o jsonpath='{.metadata.labels.azure\.workload\.identity/use}'
 ```
 
-Verify the service account has the required annotation and label:
+Verify the service account has the required annotation:
 
 ```bash
 kubectl get sa ${SERVICE_ACCOUNT_NAME} -n ${NAMESPACE} \
     -o jsonpath='{.metadata.annotations.azure\.workload\.identity/client-id}'
-
-kubectl get sa ${SERVICE_ACCOUNT_NAME} -n ${NAMESPACE} \
-    -o jsonpath='{.metadata.labels.azure\.workload\.identity/use}'
 ```
 
 ### Issue: Token File Not Found
@@ -885,15 +884,7 @@ az identity federated-credential list \
     --output table
 ```
 
-5. **Monitor Authentication Events**: Enable diagnostic logging on Azure AD to track workload identity authentication:
-
-```bash
-az monitor diagnostic-settings create \
-    --name "workload-identity-logs" \
-    --resource "/subscriptions/<sub-id>/providers/Microsoft.AAD/domainServices/<domain>" \
-    --logs '[{"category": "SignInLogs", "enabled": true}]' \
-    --workspace "<log-analytics-workspace-id>"
-```
+5. **Monitor Authentication Events**: Enable Microsoft Entra diagnostic settings for sign-in logs and send them to a Log Analytics workspace. In the Microsoft Entra admin center, go to **Entra ID > Monitoring & health > Diagnostic settings**, add a diagnostic setting, select the sign-in log categories you need, and choose your workspace as the destination.
 
 6. **Use Pod Security Standards**: Enforce restricted pod security standards to prevent privilege escalation:
 
