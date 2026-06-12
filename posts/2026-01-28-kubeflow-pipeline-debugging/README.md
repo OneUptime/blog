@@ -46,9 +46,8 @@ flowchart TB
 Start with these commands to identify the problem area:
 
 ```bash
-# Get pipeline run status
-
-kubectl get pipelineruns -n kubeflow-user
+# Get pipeline workflow status when using the default Argo backend
+kubectl get workflows.argoproj.io -n kubeflow-user
 
 # Get all pods for a specific run
 kubectl get pods -n kubeflow-user -l pipeline/runid=<run-id>
@@ -89,11 +88,11 @@ kubectl get pod <pod-name> -n kubeflow-user -o jsonpath='{.spec.containers[*].na
 # Get main container logs
 kubectl logs <pod-name> -n kubeflow-user -c main
 
-# Get init container logs (for artifact download issues)
-kubectl logs <pod-name> -n kubeflow-user -c setup
+# Get init container logs, if your backend uses one for setup/artifact download
+kubectl logs <pod-name> -n kubeflow-user -c <init-container-name>
 
-# Get sidecar logs (for artifact upload issues)
-kubectl logs <pod-name> -n kubeflow-user -c sidecar
+# Get sidecar logs, if your backend uses one for artifact handling
+kubectl logs <pod-name> -n kubeflow-user -c <sidecar-container-name>
 
 # Get logs from previous crashed container
 kubectl logs <pod-name> -n kubeflow-user -c main --previous
@@ -107,15 +106,15 @@ kubectl logs -f <pod-name> -n kubeflow-user -c main
 Even failed runs may have produced partial artifacts:
 
 ```bash
-# Check MinIO/S3 for artifacts
-mc ls minio/mlpipeline/artifacts/<run-id>/
+# Check MinIO/S3 for artifacts in your configured pipeline root
+mc ls minio/mlpipeline/v2/artifacts/
 
 # Download artifacts locally
-mc cp -r minio/mlpipeline/artifacts/<run-id>/ ./debug-artifacts/
+mc cp -r minio/mlpipeline/v2/artifacts/ ./debug-artifacts/
 
 # Or using AWS CLI for S3
-aws s3 ls s3://mlpipeline/artifacts/<run-id>/ --recursive
-aws s3 cp s3://mlpipeline/artifacts/<run-id>/ ./debug-artifacts/ --recursive
+aws s3 ls s3://mlpipeline/v2/artifacts/ --recursive
+aws s3 cp s3://mlpipeline/v2/artifacts/ ./debug-artifacts/ --recursive
 ```
 
 ## Common Failure Patterns and Solutions
@@ -141,8 +140,11 @@ kubectl describe pod <pod-name> -n kubeflow-user | grep -A 5 "Events:"
 
 **Solutions:**
 
-```yaml
+```python
 # Add image pull secrets to component
+from kfp import dsl
+from kfp import kubernetes
+
 @dsl.component(base_image="private-registry.com/ml-image:v1.0")
 def my_component():
     pass
@@ -151,7 +153,7 @@ def my_component():
 @dsl.pipeline
 def my_pipeline():
     task = my_component()
-    task.set_image_pull_secrets(["registry-credentials"])
+    kubernetes.set_image_pull_secrets(task, ["registry-credentials"])
 ```
 
 Or create the secret and patch the default service account:
@@ -183,7 +185,7 @@ Exit Code: 137
 kubectl get pod <pod-name> -n kubeflow-user \
   -o jsonpath='{.status.containerStatuses[0].lastState.terminated}'
 
-# Check resource usage before failure
+# Check resource usage while reproducing or while the pod is still running
 kubectl top pod <pod-name> -n kubeflow-user --containers
 ```
 
@@ -211,25 +213,33 @@ Or optimize the code:
 )
 def process_large_data(input_path: str, output_path: str):
     """Process data in chunks to avoid OOM."""
-    import pandas as pd
+    import pyarrow as pa
+    import pyarrow.parquet as pq
 
     # Process in chunks instead of loading all at once
     chunk_size = 100000
-    chunks = pd.read_parquet(input_path, chunksize=chunk_size)
+    parquet_file = pq.ParquetFile(input_path)
+    writer = None
 
-    results = []
-    for chunk in chunks:
-        # Process chunk
-        processed = transform(chunk)
-        results.append(processed)
+    try:
+        for batch in parquet_file.iter_batches(batch_size=chunk_size):
+            chunk = batch.to_pandas()
 
-        # Force garbage collection
-        del chunk
-        import gc
-        gc.collect()
+            # Process chunk
+            processed = chunk.dropna()
+            table = pa.Table.from_pandas(processed, preserve_index=False)
 
-    # Write results
-    pd.concat(results).to_parquet(output_path)
+            if writer is None:
+                writer = pq.ParquetWriter(output_path, table.schema)
+            writer.write_table(table)
+
+            # Force garbage collection
+            del chunk, processed, table
+            import gc
+            gc.collect()
+    finally:
+        if writer is not None:
+            writer.close()
 ```
 
 ### Pattern 3: Timeout Failures
@@ -254,6 +264,9 @@ kubectl logs -f <pod-name> -n kubeflow-user -c main
 
 ```python
 # Increase timeout for long-running steps
+from kfp import dsl
+from kfp import kubernetes
+
 @dsl.component
 def long_training_job():
     pass
@@ -262,7 +275,7 @@ def long_training_job():
 def my_pipeline():
     task = long_training_job()
     # Set timeout to 6 hours
-    task.set_timeout(21600)
+    kubernetes.set_timeout(task, 21600)
 ```
 
 ### Pattern 4: Artifact Handling Failures
@@ -276,11 +289,11 @@ artifact path not found
 
 **Diagnosis:**
 ```bash
-# Check init container logs for download issues
-kubectl logs <pod-name> -n kubeflow-user -c setup
+# Check init container logs for download issues, if present
+kubectl logs <pod-name> -n kubeflow-user -c <init-container-name>
 
-# Check sidecar logs for upload issues
-kubectl logs <pod-name> -n kubeflow-user -c sidecar
+# Check sidecar logs for upload issues, if present
+kubectl logs <pod-name> -n kubeflow-user -c <sidecar-container-name>
 
 # Verify artifact storage is accessible
 kubectl exec -it <pod-name> -n kubeflow-user -c main -- \
@@ -291,14 +304,19 @@ kubectl exec -it <pod-name> -n kubeflow-user -c main -- \
 
 ```python
 # Ensure output paths exist before writing
+from kfp import dsl
+from kfp.dsl import Dataset, Output
+
 @dsl.component
 def write_artifact(output_data: Output[Dataset]):
     import os
+    import pandas as pd
 
     # Create parent directory if needed
     os.makedirs(os.path.dirname(output_data.path), exist_ok=True)
 
     # Write data
+    df = pd.DataFrame({"status": ["ok"]})
     df.to_parquet(output_data.path)
 ```
 
@@ -346,7 +364,7 @@ def component_with_custom_image():
 from kfp import dsl
 from kfp.dsl import PipelineTask
 
-@dsl.component
+@dsl.component(packages_to_install=["requests"])
 def flaky_api_call():
     """Component that may fail due to transient issues."""
     import requests
@@ -447,6 +465,9 @@ if __name__ == "__main__":
 Add debugging capabilities to your pipeline:
 
 ```python
+from kfp import dsl
+from kfp.dsl import Dataset, Input, Output
+
 @dsl.component(
     base_image="python:3.10",
     packages_to_install=["pandas", "pyarrow"]
@@ -458,6 +479,7 @@ def debug_component(
 ):
     """Component with debug mode."""
     import pandas as pd
+    import os
     import sys
     import traceback
 
@@ -472,7 +494,7 @@ def debug_component(
             print(f"Memory usage: {df.memory_usage(deep=True).sum() / 1e6:.2f} MB")
 
         # Processing logic
-        result = process(df)
+        result = df.dropna()
 
         if debug_mode:
             print(f"Output shape: {result.shape}")
@@ -611,7 +633,7 @@ spec:
 
         - alert: PipelineStuck
           expr: |
-            time() - kube_pod_created{namespace=~"kubeflow-.*"}
+            (time() - kube_pod_created{namespace=~"kubeflow-.*"})
             * on(pod) group_left(label_pipeline_runid)
             kube_pod_labels{label_pipeline_runid!=""}
             > 7200
