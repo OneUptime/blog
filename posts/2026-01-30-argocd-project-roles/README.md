@@ -12,7 +12,7 @@ ArgoCD project roles let you define who can do what within a project. Instead of
 
 ## Understanding ArgoCD RBAC
 
-ArgoCD uses a Casbin-based RBAC model with three key concepts:
+ArgoCD uses a Casbin-based RBAC model with these key concepts:
 
 ```mermaid
 flowchart TD
@@ -185,9 +185,9 @@ roles:
       - p, proj:backend-team:ci-bot, applications, update, backend-team/*, allow
 ```
 
-## Role Hierarchy Example
+## Role Permission Tiers Example
 
-Here is a complete project showing how different roles interact.
+Here is a complete project showing different permission tiers.
 
 ```mermaid
 flowchart TB
@@ -310,11 +310,11 @@ argocd proj role create-token backend-team ci-bot
 # Generate a token with expiration
 argocd proj role create-token backend-team ci-bot --expires-in 24h
 
-# List existing tokens
-argocd proj role list-tokens backend-team ci-bot
+# List existing tokens with Unix issued-at values
+argocd proj role list-tokens backend-team ci-bot --unixtime
 
-# Delete a token by ID
-argocd proj role delete-token backend-team ci-bot <token-id>
+# Delete a token by issued-at timestamp
+argocd proj role delete-token backend-team ci-bot <issued-at>
 ```
 
 Use the token in CI/CD:
@@ -388,9 +388,9 @@ roles:
       - backend-developers  # Matches Okta group
 ```
 
-## Restricting Resources Per Role
+## Restricting Resources Per Project
 
-Limit what Kubernetes resources a role can deploy:
+Limit what Kubernetes resources applications in a project can deploy:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -407,7 +407,8 @@ spec:
   # Deny specific cluster resources
   clusterResourceBlacklist:
     - group: ''
-      kind: ResourceQuota
+      kind: Namespace
+      name: 'kube-*'
     - group: rbac.authorization.k8s.io
       kind: ClusterRole
 
@@ -425,6 +426,8 @@ spec:
   # Deny dangerous resources
   namespaceResourceBlacklist:
     - group: ''
+      kind: ResourceQuota
+    - group: ''
       kind: LimitRange
 
   roles:
@@ -438,12 +441,15 @@ spec:
 Verify role permissions using the ArgoCD CLI:
 
 ```bash
-# Check if a role can perform an action
-argocd proj role can-i backend-team developer get applications 'backend-team/*'
+# Check if the current account can perform an action
+argocd account can-i get applications 'backend-team/*'
 # Output: yes
 
-argocd proj role can-i backend-team developer delete applications 'backend-team/*'
+argocd account can-i delete applications 'backend-team/*'
 # Output: no
+
+# Check whether a role or subject has a permission in the live RBAC config
+argocd admin settings rbac can proj:backend-team:developer get applications 'backend-team/*' --namespace argocd
 
 # List all role permissions
 argocd proj role list backend-team
@@ -502,14 +508,11 @@ policies:
 
 ### 4. Audit Role Changes
 
-Track project role modifications:
+Track project role modifications through Git history and ArgoCD-generated Kubernetes events:
 
 ```bash
-# Enable audit logging in ArgoCD
-kubectl patch configmap argocd-cm -n argocd --type merge -p '
-data:
-  audit.enabled: "true"
-'
+# View ArgoCD application activity events
+kubectl get events -n argocd
 ```
 
 ## Troubleshooting
@@ -522,8 +525,11 @@ Check the effective permissions:
 # View user's groups
 argocd account get-user-info
 
-# Test specific permission
-argocd proj role can-i <project> <role> <action> <resource> <object>
+# Test current-account permission
+argocd account can-i <action> <resource> <object>
+
+# Test a role or subject against live RBAC configuration
+argocd admin settings rbac can <role-or-subject> <action> <resource> <object> --namespace argocd
 ```
 
 ### SSO Groups Not Working
