@@ -200,13 +200,11 @@ kubectl scale deployment myapp-canary -n production --replicas=3
 kubectl scale deployment myapp-stable -n production --replicas=5
 kubectl scale deployment myapp-canary -n production --replicas=5
 
-# Full promotion
-kubectl scale deployment myapp-stable -n production --replicas=0
-kubectl scale deployment myapp-canary -n production --replicas=10
-
-# Update labels and clean up
-kubectl set image deployment/myapp-canary myapp=myregistry/myapp:v1.1.0 -n production
-kubectl delete deployment myapp-stable -n production
+# Full promotion: update stable to v1.1.0, scale it back up, then remove canary
+kubectl set image deployment/myapp-stable myapp=myregistry/myapp:v1.1.0 -n production
+kubectl scale deployment myapp-stable -n production --replicas=10
+kubectl scale deployment myapp-canary -n production --replicas=0
+kubectl delete deployment myapp-canary -n production
 ```
 
 ## Precise Traffic Control with Istio
@@ -219,7 +217,7 @@ VirtualService allows percentage-based traffic routing independent of replica co
 
 ```yaml
 # virtual-service.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: myapp
@@ -228,7 +226,8 @@ spec:
   hosts:
     - myapp
   http:
-    - route:
+    - name: primary
+      route:
         - destination:
             host: myapp
             subset: stable
@@ -245,7 +244,7 @@ DestinationRule defines which pods belong to each subset based on their version 
 
 ```yaml
 # destination-rule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: myapp
@@ -361,6 +360,7 @@ kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/rele
 ### Define a Rollout with Canary Strategy
 
 Argo Rollouts replaces Deployments with Rollouts that support canary strategies natively.
+For the Istio subset routing below, initialize the `myapp` DestinationRule subsets with labels that match the Rollout pods, such as `app: myapp`. Argo Rollouts will patch those subsets with the stable and canary `rollouts-pod-template-hash` values during updates.
 
 ```yaml
 # rollout.yaml
@@ -537,6 +537,10 @@ spec:
             name: myapp
             routes:
               - primary
+          destinationRule:
+            name: myapp
+            canarySubsetName: canary
+            stableSubsetName: stable
 ```
 
 ## Canary with Flagger
@@ -575,7 +579,7 @@ spec:
     port: 80
     targetPort: 8080
     gateways:
-      - public-gateway.istio-system.svc.cluster.local
+      - istio-system/public-gateway
     hosts:
       - myapp.example.com
   analysis:
@@ -711,7 +715,7 @@ This configuration routes requests with a specific header to the canary, letting
 
 ```yaml
 # header-based-routing.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: myapp
@@ -850,10 +854,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -866,7 +868,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
@@ -875,15 +877,15 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v4
 
       - name: Configure kubeconfig
         run: |
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig
-          export KUBECONFIG=kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> "$GITHUB_ENV"
 
       - name: Update Rollout image
         run: |
