@@ -43,7 +43,7 @@ flowchart TB
 ### Policy Components
 
 - **Server**: Defines a port on a workload that accepts traffic
-- **ServerAuthorization**: Specifies who can access a Server (deprecated, use AuthorizationPolicy)
+- **ServerAuthorization**: Specifies who can access a Server (older API; AuthorizationPolicy is preferred)
 - **AuthorizationPolicy**: Modern way to define access controls
 - **HTTPRoute**: Defines route-based matching for HTTP traffic
 
@@ -73,7 +73,7 @@ Server resources define which ports accept traffic and what protocols they speak
 # server.yaml
 # Define a Server resource to mark port 8080 as accepting HTTP traffic
 # This tells Linkerd's proxy to apply HTTP-aware policies
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: api-server
@@ -85,8 +85,8 @@ spec:
       app: api
   # Define the port this server listens on
   port: 8080
-  # Protocol detection - http for L7 policies
-  proxyProtocol: HTTP/2
+  # Protocol detection - HTTP for L7 policies
+  proxyProtocol: HTTP/1
 ```
 
 ### Creating an AuthorizationPolicy
@@ -158,7 +158,7 @@ flowchart LR
 
 ## Traffic Splits for Canary Deployments
 
-Traffic splits let you gradually shift traffic between service versions, enabling canary deployments and A/B testing.
+Traffic splits let you gradually shift traffic between service versions, enabling canary deployments and A/B testing. In current Linkerd releases, `TrafficSplit` is provided by the deprecated Linkerd SMI extension; new traffic-shifting configurations should use Gateway API `HTTPRoute` or `GRPCRoute` resources instead.
 
 ### Basic Traffic Split
 
@@ -294,7 +294,7 @@ spec:
       group: policy.linkerd.io
   # Define matching rules
   rules:
-    # Health check endpoint - allow all
+    # Health check endpoint route
     - matches:
         - path:
             type: Exact
@@ -307,7 +307,7 @@ spec:
             value: /api/v1/
           method: GET
       filters: []
-    # Admin endpoints - restricted
+    # Admin endpoint route
     - matches:
         - path:
             type: PathPrefix
@@ -365,11 +365,11 @@ spec:
 
 ```yaml
 # method-routing.yaml
-# Different policies for different HTTP methods
+# Define write routes so they can receive separate authorization
 apiVersion: policy.linkerd.io/v1beta2
 kind: HTTPRoute
 metadata:
-  name: api-method-routes
+  name: api-write-routes
   namespace: production
 spec:
   parentRefs:
@@ -377,12 +377,6 @@ spec:
       kind: Server
       group: policy.linkerd.io
   rules:
-    # GET requests - read access
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /api/
-          method: GET
     # POST/PUT/DELETE - write access
     - matches:
         - path:
@@ -400,7 +394,7 @@ spec:
             value: /api/
           method: DELETE
 ---
-# Separate authorization for read vs write
+# Separate authorization for write routes
 apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
@@ -410,11 +404,20 @@ spec:
   targetRef:
     group: policy.linkerd.io
     kind: HTTPRoute
-    name: api-method-routes
+    name: api-write-routes
   requiredAuthenticationRefs:
     - name: write-clients
       kind: MeshTLSAuthentication
       group: policy.linkerd.io
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: write-clients
+  namespace: production
+spec:
+  identities:
+    - "writer.production.serviceaccount.identity.linkerd.cluster.local"
 ```
 
 ### Header-Based Routing
@@ -499,7 +502,7 @@ flowchart TB
 # Complete policy configuration
 ---
 # 1. Define the Server
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: api-server
@@ -509,7 +512,7 @@ spec:
     matchLabels:
       app: api
   port: 8080
-  proxyProtocol: HTTP/2
+  proxyProtocol: HTTP/1
 ---
 # 2. Define public routes
 apiVersion: policy.linkerd.io/v1beta2
@@ -608,36 +611,27 @@ spec:
 
 ## Rate Limiting
 
-Linkerd itself doesn't have built-in rate limiting, but you can implement it using ServiceProfiles or external solutions that integrate with the mesh.
+Linkerd supports local HTTP rate limiting with `HTTPLocalRateLimitPolicy` resources. You can also implement rate limits at the ingress layer or in the application when you need global quotas or more advanced behavior.
 
-### Rate Limiting with ServiceProfile Response Classes
+### Rate Limiting with HTTPLocalRateLimitPolicy
 
 ```yaml
-# rate-limit-handling.yaml
-# Configure how the mesh handles rate-limited responses
-apiVersion: linkerd.io/v1alpha2
-kind: ServiceProfile
+# rate-limit-policy.yaml
+# Limit traffic to the API Server to 100 RPS overall and 20 RPS per identity
+apiVersion: policy.linkerd.io/v1alpha1
+kind: HTTPLocalRateLimitPolicy
 metadata:
-  name: api.production.svc.cluster.local
+  name: api-rate-limit
   namespace: production
 spec:
-  routes:
-    - name: POST /api/orders
-      condition:
-        method: POST
-        pathRegex: /api/orders
-      # Define response classes to handle rate limiting
-      responseClasses:
-        # Treat 429 Too Many Requests as retriable
-        - condition:
-            status:
-              min: 429
-              max: 429
-          # Mark as failure for metrics
-          isFailure: true
-      # Don't retry rate-limited requests immediately
-      isRetryable: false
-      timeout: 10s
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: api-server
+  total:
+    requestsPerSecond: 100
+  identity:
+    requestsPerSecond: 20
 ```
 
 ### Rate Limiting at Ingress Layer
@@ -719,44 +713,30 @@ spec:
 
 ## Circuit Breaking
 
-Circuit breaking prevents cascading failures by stopping requests to unhealthy services. Linkerd implements this through failure accrual in ServiceProfiles.
+Circuit breaking prevents cascading failures by stopping requests to unhealthy endpoints. Linkerd implements endpoint-level HTTP circuit breaking through failure accrual annotations on Kubernetes Services.
 
-### Basic Circuit Breaking with ServiceProfile
+### Basic Circuit Breaking with Failure Accrual
 
 ```yaml
 # circuit-breaker.yaml
-# Configure circuit breaking using retry budgets
-apiVersion: linkerd.io/v1alpha2
-kind: ServiceProfile
+# Configure circuit breaking on a Service using consecutive failure accrual
+apiVersion: v1
+kind: Service
 metadata:
-  name: payment.production.svc.cluster.local
+  name: payment
   namespace: production
+  annotations:
+    balancer.linkerd.io/failure-accrual: consecutive
+    balancer.linkerd.io/failure-accrual-consecutive-max-failures: "7"
+    balancer.linkerd.io/failure-accrual-consecutive-min-penalty: "1s"
+    balancer.linkerd.io/failure-accrual-consecutive-max-penalty: "60s"
 spec:
-  # Retry budget acts as circuit breaking
-  retryBudget:
-    # Only retry 10% of requests - prevents retry storms
-    retryRatio: 0.1
-    # Minimum retries per second even during outages
-    minRetriesPerSecond: 5
-    # Time window for calculating budget
-    ttl: 10s
-  routes:
-    - name: POST /payment/process
-      condition:
-        method: POST
-        pathRegex: /payment/process
-      # Short timeout triggers circuit breaking faster
-      timeout: 5s
-      # Non-idempotent - don't retry
-      isRetryable: false
-      # Response classes for failure detection
-      responseClasses:
-        # 5xx errors are failures
-        - condition:
-            status:
-              min: 500
-              max: 599
-          isFailure: true
+  selector:
+    app: payment
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
 ```
 
 ### Circuit Breaking with Outlier Detection
@@ -869,11 +849,14 @@ kubectl get httproutes -n production
 # Check proxy configuration for a pod
 linkerd diagnostics proxy-metrics -n production deploy/api
 
-# View authorization decisions
-linkerd diagnostics policy -n production deploy/api
+# View authorization decisions and policy metrics
+linkerd viz authz -n production deploy/api
+
+# Inspect outbound policy for a service and port
+linkerd diagnostics policy -n production svc/api 8080
 
 # Check if mTLS is working
-linkerd edges -n production
+linkerd viz edges -n production
 ```
 
 ### Audit Authorization Failures
