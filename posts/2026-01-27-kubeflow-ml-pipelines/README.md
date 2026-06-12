@@ -83,7 +83,7 @@ from kfp import dsl
 # The decorator converts this function into a pipeline component
 @dsl.component(
     base_image='python:3.10-slim',  # Container image to use
-    packages_to_install=['pandas', 'scikit-learn']  # Dependencies
+    packages_to_install=['pandas', 'scikit-learn', 'gcsfs']  # Dependencies
 )
 def preprocess_data(
     input_path: str,
@@ -234,7 +234,7 @@ from kfp.dsl import ContainerSpec
 # Define container-based component
 @dsl.container_component
 def custom_training_component(
-    data_path: str,
+    data_path: dsl.InputPath('Dataset'),
     model_path: dsl.OutputPath('Model'),
     metrics_path: dsl.OutputPath('Metrics'),
     learning_rate: float = 0.1,
@@ -330,7 +330,7 @@ def ml_pipeline(
     )
 
     # Step 4: Conditional deployment
-    with dsl.Condition(eval_task.output == True, name='deploy-if-good'):
+    with dsl.If(eval_task.output == True, name='deploy-if-good'):
         deploy_model(
             model_path=train_task.outputs['model_path'],
             endpoint_name=endpoint_name
@@ -457,7 +457,6 @@ run = client.create_run_from_pipeline_func(
 )
 
 print(f'Run ID: {run.run_id}')
-print(f'Run URL: {run.run_url}')
 ```
 
 ### Submit from Compiled YAML
@@ -486,7 +485,7 @@ recurring_run = client.create_recurring_run(
         'raw_data_path': 'gs://bucket/data/latest.csv',
         'n_estimators': 100
     },
-    cron_expression='0 2 * * *',  # Daily at 2 AM
+    cron_expression='0 0 2 * * *',  # Daily at 2 AM
     max_concurrency=1,
     enabled=True
 )
@@ -520,56 +519,26 @@ def wait_for_run(run_id: str, timeout_seconds: int = 3600):
 
     while True:
         run = client.get_run(run_id)
-        status = run.run.status
+        status = run.state
 
         print(f'Run status: {status}')
 
-        if status in ['Succeeded', 'Failed', 'Error', 'Skipped']:
+        if status and status.lower() in ['succeeded', 'failed', 'error', 'skipped']:
             return run
 
         if time.time() - start_time > timeout_seconds:
             raise TimeoutError(f'Run {run_id} timed out')
 
         time.sleep(30)
-
-
-def get_run_metrics(run_id: str) -> dict:
-    """Extract metrics from a completed run."""
-    run = client.get_run(run_id)
-
-    metrics = {}
-    for metric in run.run.metrics or []:
-        metrics[metric.name] = metric.number_value
-
-    return metrics
-
-
-def compare_runs(run_ids: list) -> dict:
-    """Compare metrics across multiple runs."""
-    comparison = {}
-
-    for run_id in run_ids:
-        metrics = get_run_metrics(run_id)
-        comparison[run_id] = metrics
-
-    return comparison
 ```
+
+Metrics logged with `Output[Metrics]` are stored as ML Metadata artifacts in KFP v2. Query them through the Metadata Store when you need automated metric comparison across runs.
 
 ### Artifact Tracking
 
+KFP v2 stores artifact metadata in ML Metadata. Use the Metadata Store to query artifacts and filter them for a specific run.
+
 ```python
-def get_run_artifacts(run_id: str):
-    """Get all artifacts from a run."""
-    run = client.get_run(run_id)
-
-    artifacts = []
-    for node in run.pipeline_runtime.workflow_manifest:
-        # Parse artifact information from workflow
-        pass
-
-    return artifacts
-
-
 # Access artifacts via the Metadata Store
 from ml_metadata import metadata_store
 from ml_metadata.proto import metadata_store_pb2
@@ -670,10 +639,8 @@ def resource_aware_pipeline():
     train_task.set_memory_limit('16Gi')
 
     # Request GPU for training
-    train_task.set_gpu_limit('1')
-    train_task.add_node_selector_constraint(
-        'cloud.google.com/gke-accelerator', 'nvidia-tesla-t4'
-    )
+    train_task.set_accelerator_type('nvidia.com/gpu')
+    train_task.set_accelerator_limit(1)
 ```
 
 ### 6. Organize with Experiments
