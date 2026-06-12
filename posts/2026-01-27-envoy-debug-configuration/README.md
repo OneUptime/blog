@@ -38,7 +38,11 @@ The admin interface is the most powerful debugging tool for Envoy. Enable it in 
 
 admin:
   # Access log for admin requests (useful for auditing)
-  access_log_path: /var/log/envoy/admin_access.log
+  access_log:
+    - name: envoy.access_loggers.file
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
+        path: /var/log/envoy/admin_access.log
 
   # Profile path for CPU/memory profiling
   profile_path: /var/log/envoy/envoy.prof
@@ -84,9 +88,10 @@ When configuration is not working as expected, dump and analyze it.
 # This shows the ACTUAL running configuration after all processing
 curl http://localhost:9901/config_dump > config_dump.json
 
-# Dump only specific resource types
-# Options: listeners, clusters, routes, endpoints, secrets
-curl "http://localhost:9901/config_dump?resource=listeners" | jq .
+# Dump only a specific repeated resource
+# Examples: static_listeners, dynamic_listeners, dynamic_active_clusters,
+# dynamic_route_configs, dynamic_endpoint_configs, dynamic_active_secrets
+curl "http://localhost:9901/config_dump?resource=dynamic_listeners" | jq .
 
 # Include endpoint discovery service (EDS) data
 # Essential for debugging load balancing issues
@@ -96,7 +101,7 @@ curl "http://localhost:9901/config_dump?include_eds" | jq .
 ### Analyzing the Configuration Dump
 
 ```bash
-# Extract all listener names and addresses
+# Extract dynamic listener names and addresses
 # Useful for finding port conflicts
 jq '.configs[] |
     select(.["@type"] | contains("ListenersConfigDump")) |
@@ -106,18 +111,17 @@ jq '.configs[] |
         address: .active_state.listener.address
     }' config_dump.json
 
-# Check cluster health status
-# HEALTHY, UNHEALTHY, DEGRADED, or TIMEOUT
+# Check configured health checks on dynamic clusters
 jq '.configs[] |
     select(.["@type"] | contains("ClustersConfigDump")) |
     .dynamic_active_clusters[] |
     {
         name: .cluster.name,
         type: .cluster.type,
-        health: .cluster.health_checks
+        health_checks: .cluster.health_checks
     }' config_dump.json
 
-# Extract route configurations
+# Extract dynamic route configurations
 # Shows virtual hosts and route matching rules
 jq '.configs[] |
     select(.["@type"] | contains("RoutesConfigDump")) |
@@ -163,7 +167,7 @@ static_resources:
                           timestamp: "%START_TIME%"
 
                           # Client information
-                          client_ip: "%DOWNSTREAM_REMOTE_ADDRESS%"
+                          client_address: "%DOWNSTREAM_REMOTE_ADDRESS%"
 
                           # Request details
                           method: "%REQ(:METHOD)%"
@@ -237,7 +241,7 @@ flowchart TD
 # RL  - Rate limited
 # UAEX - Unauthorized external service
 # NC  - No cluster found
-# DT  - Dynamic timeout
+# DT  - Duration timeout
 ```
 
 ## Common Configuration Errors
@@ -502,7 +506,7 @@ curl "http://localhost:9901/stats?filter=upstream_cx"
 curl "http://localhost:9901/stats?filter=circuit_breaker"
 
 # Example output interpretation:
-# cluster.backend.upstream_rq_time: P50=5ms, P99=50ms, P999=200ms
+# cluster.backend.upstream_rq_time: P50 ~= 5ms, P99 ~= 50ms, P99.9 ~= 200ms
 # High P99 indicates occasional slow requests
 # cluster.backend.upstream_cx_active: 45
 # Shows 45 active connections to upstream
@@ -674,6 +678,8 @@ metadata:
   annotations:
     # Enable Istio sidecar injection
     sidecar.istio.io/inject: "true"
+    # Enable debug logging for Envoy components
+    sidecar.istio.io/componentLogLevel: "misc:debug,filter:debug"
     # Enable debug logging for proxy
     proxy.istio.io/config: |
       proxyStatsMatcher:
@@ -681,7 +687,6 @@ metadata:
           - "cluster"
           - "listener"
           - "http"
-      componentLogLevel: "misc:debug,filter:debug"
 spec:
   containers:
     - name: app
