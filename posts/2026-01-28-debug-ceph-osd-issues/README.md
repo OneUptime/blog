@@ -167,8 +167,8 @@ ping -c 10 <other-osd-ip>
 sar -n DEV 1 10
 
 # Verify network configuration
-ceph config get osd.* cluster_network
-ceph config get osd.* public_network
+ceph config get osd cluster_network
+ceph config get osd public_network
 ```
 
 **3. Undersized PG Log**
@@ -226,8 +226,8 @@ ceph daemon osd.<id> perf dump | jq '.bluestore'
 # - bluestore_commit_lat: Commit latency
 # - bluestore_read_lat: Read latency
 
-# Check BlueStore allocation
-ceph daemon osd.<id> bluestore allocator dump
+# Check BlueStore allocation (allocator name is required: block, bluefs-db, or bluefs-wal)
+ceph daemon osd.<id> bluestore allocator dump block
 
 # Examine bluefs (BlueStore filesystem) usage
 ceph daemon osd.<id> bluefs stats
@@ -425,8 +425,8 @@ ceph-objectstore-tool --data-path /var/lib/ceph/osd/ceph-<osd-id> --op fsck
 # Force OSD to rejoin cluster after fixes
 ceph osd in <osd-id>
 
-# Mark OSD as up if it's healthy but marked down
-ceph osd up <osd-id>
+# If the noup flag is set and preventing OSDs from being marked up, clear it
+ceph osd unset noup
 ```
 
 ## Proactive Monitoring
@@ -435,7 +435,7 @@ Set up alerts for OSD issues before they become critical:
 
 ```bash
 # Check for OSDs near full
-ceph osd df | awk '$7 > 80 {print "WARNING: OSD." $1 " is " $7 "% full"}'
+ceph osd df -f json | jq -r '.nodes[] | select(.utilization > 80) | "WARNING: OSD.\(.id) is \(.utilization)% full"'
 
 # Monitor for down OSDs
 ceph osd stat | grep -v "all up"
