@@ -192,7 +192,7 @@ trigger-pipeline:
     include:
       - artifact: generated-pipeline.yml
         job: generate-pipeline
-    strategy: depend
+    strategy: mirror
 ```
 
 ## Child Pipelines per Service
@@ -209,7 +209,7 @@ trigger-api:
   stage: trigger
   trigger:
     include: services/api/.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
   rules:
     - changes:
         - services/api/**/*
@@ -219,7 +219,7 @@ trigger-web:
   stage: trigger
   trigger:
     include: services/web/.gitlab-ci.yml
-    strategy: depend
+    strategy: mirror
   rules:
     - changes:
         - services/web/**/*
@@ -302,7 +302,7 @@ test:
     - job: build
       parallel:
         matrix:
-          - SERVICE: ${SERVICE}
+          - SERVICE: ['$[[ matrix.SERVICE ]]']
   rules:
     - changes:
         - services/${SERVICE}/**/*
@@ -337,11 +337,12 @@ For shared dependencies at the root:
 variables:
   npm_config_cache: "$CI_PROJECT_DIR/.npm"
 
-cache:
-  key: ${CI_COMMIT_REF_SLUG}
-  paths:
-    - .npm/
-    - node_modules/
+default:
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - .npm/
+      - node_modules/
 ```
 
 ## Full Pipeline on Main Branch
@@ -527,7 +528,6 @@ variables:
 workflow:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
-    - if: $CI_MERGE_REQUEST_IID
     - changes:
         - services/**/*
         - packages/**/*
