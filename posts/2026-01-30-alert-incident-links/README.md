@@ -65,6 +65,9 @@ CREATE TABLE incidents (
     severity VARCHAR(20) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     resolved_at TIMESTAMP WITH TIME ZONE,
+    aggregation_key VARCHAR(500),
+    last_activity TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    activity_log JSONB DEFAULT '[]'::jsonb,
     root_cause TEXT,
     summary TEXT
 );
@@ -77,8 +80,8 @@ CREATE TABLE alerts (
     severity VARCHAR(20) NOT NULL,
     fired_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     resolved_at TIMESTAMP WITH TIME ZONE,
-    labels JSONB DEFAULT '{}',
-    annotations JSONB DEFAULT '{}'
+    labels JSONB DEFAULT '{}'::jsonb,
+    annotations JSONB DEFAULT '{}'::jsonb
 );
 
 -- Junction table for many-to-many relationship
@@ -92,12 +95,22 @@ CREATE TABLE alert_incident_links (
     UNIQUE(alert_id, incident_id)
 );
 
+CREATE TABLE review_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    incident_id UUID NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+    token UUID NOT NULL UNIQUE,
+    access_level VARCHAR(50) NOT NULL DEFAULT 'team',
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Indexes for fast lookups
 CREATE INDEX idx_links_alert_id ON alert_incident_links(alert_id);
 CREATE INDEX idx_links_incident_id ON alert_incident_links(incident_id);
 CREATE INDEX idx_alerts_fingerprint ON alerts(fingerprint);
 CREATE INDEX idx_alerts_fired_at ON alerts(fired_at);
 CREATE INDEX idx_incidents_status ON incidents(status);
+CREATE INDEX idx_incidents_aggregation_key ON incidents(aggregation_key);
 ```
 
 ### Link Types
@@ -258,8 +271,9 @@ class HistoricalLinkingService {
       throw new Error('Incident not found');
     }
 
+    const incidentStart = new Date(incident.created_at);
     const timeWindow = {
-      start: new Date(incident.created_at.getTime() - 30 * 60000), // 30 min before
+      start: new Date(incidentStart.getTime() - 30 * 60000), // 30 min before
       end: incident.resolved_at || new Date(),
     };
 
