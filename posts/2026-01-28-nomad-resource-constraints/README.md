@@ -14,10 +14,10 @@ Resource constraints in Nomad control how much CPU and memory a task can use and
 
 Nomad uses two key values:
 
-- **CPU reservation**: The baseline CPU shares allocated to the task.
-- **Memory reservation**: The guaranteed memory in MB.
+- **CPU requirement**: The amount of CPU required to run the task, specified in MHz.
+- **Memory requirement**: The memory required in MB. By default, this is also the hard memory limit.
 
-You can also set **memory limit** to cap usage and prevent runaway processes.
+You can also set **memory limit** with `memory_max`. When `memory_max` is set, `memory` becomes the reservation and `memory_max` becomes the hard limit.
 
 ## Basic Resource Settings
 
@@ -42,11 +42,11 @@ job "api" {
 }
 ```
 
-CPU is in MHz shares. Memory is in MB.
+CPU is specified in MHz. Memory is specified in MB.
 
 ## Setting Memory Limits
 
-Use `memory_max` to cap memory. Nomad will kill the task if it exceeds this limit.
+Use `memory_max` to cap memory for supported task drivers. If the task exceeds this hard limit, the operating system typically terminates it.
 
 ```hcl
 resources {
@@ -56,9 +56,9 @@ resources {
 }
 ```
 
-## Burst CPU with `cpu` and `cores`
+## Burst CPU with `cpu` or Reserve `cores`
 
-If you want tighter control, set `cores` for Linux isolation, or rely on CPU shares for flexible usage. In multi-tenant clusters, avoid oversized shares to prevent starvation.
+If you want tighter control, set `cores` to reserve CPU cores exclusively, or rely on `cpu` for flexible usage. You cannot set both `cpu` and `cores` in the same `resources` block. In multi-tenant clusters, avoid oversized CPU reservations to prevent starvation.
 
 ## Tuning Strategy
 
