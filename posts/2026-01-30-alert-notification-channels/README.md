@@ -62,10 +62,17 @@ interface EmailChannelConfig {
 
 class EmailChannel {
   private config: EmailChannelConfig;
+  private emailClient: {
+    send(message: Record<string, unknown>): Promise<void>;
+  };
   private sentCount: Map<string, number> = new Map();
 
-  constructor(config: EmailChannelConfig) {
+  constructor(
+    config: EmailChannelConfig,
+    emailClient: { send(message: Record<string, unknown>): Promise<void> }
+  ) {
     this.config = config;
+    this.emailClient = emailClient;
   }
 
   async send(alert: Alert): Promise<NotificationResult> {
@@ -98,7 +105,7 @@ class EmailChannel {
 
       this.recordSent(alert.fingerprint);
       return { success: true, channel: 'email' };
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
         reason: error.message,
@@ -110,6 +117,10 @@ class EmailChannel {
   private isThrottled(fingerprint: string): boolean {
     const count = this.sentCount.get(fingerprint) || 0;
     return count >= (this.config.throttling?.maxPerHour || Infinity);
+  }
+
+  private recordSent(fingerprint: string): void {
+    this.sentCount.set(fingerprint, (this.sentCount.get(fingerprint) || 0) + 1);
   }
 
   private renderTemplate(template: string, alert: Alert): string {
@@ -173,7 +184,7 @@ class SlackChannel {
       }
 
       return { success: true, channel: 'slack', messageId: response.ts };
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
         reason: error.message,
@@ -183,13 +194,6 @@ class SlackChannel {
   }
 
   private buildMessageBlocks(alert: Alert): SlackBlock[] {
-    const severityColor = {
-      critical: '#ff0000',
-      high: '#ff6b00',
-      medium: '#ffa500',
-      low: '#00ff00',
-    }[alert.severity] || '#808080';
-
     return [
       {
         type: 'header',
@@ -277,6 +281,48 @@ class SlackChannel {
 
     return mentions.length > 0 ? mentions.join(' ') + ' ' : '';
   }
+
+  private async postMessage(
+    message: Record<string, unknown>
+  ): Promise<{ ts?: string }> {
+    if (this.config.token) {
+      const response = await fetch('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.config.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+      const result = await response.json();
+      if (!result.ok) {
+        throw new Error(result.error || 'Slack API request failed');
+      }
+      return { ts: result.ts };
+    }
+
+    if (this.config.webhookUrl) {
+      const webhookMessage = { ...message };
+      delete webhookMessage.channel;
+      delete webhookMessage.username;
+      delete webhookMessage.icon_emoji;
+      const response = await fetch(this.config.webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(webhookMessage),
+      });
+      if (!response.ok) {
+        throw new Error(`Slack webhook failed with ${response.status}`);
+      }
+      return {};
+    }
+
+    throw new Error('Slack token or webhook URL is required');
+  }
+
+  private isRetryableError(error: Error): boolean {
+    return /rate_limited|timeout|5\d\d/.test(error.message);
+  }
 }
 ```
 
@@ -328,7 +374,7 @@ class PagerDutyChannel {
         channel: 'pagerduty',
         incidentKey: result.dedup_key,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
         reason: error.message,
@@ -416,23 +462,22 @@ flowchart LR
 ```typescript
 interface RoutingRule {
   id: string;
-  name: string;
+  name?: string;
   priority: number;
   conditions: RuleCondition[];
   channels: string[];
-  enabled: boolean;
+  enabled?: boolean;
   schedule?: Schedule;
 }
 
 interface RuleCondition {
-  field: 'severity' | 'service' | 'team' | 'labels' | 'title';
+  field: 'severity' | 'service' | 'team' | 'title' | `labels.${string}`;
   operator: 'equals' | 'contains' | 'regex' | 'in';
   value: string | string[];
 }
 
 class AlertRouter {
   private rules: RoutingRule[] = [];
-  private channels: Map<string, NotificationChannel> = new Map();
   private defaultChannels: string[] = ['email'];
 
   addRule(rule: RoutingRule): void {
@@ -441,45 +486,25 @@ class AlertRouter {
     this.rules.sort((a, b) => a.priority - b.priority);
   }
 
-  registerChannel(name: string, channel: NotificationChannel): void {
-    this.channels.set(name, channel);
+  setDefaultChannels(channels: string[]): void {
+    this.defaultChannels = channels;
   }
 
   async route(alert: Alert): Promise<RoutingResult> {
     const matchedRule = this.findMatchingRule(alert);
     const channelNames = matchedRule?.channels || this.defaultChannels;
 
-    const results: ChannelResult[] = [];
-
-    for (const channelName of channelNames) {
-      const channel = this.channels.get(channelName);
-      if (!channel) {
-        results.push({
-          channel: channelName,
-          success: false,
-          reason: 'Channel not found',
-        });
-        continue;
-      }
-
-      const result = await channel.send(alert);
-      results.push({
-        channel: channelName,
-        ...result,
-      });
-    }
-
     return {
       alert,
       matchedRule: matchedRule?.id,
-      results,
+      channels: channelNames,
       timestamp: new Date(),
     };
   }
 
   private findMatchingRule(alert: Alert): RoutingRule | null {
     for (const rule of this.rules) {
-      if (!rule.enabled) continue;
+      if (rule.enabled === false) continue;
 
       // Check schedule
       if (rule.schedule && !this.isWithinSchedule(rule.schedule)) {
@@ -534,8 +559,16 @@ class AlertRouter {
 
   private isWithinSchedule(schedule: Schedule): boolean {
     const now = new Date();
-    const currentHour = now.getUTCHours();
-    const currentDay = now.getUTCDay();
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: schedule.timezone || 'UTC',
+      weekday: 'short',
+      hour: 'numeric',
+      hour12: false,
+    }).formatToParts(now);
+    const currentHour = Number(parts.find(p => p.type === 'hour')?.value);
+    const weekday = parts.find(p => p.type === 'weekday')?.value || 'Sun';
+    const currentDay = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+      .indexOf(weekday);
 
     // Check if current time is within active hours
     if (schedule.activeHours) {
@@ -645,6 +678,14 @@ class FallbackDispatcher {
     setInterval(() => this.checkChannelHealth(), 60000);
   }
 
+  registerChannel(name: string, channel: NotificationChannel): void {
+    this.channels.set(name, channel);
+  }
+
+  setFallbackConfig(channelName: string, config: FallbackConfig): void {
+    this.fallbackConfigs.set(channelName, config);
+  }
+
   async dispatch(
     alert: Alert,
     channelName: string
@@ -676,7 +717,7 @@ class FallbackDispatcher {
           };
         }
         lastError = new Error(result.reason);
-      } catch (error) {
+      } catch (error: any) {
         lastError = error;
       }
 
@@ -760,7 +801,7 @@ class FallbackDispatcher {
           consecutiveFailures: healthy ? 0 :
             (this.channelHealth.get(name)?.consecutiveFailures || 0) + 1,
         });
-      } catch (error) {
+      } catch (error: any) {
         this.channelHealth.set(name, {
           healthy: false,
           lastCheck: new Date(),
@@ -898,7 +939,7 @@ class ChannelHealthMonitor {
 
     // Send alert through a backup channel
     // This should use a different path than normal alerts
-    this.emergencyNotify({
+    emergencyNotify({
       title: `Notification Channel Degraded: ${channelName}`,
       description: issues.join('; '),
       severity: 'high',
@@ -1147,8 +1188,6 @@ class ChannelRateLimiter {
   }
 
   private getRetryAfter(state: RateLimitState): Date {
-    const now = new Date();
-
     if (state.minuteCount >= this.config.maxPerMinute) {
       return state.minuteReset;
     }
@@ -1191,6 +1230,10 @@ interface ChannelTestResult {
 class ChannelValidator {
   private channels: Map<string, NotificationChannel> = new Map();
 
+  registerChannel(name: string, channel: NotificationChannel): void {
+    this.channels.set(name, channel);
+  }
+
   async testChannel(channelName: string): Promise<ChannelTestResult> {
     const channel = this.channels.get(channelName);
     if (!channel) {
@@ -1219,7 +1262,7 @@ class ChannelValidator {
           testAlertId: testAlert.id,
         },
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         channel: channelName,
         success: false,
@@ -1260,9 +1303,11 @@ class ChannelValidator {
         if (!config.channel) {
           errors.push('Slack channel is required');
         }
-        if (config.channel && !config.channel.startsWith('#') &&
-            !config.channel.startsWith('C')) {
-          warnings.push('Slack channel should start with # or be a channel ID');
+        if (config.channel &&
+            !/^(#|[CDGU][A-Z0-9]+)/.test(config.channel)) {
+          warnings.push(
+            'Slack channel should be a channel name, channel ID, DM ID, or user ID'
+          );
         }
         break;
 
@@ -1474,7 +1519,10 @@ class NotificationService {
         if (dispatchResult.success) {
           this.healthMonitor.recordSuccess(channelName, latencyMs);
         } else {
-          this.healthMonitor.recordFailure(channelName, dispatchResult.error);
+          this.healthMonitor.recordFailure(
+            channelName,
+            dispatchResult.error || 'dispatch failed'
+          );
         }
 
         results.push(dispatchResult);
@@ -1489,7 +1537,7 @@ class NotificationService {
         results,
         latencyMs: Date.now() - startTime,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         success: false,
         alert,
@@ -1548,22 +1596,24 @@ const notificationService = new NotificationService({
   channels: {
     'pagerduty': {
       type: 'pagerduty',
-      integrationKey: process.env.PAGERDUTY_KEY,
+      integrationKey: process.env.PAGERDUTY_KEY!,
     },
     'slack-critical': {
       type: 'slack',
-      webhookUrl: process.env.SLACK_CRITICAL_WEBHOOK,
+      webhookUrl: process.env.SLACK_CRITICAL_WEBHOOK!,
       channel: '#incidents',
       mentionGroups: ['oncall-team'],
     },
     'slack-alerts': {
       type: 'slack',
-      webhookUrl: process.env.SLACK_ALERTS_WEBHOOK,
+      webhookUrl: process.env.SLACK_ALERTS_WEBHOOK!,
       channel: '#alerts',
     },
     'email-oncall': {
       type: 'email',
       recipients: ['oncall@company.com'],
+      subjectTemplate: '[{{severity}}] {{title}}',
+      bodyTemplate: '<h1>{{title}}</h1><p>{{description}}</p>',
     },
   },
   routing: {
