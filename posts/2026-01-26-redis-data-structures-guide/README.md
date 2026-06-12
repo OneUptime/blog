@@ -63,7 +63,7 @@ name = r.get('user:1001:name')  # Returns: 'Alice'
 r.setex('session:abc123', 3600, 'user_data_here')  # Expires in 1 hour
 
 # Set only if key doesn't exist (useful for locks)
-was_set = r.setnx('lock:resource', 'owner_id')  # Returns True if set, False if key exists
+was_set = r.set('lock:resource', 'owner_id', nx=True)  # Returns True if set, None if key exists
 ```
 
 ### Atomic Counters
@@ -152,11 +152,13 @@ def process_tasks_reliably():
     If worker crashes, tasks can be recovered from processing list.
     """
     while True:
-        # BRPOPLPUSH: pop from source, push to destination
-        task_json = r.brpoplpush(
+        # BLMOVE: pop from source right, push to destination left
+        task_json = r.blmove(
             'tasks:pending',
             'tasks:processing',
-            timeout=30
+            30,
+            src='RIGHT',
+            dest='LEFT'
         )
         if task_json:
             try:
@@ -212,6 +214,8 @@ def add_tags(article_id, tags):
     key = f'article:{article_id}:tags'
     if tags:
         r.sadd(key, *tags)
+        for tag in tags:
+            r.sadd(f'tag:{tag}:articles', article_id)
 
 def get_tags(article_id):
     """
@@ -411,12 +415,12 @@ def increment_score(leaderboard_name, user_id, points):
 def get_top_players(leaderboard_name, count=10):
     """
     Get top N players with scores.
-    ZREVRANGE returns highest scores first.
+    ZRANGE with desc=True returns highest scores first.
     """
     key = f'leaderboard:{leaderboard_name}'
 
     # Returns list of (member, score) tuples
-    return r.zrevrange(key, 0, count - 1, withscores=True)
+    return r.zrange(key, 0, count - 1, desc=True, withscores=True)
 
 def get_player_rank(leaderboard_name, user_id):
     """
@@ -441,7 +445,7 @@ def get_players_around(leaderboard_name, user_id, count=5):
     start = max(0, rank - count)
     end = rank + count
 
-    return r.zrevrange(key, start, end, withscores=True)
+    return r.zrange(key, start, end, desc=True, withscores=True)
 ```
 
 ### Scheduled Jobs
@@ -462,16 +466,17 @@ def schedule_job(job_id, run_at_timestamp, job_data):
 def get_due_jobs(batch_size=100):
     """
     Get jobs that are due to run.
-    Uses ZRANGEBYSCORE to get items with score <= now.
+    Uses ZRANGE with byscore=True to get items with score <= now.
     """
     now = time.time()
 
     # Get jobs with score (timestamp) <= current time
-    jobs = r.zrangebyscore(
+    jobs = r.zrange(
         'jobs:scheduled',
         '-inf',  # Minimum score
         now,     # Maximum score (current time)
-        start=0,
+        byscore=True,
+        offset=0,
         num=batch_size,
         withscores=True
     )
@@ -640,7 +645,7 @@ def consume_events(stream_name, group_name, consumer_name, batch_size=10):
                     r.xack(stream, group_name, event_id)
                 except Exception as e:
                     log_error(e, event_id, fields)
-                    # Don't acknowledge - event will be redelivered
+                    # Don't acknowledge - event stays pending for recovery
 
 def recover_pending_events(stream_name, group_name, consumer_name, min_idle_time=60000):
     """
