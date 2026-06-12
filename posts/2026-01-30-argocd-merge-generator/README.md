@@ -12,7 +12,7 @@ The Merge Generator in ArgoCD ApplicationSets lets you combine parameters from m
 
 ## What Is the Merge Generator?
 
-The Merge Generator takes the output of multiple child generators and merges them based on a common key. Think of it like a SQL JOIN operation where you combine data from different tables based on a shared column.
+The Merge Generator takes the output of the first child generator as the base, then merges matching parameter sets from subsequent generators based on a common key. Think of it like applying keyed overrides to a base set of rows.
 
 ```mermaid
 flowchart LR
@@ -170,9 +170,9 @@ flowchart TB
 
 ## Merging Git Generator with List Generator
 
-A powerful pattern is combining a Git Generator that discovers services with a List Generator that provides deployment targets.
+A powerful pattern is combining a Git Generator that discovers services with a List Generator that provides service-specific configuration.
 
-This example discovers all services in a Git repository and deploys them to specified environments:
+This example discovers services in a Git repository and deploys them with specified settings:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -184,7 +184,7 @@ spec:
   generators:
     - merge:
         mergeKeys:
-          - service
+          - path.basename
         generators:
           # Discover services from Git
           - git:
@@ -192,29 +192,27 @@ spec:
               revision: HEAD
               directories:
                 - path: 'services/*'
-              values:
-                service: '{{path.basename}}'
           # Provide service-specific configurations
           - list:
               elements:
-                - service: api-gateway
+                - path.basename: api-gateway
                   port: "8080"
                   healthPath: /health
-                - service: user-service
+                - path.basename: user-service
                   port: "3000"
                   healthPath: /api/health
-                - service: order-service
+                - path.basename: order-service
                   port: "8000"
                   healthPath: /healthz
   template:
     metadata:
-      name: '{{service}}'
+      name: '{{path.basename}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/services.git
         targetRevision: HEAD
-        path: 'services/{{service}}'
+        path: 'services/{{path.basename}}'
         helm:
           parameters:
             - name: service.port
@@ -223,7 +221,7 @@ spec:
               value: '{{healthPath}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{service}}'
+        namespace: '{{path.basename}}'
 ```
 
 ## Using Multiple Merge Keys
@@ -415,7 +413,7 @@ spec:
 
 ## Handling Missing Keys
 
-When a merge key does not exist in one of the generators, the entry is excluded from the merged result. Use this behavior to your advantage for conditional deployments.
+When a merge key from a later generator does not match an entry from the base generator, that later generator's parameter set is discarded. Use this behavior to your advantage for conditional deployments by making the configured items the base generator.
 
 Only services with matching configuration will be deployed:
 
@@ -429,35 +427,33 @@ spec:
   generators:
     - merge:
         mergeKeys:
-          - service
+          - path.basename
         generators:
-          # All services discovered from Git
+          # Only configured services
+          - list:
+              elements:
+                - path.basename: api-gateway
+                  enabled: "true"
+                - path.basename: user-service
+                  enabled: "true"
+                # order-service is not listed, so it won't be deployed
+          # Services discovered from Git
           - git:
               repoURL: https://github.com/myorg/services.git
               revision: HEAD
               directories:
                 - path: 'services/*'
-              values:
-                service: '{{path.basename}}'
-          # Only configured services (others will be excluded)
-          - list:
-              elements:
-                - service: api-gateway
-                  enabled: "true"
-                - service: user-service
-                  enabled: "true"
-                # order-service is not listed, so it won't be deployed
   template:
     metadata:
-      name: '{{service}}'
+      name: '{{path.basename}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/services.git
-        path: 'services/{{service}}'
+        path: 'services/{{path.basename}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{service}}'
+        namespace: '{{path.basename}}'
 ```
 
 ## Best Practices
@@ -511,7 +507,7 @@ Ensure merge key values match exactly across generators:
 Before applying, use the ArgoCD CLI to preview generated applications:
 
 ```bash
-argocd appset generate ./applicationset.yaml --dry-run
+argocd appset generate ./applicationset.yaml
 ```
 
 ### 5. Start Simple
