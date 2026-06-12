@@ -69,7 +69,7 @@ sequenceDiagram
     Extension->>LambdaService: Register extension
     LambdaService->>Runtime: Start runtime
     Runtime->>LambdaService: Register runtime
-    Extension->>LambdaService: Ready (INIT complete)
+    Extension->>LambdaService: GET /extension/event/next (INIT complete)
 
     Note over LambdaService,Function: INVOKE Phase
     LambdaService->>Extension: INVOKE event
@@ -77,7 +77,7 @@ sequenceDiagram
     Runtime->>Function: Execute handler
     Function-->>Runtime: Return response
     Runtime->>LambdaService: Response
-    Extension->>LambdaService: Ready for next invoke
+    Extension->>LambdaService: GET /extension/event/next
 
     Note over LambdaService,Function: SHUTDOWN Phase
     LambdaService->>Extension: SHUTDOWN event
@@ -92,7 +92,7 @@ sequenceDiagram
 ```text
 my-extension/
 ├── extensions/
-│   └── my-extension          # Executable (must match directory name)
+│   └── my-extension          # Executable (must match Lambda-Extension-Name)
 ├── extension.go              # Extension source code
 └── Makefile
 ```
@@ -167,9 +167,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	extensionClient = &http.Client{
-		Timeout: 30 * time.Second,
-	}
+	extensionClient = &http.Client{}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -505,14 +503,14 @@ func subscribeTelemetry(extensionID string) error {
 	url := fmt.Sprintf("http://%s/2022-07-01/telemetry", runtimeAPI)
 
 	subscription := TelemetrySubscription{
-		SchemaVersion: "2022-07-01",
+		SchemaVersion: "2025-01-29",
 		Types:         []string{"platform", "function"},
 	}
 	subscription.Buffering.MaxItems = 1000
 	subscription.Buffering.MaxBytes = 256 * 1024
 	subscription.Buffering.TimeoutMs = 1000
 	subscription.Destination.Protocol = "HTTP"
-	subscription.Destination.URI = fmt.Sprintf("http://sandbox:%d", telemetryListenerPort)
+	subscription.Destination.URI = fmt.Sprintf("http://sandbox.localdomain:%d", telemetryListenerPort)
 
 	body, _ := json.Marshal(subscription)
 
