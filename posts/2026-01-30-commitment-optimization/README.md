@@ -68,48 +68,65 @@ import boto3
 import pandas as pd
 from datetime import datetime, timedelta
 
-def get_ec2_usage_history(days=90):
+def get_ec2_usage_history(days=90, granularity='DAILY'):
     """
     Extract EC2 usage patterns from AWS Cost Explorer.
-    Returns hourly normalized usage by instance family.
+    Returns normalized usage per hour by instance family.
+    Use DAILY for 90-day lookbacks; Cost Explorer hourly granularity
+    is hosted for the past 14 days.
     """
+    if granularity == 'HOURLY' and days > 14:
+        raise ValueError(
+            'Cost Explorer hourly granularity is available for the past 14 days. '
+            'Use DAILY for longer lookbacks.'
+        )
+
     client = boto3.client('ce')
 
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
 
-    response = client.get_cost_and_usage(
-        TimePeriod={
+    request = {
+        'TimePeriod': {
             'Start': start_date.strftime('%Y-%m-%d'),
             'End': end_date.strftime('%Y-%m-%d')
         },
-        Granularity='HOURLY',
-        Metrics=['UsageQuantity', 'NormalizedUsageAmount'],
-        GroupBy=[
+        'Granularity': granularity,
+        'Metrics': ['NormalizedUsageAmount'],
+        'GroupBy': [
             {'Type': 'DIMENSION', 'Key': 'INSTANCE_TYPE_FAMILY'},
             {'Type': 'DIMENSION', 'Key': 'REGION'}
         ],
-        Filter={
+        'Filter': {
             'Dimensions': {
                 'Key': 'SERVICE',
                 'Values': ['Amazon Elastic Compute Cloud - Compute']
             }
         }
-    )
+    }
 
     # Parse response into DataFrame
     records = []
-    for result in response['ResultsByTime']:
-        timestamp = result['TimePeriod']['Start']
-        for group in result['Groups']:
-            records.append({
-                'timestamp': timestamp,
-                'instance_family': group['Keys'][0],
-                'region': group['Keys'][1],
-                'normalized_hours': float(
+    while True:
+        response = client.get_cost_and_usage(**request)
+        period_hours = 1 if granularity == 'HOURLY' else 24
+
+        for result in response['ResultsByTime']:
+            timestamp = result['TimePeriod']['Start']
+            for group in result['Groups']:
+                normalized_amount = float(
                     group['Metrics']['NormalizedUsageAmount']['Amount']
                 )
-            })
+                records.append({
+                    'timestamp': timestamp,
+                    'instance_family': group['Keys'][0],
+                    'region': group['Keys'][1],
+                    'normalized_hours': normalized_amount / period_hours
+                })
+
+        if 'NextPageToken' not in response:
+            break
+        request['NextPageToken'] = response['NextPageToken']
 
     return pd.DataFrame(records)
 
@@ -138,12 +155,12 @@ def calculate_baseline_usage(df, percentile=10):
 ### Step 2: Identify Commitment Candidates
 
 ```python
-def identify_commitment_candidates(baseline_df, min_baseline_hours=720):
+def identify_commitment_candidates(baseline_df, min_baseline_hours=1):
     """
     Filter for workloads suitable for commitments.
 
     Criteria:
-    - Minimum baseline usage (720 hours = 1 instance running 24/7 for 30 days)
+    - Minimum baseline usage (1 normalized unit/hour = roughly one normalized unit running continuously)
     - Low variability (coefficient of variation < 0.3)
     - Consistent presence across the analysis period
     """
@@ -154,7 +171,7 @@ def identify_commitment_candidates(baseline_df, min_baseline_hours=720):
 
     # Calculate potential savings
     # Assuming 40% average savings from commitments
-    candidates['monthly_on_demand_cost'] = candidates['mean'] * 0.10  # Example rate
+    candidates['monthly_on_demand_cost'] = candidates['mean'] * 730 * 0.10  # Example hourly rate
     candidates['potential_monthly_savings'] = candidates['monthly_on_demand_cost'] * 0.40
 
     return candidates.sort_values('potential_monthly_savings', ascending=False)
@@ -240,7 +257,7 @@ def calculate_conservative_commitment(usage_df, safety_margin=0.10):
 
     # Calculate coverage and savings
     total_usage = usage_df['normalized_hours'].sum()
-    committed_usage = min(recommended_commitment * len(usage_df), total_usage)
+    committed_usage = usage_df['normalized_hours'].clip(upper=recommended_commitment).sum()
 
     coverage_rate = committed_usage / total_usage
 
