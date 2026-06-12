@@ -95,7 +95,7 @@ groups:
   - name: api-alerts
     rules:
       - alert: APIHighLatency
-        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 0.5
+        expr: histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 0.5
         labels:
           severity: warning
           category: api-performance
@@ -105,7 +105,7 @@ groups:
           playbook_url: "https://wiki.company.com/playbooks/api-performance"
 
       - alert: APIHighErrorRate
-        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.01
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.01
         labels:
           severity: critical
           category: api-errors
@@ -395,7 +395,7 @@ def enrich_alert_with_playbook(alert: dict) -> dict:
         timestamp=datetime.now()
     )
 
-    alert['annotations']['playbook_url'] = resolver.resolve(context)
+    alert.setdefault('annotations', {})['playbook_url'] = resolver.resolve(context)
     return alert
 ```
 
@@ -454,14 +454,14 @@ diagnostics:
 automated_actions:
   - name: terminate_idle_connections
     description: "Kill connections idle for more than 10 minutes"
-    condition: "connection_count > 150 AND idle_connection_count > 50"
+    condition: "connection_count > 150 and idle_connection_count > 50"
     action:
       type: sql
       query: |
         SELECT pg_terminate_backend(pid)
         FROM pg_stat_activity
         WHERE state = 'idle'
-        AND query_start < now() - interval '10 minutes';
+        AND state_change < now() - interval '10 minutes';
     requires_approval: false
     cooldown_minutes: 15
 
@@ -619,7 +619,7 @@ class PlaybookEngine:
                 return False
 
         # Evaluate condition expression
-        condition = action.get('condition', 'true')
+        condition = action.get('condition', 'True')
         return self._evaluate_condition(condition, alert)
 
     def _evaluate_condition(self, condition: str, alert: dict) -> bool:
@@ -633,6 +633,12 @@ class PlaybookEngine:
             **alert.get('annotations', {}),
             'value': alert.get('value', 0),
         }
+        for key, value in list(context.items()):
+            if isinstance(value, str):
+                try:
+                    context[key] = float(value)
+                except ValueError:
+                    pass
 
         # Simple evaluation - in production, use a sandboxed evaluator
         try:
@@ -944,53 +950,68 @@ class PlaybookAnalytics:
 
 Create a dashboard that shows playbook health at a glance.
 
-```yaml
-# grafana-dashboard.yaml
-# Dashboard definition for playbook effectiveness monitoring
-
-apiVersion: 1
-
-dashboards:
-  - name: Playbook Effectiveness
-    panels:
-      - title: "Resolution Success Rate by Playbook"
-        type: bar-gauge
-        targets:
-          - expr: |
-              playbook_resolution_success_rate{} * 100
-        fieldConfig:
-          defaults:
-            unit: percent
-            thresholds:
-              - value: 0
-                color: red
-              - value: 70
-                color: yellow
-              - value: 90
-                color: green
-
-      - title: "Average Time to Resolution"
-        type: timeseries
-        targets:
-          - expr: |
-              avg(playbook_time_to_resolution_minutes) by (playbook_name)
-        fieldConfig:
-          defaults:
-            unit: minutes
-
-      - title: "Stale Playbooks"
-        type: table
-        targets:
-          - expr: |
-              playbook_days_since_update > 90
-        description: "Playbooks not updated in 90+ days"
-
-      - title: "Coverage Gaps"
-        type: stat
-        targets:
-          - expr: |
-              count(alerts_without_playbook)
-        description: "Alerts that fired without linked playbooks"
+```json
+{
+  "title": "Playbook Effectiveness",
+  "panels": [
+    {
+      "title": "Resolution Success Rate by Playbook",
+      "type": "bargauge",
+      "targets": [
+        {
+          "expr": "playbook_resolution_success_rate{} * 100"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 70, "color": "yellow" },
+              { "value": 90, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Average Time to Resolution",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "avg(playbook_time_to_resolution_minutes) by (playbook_name)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m"
+        }
+      }
+    },
+    {
+      "title": "Stale Playbooks",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "playbook_days_since_update > 90"
+        }
+      ],
+      "description": "Playbooks not updated in 90+ days"
+    },
+    {
+      "title": "Coverage Gaps",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "count(alerts_without_playbook)"
+        }
+      ],
+      "description": "Alerts that fired without linked playbooks"
+    }
+  ]
+}
 ```
 
 ## Best Practices Summary
