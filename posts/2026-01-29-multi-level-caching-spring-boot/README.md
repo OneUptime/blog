@@ -8,7 +8,7 @@ Description: Learn how to implement multi-level caching in Spring Boot using loc
 
 ---
 
-Caching is one of the most effective ways to improve application performance. A single cache layer helps, but combining a fast local cache with a shared distributed cache gives you the best of both worlds: sub-millisecond local access for hot data and cross-instance consistency for less frequently accessed items.
+Caching is one of the most effective ways to improve application performance. A single cache layer helps, but combining a fast local cache with a shared distributed cache gives you the best of both worlds: sub-millisecond local access for hot data and a shared cache layer for less frequently accessed items.
 
 This guide shows you how to implement a two-level caching strategy in Spring Boot using Caffeine for local caching and Redis for distributed caching.
 
@@ -24,7 +24,7 @@ Each caching layer has trade-offs:
 | Distributed (Redis) | ~5-10ms | Yes | Separate infrastructure |
 | Database | ~50-100ms | Yes | N/A |
 
-Multi-level caching checks the local cache first (fastest), then the distributed cache, and finally the database. This approach minimizes latency while maintaining consistency across application instances.
+Multi-level caching checks the local cache first (fastest), then the distributed cache, and finally the database. This approach minimizes latency while using Redis and local-cache invalidation to keep application instances reasonably fresh.
 
 ```mermaid
 flowchart LR
@@ -70,6 +70,18 @@ Add the required dependencies:
         <groupId>com.fasterxml.jackson.core</groupId>
         <artifactId>jackson-databind</artifactId>
     </dependency>
+
+    <!-- Required for Lettuce connection pooling -->
+    <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-pool2</artifactId>
+    </dependency>
+
+    <!-- Actuator includes Micrometer for cache metrics -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
 </dependencies>
 ```
 
@@ -83,19 +95,17 @@ Define cache configuration in `application.yml`:
 # application.yml
 
 spring:
-  cache:
-    type: none  # We'll configure custom cache managers
-
-  redis:
-    host: ${REDIS_HOST:localhost}
-    port: ${REDIS_PORT:6379}
-    password: ${REDIS_PASSWORD:}
-    timeout: 2000ms
-    lettuce:
-      pool:
-        max-active: 10
-        max-idle: 5
-        min-idle: 2
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 10
+          max-idle: 5
+          min-idle: 2
 
 # Custom cache configuration
 cache:
@@ -120,8 +130,10 @@ Create a custom cache manager that combines both cache layers:
 // Configuration for two-level caching with Caffeine and Redis
 package com.example.config;
 
+import com.example.cache.MultiLevelCacheManager;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.caffeine.CaffeineCacheManager;
@@ -183,8 +195,8 @@ public class MultiLevelCacheConfig {
     @Bean
     @Primary
     public CacheManager multiLevelCacheManager(
-            CacheManager localCacheManager,
-            CacheManager redisCacheManager) {
+            @Qualifier("localCacheManager") CacheManager localCacheManager,
+            @Qualifier("redisCacheManager") CacheManager redisCacheManager) {
         return new MultiLevelCacheManager(localCacheManager, redisCacheManager);
     }
 }
@@ -400,6 +412,8 @@ package com.example.service;
 
 import com.example.entity.Product;
 import com.example.repository.ProductRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
@@ -409,6 +423,8 @@ import java.util.List;
 
 @Service
 public class ProductService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProductService.class);
 
     private final ProductRepository productRepository;
 
@@ -468,7 +484,9 @@ When running multiple application instances, you need to invalidate local caches
 // Publishes cache invalidation events to Redis
 package com.example.cache;
 
-import org.springframework.data.redis.core.RedisTemplate;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -476,23 +494,33 @@ public class CacheInvalidationPublisher {
 
     private static final String CACHE_INVALIDATION_CHANNEL = "cache:invalidation";
 
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
+    private final ObjectMapper objectMapper;
 
-    public CacheInvalidationPublisher(RedisTemplate<String, Object> redisTemplate) {
+    public CacheInvalidationPublisher(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
         this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
     }
 
     // Publish invalidation event for a specific key
-    public void publishInvalidation(String cacheName, Object key) {
+    public void publishInvalidation(String cacheName, Object key) throws JsonProcessingException {
         CacheInvalidationEvent event = new CacheInvalidationEvent(cacheName, key.toString());
-        redisTemplate.convertAndSend(CACHE_INVALIDATION_CHANNEL, event);
+        redisTemplate.convertAndSend(CACHE_INVALIDATION_CHANNEL, objectMapper.writeValueAsString(event));
     }
 
     // Publish invalidation for all entries in a cache
-    public void publishClearCache(String cacheName) {
+    public void publishClearCache(String cacheName) throws JsonProcessingException {
         CacheInvalidationEvent event = new CacheInvalidationEvent(cacheName, null);
-        redisTemplate.convertAndSend(CACHE_INVALIDATION_CHANNEL, event);
+        redisTemplate.convertAndSend(CACHE_INVALIDATION_CHANNEL, objectMapper.writeValueAsString(event));
     }
+}
+```
+
+```java
+// CacheInvalidationEvent.java
+package com.example.cache;
+
+public record CacheInvalidationEvent(String cacheName, String key) {
 }
 ```
 
@@ -501,19 +529,30 @@ public class CacheInvalidationPublisher {
 // Listens for cache invalidation events and clears local cache
 package com.example.cache;
 
-import com.github.benmanes.caffeine.cache.Cache;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cache.CacheManager;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+
 @Component
 public class CacheInvalidationListener implements MessageListener {
 
-    private final CacheManager localCacheManager;
+    private static final Logger log = LoggerFactory.getLogger(CacheInvalidationListener.class);
 
-    public CacheInvalidationListener(CacheManager localCacheManager) {
+    private final CacheManager localCacheManager;
+    private final ObjectMapper objectMapper;
+
+    public CacheInvalidationListener(
+            @Qualifier("localCacheManager") CacheManager localCacheManager,
+            ObjectMapper objectMapper) {
         this.localCacheManager = localCacheManager;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -521,16 +560,16 @@ public class CacheInvalidationListener implements MessageListener {
         try {
             CacheInvalidationEvent event = deserialize(message.getBody());
 
-            org.springframework.cache.Cache cache = localCacheManager.getCache(event.getCacheName());
+            org.springframework.cache.Cache cache = localCacheManager.getCache(event.cacheName());
             if (cache != null) {
-                if (event.getKey() != null) {
+                if (event.key() != null) {
                     // Evict specific key
-                    cache.evict(event.getKey());
-                    log.debug("Evicted local cache entry: {} - {}", event.getCacheName(), event.getKey());
+                    cache.evict(event.key());
+                    log.debug("Evicted local cache entry: {} - {}", event.cacheName(), event.key());
                 } else {
                     // Clear entire cache
                     cache.clear();
-                    log.debug("Cleared local cache: {}", event.getCacheName());
+                    log.debug("Cleared local cache: {}", event.cacheName());
                 }
             }
         } catch (Exception e) {
@@ -538,10 +577,8 @@ public class CacheInvalidationListener implements MessageListener {
         }
     }
 
-    private CacheInvalidationEvent deserialize(byte[] body) {
-        // Deserialize using Jackson or your preferred method
-        ObjectMapper mapper = new ObjectMapper();
-        return mapper.readValue(body, CacheInvalidationEvent.class);
+    private CacheInvalidationEvent deserialize(byte[] body) throws IOException {
+        return objectMapper.readValue(body, CacheInvalidationEvent.class);
     }
 }
 ```
@@ -594,6 +631,7 @@ import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.caffeine.CaffeineCache;
 import org.springframework.stereotype.Component;
@@ -605,7 +643,7 @@ public class CacheMetricsService {
     private final MeterRegistry meterRegistry;
 
     public CacheMetricsService(
-            CacheManager localCacheManager,
+            @Qualifier("localCacheManager") CacheManager localCacheManager,
             MeterRegistry meterRegistry) {
         this.localCacheManager = localCacheManager;
         this.meterRegistry = meterRegistry;
@@ -658,19 +696,35 @@ public class CacheMetricsService {
         org.springframework.cache.Cache cache = localCacheManager.getCache(cacheName);
         if (cache instanceof CaffeineCache) {
             CacheStats stats = ((CaffeineCache) cache).getNativeCache().stats();
-            return CacheStatistics.builder()
-                .cacheName(cacheName)
-                .hitCount(stats.hitCount())
-                .missCount(stats.missCount())
-                .hitRate(stats.hitRate())
-                .evictionCount(stats.evictionCount())
-                .loadSuccessCount(stats.loadSuccessCount())
-                .loadFailureCount(stats.loadFailureCount())
-                .averageLoadPenalty(stats.averageLoadPenalty())
-                .build();
+            return new CacheStatistics(
+                cacheName,
+                stats.hitCount(),
+                stats.missCount(),
+                stats.hitRate(),
+                stats.evictionCount(),
+                stats.loadSuccessCount(),
+                stats.loadFailureCount(),
+                stats.averageLoadPenalty()
+            );
         }
         return null;
     }
+}
+```
+
+```java
+// CacheStatistics.java
+package com.example.cache;
+
+public record CacheStatistics(
+        String cacheName,
+        long hitCount,
+        long missCount,
+        double hitRate,
+        long evictionCount,
+        long loadSuccessCount,
+        long loadFailureCount,
+        double averageLoadPenalty) {
 }
 ```
 
@@ -696,7 +750,7 @@ public class CacheMetricsService {
 
 ## Conclusion
 
-Multi-level caching combines the speed of local caches with the consistency of distributed caches. Caffeine provides sub-millisecond local access for hot data, while Redis ensures all application instances see the same cached values. Start with simple caching and add the second level when you need either better performance or cross-instance consistency.
+Multi-level caching combines the speed of local caches with the shared state of distributed caches. Caffeine provides sub-millisecond local access for hot data, while Redis gives all application instances a common distributed cache layer. Start with simple caching and add the second level when you need either better performance or cross-instance cache sharing.
 
 ---
 
