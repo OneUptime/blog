@@ -19,7 +19,7 @@ Tekton exposes metrics and events that help you track pipeline success rates, du
 
 ## Enable Metrics Scraping
 
-Tekton exposes Prometheus metrics by default. Configure Prometheus to scrape the Tekton controller and webhook services.
+Tekton exposes Prometheus metrics by default. Configure Prometheus to scrape the Tekton controller service on port 9090.
 
 ## Use Grafana Dashboards
 
