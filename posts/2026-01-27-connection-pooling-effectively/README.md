@@ -114,9 +114,8 @@ public class DatabasePool {
         config.setKeepaliveTime(300000);     // 5min keepalive interval
 
         // Performance settings
-        config.addDataSourceProperty("cachePrepStmts", "true");
-        config.addDataSourceProperty("prepStmtCacheSize", "250");
-        config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
+        config.addDataSourceProperty("preparedStatementCacheQueries", "250");
+        config.addDataSourceProperty("preparedStatementCacheSizeMiB", "5");
 
         // Monitoring - expose pool metrics
         config.setPoolName("MyAppPool");
@@ -188,7 +187,7 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
 
   // Pool configuration
-  min: 5,                        // Minimum connections in pool
+  min: 5,                        // Minimum idle clients to keep before eviction
   max: 20,                       // Maximum connections in pool
   idleTimeoutMillis: 30000,      // Close idle connections after 30s
   connectionTimeoutMillis: 5000, // Fail if no connection in 5s
@@ -200,7 +199,7 @@ const pool = new Pool({
   } : false
 });
 
-// Connection validation on checkout
+// Log new physical connections created by the pool
 pool.on('connect', (client) => {
   console.log('New client connected to pool');
 });
@@ -323,10 +322,17 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+class TimeoutSession(requests.Session):
+    """Requests Session with a default timeout for all requests."""
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", (5, 30))  # (connect timeout, read timeout)
+        return super().request(method, url, **kwargs)
+
 def create_http_session():
     """Create a requests session with connection pooling and retries."""
 
-    session = requests.Session()
+    session = TimeoutSession()
 
     # Configure retry strategy
     retry_strategy = Retry(
@@ -338,7 +344,7 @@ def create_http_session():
 
     # Configure connection pooling
     adapter = HTTPAdapter(
-        pool_connections=10,        # Number of connection pools (per host)
+        pool_connections=10,        # Number of host connection pools to cache
         pool_maxsize=20,            # Max connections per pool
         max_retries=retry_strategy,
         pool_block=False            # Don't block when pool is full
@@ -347,9 +353,6 @@ def create_http_session():
     # Mount adapter for both HTTP and HTTPS
     session.mount("http://", adapter)
     session.mount("https://", adapter)
-
-    # Set default timeout to avoid hanging requests
-    session.timeout = (5, 30)  # (connect timeout, read timeout)
 
     return session
 
@@ -381,7 +384,6 @@ const httpsAgent = new https.Agent({
   maxSockets: 50,               // Max connections per host
   maxFreeSockets: 10,           // Max idle connections to keep
   timeout: 60000,               // Socket timeout in ms
-  freeSocketTimeout: 30000,     // How long to keep idle sockets
   scheduling: 'fifo'            // First-in-first-out scheduling
 });
 
@@ -390,7 +392,7 @@ const httpAgent = new http.Agent({
   maxSockets: 50,
   maxFreeSockets: 10,
   timeout: 60000,
-  freeSocketTimeout: 30000
+  scheduling: 'fifo'
 });
 
 // Create axios instance with pooling agents
@@ -522,7 +524,7 @@ const agent = new https.Agent({
 
 // Handle socket errors to remove bad connections
 agent.on('free', (socket, options) => {
-  socket.on('error', (err) => {
+  socket.once('error', (err) => {
     console.error('Socket error on idle connection:', err);
     socket.destroy();  // Remove from pool
   });
@@ -596,17 +598,25 @@ SHOW STATS;
 Symptoms: Pool exhaustion, "cannot acquire connection" errors, steadily growing active connections.
 
 ```python
+from sqlalchemy import text
+
 # BAD - connection never returned to pool
 def get_user_bad(user_id):
     conn = engine.connect()
-    result = conn.execute("SELECT * FROM users WHERE id = %s", user_id)
+    result = conn.execute(
+        text("SELECT * FROM users WHERE id = :user_id"),
+        {"user_id": user_id}
+    )
     return result.fetchone()
     # Connection leaked!
 
 # GOOD - use context manager
 def get_user_good(user_id):
     with engine.connect() as conn:
-        result = conn.execute("SELECT * FROM users WHERE id = %s", user_id)
+        result = conn.execute(
+            text("SELECT * FROM users WHERE id = :user_id"),
+            {"user_id": user_id}
+        )
         return result.fetchone()
     # Connection automatically returned
 ```
@@ -627,7 +637,7 @@ const pool = new Pool({
   connectionTimeoutMillis: 5000,  // Fail after 5s instead of hanging
 });
 
-// Log when pool is exhausted
+// Log unexpected errors on idle clients
 pool.on('error', (err) => {
   console.error('Pool error:', err);
 });
