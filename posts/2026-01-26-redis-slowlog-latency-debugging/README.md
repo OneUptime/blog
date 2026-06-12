@@ -99,7 +99,7 @@ CONFIG SET slowlog-log-slower-than -1
 SLOWLOG GET 10
 
 # Get all recorded slow commands
-SLOWLOG GET
+SLOWLOG GET -1
 
 # Get the current SLOWLOG length
 SLOWLOG LEN
@@ -225,11 +225,16 @@ class SlowlogAnalyzer:
                 })
 
             elif cmd in ('SMEMBERS', 'HGETALL', 'LRANGE'):
+                alternatives = {
+                    'SMEMBERS': 'SSCAN',
+                    'HGETALL': 'HSCAN',
+                    'LRANGE': 'pagination'
+                }
                 issues.append({
                     'type': 'large_collection_read',
                     'severity': 'medium',
                     'entry': entry,
-                    'recommendation': f'Consider using {cmd[0]}SCAN or pagination'
+                    'recommendation': f'Consider using {alternatives[cmd]} for large collections'
                 })
 
             elif cmd == 'FLUSHALL' or cmd == 'FLUSHDB':
@@ -413,7 +418,7 @@ except KeyboardInterrupt:
 keys = r.keys('user:*')  # Don't do this in production
 
 # GOOD: Use SCAN for iterative scanning
-# Doesn't block, returns results incrementally
+# Avoids scanning the entire keyspace in one blocking command
 def scan_keys(redis_client, pattern, count=100):
     """
     Safely iterate over keys matching a pattern.
@@ -468,10 +473,10 @@ def scan_set_members(redis_client, key, count=100):
 # BAD: LRANGE on a list with millions of items
 items = r.lrange('huge_list', 0, -1)
 
-# GOOD: Paginate or process in chunks
-def process_list_chunks(redis_client, key, chunk_size=1000, processor=None):
+# GOOD: Paginate or iterate in chunks
+def iter_list_chunks(redis_client, key, chunk_size=1000):
     """
-    Process a large list in chunks.
+    Iterate over a large list in chunks.
     """
     start = 0
     while True:
@@ -479,10 +484,7 @@ def process_list_chunks(redis_client, key, chunk_size=1000, processor=None):
         if not chunk:
             break
 
-        if processor:
-            processor(chunk)
-        else:
-            yield chunk
+        yield chunk
 
         start += chunk_size
 ```
@@ -500,7 +502,7 @@ end
 return results
 """
 
-# GOOD: Process in smaller batches or use SCAN
+# GOOD: Process one bounded batch at a time with SCAN
 good_script = """
 local cursor = ARGV[1]
 local pattern = ARGV[2]
@@ -526,6 +528,9 @@ return {new_cursor, values}
 ### Analyzing SLOWLOG for Root Cause
 
 ```python
+import redis
+from collections import defaultdict
+
 def diagnose_slowlog(redis_client, count=100):
     """
     Analyze SLOWLOG and provide diagnostic information.
@@ -570,13 +575,19 @@ def diagnose_slowlog(redis_client, count=100):
         if cmd == 'KEYS':
             diagnosis['recommendations'].append(
                 f"KEYS command found {count} times (avg {avg_duration:.1f}ms). "
-                "Replace with SCAN for non-blocking key iteration."
+                "Replace with SCAN for incremental key iteration."
             )
 
         elif cmd in ('SMEMBERS', 'HGETALL', 'LRANGE', 'ZRANGE'):
+            alternatives = {
+                'SMEMBERS': 'SSCAN',
+                'HGETALL': 'HSCAN',
+                'LRANGE': 'pagination',
+                'ZRANGE': 'ZSCAN or pagination'
+            }
             diagnosis['recommendations'].append(
                 f"{cmd} command found {count} times (avg {avg_duration:.1f}ms). "
-                f"Check data sizes; consider SSCAN/HSCAN/pagination."
+                f"Check data sizes; consider {alternatives[cmd]}."
             )
 
         elif cmd == 'DEL' and avg_duration > 10:
