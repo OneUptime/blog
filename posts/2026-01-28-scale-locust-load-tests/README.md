@@ -97,11 +97,10 @@ class OptimizedUser(HttpUser):
     @task
     def minimal_processing(self):
         # Don't parse JSON if you don't need it
-        response = self.client.get("/api/data")
-
-        # Only check status code
-        if response.status_code != 200:
-            response.failure(f"Status {response.status_code}")
+        with self.client.get("/api/data", catch_response=True) as response:
+            # Only check status code
+            if response.status_code != 200:
+                response.failure(f"Status {response.status_code}")
 
     @task
     def skip_response_body(self):
@@ -109,10 +108,13 @@ class OptimizedUser(HttpUser):
         with self.client.get("/api/large-response",
                             stream=True,
                             catch_response=True) as response:
-            if response.status_code == 200:
-                response.success()
-            else:
-                response.failure(f"Status {response.status_code}")
+            try:
+                if response.status_code == 200:
+                    response.success()
+                else:
+                    response.failure(f"Status {response.status_code}")
+            finally:
+                response.close()
 ```
 
 ### System Tuning
@@ -313,7 +315,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
       - name: locust
-        image: locustio/locust:2.20.0
+        image: locustio/locust:2.44.1
         args:
           - "--worker"
           - "--master-host=locust-master"
@@ -358,11 +360,10 @@ spec:
     spec:
       containers:
       - name: locust
-        image: locustio/locust:2.20.0
+        image: locustio/locust:2.44.1
         args:
           - "--master"
           - "--host=https://api.example.com"
-          - "--expect-workers=50"
           - "--csv=/data/results"
         ports:
         - containerPort: 8089
@@ -572,7 +573,7 @@ class ScaleMonitor:
 
             snapshot = {
                 'timestamp': time.time(),
-                'users': len(self.environment.runner.user_greenlets) if self.environment.runner else 0,
+                'users': self.environment.runner.user_count if self.environment.runner else 0,
                 'rps': stats.current_rps,
                 'failures_per_s': stats.current_fail_per_sec,
                 'avg_response': stats.avg_response_time,
