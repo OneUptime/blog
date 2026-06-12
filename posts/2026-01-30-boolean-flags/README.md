@@ -733,6 +733,16 @@ class CircuitBreakerKillSwitch {
     if (this.manualOverride === false) {
       return fallback();
     }
+    if (this.manualOverride === true) {
+      try {
+        return await Promise.race([
+          fn(),
+          this.timeout()
+        ]) as T;
+      } catch (error) {
+        return fallback();
+      }
+    }
 
     // Check circuit state
     if (this.state === CircuitState.OPEN) {
@@ -1299,6 +1309,8 @@ describe('Flag Default Behavior', () => {
 
 ```typescript
 // integration-flag-tests.ts
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+
 describe('Flag Integration Tests', () => {
   let app: Application;
   let flagService: FlagService;
@@ -1338,7 +1350,7 @@ describe('Flag Integration Tests', () => {
 
   it('handles flag service failures gracefully', async () => {
     // Simulate flag service outage
-    jest.spyOn(flagService, 'isEnabled').mockRejectedValue(new Error('Service unavailable'));
+    vi.spyOn(flagService, 'isEnabled').mockRejectedValue(new Error('Service unavailable'));
 
     const response = await request(app)
       .post('/checkout')
@@ -1382,7 +1394,7 @@ jobs:
             flags: '{"new_checkout_flow": false, "new_search": true}'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -1399,9 +1411,10 @@ jobs:
           FLAG_CONFIG_NAME: ${{ matrix.flag_config.name }}
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           flags: ${{ matrix.flag_config.name }}
+          token: ${{ secrets.CODECOV_TOKEN }}
 ```
 
 ---
