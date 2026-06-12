@@ -8,7 +8,7 @@ Description: Learn how to create custom Ansible connection plugins to communicat
 
 ---
 
-Ansible connects to managed hosts using connection plugins. By default, it uses SSH for Linux and WinRM for Windows, but what if your infrastructure requires something different? Perhaps you need to manage devices through a REST API, connect via a proprietary protocol, or interface with a container orchestration system.
+Ansible connects to managed hosts using connection plugins. By default, Ansible's transport is SSH; Windows hosts typically use WinRM or PSRP when configured, but what if your infrastructure requires something different? Perhaps you need to manage devices through a REST API, connect via a proprietary protocol, or interface with a container orchestration system.
 
 Connection plugins are the answer. They define how Ansible communicates with remote hosts, and building your own opens up possibilities for managing any system that can accept commands.
 
@@ -188,9 +188,9 @@ timeout = 60
 import base64
 import json
 import os
-import tempfile
 import urllib.request
 import urllib.error
+import urllib.parse
 import ssl
 
 from ansible.errors import AnsibleConnectionFailure, AnsibleFileNotFound
@@ -342,6 +342,13 @@ class Connection(ConnectionBase):
             data=payload
         )
 
+        if status_code not in (200, 201, 202):
+            return (
+                1,
+                b'',
+                f"API command execution failed with status {status_code}: {response_body}".encode('utf-8')
+            )
+
         # Parse the response
         try:
             result = json.loads(response_body)
@@ -414,10 +421,12 @@ class Connection(ConnectionBase):
 
         display.vvv(f"REST_API: FETCH {in_path} -> {out_path}", host=self._play_context.remote_addr)
 
+        query = urllib.parse.urlencode({'path': in_path})
+
         # Request file from API
         status_code, response_body = self._make_request(
             'GET',
-            f'/files?path={in_path}'
+            f'/files?{query}'
         )
 
         if status_code == 404:
@@ -467,7 +476,7 @@ All connection plugins inherit from `ConnectionBase`. This base class provides t
 
 ### Required Methods
 
-Every connection plugin must implement these four methods:
+Every connection plugin must implement these five methods:
 
 ```mermaid
 flowchart LR
@@ -491,7 +500,7 @@ flowchart LR
 
 The `DOCUMENTATION` block defines configuration options that users can set through multiple sources:
 
-```python
+```yaml
 options:
     api_port:
         description: REST API port number
@@ -558,7 +567,6 @@ options:
 
 import os
 import subprocess
-import shutil
 
 from ansible.errors import AnsibleConnectionFailure, AnsibleFileNotFound
 from ansible.plugins.connection import ConnectionBase
@@ -578,6 +586,14 @@ class Connection(ConnectionBase):
         self._connected = False
         self._container = None
 
+    def _docker_env(self):
+        """Build an environment for Docker CLI calls."""
+        env = os.environ.copy()
+        docker_host = self.get_option('docker_host')
+        if docker_host:
+            env['DOCKER_HOST'] = docker_host
+        return env
+
     def _connect(self):
         """Verify container exists and is running."""
         if self._connected:
@@ -589,7 +605,8 @@ class Connection(ConnectionBase):
         result = subprocess.run(
             ['docker', 'inspect', '-f', '{{.State.Running}}', self._container],
             capture_output=True,
-            text=True
+            text=True,
+            env=self._docker_env()
         )
 
         if result.returncode != 0:
@@ -625,7 +642,8 @@ class Connection(ConnectionBase):
         result = subprocess.run(
             docker_cmd,
             input=in_data,
-            capture_output=True
+            capture_output=True,
+            env=self._docker_env()
         )
 
         return (result.returncode, result.stdout, result.stderr)
@@ -642,7 +660,8 @@ class Connection(ConnectionBase):
         result = subprocess.run(
             ['docker', 'cp', in_path, f"{self._container}:{out_path}"],
             capture_output=True,
-            text=True
+            text=True,
+            env=self._docker_env()
         )
 
         if result.returncode != 0:
@@ -659,7 +678,8 @@ class Connection(ConnectionBase):
         result = subprocess.run(
             ['docker', 'cp', f"{self._container}:{in_path}", out_path],
             capture_output=True,
-            text=True
+            text=True,
+            env=self._docker_env()
         )
 
         if result.returncode != 0:
@@ -743,18 +763,25 @@ docker rm -f my_test_container
 
 ### Pipelining Support
 
-Pipelining improves performance by reducing the number of SSH connections. For custom plugins, set `has_pipelining = True` and implement command chaining:
+Pipelining improves performance by reducing the number of network operations required to execute a module. For custom plugins, set `has_pipelining = True` only if your transport can pass the `in_data` bytes it receives to the command's standard input:
 
 ```python
 class Connection(ConnectionBase):
     has_pipelining = True
 
     def exec_command(self, cmd, in_data=None, sudoable=True):
-        # When pipelining, Ansible sends the module as stdin
-        # Your plugin should handle this appropriately
+        super(Connection, self).exec_command(cmd, in_data=in_data, sudoable=sudoable)
+
+        # When pipelining, Ansible sends the module as stdin.
+        # Pass in_data as bytes to the remote process or API endpoint.
         if in_data:
-            # Module code is being piped
-            cmd = f"python - <<'ANSIBLE_MODULE_EOF'\n{in_data.decode()}\nANSIBLE_MODULE_EOF"
+            payload = {
+                'command': cmd,
+                'stdin': base64.b64encode(in_data).decode('utf-8'),
+                'stdin_encoding': 'base64',
+            }
+        else:
+            payload = {'command': cmd}
 
         # Execute the command
         ...
@@ -787,20 +814,20 @@ def _connect(self):
 
 ### Become Support
 
-If your connection type supports privilege escalation:
+In most connection plugins, Ansible's become system prepares the command before it reaches `exec_command()`. Call the parent method, then execute the `cmd` value you were given. Only add transport-specific become handling if your protocol has its own native privilege escalation mechanism:
 
 ```python
 def exec_command(self, cmd, in_data=None, sudoable=True):
-    if sudoable and self._play_context.become:
-        become_method = self._play_context.become_method
-        become_user = self._play_context.become_user
+    super(Connection, self).exec_command(cmd, in_data=in_data, sudoable=sudoable)
 
-        if become_method == 'sudo':
-            cmd = f"sudo -u {become_user} {cmd}"
-        elif become_method == 'su':
-            cmd = f"su - {become_user} -c '{cmd}'"
+    payload = {'command': cmd}
 
-    # Execute the modified command
+    if sudoable and self.become:
+        # Optional: map Ansible become settings to native API fields
+        # if your transport supports them.
+        payload['become_method'] = self.become.name
+
+    # Execute the command or payload through your transport
     ...
 ```
 
