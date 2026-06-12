@@ -337,8 +337,8 @@ public class ProdSecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         // Strict security for production
+        // CSRF protection is enabled by default in Spring Security
         return http
-            .csrf(csrf -> csrf.enable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health").permitAll()
                 .anyRequest().authenticated())
