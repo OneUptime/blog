@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Resource-Management
 
-Description: Learn how to configure ArgoCD prune policies to automatically remove orphaned Kubernetes resources and keep your clusters clean.
+Description: Learn how to configure ArgoCD prune policies to automatically remove resources that are no longer defined in Git and keep your clusters clean.
 
 ---
 
-When you delete a resource from your Git repository, ArgoCD does not automatically remove it from your cluster by default. This leads to orphaned resources, configuration drift, and wasted cluster resources. Prune policies solve this problem by automatically cleaning up resources that no longer exist in Git.
+When you delete a resource from your Git repository, ArgoCD does not automatically remove it from your cluster by default. This can leave previously managed resources in place, creating configuration drift and wasted cluster resources. Prune policies solve this problem by automatically cleaning up application resources that no longer exist in Git.
 
 ## What Is Pruning in ArgoCD?
 
-Pruning is the process of deleting Kubernetes resources that exist in the cluster but are no longer defined in the Git repository. Without pruning, your cluster accumulates stale resources over time.
+Pruning is the process of deleting Kubernetes resources that are tracked by an ArgoCD application but are no longer defined in the Git repository. Without pruning, your cluster accumulates stale resources over time.
 
 ```mermaid
 flowchart LR
@@ -24,8 +24,8 @@ flowchart LR
     subgraph Cluster["Kubernetes Cluster"]
         C1[Deployment A]
         C2[Service A]
-        C3[ConfigMap B - Orphaned]
-        C4[Secret C - Orphaned]
+        C3[ConfigMap B - Stale]
+        C4[Secret C - Stale]
     end
 
     Git -->|Sync| Cluster
@@ -104,14 +104,14 @@ sequenceDiagram
 
     ArgoCD->>Git: Fetch latest manifests
     ArgoCD->>K8s: Get current resources
-    ArgoCD->>ArgoCD: Compare and detect orphans
+    ArgoCD->>ArgoCD: Compare and detect stale tracked resources
 
     alt Prune Enabled
         ArgoCD->>K8s: Apply new/updated resources
-        ArgoCD->>K8s: Delete orphaned resources
+        ArgoCD->>K8s: Delete stale tracked resources
     else Prune Disabled
         ArgoCD->>K8s: Apply new/updated resources
-        ArgoCD-->>K8s: Skip orphan deletion
+        ArgoCD-->>K8s: Skip stale resource deletion
     end
 
     ArgoCD->>ArgoCD: Update sync status
@@ -142,7 +142,7 @@ spec:
     automated:
       prune: true
     syncOptions:
-      - PruneLast=true   # Delete orphans after successful sync
+      - PruneLast=true   # Delete stale tracked resources after successful sync
 ```
 
 ### PrunePropagationPolicy
@@ -168,9 +168,9 @@ Available propagation policies:
 - `background` - Delete parent first, children asynchronously
 - `orphan` - Delete parent only, leave children
 
-### Selective Resource Pruning
+### Per-Resource Pruning
 
-Apply prune settings to specific resource types using annotations. This annotation on individual resources can override the application-level prune setting.
+Apply prune settings to specific resources using annotations. This annotation on individual resources can override the application-level prune setting.
 
 ```yaml
 apiVersion: v1
@@ -206,9 +206,9 @@ spec:
       storage: 100Gi
 ```
 
-### Project-Level Resource Protection
+### Project-Level Orphaned Resource Ignore Rules
 
-Define protected resources at the project level to prevent accidental deletion of critical resource types.
+Define ignored resources at the project level to prevent expected resources from being reported as orphaned. These rules affect orphaned resource monitoring, not pruning of resources tracked by an application.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -223,7 +223,7 @@ spec:
   destinations:
     - namespace: '*'
       server: https://kubernetes.default.svc
-  # Prevent pruning of these resource types
+  # Prevent these resources from being reported as orphaned
   orphanedResources:
     warn: true   # Warn about orphaned resources
     ignore:
@@ -279,7 +279,7 @@ spec:
 
 ### View Orphaned Resources
 
-Use the ArgoCD CLI to list orphaned resources in a project.
+Use the ArgoCD CLI to view orphaned resource monitoring settings for a project and list orphaned resources for an application.
 
 ```bash
 # List orphaned resources
@@ -408,8 +408,8 @@ argocd app delete myapp --cascade
 # Delete app only, leave resources in cluster
 argocd app delete myapp --cascade=false
 
-# Force delete stuck application
-argocd app delete myapp --cascade --force
+# Delete app and wait for the deletion to complete
+argocd app delete myapp --cascade --wait
 ```
 
 ## Troubleshooting Prune Issues
@@ -425,8 +425,8 @@ argocd app get myapp -o yaml | grep -A5 syncPolicy
 # Check sync status
 argocd app get myapp
 
-# Look for resources with prune protection
-kubectl get all -n production -o yaml | grep "Prune=false"
+# Look for common resources with prune protection
+kubectl get configmap,secret,pvc,service,deployment -n production -o yaml | grep "Prune=false"
 ```
 
 ### Prune Fails Due to Finalizers
@@ -435,7 +435,7 @@ Resources with finalizers may block pruning. Identify and handle stuck resources
 
 ```bash
 # Find resources with finalizers
-kubectl get all -n production -o json | jq '.items[] | select(.metadata.finalizers) | {name: .metadata.name, finalizers: .metadata.finalizers}'
+kubectl get configmap,secret,pvc,service,deployment -n production -o json | jq '.items[] | select(.metadata.finalizers) | {name: .metadata.name, finalizers: .metadata.finalizers}'
 
 # Remove finalizer if safe (use with caution)
 kubectl patch configmap stuck-resource -n production \
@@ -458,9 +458,9 @@ flowchart TB
     end
 
     subgraph Prune["Prune Phase - PruneLast"]
-        P1[Delete Orphaned Deployments]
-        P2[Delete Orphaned ConfigMaps]
-        P3[Delete Orphaned Namespaces]
+        P1[Delete Stale Deployments]
+        P2[Delete Stale ConfigMaps]
+        P3[Delete Stale Namespaces]
         S4 --> P1 --> P2 --> P3
     end
 ```
@@ -469,7 +469,7 @@ flowchart TB
 
 ### 1. Always Use PruneLast in Production
 
-Ensure resources are synced before orphans are deleted.
+Ensure resources are synced before stale tracked resources are deleted.
 
 ```yaml
 syncOptions:
