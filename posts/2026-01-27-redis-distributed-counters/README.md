@@ -8,9 +8,9 @@ Description: Learn how to build scalable distributed counters using Redis.
 
 ---
 
-> Counting things at scale is surprisingly complex. Whether you're tracking page views, API calls, or inventory levels, distributed counters must handle concurrent updates from multiple sources while maintaining accuracy. Redis provides the primitives to build counters that scale to millions of increments per second.
+> Counting things at scale is surprisingly complex. Whether you're tracking page views, API calls, or inventory levels, distributed counters must handle concurrent updates from multiple sources while maintaining accuracy. Redis provides the primitives to build counters that support very high increment rates.
 
-Simple counters seem trivial until you need them to work across multiple servers, handle thousands of concurrent updates, and never lose a count. Redis atomic operations and in-memory performance make it ideal for distributed counting, but building production-ready counters requires understanding the patterns and pitfalls.
+Simple counters seem trivial until you need them to work across multiple servers, handle thousands of concurrent updates, and avoid losing counts. Redis atomic operations and in-memory performance make it ideal for distributed counting, but building production-ready counters requires understanding the patterns and pitfalls.
 
 ---
 
@@ -119,7 +119,7 @@ print(f"Total views: {current}")
 
 ## Sharded Counters for High Throughput
 
-When a single counter becomes a bottleneck, shard across multiple keys:
+When one Redis node becomes a bottleneck, shard writes across multiple keys that can be distributed across Redis Cluster hash slots:
 
 ```mermaid
 graph TB
@@ -150,7 +150,8 @@ class ShardedCounter:
     """
     High-throughput counter using multiple shards.
 
-    Distributes writes across N Redis keys to reduce contention.
+    Distributes writes across N Redis keys. In Redis Cluster, those
+    keys can be served by different hash slots/nodes.
     Reads aggregate all shards for total count.
 
     Trade-off: Higher write throughput, slightly slower reads.
@@ -162,6 +163,9 @@ class ShardedCounter:
         name: str,
         num_shards: int = 16
     ):
+        if num_shards <= 0:
+            raise ValueError("num_shards must be greater than 0")
+
         self.redis = redis_client
         self.name = name
         self.num_shards = num_shards
@@ -203,9 +207,14 @@ class ShardedCounter:
         """
         Get total count across all shards.
 
-        Uses MGET for efficiency - single round trip.
+        Uses pipelined GETs so this also works when shard keys are
+        distributed across Redis Cluster hash slots.
         """
-        values = self.redis.mget(self.shard_keys)
+        pipe = self.redis.pipeline(transaction=False)
+        for key in self.shard_keys:
+            pipe.get(key)
+        values = pipe.execute()
+
         total = sum(int(v) for v in values if v is not None)
         return total
 
@@ -216,27 +225,32 @@ class ShardedCounter:
         Faster than full count, good for high-volume counters
         where exact precision isn't critical.
         """
+        if sample_size <= 0:
+            raise ValueError("sample_size must be greater than 0")
+
         sampled_keys = random.sample(self.shard_keys, min(sample_size, self.num_shards))
-        values = self.redis.mget(sampled_keys)
+        pipe = self.redis.pipeline(transaction=False)
+        for key in sampled_keys:
+            pipe.get(key)
+        values = pipe.execute()
         sample_total = sum(int(v) for v in values if v is not None)
 
         # Extrapolate to full count
         return int(sample_total * self.num_shards / len(sampled_keys))
 
     def reset(self) -> int:
-        """Reset all shards to zero, returns previous total"""
-        # Use Lua for atomic reset
-        script = """
-        local total = 0
-        for i, key in ipairs(KEYS) do
-            local val = redis.call('GETSET', key, 0)
-            if val then
-                total = total + tonumber(val)
-            end
-        end
-        return total
         """
-        return self.redis.eval(script, len(self.shard_keys), *self.shard_keys)
+        Reset all shards to zero, returns previous total.
+
+        Each shard reset is atomic, but the reset is not globally atomic
+        when shards are distributed across Redis Cluster hash slots.
+        """
+        pipe = self.redis.pipeline(transaction=False)
+        for key in self.shard_keys:
+            pipe.getset(key, 0)
+        values = pipe.execute()
+
+        return sum(int(v) for v in values if v is not None)
 
 # Usage
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
@@ -268,7 +282,7 @@ from datetime import datetime, timedelta
 
 class TimeWindowCounter:
     """
-    Counter that tracks events within sliding or fixed time windows.
+    Counter that tracks events within fixed time windows.
 
     Useful for:
     - Rate limiting (requests per minute)
@@ -288,7 +302,7 @@ class TimeWindowCounter:
 
     def _window_key(self, timestamp: float = None) -> str:
         """Get key for the time window containing timestamp"""
-        ts = timestamp or time.time()
+        ts = timestamp if timestamp is not None else time.time()
         window_start = int(ts / self.window_seconds) * self.window_seconds
         return f"counter:{self.name}:window:{window_start}"
 
@@ -377,6 +391,8 @@ minute_counter = TimeWindowCounter(r, 'api_calls:user:123', window_seconds=60)
 Track counts across multiple dimensions:
 
 ```python
+import redis
+
 class MultiDimensionCounter:
     """
     Counter that supports multiple dimensions for analytics.
@@ -450,7 +466,7 @@ class MultiDimensionCounter:
         ranking_key = f"mdcounter:{self.name}:ranking:{dimension}"
 
         # Get top values
-        top = self.redis.zrevrange(ranking_key, 0, limit - 1, withscores=True)
+        top = self.redis.zrange(ranking_key, 0, limit - 1, desc=True, withscores=True)
 
         return [{'value': item[0], 'count': int(item[1])} for item in top]
 
@@ -510,25 +526,28 @@ print("Top pages:", top_pages)
 Ensure counters survive Redis restarts:
 
 ```python
+import redis
+import time
+
 class PersistentCounter:
     """
-    Counter with guaranteed persistence and recovery.
+    Counter with Redis-backed snapshots for recovery.
 
     Uses both fast Redis counter and periodic snapshots
-    to ensure no data loss.
+    to reduce data loss after restarts.
     """
 
     def __init__(
         self,
         redis_client: redis.Redis,
         name: str,
-        snapshot_interval: int = 60
+        snapshot_every: int = 1000
     ):
         self.redis = redis_client
         self.name = name
         self.counter_key = f"pcounter:{name}:value"
         self.snapshot_key = f"pcounter:{name}:snapshot"
-        self.snapshot_interval = snapshot_interval
+        self.snapshot_every = snapshot_every
 
         # Recover from snapshot on initialization
         self._recover()
@@ -553,7 +572,7 @@ class PersistentCounter:
 
         # Check if we should snapshot
         # Use modulo to snapshot every N increments
-        if new_value % 1000 == 0:
+        if self.snapshot_every > 0 and new_value % self.snapshot_every == 0:
             self._snapshot(new_value)
 
         return new_value
@@ -597,11 +616,13 @@ counter.force_snapshot()
 Count unique items using HyperLogLog:
 
 ```python
+import redis
+
 class UniqueCounter:
     """
     Count unique items using HyperLogLog.
 
-    Memory efficient: ~12KB per counter regardless of cardinality.
+    Memory efficient: up to ~12KB per counter regardless of cardinality.
     Trade-off: ~0.81% standard error in counts.
     """
 
@@ -613,7 +634,7 @@ class UniqueCounter:
         """
         Add items to the unique counter.
 
-        Returns 1 if cardinality changed, 0 otherwise.
+        Returns 1 if the HyperLogLog's internal state changed, 0 otherwise.
         """
         return self.redis.pfadd(self.key, *items)
 
@@ -659,6 +680,8 @@ print(f"Weekly unique visitors: {weekly_total.count()}")
 ## Monitoring Counter Health
 
 ```python
+import redis
+
 class CounterMonitor:
     """
     Monitor counter health and performance.
