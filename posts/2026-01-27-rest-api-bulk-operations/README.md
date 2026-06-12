@@ -58,8 +58,8 @@ POST /api/v1/users        # Bulk: [{name: "John"}, {name: "Jane"}]
 POST /api/v1/batch
 {
   "operations": [
-    {"method": "POST", "path": "/users", "body": {...}},
-    {"method": "PATCH", "path": "/users/123", "body": {...}},
+    {"method": "POST", "path": "/users", "body": {"name": "John"}},
+    {"method": "PATCH", "path": "/users/123", "body": {"status": "active"}},
     {"method": "DELETE", "path": "/users/456"}
   ]
 }
@@ -189,7 +189,7 @@ router.post('/bulk', async (req, res) => {
   const successCount = results.filter(r => r.status === 'success').length;
   const failureCount = results.filter(r => r.status === 'failed').length;
 
-  // 207 Multi-Status when partial success
+  // 200 OK with per-item results when partial success
   // 201 Created when all succeed
   // 400 Bad Request when all fail
   let httpStatus;
@@ -198,7 +198,7 @@ router.post('/bulk', async (req, res) => {
   } else if (successCount === 0) {
     httpStatus = 400;
   } else {
-    httpStatus = 207; // Multi-Status
+    httpStatus = 200;
   }
 
   res.status(httpStatus).json({
@@ -289,10 +289,12 @@ Always return status for each item so clients know what succeeded and what faile
 | Scenario | Status Code | Description |
 |----------|-------------|-------------|
 | All succeeded | 200/201 | OK/Created |
-| Partial success | 207 | Multi-Status |
+| Partial success | 200 | OK with per-item result statuses |
 | All failed (client error) | 400 | Bad Request |
 | All failed (validation) | 422 | Unprocessable Entity |
-| Bulk not supported | 501 | Not Implemented |
+| Bulk endpoint not found | 404/405 | Not Found/Method Not Allowed |
+
+`207 Multi-Status` exists, but it is defined for WebDAV multi-status responses and is normally paired with an XML `multistatus` body. For general JSON REST APIs, a `200 OK` response with per-item statuses is easier for clients and intermediaries to handle consistently.
 
 ---
 
@@ -319,7 +321,7 @@ router.patch('/bulk', async (req, res) => {
     }
   }
 
-  return res.status(207).json({ results });
+  return res.status(200).json({ results });
 });
 ```
 
@@ -380,7 +382,12 @@ Let clients choose the behavior:
 ```json
 {
   "transactional": true,
-  "items": [...]
+  "items": [
+    {
+      "name": "John Doe",
+      "email": "john@example.com"
+    }
+  ]
 }
 ```
 
@@ -394,9 +401,12 @@ Always enforce limits to prevent abuse and server overload:
 // Configuration
 const BULK_LIMITS = {
   maxItems: 100,           // Maximum items per request
-  maxPayloadSize: 5242880, // 5MB max payload
+  maxPayloadSize: '5mb',   // 5MB max JSON payload
   maxConcurrent: 10        // Max concurrent bulk operations per user
 };
+
+// Apply JSON parsing and payload-size limit before bulk routes
+app.use('/api/v1/users', express.json({ limit: BULK_LIMITS.maxPayloadSize }));
 
 // Middleware to enforce limits
 function bulkLimitsMiddleware(req, res, next) {
@@ -415,8 +425,8 @@ function bulkLimitsMiddleware(req, res, next) {
   next();
 }
 
-// Apply to bulk routes
-router.use('/bulk*', bulkLimitsMiddleware);
+// Apply to bulk routes such as /bulk, /bulk-async, and /bulk-transactional
+router.use(/^\/bulk(?:$|[-/])/, bulkLimitsMiddleware);
 ```
 
 For very large datasets, provide pagination info in the response:
@@ -632,8 +642,10 @@ const router = express.Router();
 
 const BULK_CONFIG = {
   maxItems: 100,
-  maxPayloadBytes: 5 * 1024 * 1024 // 5MB
+  maxPayloadSize: '5mb'
 };
+
+router.use(express.json({ limit: BULK_CONFIG.maxPayloadSize }));
 
 // Validation middleware
 function validateBulkRequest(req, res, next) {
@@ -664,8 +676,6 @@ function validateBulkRequest(req, res, next) {
 // Bulk create users
 router.post('/bulk', validateBulkRequest, async (req, res) => {
   const { items, transactional = false } = req.body;
-  const idempotencyKey = req.headers['idempotency-key'];
-
   if (transactional) {
     return handleTransactionalBulk(items, res);
   }
@@ -883,7 +893,7 @@ function isValidEmail(email) {
 function getHttpStatus(successCount, failureCount) {
   if (failureCount === 0) return 201;
   if (successCount === 0) return 400;
-  return 207; // Multi-Status for partial success
+  return 200; // OK with per-item statuses for partial success
 }
 
 async function handleTransactionalBulk(items, res) {
@@ -940,7 +950,7 @@ module.exports = router;
 1. **Use dedicated endpoints** - `/resource/bulk` is clearer than overloading the collection endpoint
 2. **Enforce size limits** - Prevent abuse with max item counts and payload sizes
 3. **Return individual statuses** - Tell clients exactly what succeeded and what failed
-4. **Use 207 Multi-Status** - For partial success scenarios
+4. **Use per-item statuses** - Return `200 OK` with per-item results for partial success scenarios
 5. **Support both modes** - Offer transactional and non-transactional options
 6. **Implement idempotency** - Allow safe retries with idempotency keys
 7. **Go async for large batches** - Return 202 Accepted and process in background
