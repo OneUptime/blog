@@ -45,10 +45,11 @@ go mod init github.com/yourorg/myprocessor
 Add the required OpenTelemetry dependencies:
 
 ```bash
-go get go.opentelemetry.io/collector/component@latest
-go get go.opentelemetry.io/collector/consumer@latest
-go get go.opentelemetry.io/collector/processor@latest
-go get go.opentelemetry.io/collector/pdata@latest
+go get go.opentelemetry.io/collector/component@v1.60.0
+go get go.opentelemetry.io/collector/consumer@v1.60.0
+go get go.opentelemetry.io/collector/processor@v0.154.0
+go get go.opentelemetry.io/collector/pdata@v1.60.0
+go get go.uber.org/zap
 ```
 
 ## Building a Trace Processor
@@ -153,8 +154,8 @@ import (
     "regexp"
     "sync"
 
+    "go.opentelemetry.io/collector/component"
     "go.opentelemetry.io/collector/consumer"
-    "go.opentelemetry.io/collector/pdata/pcommon"
     "go.opentelemetry.io/collector/pdata/ptrace"
     "go.uber.org/zap"
 )
@@ -427,6 +428,7 @@ import (
     "regexp"
 
     "go.opentelemetry.io/collector/consumer"
+    "go.opentelemetry.io/collector/pdata/pcommon"
     "go.opentelemetry.io/collector/pdata/plog"
     "go.uber.org/zap"
 )
@@ -504,7 +506,7 @@ func (lpp *logParserProcessor) processLogRecord(lr plog.LogRecord) {
     }
 }
 
-func (lpp *logParserProcessor) flattenJSON(prefix string, data map[string]interface{}, attrs plog.LogRecord) {
+func (lpp *logParserProcessor) flattenJSON(prefix string, data map[string]interface{}, attrs pcommon.Map) {
     // Implementation flattens nested JSON into dot-notation attributes
     // e.g., {"user": {"id": 123}} becomes "user.id" = "123"
 }
@@ -514,76 +516,41 @@ func (lpp *logParserProcessor) flattenJSON(prefix string, data map[string]interf
 
 To use your custom processor, you need to build a custom Collector distribution:
 
-```go
-// main.go
-package main
+```yaml
+# builder-config.yaml
+dist:
+  name: custom-collector
+  description: Custom OpenTelemetry Collector
+  output_path: ./custom-collector
+  version: 1.0.0
 
-import (
-    "log"
+receivers:
+  - gomod:
+      go.opentelemetry.io/collector/receiver/otlpreceiver v0.154.0
 
-    "go.opentelemetry.io/collector/component"
-    "go.opentelemetry.io/collector/otelcol"
+processors:
+  - gomod:
+      go.opentelemetry.io/collector/processor/batchprocessor v0.154.0
+  - gomod:
+      github.com/yourorg/deploymentprocessor v0.1.0
 
-    // Standard components
-    "go.opentelemetry.io/collector/receiver/otlpreceiver"
-    "go.opentelemetry.io/collector/exporter/otlpexporter"
-    "go.opentelemetry.io/collector/processor/batchprocessor"
+exporters:
+  - gomod:
+      go.opentelemetry.io/collector/exporter/otlphttpexporter v0.154.0
 
-    // Your custom processor
-    "github.com/yourorg/deploymentprocessor"
-)
+providers:
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/envprovider v1.60.0
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/fileprovider v1.60.0
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.60.0
+```
 
-func main() {
-    factories, err := components()
-    if err != nil {
-        log.Fatalf("failed to build components: %v", err)
-    }
+Then run the Collector Builder:
 
-    info := component.BuildInfo{
-        Command:     "custom-collector",
-        Description: "Custom OpenTelemetry Collector",
-        Version:     "1.0.0",
-    }
-
-    settings := otelcol.CollectorSettings{
-        BuildInfo: info,
-        Factories: factories,
-    }
-
-    cmd := otelcol.NewCommand(settings)
-    if err := cmd.Execute(); err != nil {
-        log.Fatalf("collector failed: %v", err)
-    }
-}
-
-func components() (otelcol.Factories, error) {
-    var err error
-    factories := otelcol.Factories{}
-
-    factories.Receivers, err = component.MakeReceiverFactoryMap(
-        otlpreceiver.NewFactory(),
-    )
-    if err != nil {
-        return otelcol.Factories{}, err
-    }
-
-    factories.Processors, err = component.MakeProcessorFactoryMap(
-        batchprocessor.NewFactory(),
-        deploymentprocessor.NewFactory(), // Your custom processor
-    )
-    if err != nil {
-        return otelcol.Factories{}, err
-    }
-
-    factories.Exporters, err = component.MakeExporterFactoryMap(
-        otlpexporter.NewFactory(),
-    )
-    if err != nil {
-        return otelcol.Factories{}, err
-    }
-
-    return factories, nil
-}
+```bash
+ocb --config builder-config.yaml
 ```
 
 ## Configuration Example
@@ -622,7 +589,7 @@ processors:
       region: us-east-1
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: "https://oneuptime.com/otlp"
     encoding: json
     headers:
@@ -633,7 +600,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [deployment, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ## Testing Your Processor
