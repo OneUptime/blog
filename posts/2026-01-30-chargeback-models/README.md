@@ -44,14 +44,14 @@ Showback provides visibility without financial accountability. Teams see their c
 Chargeback directly charges teams for their consumption. Costs hit departmental budgets.
 
 **When to use:**
-- Mature FinOps practice
+- Formal accounting or budgeting process requires it
 - Strong tagging compliance (>90%)
 - Clear ownership model
 - Finance integration complete
 
 ### Hybrid Approach
 
-Most organizations start with showback and graduate to chargeback over 6-12 months.
+Many organizations start with showback and move to chargeback over 6-12 months when their accounting policies require it.
 
 ```python
 # Example: Determine model based on tagging compliance
@@ -170,7 +170,7 @@ def allocate_direct(
 Use resource tags to determine cost ownership. Most flexible and commonly used method.
 
 ```python
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from decimal import Decimal
 from collections import defaultdict
 
@@ -198,7 +198,7 @@ class TagBasedAllocator:
         self,
         resources: List[Dict],
         default_cost_center: str = "SHARED"
-    ) -> Dict[str, Decimal]:
+    ) -> Tuple[Dict[str, Decimal], Decimal]:
         """
         Allocate all resource costs to cost centers.
 
@@ -276,6 +276,8 @@ def allocate_proportional(
     if total_usage == 0:
         # Avoid division by zero - split evenly
         num_teams = len(usage_metrics)
+        if num_teams == 0:
+            return {}
         even_split = total_cost / num_teams
         return {m.team: even_split for m in usage_metrics}
 
@@ -413,6 +415,9 @@ def distribute_evenly(
         Nested dict: team -> cost_category -> amount
     """
     num_teams = len(teams)
+    if num_teams == 0:
+        return {}
+
     distribution = {team: {} for team in teams}
 
     for category, total_cost in shared_costs.items():
@@ -656,7 +661,7 @@ class AWSCostCollector:
         granularity: str = 'DAILY'
     ) -> List[CostRecord]:
         """
-        Fetch cost data with resource-level tags.
+        Fetch cost data grouped by service and cost-center tag.
 
         Args:
             start_date: Start date (YYYY-MM-DD)
