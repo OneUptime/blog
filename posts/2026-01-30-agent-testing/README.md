@@ -73,16 +73,8 @@ Create a base test configuration that handles async operations and provides comm
 # tests/conftest.py
 
 import pytest
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
-from typing import List, Dict, Any
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create event loop for async tests."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+from typing import Any
 
 @pytest.fixture
 def mock_llm():
@@ -142,6 +134,7 @@ Test the tool with mocked HTTP calls:
 
 ```python
 # tests/tools/test_search_tool.py
+import httpx
 import pytest
 from unittest.mock import AsyncMock, patch
 from src.tools.search_tool import SearchTool
@@ -191,12 +184,15 @@ class TestSearchTool:
     @pytest.mark.asyncio
     async def test_search_handles_api_errors(self, search_tool):
         """Verify search properly handles API failures."""
+        request = httpx.Request("GET", "https://api.example.com/search")
+        response = httpx.Response(429, request=request)
+
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
                 side_effect=httpx.HTTPStatusError(
                     "Rate limited",
-                    request=None,
-                    response=AsyncMock(status_code=429)
+                    request=request,
+                    response=response
                 )
             )
 
@@ -644,10 +640,11 @@ Regression tests capture known good behaviors and detect when changes break them
 
 ```python
 # tests/regression/test_regressions.py
-import pytest
 import json
+import pytest
 from pathlib import Path
 from src.agent.agent import Agent
+from tests.helpers import assert_tool_called
 
 class TestRegressions:
     """Regression tests from recorded agent behaviors."""
@@ -727,6 +724,7 @@ Creating deterministic tests requires controlling LLM outputs. Here are patterns
 
 ```python
 # tests/mocks/llm_mocks.py
+import pytest
 from typing import List, Optional
 from unittest.mock import MagicMock, AsyncMock
 
@@ -789,7 +787,11 @@ Adversarial tests verify that agents handle malicious inputs safely and do not p
 ```python
 # tests/safety/test_adversarial.py
 import pytest
+from unittest.mock import AsyncMock
 from src.agent.agent import Agent
+
+class RateLimitError(Exception):
+    """Test exception used to simulate provider rate limits."""
 
 class TestAdversarialInputs:
     """Test agent resilience to adversarial inputs."""
