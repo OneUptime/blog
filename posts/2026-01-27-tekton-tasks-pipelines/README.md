@@ -599,7 +599,6 @@ spec:
     - name: fetch-source
       taskRef:
         name: git-clone
-        kind: ClusterTask
       params:
         - name: url
           value: $(params.git-url)
@@ -656,7 +655,6 @@ spec:
     - name: build-image
       taskRef:
         name: kaniko
-        kind: ClusterTask
       runAfter:
         - run-unit-tests
         - run-lint
@@ -772,7 +770,7 @@ spec:
 
 8. **Version Your Pipeline Definitions**: Store pipeline YAML in git alongside your application code.
 
-9. **Use ClusterTasks for Common Operations**: Share common tasks across namespaces using ClusterTask resources.
+9. **Use Resolvers to Share Common Tasks**: Reference tasks from other namespaces, git repositories, or bundles using the cluster, git, hub, or bundles resolvers. ClusterTask has been removed in `tekton.dev/v1`, so use the cluster resolver as its replacement.
 
 10. **Secure Your Workspaces**: Use secrets for credentials and limit workspace access to what each task needs.
 
