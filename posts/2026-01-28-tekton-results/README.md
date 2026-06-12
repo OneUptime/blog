@@ -26,7 +26,7 @@ Tekton Results typically uses a database backend. Configure connection settings 
 
 ## Step 3: Enable Results in Tekton Pipelines
 
-Add the results configuration to Tekton Pipelines so TaskRuns and PipelineRuns are stored in the Results backend.
+Ensure the Results Watcher is running so TaskRuns and PipelineRuns are stored in the Results backend.
 
 ## Step 4: Query Results
 
