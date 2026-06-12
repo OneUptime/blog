@@ -20,19 +20,19 @@ Before we begin, ensure you have:
 - Grafana 9.0 or higher (unified alerting enabled by default)
 - At least one configured data source (Prometheus, Loki, InfluxDB, etc.)
 - Admin or Editor role permissions
-- A notification channel target (email, Slack, PagerDuty, etc.)
+- A notification target (email, Slack, PagerDuty, etc.)
 
 ---
 
 ## Understanding Grafana Unified Alerting
 
-Grafana unified alerting consists of several key components:
+Grafana Alerting consists of several key components:
 
 - **Alert Rules**: Define the conditions that trigger alerts
 - **Contact Points**: Specify where notifications are sent
 - **Notification Policies**: Route alerts to the right contact points
 - **Silences**: Temporarily mute specific alerts
-- **Alert Groups**: Group related alerts to reduce noise
+- **Alert Instances**: Individual alerts created from each matching time series or dimension
 
 ---
 
@@ -40,7 +40,7 @@ Grafana unified alerting consists of several key components:
 
 ### Basic Alert Rule Structure
 
-Navigate to Alerting > Alert rules > New alert rule. Here is the structure of an alert rule:
+Navigate to Alerts & IRM > Alerting > Alert rules > New alert rule. Here is the structure of an alert rule:
 
 ```yaml
 # Alert rule components explained
@@ -53,6 +53,8 @@ Navigate to Alerting > Alert rules > New alert rule. Here is the structure of an
 # 6. Labels: Metadata for routing and grouping
 # 7. Annotations: Human-readable information for notifications
 ```
+
+The following rule examples use simplified YAML to show the fields you configure in the UI. For file provisioning, Grafana alert rules must be exported or written using the official `apiVersion: 1`, `groups[].rules[].data[]`, and `datasourceUid` schema.
 
 ### Creating a CPU Alert Rule
 
@@ -171,7 +173,7 @@ expressions:
   - refId: C
     type: math
     # Calculate error rate percentage
-    # Multiply by 100 for percentage, use 0 if no requests
+    # Multiply by 100 for percentage
     expression: ($B / $A) * 100
 
   - refId: D
@@ -190,7 +192,7 @@ condition: D
 
 ### Multi-Condition Alerts
 
-Combine multiple conditions using classic conditions:
+Classic conditions can combine multiple evaluators, but they are a legacy expression type and produce a single alert instance. Prefer reduce, math, and threshold expressions for new multi-dimensional alerts:
 
 ```yaml
 # Classic condition with multiple evaluators
@@ -300,7 +302,7 @@ annotations:
     CPU usage has exceeded 80% for the past 5 minutes.
 
     Instance: {{ $labels.instance }}
-    Current Value: {{ $values.A }}%
+    Current Value: {{ $values.B.Value }}%
 
     This may indicate resource exhaustion or runaway processes.
 
@@ -323,15 +325,15 @@ annotations:
     Instance: {{ $labels.instance }}
     Job: {{ $labels.job }}
 
-    # Access query values
-    Current CPU: {{ $values.A }}
-    Threshold: {{ $values.B }}
+    # Access instant query or expression values
+    Current CPU: {{ $values.B.Value }}
+    Threshold: 80
 
     # Humanize large numbers
-    Requests: {{ humanize $values.A }}
+    Requests: {{ humanize $values.A.Value }}
 
     # Format percentages
-    Error Rate: {{ printf "%.2f" $values.C }}%
+    Error Rate: {{ printf "%.2f" $values.C.Value }}%
 ```
 
 ---
@@ -345,7 +347,7 @@ Notification policies form a tree that routes alerts to contact points:
 ```yaml
 # Root notification policy
 # All alerts start here and flow down the tree
-notification_policies:
+policies:
   - receiver: default-email
     # Group alerts by these labels
     group_by: [alertname, cluster]
@@ -361,7 +363,7 @@ notification_policies:
 
 ```yaml
 # Nested policies for granular routing
-notification_policies:
+policies:
   - receiver: default-email
     group_by: [alertname]
     routes:
@@ -423,119 +425,128 @@ matchers:
 
 ```yaml
 # Email configuration
-contact_points:
+contactPoints:
   - name: team-email
-    type: email
-    settings:
-      # Multiple addresses separated by semicolons
-      addresses: "oncall@example.com;team-lead@example.com"
-      # Use single email for all alerts in group
-      singleEmail: true
-      # Custom subject template
-      subject: "[{{ .Status }}] {{ .GroupLabels.alertname }}"
-      # Custom message template (optional)
-      message: |
-        {{ len .Alerts }} alert(s) firing
+    receivers:
+      - uid: team-email
+        type: email
+        settings:
+          # Multiple addresses separated by semicolons
+          addresses: "oncall@example.com;team-lead@example.com"
+          # Use single email for all alerts in group
+          singleEmail: true
+          # Custom subject template
+          subject: "[{{ .Status }}] {{ .GroupLabels.alertname }}"
+          # Custom message template (optional)
+          message: |
+            {{ len .Alerts }} alert(s) firing
 
-        {{ range .Alerts }}
-        - {{ .Annotations.summary }}
-        {{ end }}
+            {{ range .Alerts }}
+            - {{ .Annotations.summary }}
+            {{ end }}
 ```
 
 ### Slack Contact Point
 
 ```yaml
 # Slack webhook configuration
-contact_points:
+contactPoints:
   - name: slack-alerts
-    type: slack
-    settings:
-      # Incoming webhook URL from Slack
-      url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
-      # Channel override (optional, uses webhook default)
-      recipient: "#alerts-production"
-      # Bot username
-      username: "Grafana Alerts"
-      # Icon emoji
-      icon_emoji: ":alert:"
-      # Message title
-      title: "{{ .GroupLabels.alertname }}"
-      # Message text with details
-      text: |
-        {{ range .Alerts }}
-        *{{ .Status | toUpper }}* - {{ .Annotations.summary }}
-        {{ if .Annotations.description }}
-        {{ .Annotations.description }}
-        {{ end }}
-        {{ end }}
-      # Mention users or groups for critical alerts
-      mentionUsers: ""
-      mentionGroups: ""
-      mentionChannel: "here"  # @here for critical
+    receivers:
+      - uid: slack-alerts
+        type: slack
+        settings:
+          # Incoming webhook URL from Slack
+          url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+          # Channel override (optional, uses webhook default)
+          recipient: "#alerts-production"
+          # Bot username
+          username: "Grafana Alerts"
+          # Icon emoji
+          icon_emoji: ":alert:"
+          # Message title
+          title: "{{ .GroupLabels.alertname }}"
+          # Message text with details
+          text: |
+            {{ range .Alerts }}
+            *{{ .Status | toUpper }}* - {{ .Annotations.summary }}
+            {{ if .Annotations.description }}
+            {{ .Annotations.description }}
+            {{ end }}
+            {{ end }}
+          # Mention users or groups for critical alerts
+          mentionUsers: ""
+          mentionGroups: ""
+          mentionChannel: "here"  # @here for critical
 ```
 
 ### PagerDuty Contact Point
 
 ```yaml
 # PagerDuty integration
-contact_points:
+contactPoints:
   - name: pagerduty-critical
-    type: pagerduty
-    settings:
-      # Integration key from PagerDuty service
-      integrationKey: "your-pagerduty-integration-key"
-      # Severity mapping
-      severity: "{{ if eq .Status \"firing\" }}critical{{ else }}info{{ end }}"
-      # Custom details
-      class: "{{ .GroupLabels.alertname }}"
-      component: "{{ .GroupLabels.service }}"
-      group: "{{ .GroupLabels.team }}"
-      # Custom summary
-      summary: "{{ .GroupLabels.alertname }} - {{ .CommonAnnotations.summary }}"
+    receivers:
+      - uid: pagerduty-critical
+        type: pagerduty
+        settings:
+          # Integration key from PagerDuty service
+          integrationKey: "your-pagerduty-integration-key"
+          # Severity mapping
+          severity: "{{ if eq .Status \"firing\" }}critical{{ else }}info{{ end }}"
+          # Custom details
+          class: "{{ .GroupLabels.alertname }}"
+          component: "{{ .GroupLabels.service }}"
+          group: "{{ .GroupLabels.team }}"
+          # Custom summary
+          summary: "{{ .GroupLabels.alertname }} - {{ .CommonAnnotations.summary }}"
 ```
 
 ### Webhook Contact Point
 
 ```yaml
 # Generic webhook for custom integrations
-contact_points:
+contactPoints:
   - name: custom-webhook
-    type: webhook
-    settings:
-      # Webhook endpoint URL
-      url: "https://api.example.com/alerts"
-      # HTTP method
-      httpMethod: POST
-      # Authentication header
-      authorization_scheme: Bearer
-      authorization_credentials: "your-api-token"
-      # Custom headers
-      # Max alerts to include
-      maxAlerts: 10
+    receivers:
+      - uid: custom-webhook
+        type: webhook
+        settings:
+          # Webhook endpoint URL
+          url: "https://api.example.com/alerts"
+          # HTTP method
+          httpMethod: POST
+          # Authentication header
+          authorization_scheme: Bearer
+          authorization_credentials: "your-api-token"
+          # Max alerts to include
+          maxAlerts: 10
 ```
 
 ### Microsoft Teams Contact Point
 
 ```yaml
 # Microsoft Teams webhook
-contact_points:
+contactPoints:
   - name: teams-alerts
-    type: teams
-    settings:
-      # Teams incoming webhook URL
-      url: "https://outlook.office.com/webhook/xxx"
-      # Message title
-      title: "Grafana Alert: {{ .GroupLabels.alertname }}"
-      # Section title
-      sectiontitle: "Alert Details"
-      # Message content
-      message: |
-        **Status**: {{ .Status }}
-        **Severity**: {{ .GroupLabels.severity }}
+    receivers:
+      - uid: teams-alerts
+        type: teams
+        settings:
+          # Teams incoming webhook URL
+          url: "https://outlook.office.com/webhook/xxx"
+          # Message title
+          title: "Grafana Alert: {{ .GroupLabels.alertname }}"
+          # Section title
+          sectiontitle: "Alert Details"
+          # Message content
+          message: |
+            **Status**: {{ .Status }}
+            **Severity**: {{ .GroupLabels.severity }}
 
-        {{ range .Alerts }}
-        {{ .Annotations.summary }}
-        {{ end }}
+            {{ range .Alerts }}
+            {{ .Annotations.summary }}
+            {{ end }}
 ```
 
 ---
@@ -608,7 +619,7 @@ Mute timings define recurring windows when alerts are suppressed:
 
 ```yaml
 # Mute timing for off-hours
-mute_timings:
+muteTimes:
   - name: outside-business-hours
     time_intervals:
       # Weekday nights (6 PM to 8 AM)
@@ -622,7 +633,7 @@ mute_timings:
       - weekdays: ["saturday", "sunday"]
 
 # Apply to notification policy
-notification_policies:
+policies:
   - receiver: slack-non-critical
     matchers:
       - severity = info
@@ -644,66 +655,50 @@ states:
   - Normal: Condition is not met
   - Pending: Condition met, waiting for "for" duration
   - Alerting: Condition met for required duration, firing
-  - NoData: Query returned no data
+  - Recovering: Alert was firing, condition is no longer met, and "keep firing for" has not elapsed
+  - No Data: Query returned no data
   - Error: Query or evaluation failed
 ```
 
-### State History API
+### Querying State History Data
 
-```bash
-# Query alert state history via API
-curl -X GET "http://grafana.example.com/api/v1/rules/history" \
-  -H "Authorization: Bearer $GRAFANA_TOKEN" \
-  --data-urlencode "ruleUID=alert-rule-uid" \
-  --data-urlencode "from=2026-01-26T00:00:00Z" \
-  --data-urlencode "to=2026-01-27T00:00:00Z"
+```text
+# Grafana exposes alert state history in the UI when configured with Loki.
+# You can also query the configured history backend directly in Explore.
 
-# Response shows state transitions
-# {
-#   "results": [
-#     {
-#       "previous": "Normal",
-#       "current": "Pending",
-#       "timestamp": "2026-01-27T10:00:00Z",
-#       "values": {"A": 85.2}
-#     },
-#     {
-#       "previous": "Pending",
-#       "current": "Alerting",
-#       "timestamp": "2026-01-27T10:05:00Z",
-#       "values": {"A": 87.1}
-#     }
-#   ]
-# }
+# Prometheus state-history backend
+GRAFANA_ALERTS{alertstate="firing"}
+
+# Loki state-history backend
+{from="state-history"} | json | current=~"Alerting.*"
 ```
 
 ### Configuring State History Storage
 
-```yaml
+```toml
 # grafana.ini settings for state history
 [unified_alerting.state_history]
 # Enable state history recording
 enabled = true
 
-# Backend storage type: annotation, loki, or multiple
+# Backend storage type: loki, prometheus, or multiple
 backend = loki
 
 # Loki configuration for state history
 loki_remote_url = http://loki:3100
 
-# Retention period for state history
-# External stores manage their own retention
+[feature_toggles]
+enable = alertingCentralAlertHistory
 ```
 
 ---
 
 ## Complete Alert Configuration Example
 
-Here is a complete example bringing together all concepts:
+Here is a complete conceptual example bringing together all concepts. If you plan to provision this from a file, export an alert rule from Grafana first and adapt the generated `data[].model` and `datasourceUid` fields for your environment:
 
 ```yaml
-# Complete alert configuration for a web application
-# File: alerts/web-application.yaml
+# Complete conceptual alert configuration for a web application
 
 groups:
   - name: WebApplicationAlerts
@@ -721,7 +716,7 @@ groups:
         annotations:
           summary: "High error rate on {{ $labels.instance }}"
           description: |
-            Error rate is {{ printf "%.2f" $values.C }}%
+            Error rate is {{ printf "%.2f" $values.C.Value }}%
             which exceeds the 5% threshold.
 
             Instance: {{ $labels.instance }}
@@ -757,7 +752,7 @@ groups:
         annotations:
           summary: "High P99 latency on {{ $labels.instance }}"
           description: |
-            P99 latency is {{ printf "%.0f" $values.A }}ms
+            P99 latency is {{ printf "%.0f" $values.B.Value }}ms
             which exceeds the 500ms threshold.
         queries:
           - refId: A
@@ -786,7 +781,7 @@ groups:
         annotations:
           summary: "Pod {{ $labels.pod }} restarting frequently"
           description: |
-            Pod has restarted {{ printf "%.0f" $values.A }} times
+            Pod has restarted {{ printf "%.0f" $values.B.Value }} times
             in the last 30 minutes.
         queries:
           - refId: A
@@ -803,45 +798,53 @@ groups:
                   params: [3]
 
 # Notification policies for the above alerts
-notification_policies:
-  receiver: default-email
-  group_by: [alertname, service]
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 4h
-  routes:
-    - receiver: pagerduty-critical
-      matchers:
-        - severity = critical
-      group_wait: 10s
-      repeat_interval: 1h
-    - receiver: slack-backend
-      matchers:
-        - team = backend
-    - receiver: slack-platform
-      matchers:
-        - team = platform
+policies:
+  - receiver: default-email
+    group_by: [alertname, service]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      - receiver: pagerduty-critical
+        matchers:
+          - severity = critical
+        group_wait: 10s
+        repeat_interval: 1h
+      - receiver: slack-backend
+        matchers:
+          - team = backend
+      - receiver: slack-platform
+        matchers:
+          - team = platform
 
 # Contact points
-contact_points:
+contactPoints:
   - name: default-email
-    type: email
-    settings:
-      addresses: "alerts@example.com"
+    receivers:
+      - uid: default-email
+        type: email
+        settings:
+          addresses: "alerts@example.com"
   - name: pagerduty-critical
-    type: pagerduty
-    settings:
-      integrationKey: "${PAGERDUTY_KEY}"
+    receivers:
+      - uid: pagerduty-critical
+        type: pagerduty
+        settings:
+          integrationKey: "$PAGERDUTY_KEY"
   - name: slack-backend
-    type: slack
-    settings:
-      url: "${SLACK_WEBHOOK_BACKEND}"
-      recipient: "#backend-alerts"
+    receivers:
+      - uid: slack-backend
+        type: slack
+        settings:
+          url: "$SLACK_WEBHOOK_BACKEND"
+          recipient: "#backend-alerts"
   - name: slack-platform
-    type: slack
-    settings:
-      url: "${SLACK_WEBHOOK_PLATFORM}"
-      recipient: "#platform-alerts"
+    receivers:
+      - uid: slack-platform
+        type: slack
+        settings:
+          url: "$SLACK_WEBHOOK_PLATFORM"
+          recipient: "#platform-alerts"
 ```
 
 ---
