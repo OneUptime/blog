@@ -568,35 +568,52 @@ Monitor the database itself to ensure your IoT platform stays healthy.
 
 ```sql
 -- Check hypertable size and chunk count
+-- Size info lives in helper functions, not the hypertables view itself
 SELECT
-    hypertable_name,
-    table_size,
-    index_size,
-    toast_size,
-    total_size,
-    compression_ratio
-FROM timescaledb_information.hypertable
-WHERE hypertable_name = 'device_readings';
+    h.hypertable_name,
+    h.num_chunks,
+    pg_size_pretty(s.table_bytes) AS table_size,
+    pg_size_pretty(s.index_bytes) AS index_size,
+    pg_size_pretty(s.toast_bytes) AS toast_size,
+    pg_size_pretty(s.total_bytes) AS total_size
+FROM timescaledb_information.hypertables h,
+     LATERAL hypertable_detailed_size(
+         format('%I.%I', h.hypertable_schema, h.hypertable_name)::regclass
+     ) s
+WHERE h.hypertable_name = 'device_readings';
 
 -- Monitor chunk distribution (ensure even partitioning)
+-- The chunks view exposes metadata; use pg_total_relation_size for chunk size
 SELECT
     chunk_name,
     range_start,
     range_end,
     is_compressed,
-    pg_size_pretty(total_bytes) AS chunk_size
+    pg_size_pretty(
+        pg_total_relation_size(format('%I.%I', chunk_schema, chunk_name)::regclass)
+    ) AS chunk_size
 FROM timescaledb_information.chunks
 WHERE hypertable_name = 'device_readings'
 ORDER BY range_start DESC
 LIMIT 20;
 
 -- Check continuous aggregate refresh status
+-- Refresh policy metrics live in the jobs/job_stats views, not the CAGG view
 SELECT
-    view_name,
-    materialization_hypertable_name,
-    refresh_lag,
-    max_interval_per_refresh
-FROM timescaledb_information.continuous_aggregates;
+    ca.view_name,
+    ca.materialization_hypertable_name,
+    js.last_run_started_at,
+    js.last_successful_finish,
+    js.last_run_status,
+    js.total_successes,
+    js.total_failures
+FROM timescaledb_information.continuous_aggregates ca
+JOIN timescaledb_information.jobs j
+    ON j.hypertable_schema = ca.materialization_hypertable_schema
+   AND j.hypertable_name = ca.materialization_hypertable_name
+JOIN timescaledb_information.job_stats js
+    ON js.job_id = j.job_id
+WHERE j.proc_name = 'policy_refresh_continuous_aggregate';
 
 -- Identify slow queries (requires pg_stat_statements)
 SELECT
