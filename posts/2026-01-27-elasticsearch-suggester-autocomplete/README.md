@@ -14,7 +14,7 @@ Autocomplete has become an essential feature in modern applications. Users expec
 
 ## Understanding Elasticsearch Suggesters
 
-Elasticsearch offers four main types of suggesters:
+Elasticsearch offers three main suggester types, plus context-enabled completion suggestions:
 
 ```mermaid
 flowchart TB
@@ -22,7 +22,7 @@ flowchart TB
         CS["Completion Suggester<br/>Fast prefix matching"]
         TS["Term Suggester<br/>Spell correction"]
         PS["Phrase Suggester<br/>Multi-word corrections"]
-        CXS["Context Suggester<br/>Filtered completions"]
+        CXS["Completion Contexts<br/>Filtered completions"]
     end
 
     User["User Input"] --> Suggesters
@@ -37,7 +37,7 @@ Each suggester serves a specific purpose:
 - **Completion Suggester**: Optimized for speed, uses an in-memory data structure (FST) for instant prefix matching
 - **Term Suggester**: Provides spelling corrections based on edit distance
 - **Phrase Suggester**: Corrects entire phrases while considering word proximity
-- **Context Suggester**: Adds filtering capabilities to the completion suggester
+- **Completion Contexts**: Add filtering and boosting capabilities to the completion suggester
 
 ## Completion Suggester
 
@@ -147,9 +147,9 @@ const { Client } = require('@elastic/elasticsearch');
 // Configure with your cluster endpoint and credentials
 const client = new Client({
   node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200',
-  auth: {
-    apiKey: process.env.ELASTICSEARCH_API_KEY
-  }
+  ...(process.env.ELASTICSEARCH_API_KEY
+    ? { auth: { apiKey: process.env.ELASTICSEARCH_API_KEY } }
+    : {})
 });
 
 // Create index with optimized completion mapping
@@ -163,35 +163,33 @@ async function createProductIndex() {
 
   await client.indices.create({
     index: 'products',
-    body: {
-      settings: {
-        // Optimize for autocomplete performance
-        number_of_shards: 1,
-        number_of_replicas: 1,
-        // Use simple analyzer for better prefix matching
-        analysis: {
-          analyzer: {
-            autocomplete_analyzer: {
-              type: 'custom',
-              tokenizer: 'standard',
-              filter: ['lowercase', 'asciifolding']
-            }
+    settings: {
+      // Optimize for autocomplete performance
+      number_of_shards: 1,
+      number_of_replicas: 1,
+      // Use simple analyzer for better prefix matching
+      analysis: {
+        analyzer: {
+          autocomplete_analyzer: {
+            type: 'custom',
+            tokenizer: 'standard',
+            filter: ['lowercase', 'asciifolding']
           }
         }
-      },
-      mappings: {
-        properties: {
-          name: { type: 'text' },
-          category: { type: 'keyword' },
-          price: { type: 'float' },
-          suggest: {
-            type: 'completion',
-            analyzer: 'autocomplete_analyzer',
-            // Preserve separators for multi-word matching
-            preserve_separators: true,
-            // Limit input length to prevent memory issues
-            max_input_length: 50
-          }
+      }
+    },
+    mappings: {
+      properties: {
+        name: { type: 'text' },
+        category: { type: 'keyword' },
+        price: { type: 'float' },
+        suggest: {
+          type: 'completion',
+          analyzer: 'autocomplete_analyzer',
+          // Preserve separators for multi-word matching
+          preserve_separators: true,
+          // Limit input length to prevent memory issues
+          max_input_length: 50
         }
       }
     }
@@ -208,7 +206,7 @@ async function indexProduct(product) {
   await client.index({
     index: 'products',
     id: product.id,
-    body: {
+    document: {
       name: product.name,
       category: product.category,
       price: product.price,
@@ -246,7 +244,7 @@ function generateSuggestionInputs(name) {
 
 // Get autocomplete suggestions
 async function getAutocompleteSuggestions(prefix, options = {}) {
-  const { size = 10, fuzzy = true, category = null } = options;
+  const { size = 10, fuzzy = true } = options;
 
   const suggestQuery = {
     prefix: prefix,
@@ -268,12 +266,10 @@ async function getAutocompleteSuggestions(prefix, options = {}) {
 
   const response = await client.search({
     index: 'products',
-    body: {
-      // Return source documents along with suggestions
-      _source: ['name', 'category', 'price'],
-      suggest: {
-        'product-suggest': suggestQuery
-      }
+    // Return source documents along with suggestions
+    _source: ['name', 'category', 'price'],
+    suggest: {
+      'product-suggest': suggestQuery
     }
   });
 
@@ -359,28 +355,35 @@ POST /products/_search
 // term-suggester.js
 // Spell correction using term suggester
 
+const { Client } = require('@elastic/elasticsearch');
+
+const client = new Client({
+  node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200',
+  ...(process.env.ELASTICSEARCH_API_KEY
+    ? { auth: { apiKey: process.env.ELASTICSEARCH_API_KEY } }
+    : {})
+});
+
 async function getSpellingSuggestions(text, field = 'name') {
   const response = await client.search({
     index: 'products',
-    body: {
-      suggest: {
-        'spelling': {
-          text: text,
-          term: {
-            field: field,
-            // 'popular' suggests terms that appear more frequently
-            suggest_mode: 'popular',
-            // Sort by term frequency in the index
-            sort: 'frequency',
-            // Maximum edit distance (1 or 2)
-            max_edits: 2,
-            // Don't change first N characters
-            prefix_length: 2,
-            // Minimum word length to consider
-            min_word_length: 3,
-            // Minimum frequency in index to be considered
-            min_doc_freq: 1
-          }
+    suggest: {
+      'spelling': {
+        text: text,
+        term: {
+          field: field,
+          // 'popular' suggests terms that appear more frequently
+          suggest_mode: 'popular',
+          // Sort by term frequency in the index
+          sort: 'frequency',
+          // Maximum edit distance (1 or 2)
+          max_edits: 2,
+          // Don't change first N characters
+          prefix_length: 2,
+          // Minimum word length to consider
+          min_word_length: 3,
+          // Minimum frequency in index to be considered
+          min_doc_freq: 1
         }
       }
     }
@@ -422,6 +425,11 @@ async function buildCorrectedQuery(query) {
     wasModified: correctedQuery !== query
   };
 }
+
+module.exports = {
+  getSpellingSuggestions,
+  buildCorrectedQuery
+};
 ```
 
 ## Phrase Suggester
@@ -475,17 +483,17 @@ PUT /products
   "settings": {
     "analysis": {
       "filter": {
-        "trigram_filter": {
-          "type": "ngram",
-          "min_gram": 3,
-          "max_gram": 3
+        "shingle_filter": {
+          "type": "shingle",
+          "min_shingle_size": 2,
+          "max_shingle_size": 3
         }
       },
       "analyzer": {
         "trigram_analyzer": {
           "type": "custom",
           "tokenizer": "standard",
-          "filter": ["lowercase", "trigram_filter"]
+          "filter": ["lowercase", "shingle_filter"]
         }
       }
     }
@@ -512,47 +520,54 @@ PUT /products
 // phrase-suggester.js
 // Complete phrase correction
 
+const { Client } = require('@elastic/elasticsearch');
+
+const client = new Client({
+  node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200',
+  ...(process.env.ELASTICSEARCH_API_KEY
+    ? { auth: { apiKey: process.env.ELASTICSEARCH_API_KEY } }
+    : {})
+});
+
 async function getPhraseSuggestions(text) {
   const response = await client.search({
     index: 'products',
-    body: {
-      suggest: {
-        'phrase-correction': {
-          text: text,
-          phrase: {
-            field: 'name.trigram',
-            size: 5,
-            // Gram size for n-gram analysis
-            gram_size: 3,
-            // Minimum score threshold
-            confidence: 0.5,
-            // Maximum errors per word
-            max_errors: 2,
-            // Generators find candidate corrections
-            direct_generator: [
-              {
-                field: 'name.trigram',
-                suggest_mode: 'always',
-                min_word_length: 3
-              }
-            ],
-            // Highlight differences
-            highlight: {
-              pre_tag: '<em>',
-              post_tag: '</em>'
-            },
-            // Verify suggestions exist in index
-            collate: {
-              query: {
-                source: {
-                  match: {
-                    name: '{{suggestion}}'
-                  }
-                }
-              },
-              // Include collate_match in response
-              prune: true
+    suggest: {
+      'phrase-correction': {
+        text: text,
+        phrase: {
+          field: 'name.trigram',
+          size: 5,
+          // Gram size for shingle analysis
+          gram_size: 3,
+          // Minimum score threshold
+          confidence: 0.5,
+          // Maximum errors per word
+          max_errors: 2,
+          // Generators find candidate corrections
+          direct_generator: [
+            {
+              field: 'name.trigram',
+              suggest_mode: 'always',
+              min_word_length: 3
             }
+          ],
+          // Highlight differences
+          highlight: {
+            pre_tag: '<em>',
+            post_tag: '</em>'
+          },
+          // Verify suggestions exist in index
+          collate: {
+            query: {
+              source: {
+                match: {
+                  name: '{{suggestion}}'
+                }
+              }
+            },
+            // Include collate_match in response
+            prune: true
           }
         }
       }
@@ -569,6 +584,10 @@ async function getPhraseSuggestions(text) {
     existsInIndex: option.collate_match
   }));
 }
+
+module.exports = {
+  getPhraseSuggestions
+};
 ```
 
 ## Context Suggester
@@ -598,6 +617,7 @@ PUT /products
     "properties": {
       "name": { "type": "text" },
       "category": { "type": "keyword" },
+      "location": { "type": "geo_point" },
       "suggest": {
         "type": "completion",
         "contexts": [
@@ -650,8 +670,17 @@ POST /products/_doc/1
 // context-suggester.js
 // Autocomplete with category and geo filtering
 
+const { Client } = require('@elastic/elasticsearch');
+
+const client = new Client({
+  node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200',
+  ...(process.env.ELASTICSEARCH_API_KEY
+    ? { auth: { apiKey: process.env.ELASTICSEARCH_API_KEY } }
+    : {})
+});
+
 async function getContextualSuggestions(prefix, context = {}) {
-  const { category, location, radius = '10km' } = context;
+  const { category, location } = context;
 
   const suggestQuery = {
     prefix: prefix,
@@ -681,7 +710,7 @@ async function getContextualSuggestions(prefix, context = {}) {
         context: location,
         // Match within precision level
         precision: 4,
-        // Boost closer results
+        // Boost this matching geo context
         boost: 1.5
       }
     ];
@@ -689,11 +718,9 @@ async function getContextualSuggestions(prefix, context = {}) {
 
   const response = await client.search({
     index: 'products',
-    body: {
-      _source: ['name', 'category', 'price'],
-      suggest: {
-        'contextual-suggest': suggestQuery
-      }
+    _source: ['name', 'category', 'price'],
+    suggest: {
+      'contextual-suggest': suggestQuery
     }
   });
 
@@ -729,6 +756,11 @@ async function contextualAutocompleteHandler(req, res) {
   const suggestions = await getContextualSuggestions(q, context);
   res.json({ suggestions });
 }
+
+module.exports = {
+  getContextualSuggestions,
+  contextualAutocompleteHandler
+};
 ```
 
 ## Performance Optimization
@@ -935,10 +967,8 @@ async function getOptimizedSuggestions(prefix, options = {}) {
       timeout: timeout,
       // Only return needed fields
       _source: ['name', 'category'],
-      body: {
-        suggest: {
-          'suggestions': suggestQuery
-        }
+      suggest: {
+        'suggestions': suggestQuery
       }
     });
 
@@ -958,17 +988,22 @@ async function getOptimizedSuggestions(prefix, options = {}) {
 
 ## Complete API Implementation
 
-Here is a complete Express.js API combining all suggester types.
+Here is a complete Express.js API combining completion, term, and phrase suggestions.
 
 ```javascript
 // autocomplete-api.js
-// Complete autocomplete API with all suggester types
+// Complete autocomplete API with completion, term, and phrase suggestions
 
 const express = require('express');
 const { Client } = require('@elastic/elasticsearch');
+const { getAutocompleteSuggestions } = require('./elasticsearch-autocomplete');
+const { getSpellingSuggestions } = require('./term-suggester');
+const { getPhraseSuggestions } = require('./phrase-suggester');
 
 const app = express();
-const client = new Client({ node: process.env.ELASTICSEARCH_URL });
+const client = new Client({
+  node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200'
+});
 
 // Middleware for request timing
 app.use((req, res, next) => {
@@ -984,7 +1019,7 @@ app.use((req, res, next) => {
 
 // Main autocomplete endpoint
 app.get('/api/autocomplete', async (req, res) => {
-  const { q, category, type = 'completion' } = req.query;
+  const { q, type = 'completion' } = req.query;
 
   if (!q || q.length < 2) {
     return res.json({ suggestions: [] });
@@ -995,16 +1030,16 @@ app.get('/api/autocomplete', async (req, res) => {
 
     switch (type) {
       case 'completion':
-        suggestions = await getCompletionSuggestions(q, { category });
+        suggestions = await getAutocompleteSuggestions(q);
         break;
       case 'term':
-        suggestions = await getTermSuggestions(q);
+        suggestions = await getSpellingSuggestions(q);
         break;
       case 'phrase':
         suggestions = await getPhraseSuggestions(q);
         break;
       default:
-        suggestions = await getCompletionSuggestions(q, { category });
+        suggestions = await getAutocompleteSuggestions(q);
     }
 
     res.json({
