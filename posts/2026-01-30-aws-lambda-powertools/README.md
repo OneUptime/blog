@@ -73,7 +73,11 @@ pip install "aws-lambda-powertools[tracer,validation,parser]"
 npm install @aws-lambda-powertools/logger \
             @aws-lambda-powertools/tracer \
             @aws-lambda-powertools/metrics \
-            @aws-lambda-powertools/parameters
+            @aws-lambda-powertools/parameters \
+            @aws-sdk/client-ssm \
+            @aws-sdk/client-secrets-manager \
+            @aws-sdk/client-appconfigdata \
+            @middy/core
 ```
 
 ### Lambda Layer (Alternative)
@@ -86,7 +90,8 @@ AWS provides managed layers for Powertools:
 Globals:
   Function:
     Layers:
-      - !Sub arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsPythonV2:51
+      # Find the latest layer version for your runtime in the official documentation
+      - !Sub arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:33
 ```
 
 ---
@@ -246,8 +251,9 @@ export const handler = async (event: any, context: Context) => {
 };
 
 const createOrder = async (event: any) => {
-    const subsegment = tracer.getSegment()?.addNewSubsegment('createOrder');
-    tracer.setSegment(subsegment!);
+    const parentSegment = tracer.getSegment();
+    const subsegment = parentSegment?.addNewSubsegment('createOrder');
+    subsegment && tracer.setSegment(subsegment);
 
     try {
         tracer.putAnnotation('orderType', event.type || 'standard');
@@ -259,6 +265,7 @@ const createOrder = async (event: any) => {
         return { orderId };
     } finally {
         subsegment?.close();
+        parentSegment && tracer.setSegment(parentSegment);
     }
 };
 ```
@@ -293,7 +300,7 @@ The Metrics utility uses CloudWatch Embedded Metric Format (EMF) to emit custom 
 
 ```python
 from aws_lambda_powertools import Metrics
-from aws_lambda_powertools.metrics import MetricUnit
+from aws_lambda_powertools.metrics import MetricResolution, MetricUnit
 
 metrics = Metrics(service="order-service", namespace="OrderProcessing")
 
@@ -405,7 +412,7 @@ def handler(event: dict, context) -> dict:
 ### TypeScript Parameters
 
 ```typescript
-import { getParameter, getParameters, getSecret } from '@aws-lambda-powertools/parameters/ssm';
+import { getParameter, getParameters } from '@aws-lambda-powertools/parameters/ssm';
 import { getSecret as getSecretFromSecretsManager } from '@aws-lambda-powertools/parameters/secrets';
 import { getAppConfig } from '@aws-lambda-powertools/parameters/appconfig';
 
@@ -436,16 +443,16 @@ export const handler = async (event: any) => {
 
 ```python
 from aws_lambda_powertools.utilities import parameters
-from datetime import timedelta
+import os
 
-# Cache for 5 minutes (default)
+# Cache for 5 minutes instead of the 5-second default
 api_key = parameters.get_parameter("/myapp/api-key", max_age=300)
 
 # Force refresh, ignoring cache
 api_key = parameters.get_parameter("/myapp/api-key", force_fetch=True)
 
 # Custom cache configuration
-parameters.DEFAULT_MAX_AGE_SECS = 600  # 10 minutes globally
+os.environ["POWERTOOLS_PARAMETERS_MAX_AGE"] = "600"  # 10 minutes globally
 ```
 
 ### Custom Provider
@@ -723,8 +730,9 @@ const lambdaHandler = async (event: OrderEvent, context: Context) => {
 };
 
 const processOrder = async (event: OrderEvent, dbConfig: any): Promise<Order> => {
-    const subsegment = tracer.getSegment()?.addNewSubsegment('processOrder');
-    tracer.setSegment(subsegment!);
+    const parentSegment = tracer.getSegment();
+    const subsegment = parentSegment?.addNewSubsegment('processOrder');
+    subsegment && tracer.setSegment(subsegment);
 
     try {
         logger.debug('Validating order');
@@ -740,6 +748,7 @@ const processOrder = async (event: OrderEvent, dbConfig: any): Promise<Order> =>
         };
     } finally {
         subsegment?.close();
+        parentSegment && tracer.setSegment(parentSegment);
     }
 };
 
@@ -753,14 +762,16 @@ const validateOrder = (event: OrderEvent): void => {
 };
 
 const saveOrder = async (event: OrderEvent, dbConfig: any): Promise<void> => {
-    const subsegment = tracer.getSegment()?.addNewSubsegment('saveOrder');
-    tracer.setSegment(subsegment!);
+    const parentSegment = tracer.getSegment();
+    const subsegment = parentSegment?.addNewSubsegment('saveOrder');
+    subsegment && tracer.setSegment(subsegment);
 
     try {
         tracer.putMetadata('dbOperation', 'insert', 'database');
         // Database operations here
     } finally {
         subsegment?.close();
+        parentSegment && tracer.setSegment(parentSegment);
     }
 };
 
@@ -798,13 +809,13 @@ export const handler = middy(lambdaHandler)
 ### Metrics
 
 - Define a namespace per service or domain
-- Use dimensions sparingly (max 10 dimensions per metric)
+- Use dimensions sparingly (CloudWatch allows up to 30 dimensions per metric, and the service dimension counts toward that limit)
 - Capture cold start metrics to monitor performance
 - Use high-resolution metrics only when second-level granularity is needed
 
 ### Parameters
 
-- Always enable caching (default 5 minutes)
+- Always enable caching (default 5 seconds)
 - Use `decrypt=True` for sensitive SSM parameters
 - Use `transform="json"` for structured secrets
 - Implement circuit breaker patterns for parameter fetching
@@ -831,6 +842,11 @@ Statement:
     Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:myapp/*"
   - Effect: Allow
     Action:
+      - appconfig:StartConfigurationSession
+      - appconfig:GetLatestConfiguration
+    Resource: "*"
+  - Effect: Allow
+    Action:
       - kms:Decrypt
     Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*"
 ```
@@ -850,7 +866,7 @@ Lambda extensions can intercept logs and forward them to external backends:
 Globals:
   Function:
     Layers:
-      - !Sub arn:aws:lambda:${AWS::Region}:901920570463:layer:aws-otel-collector-amd64-ver-0-90-1:1
+      - !Sub arn:aws:lambda:${AWS::Region}:901920570463:layer:aws-otel-collector-amd64-ver-0-117-0:1
     Environment:
       Variables:
         OPENTELEMETRY_COLLECTOR_CONFIG_FILE: /var/task/collector.yaml
@@ -903,6 +919,7 @@ Use a Lambda function to forward logs from CloudWatch to your preferred backend:
 import json
 import gzip
 import base64
+import os
 import requests
 
 def handler(event, context):
