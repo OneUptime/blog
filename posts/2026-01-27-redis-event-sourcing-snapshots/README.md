@@ -394,7 +394,7 @@ class AggregateRepository:
 
         pipe = self.redis.pipeline()
 
-        # Append events to stream
+        # Append events to the Redis list
         for event in events:
             event_data = json.dumps(asdict(event))
             pipe.rpush(events_key, event_data)
@@ -525,7 +525,10 @@ class SnapshotScheduler:
     ):
         self.redis = redis_client
         self.repository = repository
-        self.aggregate_classes = {c.__name__: c for c in aggregate_classes}
+        self.aggregate_classes = {
+            c("__type_probe__").aggregate_type: c
+            for c in aggregate_classes
+        }
         self._running = False
 
     def _get_aggregates_needing_snapshot(self, threshold: int = 100) -> List[tuple]:
@@ -682,6 +685,27 @@ class CompressedSnapshotStore(RedisSnapshotStore):
         if not data:
             return None
 
+        return self._decode_snapshot(data)
+
+    def get_at_version(
+        self,
+        aggregate_type: str,
+        aggregate_id: str,
+        version: int
+    ) -> Optional[Snapshot]:
+        """Get and decompress snapshot at or before a specific version"""
+        history_key = self._history_key(aggregate_type, aggregate_id)
+        snapshots = self.redis.lrange(history_key, 0, -1)
+
+        for snapshot_data in snapshots:
+            snapshot = self._decode_snapshot(snapshot_data)
+            if snapshot.version <= version:
+                return snapshot
+
+        return None
+
+    def _decode_snapshot(self, data: str) -> Snapshot:
+        """Decode a compressed or plain snapshot payload"""
         # Check for compression marker
         if data.startswith('z:'):
             compressed = base64.b64decode(data[2:])
