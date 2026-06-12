@@ -105,7 +105,7 @@ flowchart TB
 #!/bin/bash
 # backup-encrypt.sh
 
-# Encrypts backup files using AES-256-GCM with a password
+# Encrypts backup files using AES-256-CBC with a password
 
 # Configuration
 BACKUP_DIR="/var/backups"
@@ -124,11 +124,13 @@ encrypt_file() {
     # The password file should have permissions 600 and be owned by root
     local password=$(cat "$PASSWORD_FILE")
 
-    # Encrypt using AES-256-GCM (authenticated encryption)
+    # Encrypt using AES-256-CBC
+    # Note: openssl enc does not support authenticated modes like GCM.
+    # For authenticated encryption, use the Python/Go AES-GCM examples below.
     # -pbkdf2: Use PBKDF2 key derivation (more secure than default)
     # -iter 100000: 100,000 iterations for key derivation
     # -salt: Add random salt (enabled by default but explicit is good)
-    openssl enc -aes-256-gcm \
+    openssl enc -aes-256-cbc \
         -pbkdf2 \
         -iter 100000 \
         -salt \
@@ -148,7 +150,7 @@ decrypt_file() {
     local output_file="$2"
     local password=$(cat "$PASSWORD_FILE")
 
-    openssl enc -aes-256-gcm \
+    openssl enc -aes-256-cbc \
         -d \
         -pbkdf2 \
         -iter 100000 \
@@ -1208,7 +1210,8 @@ create_backup() {
     # Create backup pipeline:
     # 1. pg_dump: Create SQL dump
     # 2. gzip: Compress data
-    # 3. openssl: Encrypt with AES-256-GCM
+    # 3. openssl: Encrypt with AES-256-CBC
+    # Note: openssl enc does not support authenticated modes like GCM.
     pg_dump \
         -h "$DB_HOST" \
         -U "$DB_USER" \
@@ -1216,7 +1219,7 @@ create_backup() {
         --no-password \
         -F plain \
         | gzip -9 \
-        | openssl enc -aes-256-gcm \
+        | openssl enc -aes-256-cbc \
             -pbkdf2 \
             -iter 100000 \
             -salt \
@@ -1249,7 +1252,7 @@ restore_backup() {
     ENCRYPTION_KEY=$(cat "$ENCRYPTION_KEY_FILE")
 
     # Decrypt, decompress, and restore
-    openssl enc -aes-256-gcm \
+    openssl enc -aes-256-cbc \
         -d \
         -pbkdf2 \
         -iter 100000 \
@@ -1272,7 +1275,7 @@ cleanup_old_backups() {
     echo "Cleanup completed"
 }
 
-# Function to verify backup integrity
+# Function to smoke-test backup readability
 verify_backup() {
     local backup_file="$1"
 
@@ -1280,8 +1283,8 @@ verify_backup() {
 
     ENCRYPTION_KEY=$(cat "$ENCRYPTION_KEY_FILE")
 
-    # Try to decrypt first few bytes to verify key is correct
-    if openssl enc -aes-256-gcm \
+    # Try to decrypt and decompress the first few bytes to verify the key is usable
+    if openssl enc -aes-256-cbc \
         -d \
         -pbkdf2 \
         -iter 100000 \
@@ -1335,9 +1338,9 @@ BACKUP_DIR="/var/backups/mysql"
 ENCRYPTION_KEY_FILE="/etc/backup/.mysql_encryption_key"
 RETENTION_DAYS=30
 
-# Read credentials from secure file
-# Create this file with: mysql_config_editor set --login-path=backup --host=localhost --user=backup_user --password
-MYSQL_DEFAULTS_FILE="/etc/backup/.my.cnf"
+# Read credentials from a MySQL login path
+# Create it with: mysql_config_editor set --login-path=backup --host=localhost --user=backup_user --password
+MYSQL_LOGIN_PATH="backup"
 
 mkdir -p "$BACKUP_DIR"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -1351,7 +1354,7 @@ backup_all_databases() {
 
     # Backup all databases with single transaction for consistency
     mysqldump \
-        --defaults-file="$MYSQL_DEFAULTS_FILE" \
+        --login-path="$MYSQL_LOGIN_PATH" \
         --host="$DB_HOST" \
         --single-transaction \
         --routines \
@@ -1359,7 +1362,7 @@ backup_all_databases() {
         --events \
         --all-databases \
         | gzip -9 \
-        | openssl enc -aes-256-gcm \
+        | openssl enc -aes-256-cbc \
             -pbkdf2 \
             -iter 100000 \
             -salt \
@@ -1382,14 +1385,14 @@ backup_single_database() {
     BACKUP_FILE="$BACKUP_DIR/${db_name}-${TIMESTAMP}.sql.gz.enc"
 
     mysqldump \
-        --defaults-file="$MYSQL_DEFAULTS_FILE" \
+        --login-path="$MYSQL_LOGIN_PATH" \
         --host="$DB_HOST" \
         --single-transaction \
         --routines \
         --triggers \
         "$db_name" \
         | gzip -9 \
-        | openssl enc -aes-256-gcm \
+        | openssl enc -aes-256-cbc \
             -pbkdf2 \
             -iter 100000 \
             -salt \
@@ -1411,7 +1414,7 @@ restore_database() {
 
     ENCRYPTION_KEY=$(cat "$ENCRYPTION_KEY_FILE")
 
-    openssl enc -aes-256-gcm \
+    openssl enc -aes-256-cbc \
         -d \
         -pbkdf2 \
         -iter 100000 \
@@ -1419,7 +1422,7 @@ restore_database() {
         -in "$backup_file" \
         | gunzip \
         | mysql \
-            --defaults-file="$MYSQL_DEFAULTS_FILE" \
+            --login-path="$MYSQL_LOGIN_PATH" \
             --host="$DB_HOST" \
             ${target_db:+--database="$target_db"}
 
@@ -1495,13 +1498,13 @@ data:
       postgres)
         pg_dump -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" \
           | gzip -9 \
-          | openssl enc -aes-256-gcm -pbkdf2 -iter 100000 -salt \
+          | openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt \
               -pass "pass:$ENCRYPTION_KEY" \
               -out "/tmp/${BACKUP_NAME}.sql.gz.enc"
         ;;
       files)
         tar czf - "$BACKUP_SOURCE" \
-          | openssl enc -aes-256-gcm -pbkdf2 -iter 100000 -salt \
+          | openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt \
               -pass "pass:$ENCRYPTION_KEY" \
               -out "/tmp/${BACKUP_NAME}.tar.gz.enc"
         ;;
@@ -1548,7 +1551,8 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: backup
-              image: postgres:15-alpine
+              # Build this image with bash, pg_dump, gzip, tar, OpenSSL, and AWS CLI installed.
+              image: your-registry/backup-tools:postgres15-awscli
               command: ["/bin/bash", "/scripts/backup.sh"]
               env:
                 - name: BACKUP_TYPE
@@ -1665,4 +1669,3 @@ flowchart TB
 ---
 
 Backup encryption is not optional in today's threat landscape. Unencrypted backups are a liability waiting to become a breach. Implement encryption now, manage your keys properly, test your restores regularly, and sleep better knowing your data is protected even if backup media is compromised.
-
