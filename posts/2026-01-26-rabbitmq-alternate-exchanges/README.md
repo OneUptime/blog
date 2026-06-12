@@ -98,9 +98,7 @@ async function setupAlternateExchange() {
     // Create main exchange with alternate-exchange
     await channel.assertExchange('orders', 'direct', {
         durable: true,
-        arguments: {
-            'alternate-exchange': 'unrouted'
-        }
+        alternateExchange: 'unrouted'
     });
 
     // Create and bind queue
@@ -213,9 +211,13 @@ def setup_catchall_direct():
     )
 
     # Known routes
-    channel.queue_bind(exchange='notifications', queue='email', routing_key='email')
-    channel.queue_bind(exchange='notifications', queue='sms', routing_key='sms')
-    channel.queue_bind(exchange='notifications', queue='push', routing_key='push')
+    for queue_name in ['email', 'sms', 'push']:
+        channel.queue_declare(queue=queue_name)
+        channel.queue_bind(
+            exchange='notifications',
+            queue=queue_name,
+            routing_key=queue_name
+        )
 
     # Unknown notification types go to alternate exchange
 ```
@@ -239,6 +241,8 @@ def setup_topic_with_fallback():
     )
 
     # Specific topic bindings
+    channel.queue_declare(queue='order_events')
+    channel.queue_declare(queue='user_events')
     channel.queue_bind(exchange='events', queue='order_events', routing_key='order.#')
     channel.queue_bind(exchange='events', queue='user_events', routing_key='user.#')
 
@@ -276,11 +280,11 @@ def setup_multi_tenant_fallback():
     # Messages for unknown tenants go to fallback
 ```
 
-### Pattern 4: Retry with Alternate Exchange
+### Pattern 4: Retry with Dead Letter Exchange
 
 ```python
-def setup_retry_with_ae():
-    """Use alternate exchange for messages that exceed retry attempts"""
+def setup_retry_with_dlx():
+    """Use a dead letter exchange for messages that exceed retry attempts"""
 
     # Dead letter exchange for exhausted retries
     channel.exchange_declare(exchange='dlx.exhausted', exchange_type='fanout')
@@ -290,19 +294,26 @@ def setup_retry_with_ae():
     # Main processing exchange
     channel.exchange_declare(
         exchange='processing',
-        exchange_type='direct',
-        arguments={'alternate-exchange': 'dlx.exhausted'}
+        exchange_type='direct'
     )
 
-    # Create queues for different retry attempts
+    # Create queues for different retry attempts.
+    # A consumer can nack with requeue=False after the final attempt.
     for attempt in range(1, 4):  # retry_1, retry_2, retry_3
+        queue_name = f'retry_{attempt}'
+        queue_arguments = {}
+
+        if attempt == 3:
+            queue_arguments = {'x-dead-letter-exchange': 'dlx.exhausted'}
+
+        channel.queue_declare(queue=queue_name, arguments=queue_arguments)
         channel.queue_bind(
             exchange='processing',
-            queue=f'retry_{attempt}',
+            queue=queue_name,
             routing_key=f'retry.{attempt}'
         )
 
-    # After retry.3, there's no binding, so messages go to dlx.exhausted
+    # Messages rejected from retry_3 with requeue=False go to dlx.exhausted
 ```
 
 ## Using Policy for Alternate Exchange
@@ -323,6 +334,8 @@ rabbitmqctl list_policies
 ### Python Policy Management
 
 ```python
+import requests
+
 def set_alternate_exchange_policy(admin, pattern, alternate_exchange):
     """Set alternate exchange via policy"""
     url = f"{admin.base_url}/policies/%2F/ae-{pattern.replace('.', '-')}"
@@ -346,6 +359,7 @@ def set_alternate_exchange_policy(admin, pattern, alternate_exchange):
 
 ```python
 import time
+import requests
 
 def monitor_unrouted_rate(host, user, password, threshold=10, interval=60):
     """Alert if too many messages are being unrouted"""
@@ -361,11 +375,11 @@ def monitor_unrouted_rate(host, user, password, threshold=10, interval=60):
         data = response.json()
         current_count = data.get('messages', 0)
 
-        # Calculate rate
-        messages_per_minute = current_count - last_count
+        # Calculate queue depth growth over the interval
+        messages_per_interval = max(0, current_count - last_count)
 
-        if messages_per_minute > threshold:
-            print(f"ALERT: {messages_per_minute} unrouted messages in last minute!")
+        if messages_per_interval > threshold:
+            print(f"ALERT: {messages_per_interval} unrouted messages in the last interval!")
             # Send alert to monitoring system
 
         last_count = current_count
@@ -377,7 +391,7 @@ def monitor_unrouted_rate(host, user, password, threshold=10, interval=60):
 ```yaml
 # Alert rule for unrouted messages
 - alert: HighUnroutedMessageRate
-  expr: rate(rabbitmq_queue_messages_published_total{queue="unrouted_messages"}[5m]) > 1
+  expr: rate(rabbitmq_detailed_queue_messages_published_total{queue="unrouted_messages"}[5m]) > 1
   for: 5m
   labels:
     severity: warning
@@ -393,7 +407,7 @@ Two approaches to handle unroutable messages:
 | Feature | Alternate Exchange | Mandatory Flag |
 |---------|-------------------|----------------|
 | Where handled | Server-side | Client-side |
-| Message destination | Another exchange | Returned to publisher |
+| Message destination | Another exchange | Returned to publisher if no alternate exchange routes it |
 | Requires client code | No | Yes |
 | Works with confirms | Yes | Yes |
 | Persistence | Can be persistent | Must republish |
