@@ -210,45 +210,32 @@ trigger-full-build:
 
 ## Conditional Child Pipelines
 
-Trigger child pipelines based on conditions.
+Trigger child pipelines based on what changed. Use `rules:changes` so GitLab evaluates the file paths at pipeline creation time and only adds the relevant trigger jobs.
 
 ```yaml
 stages:
-  - detect
   - trigger
-
-detect-changes:
-  stage: detect
-  script:
-    - |
-      if git diff --name-only HEAD~1 | grep -q "^frontend/"; then
-        echo "FRONTEND_CHANGED=true" >> changes.env
-      fi
-      if git diff --name-only HEAD~1 | grep -q "^backend/"; then
-        echo "BACKEND_CHANGED=true" >> changes.env
-      fi
-  artifacts:
-    reports:
-      dotenv: changes.env
 
 trigger-frontend:
   stage: trigger
   trigger:
     include: .gitlab/ci/frontend.yml
-  needs:
-    - detect-changes
+    strategy: depend
   rules:
-    - if: $FRONTEND_CHANGED == "true"
+    - changes:
+        - frontend/**/*
 
 trigger-backend:
   stage: trigger
   trigger:
     include: .gitlab/ci/backend.yml
-  needs:
-    - detect-changes
+    strategy: depend
   rules:
-    - if: $BACKEND_CHANGED == "true"
+    - changes:
+        - backend/**/*
 ```
+
+Note: variables produced by `artifacts:reports:dotenv` in an earlier job can't be used in a later job's `rules:if` expression, because rules are evaluated when the pipeline is created, before any job has run. Use `rules:changes`, predefined variables, or workflow-level variables instead.
 
 ## Child Pipeline with Artifacts
 
@@ -432,16 +419,21 @@ deploy-staging:
 
 ## Debugging Child Pipelines
 
-When child pipelines fail or behave unexpectedly:
+When child pipelines fail or behave unexpectedly, add a separate debug job that runs before the trigger. Trigger jobs don't have a runner execution context, so they don't support `script`, `before_script`, or `after_script` — the debug output has to live in its own job.
 
 ```yaml
-# Add debug output to parent
-trigger-debug:
-  stage: trigger
-  before_script:
+# Add debug output via a separate job, since trigger jobs can't run scripts
+debug-trigger:
+  stage: debug
+  script:
     - echo "Triggering child with variables:"
     - env | grep CI_ | sort
     - cat .gitlab/ci/child.yml
+
+trigger-debug:
+  stage: trigger
+  needs:
+    - debug-trigger
   trigger:
     include: .gitlab/ci/child.yml
     strategy: depend
@@ -454,7 +446,7 @@ Common issues:
 - **Variables not available**: Ensure variables are explicitly passed
 - **Artifacts not accessible**: Child pipelines can't directly access parent artifacts
 
-Resource Management
+## Resource Management
 
 Control pipeline resources with child pipelines.
 
