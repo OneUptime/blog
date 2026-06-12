@@ -226,7 +226,7 @@ module Types
     end
 
     # Fetch posts with pagination
-    field :posts, Types::PostConnectionType, null: false do
+    field :posts, Types::PostType.connection_type, null: false do
       description "List posts with cursor-based pagination"
     end
 
@@ -490,13 +490,13 @@ end
 # Use it in a mutation
 module Mutations
   class CreatePost < BaseMutation
-    argument :input, Types::Inputs::PostInputType, required: true
+    argument :attributes, Types::Inputs::PostInputType, required: true
 
     field :post, Types::PostType, null: true
     field :errors, [String], null: false
 
-    def resolve(input:)
-      post = context[:current_user].posts.build(input.to_h)
+    def resolve(attributes:)
+      post = context[:current_user].posts.build(attributes.to_h)
 
       if post.save
         { post: post, errors: [] }
@@ -545,7 +545,7 @@ module Loaders
     def perform(ids)
       # Load all records in a single query
       records = @model.where(@column => ids).index_by(&@column)
-      ids.each { |id| fulfill(id, records[id]) }
+      ids.each { |id| fulfill(id, records[id]) unless fulfilled?(id) }
     end
   end
 end
@@ -606,7 +606,7 @@ end
 
 ## Implementing Subscriptions
 
-Subscriptions enable real-time updates using WebSockets. Configure Action Cable as the transport.
+Subscriptions enable real-time updates using WebSockets. Enable the Action Cable subscription backend in your schema.
 
 ```ruby
 # app/graphql/my_app_schema.rb
@@ -657,8 +657,8 @@ module Mutations
   class CreatePost < BaseMutation
     # ... arguments and fields ...
 
-    def resolve(input:)
-      post = context[:current_user].posts.build(input.to_h)
+    def resolve(attributes:)
+      post = context[:current_user].posts.build(attributes.to_h)
 
       if post.save
         # Trigger the subscription
@@ -755,7 +755,7 @@ RSpec.describe "GraphQL API", type: :request do
   describe "mutations" do
     it "creates a post when authenticated" do
       mutation = <<~GRAPHQL
-        mutation CreatePost($input: PostInputType!) {
+        mutation CreatePost($input: CreatePostInput!) {
           createPost(input: $input) {
             post {
               id
@@ -770,7 +770,9 @@ RSpec.describe "GraphQL API", type: :request do
         params: {
           query: mutation,
           variables: {
-            input: { title: "Test Post", content: "Content here" }
+            input: {
+              attributes: { title: "Test Post", content: "Content here" }
+            }
           }
         },
         headers: { "Authorization" => "Bearer #{jwt_token(user)}" }
