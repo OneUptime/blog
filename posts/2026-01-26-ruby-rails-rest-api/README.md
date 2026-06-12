@@ -251,7 +251,7 @@ class JsonWebToken
 
     # Decode and verify token
     def decode(token)
-      decoded = JWT.decode(token, SECRET_KEY, true, algorithm: 'HS256')
+      decoded = JWT.decode(token, SECRET_KEY, true, { algorithm: 'HS256' })
       HashWithIndifferentAccess.new(decoded.first)
     rescue JWT::ExpiredSignature
       raise ExceptionHandler::ExpiredToken, 'Token has expired'
@@ -276,25 +276,65 @@ module ExceptionHandler
 
   included do
     # Handle all exceptions with appropriate responses
-    rescue_from ActiveRecord::RecordNotFound, with: :not_found
-    rescue_from ActiveRecord::RecordInvalid, with: :unprocessable_entity
-    rescue_from ExceptionHandler::AuthenticationError, with: :unauthorized
-    rescue_from ExceptionHandler::ExpiredToken, with: :unauthorized
-    rescue_from ExceptionHandler::InvalidToken, with: :unauthorized
+    rescue_from StandardError, with: :handle_standard_error
+    rescue_from ActiveRecord::RecordNotFound, with: :handle_not_found
+    rescue_from ActiveRecord::RecordInvalid, with: :handle_validation_error
+    rescue_from ActionController::ParameterMissing, with: :handle_parameter_missing
+    rescue_from ExceptionHandler::AuthenticationError, with: :handle_unauthorized
+    rescue_from ExceptionHandler::ExpiredToken, with: :handle_unauthorized
+    rescue_from ExceptionHandler::InvalidToken, with: :handle_unauthorized
   end
 
   private
 
-  def not_found(exception)
-    render json: { error: exception.message }, status: :not_found
+  def handle_standard_error(exception)
+    # Log the error for debugging
+    Rails.logger.error("Unhandled error: #{exception.message}")
+    Rails.logger.error(Array(exception.backtrace).first(10).join("\n"))
+
+    render json: {
+      error: {
+        code: 'internal_error',
+        message: Rails.env.production? ? 'An unexpected error occurred' : exception.message
+      }
+    }, status: :internal_server_error
   end
 
-  def unprocessable_entity(exception)
-    render json: { error: exception.record.errors.full_messages }, status: :unprocessable_entity
+  def handle_not_found(exception)
+    render json: {
+      error: {
+        code: 'not_found',
+        message: "Resource not found: #{exception.message}"
+      }
+    }, status: :not_found
   end
 
-  def unauthorized(exception)
-    render json: { error: exception.message }, status: :unauthorized
+  def handle_validation_error(exception)
+    render json: {
+      error: {
+        code: 'validation_failed',
+        message: 'Validation failed',
+        details: exception.record.errors.messages
+      }
+    }, status: :unprocessable_entity
+  end
+
+  def handle_parameter_missing(exception)
+    render json: {
+      error: {
+        code: 'missing_parameter',
+        message: exception.message
+      }
+    }, status: :bad_request
+  end
+
+  def handle_unauthorized(exception)
+    render json: {
+      error: {
+        code: 'unauthorized',
+        message: exception.message
+      }
+    }, status: :unauthorized
   end
 end
 ```
@@ -623,15 +663,23 @@ sequenceDiagram
 Create a consistent error response format:
 
 ```ruby
-# app/controllers/concerns/error_handler.rb
-module ErrorHandler
+# app/controllers/concerns/exception_handler.rb
+module ExceptionHandler
   extend ActiveSupport::Concern
+
+  # Custom exception classes
+  class AuthenticationError < StandardError; end
+  class ExpiredToken < StandardError; end
+  class InvalidToken < StandardError; end
 
   included do
     rescue_from StandardError, with: :handle_standard_error
     rescue_from ActiveRecord::RecordNotFound, with: :handle_not_found
     rescue_from ActiveRecord::RecordInvalid, with: :handle_validation_error
     rescue_from ActionController::ParameterMissing, with: :handle_parameter_missing
+    rescue_from ExceptionHandler::AuthenticationError, with: :handle_unauthorized
+    rescue_from ExceptionHandler::ExpiredToken, with: :handle_unauthorized
+    rescue_from ExceptionHandler::InvalidToken, with: :handle_unauthorized
   end
 
   private
@@ -639,7 +687,7 @@ module ErrorHandler
   def handle_standard_error(exception)
     # Log the error for debugging
     Rails.logger.error("Unhandled error: #{exception.message}")
-    Rails.logger.error(exception.backtrace.first(10).join("\n"))
+    Rails.logger.error(Array(exception.backtrace).first(10).join("\n"))
 
     render json: {
       error: {
@@ -675,6 +723,15 @@ module ErrorHandler
         message: exception.message
       }
     }, status: :bad_request
+  end
+
+  def handle_unauthorized(exception)
+    render json: {
+      error: {
+        code: 'unauthorized',
+        message: exception.message
+      }
+    }, status: :unauthorized
   end
 end
 ```
