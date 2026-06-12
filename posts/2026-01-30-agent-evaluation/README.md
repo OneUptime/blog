@@ -60,8 +60,8 @@ Effective agent evaluation requires measuring multiple dimensions of performance
 The most fundamental metric - did the agent accomplish what it was asked to do?
 
 ```python
-from dataclasses import dataclass
-from typing import List, Optional, Callable
+from dataclasses import dataclass, field
+from typing import List, Optional, Callable, Dict, Any
 from enum import Enum
 
 class TaskStatus(Enum):
@@ -79,6 +79,7 @@ class TaskResult:
     time_elapsed: float
     final_output: str
     expected_output: Optional[str] = None
+    actions: List[Dict[str, Any]] = field(default_factory=list)
 
 @dataclass
 class CompletionMetrics:
@@ -376,7 +377,8 @@ class AgentBenchmark:
                 steps_taken=steps,
                 time_elapsed=elapsed,
                 final_output=result.get('output', ''),
-                expected_output=str(test_case.expected_outputs)
+                expected_output=str(test_case.expected_outputs),
+                actions=result.get('actions', [])
             )
 
         except asyncio.TimeoutError:
@@ -386,7 +388,8 @@ class AgentBenchmark:
                 steps_taken=steps,
                 time_elapsed=test_case.timeout,
                 final_output="",
-                expected_output=str(test_case.expected_outputs)
+                expected_output=str(test_case.expected_outputs),
+                actions=[]
             )
         except Exception as e:
             return TaskResult(
@@ -395,7 +398,8 @@ class AgentBenchmark:
                 steps_taken=steps,
                 time_elapsed=time.time() - start_time,
                 final_output=str(e),
-                expected_output=str(test_case.expected_outputs)
+                expected_output=str(test_case.expected_outputs),
+                actions=[]
             )
 
     def _evaluate_result(
@@ -488,6 +492,8 @@ class AgentBenchmark:
             "version": self.config.version,
             "total_tests": len(self.test_cases),
             "overall_score": weighted_score / total_weight if total_weight > 0 else 0,
+            "avg_latency": sum(r.time_elapsed for r in self.results) / len(self.results) if self.results else 0,
+            "avg_steps": sum(r.steps_taken for r in self.results) / len(self.results) if self.results else 0,
             "by_category": {
                 cat: {
                     "total": len(results),
@@ -538,7 +544,7 @@ mindmap
 
 ```python
 from dataclasses import dataclass
-from typing import List, Set, Callable
+from typing import List, Set, Callable, Dict
 from enum import Enum
 
 class SafetyViolationType(Enum):
@@ -1029,7 +1035,7 @@ flowchart LR
 
 ```python
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 import json
 
@@ -1124,7 +1130,11 @@ class RegressionDetector:
 
         # Check success rate
         current_success = current_results.get('overall_score', 0)
-        success_change = (baseline.success_rate - current_success) / baseline.success_rate
+        success_change = (
+            (baseline.success_rate - current_success) / baseline.success_rate
+            if baseline.success_rate > 0
+            else 0
+        )
 
         if success_change > self.critical_threshold:
             alerts.append(RegressionAlert(
@@ -1146,7 +1156,11 @@ class RegressionDetector:
         # Check latency (increase is regression)
         if 'avg_latency' in current_results:
             current_latency = current_results['avg_latency']
-            latency_change = (current_latency - baseline.avg_latency) / baseline.avg_latency
+            latency_change = (
+                (current_latency - baseline.avg_latency) / baseline.avg_latency
+                if baseline.avg_latency > 0
+                else 0
+            )
 
             if latency_change > self.critical_threshold:
                 alerts.append(RegressionAlert(
@@ -1222,7 +1236,8 @@ Here is how to integrate all these components into a complete evaluation pipelin
 
 ```python
 import asyncio
-from typing import Dict, Any
+from datetime import datetime
+from typing import Dict, Any, Optional
 
 class AgentEvaluationPipeline:
     """
@@ -1276,7 +1291,7 @@ class AgentEvaluationPipeline:
 
         for result in self.benchmark.results:
             all_outputs.append(result.final_output)
-            # Actions would be collected during benchmark execution
+            all_actions.extend(result.actions)
 
         # Run safety evaluation
         print("Running safety evaluation...")
