@@ -196,18 +196,23 @@ class ThresholdConfig:
         rules = []
         for threshold in self.thresholds:
             rule = f'''
-- alert: {self.resource_name}Capacity{threshold.level.value.title()}
-  expr: {self.resource_name}_utilization_percent >= {threshold.percentage}
-  for: {threshold.sustained_minutes}m
-  labels:
-    severity: {threshold.level.value}
-    resource: {self.resource_name}
-  annotations:
-    summary: "{self.resource_name} capacity at {{{{ $value | printf \\"%.1f\\" }}}}%"
-    description: "{threshold.level.value.title()} threshold ({threshold.percentage}%) breached"
+      - alert: {self.resource_name}Capacity{threshold.level.value.title()}
+        expr: {self.resource_name}_utilization_percent >= {threshold.percentage}
+        for: {threshold.sustained_minutes}m
+        labels:
+          severity: {threshold.level.value}
+          resource: {self.resource_name}
+        annotations:
+          summary: "{self.resource_name} capacity at {{{{ $value | printf \\"%.1f\\" }}}}%"
+          description: "{threshold.level.value.title()} threshold ({threshold.percentage}%) breached"
 '''
             rules.append(rule)
-        return '\n'.join(rules)
+        rule_body = '\n'.join(rules)
+        return f'''groups:
+  - name: {self.resource_name}_capacity
+    rules:
+{rule_body}
+'''
 
 
 # Example: Configure thresholds for database storage
@@ -483,7 +488,7 @@ class MemoryCapacityMonitor:
 Storage thresholds must account for the time required to provision additional capacity, which can be hours or days.
 
 ```python
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 @dataclass
 class StorageThresholdConfig:
@@ -513,10 +518,10 @@ class StorageCapacityMonitor:
 
     def record_snapshot(self, used_bytes: int, used_inodes: int):
         """Record a storage utilization snapshot."""
-        self.history.append((datetime.utcnow(), used_bytes, used_inodes))
+        self.history.append((datetime.now(timezone.utc), used_bytes, used_inodes))
 
         # Keep only relevant history
-        cutoff = datetime.utcnow() - timedelta(
+        cutoff = datetime.now(timezone.utc) - timedelta(
             days=self.config.growth_rate_window_days * 2
         )
         self.history = [h for h in self.history if h[0] >= cutoff]
@@ -526,7 +531,7 @@ class StorageCapacityMonitor:
         if len(self.history) < 2:
             return 0.0
 
-        cutoff = datetime.utcnow() - timedelta(
+        cutoff = datetime.now(timezone.utc) - timedelta(
             days=self.config.growth_rate_window_days
         )
         recent = [h for h in self.history if h[0] >= cutoff]
@@ -626,7 +631,7 @@ graph TD
 
 ```python
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from typing import Dict, List, Optional, Callable
 from enum import Enum
 import statistics
@@ -676,7 +681,7 @@ class DynamicThresholdEngine:
 
     def record_observation(self, utilization: float, timestamp: datetime = None):
         """Record a utilization observation for learning."""
-        ts = timestamp or datetime.utcnow()
+        ts = timestamp or datetime.now(timezone.utc)
         key = self._get_bucket_key(ts)
 
         if key not in self.historical_data:
@@ -691,7 +696,7 @@ class DynamicThresholdEngine:
 
     def get_dynamic_threshold(self, timestamp: datetime = None) -> dict:
         """Calculate the dynamic threshold for a given time."""
-        ts = timestamp or datetime.utcnow()
+        ts = timestamp or datetime.now(timezone.utc)
 
         # Check configured time windows first
         for window in self.config.time_windows:
@@ -747,7 +752,7 @@ class DynamicThresholdEngine:
 
     def evaluate(self, current_utilization: float, timestamp: datetime = None) -> dict:
         """Evaluate current utilization against dynamic threshold."""
-        ts = timestamp or datetime.utcnow()
+        ts = timestamp or datetime.now(timezone.utc)
         threshold_info = self.get_dynamic_threshold(ts)
 
         self.record_observation(current_utilization, ts)
@@ -995,7 +1000,7 @@ sequenceDiagram
 
 ```python
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Callable
 from enum import Enum
 import json
@@ -1044,7 +1049,7 @@ class CapacityAlertManager:
         key = f"{resource}_{severity.value}"
 
         if key in self.cooldowns:
-            if datetime.utcnow() < self.cooldowns[key]:
+            if datetime.now(timezone.utc) < self.cooldowns[key]:
                 return False
 
         return True
@@ -1064,12 +1069,12 @@ class CapacityAlertManager:
             return None
 
         # Create alert
-        alert_id = f"{resource}_{severity.value}_{datetime.utcnow().timestamp()}"
+        alert_id = f"{resource}_{severity.value}_{datetime.now(timezone.utc).timestamp()}"
         alert = AlertState(
             alert_id=alert_id,
             resource=resource,
             severity=severity,
-            triggered_at=datetime.utcnow()
+            triggered_at=datetime.now(timezone.utc)
         )
 
         self.active_alerts[alert_id] = alert
@@ -1079,7 +1084,7 @@ class CapacityAlertManager:
         if route:
             cooldown_key = f"{resource}_{severity.value}"
             self.cooldowns[cooldown_key] = (
-                datetime.utcnow() + timedelta(minutes=30)
+                datetime.now(timezone.utc) + timedelta(minutes=30)
             )
 
         # Build alert payload
@@ -1106,7 +1111,7 @@ class CapacityAlertManager:
             'severity': severity.value,
             'current_value': current,
             'threshold_value': threshold,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'title': f"Capacity {severity.value.upper()}: {resource} at {current:.1f}%",
             'description': (
                 f"{resource} utilization ({current:.1f}%) has breached "
@@ -1136,7 +1141,7 @@ class CapacityAlertManager:
             return False
 
         alert = self.active_alerts[alert_id]
-        alert.acknowledged_at = datetime.utcnow()
+        alert.acknowledged_at = datetime.now(timezone.utc)
         return True
 
     def resolve(self, alert_id: str) -> bool:
@@ -1145,7 +1150,7 @@ class CapacityAlertManager:
             return False
 
         alert = self.active_alerts[alert_id]
-        alert.resolved_at = datetime.utcnow()
+        alert.resolved_at = datetime.now(timezone.utc)
 
         # Move to history
         self.alert_history.append(alert)
@@ -1168,7 +1173,7 @@ class CapacityAlertManager:
                 alert.triggered_at + timedelta(minutes=route.escalation_minutes)
             )
 
-            if datetime.utcnow() > escalation_deadline:
+            if datetime.now(timezone.utc) > escalation_deadline:
                 self._escalate(alert)
 
     def _escalate(self, alert: AlertState):
@@ -1189,7 +1194,7 @@ class CapacityAlertManager:
             'active_alerts': len(self.active_alerts),
             'resolved_last_24h': len([
                 a for a in resolved
-                if a.resolved_at > datetime.utcnow() - timedelta(hours=24)
+                if a.resolved_at > datetime.now(timezone.utc) - timedelta(hours=24)
             ]),
             'avg_resolution_minutes': (
                 sum(mttr_values) / len(mttr_values) if mttr_values else 0
@@ -1245,8 +1250,8 @@ Here is a complete capacity threshold monitoring system that combines all the co
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 import json
 
 @dataclass
@@ -1255,7 +1260,7 @@ class CapacityMonitoringSystem:
 
     def __init__(self):
         self.resources: Dict[str, Dict] = {}
-        self.monitors: Dict[str, any] = {}
+        self.monitors: Dict[str, Any] = {}
         self.alert_manager: Optional[CapacityAlertManager] = None
 
     def register_resource(
@@ -1263,7 +1268,7 @@ class CapacityMonitoringSystem:
         name: str,
         resource_type: str,
         thresholds: ThresholdConfig,
-        monitor_class: any
+        monitor_class: Any
     ):
         """Register a resource for capacity monitoring."""
         self.resources[name] = {
@@ -1276,7 +1281,7 @@ class CapacityMonitoringSystem:
     def check_all(self) -> Dict:
         """Check capacity for all registered resources."""
         results = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'resources': {},
             'alerts_triggered': []
         }
