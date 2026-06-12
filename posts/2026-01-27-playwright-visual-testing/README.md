@@ -22,7 +22,7 @@ Screenshot comparison is the foundation of visual testing. Playwright captures a
 
 The comparison workflow follows three stages:
 
-1. **Baseline Creation**: On first run, Playwright saves screenshots as baseline (golden) images
+1. **Baseline Creation**: When a baseline is missing, Playwright writes the actual screenshot so it can be reviewed and committed
 2. **Comparison**: On subsequent runs, new screenshots are compared against baselines
 3. **Diff Generation**: When mismatches occur, Playwright generates three images: expected, actual, and diff
 
@@ -34,11 +34,11 @@ test('homepage visual regression', async ({ page }) => {
     // Navigate to the page under test
     await page.goto('https://example.com');
 
-    // Wait for the page to be fully loaded and stable
-    await page.waitForLoadState('networkidle');
+    // Wait for the page to reach the state you want to capture
+    await expect(page.locator('body')).toBeVisible();
 
-    // Capture and compare full page screenshot
-    // First run creates the baseline, subsequent runs compare against it
+    // Capture and compare viewport screenshot
+    // Missing baselines are written for review, subsequent runs compare against them
     await expect(page).toHaveScreenshot('homepage.png');
 });
 ```
@@ -61,7 +61,7 @@ test.describe('Visual Regression Suite', () => {
 
     test('full page screenshot', async ({ page }) => {
         await page.goto('/dashboard');
-        await page.waitForLoadState('networkidle');
+        await expect(page.locator('body')).toBeVisible();
 
         // Capture full page - scrolls and stitches multiple screenshots
         await expect(page).toHaveScreenshot('dashboard-full.png', {
@@ -84,7 +84,7 @@ test.describe('Visual Regression Suite', () => {
 
     test('viewport screenshot', async ({ page }) => {
         await page.goto('/landing');
-        await page.waitForLoadState('networkidle');
+        await expect(page.locator('main')).toBeVisible();
 
         // Default behavior: captures only visible viewport
         await expect(page).toHaveScreenshot('landing-viewport.png');
@@ -155,7 +155,7 @@ export default defineConfig({
 
     // Configure snapshot settings globally
     expect: {
-        // Directory for storing baseline screenshots
+        // Configure baseline screenshot comparison defaults
         toHaveScreenshot: {
             // Maximum allowed pixel difference (absolute count)
             maxDiffPixels: 100,
@@ -217,8 +217,8 @@ test('strict visual comparison', async ({ page }) => {
         // Color matching threshold (0 = exact match, 1 = any color matches)
         threshold: 0.1,
 
-        // Fail if baseline doesn't exist (useful in CI)
-        // Set to true when you want to ensure baselines are committed
+        // Missing baselines should be prevented in CI with updateSnapshots: 'none'
+        // in the Playwright config, not with a per-assertion option.
     });
 });
 
@@ -244,7 +244,7 @@ test('custom snapshot names for variants', async ({ page }) => {
 
     for (const theme of themes) {
         await page.goto(`/settings?theme=${theme}`);
-        await page.waitForLoadState('networkidle');
+        await expect(page.locator('main')).toBeVisible();
 
         // Dynamic snapshot naming based on test parameters
         await expect(page).toHaveScreenshot(`settings-${theme}-theme.png`);
@@ -289,7 +289,7 @@ import { test, expect } from '@playwright/test';
 
 test('mask dynamic elements', async ({ page }) => {
     await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle');
+    await expect(page.locator('body')).toBeVisible();
 
     // Define locators for dynamic content to mask
     const dynamicElements = [
@@ -354,7 +354,7 @@ async function getDynamicMasks(page: Page): Promise<Locator[]> {
 
 test('comprehensive masking strategy', async ({ page }) => {
     await page.goto('/user-profile');
-    await page.waitForLoadState('networkidle');
+    await expect(page.locator('body')).toBeVisible();
 
     const masks = await getDynamicMasks(page);
 
@@ -385,7 +385,7 @@ test('mask elements by injecting CSS', async ({ page }) => {
 
 test('replace dynamic text with placeholders', async ({ page }) => {
     await page.goto('/notifications');
-    await page.waitForLoadState('networkidle');
+    await expect(page.locator('body')).toBeVisible();
 
     // Replace dynamic text content with static placeholders
     await page.evaluate(() => {
@@ -634,7 +634,7 @@ For consistent rendering across environments:
 
 ```dockerfile
 # Dockerfile.playwright
-FROM mcr.microsoft.com/playwright:v1.40.0-jammy
+FROM mcr.microsoft.com/playwright:v1.60.0-noble
 
 WORKDIR /app
 
@@ -701,6 +701,9 @@ export default defineConfig({
 
     // Limit parallelism in CI for consistent results
     workers: isCI ? 1 : undefined,
+
+    // Do not create missing snapshots in CI; require committed baselines
+    updateSnapshots: isCI ? 'none' : 'missing',
 
     // Generate reports
     reporter: isCI
@@ -806,7 +809,7 @@ test.describe('PR Visual Checks', () => {
     for (const { path, name } of criticalPages) {
         test(`visual check: ${name}`, async ({ page }) => {
             await page.goto(path);
-            await page.waitForLoadState('networkidle');
+            await expect(page.locator('body')).toBeVisible();
 
             // Ensure page is interactive
             await page.waitForSelector('body', { state: 'visible' });
@@ -827,7 +830,7 @@ test.describe('PR Visual Checks', () => {
 Following these best practices will help you build a reliable and maintainable visual testing suite:
 
 **Test Stability**
-- Always wait for `networkidle` or specific elements before capturing screenshots
+- Prefer waiting for specific elements or app-ready states before capturing screenshots; use `networkidle` only when it matches your app's behavior
 - Disable animations and hide cursors to eliminate timing-related flakiness
 - Use consistent viewport sizes across all test runs
 - Run visual tests in a controlled environment (Docker) for cross-platform consistency
