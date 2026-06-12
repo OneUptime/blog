@@ -89,39 +89,36 @@ PodChaos simulates pod failures to test how your application handles pod termina
 ### Pod Kill Experiment
 
 ```yaml
-# pod-kill-experiment.yaml
-# This experiment randomly kills pods matching the selector every 30 seconds
+# scheduled-pod-kill-experiment.yaml
+# This Schedule creates a PodChaos experiment every 30 seconds
 apiVersion: chaos-mesh.org/v1alpha1
-kind: PodChaos
+kind: Schedule
 metadata:
   name: pod-kill-example
   namespace: chaos-mesh
 spec:
-  # Action type: pod-kill terminates the pod process
-  action: pod-kill
+  # Schedule using robfig/cron interval syntax
+  schedule: "@every 30s"
+  concurrencyPolicy: "Forbid"
+  type: "PodChaos"
+  podChaos:
+    # Action type: pod-kill terminates the pod process
+    action: pod-kill
 
-  # Mode determines how many pods are affected
-  # one: affects one random pod
-  # all: affects all matching pods
-  # fixed: affects a fixed number of pods
-  # fixed-percent: affects a percentage of pods
-  # random-max-percent: affects up to a random percentage
-  mode: one
+    # Mode determines how many pods are affected
+    # one: affects one random pod
+    # all: affects all matching pods
+    # fixed: affects a fixed number of pods
+    # fixed-percent: affects a percentage of pods
+    # random-max-percent: affects up to a random percentage
+    mode: one
 
-  # Selector determines which pods are targets
-  selector:
-    namespaces:
-      - default
-    labelSelectors:
-      app: my-application
-
-  # Schedule using cron syntax (optional)
-  # Runs every 30 seconds
-  scheduler:
-    cron: "*/30 * * * * *"
-
-  # Duration of the chaos experiment
-  duration: "5m"
+    # Selector determines which pods are targets
+    selector:
+      namespaces:
+        - default
+      labelSelectors:
+        app: my-application
 ```
 
 ### Pod Failure Experiment
@@ -370,8 +367,8 @@ spec:
   # Volume path to inject faults into
   volumePath: /var/lib/postgresql/data
 
-  # Path pattern within the volume (supports wildcards)
-  path: "/*"
+  # Path pattern to inject faults into (supports wildcards)
+  path: "/var/lib/postgresql/data/**/*"
 
   # Delay to add to IO operations
   delay: "100ms"
@@ -411,7 +408,7 @@ spec:
   volumePath: /var/log/app
 
   # Specific files to target
-  path: "/*.log"
+  path: "/var/log/app/*.log"
 
   # Error number to return
   # 5 = EIO (Input/output error)
@@ -729,17 +726,15 @@ dashboard:
   # Ingress configuration
   ingress:
     enabled: true
+    ingressClassName: nginx
     annotations:
-      kubernetes.io/ingress.class: nginx
       cert-manager.io/cluster-issuer: letsencrypt-prod
     hosts:
       - name: chaos.example.com
-        paths:
-          - /
-    tls:
-      - secretName: chaos-dashboard-tls
-        hosts:
-          - chaos.example.com
+        tls: true
+        tlsSecret: chaos-dashboard-tls
+    paths:
+      - /
 ```
 
 ## Integrating with Observability
@@ -777,13 +772,13 @@ spec:
 
 ```promql
 # Number of chaos experiments by type and status
-chaos_mesh_experiments{namespace="default"}
+chaos_controller_manager_chaos_experiments{namespace="default"}
 
-# Duration of chaos experiments
-chaos_mesh_experiment_duration_seconds
+# Number of active chaos experiments
+sum(chaos_controller_manager_chaos_experiments{phase="Running"})
 
-# Chaos daemon injection success rate
-chaos_mesh_injections_total{result="success"} / chaos_mesh_injections_total
+# Sidecar injection attempts by namespace and config
+chaos_mesh_injections_total
 
 # Controller reconciliation latency
 workqueue_work_duration_seconds_bucket{name="podchaos-controller"}
@@ -801,7 +796,7 @@ workqueue_work_duration_seconds_bucket{name="podchaos-controller"}
         "type": "stat",
         "targets": [
           {
-            "expr": "sum(chaos_mesh_experiments{status=\"Running\"})"
+            "expr": "sum(chaos_controller_manager_chaos_experiments{phase=\"Running\"})"
           }
         ]
       },
@@ -810,16 +805,16 @@ workqueue_work_duration_seconds_bucket{name="podchaos-controller"}
         "type": "piechart",
         "targets": [
           {
-            "expr": "sum by (kind) (chaos_mesh_experiments)"
+            "expr": "sum by (kind) (chaos_controller_manager_chaos_experiments)"
           }
         ]
       },
       {
-        "title": "Injection Success Rate",
-        "type": "gauge",
+        "title": "Sidecar Injections",
+        "type": "stat",
         "targets": [
           {
-            "expr": "sum(rate(chaos_mesh_injections_total{result=\"success\"}[5m])) / sum(rate(chaos_mesh_injections_total[5m])) * 100"
+            "expr": "sum(increase(chaos_mesh_injections_total[5m]))"
           }
         ]
       }
@@ -872,20 +867,20 @@ spec:
     - name: chaos-mesh
       rules:
         - alert: ChaosExperimentStarted
-          expr: increase(chaos_mesh_experiments{status="Running"}[1m]) > 0
+          expr: increase(chaos_controller_manager_chaos_experiments{phase="Running"}[1m]) > 0
           labels:
             severity: info
           annotations:
             summary: "Chaos experiment started"
             description: "A new chaos experiment has begun in namespace {{ $labels.namespace }}"
 
-        - alert: ChaosExperimentFailed
-          expr: chaos_mesh_experiments{status="Failed"} > 0
+        - alert: ChaosExperimentWarning
+          expr: chaos_controller_manager_chaos_experiments{phase="Warning"} > 0
           labels:
             severity: warning
           annotations:
-            summary: "Chaos experiment failed"
-            description: "Chaos experiment {{ $labels.name }} failed in namespace {{ $labels.namespace }}"
+            summary: "Chaos experiment has warnings"
+            description: "A {{ $labels.kind }} experiment has warnings in namespace {{ $labels.namespace }}"
 ```
 
 ## Best Practices Summary
@@ -900,14 +895,13 @@ spec:
 ### Safety Measures
 
 ```yaml
-# Always use annotations to protect critical workloads
+# Enable namespace filtering and only annotate namespaces where Chaos Mesh may inject faults
 apiVersion: v1
-kind: Pod
+kind: Namespace
 metadata:
-  name: critical-pod
+  name: staging
   annotations:
-    # This annotation prevents Chaos Mesh from targeting this pod
-    chaos-mesh.org/inject: "false"
+    chaos-mesh.org/inject: "enabled"
 ```
 
 ### Operational Guidelines
@@ -931,7 +925,7 @@ rules:
   - apiGroups: ["chaos-mesh.org"]
     resources: ["podchaos", "networkchaos"]
     verbs: ["get", "list", "create", "delete"]
-  # Explicitly deny IOChaos and TimeChaos in this role
+  # Omit IOChaos and TimeChaos from this role
 ```
 
 ### Checklist Before Running Chaos
