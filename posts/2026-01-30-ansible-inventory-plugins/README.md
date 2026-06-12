@@ -108,6 +108,8 @@ DOCUMENTATION = r'''
     description:
         - This plugin fetches host information from an internal service registry.
         - Hosts are grouped by environment, role, and datacenter.
+    extends_documentation_fragment:
+        - inventory_cache
     options:
         plugin:
             description: Token that ensures this is a source file for the plugin.
@@ -133,7 +135,7 @@ EXAMPLES = r'''
 # service_registry.yml
 plugin: service_registry
 api_url: https://registry.internal.example.com/api/v1/hosts
-api_token: "{{ lookup('env', 'REGISTRY_TOKEN') }}"
+api_token: "{{ lookup('env', 'SERVICE_REGISTRY_TOKEN') }}"
 environment: prod
 '''
 
@@ -282,7 +284,7 @@ Create the inventory source file that configures your plugin:
 # inventory/service_registry.yml
 plugin: service_registry
 api_url: https://registry.internal.example.com/api/v1/hosts
-api_token: "{{ lookup('env', 'REGISTRY_TOKEN') }}"
+api_token: "{{ lookup('env', 'SERVICE_REGISTRY_TOKEN') }}"
 environment: prod
 cache: true
 cache_plugin: jsonfile
@@ -349,6 +351,24 @@ from ansible.plugins.inventory import BaseInventoryPlugin, Constructable
 from ansible.errors import AnsibleParserError
 import json
 import urllib.request
+
+DOCUMENTATION = r'''
+    name: multi_source
+    plugin_type: inventory
+    short_description: Merge inventory data from multiple sources
+    description:
+        - This plugin fetches host information from multiple data sources.
+    options:
+        plugin:
+            description: Token that ensures this is a source file for the plugin.
+            required: True
+            choices: ['multi_source']
+        sources:
+            description: List of inventory sources to merge.
+            required: True
+            type: list
+            elements: dict
+'''
 
 
 class InventoryModule(BaseInventoryPlugin, Constructable):
@@ -687,15 +707,16 @@ def _set_sensitive_variables(self, hostname, host_data, vault_client):
 
 ## Complete Example: Kubernetes Pod Inventory
 
-Here is a full plugin that discovers pods from a Kubernetes cluster:
+Here is a full plugin that discovers pods from a Kubernetes cluster and uses the `kubernetes.core.kubectl` connection plugin to execute tasks in pods:
 
 ```python
 # inventory_plugins/kubernetes_pods.py
 
-from ansible.plugins.inventory import BaseInventoryPlugin, Constructable, Cacheable
+from ansible.plugins.inventory import BaseInventoryPlugin, Constructable
 from ansible.errors import AnsibleParserError
 import json
 import urllib.request
+import urllib.parse
 import ssl
 
 
@@ -737,7 +758,7 @@ DOCUMENTATION = r'''
 '''
 
 
-class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
+class InventoryModule(BaseInventoryPlugin, Constructable):
     NAME = 'kubernetes_pods'
 
     def verify_file(self, path):
@@ -773,7 +794,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
             url = f'{api_server}/api/v1/pods'
 
         if label_selector:
-            url = f'{url}?labelSelector={label_selector}'
+            url = f'{url}?{urllib.parse.urlencode({"labelSelector": label_selector})}'
 
         headers = {
             'Authorization': f'Bearer {token}',
@@ -814,7 +835,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         self.inventory.add_host(hostname)
 
         # Set connection variables for kubectl exec
-        self.inventory.set_variable(hostname, 'ansible_connection', 'kubectl')
+        self.inventory.set_variable(hostname, 'ansible_connection', 'kubernetes.core.kubectl')
         self.inventory.set_variable(hostname, 'ansible_kubectl_pod', pod_name)
         self.inventory.set_variable(hostname, 'ansible_kubectl_namespace', namespace)
 
@@ -906,6 +927,7 @@ Create a test script to verify your plugin works correctly:
 import os
 import sys
 import json
+from pathlib import Path
 
 # Add the inventory_plugins directory to path
 sys.path.insert(0, './inventory_plugins')
@@ -944,10 +966,13 @@ class MockInventory:
 def test_plugin():
     plugin = InventoryModule()
     inventory = MockInventory()
+    test_inventory = Path('test_service_registry.yml')
+    test_inventory.touch()
 
     # Test verify_file
-    assert plugin.verify_file('test_service_registry.yml') == True
+    assert plugin.verify_file(str(test_inventory)) == True
     assert plugin.verify_file('test.yml') == False
+    test_inventory.unlink()
 
     # Mock the fetch method for testing
     mock_hosts = [
@@ -987,7 +1012,7 @@ def test_plugin():
 
     # Verify variables were set
     assert inventory.host_vars['web-01.example.com']['ansible_host'] == '10.0.1.10'
-    assert inventory.host_vars['db-01.example.com']['host_info']['memory_mb'] == 32768
+    assert inventory.host_vars['db-01.example.com']['host_info']['metadata']['memory_mb'] == 32768
 
     print('All tests passed!')
 
