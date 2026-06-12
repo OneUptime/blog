@@ -53,9 +53,9 @@ The `cassandra.yaml` file is the heart of Cassandra configuration. Located in `/
 cluster_name: 'production-cassandra'
 
 # Number of tokens assigned to this node. Higher values improve
-# load distribution but increase memory overhead. 256 is the
-# recommended default for most deployments.
-num_tokens: 256
+# load distribution but increase token management overhead. 16 is
+# the current default; tune based on cluster size and elasticity needs.
+num_tokens: 16
 
 # Directory where Cassandra stores commit logs. Use a dedicated
 # disk separate from data directories for better write performance.
@@ -76,21 +76,23 @@ hints_directory: /var/lib/cassandra/hints
 ### Network Configuration
 
 ```yaml
-# Address to bind for client connections (CQL).
-# Use 0.0.0.0 to listen on all interfaces, or a specific IP.
+# Address to bind for inter-node communication. Do not use 0.0.0.0;
+# leave it blank for hostname-based resolution or use a specific IP.
 listen_address: 192.168.1.10
 
 # Address to broadcast to other nodes. Required when listen_address
-# is 0.0.0.0 or when behind NAT.
+# differs from the address other nodes should use, such as behind NAT.
 broadcast_address: 192.168.1.10
 
-# Address for client connections. Often the same as listen_address.
+# Address for client connections. Use a specific IP, or 0.0.0.0 with
+# broadcast_rpc_address set to the address drivers should contact.
 rpc_address: 192.168.1.10
 
 # Port for inter-node communication.
 storage_port: 7000
 
-# Port for encrypted inter-node communication (if using TLS).
+# Legacy encrypted inter-node port. Current Cassandra can use storage_port
+# for encrypted and unencrypted internode traffic via server_encryption_options.
 ssl_storage_port: 7001
 
 # Port for CQL native protocol (client connections).
@@ -105,10 +107,10 @@ native_transport_port: 9042
 commitlog_segment_size: 32MiB
 
 # How often to sync the commit log to disk.
-# periodic: sync every commitlog_sync_period_in_ms
+# periodic: sync every commitlog_sync_period
 # batch: sync on every write (slower but safer)
 commitlog_sync: periodic
-commitlog_sync_period_in_ms: 10000
+commitlog_sync_period: 10000ms
 
 # Memory allocated to memtables. Set to 1/4 of heap or less.
 # Cassandra flushes to SSTables when this threshold is reached.
@@ -122,9 +124,9 @@ concurrent_reads: 32
 concurrent_writes: 32
 concurrent_counter_writes: 32
 
-# Compaction throughput limit in MB/s. Prevents compaction
+# Compaction throughput limit in MiB/s. Prevents compaction
 # from consuming all disk bandwidth. Set to 0 for unlimited.
-compaction_throughput_mb_per_sec: 64
+compaction_throughput: 64MiB/s
 ```
 
 ## Configuring Seed Nodes
@@ -299,7 +301,7 @@ Cassandra makes it straightforward to scale horizontally by adding nodes to an e
 ```yaml
 # New node cassandra.yaml
 cluster_name: 'production-cassandra'
-num_tokens: 256
+num_tokens: 16
 
 # Set to the new node's IP address
 listen_address: 192.168.1.20
@@ -355,8 +357,8 @@ nodetool status
 # Status=Up/Down
 # |/ State=Normal/Leaving/Joining/Moving
 # --  Address       Load       Tokens  Owns   Host ID                               Rack
-# UN  192.168.1.10  256.12 GiB  256    25.0%  a1b2c3d4-...  rack1
-# UN  192.168.1.20  0 bytes     256    0.0%   e5f6g7h8-...  rack2  <-- New node
+# UN  192.168.1.10  256.12 GiB  16     25.0%  a1b2c3d4-...  rack1
+# UN  192.168.1.20  0 bytes     16     0.0%   e5f6g7h8-...  rack2  <-- New node
 ```
 
 ### Removing a Node
@@ -410,9 +412,9 @@ The replacement node assumes the dead node's token ranges and streams data from 
 
 **Performance**
 - Separate commit log and data directories onto different disks
-- Set num_tokens to 256 for even data distribution
+- Tune num_tokens based on cluster size and elasticity needs
 - Tune concurrent_reads/writes based on your I/O subsystem
-- Monitor and adjust compaction_throughput_mb_per_sec
+- Monitor and adjust compaction_throughput
 
 **High Availability**
 - Use replication factor of 3 or higher in production
@@ -428,7 +430,7 @@ The replacement node assumes the dead node's token ranges and streams data from 
 **Security**
 - Enable client-to-node and node-to-node encryption in production
 - Use authentication and role-based access control
-- Restrict network access to Cassandra ports (7000, 7001, 9042)
+- Restrict network access to Cassandra ports (7000, 9042, and 7001 if using the legacy SSL storage port)
 
 ---
 
