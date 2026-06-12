@@ -122,7 +122,7 @@ async function receiveMessagesWithLongPolling(queueUrl: string) {
     MessageAttributeNames: ["All"],
 
     // Include system attributes
-    AttributeNames: ["All"],
+    MessageSystemAttributeNames: ["All"],
   });
 
   const response = await sqsClient.send(command);
@@ -207,7 +207,7 @@ class SQSLongPollingConsumer {
       WaitTimeSeconds: this.config.waitTimeSeconds,
       MaxNumberOfMessages: this.config.maxMessages,
       VisibilityTimeout: this.config.visibilityTimeout,
-      AttributeNames: ["All"],
+      MessageSystemAttributeNames: ["All"],
       MessageAttributeNames: ["All"],
     });
 
@@ -300,13 +300,13 @@ Long polling can significantly reduce your SQS costs by minimizing the number of
 ```mermaid
 graph LR
     subgraph "Short Polling (1 request/second)"
-        A[86,400 requests/day] --> B[$0.35/day]
-        B --> C[$10.50/month]
+        A[86,400 requests/day] --> B[$0.035/day]
+        B --> C[$1.04/month]
     end
 
     subgraph "Long Polling (WaitTimeSeconds=20)"
-        D[4,320 requests/day] --> E[$0.02/day]
-        E --> F[$0.52/month]
+        D[4,320 requests/day] --> E[$0.0017/day]
+        E --> F[$0.05/month]
     end
 ```
 
