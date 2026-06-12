@@ -285,8 +285,8 @@ For production environments, use exact versions. For development, pessimistic co
 Updating modules requires care. Here's a safe process:
 
 ```bash
-# 1. Check current module version
-terraform version
+# 1. Check the current module version constraint
+# Review the module block in your .tf files
 
 # 2. Review changelog for breaking changes
 # Visit the module's GitHub releases page
@@ -313,10 +313,10 @@ When modules don't behave as expected, use these techniques.
 ### Inspect Module Outputs
 
 ```bash
-# Show all outputs from a specific module
-terraform output -json | jq '.module_name'
+# Show all root outputs, including any module outputs you exposed
+terraform output -json
 
-# Show specific output
+# Show a specific root output
 terraform output vpc_id
 ```
 
@@ -521,6 +521,14 @@ module "vpc" {
   version = "5.4.0"
   # ...
 }
+
+output "vpc_id" {
+  value = module.vpc.vpc_id
+}
+
+output "private_subnet_ids" {
+  value = module.vpc.private_subnets
+}
 ```
 
 ```hcl
@@ -533,7 +541,7 @@ terraform {
   }
 }
 
-# Read networking outputs from remote state
+# Read root outputs from the networking state
 data "terraform_remote_state" "networking" {
   backend = "s3"
   config = {
@@ -548,7 +556,7 @@ module "eks" {
   version = "19.21.0"
 
   vpc_id     = data.terraform_remote_state.networking.outputs.vpc_id
-  subnet_ids = data.terraform_remote_state.networking.outputs.private_subnets
+  subnet_ids = data.terraform_remote_state.networking.outputs.private_subnet_ids
   # ...
 }
 ```
@@ -560,7 +568,7 @@ module "eks" {
 Every module has specific requirements and behaviors. Always read the README and examples.
 
 ```bash
-# View module documentation from CLI
+# Inspect provider and resource schemas from the CLI
 terraform providers schema -json | jq '.provider_schemas'
 ```
 
