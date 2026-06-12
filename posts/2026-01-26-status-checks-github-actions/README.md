@@ -41,21 +41,21 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: npm ci
       - run: npm run lint
 
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: npm ci
       - run: npm test
 
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: npm ci
       - run: npm run build
 ```
@@ -76,7 +76,7 @@ jobs:
   required-checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: npm ci
       - run: npm run lint
       - run: npm test
@@ -93,24 +93,24 @@ jobs:
     name: Code Linting  # This name appears in the PR status
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: npm run lint
 
   unit-tests:
-    name: Unit Tests (Node 20)
+    name: Unit Tests (Node 24)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
       - run: npm test
 
   security:
     name: Security Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: npm audit --audit-level=high
 ```
 
@@ -125,21 +125,21 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        node: [18, 20]
+        node: [22, 24]
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
       - run: npm test
 ```
 
 This creates four checks:
-- Test (18, ubuntu-latest)
-- Test (18, windows-latest)
-- Test (20, ubuntu-latest)
-- Test (20, windows-latest)
+- Test (22, ubuntu-latest)
+- Test (22, windows-latest)
+- Test (24, ubuntu-latest)
+- Test (24, windows-latest)
 
 ## Single Required Check for Matrix Jobs
 
@@ -151,11 +151,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        node: [18, 20]
+        node: [22, 24]
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
       - run: npm test
@@ -189,7 +189,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
     steps:
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
@@ -201,7 +201,7 @@ jobs:
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: npm test --prefix api
 
   # Always-running check that passes when tests are skipped
@@ -232,9 +232,11 @@ Create custom status checks using the GitHub API:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      statuses: write
     steps:
       - name: Set pending status
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             await github.rest.repos.createCommitStatus({
@@ -252,7 +254,7 @@ jobs:
         continue-on-error: true
 
       - name: Update status
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         if: always()
         with:
           script: |
@@ -277,8 +279,11 @@ Report status from external services:
 jobs:
   external-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Start external scan
         id: scan
@@ -304,7 +309,7 @@ jobs:
           done
 
       - name: Report results
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const response = await fetch(
@@ -335,8 +340,11 @@ GitHub has two types of status checks:
 jobs:
   lint-with-annotations:
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run ESLint
         id: eslint
@@ -344,7 +352,7 @@ jobs:
           npm run lint -- --format json --output-file eslint-results.json || true
 
       - name: Annotate code
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');
@@ -380,9 +388,9 @@ jobs:
             });
 ```
 
-## Bypassing Status Checks
+## Manual Emergency Workflows
 
-Admins can bypass required checks, but this should be rare:
+Admins or bypass actors can bypass required checks only when branch protection or ruleset settings allow it. For emergency deployments, use manual workflows with environment approvals:
 
 ```yaml
 jobs:
@@ -390,12 +398,12 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
-      # Requires admin approval
+      # Requires configured environment reviewers if enabled
     if: github.event_name == 'workflow_dispatch'
     steps:
       - name: Emergency deployment
         run: |
-          echo "Bypassing normal checks for emergency deployment"
+          echo "Running manual emergency deployment"
           ./deploy.sh --force
 ```
 
