@@ -31,7 +31,7 @@ The diagram shows the decision loop. Your monitoring system continuously evaluat
 
 ## Setting Up Health Check Based Triggers
 
-Health endpoints are your first line of defense. Kubernetes can trigger rollbacks based on probe failures, but you need to configure the Deployment correctly.
+Health endpoints are your first line of defense. Kubernetes can detect failed rollouts based on probe failures, but you need CI/CD or controller automation to trigger the rollback.
 
 The following Deployment manifest configures aggressive health checks that fail fast when something is wrong. The `progressDeadlineSeconds` setting tells Kubernetes to mark the rollout as failed if pods do not become healthy within the specified time.
 
@@ -84,7 +84,7 @@ spec:
             failureThreshold: 3
 ```
 
-When health probes fail, Kubernetes stops the rollout. Combine this with a rollback script in your CI/CD pipeline.
+When new pods fail readiness long enough, Kubernetes marks the rollout as failed. Combine this with a rollback script in your CI/CD pipeline.
 
 ## Metric Based Rollback Triggers
 
@@ -117,6 +117,8 @@ spec:
           labels:
             severity: critical
             action: rollback
+            app: api-service
+            namespace: production
           annotations:
             summary: "Error rate above 5% for api-service"
             runbook: "https://wiki.example.com/runbooks/auto-rollback"
@@ -131,6 +133,8 @@ spec:
           labels:
             severity: critical
             action: rollback
+            app: api-service
+            namespace: production
           annotations:
             summary: "P99 latency above 2s for api-service"
 ```
@@ -159,8 +163,8 @@ stringData:
       receiver: 'default'
       routes:
         # Route rollback alerts to automation webhook
-        - match:
-            action: rollback
+        - matchers:
+            - action="rollback"
           receiver: 'rollback-automation'
           continue: true
 
@@ -312,7 +316,7 @@ When configuring rollback triggers, you need to decide which signals matter most
 ```mermaid
 flowchart TD
     A[New Deployment] --> B{Health Probes Passing?}
-    B -->|No| C[Kubernetes Stops Rollout]
+    B -->|No| C[Kubernetes Marks Rollout Failed]
     B -->|Yes| D{Error Rate < 5%?}
     D -->|No| E[Trigger Rollback]
     D -->|Yes| F{P99 Latency < 2s?}
@@ -374,4 +378,3 @@ kubectl rollout history deployment/api-service -n staging
 Automatic rollback triggers combine health probes, metric alerts, and automation to catch bad deployments before they cause widespread damage. Start with Kubernetes health probes and `progressDeadlineSeconds` for basic protection. Add Prometheus alerts for error rates and latency as you mature. Build rollback automation that includes cooldown logic to prevent loops.
 
 The goal is not to eliminate human judgment but to buy time. Automatic rollbacks give your team breathing room to investigate while keeping users on a working version.
-
