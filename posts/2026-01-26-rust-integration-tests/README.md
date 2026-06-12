@@ -70,18 +70,23 @@ path = "src/main.rs"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-thiserror = "1"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+axum = "0.8"
+tower = { version = "0.5", features = ["util"] }
 
 [dev-dependencies]
 # Testing dependencies - only compiled for tests
 tokio-test = "0.4"
 tempfile = "3"
-wiremock = "0.5"
-fake = { version = "2", features = ["derive", "uuid"] }
+wiremock = "0.6"
+fake = { version = "4", features = ["derive"] }
 serial_test = "3"
-testcontainers = "0.15"
+futures = "0.3"
+tracing-subscriber = "0.3"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
 ```
 
 The `[dev-dependencies]` section contains packages only used during testing. This keeps your production binary lean.
@@ -127,7 +132,7 @@ Create a simple integration test that exercises your public API.
 use myapp::services::UserService;
 use myapp::models::CreateUserRequest;
 
-// Each #[test] function runs in isolation
+// Each #[test] function is discovered and run as a separate test case
 #[test]
 fn test_create_user_with_valid_data() {
     // Arrange - set up the test data
@@ -199,9 +204,9 @@ pub fn setup() {
     INIT.call_once(|| {
         // Set up logging for tests
         if std::env::var("TEST_LOG").is_ok() {
-            tracing_subscriber::fmt()
+            let _ = tracing_subscriber::fmt()
                 .with_test_writer()
-                .init();
+                .try_init();
         }
     });
 }
@@ -545,27 +550,31 @@ Use Testcontainers for isolated database instances.
 // tests/container_tests.rs
 // Integration tests using Testcontainers
 
-use testcontainers::{clients::Cli, images::postgres::Postgres, Container};
+use testcontainers_modules::{
+    postgres::Postgres,
+    testcontainers::{runners::AsyncRunner, ContainerAsync},
+};
 use sqlx::PgPool;
 
 mod common;
 
 /// Creates an isolated Postgres container for testing
-async fn setup_test_db() -> (Container<'static, Postgres>, PgPool) {
-    let docker = Cli::default();
-
+async fn setup_test_db() -> (ContainerAsync<Postgres>, PgPool) {
     // Start Postgres container
-    let container = docker.run(
-        Postgres::default()
-            .with_db_name("test_db")
-            .with_user("test")
-            .with_password("test")
-    );
+    let container = Postgres::default()
+        .with_db_name("test_db")
+        .with_user("test")
+        .with_password("test")
+        .start()
+        .await
+        .expect("Failed to start Postgres container");
 
+    let host = container.get_host().expect("Failed to get container host");
     let port = container.get_host_port_ipv4(5432);
     let url = format!(
-        "postgres://test:test@localhost:{}/test_db",
-        port
+        "postgres://test:test@{}:{}/test_db",
+        host,
+        port.expect("Failed to get mapped Postgres port")
     );
 
     // Wait for database to be ready
@@ -838,10 +847,10 @@ async fn test_payment_processing_failure() {
 }
 
 #[tokio::test]
-async fn test_payment_service_retry_on_timeout() {
+async fn test_payment_service_respects_timeout_configuration() {
     let mock_server = MockServer::start().await;
 
-    // First request times out, second succeeds
+    // Response arrives before the configured timeout
     Mock::given(method("POST"))
         .and(path("/v1/charges"))
         .respond_with(ResponseTemplate::new(200)
