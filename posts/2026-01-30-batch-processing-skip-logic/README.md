@@ -56,7 +56,8 @@ public Step importUserStep(JobRepository jobRepository,
                            PlatformTransactionManager transactionManager) {
     return new StepBuilder("importUserStep", jobRepository)
         // Process 100 items per chunk/transaction
-        .<User, User>chunk(100, transactionManager)
+        .<User, User>chunk(100)
+        .transactionManager(transactionManager)
         .reader(userItemReader())
         .processor(userItemProcessor())
         .writer(userItemWriter())
@@ -193,7 +194,8 @@ public class MalformedRecordException extends SkippableException {
 public Step dataProcessingStep(JobRepository jobRepository,
                                PlatformTransactionManager transactionManager) {
     return new StepBuilder("dataProcessingStep", jobRepository)
-        .<InputRecord, OutputRecord>chunk(50, transactionManager)
+        .<InputRecord, OutputRecord>chunk(50)
+        .transactionManager(transactionManager)
         .reader(inputReader())
         .processor(recordProcessor())
         .writer(outputWriter())
@@ -270,6 +272,12 @@ public class SmartSkipPolicy implements SkipPolicy {
     public boolean shouldSkip(Throwable throwable, long skipCount)
             throws SkipLimitExceededException {
 
+        // Spring Batch may call this method with skipCount < 0 to probe
+        // whether an exception type is skippable.
+        if (skipCount < 0) {
+            return isSkippableException(throwable);
+        }
+
         // Increment total processed count for rate calculation
         totalProcessed.incrementAndGet();
 
@@ -345,7 +353,8 @@ public Step intelligentProcessingStep(JobRepository jobRepository,
                                       PlatformTransactionManager transactionManager,
                                       SmartSkipPolicy skipPolicy) {
     return new StepBuilder("intelligentProcessingStep", jobRepository)
-        .<Order, ProcessedOrder>chunk(100, transactionManager)
+        .<Order, ProcessedOrder>chunk(100)
+        .transactionManager(transactionManager)
         .reader(orderReader())
         .processor(orderProcessor())
         .writer(orderWriter())
@@ -620,7 +629,8 @@ public Step monitoredProcessingStep(JobRepository jobRepository,
                                     PlatformTransactionManager transactionManager,
                                     ComprehensiveSkipListener skipListener) {
     return new StepBuilder("monitoredProcessingStep", jobRepository)
-        .<InputRecord, OutputRecord>chunk(100, transactionManager)
+        .<InputRecord, OutputRecord>chunk(100)
+        .transactionManager(transactionManager)
         .reader(inputReader())
         .processor(recordProcessor())
         .writer(outputWriter())
@@ -667,7 +677,8 @@ public Step resilientProcessingStep(JobRepository jobRepository,
                                     PlatformTransactionManager transactionManager,
                                     ComprehensiveSkipListener skipListener) {
     return new StepBuilder("resilientProcessingStep", jobRepository)
-        .<Transaction, ProcessedTransaction>chunk(50, transactionManager)
+        .<Transaction, ProcessedTransaction>chunk(50)
+        .transactionManager(transactionManager)
         .reader(transactionReader())
         .processor(transactionProcessor())
         .writer(transactionWriter())
@@ -951,7 +962,8 @@ public class OrderProcessingJobConfig {
                                     SmartSkipPolicy skipPolicy,
                                     ComprehensiveSkipListener skipListener) {
         return new StepBuilder("orderProcessingStep", jobRepository)
-            .<OrderInput, Order>chunk(100, transactionManager)
+            .<OrderInput, Order>chunk(100)
+            .transactionManager(transactionManager)
             .reader(reader)
             .processor(processor)
             .writer(writer)
@@ -1047,16 +1059,17 @@ public class JobCompletionListener implements JobExecutionListener {
         // Calculate success rate
         double successRate = totalProcessed > 0 ?
             ((double) (totalProcessed - totalSkips) / totalProcessed) * 100 : 0;
+        String formattedSuccessRate = String.format("%.2f", successRate);
 
         // Log summary
         log.info("Job completed: {} | Status: {} | Duration: {}s | " +
-                 "Processed: {} | Skipped: {} | Success Rate: {:.2f}%",
+                 "Processed: {} | Skipped: {} | Success Rate: {}%",
             jobExecution.getJobInstance().getJobName(),
             jobExecution.getStatus(),
             duration,
             totalProcessed,
             totalSkips,
-            successRate);
+            formattedSuccessRate);
 
         // If there were skips, generate detailed report
         if (totalSkips > 0) {
