@@ -49,7 +49,7 @@ Runs tasks in parallel as subprocesses on the same machine as the scheduler. Goo
 [core]
 executor = LocalExecutor
 parallelism = 32  # Max tasks running across all DAGs
-dag_concurrency = 16  # Max tasks running per DAG
+max_active_tasks_per_dag = 16  # Max tasks running per DAG
 
 [database]
 sql_alchemy_conn = postgresql+psycopg2://airflow:password@localhost/airflow
@@ -271,13 +271,10 @@ worker_prefetch_multiplier = 1
 
 # Task acknowledgment timing
 task_acks_late = True
-task_reject_on_worker_lost = True
 
-# Broker connection pool
-broker_pool_limit = 10
-
-# Result backend cleanup
-result_expires = 86400  # 24 hours
+# Path to a Python module exposing extra Celery settings such as
+# task_reject_on_worker_lost, broker_pool_limit, or result_expires.
+celery_config_options = airflow.config_templates.default_celery.DEFAULT_CELERY_CONFIG
 ```
 
 ### Queue Configuration
@@ -456,11 +453,11 @@ executor_slots_available = Gauge(
 # Check Celery queue status
 airflow celery flower  # Opens Flower UI on port 5555
 
-# Check worker status
-celery -A airflow.executors.celery_executor.app inspect active
+# Check worker status (Airflow 2.7+ — Celery executor lives in the providers package)
+celery -A airflow.providers.celery.executors.celery_executor.app inspect active
 
 # Check reserved tasks
-celery -A airflow.executors.celery_executor.app inspect reserved
+celery -A airflow.providers.celery.executors.celery_executor.app inspect reserved
 ```
 
 ## Common Configuration Mistakes
