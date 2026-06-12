@@ -463,13 +463,18 @@ public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Excepti
 
             // Scope-based authorization using hasAuthority
             // Note: default scope prefix is "SCOPE_"
-            .requestMatchers("/api/users/**").hasAuthority("SCOPE_users:read")
+            // Order matters: AuthorizationFilter applies the FIRST matching rule,
+            // so list method-specific matchers before the generic catch-all.
             .requestMatchers(HttpMethod.POST, "/api/users/**").hasAuthority("SCOPE_users:write")
             .requestMatchers(HttpMethod.DELETE, "/api/users/**").hasAuthority("SCOPE_users:delete")
+            .requestMatchers(HttpMethod.GET, "/api/users/**").hasAuthority("SCOPE_users:read")
 
-            // Require multiple scopes using access expression
+            // Require multiple scopes by composing AuthorizationManagers
             .requestMatchers("/api/reports/**")
-                .access(hasScope("reports:read").and(hasScope("analytics:access")))
+                .access(AuthorizationManagers.allOf(
+                    hasScope("reports:read"),
+                    hasScope("analytics:access")
+                ))
 
             // Role-based authorization (from custom claim extraction)
             .requestMatchers("/api/admin/**").hasRole("ADMIN")
@@ -517,7 +522,8 @@ public class UserController {
 
     /**
      * List users - requires 'users:read' scope.
-     * The #oauth2.hasScope() expression checks the token's scopes.
+     * Spring Security maps each entry in the JWT 'scope' claim to a
+     * GrantedAuthority prefixed with 'SCOPE_', so we check it with hasAuthority.
      */
     @GetMapping
     @PreAuthorize("hasAuthority('SCOPE_users:read')")
@@ -950,7 +956,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.server.resource.introspection.OpaqueTokenIntrospector;
-import org.springframework.security.oauth2.server.resource.introspection.NimbusOpaqueTokenIntrospector;
+import org.springframework.security.oauth2.server.resource.introspection.SpringOpaqueTokenIntrospector;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
@@ -975,8 +981,9 @@ public class OpaqueTokenConfig {
 
     @Bean
     public OpaqueTokenIntrospector customIntrospector() {
-        // Customize introspection if needed
-        return new NimbusOpaqueTokenIntrospector(
+        // SpringOpaqueTokenIntrospector replaces the deprecated
+        // NimbusOpaqueTokenIntrospector in current Spring Security versions.
+        return new SpringOpaqueTokenIntrospector(
             "https://auth.example.com/oauth2/introspect",
             "resource-server-client",
             System.getenv("INTROSPECTION_CLIENT_SECRET")
