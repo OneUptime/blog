@@ -8,7 +8,7 @@ Description: A practical guide to defining alert priority levels with response t
 
 ---
 
-Not all alerts are created equal. A database running low on disk space at 3% utilization is not the same as your payment gateway going offline during peak hours. Yet many teams treat them identically, leading to alert fatigue and missed critical incidents.
+Not all alerts are created equal. A database running low on disk space with 3% free space is not the same as your payment gateway going offline during peak hours. Yet many teams treat them identically, leading to alert fatigue and missed critical incidents.
 
 This guide covers how to implement a structured alert priority system that ensures the right people respond to the right issues at the right time.
 
@@ -251,12 +251,12 @@ escalation_rules:
 
 ## 6. Implementing Priority-Based Routing
 
-Here is how to configure priority-based routing in your alerting system.
+Here is a conceptual pattern for configuring priority-based routing in your alerting system.
 
 ### Alert Definition with Priority
 
 ```yaml
-# OneUptime alert configuration example
+# Conceptual alert configuration example
 alerts:
   - name: database_connection_pool_exhausted
     priority: P1
