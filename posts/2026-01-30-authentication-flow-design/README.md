@@ -60,7 +60,7 @@ Each arrow represents a point where security can fail. The rest of this guide ad
 
 ## Token-Based Authentication with JWT
 
-JSON Web Tokens (JWT) are the standard for stateless authentication. They encode claims, are signed for integrity, and can be verified without database lookups.
+JSON Web Tokens (JWT) are a standard format for stateless authentication tokens. They encode claims, are signed for integrity, and can be verified without database lookups.
 
 A JWT has three parts: header, payload, and signature. The following code shows how to generate and verify tokens in Node.js.
 
@@ -77,6 +77,7 @@ interface TokenPayload {
   userId: string;
   email: string;
   roles: string[];
+  sessionId?: string;
 }
 
 // Generate an access token with user claims
@@ -188,6 +189,7 @@ import jwt from 'jsonwebtoken';
 import {
   findRefreshToken,
   deleteRefreshToken,
+  deleteAllUserRefreshTokens,
   saveRefreshToken,
   findUserById,
 } from './database';
@@ -199,10 +201,13 @@ export async function refreshHandler(req: Request, res: Response) {
   const { refreshToken } = req.body;
 
   // Step 1: Verify the refresh token signature
-  let decoded: { userId: string };
+  let decoded: { userId: string; type: string };
   try {
-    decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET) as { userId: string };
+    decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET) as { userId: string; type: string };
   } catch {
+    return res.status(401).json({ error: 'Invalid refresh token' });
+  }
+  if (decoded.type !== 'refresh') {
     return res.status(401).json({ error: 'Invalid refresh token' });
   }
 
@@ -218,6 +223,10 @@ export async function refreshHandler(req: Request, res: Response) {
   await deleteRefreshToken(refreshToken);
 
   const user = await findUserById(decoded.userId);
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid refresh token' });
+  }
+
   const newAccessToken = generateAccessToken({
     userId: user.id,
     email: user.email,
@@ -250,7 +259,8 @@ Different applications need different session strategies. The table below compar
 The hybrid approach stores a session ID in the JWT and keeps minimal state server-side for revocation.
 
 ```typescript
-import { Redis } from 'ioredis';
+import Redis from 'ioredis';
+import { randomUUID } from 'crypto';
 
 const redis = new Redis(process.env.REDIS_URL);
 const SESSION_TTL = 60 * 60 * 24 * 7;  // 7 days in seconds
@@ -264,11 +274,12 @@ interface SessionData {
 
 // Create a new session and return the session ID
 export async function createSession(data: SessionData): Promise<string> {
-  const sessionId = crypto.randomUUID();
-  await redis.setex(
+  const sessionId = randomUUID();
+  await redis.set(
     `session:${sessionId}`,
-    SESSION_TTL,
-    JSON.stringify(data)
+    JSON.stringify(data),
+    'EX',
+    SESSION_TTL
   );
   return sessionId;
 }
@@ -282,10 +293,11 @@ export async function validateSession(sessionId: string): Promise<SessionData | 
   session.lastActivity = Date.now();
 
   // Extend TTL on activity
-  await redis.setex(
+  await redis.set(
     `session:${sessionId}`,
-    SESSION_TTL,
-    JSON.stringify(session)
+    JSON.stringify(session),
+    'EX',
+    SESSION_TTL
   );
 
   return session;
@@ -312,7 +324,7 @@ export async function revokeAllUserSessions(userId: string): Promise<void> {
 
 ## OAuth 2.0 Integration Flow
 
-Many applications delegate authentication to third-party providers. The authorization code flow is the most secure option for web applications.
+Many applications delegate authentication to third-party providers. The authorization code flow with PKCE is the most secure option for web applications.
 
 ```mermaid
 sequenceDiagram
@@ -322,12 +334,12 @@ sequenceDiagram
     participant AppBackend
 
     User->>App: Click "Login with Google"
-    App->>OAuthProvider: Redirect to /authorize
+    App->>OAuthProvider: Redirect to /authorize with PKCE challenge
     OAuthProvider->>User: Show consent screen
     User->>OAuthProvider: Grant permission
     OAuthProvider->>App: Redirect with auth code
-    App->>AppBackend: Send auth code
-    AppBackend->>OAuthProvider: Exchange code for tokens
+    App->>AppBackend: Send auth code + code verifier
+    AppBackend->>OAuthProvider: Exchange code + verifier for tokens
     OAuthProvider->>AppBackend: Return access + ID tokens
     AppBackend->>AppBackend: Create local session
     AppBackend->>App: Return session cookie
@@ -344,6 +356,7 @@ interface OAuthConfig {
   redirectUri: string;
   tokenEndpoint: string;
   userInfoEndpoint: string;
+  codeVerifier: string;
 }
 
 // Exchange authorization code for tokens
@@ -351,12 +364,17 @@ export async function exchangeCodeForTokens(
   code: string,
   config: OAuthConfig
 ): Promise<{ accessToken: string; idToken: string }> {
-  const response = await axios.post(config.tokenEndpoint, {
+  const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
     client_id: config.clientId,
     client_secret: config.clientSecret,
     redirect_uri: config.redirectUri,
+    code_verifier: config.codeVerifier,
+  });
+
+  const response = await axios.post(config.tokenEndpoint, body, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   });
 
   return {
