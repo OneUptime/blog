@@ -175,6 +175,10 @@ public class User extends SpecificRecordBase {
     public String getEmail() { return email; }
     public long getCreatedAt() { return createdAt; }
     public String getTier() { return tier; }
+    public void setUserId(String userId) { this.userId = userId; }
+    public void setEmail(String email) { this.email = email; }
+    public void setCreatedAt(long createdAt) { this.createdAt = createdAt; }
+    public void setTier(String tier) { this.tier = tier; }
 }
 ```
 
@@ -308,6 +312,10 @@ JSON Schema is ideal when you need human-readable messages or integration with s
 // Order.java - POJO for JSON Schema
 // Pulsar infers the JSON schema from the class structure
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+
 public class Order {
     // All fields will be included in the JSON schema
     private String orderId;
@@ -367,6 +375,10 @@ public class Order {
 
 import org.apache.pulsar.client.api.*;
 import org.apache.pulsar.client.api.schema.SchemaDefinition;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
 
 public class JsonSchemaExample {
 
@@ -608,9 +620,9 @@ flowchart LR
 
 | Change Type | Backward Compatible | Forward Compatible | Full Compatible |
 |-------------|--------------------|--------------------|-----------------|
-| Add field with default | Yes | No | No |
+| Add field with default | Yes | Yes | Yes |
 | Add field without default | No | Yes | No |
-| Remove field with default | No | Yes | No |
+| Remove field with default | Yes | Yes | Yes |
 | Remove field without default | Yes | No | No |
 | Change field type | No | No | No |
 | Rename field | No | No | No |
@@ -622,6 +634,7 @@ flowchart LR
 import org.apache.pulsar.client.api.*;
 import org.apache.pulsar.client.api.schema.SchemaDefinition;
 import org.apache.pulsar.common.schema.SchemaInfo;
+import org.apache.avro.reflect.Nullable;
 
 public class SchemaEvolutionExample {
 
@@ -630,28 +643,47 @@ public class SchemaEvolutionExample {
         private String userId;
         private String email;
 
-        // getters/setters...
+        public String getUserId() { return userId; }
+        public void setUserId(String userId) { this.userId = userId; }
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
     }
 
-    // Version 2: Added 'tier' field with default value
-    // This is BACKWARD compatible - old consumers can read new messages
+    // Version 2: Added optional 'tier' field
+    // This is FULL compatible - new readers get null for old data,
+    // and old readers ignore the new field in new data
     public static class UserV2 {
         private String userId;
         private String email;
-        private String tier = "free";  // default value for backward compat
+        @Nullable
+        private String tier;
 
-        // getters/setters...
+        public String getUserId() { return userId; }
+        public void setUserId(String userId) { this.userId = userId; }
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+        public String getTier() { return tier; }
+        public void setTier(String tier) { this.tier = tier; }
     }
 
-    // Version 3: Added 'signupSource' with default
-    // Still backward compatible with V1 and V2 consumers
+    // Version 3: Added optional 'signupSource'
+    // Still full compatible with V1 and V2 consumers
     public static class UserV3 {
         private String userId;
         private String email;
-        private String tier = "free";
-        private String signupSource = "web";  // default for older readers
+        @Nullable
+        private String tier;
+        @Nullable
+        private String signupSource;
 
-        // getters/setters...
+        public String getUserId() { return userId; }
+        public void setUserId(String userId) { this.userId = userId; }
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+        public String getTier() { return tier; }
+        public void setTier(String tier) { this.tier = tier; }
+        public String getSignupSource() { return signupSource; }
+        public void setSignupSource(String signupSource) { this.signupSource = signupSource; }
     }
 
     public static void demonstrateEvolution() throws Exception {
@@ -675,7 +707,7 @@ public class SchemaEvolutionExample {
 
         // Step 2: Create producer with V2 schema
         // Pulsar checks compatibility before allowing the new schema
-        // With BACKWARD_TRANSITIVE (default), new schema must be readable by old consumers
+        // For Avro and JSON schemas, Pulsar's default strategy is FULL
         Producer<UserV2> producerV2 = client.newProducer(Schema.AVRO(UserV2.class))
             .topic(topic)
             .create();
@@ -702,16 +734,16 @@ public class SchemaEvolutionExample {
         consumerV1.close();
 
         // Step 4: V2 consumer can read both V1 and V2 messages
-        // For V1 messages, 'tier' gets the default value "free"
+        // For V1 messages, 'tier' is null unless you declare an explicit Avro default
         Consumer<UserV2> consumerV2 = client.newConsumer(Schema.AVRO(UserV2.class))
             .topic(topic)
             .subscriptionName("v2-consumer")
             .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
             .subscribe();
 
-        // Read V1 message - tier will be "free" (default)
+        // Read V1 message - tier will be null unless you declare an explicit Avro default
         Message<UserV2> msgFromV1 = consumerV2.receive();
-        System.out.println("V2 reading V1: tier=" + msgFromV1.getValue().getTier()); // "free"
+        System.out.println("V2 reading V1: tier=" + msgFromV1.getValue().getTier()); // null
         consumerV2.acknowledge(msgFromV1);
 
         // Read V2 message - tier is "premium"
@@ -738,7 +770,7 @@ flowchart TB
         BACKWARD["BACKWARD<br/>New schema can read old data"]
         FORWARD["FORWARD<br/>Old schema can read new data"]
         FULL["FULL<br/>Both directions compatible"]
-        NONE["NONE<br/>No compatibility checks"]
+        ALWAYS_COMPATIBLE["ALWAYS_COMPATIBLE<br/>No compatibility checks"]
     end
 
     subgraph Example["Example: Adding a Field"]
@@ -750,7 +782,7 @@ flowchart TB
     BACKWARD --> |"OK if age has default"| Example
     FORWARD --> |"OK always"| Example
     FULL --> |"OK if age has default"| Example
-    NONE --> |"OK always"| Example
+    ALWAYS_COMPATIBLE --> |"OK always"| Example
 ```
 
 ### Compatibility Modes
@@ -763,14 +795,15 @@ flowchart TB
 | `FORWARD_TRANSITIVE` | All previous schemas can read new data | Strict backward reader compatibility |
 | `FULL` | Both backward and forward compatible | Maximum safety |
 | `FULL_TRANSITIVE` | Full compatibility with all versions | Critical production topics |
-| `NONE` | No compatibility checking | Development/testing only |
+| `ALWAYS_COMPATIBLE` | No compatibility checking | Development/testing only |
+| `ALWAYS_INCOMPATIBLE` | Reject every schema change after the first version | Locked-down topics with no evolution |
 
 ```bash
 # Set compatibility strategy for a namespace using pulsar-admin CLI
 
 # This affects all topics in the namespace
 
-# Set to BACKWARD (recommended for most cases)
+# Set to BACKWARD
 bin/pulsar-admin namespaces set-schema-compatibility-strategy \
     public/default \
     --compatibility BACKWARD
@@ -783,8 +816,11 @@ bin/pulsar-admin namespaces set-schema-compatibility-strategy \
 # Check current compatibility strategy
 bin/pulsar-admin namespaces get-schema-compatibility-strategy public/default
 
-# List all schema versions for a topic
-bin/pulsar-admin schemas get persistent://public/default/users --all-version
+# Get the latest schema for a topic
+bin/pulsar-admin schemas get persistent://public/default/users
+
+# Get a specific schema version for a topic
+bin/pulsar-admin schemas get persistent://public/default/users --version 0
 ```
 
 ```java
@@ -794,6 +830,7 @@ bin/pulsar-admin schemas get persistent://public/default/users --all-version
 import org.apache.pulsar.client.api.*;
 import org.apache.pulsar.client.api.schema.SchemaDefinition;
 import org.apache.pulsar.common.policies.data.SchemaCompatibilityStrategy;
+import org.apache.avro.reflect.Nullable;
 
 public class CompatibilityCheckExample {
 
@@ -805,20 +842,23 @@ public class CompatibilityCheckExample {
         // getters/setters...
     }
 
-    // Incompatible change: removed 'name' field without default
+    // Incompatible change: added required 'sku' field without default
     // This will FAIL compatibility check in BACKWARD mode
     public static class ProductBreaking {
         private String productId;
+        private String name;
         private double price;
-        // 'name' removed - breaks backward compatibility!
+        private String sku;
+        // 'sku' added without being optional or having a schema default
     }
 
-    // Compatible change: added field with default
+    // Compatible change: added optional field
     public static class ProductCompatible {
         private String productId;
         private String name;
         private double price;
-        private String category = "uncategorized";  // has default - OK!
+        @Nullable
+        private String category;  // optional - OK!
         // getters/setters...
     }
 
@@ -847,8 +887,7 @@ public class CompatibilityCheckExample {
         } catch (PulsarClientException.IncompatibleSchemaException e) {
             // Expected! The schema change is incompatible
             System.err.println("Schema rejected: " + e.getMessage());
-            // Output: "Schema rejected: Incompatible schema:
-            //          reader field 'name' is missing default value"
+            // Output includes an Avro schema compatibility error for the new required field
         }
 
         // Compatible schema change succeeds
@@ -875,9 +914,12 @@ Pulsar can automatically discover and use schemas from topics, enabling dynamic 
 // Shows how to consume messages without knowing the schema at compile time
 
 import org.apache.pulsar.client.api.*;
+import org.apache.pulsar.client.admin.PulsarAdmin;
 import org.apache.pulsar.client.api.schema.GenericRecord;
 import org.apache.pulsar.common.schema.SchemaInfo;
 import org.apache.pulsar.common.schema.SchemaType;
+
+import java.util.List;
 
 public class AutoSchemaDiscovery {
 
@@ -900,9 +942,11 @@ public class AutoSchemaDiscovery {
         GenericRecord record = message.getValue();
 
         // Access schema metadata
-        SchemaInfo schemaInfo = message.getSchemaInfo();
-        System.out.println("Schema type: " + schemaInfo.getType()); // AVRO, JSON, etc.
-        System.out.println("Schema definition: " + schemaInfo.getSchemaDefinition());
+        message.getReaderSchema().ifPresent(readerSchema -> {
+            SchemaInfo schemaInfo = readerSchema.getSchemaInfo();
+            System.out.println("Schema type: " + schemaInfo.getType()); // AVRO, JSON, etc.
+            System.out.println("Schema definition: " + schemaInfo.getSchemaDefinition());
+        });
 
         // Access fields dynamically by name
         // GenericRecord provides field access without compile-time type info
@@ -981,16 +1025,9 @@ flowchart TB
     subgraph Policies["Schema Enforcement Policies"]
         direction TB
 
-        subgraph ALWAYS["ALWAYS (Recommended for Production)"]
+        subgraph ENABLED["ENABLED (Recommended for Production)"]
             A1[Producer must provide schema]
-            A2[Consumer must provide schema]
-            A3[Schema mismatch = connection rejected]
-        end
-
-        subgraph ALWAYS_PRODUCER["ALWAYS_PRODUCER"]
-            B1[Producer must provide schema]
-            B2[Consumer can use any schema]
-            B3[Useful for raw byte consumers]
+            A2[Schema mismatch = connection rejected]
         end
 
         subgraph DISABLED["DISABLED (Not Recommended)"]
@@ -1000,18 +1037,16 @@ flowchart TB
         end
     end
 
-    ALWAYS --> |"Maximum safety"| Production
-    ALWAYS_PRODUCER --> |"Flexible consumers"| Mixed
+    ENABLED --> |"Maximum safety"| Production
     DISABLED --> |"Legacy only"| Legacy
 ```
 
 ### Enforcement Policy Options
 
-| Policy | Producer Schema Required | Consumer Schema Required | Use Case |
-|--------|-------------------------|-------------------------|----------|
-| `ALWAYS` | Yes | Yes | Production - full type safety |
-| `ALWAYS_PRODUCER` | Yes | No | When consumers need raw bytes |
-| `DISABLED` | No | No | Legacy topics, migration |
+| Setting | Producer Schema Required | Use Case |
+|---------|--------------------------|----------|
+| `schemaValidationEnforced=true` | Yes | Production - full type safety |
+| `schemaValidationEnforced=false` | No | Legacy topics, migration |
 
 ```bash
 # Set schema enforcement policy using pulsar-admin
@@ -1021,11 +1056,10 @@ bin/pulsar-admin namespaces set-schema-validation-enforce \
     public/production \
     --enable
 
-# Set the policy type
-bin/pulsar-admin namespaces set-schema-autoupdate-strategy \
+# Set a compatibility strategy separately
+bin/pulsar-admin namespaces set-schema-compatibility-strategy \
     public/production \
-    --compatibility FULL_TRANSITIVE \
-    --schema-validation-enforced
+    --compatibility FULL_TRANSITIVE
 
 # Check current policy
 bin/pulsar-admin namespaces get-schema-validation-enforce public/production
@@ -1036,6 +1070,8 @@ bin/pulsar-admin namespaces get-schema-validation-enforce public/production
 // Demonstrates schema enforcement behavior
 
 import org.apache.pulsar.client.api.*;
+import org.apache.pulsar.client.admin.PulsarAdmin;
+import org.apache.pulsar.common.policies.data.SchemaCompatibilityStrategy;
 
 public class SchemaEnforcementExample {
 
@@ -1053,7 +1089,7 @@ public class SchemaEnforcementExample {
         schemaProducer.close();
 
         // Attempt to produce without schema (raw bytes)
-        // This will FAIL if schema enforcement is ALWAYS
+        // This will FAIL if schema validation enforcement is enabled
         try {
             Producer<byte[]> rawProducer = client.newProducer(Schema.BYTES)
                 .topic(enforcedTopic)
@@ -1061,7 +1097,7 @@ public class SchemaEnforcementExample {
             rawProducer.send("raw bytes".getBytes());
             rawProducer.close();
         } catch (PulsarClientException e) {
-            // Expected with ALWAYS enforcement
+            // Expected with schema validation enforcement enabled
             System.err.println("Raw producer rejected: " + e.getMessage());
         }
 
@@ -1138,7 +1174,7 @@ public class SchemaEnforcementExample {
 | Do | Don't |
 |----|-------|
 | Add fields with default values | Add required fields to existing schemas |
-| Use FULL_TRANSITIVE for production | Use NONE compatibility |
+| Use FULL_TRANSITIVE for critical production topics | Use ALWAYS_COMPATIBLE compatibility in production |
 | Test schema changes in staging first | Deploy schema changes directly to prod |
 | Keep old consumers running during rollout | Force all consumers to upgrade simultaneously |
 | Use semantic versioning for schemas | Increment versions randomly |
@@ -1147,7 +1183,7 @@ public class SchemaEnforcementExample {
 
 | Do | Don't |
 |----|-------|
-| Enable schema enforcement (ALWAYS) | Allow unschema'd production topics |
+| Enable schema validation enforcement | Allow unschema'd production topics |
 | Monitor schema registry metrics | Ignore schema-related errors |
 | Document schema ownership | Let anyone modify any schema |
 | Automate compatibility checks in CI/CD | Rely on manual schema review |
@@ -1164,20 +1200,21 @@ set -e
 
 PULSAR_ADMIN="bin/pulsar-admin"
 TOPIC="persistent://public/default/users"
-NEW_SCHEMA_FILE="schemas/user-v2.avsc"
+NEW_SCHEMA_PAYLOAD="schemas/user-v2.schema.json"
 
 # Test compatibility before deployment
 echo "Testing schema compatibility..."
-$PULSAR_ADMIN schemas compatibility \
-    --schema-file "$NEW_SCHEMA_FILE" \
-    "$TOPIC"
+curl -fsS -X POST \
+    -H "Content-Type: application/json" \
+    --data @"$NEW_SCHEMA_PAYLOAD" \
+    "http://localhost:8080/admin/v2/schemas/public/default/users/compatibility"
 
 # If we reach here, schema is compatible
 echo "Schema is compatible! Proceeding with deployment..."
 
 # Upload the new schema (optional - producer will register on connect)
 $PULSAR_ADMIN schemas upload \
-    --schema-file "$NEW_SCHEMA_FILE" \
+    --filename "$NEW_SCHEMA_PAYLOAD" \
     "$TOPIC"
 
 echo "Schema uploaded successfully"
