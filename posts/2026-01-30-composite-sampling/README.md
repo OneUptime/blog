@@ -8,7 +8,7 @@ Description: Learn how to combine multiple sampling strategies into a single com
 
 ---
 
-Single samplers are rarely enough. You want to keep all errors, sample high-latency requests, capture specific user tiers, and still maintain a baseline probabilistic sample. Trying to do this with one sampler is awkward. The solution: composite sampling.
+Single samplers are rarely enough. You want to keep all traces that are known to be important at sampling time, capture specific user tiers, and still maintain a baseline probabilistic sample. Trying to do this with one sampler is awkward. The solution: composite sampling.
 
 A composite sampler chains multiple sampling strategies together, evaluating them in sequence or priority order until a decision is made. This gives you fine-grained control over which traces you keep without writing complex conditional logic everywhere.
 
@@ -20,7 +20,7 @@ This guide walks through the concepts, architecture, and implementation of compo
 
 | Scenario | Single Sampler Problem | Composite Solution |
 |----------|------------------------|-------------------|
-| Keep 100% errors + 10% of everything else | TraceIdRatio misses most errors | Error sampler (priority 1) + Ratio sampler (fallback) |
+| Keep 100% known errors + 10% of everything else | TraceIdRatio misses error signals that are available at span creation | Error-attribute sampler (priority 1) + Ratio sampler (fallback) |
 | VIP customers always traced | No built-in "attribute-based" sampler | Attribute sampler + probabilistic fallback |
 | Different rates per service/endpoint | One rate for all | Route-based sampler chain |
 | Debug mode for specific trace IDs | Static config cannot adapt | Feature-flag sampler + default chain |
@@ -34,17 +34,17 @@ The pattern: stack specialized samplers from highest to lowest priority. First m
 ```mermaid
 flowchart TD
     A[Incoming Span] --> B{Error Sampler}
-    B -->|Has Error Status| C[RECORD_AND_SAMPLE]
-    B -->|No Error| D{Latency Sampler}
-    D -->|Latency > Threshold| C
-    D -->|Below Threshold| E{Attribute Sampler}
+    B -->|Has Error Attribute| C[RECORD_AND_SAMPLED]
+    B -->|No Error| D{Expected Latency Sampler}
+    D -->|Known Slow Endpoint| C
+    D -->|No Match| E{Attribute Sampler}
     E -->|VIP Customer| C
     E -->|Regular Customer| F{Probabilistic Sampler}
     F -->|10% Sample| C
     F -->|90% Drop| G[DROP]
 ```
 
-Each sampler in the chain gets a chance to claim the span. If it returns `RECORD_AND_SAMPLE`, the chain stops. If it returns `NOT_RECORD` or defers, the next sampler evaluates.
+Each sampler in the chain gets a chance to claim the span. If it returns `RECORD_AND_SAMPLED`, the chain stops. In these examples, `NOT_RECORD` is treated as "no match" so the next sampler evaluates; use separate terminal-drop logic or a Collector drop policy when you need to force a trace to be dropped.
 
 ---
 
@@ -77,7 +77,7 @@ interface SamplingResult {
 enum SamplingDecision {
   NOT_RECORD = 0,        // Drop the span
   RECORD = 1,            // Record but don't export
-  RECORD_AND_SAMPLE = 2  // Record and export
+  RECORD_AND_SAMPLED = 2  // Record and export
 }
 ```
 
@@ -106,7 +106,7 @@ class CompositeSampler implements Sampler {
         context, traceId, spanName, spanKind, attributes, links
       );
 
-      if (result.decision === SamplingDecision.RECORD_AND_SAMPLE) {
+      if (result.decision === SamplingDecision.RECORD_AND_SAMPLED) {
         return result;
       }
     }
@@ -127,15 +127,17 @@ class CompositeSampler implements Sampler {
 
 Before composing, you need samplers to compose. Here are reusable building blocks.
 
-### Error-Based Sampler
+### Error-Attribute Sampler
 
-Always keeps spans that have error status or error attributes:
+Keeps spans that have error attributes available when the span is created. Head sampling cannot see an error status that is set later, after the operation finishes:
 
 ```typescript
+import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
 import {
-  Sampler, SamplingResult, SamplingDecision,
-  Context, SpanKind, Attributes, Link
-} from '@opentelemetry/api';
+  Sampler,
+  SamplingResult,
+  SamplingDecision
+} from '@opentelemetry/sdk-trace-base';
 
 class ErrorSampler implements Sampler {
   shouldSample(
@@ -149,12 +151,15 @@ class ErrorSampler implements Sampler {
     // Check for error indicators in attributes
     const hasError =
       attributes['error'] === true ||
-      attributes['http.status_code'] >= 400 ||
+      (typeof attributes['http.response.status_code'] === 'number' &&
+       attributes['http.response.status_code'] >= 400) ||
+      (typeof attributes['http.status_code'] === 'number' &&
+       attributes['http.status_code'] >= 400) ||
       attributes['exception.type'] !== undefined;
 
     if (hasError) {
       return {
-        decision: SamplingDecision.RECORD_AND_SAMPLE,
+        decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: { 'sampling.reason': 'error' }
       };
     }
@@ -203,7 +208,7 @@ class AttributeSampler implements Sampler {
 
         if (rate >= 1.0 || Math.random() < rate) {
           return {
-            decision: SamplingDecision.RECORD_AND_SAMPLE,
+            decision: SamplingDecision.RECORD_AND_SAMPLED,
             attributes: {
               'sampling.reason': 'attribute_match',
               'sampling.rule': rule.key
@@ -252,7 +257,7 @@ class ExpectedLatencySampler implements Sampler {
     for (const rule of this.rules) {
       if (rule.spanNamePattern.test(spanName)) {
         return {
-          decision: SamplingDecision.RECORD_AND_SAMPLE,
+          decision: SamplingDecision.RECORD_AND_SAMPLED,
           attributes: { 'sampling.reason': 'slow_endpoint' }
         };
       }
@@ -309,7 +314,7 @@ class RateLimitedSampler implements Sampler {
       context, traceId, spanName, spanKind, attributes, links
     );
 
-    if (innerResult.decision === SamplingDecision.RECORD_AND_SAMPLE) {
+    if (innerResult.decision === SamplingDecision.RECORD_AND_SAMPLED) {
       if (this.tokenBucket >= 1) {
         this.tokenBucket -= 1;
         return innerResult;
@@ -334,14 +339,16 @@ class RateLimitedSampler implements Sampler {
 
 ## Priority-Based Composite Sampler
 
-The simplest composite pattern: evaluate samplers in priority order. First one that returns `RECORD_AND_SAMPLE` wins.
+The simplest composite pattern: evaluate samplers in priority order. First one that returns `RECORD_AND_SAMPLED` wins.
 
 ```typescript
+import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
 import {
-  Sampler, SamplingResult, SamplingDecision,
-  Context, SpanKind, Attributes, Link
-} from '@opentelemetry/api';
-import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
+  Sampler,
+  SamplingResult,
+  SamplingDecision,
+  TraceIdRatioBasedSampler
+} from '@opentelemetry/sdk-trace-base';
 
 class PriorityCompositeSampler implements Sampler {
   private samplers: { sampler: Sampler; priority: number }[];
@@ -364,7 +371,7 @@ class PriorityCompositeSampler implements Sampler {
         context, traceId, spanName, spanKind, attributes, links
       );
 
-      if (result.decision === SamplingDecision.RECORD_AND_SAMPLE) {
+      if (result.decision === SamplingDecision.RECORD_AND_SAMPLED) {
         return result;
       }
     }
@@ -452,7 +459,7 @@ class AndSampler implements Sampler {
         context, traceId, spanName, spanKind, attributes, links
       );
 
-      if (result.decision !== SamplingDecision.RECORD_AND_SAMPLE) {
+      if (result.decision !== SamplingDecision.RECORD_AND_SAMPLED) {
         return { decision: SamplingDecision.NOT_RECORD };
       }
 
@@ -460,7 +467,7 @@ class AndSampler implements Sampler {
     }
 
     return {
-      decision: SamplingDecision.RECORD_AND_SAMPLE,
+      decision: SamplingDecision.RECORD_AND_SAMPLED,
       attributes: mergedAttributes
     };
   }
@@ -494,7 +501,7 @@ class OrSampler implements Sampler {
         context, traceId, spanName, spanKind, attributes, links
       );
 
-      if (result.decision === SamplingDecision.RECORD_AND_SAMPLE) {
+      if (result.decision === SamplingDecision.RECORD_AND_SAMPLED) {
         return result;
       }
     }
@@ -533,13 +540,16 @@ Wire up the composite sampler in your telemetry initialization:
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   ParentBasedSampler,
   TraceIdRatioBasedSampler,
   AlwaysOnSampler
 } from '@opentelemetry/sdk-trace-base';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION
+} from '@opentelemetry/semantic-conventions';
 
 // Import your custom samplers
 import { PriorityCompositeSampler, ErrorSampler, AttributeSampler } from './samplers';
@@ -559,7 +569,7 @@ const rootSampler = new PriorityCompositeSampler([
   { sampler: new TraceIdRatioBasedSampler(0.1), priority: 10 }
 ]);
 
-// Wrap in ParentBasedSampler to respect parent trace decisions
+// Wrap in ParentBasedSampler to keep sampled parent traces consistent
 const sampler = new ParentBasedSampler({
   root: rootSampler,
   remoteParentSampled: new AlwaysOnSampler(),
@@ -571,9 +581,9 @@ const sampler = new ParentBasedSampler({
 export const sdk = new NodeSDK({
   traceExporter,
   sampler,
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'api-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '2.1.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'api-service',
+    [ATTR_SERVICE_VERSION]: '2.1.0',
   }),
   instrumentations: [getNodeAutoInstrumentations()],
 });
@@ -602,11 +612,11 @@ flowchart TD
     H --> I
 
     I --> K{Evaluate Chain}
-    J --> L[RECORD_AND_SAMPLE]
+    J --> L[RECORD_AND_SAMPLED]
     K --> M[Decision]
 ```
 
-The `ParentBasedSampler` wrapper ensures that:
+This `ParentBasedSampler` wrapper ensures that:
 - Root spans use your composite logic
 - Child spans of sampled parents stay sampled (trace consistency)
 - Child spans of unsampled parents can be re-evaluated or dropped
@@ -620,6 +630,12 @@ Head sampling (in SDK) decides before the span completes. Tail sampling (in Coll
 Collector config for composite tail sampling:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc: {}
+      http: {}
+
 processors:
   tail_sampling:
     decision_wait: 10s
@@ -665,6 +681,13 @@ processors:
         type: probabilistic
         probabilistic:
           sampling_percentage: 5
+  batch: {}
+
+exporters:
+  otlp:
+    endpoint: your-backend:4317
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -678,20 +701,23 @@ service:
 
 ## Full Implementation Example
 
-Here is a complete, production-ready composite sampler module:
+Here is a complete, working composite sampler module:
 
 ```typescript
 // samplers/index.ts
 import {
-  Sampler,
-  SamplingResult,
-  SamplingDecision,
   Context,
   SpanKind,
   Attributes,
   Link,
 } from '@opentelemetry/api';
-import { TraceIdRatioBasedSampler, AlwaysOnSampler } from '@opentelemetry/sdk-trace-base';
+import {
+  Sampler,
+  SamplingResult,
+  SamplingDecision,
+  TraceIdRatioBasedSampler,
+  AlwaysOnSampler
+} from '@opentelemetry/sdk-trace-base';
 
 // Re-export built-in samplers
 export { TraceIdRatioBasedSampler, AlwaysOnSampler };
@@ -707,6 +733,8 @@ export class ErrorSampler implements Sampler {
   ): SamplingResult {
     const isError =
       attributes['error'] === true ||
+      (typeof attributes['http.response.status_code'] === 'number' &&
+       attributes['http.response.status_code'] >= 400) ||
       (typeof attributes['http.status_code'] === 'number' &&
        attributes['http.status_code'] >= 400) ||
       attributes['exception.type'] !== undefined ||
@@ -714,7 +742,7 @@ export class ErrorSampler implements Sampler {
 
     if (isError) {
       return {
-        decision: SamplingDecision.RECORD_AND_SAMPLE,
+        decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: { 'sampling.reason': 'error' },
       };
     }
@@ -749,7 +777,7 @@ export class AttributeSampler implements Sampler {
         const rate = rule.sampleRate ?? 1.0;
         if (Math.random() < rate) {
           return {
-            decision: SamplingDecision.RECORD_AND_SAMPLE,
+            decision: SamplingDecision.RECORD_AND_SAMPLED,
             attributes: { 'sampling.reason': `attribute:${rule.key}` },
           };
         }
@@ -779,7 +807,7 @@ export class SpanNameSampler implements Sampler {
       if (pattern.test(spanName)) {
         if (Math.random() < this.sampleRate) {
           return {
-            decision: SamplingDecision.RECORD_AND_SAMPLE,
+            decision: SamplingDecision.RECORD_AND_SAMPLED,
             attributes: { 'sampling.reason': 'span_name_match' },
           };
         }
@@ -823,7 +851,7 @@ export class PriorityCompositeSampler implements Sampler {
         attributes,
         links
       );
-      if (result.decision === SamplingDecision.RECORD_AND_SAMPLE) {
+      if (result.decision === SamplingDecision.RECORD_AND_SAMPLED) {
         return result;
       }
     }
@@ -857,12 +885,12 @@ export class AndSampler implements Sampler {
         attributes,
         links
       );
-      if (result.decision !== SamplingDecision.RECORD_AND_SAMPLE) {
+      if (result.decision !== SamplingDecision.RECORD_AND_SAMPLED) {
         return { decision: SamplingDecision.NOT_RECORD };
       }
       Object.assign(merged, result.attributes || {});
     }
-    return { decision: SamplingDecision.RECORD_AND_SAMPLE, attributes: merged };
+    return { decision: SamplingDecision.RECORD_AND_SAMPLED, attributes: merged };
   }
 
   toString(): string {
@@ -891,7 +919,7 @@ export class OrSampler implements Sampler {
         attributes,
         links
       );
-      if (result.decision === SamplingDecision.RECORD_AND_SAMPLE) {
+      if (result.decision === SamplingDecision.RECORD_AND_SAMPLED) {
         return result;
       }
     }
@@ -926,7 +954,6 @@ const sampler = new PriorityCompositeSampler([
 const sampler = new PriorityCompositeSampler([
   { sampler: new ErrorSampler(), priority: 100 },
   { sampler: new SpanNameSampler([/payment/, /checkout/], 0.5), priority: 80 },
-  { sampler: new SpanNameSampler([/health/, /metrics/], 0.0), priority: 70 },
   { sampler: new TraceIdRatioBasedSampler(0.1), priority: 1 }
 ]);
 ```
@@ -944,7 +971,7 @@ class DebugModeSampler implements Sampler {
   ): SamplingResult {
     if (attributes['debug'] === true || process.env.DEBUG_SAMPLING === '1') {
       return {
-        decision: SamplingDecision.RECORD_AND_SAMPLE,
+        decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: { 'sampling.reason': 'debug_mode' }
       };
     }
@@ -985,10 +1012,10 @@ describe('PriorityCompositeSampler', () => {
       'abc123',
       'http.request',
       SpanKind.SERVER,
-      { 'http.status_code': 500 },
+      { 'http.response.status_code': 500 },
       []
     );
-    expect(result.decision).toBe(2); // RECORD_AND_SAMPLE
+    expect(result.decision).toBe(2); // RECORD_AND_SAMPLED
     expect(result.attributes?.['sampling.reason']).toBe('error');
   });
 
