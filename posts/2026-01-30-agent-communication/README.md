@@ -42,7 +42,7 @@ A well-structured message format is the foundation of reliable agent communicati
 ```python
 from dataclasses import dataclass, field
 from typing import Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import uuid
 
@@ -77,7 +77,9 @@ class AgentMessage:
     payload: dict = field(default_factory=dict)
 
     # Metadata
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     priority: Priority = Priority.NORMAL
     correlation_id: Optional[str] = None  # Links related messages
     reply_to: Optional[str] = None  # For request-response patterns
@@ -245,7 +247,7 @@ class PubSubChannel(Channel):
 
         for queue in subscribers:
             try:
-                await queue.put(message)
+                queue.put_nowait(message)
                 delivered += 1
             except asyncio.QueueFull:
                 continue
@@ -301,6 +303,7 @@ flowchart TD
 ```python
 from typing import Dict, Set, Optional, Callable
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 import asyncio
 import random
 
@@ -362,6 +365,13 @@ class MessageRouter:
         if not message.sender_id:
             return False
         if message.ttl_seconds <= 0:
+            return False
+        timestamp = message.timestamp
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) - timestamp > timedelta(
+            seconds=message.ttl_seconds
+        ):
             return False
         return True
 
@@ -470,7 +480,7 @@ sequenceDiagram
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import Dict, Optional
 import asyncio
 
@@ -510,7 +520,7 @@ class AcknowledgmentManager:
 
         tracker = AckTracker(
             message=message,
-            sent_at=datetime.utcnow()
+            sent_at=datetime.now(timezone.utc)
         )
         self._pending[message.message_id] = tracker
 
@@ -529,7 +539,7 @@ class AcknowledgmentManager:
         tracker = self._pending.get(original_id)
         if tracker:
             tracker.ack_received = True
-            tracker.ack_at = datetime.utcnow()
+            tracker.ack_at = datetime.now(timezone.utc)
             self._pending.pop(original_id, None)
             self._router.acknowledge(original_id)
 
@@ -549,10 +559,10 @@ class AcknowledgmentManager:
         while self._running:
             await asyncio.sleep(self._check_interval)
 
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             expired = []
 
-            for msg_id, tracker in self._pending.items():
+            for msg_id, tracker in list(self._pending.items()):
                 age = (now - tracker.sent_at).total_seconds()
 
                 if age > self._ack_timeout:
@@ -573,7 +583,7 @@ class AcknowledgmentManager:
         """Retry sending a message."""
         tracker.retries += 1
         tracker.message.retry_count = tracker.retries
-        tracker.sent_at = datetime.utcnow()
+        tracker.sent_at = datetime.now(timezone.utc)
 
         await self._router.route(tracker.message)
 
@@ -622,8 +632,8 @@ flowchart TD
 
 ```python
 from enum import Enum
-from typing import Callable, Optional, List
-from datetime import datetime, timedelta
+from typing import Callable, Dict, Optional, List
+from datetime import datetime, timezone
 import asyncio
 import logging
 
@@ -666,7 +676,9 @@ class CircuitBreaker:
         if not self._last_failure_time:
             return True
 
-        elapsed = (datetime.utcnow() - self._last_failure_time).total_seconds()
+        elapsed = (
+            datetime.now(timezone.utc) - self._last_failure_time
+        ).total_seconds()
         return elapsed >= self._recovery_timeout
 
     async def call(self, func: Callable, *args, **kwargs):
@@ -697,7 +709,7 @@ class CircuitBreaker:
     def _on_failure(self) -> None:
         """Handle failed call."""
         self._failure_count += 1
-        self._last_failure_time = datetime.utcnow()
+        self._last_failure_time = datetime.now(timezone.utc)
 
         if self._state == CircuitState.HALF_OPEN:
             self._state = CircuitState.OPEN
@@ -730,7 +742,7 @@ class DeadLetterQueue:
             self._queue.pop(0)
 
         entry = (
-            datetime.utcnow(),
+            datetime.now(timezone.utc),
             message,
             reason,
             str(error) if error else None
