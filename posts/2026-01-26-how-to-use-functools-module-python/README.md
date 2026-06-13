@@ -396,7 +396,7 @@ print(format_value(1000000))           # "1,000,000"
 print(format_value(3.14159))           # "3.14"
 print(format_value(Decimal("99.99")))  # "$99.99"
 print(format_value(datetime.now()))    # ISO format
-print(format_value(date.today()))      # "January 25, 2026"
+print(format_value(date.today()))      # Current date in readable format
 print(format_value([1, 2.5, "hello"])) # "[1, 2.50, hello]"
 ```
 
