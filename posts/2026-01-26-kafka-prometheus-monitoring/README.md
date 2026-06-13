@@ -53,7 +53,7 @@ lowercaseOutputName: true
 lowercaseOutputLabelNames: true
 
 rules:
-  # Broker metrics
+  # Special cases
   - pattern: kafka.server<type=(.+), name=(.+), clientId=(.+), topic=(.+), partition=(.*)><>Value
     name: kafka_server_$1_$2
     type: GAUGE
@@ -69,49 +69,80 @@ rules:
       clientId: "$3"
       broker: "$4:$5"
 
-  # Request metrics
-  - pattern: kafka.network<type=RequestMetrics, name=(.+), request=(.+), error=(.+)><>Count
-    name: kafka_network_requestmetrics_$1_total
+  # Generic per-second counters
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)PerSec\w*, (.+)=(.+), (.+)=(.+)><>Count
+    name: kafka_$1_$2_$3_total
     type: COUNTER
     labels:
-      request: "$2"
-      error: "$3"
+      "$4": "$5"
+      "$6": "$7"
 
-  - pattern: kafka.network<type=RequestMetrics, name=(.+), request=(.+)><>Count
-    name: kafka_network_requestmetrics_$1_total
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)PerSec\w*, (.+)=(.+)><>Count
+    name: kafka_$1_$2_$3_total
     type: COUNTER
     labels:
-      request: "$2"
+      "$4": "$5"
 
-  # Log metrics
-  - pattern: kafka.log<type=LogFlushStats, name=(.+)><>(.+)
-    name: kafka_log_logflushstats_$1
-    type: GAUGE
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)PerSec\w*><>Count
+    name: kafka_$1_$2_$3_total
+    type: COUNTER
 
-  # Controller metrics
-  - pattern: kafka.controller<type=(.+), name=(.+)><>Value
-    name: kafka_controller_$1_$2
-    type: GAUGE
-
-  # Consumer group metrics
-  - pattern: kafka.server<type=(.+), name=(.+), topic=(.+)><>Value
-    name: kafka_server_$1_$2
+  # Generic gauges
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.+), (.+)=(.+)><>Value
+    name: kafka_$1_$2_$3
     type: GAUGE
     labels:
-      topic: "$3"
+      "$4": "$5"
+      "$6": "$7"
 
-  # Replica metrics
-  - pattern: kafka.server<type=ReplicaManager, name=(.+)><>Value
-    name: kafka_server_replicamanager_$1
-    type: GAUGE
-
-  # Partition metrics
-  - pattern: kafka.cluster<type=Partition, name=(.+), topic=(.+), partition=(.+)><>Value
-    name: kafka_cluster_partition_$1
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.+)><>Value
+    name: kafka_$1_$2_$3
     type: GAUGE
     labels:
-      topic: "$2"
-      partition: "$3"
+      "$4": "$5"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)><>Value
+    name: kafka_$1_$2_$3
+    type: GAUGE
+
+  # Histogram Count and percentile attributes as Prometheus summary-style series
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.+), (.+)=(.+)><>Count
+    name: kafka_$1_$2_$3_count
+    type: COUNTER
+    labels:
+      "$4": "$5"
+      "$6": "$7"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.*), (.+)=(.+)><>(\d+)thPercentile
+    name: kafka_$1_$2_$3
+    type: GAUGE
+    labels:
+      "$4": "$5"
+      "$6": "$7"
+      quantile: "0.$8"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.+)><>Count
+    name: kafka_$1_$2_$3_count
+    type: COUNTER
+    labels:
+      "$4": "$5"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+), (.+)=(.*)><>(\d+)thPercentile
+    name: kafka_$1_$2_$3
+    type: GAUGE
+    labels:
+      "$4": "$5"
+      quantile: "0.$6"
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)><>Count
+    name: kafka_$1_$2_$3_count
+    type: COUNTER
+
+  - pattern: kafka.(\w+)<type=(.+), name=(.+)><>(\d+)thPercentile
+    name: kafka_$1_$2_$3
+    type: GAUGE
+    labels:
+      quantile: "0.$4"
 ```
 
 Start Kafka with JMX Exporter:
@@ -120,11 +151,9 @@ Start Kafka with JMX Exporter:
 # kafka-server-start.sh modification
 export KAFKA_OPTS="-javaagent:/opt/jmx_exporter/jmx_prometheus_javaagent.jar=7071:/opt/jmx_exporter/kafka-jmx-config.yml"
 
-# Or in Docker
-docker run -d \
-  -e KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false" \
-  -e KAFKA_OPTS="-javaagent:/opt/jmx_exporter/jmx_prometheus_javaagent.jar=7071:/opt/jmx_exporter/config.yml" \
-  confluentinc/cp-kafka:7.5.0
+# Or add these environment variables to your Kafka container
+KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.rmi.port=9999 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
+KAFKA_OPTS="-javaagent:/opt/jmx_exporter/jmx_prometheus_javaagent.jar=7071:/opt/jmx_exporter/config.yml"
 ```
 
 ## Prometheus Configuration
@@ -187,19 +216,19 @@ rate(kafka_controller_controllerstats_leaderelectionrateandtimems_count[5m])
 
 ```promql
 # Messages in per second per broker
-rate(kafka_server_brokertopicmetrics_messagesinpersec_count[5m])
+rate(kafka_server_brokertopicmetrics_messagesin_total[5m])
 
 # Bytes in per second
-rate(kafka_server_brokertopicmetrics_bytesinpersec_count[5m])
+rate(kafka_server_brokertopicmetrics_bytesin_total[5m])
 
 # Bytes out per second
-rate(kafka_server_brokertopicmetrics_bytesoutpersec_count[5m])
+rate(kafka_server_brokertopicmetrics_bytesout_total[5m])
 
 # Produce requests per second
-rate(kafka_network_requestmetrics_requestspersec_count{request="Produce"}[5m])
+rate(kafka_network_requestmetrics_requests_total{request="Produce"}[5m])
 
 # Fetch requests per second
-rate(kafka_network_requestmetrics_requestspersec_count{request="Fetch"}[5m])
+rate(kafka_network_requestmetrics_requests_total{request="FetchConsumer"}[5m])
 ```
 
 ### Latency
@@ -209,7 +238,7 @@ rate(kafka_network_requestmetrics_requestspersec_count{request="Fetch"}[5m])
 kafka_network_requestmetrics_totaltimems{request="Produce", quantile="0.99"}
 
 # Fetch request latency
-kafka_network_requestmetrics_totaltimems{request="Fetch", quantile="0.99"}
+kafka_network_requestmetrics_totaltimems{request="FetchConsumer", quantile="0.99"}
 
 # Request queue time (time waiting in queue)
 kafka_network_requestmetrics_requestqueuetimems{quantile="0.99"}
@@ -222,29 +251,35 @@ kafka_log_logflushstats_logflushrateandtimems{quantile="0.99"}
 
 Consumer lag requires a dedicated exporter like kafka-lag-exporter or Burrow.
 
-```yaml
-# kafka-lag-exporter configuration
-kafka-lag-exporter:
-  image: seglo/kafka-lag-exporter:0.8.2
-  environment:
-    - KAFKA_LAG_EXPORTER_BOOTSTRAP_SERVERS=kafka-1:9092,kafka-2:9092
-    - KAFKA_LAG_EXPORTER_GROUP_WHITELIST=.*
-  ports:
-    - "9999:9999"
+```hocon
+kafka-lag-exporter {
+  reporters {
+    prometheus {
+      port = 9999
+    }
+  }
+  clusters = [
+    {
+      name = "production"
+      bootstrap-brokers = "kafka-1:9092,kafka-2:9092"
+      group-whitelist = [".*"]
+    }
+  ]
+}
 ```
 
 ```promql
 # Consumer lag by group and topic
-kafka_consumergroup_lag
+kafka_consumergroup_group_lag
 
 # Lag in seconds (estimated time behind)
-kafka_consumergroup_lag_seconds
+kafka_consumergroup_group_lag_seconds
 
 # Max lag across all partitions
-max(kafka_consumergroup_lag) by (group, topic)
+max(kafka_consumergroup_group_lag) by (group, topic)
 
 # Consumer groups with increasing lag
-rate(kafka_consumergroup_lag[5m]) > 0
+delta(kafka_consumergroup_group_sum_lag[5m]) > 0
 ```
 
 ## Grafana Dashboard
@@ -275,34 +310,34 @@ Create a comprehensive dashboard.
       },
       {
         "title": "Messages Per Second",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
-            "expr": "sum(rate(kafka_server_brokertopicmetrics_messagesinpersec_count[5m])) by (topic)",
+            "expr": "sum(rate(kafka_server_brokertopicmetrics_messagesin_total[5m])) by (topic)",
             "legendFormat": "{{topic}}"
           }
         ]
       },
       {
         "title": "Consumer Lag",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
-            "expr": "sum(kafka_consumergroup_lag) by (group)",
+            "expr": "sum(kafka_consumergroup_group_lag) by (group)",
             "legendFormat": "{{group}}"
           }
         ]
       },
       {
         "title": "Request Latency P99",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "kafka_network_requestmetrics_totaltimems{quantile=\"0.99\", request=\"Produce\"}",
             "legendFormat": "Produce P99"
           },
           {
-            "expr": "kafka_network_requestmetrics_totaltimems{quantile=\"0.99\", request=\"Fetch\"}",
+            "expr": "kafka_network_requestmetrics_totaltimems{quantile=\"0.99\", request=\"FetchConsumer\"}",
             "legendFormat": "Fetch P99"
           }
         ]
@@ -364,7 +399,7 @@ groups:
           summary: "Produce latency P99 is {{ $value }}ms"
 
       - alert: HighConsumerLag
-        expr: sum(kafka_consumergroup_lag) by (group) > 10000
+        expr: sum(kafka_consumergroup_group_lag) by (group) > 10000
         for: 10m
         labels:
           severity: warning
@@ -372,7 +407,7 @@ groups:
           summary: "Consumer group {{ $labels.group }} has lag > 10000"
 
       - alert: ConsumerLagIncreasing
-        expr: rate(kafka_consumergroup_lag[5m]) > 100
+        expr: delta(kafka_consumergroup_group_sum_lag[5m]) > 100
         for: 15m
         labels:
           severity: warning
@@ -381,14 +416,13 @@ groups:
 
   - name: kafka-disk-alerts
     rules:
-      - alert: KafkaDiskUsageHigh
-        expr: |
-          (kafka_log_size / kafka_log_max_size) > 0.8
+      - alert: KafkaLogDirectoryOffline
+        expr: kafka_log_logmanager_offlinelogdirectorycount > 0
         for: 15m
         labels:
-          severity: warning
+          severity: critical
         annotations:
-          summary: "Kafka disk usage over 80% on {{ $labels.instance }}"
+          summary: "{{ $value }} Kafka log directories are offline on {{ $labels.instance }}"
 ```
 
 ## Client-Side Metrics
@@ -396,18 +430,12 @@ groups:
 Export metrics from your producers and consumers.
 
 ```java
-// Producer with Micrometer metrics
-@Configuration
-public class KafkaMetricsConfig {
+// Bind existing Kafka clients to a Micrometer registry
+KafkaClientMetrics producerMetrics = new KafkaClientMetrics(producer);
+producerMetrics.bindTo(registry);
 
-    @Bean
-    public MeterRegistryCustomizer<MeterRegistry> kafkaMetrics() {
-        return registry -> {
-            new KafkaClientMetrics(producer).bindTo(registry);
-            new KafkaClientMetrics(consumer).bindTo(registry);
-        };
-    }
-}
+KafkaClientMetrics consumerMetrics = new KafkaClientMetrics(consumer);
+consumerMetrics.bindTo(registry);
 ```
 
 Key client metrics:
