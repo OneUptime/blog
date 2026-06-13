@@ -115,8 +115,8 @@ SELECT * FROM orders
 WHERE status = 'pending'
 AND order_date > '2025-06-01';
 
--- This query can only use the first column of the index
--- Because order_date comes second in the index
+-- This query cannot use this composite index efficiently for lookup
+-- Because order_date comes second and status is not filtered
 SELECT * FROM orders
 WHERE order_date > '2025-06-01';
 ```
@@ -172,18 +172,19 @@ FROM customers
 WHERE country = 'USA';
 ```
 
-### Use EXISTS Instead of IN for Subqueries
+### Consider EXISTS for Subqueries
 
 ```sql
--- Potentially slow: IN with a subquery
--- MySQL may execute the subquery for each row in the outer query
+-- Sometimes slower: IN with a subquery
+-- MySQL 8.0 can often optimize IN and EXISTS with semijoin transformations,
+-- but you should verify the chosen plan with EXPLAIN
 SELECT * FROM products
 WHERE product_id IN (
     SELECT product_id FROM order_items WHERE quantity > 100
 );
 
--- Often faster: EXISTS stops as soon as it finds a match
--- Better performance when the subquery returns many rows
+-- Alternative: EXISTS expresses that only a matching row is needed
+-- This can be faster for some data distributions and indexes
 SELECT * FROM products p
 WHERE EXISTS (
     SELECT 1 FROM order_items oi
@@ -363,12 +364,12 @@ AND order_date < '2026-01-01';
 ### Implicit Type Conversions
 
 ```sql
--- Bad: customer_id is INT but compared to string
--- This can prevent index usage on some database versions
-SELECT * FROM orders WHERE customer_id = '12345';
+-- Bad: customer_id is VARCHAR but compared to a number
+-- Type conversion can prevent index usage when values cannot be compared directly
+SELECT * FROM orders WHERE customer_id = 12345;
 
 -- Good: Use matching data types
-SELECT * FROM orders WHERE customer_id = 12345;
+SELECT * FROM orders WHERE customer_id = '12345';
 ```
 
 ### OR Conditions on Different Columns
@@ -404,10 +405,12 @@ FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = 'your_database'
 AND DATA_FREE > 0;
 
--- Rebuild fragmented tables (locks the table)
+-- Rebuild fragmented tables
+-- For InnoDB, OPTIMIZE TABLE maps to a table rebuild and analyze operation;
+-- online DDL reduces downtime, but brief exclusive metadata locks still occur
 OPTIMIZE TABLE orders;
 
--- For large tables, use ALTER TABLE to rebuild online
+-- Alternative explicit rebuild for InnoDB; test locking behavior on your MySQL version
 ALTER TABLE orders ENGINE=InnoDB;
 ```
 
