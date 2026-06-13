@@ -8,7 +8,7 @@ Description: Minimize consumer group rebalancing disruption with cooperative pro
 
 ---
 
-Rebalancing redistributes partitions among consumer group members. It happens when consumers join, leave, or crash. During rebalancing, consumption stops. Long rebalances hurt throughput and latency. Understanding and optimizing rebalancing keeps your consumers running smoothly.
+Rebalancing redistributes partitions among consumer group members. It happens when consumers join, leave, or crash. During eager rebalancing, consumption stops for the group; with cooperative rebalancing, only partitions that need to move are revoked. Long rebalances hurt throughput and latency. Understanding and optimizing rebalancing keeps your consumers running smoothly.
 
 ## Why Rebalancing Happens
 
@@ -52,6 +52,8 @@ Kafka supports two rebalancing strategies:
 Properties props = new Properties();
 props.put("bootstrap.servers", "localhost:9092");
 props.put("group.id", "my-group");
+props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
 
 // Use cooperative rebalancing (Kafka 2.4+)
 props.put("partition.assignment.strategy",
@@ -98,6 +100,8 @@ Static membership prevents rebalances during rolling restarts.
 Properties props = new Properties();
 props.put("bootstrap.servers", "localhost:9092");
 props.put("group.id", "my-group");
+props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
 
 // Assign a stable identity to this consumer
 // Must be unique within the group
@@ -128,7 +132,7 @@ Use ConsumerRebalanceListener for cleanup and initialization.
 public class RebalanceHandler implements ConsumerRebalanceListener {
 
     private final KafkaConsumer<String, String> consumer;
-    private final Map<TopicPartition, Long> currentOffsets = new HashMap<>();
+    private final Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
 
     public RebalanceHandler(KafkaConsumer<String, String> consumer) {
         this.consumer = consumer;
@@ -169,7 +173,7 @@ public class RebalanceHandler implements ConsumerRebalanceListener {
     // For cooperative rebalancing - called during incremental rebalance
     @Override
     public void onPartitionsLost(Collection<TopicPartition> partitions) {
-        // Partitions were lost without revoke (consumer crashed/timed out)
+        // Partitions were lost without a normal revoke
         // Cannot commit offsets - just cleanup
         log.warn("Partitions lost unexpectedly: {}", partitions);
         for (TopicPartition partition : partitions) {
