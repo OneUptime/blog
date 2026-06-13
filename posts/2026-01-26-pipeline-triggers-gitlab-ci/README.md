@@ -100,13 +100,12 @@ curl --request POST \
   --header "PRIVATE-TOKEN: glpat-xxxxxxxxxxxx" \
   --header "Content-Type: application/json" \
   --data '{
-    "ref": "main",
     "variables": [
       {"key": "DEPLOY_ENV", "value": "production"},
       {"key": "RUN_TESTS", "value": "false"}
     ]
   }' \
-  "https://gitlab.example.com/api/v4/projects/123/pipeline"
+  "https://gitlab.example.com/api/v4/projects/123/pipeline?ref=main"
 ```
 
 This returns detailed pipeline information:
@@ -135,6 +134,9 @@ build:
   stage: build
   script:
     - npm run build
+  artifacts:
+    paths:
+      - dist/
 
 trigger-deploy:
   stage: trigger-downstream
@@ -142,23 +144,28 @@ trigger-deploy:
     project: ops/deployment
     branch: main
   variables:
-    ARTIFACT_URL: "${CI_JOB_URL}/artifacts/download"
+    UPSTREAM_PROJECT: "${CI_PROJECT_PATH}"
+    UPSTREAM_REF: "${CI_COMMIT_REF_NAME}"
     SOURCE_COMMIT: "${CI_COMMIT_SHA}"
 ```
 
 The downstream project receives these variables and runs its pipeline:
 
+Fetching artifacts across projects with `needs:project` requires GitLab Premium or Ultimate.
+
 ```yaml
 # In ops/deployment project
 deploy:
   stage: deploy
+  needs:
+    - project: $UPSTREAM_PROJECT
+      job: build
+      ref: $UPSTREAM_REF
+      artifacts: true
   script:
-    # Download artifacts from upstream
-    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN" -o artifacts.zip "${ARTIFACT_URL}"'
-    - unzip artifacts.zip
     - ./deploy.sh
-  only:
-    - pipelines  # Only run when triggered by another pipeline
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "pipeline"
 ```
 
 ## Webhook-Based Triggers
@@ -170,22 +177,20 @@ Set up webhooks to trigger pipelines from external events.
 webhook-handler:
   stage: deploy
   script:
-    - echo "Webhook payload: ${WEBHOOK_PAYLOAD}"
+    - cat "$TRIGGER_PAYLOAD"
     - ./process-webhook.sh
   rules:
-    - if: $CI_PIPELINE_SOURCE == "trigger" && $WEBHOOK_TYPE == "deployment"
+    - if: $CI_PIPELINE_SOURCE == "trigger"
 ```
 
 From your external service:
 
 ```bash
-# External service triggers pipeline
+# External service sends a webhook-style payload
 curl --request POST \
-  --form "token=${GITLAB_TRIGGER_TOKEN}" \
-  --form "ref=main" \
-  --form "variables[WEBHOOK_TYPE]=deployment" \
-  --form "variables[WEBHOOK_PAYLOAD]=${PAYLOAD}" \
-  "https://gitlab.example.com/api/v4/projects/${PROJECT_ID}/trigger/pipeline"
+  --header "Content-Type: application/json" \
+  --data "${PAYLOAD}" \
+  "https://gitlab.example.com/api/v4/projects/${PROJECT_ID}/ref/main/trigger/pipeline?token=${GITLAB_TRIGGER_TOKEN}"
 ```
 
 ## Waiting for Pipeline Completion
@@ -222,7 +227,7 @@ while true; do
       echo "Pipeline failed or was canceled"
       exit 1
       ;;
-    "pending"|"running")
+    "created"|"waiting_for_resource"|"preparing"|"pending"|"running")
       sleep 30
       ;;
     *)
@@ -259,7 +264,7 @@ trigger-production:
 
 ## Scheduled Pipeline Triggers
 
-Create scheduled pipelines in CI/CD, then Schedules.
+Create scheduled pipelines in Build, then Pipeline schedules.
 
 ```yaml
 # Jobs that only run on schedule
