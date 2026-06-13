@@ -12,11 +12,11 @@ Without quotas, a single misbehaving producer or consumer can saturate your Kafk
 
 ## Types of Kafka Quotas
 
-Kafka supports three quota types:
+For user and client quotas, Kafka commonly uses three quota types:
 
 1. **Produce quotas**: Limit bytes/second produced
 2. **Fetch quotas**: Limit bytes/second consumed
-3. **Request quotas**: Limit CPU time percentage
+3. **Request quotas**: Limit request and network thread time percentage
 
 ```mermaid
 flowchart LR
@@ -112,7 +112,7 @@ kafka-configs.sh --alter \
 
 ## Request Quota (CPU)
 
-Limit the percentage of broker CPU time a client can use.
+Limit the percentage of broker request and network thread time a client can use.
 
 ```bash
 # Limit request processing to 10% of broker capacity
@@ -164,6 +164,8 @@ Consumers also need quota-aware configuration.
 Properties props = new Properties();
 props.put("bootstrap.servers", "localhost:9092");
 props.put("group.id", "order-consumers");
+props.put("key.deserializer", StringDeserializer.class.getName());
+props.put("value.deserializer", StringDeserializer.class.getName());
 props.put("client.id", "order-consumer-1");  // Used for quota matching
 
 // Adjust fetch settings to work with quotas
@@ -216,15 +218,15 @@ kafka-configs.sh --describe \
 
 ## Monitoring Quota Usage
 
-Track quota metrics to identify throttled clients.
+Track quota metrics to identify throttled clients. If you export JMX metrics to Prometheus, map the official JMX MBeans below to Prometheus names with your JMX exporter configuration.
 
 ```yaml
-# Prometheus alerting rules
+# Prometheus alerting rules after mapping the Kafka quota JMX MBeans
 groups:
   - name: kafka-quota-alerts
     rules:
       - alert: ClientThrottled
-        expr: kafka_server_clientquotametrics_throttle_time > 1000
+        expr: kafka_server_quota_throttle_time_ms > 1000
         for: 5m
         labels:
           severity: warning
@@ -233,8 +235,8 @@ groups:
 
       - alert: HighQuotaUtilization
         expr: >
-          kafka_server_clientquotametrics_produce_byte_rate /
-          kafka_server_clientquotametrics_quota_produce_byte_rate > 0.9
+          kafka_server_quota_byte_rate /
+          kafka_server_quota_byte_rate_limit > 0.9
         for: 10m
         labels:
           severity: info
@@ -246,12 +248,12 @@ Key JMX metrics:
 
 ```java
 // Broker-side quota metrics (JMX)
-// kafka.server:type=ClientQuotaMetrics,user=*,client-id=*
+// kafka.server:type=Produce,user=*,client-id=*
+// kafka.server:type=Fetch,user=*,client-id=*
+// kafka.server:type=Request,user=*,client-id=*
 
-// produce-throttle-time-avg - Average throttle time in ms
-// produce-throttle-time-max - Max throttle time in ms
-// fetch-throttle-time-avg - Average fetch throttle time
-// request-throttle-time-avg - Average request throttle time
+// throttle-time - Amount of time in ms the client was throttled
+// byte-rate - Produce or fetch rate in bytes/sec
 
 // Client-side metrics
 // kafka.producer:type=producer-metrics,client-id=*
@@ -267,9 +269,9 @@ Implement a service to manage quotas dynamically.
 @Service
 public class QuotaManager {
 
-    private final AdminClient adminClient;
+    private final Admin adminClient;
 
-    public QuotaManager(AdminClient adminClient) {
+    public QuotaManager(Admin adminClient) {
         this.adminClient = adminClient;
     }
 
@@ -292,7 +294,11 @@ public class QuotaManager {
         );
 
         ClientQuotaAlteration alteration = new ClientQuotaAlteration(entity, ops);
-        adminClient.alterClientQuotas(List.of(alteration)).all().join();
+        try {
+            adminClient.alterClientQuotas(List.of(alteration)).all().get();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     // Remove quota (revert to default)
@@ -308,25 +314,22 @@ public class QuotaManager {
         );
 
         ClientQuotaAlteration alteration = new ClientQuotaAlteration(entity, ops);
-        adminClient.alterClientQuotas(List.of(alteration)).all().join();
+        try {
+            adminClient.alterClientQuotas(List.of(alteration)).all().get();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     // List all quotas
     public Map<ClientQuotaEntity, Map<String, Double>> listQuotas() {
         ClientQuotaFilter filter = ClientQuotaFilter.all();
 
-        Map<ClientQuotaEntity, Map<String, Double>> result = new HashMap<>();
-        adminClient.describeClientQuotas(filter).entities().forEach(
-            (entity, quotasFuture) -> {
-                try {
-                    result.put(entity, quotasFuture.get());
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        );
-
-        return result;
+        try {
+            return adminClient.describeClientQuotas(filter).entities().get();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }
 ```
@@ -357,12 +360,12 @@ kafka-configs.sh --alter \
 
 ## Broker-Level Limits
 
-Set cluster-wide limits as a safety net.
+Set cluster-wide limits as a safety net. Prefer default quotas configured with `kafka-configs.sh`; the broker properties below are legacy defaults and are deprecated in Kafka.
 
 ```properties
 # server.properties
 
-# Default quota for users without specific configuration
+# Legacy default quota per client ID without specific configuration
 quota.producer.default=10485760
 quota.consumer.default=20971520
 
