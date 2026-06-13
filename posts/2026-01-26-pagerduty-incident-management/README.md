@@ -227,11 +227,11 @@ global:
 route:
   receiver: 'pagerduty-critical'
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity = critical
       receiver: 'pagerduty-critical'
-    - match:
-        severity: warning
+    - matchers:
+        - severity = warning
       receiver: 'pagerduty-warning'
 
 receivers:
@@ -255,8 +255,8 @@ receivers:
 In Datadog, create a PagerDuty integration:
 
 1. Go to **Integrations > PagerDuty**
-2. Add your PagerDuty API key
-3. Map Datadog services to PagerDuty services
+2. Add each PagerDuty service you want to use in Datadog
+3. Paste the PagerDuty integration key for each service
 
 Then reference PagerDuty in your monitor definitions:
 
@@ -363,10 +363,10 @@ P4 - Low:
 
 ### Priority-Based Routing
 
-Use Event Rules to set priority based on alert content:
+Use Event Orchestration to set priority based on alert content:
 
 ```yaml
-Event Rule: Database Outage
+Event Orchestration Rule: Database Outage
 Conditions:
   - Field: payload.summary
     Contains: "database down"
@@ -374,7 +374,7 @@ Actions:
   - Set Priority: P1
   - Route to Service: Database Operations
 
-Event Rule: High Memory Usage
+Event Orchestration Rule: High Memory Usage
 Conditions:
   - Field: payload.severity
     Equals: "warning"
@@ -387,14 +387,14 @@ Actions:
 
 ---
 
-## Setting Up Response Plays
+## Setting Up Incident Workflows
 
-Response Plays automate common incident response actions. When triggered, they can add responders, start a conference call, or post to Slack.
+Incident Workflows automate common incident response actions. When triggered, they can add responders, create a conference bridge, or post to Slack.
 
-### Create a Major Incident Response Play
+### Create a Major Incident Workflow
 
 ```yaml
-Response Play: Major Incident
+Incident Workflow: Major Incident
 Trigger: Manual or P1 incidents
 
 Actions:
@@ -419,7 +419,7 @@ Actions:
      Status: Major Outage
 ```
 
-Response Plays ensure consistent response regardless of who is on-call. A junior engineer at 3 AM follows the same process as a senior engineer at noon.
+Incident Workflows ensure consistent response regardless of who is on-call. A junior engineer at 3 AM follows the same process as a senior engineer at noon.
 
 ---
 
