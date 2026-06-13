@@ -47,8 +47,9 @@ graph TB
 
 Before installing Horizon, make sure you have:
 
-- Laravel 9.0 or higher
+- Laravel 9.21 or higher
 - PHP 8.0 or higher
+- The `pcntl` and `posix` PHP extensions
 - Redis server installed and running
 - The `predis/predis` package or the `phpredis` PHP extension
 
@@ -62,10 +63,10 @@ First, install Horizon via Composer:
 composer require laravel/horizon
 ```
 
-After installation, publish the Horizon assets and configuration:
+After installation, publish the Horizon configuration and service provider:
 
 ```bash
-# Publish Horizon's assets and config file
+# Publish Horizon's config file and service provider
 php artisan horizon:install
 ```
 
@@ -78,17 +79,18 @@ This command creates:
 Make sure your `.env` file has the correct Redis configuration:
 
 ```env
-# Redis connection settings for Horizon
+# Redis connection settings for queues
 QUEUE_CONNECTION=redis
 REDIS_HOST=127.0.0.1
 REDIS_PASSWORD=null
 REDIS_PORT=6379
 
 # Optional: Use a specific Redis database for queues
+REDIS_QUEUE_CONNECTION=queue
 REDIS_QUEUE_DB=1
 ```
 
-Update your `config/database.php` to include a dedicated Redis connection for Horizon:
+Update your `config/database.php` to include a dedicated Redis connection for queues:
 
 ```php
 <?php
@@ -114,6 +116,25 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', 6379),
             'database' => env('REDIS_QUEUE_DB', 1),
+        ],
+    ],
+];
+```
+
+Then make sure your Redis queue connection uses that Redis connection in `config/queue.php`:
+
+```php
+<?php
+// config/queue.php
+
+return [
+    'connections' => [
+        'redis' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('REDIS_QUEUE', 'default'),
+            'retry_after' => env('REDIS_QUEUE_RETRY_AFTER', 90),
+            'block_for' => null,
         ],
     ],
 ];
@@ -248,7 +269,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | When set to true, Horizon's "terminate" command will not wait for
-    | currently processing jobs to finish. This may cause job loss.
+    | workers to terminate unless the --wait option is provided.
     |
     */
     'fast_termination' => false,
@@ -258,7 +279,8 @@ return [
     | Memory Limit (MB)
     |--------------------------------------------------------------------------
     |
-    | Maximum memory a worker may consume before being restarted.
+    | Maximum memory the Horizon master supervisor may consume before
+    | being restarted.
     |
     */
     'memory_limit' => 64,
@@ -309,8 +331,7 @@ return [
                 'connection' => 'redis',
                 'queue' => ['critical', 'payments'],
                 'balance' => 'simple',
-                'minProcesses' => 3,
-                'maxProcesses' => 10,
+                'processes' => 10,
                 'tries' => 1,
                 'timeout' => 30,
                 'memory' => 256,
@@ -376,8 +397,7 @@ Distributes workers evenly across all queues:
 ```php
 'supervisor-1' => [
     'balance' => 'simple',
-    'minProcesses' => 3,
-    'maxProcesses' => 9,
+    'processes' => 9,
     // With 3 queues, each gets 3 workers
 ],
 ```
@@ -575,6 +595,7 @@ use App\Jobs\GenerateInvoice;
 use App\Jobs\NotifyWarehouse;
 use App\Models\Order;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
@@ -583,10 +604,15 @@ class OrderController extends Controller
      */
     public function store(Request $request)
     {
-        $order = Order::create($request->validated());
+        $validated = $request->validate([
+            'payment_method' => ['required', 'string'],
+            // Add the rest of your order validation rules here...
+        ]);
+
+        $order = Order::create($validated);
 
         // Dispatch a single job to the critical queue
-        ProcessPayment::dispatch($order, $request->payment_method);
+        ProcessPayment::dispatch($order, $validated['payment_method']);
 
         // Dispatch with a delay (process in 5 minutes)
         SendOrderConfirmation::dispatch($order)
@@ -599,7 +625,7 @@ class OrderController extends Controller
         // Dispatch multiple jobs as a chain
         // Each job runs after the previous one completes
         \Illuminate\Support\Facades\Bus::chain([
-            new ProcessPayment($order, $request->payment_method),
+            new ProcessPayment($order, $validated['payment_method']),
             new SendOrderConfirmation($order),
             new GenerateInvoice($order),
             new NotifyWarehouse($order),
@@ -670,9 +696,6 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     {
         parent::boot();
 
-        // Configure night mode for the dashboard
-        // Horizon::night();
-
         // Configure notification settings
         Horizon::routeSlackNotificationsTo(
             env('HORIZON_SLACK_WEBHOOK'),
@@ -682,7 +705,7 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
         // Send email notifications for long wait times
         Horizon::routeMailNotificationsTo('devops@example.com');
 
-        // Send SMS notifications for critical failures
+        // Send SMS notifications for long wait times
         // Horizon::routeSmsNotificationsTo('1234567890');
     }
 
@@ -703,18 +726,6 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
                    ]);
         });
     }
-
-    /**
-     * Register any application services.
-     */
-    public function register(): void
-    {
-        // Register custom tags for jobs
-        Horizon::tag(function ($job) {
-            // Add environment tag to all jobs
-            return ['env:' . app()->environment()];
-        });
-    }
 }
 ```
 
@@ -732,9 +743,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Laravel\Horizon\Events\JobFailed;
 use Laravel\Horizon\Events\LongWaitDetected;
-use Laravel\Horizon\Events\MasterSupervisorLooped;
-use Laravel\Horizon\Events\RedisEvent;
-use Laravel\Horizon\Events\SupervisorLooped;
 use Laravel\Horizon\Events\WorkerProcessRestarting;
 
 class HorizonEventSubscriber
@@ -783,7 +791,7 @@ class HorizonEventSubscriber
     public function handleWorkerRestarting(WorkerProcessRestarting $event): void
     {
         Log::info('Horizon worker restarting', [
-            'supervisor' => $event->supervisor->name,
+            'command' => $event->process->process->getCommandLine(),
         ]);
     }
 
@@ -911,15 +919,23 @@ php artisan view:cache
 # Restart queue workers to pick up new code
 php artisan horizon:terminate
 
-# Publish new Horizon assets (if updated)
-php artisan horizon:publish
-
 echo "Deployment complete!"
 ```
 
 ## Monitoring Horizon Metrics
 
-Horizon tracks various metrics you can access programmatically:
+Horizon tracks various metrics you can access programmatically. To populate Horizon's metrics dashboard, schedule the snapshot command:
+
+```php
+<?php
+// routes/console.php
+
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('horizon:snapshot')->everyFiveMinutes();
+```
+
+You can then access the stored metrics from your application:
 
 ```php
 <?php
@@ -947,16 +963,16 @@ class MetricsController extends Controller
     public function index()
     {
         return response()->json([
-            // Get throughput for the last hour
+            // Get throughput since the last metrics snapshot
             'throughput' => [
                 'jobs_per_minute' => $this->metrics->jobsProcessedPerMinute(),
-                'failed_per_minute' => $this->metrics->failedJobsPerMinute(),
+                'total_since_last_snapshot' => $this->metrics->throughput(),
             ],
 
             // Get queue-specific metrics
             'queues' => [
-                'default' => $this->metrics->queueThroughput('default'),
-                'critical' => $this->metrics->queueThroughput('critical'),
+                'default' => $this->metrics->throughputForQueue('default'),
+                'critical' => $this->metrics->throughputForQueue('critical'),
             ],
 
             // Get job counts
@@ -1109,6 +1125,7 @@ class ProcessReport implements ShouldQueue
 
     public int $tries = 3;
     public int $maxExceptions = 2;
+    public bool $deleteWhenMissingModels = true;
 
     public function __construct(
         public int $reportId
@@ -1138,14 +1155,6 @@ class ProcessReport implements ShouldQueue
     }
 
     /**
-     * Determine if the job should be deleted when models are missing.
-     */
-    public function deleteWhenMissingModels(): bool
-    {
-        return true;
-    }
-
-    /**
      * Handle job failure.
      */
     public function failed(Throwable $exception): void
@@ -1165,8 +1174,14 @@ When processing multiple related items:
 <?php
 // app/Http/Controllers/ExportController.php
 
+use App\Jobs\CombineExportFiles;
+use App\Jobs\ExportUserData;
+use App\Models\User;
 use Illuminate\Bus\Batch;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Bus;
+use Throwable;
 
 public function exportData(Request $request)
 {
@@ -1217,6 +1232,7 @@ Set up comprehensive monitoring:
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Laravel\Horizon\Contracts\JobRepository;
 use Laravel\Horizon\Contracts\MetricsRepository;
 use Laravel\Horizon\Contracts\SupervisorRepository;
 
@@ -1227,6 +1243,7 @@ class MonitorHorizon extends Command
 
     public function handle(
         MetricsRepository $metrics,
+        JobRepository $jobs,
         SupervisorRepository $supervisors
     ): int {
         // Check if any supervisors are down
@@ -1239,9 +1256,9 @@ class MonitorHorizon extends Command
         }
 
         // Check failed job rate
-        $failedPerMinute = $metrics->failedJobsPerMinute();
-        if ($failedPerMinute > 10) {
-            $this->alert("High failure rate: {$failedPerMinute} jobs/min");
+        $failedJobs = $jobs->countRecentlyFailed();
+        if ($failedJobs > 10) {
+            $this->alert("High recent failure count: {$failedJobs} failed jobs");
         }
 
         // Check throughput
@@ -1299,7 +1316,7 @@ php artisan queue:work --once
 
 Laravel Horizon transforms queue management from a background concern into a visible, manageable part of your application. Key takeaways:
 
-- Install Horizon with Composer and publish its assets
+- Install Horizon with Composer and publish its configuration
 - Configure supervisors based on your job types and requirements
 - Use job tags for better searchability in the dashboard
 - Set up proper notifications for failures and queue backlogs
