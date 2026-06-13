@@ -166,9 +166,10 @@ Generate the Go code:
 mkdir -p generated/user
 
 # Generate Go code from proto file
-protoc --go_out=. --go_opt=paths=source_relative \
-       --go-grpc_out=. --go-grpc_opt=paths=source_relative \
-       proto/user.proto
+protoc --proto_path=proto \
+       --go_out=generated/user --go_opt=paths=source_relative \
+       --go-grpc_out=generated/user --go-grpc_opt=paths=source_relative \
+       user.proto
 ```
 
 The code generation flow:
@@ -207,7 +208,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -475,15 +475,15 @@ func main() {
 	serverAddr := flag.String("server", "localhost:50051", "The server address")
 	flag.Parse()
 
-	// Establish a connection to the gRPC server
+	// Create a client connection handle for the gRPC server
 	// Using insecure credentials for local development only
 	// In production, use TLS credentials
-	conn, err := grpc.Dial(
+	conn, err := grpc.NewClient(
 		*serverAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		log.Fatalf("Failed to connect to server: %v", err)
+		log.Fatalf("Failed to create client connection: %v", err)
 	}
 	defer conn.Close()
 
@@ -837,6 +837,7 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 grpcurl -plaintext localhost:50051 list
 
 # Output:
+# grpc.reflection.v1.ServerReflection
 # grpc.reflection.v1alpha.ServerReflection
 # user.UserService
 
