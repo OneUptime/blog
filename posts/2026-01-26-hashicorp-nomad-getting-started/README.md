@@ -8,7 +8,7 @@ Description: A practical guide to getting started with HashiCorp Nomad for workl
 
 ---
 
-HashiCorp Nomad is a flexible workload orchestrator that can deploy and manage containers, non-containerized applications, and batch jobs across your infrastructure. Unlike Kubernetes, which focuses solely on containers, Nomad can schedule VMs, Java applications, raw binaries, and more alongside your Docker workloads.
+HashiCorp Nomad is a flexible workload orchestrator that can deploy and manage containers, non-containerized applications, and batch jobs across your infrastructure. Unlike Kubernetes, which focuses primarily on containerized workloads, Nomad can schedule VMs, Java applications, raw binaries, and more alongside your Docker workloads.
 
 This guide walks you through installing Nomad, setting up a cluster, and deploying your first applications with real, working examples.
 
@@ -69,7 +69,7 @@ Before starting, make sure you have:
 # Install required packages
 
 sudo apt update
-sudo apt install -y curl gnupg software-properties-common
+sudo apt install -y curl gnupg lsb-release software-properties-common
 
 # Add the HashiCorp GPG key
 curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
@@ -89,10 +89,11 @@ nomad version
 
 ```bash
 # Download the latest version (check releases.hashicorp.com for current version)
-NOMAD_VERSION="1.7.3"
+NOMAD_VERSION="2.0.3"
 wget https://releases.hashicorp.com/nomad/${NOMAD_VERSION}/nomad_${NOMAD_VERSION}_linux_amd64.zip
 
 # Unzip and install
+sudo apt install -y unzip
 unzip nomad_${NOMAD_VERSION}_linux_amd64.zip
 sudo mv nomad /usr/local/bin/
 
@@ -139,6 +140,10 @@ Create the server configuration at `/etc/nomad.d/server.hcl`:
 # Data directory for Nomad state
 data_dir = "/opt/nomad/data"
 
+# Region and datacenter for this agent
+region     = "us-east"
+datacenter = "dc1"
+
 # Bind to all interfaces
 bind_addr = "0.0.0.0"
 
@@ -184,6 +189,10 @@ Create the client configuration at `/etc/nomad.d/client.hcl`:
 # Data directory
 data_dir = "/opt/nomad/data"
 
+# Region and datacenter for this agent
+region     = "us-east"
+datacenter = "dc1"
+
 # Bind to all interfaces
 bind_addr = "0.0.0.0"
 
@@ -199,8 +208,8 @@ client {
 
   # Meta information for scheduling
   meta {
-    datacenter = "dc1"
-    region     = "us-east"
+    environment = "production"
+    team        = "platform"
   }
 
   # Host volumes for persistent storage
@@ -238,7 +247,7 @@ Create `/etc/systemd/system/nomad.service`:
 ```ini
 [Unit]
 Description=HashiCorp Nomad
-Documentation=https://nomadproject.io/docs/
+Documentation=https://developer.hashicorp.com/nomad/docs
 Wants=network-online.target
 After=network-online.target
 
@@ -423,6 +432,12 @@ job "app-stack" {
   group "cache" {
     count = 1
 
+    volume "redis-data" {
+      type      = "host"
+      source    = "data"
+      read_only = false
+    }
+
     network {
       port "redis" {
         static = 6379
@@ -448,16 +463,17 @@ job "app-stack" {
         image = "redis:7-alpine"
         ports = ["redis"]
 
-        # Persist data using host volume
-        volumes = [
-          "local/data:/data"
-        ]
-
         # Redis configuration
         args = [
           "redis-server",
           "--appendonly", "yes"
         ]
+      }
+
+      # Persist data using the client host volume
+      volume_mount {
+        volume      = "redis-data"
+        destination = "/data"
       }
 
       resources {
@@ -539,7 +555,7 @@ job "database-backup" {
 
   # Run every day at 2 AM
   periodic {
-    cron             = "0 2 * * *"
+    crons            = ["0 2 * * *"]
     prohibit_overlap = true
     time_zone        = "UTC"
   }
@@ -558,14 +574,17 @@ job "database-backup" {
         ]
       }
 
+      env {
+        DB_HOST = "postgres.service.consul"
+        DB_NAME = "app"
+      }
+
       # Pull secrets from Vault
       template {
         data = <<EOF
 {{ with secret "database/creds/backup" }}
-DB_HOST={{ .Data.host }}
 DB_USER={{ .Data.username }}
-DB_PASSWORD={{ .Data.password }}
-DB_NAME={{ .Data.database }}
+PGPASSWORD={{ .Data.password }}
 {{ end }}
 EOF
         destination = "secrets/db.env"
@@ -599,7 +618,7 @@ nomad alloc exec <alloc-id> sh   # Execute command in allocation
 
 # Cluster management
 nomad node status                # List all nodes
-nomad node drain <node-id>       # Drain node for maintenance
+nomad node drain -enable <node-id> # Drain node for maintenance
 nomad server members             # List server members
 
 # Monitoring
