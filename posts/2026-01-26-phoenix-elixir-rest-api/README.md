@@ -20,9 +20,9 @@ Before diving into code, here is why Phoenix stands out:
 
 | Feature | Benefit |
 |---------|---------|
-| **Erlang VM (BEAM)** | Handles millions of concurrent connections |
+| **Erlang VM (BEAM)** | Handles large numbers of lightweight concurrent processes |
 | **Fault Tolerance** | Processes crash independently without bringing down the system |
-| **Hot Code Reloading** | Deploy updates without downtime |
+| **Code Reloading** | Reloads code quickly during development |
 | **Functional Programming** | Predictable, testable code with immutable data |
 | **Built-in PubSub** | Real-time features out of the box |
 
@@ -61,7 +61,7 @@ graph TD
     A --> D[contexts/]
     E[lib/task_api_web] --> F[router.ex]
     E --> G[controllers/]
-    E --> H[views/]
+    E --> H[JSON modules/]
     E --> I[plugs/]
     D --> J[tasks.ex]
     D --> K[accounts.ex]
@@ -96,7 +96,7 @@ config :task_api, TaskApi.Repo,
 
 ## Creating the Schema and Migration
 
-Let us create a Task schema with a migration. Phoenix generators do the heavy lifting.
+Let us create a Task schema with a migration. Phoenix generators do the heavy lifting. The examples below assume you already have a `users` table and `TaskApi.Accounts.User` schema, because each task references a user.
 
 ```bash
 # Generate a Task schema with migration
@@ -171,16 +171,27 @@ defmodule TaskApi.Tasks.Task do
   end
 
   @doc """
-  Changeset for creating a new task.
+  Changeset for creating or updating task fields.
   Validates required fields and constraints.
   """
   def changeset(task, attrs) do
     task
-    |> cast(attrs, [:title, :description, :status, :priority, :due_date, :user_id])
-    |> validate_required([:title, :user_id])
+    |> cast(attrs, [:title, :description, :status, :priority, :due_date])
+    |> validate_required([:title, :status, :priority])
     |> validate_length(:title, min: 1, max: 255)
     |> validate_inclusion(:status, @valid_statuses)
     |> validate_number(:priority, greater_than_or_equal_to: 1, less_than_or_equal_to: 5)
+  end
+
+  @doc """
+  Changeset for creating a new task.
+  Requires the owner relationship.
+  """
+  def create_changeset(task, attrs) do
+    task
+    |> changeset(attrs)
+    |> cast(attrs, [:user_id])
+    |> validate_required([:user_id])
     |> foreign_key_constraint(:user_id)
   end
 
@@ -277,7 +288,7 @@ defmodule TaskApi.Tasks do
   """
   def create_task(attrs \\ %{}) do
     %Task{}
-    |> Task.changeset(attrs)
+    |> Task.create_changeset(attrs)
     |> Repo.insert()
   end
 
@@ -383,7 +394,6 @@ defmodule TaskApiWeb.TaskController do
   use TaskApiWeb, :controller
 
   alias TaskApi.Tasks
-  alias TaskApi.Tasks.Task
 
   # Plug to load task for show, update, and delete actions
   # This avoids duplicating the fetch logic in each action
@@ -419,7 +429,7 @@ defmodule TaskApiWeb.TaskController do
       {:ok, task} ->
         conn
         |> put_status(:created)
-        |> put_resp_header("location", ~p"/api/tasks/#{task}")
+        |> put_resp_header("location", ~p"/api/tasks/#{task.id}")
         |> render(:show, task: task)
 
       {:error, changeset} ->
@@ -617,11 +627,11 @@ end
 Configure Guardian with your secret key.
 
 ```elixir
-# config/config.exs
+# config/runtime.exs
 config :task_api, TaskApiWeb.Guardian,
   issuer: "task_api",
   # Generate a secure secret: mix guardian.gen.secret
-  secret_key: System.get_env("GUARDIAN_SECRET_KEY") || "your-secret-key"
+  secret_key: System.fetch_env!("GUARDIAN_SECRET_KEY")
 ```
 
 Create the Guardian module.
@@ -794,7 +804,7 @@ end
 
 ## Testing Your API
 
-Phoenix includes excellent testing tools. Write tests for your context and controller.
+Phoenix includes excellent testing tools. Write tests for your context and controller. The examples below use factory helpers such as `insert(:user)` and `insert(:task)`, so add a factory library such as ExMachina or replace those calls with direct context setup in your own project.
 
 ```elixir
 # test/task_api/tasks_test.exs
