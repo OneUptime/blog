@@ -128,7 +128,7 @@ gcloud pubsub subscriptions create analytics-order-sub \
 # order_service.py - Publishing order events
 from google.cloud import pubsub_v1
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Initialize the publisher client
 # The client handles connection pooling and batching automatically
@@ -150,7 +150,7 @@ def create_order(order_data):
     event = {
         "event_type": "OrderCreated",
         "event_id": generate_uuid(),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "data": {
             "order_id": order_id,
             "customer_id": order_data["customer_id"],
@@ -597,22 +597,22 @@ flowchart LR
 # Only receive high-priority orders
 gcloud pubsub subscriptions create high-priority-orders-sub \
     --topic=order-events \
-    --filter='attributes.priority="high"'
+    --message-filter='attributes.priority="high"'
 
 # Only receive orders from US region
 gcloud pubsub subscriptions create us-orders-sub \
     --topic=order-events \
-    --filter='attributes.region="us"'
+    --message-filter='attributes.region="us"'
 
 # Receive orders over $1000
 gcloud pubsub subscriptions create large-orders-sub \
     --topic=order-events \
-    --filter='attributes.order_value_tier="large"'
+    --message-filter='attributes.order_value_tier="large"'
 
 # Complex filter with AND
 gcloud pubsub subscriptions create priority-us-sub \
     --topic=order-events \
-    --filter='attributes.priority="high" AND attributes.region="us"'
+    --message-filter='attributes.priority="high" AND attributes.region="us"'
 ```
 
 ```python
@@ -706,7 +706,7 @@ flowchart TB
 ```python
 # events.py - Define event schemas
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 import uuid
 import json
@@ -715,9 +715,9 @@ import json
 @dataclass
 class Event:
     """Base class for all events."""
-    event_id: str
-    event_type: str
-    timestamp: str
+    event_id: str = ""
+    event_type: str = ""
+    timestamp: str = ""
     version: str = "1.0"
 
     def to_json(self) -> bytes:
@@ -727,7 +727,7 @@ class Event:
     def create(cls, **kwargs):
         return cls(
             event_id=str(uuid.uuid4()),
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             **kwargs
         )
 
@@ -953,8 +953,9 @@ class OrderCreatedHandler(EventHandler):
     """Handle OrderCreated events in the inventory service."""
 
     def handle(self, event_data: dict) -> None:
-        order_id = event_data["data"]["order_id"]
-        items = event_data["data"]["items"]
+        data = event_data.get("data", event_data)
+        order_id = data["order_id"]
+        items = data["items"]
 
         for item in items:
             self.reserve_inventory(
@@ -1035,10 +1036,12 @@ def handle_dead_letter(message):
     try:
         event = json.loads(message.data.decode("utf-8"))
 
-        # Get delivery attempt information from attributes
-        delivery_attempt = message.attributes.get(
-            "googclient_deliveryattempt", "unknown"
-        )
+        # Get delivery attempt information when available
+        delivery_attempt = getattr(message, "delivery_attempt", None)
+        if delivery_attempt is None:
+            delivery_attempt = message.attributes.get(
+                "googclient_deliveryattempt", "unknown"
+            )
 
         logger.error(
             f"Dead letter received: {event.get('event_type')} "
@@ -1081,6 +1084,7 @@ Testing event-driven systems requires verifying both publishing and consuming be
 # test_events.py - Testing event publishing and handling
 import pytest
 from unittest.mock import Mock, patch, MagicMock
+from google.cloud import pubsub_v1
 import json
 
 
