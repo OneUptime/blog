@@ -19,12 +19,10 @@ This guide covers the most common causes of syntax errors and teaches you how to
 When Python encounters a syntax error, it stops parsing and shows you where it got confused. However, the actual mistake is often on the previous line.
 
 ```python
-# Python reports the error here
-
 def greet(name)  # Missing colon
     print(f"Hello, {name}")  # SyntaxError: invalid syntax
 
-# Python points to line 3, but the problem is the missing colon on line 2
+# Python points to the function definition and reports: SyntaxError: expected ':'
 ```
 
 ---
@@ -193,11 +191,12 @@ greeting = f"Hello {name}"
 
 
 # Problem: Backslash in f-string expression (Python < 3.12)
-path = f"C:\Users\{name}"  # Backslashes in f-string
+names = ["Alice", "Bob"]
+greeting = f"Users:\n{'\n'.join(names)}"  # Backslash inside replacement field
 
-# Solution: Use raw string or double backslashes
-path = f"C:\\Users\\{name}"
-path = rf"C:\Users\{name}"
+# Solution for Python < 3.12: move it outside the f-string expression
+separator = "\n"
+greeting = f"Users:\n{separator.join(names)}"
 ```
 
 ### 6. Print Statement vs Function (Python 2 to 3)
@@ -392,8 +391,8 @@ Most modern IDEs catch syntax errors as you type. Configure yours properly:
 ```json
 // settings.json
 {
-    "python.linting.enabled": true,
-    "python.linting.pylintEnabled": true,
+    "pylint.importStrategy": "useBundled",
+    "pylint.lintOnChange": true,
     "editor.formatOnSave": true
 }
 ```
@@ -445,4 +444,3 @@ The key to debugging syntax errors is to look at the line before where Python re
 ---
 
 *Tired of debugging Python errors in production? [OneUptime](https://oneuptime.com) provides error tracking and alerting to help you catch issues before they affect users.*
-
