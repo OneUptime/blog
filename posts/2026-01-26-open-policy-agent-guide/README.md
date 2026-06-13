@@ -81,7 +81,7 @@ opa version
 docker run --rm openpolicyagent/opa:latest version
 
 # Run OPA as a server
-docker run -p 8181:8181 openpolicyagent/opa:latest run --server
+docker run -p 8181:8181 openpolicyagent/opa:latest run --server --addr=0.0.0.0:8181
 ```
 
 ### Windows
@@ -140,20 +140,20 @@ Policies become useful when they evaluate input data. OPA receives input as JSON
 # authz.rego
 package authz
 
-# Import the 'input' keyword - this represents the data sent to OPA
+# Use the 'input' document - this represents the data sent to OPA
 # The input might look like: {"user": "alice", "action": "read", "resource": "document"}
 
 # Default deny - if no rules match, deny access
 default allow := false
 
 # Allow if the user is an admin
-allow {
+allow if {
     # Check if the user's role is "admin"
     input.user.role == "admin"
 }
 
 # Allow read access for any authenticated user
-allow {
+allow if {
     input.action == "read"
     input.user.authenticated == true
 }
@@ -190,7 +190,7 @@ Rego rules use implicit AND within a rule body. Every statement must be true for
 package authz
 
 # This rule requires ALL conditions to be true
-allow {
+allow if {
     input.user.role == "editor"        # Condition 1: user must be an editor
     input.action == "write"             # Condition 2: action must be write
     input.resource.owner == input.user.name  # Condition 3: user must own the resource
@@ -205,18 +205,18 @@ package authz
 default allow := false
 
 # Rule 1: Admins can do anything
-allow {
+allow if {
     input.user.role == "admin"
 }
 
 # Rule 2: Users can read their own data
-allow {
+allow if {
     input.action == "read"
     input.resource.owner == input.user.name
 }
 
 # Rule 3: Editors can write to shared resources
-allow {
+allow if {
     input.user.role == "editor"
     input.action == "write"
     input.resource.shared == true
@@ -240,7 +240,7 @@ package example
 # }
 
 # Check if user has the requested permission
-allowed {
+allowed if {
     # Iterate over permissions array
     # This reads as: "for some permission in input.permissions"
     some permission in input.permissions
@@ -248,7 +248,7 @@ allowed {
 }
 
 # Alternative syntax using comprehension index
-allowed_v2 {
+allowed_v2 if {
     # The underscore iterates through all indices
     input.permissions[_] == input.requested_action
 }
@@ -287,21 +287,23 @@ package validation
 #   ]
 # }
 
-# Collect all validation errors using a set comprehension
-errors[msg] {
+# Collect all validation errors using partial set rules
+errors contains msg if {
     some user in input.users
     user.age < 18
     msg := sprintf("User %s is under 18 years old", [user.name])
 }
 
-errors[msg] {
+errors contains msg if {
     some user in input.users
     user.email == ""
     msg := sprintf("User %s has no email address", [user.name])
 }
 
 # Check if input is valid (no errors)
-valid {
+default valid := false
+
+valid if {
     count(errors) == 0
 }
 ```
@@ -356,7 +358,7 @@ default allow := false
 user_permissions := data.roles[input.user.role]
 
 # Check if the requested action is in the user's permissions
-allow {
+allow if {
     some permission in user_permissions
     permission == input.action
 }
@@ -452,13 +454,22 @@ reason := msg if {
         [input.user.role, action, input.path]
     )
 }
+
+# Return a compact decision object for API clients
+decision := {"allow": true} if {
+    allow
+}
+
+decision := {"allow": false, "reason": reason} if {
+    not allow
+}
 ```
 
 Test the policy:
 
 ```bash
 # Test an admin deleting a document (should be allowed)
-curl -X POST http://localhost:8181/v1/data/api/authz \
+curl -X POST http://localhost:8181/v1/data/api/authz/decision \
     -H "Content-Type: application/json" \
     -d '{
         "input": {
@@ -470,7 +481,7 @@ curl -X POST http://localhost:8181/v1/data/api/authz \
 # {"result": {"allow": true}}
 
 # Test a viewer trying to delete (should be denied with reason)
-curl -X POST http://localhost:8181/v1/data/api/authz \
+curl -X POST http://localhost:8181/v1/data/api/authz/decision \
     -H "Content-Type: application/json" \
     -d '{
         "input": {
