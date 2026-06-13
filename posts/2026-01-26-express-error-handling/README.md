@@ -19,7 +19,7 @@ flowchart TD
     A[Request] --> B[Route Handler]
     B --> C{Error Thrown?}
     C -->|Sync Error| D[Express Catches It]
-    C -->|Async Error| E{Called next error?}
+    C -->|Async Error in Express 4| E{Called next error?}
     E -->|No| F[Unhandled Promise Rejection]
     E -->|Yes| D
     D --> G[Error Middleware]
@@ -27,7 +27,7 @@ flowchart TD
     F --> I[Server Crash or Hang]
 ```
 
-Express catches synchronous errors automatically, but async errors require explicit handling. This is why many Express applications have silent failures - async errors simply disappear unless you forward them properly.
+Express catches synchronous errors automatically. In Express 4, async errors require explicit handling, or they can turn into unhandled promise rejections unless you forward them properly. Starting with Express 5, route handlers and middleware that return a rejected promise call `next(error)` automatically.
 
 ## Creating Custom Error Classes
 
@@ -136,7 +136,7 @@ These error classes provide structure that your error handling middleware can in
 
 ## The Async Wrapper Pattern
 
-Express does not catch errors from async functions automatically. Every async route handler needs a try-catch block, or you need a wrapper function that handles this for you.
+Express 4 does not catch errors from async functions automatically. Every async route handler needs a try-catch block, or you need a wrapper function that handles this for you. In Express 5, rejected promises are forwarded automatically, but the wrapper is still useful if you support Express 4 or want one explicit pattern across versions.
 
 ```javascript
 // middleware/asyncHandler.js
@@ -147,7 +147,7 @@ Express does not catch errors from async functions automatically. Every async ro
  *
  * Without this wrapper:
  *   app.get('/users', async (req, res) => {
- *     const users = await User.find(); // If this throws, Express never sees it
+ *     const users = await User.find(); // In Express 4, Express never sees this rejection
  *   });
  *
  * With this wrapper:
@@ -347,7 +347,8 @@ const errorHandler = require('./middleware/errorHandler');
 const {
   NotFoundError,
   ValidationError,
-  UnauthorizedError
+  UnauthorizedError,
+  ForbiddenError
 } = require('./errors/AppError');
 
 const app = express();
@@ -419,11 +420,7 @@ app.use((req, res, next) => {
 app.use(errorConverter);  // Convert library errors to AppError
 app.use(errorHandler);    // Format and send error response
 
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+module.exports = app;
 ```
 
 ## Handling Uncaught Exceptions
