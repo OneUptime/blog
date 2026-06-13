@@ -43,7 +43,7 @@ NATS supports wildcards for flexible subscriptions:
 
 ### Messages
 
-Messages in NATS are simple - they have a subject and a payload (just bytes). No complex headers or metadata. This simplicity is intentional and contributes to NATS's performance.
+Messages in NATS are simple - they have a subject and a payload (just bytes), with optional headers and a reply subject when you need metadata or request-reply behavior. This simplicity is intentional and contributes to NATS's performance.
 
 ### Connection Model
 
@@ -86,9 +86,9 @@ Let's get a NATS server running. You have several options.
 The quickest way to get started:
 
 ```bash
-# Start a NATS server with monitoring enabled
+# Start a NATS server with JetStream and monitoring enabled
 
-docker run -d --name nats-server -p 4222:4222 -p 8222:8222 nats:latest
+docker run -d --name nats-server -p 4222:4222 -p 8222:8222 nats:latest -js -m 8222
 ```
 
 Port 4222 is for client connections, and 8222 provides a monitoring endpoint.
@@ -101,8 +101,8 @@ Download from the [NATS releases page](https://github.com/nats-io/nats-server/re
 # On macOS with Homebrew
 brew install nats-server
 
-# Start the server
-nats-server
+# Start the server with JetStream and monitoring enabled
+nats-server -js -m 8222
 ```
 
 ### Verifying the Server
@@ -127,27 +127,29 @@ Now let's write some code. I'll show examples in multiple languages since NATS h
 First, install the NATS client:
 
 ```bash
-npm install nats
+npm install @nats-io/transport-node
 ```
 
 Here's a simple publisher:
 
 ```javascript
 // publisher.js
-const { connect } = require('nats');
+const { connect } = require('@nats-io/transport-node');
 
 async function main() {
     // Connect to the NATS server
     const nc = await connect({ servers: 'localhost:4222' });
     console.log('Connected to NATS');
 
+    const te = new TextEncoder();
+
     // Publish a message to the "orders.created" subject
-    // The payload must be a Uint8Array or string
-    nc.publish('orders.created', JSON.stringify({
+    // The payload must be a Uint8Array
+    nc.publish('orders.created', te.encode(JSON.stringify({
         orderId: '12345',
         customer: 'john@example.com',
         total: 99.99
-    }));
+    })));
 
     console.log('Message published');
 
@@ -163,15 +165,15 @@ And a subscriber:
 
 ```javascript
 // subscriber.js
-const { connect, StringCodec } = require('nats');
+const { connect } = require('@nats-io/transport-node');
 
 async function main() {
     // Connect to the NATS server
     const nc = await connect({ servers: 'localhost:4222' });
     console.log('Connected to NATS');
 
-    // Create a string codec for encoding/decoding messages
-    const sc = StringCodec();
+    // Create a text decoder for decoding message bytes
+    const td = new TextDecoder();
 
     // Subscribe to all order events using wildcard
     const sub = nc.subscribe('orders.*');
@@ -181,7 +183,7 @@ async function main() {
     for await (const msg of sub) {
         // msg.subject tells us the exact subject
         // msg.data contains the raw bytes
-        const data = JSON.parse(sc.decode(msg.data));
+        const data = JSON.parse(td.decode(msg.data));
         console.log(`Received on ${msg.subject}:`, data);
     }
 }
@@ -397,11 +399,11 @@ When you have multiple instances of a service, you probably want only one instan
 
 ```javascript
 // worker.js - run multiple instances of this
-const { connect, StringCodec } = require('nats');
+const { connect } = require('@nats-io/transport-node');
 
 async function main() {
     const nc = await connect({ servers: 'localhost:4222' });
-    const sc = StringCodec();
+    const td = new TextDecoder();
 
     // The second argument is the queue group name
     // NATS will load-balance messages across all subscribers in the same group
@@ -410,7 +412,7 @@ async function main() {
     console.log(`Worker started, waiting for tasks...`);
 
     for await (const msg of sub) {
-        const task = JSON.parse(sc.decode(msg.data));
+        const task = JSON.parse(td.decode(msg.data));
         console.log(`Processing task: ${task.id}`);
         // Do the actual work here
     }
@@ -422,9 +424,9 @@ main().catch(console.error);
 ```mermaid
 graph LR
     P[Publisher] -->|message| NATS
-    NATS -->|round-robin| W1[Worker 1]
-    NATS -->|round-robin| W2[Worker 2]
-    NATS -->|round-robin| W3[Worker 3]
+    NATS -->|load-balance| W1[Worker 1]
+    NATS -->|load-balance| W2[Worker 2]
+    NATS -->|load-balance| W3[Worker 3]
 
     subgraph Queue Group: workers
         W1
@@ -439,17 +441,18 @@ Sometimes you need to send a request and wait for a response. NATS handles this 
 
 ```javascript
 // service.js - responds to requests
-const { connect, StringCodec } = require('nats');
+const { connect } = require('@nats-io/transport-node');
 
 async function main() {
     const nc = await connect({ servers: 'localhost:4222' });
-    const sc = StringCodec();
+    const td = new TextDecoder();
+    const te = new TextEncoder();
 
     // Subscribe to handle incoming requests
     const sub = nc.subscribe('users.lookup');
 
     for await (const msg of sub) {
-        const request = JSON.parse(sc.decode(msg.data));
+        const request = JSON.parse(td.decode(msg.data));
         console.log(`Looking up user: ${request.userId}`);
 
         // Simulate database lookup
@@ -461,7 +464,7 @@ async function main() {
 
         // Reply to the request
         // msg.respond sends the reply back to the requester
-        msg.respond(sc.encode(JSON.stringify(user)));
+        msg.respond(te.encode(JSON.stringify(user)));
     }
 }
 
@@ -470,21 +473,22 @@ main().catch(console.error);
 
 ```javascript
 // client.js - makes requests
-const { connect, StringCodec } = require('nats');
+const { connect } = require('@nats-io/transport-node');
 
 async function main() {
     const nc = await connect({ servers: 'localhost:4222' });
-    const sc = StringCodec();
+    const td = new TextDecoder();
+    const te = new TextEncoder();
 
     // Send a request and wait for a reply
     // The timeout is in milliseconds
     const response = await nc.request(
         'users.lookup',
-        sc.encode(JSON.stringify({ userId: '123' })),
+        te.encode(JSON.stringify({ userId: '123' })),
         { timeout: 5000 }
     );
 
-    const user = JSON.parse(sc.decode(response.data));
+    const user = JSON.parse(td.decode(response.data));
     console.log('Got user:', user);
 
     await nc.drain();
@@ -506,24 +510,37 @@ Core NATS is fire-and-forget - if no one is listening when you publish, the mess
 
 That's what JetStream provides. It's built into NATS and adds a persistence layer.
 
+Install the JetStream module for the JavaScript example:
+
+```bash
+npm install @nats-io/jetstream
+```
+
 ```javascript
 // jetstream-example.js
-const { connect, StringCodec } = require('nats');
+const { connect } = require('@nats-io/transport-node');
+const {
+    AckPolicy,
+    RetentionPolicy,
+    jetstream,
+    jetstreamManager,
+} = require('@nats-io/jetstream');
 
 async function main() {
     const nc = await connect({ servers: 'localhost:4222' });
-    const sc = StringCodec();
+    const td = new TextDecoder();
+    const te = new TextEncoder();
 
     // Get JetStream context
-    const js = nc.jetstream();
-    const jsm = await nc.jetstreamManager();
+    const js = jetstream(nc);
+    const jsm = await jetstreamManager(nc);
 
     // Create a stream to store messages
     // Streams are like topics with persistence
     await jsm.streams.add({
         name: 'ORDERS',
         subjects: ['orders.>'],  // Store all order-related messages
-        retention: 'limits',      // Keep messages based on limits
+        retention: RetentionPolicy.Limits,  // Keep messages based on limits
         max_msgs: 100000,         // Maximum number of messages
         max_age: 24 * 60 * 60 * 1e9  // 24 hours in nanoseconds
     });
@@ -531,7 +548,7 @@ async function main() {
     console.log('Stream created');
 
     // Publish a message (it will be persisted)
-    await js.publish('orders.created', sc.encode(JSON.stringify({
+    await js.publish('orders.created', te.encode(JSON.stringify({
         orderId: '12345',
         timestamp: new Date().toISOString()
     })));
@@ -540,16 +557,17 @@ async function main() {
 
     // Create a consumer to read messages
     // Consumers track their position in the stream
-    const consumer = await jsm.consumers.add('ORDERS', {
+    await jsm.consumers.add('ORDERS', {
         durable_name: 'order-processor',
-        ack_policy: 'explicit'  // We must acknowledge each message
+        ack_policy: AckPolicy.Explicit  // We must acknowledge each message
     });
 
     // Pull messages from the consumer
-    const messages = await js.fetch('ORDERS', 'order-processor', { max_messages: 10 });
+    const consumer = await js.consumers.get('ORDERS', 'order-processor');
+    const messages = await consumer.fetch({ max_messages: 10, expires: 2000 });
 
     for await (const msg of messages) {
-        const data = JSON.parse(sc.decode(msg.data));
+        const data = JSON.parse(td.decode(msg.data));
         console.log('Processing:', data);
 
         // Acknowledge the message so it won't be redelivered
@@ -590,19 +608,25 @@ orderUpdate
 Networks fail. Your client should handle reconnection gracefully:
 
 ```javascript
-const nc = await connect({
-    servers: 'localhost:4222',
-    reconnect: true,
-    maxReconnectAttempts: -1,  // Keep trying forever
-    reconnectTimeWait: 2000,    // Wait 2 seconds between attempts
-});
+const { connect } = require('@nats-io/transport-node');
 
-// Listen for connection events
-nc.status().then(async (s) => {
-    for await (const status of s) {
-        console.log(`Connection status: ${status.type}`);
-    }
-});
+async function main() {
+    const nc = await connect({
+        servers: 'localhost:4222',
+        reconnect: true,
+        maxReconnectAttempts: -1,  // Keep trying forever
+        reconnectTimeWait: 2000,    // Wait 2 seconds between attempts
+    });
+
+    // Listen for connection events
+    (async () => {
+        for await (const status of nc.status()) {
+            console.log(`Connection status: ${status.type}`);
+        }
+    })();
+}
+
+main().catch(console.error);
 ```
 
 ### Use Queue Groups for Services
