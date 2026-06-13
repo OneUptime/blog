@@ -121,7 +121,7 @@ SELECT
   quantity,
   price,
   quantity * price AS total,
-  TIMESTAMPTOSTRING(order_time, 'yyyy-MM-dd HH:mm:ss') AS order_datetime
+  FORMAT_TIMESTAMP(order_time, 'yyyy-MM-dd HH:mm:ss') AS order_datetime
 FROM orders
 EMIT CHANGES;
 ```
@@ -324,8 +324,8 @@ CREATE TABLE hourly_stats AS
 SELECT
   product_id,
   WINDOWSTART AS window_start,
-  COUNT(*) AS count,
-  SUM(amount) AS total
+  COUNT(*) AS order_count,
+  SUM(quantity * price) AS total_revenue
 FROM orders
 WINDOW TUMBLING (SIZE 1 HOUR, GRACE PERIOD 2 HOURS)
 GROUP BY product_id
@@ -374,10 +374,11 @@ JMX metrics to monitor:
 
 ```yaml
 # Key ksqlDB metrics
-- ksql.ksql_query_status  # Query state (running, failed, etc.)
-- ksql.consumer_messages_per_sec  # Input throughput
-- ksql.consumer_total_messages  # Total processed
-- ksql.error_rate  # Processing errors
+- ksql-query-status  # ksqlDB query state (running, paused, failed, etc.)
+- query-status  # Kafka Streams query state
+- consumer-messages-per-sec  # Input throughput per query
+- consumer-total-messages  # Total consumed per query
+- error-rate  # Processing errors across persistent queries
 ```
 
 ---
