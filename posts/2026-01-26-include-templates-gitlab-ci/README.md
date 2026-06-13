@@ -91,8 +91,11 @@ In the `devops/ci-templates` repository:
 
 ```yaml
 # /templates/node-build.yml
+variables:
+  NODE_VERSION: "20"
+
 .node-build:
-  image: node:${NODE_VERSION:-20}
+  image: node:${NODE_VERSION}
   cache:
     key:
       files:
@@ -123,7 +126,7 @@ include:
   - remote: 'https://raw.githubusercontent.com/your-org/ci-templates/main/templates/security-scan.yml'
 ```
 
-Remote includes work well for public templates or when GitLab project access isn't available. However, they're slower and less secure than project includes since GitLab can't verify the content.
+Remote includes work well for public templates or when GitLab project access isn't available. However, they require a public HTTP/HTTPS URL and authentication is not supported. Treat them like third-party dependencies, and use `integrity` to verify the included content when possible.
 
 ## GitLab's Built-in Templates
 
@@ -132,17 +135,17 @@ GitLab provides official templates for common tasks.
 ```yaml
 include:
   # Security scanning
-  - template: Security/SAST.gitlab-ci.yml
-  - template: Security/Secret-Detection.gitlab-ci.yml
+  - template: Jobs/SAST.gitlab-ci.yml
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
 
   # Code quality
-  - template: Code-Quality.gitlab-ci.yml
+  - template: Jobs/Code-Quality.gitlab-ci.yml
 
   # Container scanning
-  - template: Security/Container-Scanning.gitlab-ci.yml
+  - template: Jobs/Container-Scanning.gitlab-ci.yml
 ```
 
-These templates add jobs automatically configured for their purpose. Browse available templates at GitLab's documentation or in the repository at `https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/gitlab/ci/templates`.
+These templates add jobs automatically configured for their purpose. The built-in Code Quality template is deprecated, so prefer importing reports from your existing quality tools for new configurations. Browse available templates at GitLab's documentation or in the repository at `https://gitlab.com/gitlab-org/gitlab/-/tree/master/lib/gitlab/ci/templates`.
 
 ## Building Reusable Templates
 
@@ -344,7 +347,7 @@ Conditional includes help reduce pipeline complexity when certain features aren'
 
 When includes don't work as expected, use GitLab's CI Lint tool.
 
-Navigate to your project's CI/CD, then Editor, then click "View merged YAML". This shows the fully resolved pipeline configuration after all includes are processed.
+Navigate to your project's Build, then Pipeline editor, then use the Validate tab. This checks the resolved pipeline configuration after includes are processed.
 
 Common issues:
 
