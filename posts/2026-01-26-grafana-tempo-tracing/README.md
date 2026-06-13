@@ -12,7 +12,7 @@ Distributed tracing helps you understand how requests flow through your microser
 
 ## What is Grafana Tempo?
 
-Grafana Tempo is a distributed tracing backend designed for high volume and low cost. Unlike other tracing solutions, Tempo only requires object storage (like S3, GCS, or Azure Blob Storage) to operate. It does not require a complex indexing infrastructure, making it cost-effective and simple to run.
+Grafana Tempo is a distributed tracing backend designed for high volume and low cost. Unlike other tracing solutions, Tempo can use object storage (like S3, GCS, or Azure Blob Storage) without requiring a complex indexing infrastructure, making it cost-effective and simple to run.
 
 ### How Tempo Fits in the Observability Stack
 
@@ -104,17 +104,6 @@ storage:
     local:
       path: /var/tempo/blocks  # Block storage location
 
-# Metrics generator creates service graphs and span metrics
-metrics_generator:
-  registry:
-    external_labels:
-      source: tempo
-  storage:
-    path: /var/tempo/generator/wal
-    remote_write:
-      - url: http://prometheus:9090/api/v1/write
-        send_exemplars: true
-
 # Query frontend handles search and trace queries
 query_frontend:
   search:
@@ -188,20 +177,10 @@ datasources:
     editable: true
     jsonData:
       httpMethod: GET
-      tracesToLogsV2:
-        datasourceUid: loki  # Link to Loki for log correlation
-        spanStartTimeShift: '-1h'
-        spanEndTimeShift: '1h'
-        filterByTraceID: true
-        filterBySpanID: true
-      serviceMap:
-        datasourceUid: prometheus  # Service graph metrics source
       nodeGraph:
         enabled: true
       search:
         hide: false
-      lokiSearch:
-        datasourceUid: loki
 ```
 
 Start the stack:
@@ -243,7 +222,7 @@ import time
 resource = Resource.create({
     "service.name": "order-service",      # Name shown in service graphs
     "service.version": "1.0.0",           # Version for filtering traces
-    "deployment.environment": "production" # Environment tag
+    "deployment.environment.name": "production" # Environment tag
 })
 
 # Initialize the tracer provider with the resource
@@ -271,7 +250,8 @@ tracer = trace.get_tracer(__name__)
 app = Flask(__name__)
 
 # Automatically instrument Flask to create spans for each request
-FlaskInstrumentor().instrument_app(app)
+# Exclude the health check endpoint to reduce noise
+FlaskInstrumentor().instrument_app(app, excluded_urls="/health")
 
 # Automatically instrument the requests library
 # This creates child spans for outgoing HTTP calls
@@ -327,7 +307,7 @@ def create_order():
 
 @app.route("/health")
 def health():
-    """Health check endpoint - not traced to reduce noise."""
+    """Health check endpoint."""
     return {"status": "healthy"}
 
 
@@ -356,8 +336,11 @@ pip install flask \
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Configure the OTLP exporter to send traces to Tempo
 const traceExporter = new OTLPTraceExporter({
@@ -368,10 +351,10 @@ const traceExporter = new OTLPTraceExporter({
 // This instruments popular libraries like Express, HTTP, and database clients
 const sdk = new NodeSDK({
   // Define service metadata that appears in Grafana
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'user-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'user-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    'deployment.environment.name': 'production',
   }),
 
   traceExporter: traceExporter,
@@ -426,33 +409,33 @@ const tracer = trace.getTracer('user-service');
 
 app.post('/users', async (req, res) => {
   // Create a custom span for the user creation logic
-  const span = tracer.startSpan('create_user');
+  await tracer.startActiveSpan('create_user', async (span) => {
+    try {
+      // Add attributes that help with debugging and filtering
+      span.setAttribute('user.email', req.body.email);
+      span.setAttribute('user.role', req.body.role || 'user');
 
-  try {
-    // Add attributes that help with debugging and filtering
-    span.setAttribute('user.email', req.body.email);
-    span.setAttribute('user.role', req.body.role || 'user');
+      // Simulate database operation
+      await createUserInDatabase(req.body);
 
-    // Simulate database operation
-    await createUserInDatabase(req.body);
+      // Record successful completion
+      span.setStatus({ code: SpanStatusCode.OK });
 
-    // Record successful completion
-    span.setStatus({ code: SpanStatusCode.OK });
+      res.json({ status: 'created' });
+    } catch (error) {
+      // Record the error in the span for visibility in Grafana
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: error.message,
+      });
+      span.recordException(error);
 
-    res.json({ status: 'created' });
-  } catch (error) {
-    // Record the error in the span for visibility in Grafana
-    span.setStatus({
-      code: SpanStatusCode.ERROR,
-      message: error.message,
-    });
-    span.recordException(error);
-
-    res.status(500).json({ error: 'Failed to create user' });
-  } finally {
-    // Always end the span
-    span.end();
-  }
+      res.status(500).json({ error: 'Failed to create user' });
+    } finally {
+      // Always end the span
+      span.end();
+    }
+  });
 });
 
 async function createUserInDatabase(userData) {
@@ -516,22 +499,22 @@ TraceQL is Tempo's query language for searching traces. Here are common query pa
 { resource.service.name = "order-service" }
 
 # Find traces with errors
-{ status = error }
+{ span:status = error }
 
 # Find traces where a specific operation took longer than 500ms
-{ name = "process_payment" && duration > 500ms }
+{ span:name = "process_payment" && span:duration > 500ms }
 
 # Find traces with a specific attribute value
 { span.order.id = "ORD-12345" }
 
 # Combine multiple conditions
-{ resource.service.name = "order-service" && status = error && duration > 1s }
+{ resource.service.name = "order-service" && span:status = error && trace:duration > 1s }
 
 # Find traces that pass through multiple services
 { resource.service.name = "order-service" } >> { resource.service.name = "inventory-service" }
 
-# Search by trace ID prefix (useful for debugging)
-{ trace:id = "abc123" }
+# Search by trace ID
+{ trace:id = "1234567890abcdef1234567890abcdef" }
 ```
 
 ### Grafana Explore Interface
@@ -616,9 +599,13 @@ metrics_generator:
     span_metrics:
       # Generate metrics from span data
       dimensions:
-        - service.name
-        - span.name
-        - status.code
+        - http.method
+        - http.status_code
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]
 ```
 
 ### Viewing Service Graphs
@@ -767,14 +754,15 @@ docker-compose logs tempo | grep -i error
 
 **High latency in trace queries:**
 
-1. Enable caching in Tempo:
+1. Tune query sharding in Tempo:
 ```yaml
 # tempo.yaml
 query_frontend:
   search:
-    query_shards: 20  # Parallelize queries
-  cache:
-    max_size_mb: 1000  # In-memory cache size
+    most_recent_shards: 20  # Split recent TraceQL searches into time windows
+  trace_by_id:
+    query_shards: 20        # Split trace-by-ID lookups into shards
+    concurrent_shards: 10   # Limit concurrent trace-by-ID shards
 ```
 
 2. Reduce trace retention if storage is slow:
@@ -788,7 +776,7 @@ compactor:
 
 Grafana Tempo provides a scalable, cost-effective solution for distributed tracing. Key takeaways:
 
-- Tempo uses object storage, keeping infrastructure costs low
+- Tempo can use object storage without a separate trace index, keeping infrastructure costs low
 - OpenTelemetry provides vendor-neutral instrumentation
 - TraceQL enables powerful trace queries
 - Service graphs help visualize system architecture
