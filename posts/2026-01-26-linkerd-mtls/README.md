@@ -63,7 +63,7 @@ Linkerd's identity system consists of:
 ## Prerequisites
 
 Before starting, ensure you have:
-- A Kubernetes cluster (v1.21+)
+- A Kubernetes cluster supported by your Linkerd release (Linkerd 2.19 supports Kubernetes v1.22+)
 - kubectl configured to access your cluster
 - Helm 3.x installed (optional but recommended)
 
@@ -97,7 +97,7 @@ linkerd check --pre
 # - Kubernetes API access
 # - Kubernetes version
 # - Cluster networking
-# - Pod security policies
+# - Required Kubernetes permissions and resources
 ```
 
 Address any issues the check identifies before proceeding.
@@ -180,9 +180,9 @@ helm install linkerd-crds linkerd/linkerd-crds -n linkerd --create-namespace
 # Install control plane with certificates
 helm install linkerd-control-plane linkerd/linkerd-control-plane \
   -n linkerd \
-  --set identity.trustAnchorsPEM="$(cat ca.crt)" \
-  --set identity.issuer.tls.crtPEM="$(cat issuer.crt)" \
-  --set identity.issuer.tls.keyPEM="$(cat issuer.key)"
+  --set-file identityTrustAnchorsPEM=ca.crt \
+  --set-file identity.issuer.tls.crtPEM=issuer.crt \
+  --set-file identity.issuer.tls.keyPEM=issuer.key
 ```
 
 ## Step 5: Inject Linkerd Proxy into Your Applications
@@ -304,7 +304,7 @@ linkerd identity -n my-application <pod-name>
 
 ## Step 7: Enforce mTLS with Server Authorization
 
-By default, Linkerd allows both mTLS and plaintext connections (permissive mode). For production, enforce mTLS-only communication.
+By default, Linkerd requires mTLS for communication between meshed pods, but it will accept plaintext traffic from non-meshed sources. For production, enforce mTLS-only communication on protected ports.
 
 ```yaml
 # server-authorization.yaml
@@ -322,7 +322,7 @@ spec:
   proxyProtocol: HTTP/2
 ---
 # This AuthorizationPolicy requires mTLS authentication
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
   name: require-mtls
@@ -338,7 +338,7 @@ spec:
       group: policy.linkerd.io
 ---
 # Define what "authenticated" means - any identity in the mesh
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1alpha1
 kind: MeshTLSAuthentication
 metadata:
   name: all-authenticated
@@ -374,7 +374,7 @@ spec:
   port: 8080
   proxyProtocol: HTTP/2
 ---
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
   name: backend-authz
@@ -389,7 +389,7 @@ spec:
       kind: MeshTLSAuthentication
       group: policy.linkerd.io
 ---
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1alpha1
 kind: MeshTLSAuthentication
 metadata:
   name: frontend-only
@@ -425,7 +425,7 @@ flowchart LR
 Linkerd provides detailed metrics about your mTLS connections through Prometheus.
 
 ```bash
-# Check mTLS success rate
+# Check service success rate and meshed pod counts
 linkerd viz stat deploy -n my-application
 
 # Output includes:
@@ -440,8 +440,8 @@ linkerd viz stat deploy -n my-application
 # Port-forward to Prometheus
 kubectl port-forward -n linkerd-viz svc/prometheus 9090:9090
 
-# Query for TLS handshake failures
-# PromQL: sum(rate(inbound_http_errors_total{error="tls"}[5m])) by (deployment)
+# Query for inbound HTTP requests that were not secured with TLS
+# PromQL: sum(rate(request_total{direction="inbound",tls!="true"}[5m])) by (deployment)
 ```
 
 ### Create Alerts for mTLS Issues
@@ -458,14 +458,14 @@ spec:
   - name: linkerd-mtls
     rules:
     - alert: LinkerdMTLSFailures
-      # Alert when TLS errors occur
-      expr: sum(rate(inbound_http_errors_total{error="tls"}[5m])) by (deployment) > 0
+      # Alert when inbound HTTP requests are not secured with TLS
+      expr: sum(rate(request_total{direction="inbound",tls!="true"}[5m])) by (deployment) > 0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "mTLS failures detected for {{ $labels.deployment }}"
-        description: "Service {{ $labels.deployment }} is experiencing mTLS handshake failures"
+        summary: "Non-mTLS inbound traffic detected for {{ $labels.deployment }}"
+        description: "Service {{ $labels.deployment }} is receiving inbound HTTP traffic without Linkerd TLS"
 ```
 
 ## Step 10: Certificate Rotation
@@ -559,8 +559,11 @@ linkerd viz authz -n my-application deploy/my-service
 # Review the Server and AuthorizationPolicy resources
 kubectl get servers,authorizationpolicies -n my-application
 
-# Temporarily disable policy enforcement for debugging
-kubectl annotate namespace my-application config.linkerd.io/default-inbound-policy=all-unauthenticated
+# For default policy issues, relax the policy for newly created pods and restart the workload
+kubectl annotate namespace my-application config.linkerd.io/default-inbound-policy=all-unauthenticated --overwrite
+kubectl rollout restart deployment -n my-application
+
+# If a Server resource selects the port, temporarily remove or relax the matching policy instead
 ```
 
 ### Issue 4: High Latency After Enabling mTLS
