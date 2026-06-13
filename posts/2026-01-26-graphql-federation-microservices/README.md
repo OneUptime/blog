@@ -474,7 +474,7 @@ const { ApolloGateway, IntrospectAndCompose } = require('@apollo/gateway');
 
 async function startGateway() {
   // Create the gateway with service list
-  // In production, you would use Apollo Studio's managed federation
+  // In production, use GraphOS-managed composition or a precomposed supergraph SDL
   const gateway = new ApolloGateway({
     supergraphSdl: new IntrospectAndCompose({
       subgraphs: [
@@ -488,8 +488,6 @@ async function startGateway() {
   // Create the Apollo Server with the gateway
   const server = new ApolloServer({
     gateway,
-    // Disable subscriptions since the gateway doesn't support them directly
-    subscriptions: false,
   });
 
   const { url } = await startStandaloneServer(server, {
@@ -615,6 +613,8 @@ Implement consistent error handling across subgraphs.
 
 ```javascript
 // Standardized error handling in resolvers
+const { GraphQLError } = require('graphql');
+
 const resolvers = {
   Query: {
     user: async (_, { id }, context) => {
@@ -667,7 +667,10 @@ function createUserLoader(db) {
 // Use in context creation
 const server = new ApolloServer({
   schema: buildSubgraphSchema({ typeDefs, resolvers }),
-  context: ({ req }) => ({
+});
+
+const { url } = await startStandaloneServer(server, {
+  context: async ({ req }) => ({
     userLoader: createUserLoader(db),
   }),
 });
@@ -899,7 +902,7 @@ describe('Users Subgraph', () => {
 
 describe('Federation Gateway', () => {
   it('executes cross-subgraph query', async () => {
-    const response = await gateway.executeOperation({
+    const response = await server.executeOperation({
       query: `
         query {
           user(id: "1") {
