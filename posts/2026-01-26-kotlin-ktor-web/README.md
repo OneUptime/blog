@@ -45,9 +45,9 @@ Start with a `build.gradle.kts` file. Ktor uses a plugin system where you only a
 
 ```kotlin
 plugins {
-    kotlin("jvm") version "1.9.22"
-    kotlin("plugin.serialization") version "1.9.22"
-    id("io.ktor.plugin") version "2.3.7"
+    kotlin("jvm") version "2.4.0"
+    kotlin("plugin.serialization") version "2.4.0"
+    id("io.ktor.plugin") version "3.5.0"
 }
 
 group = "com.example"
@@ -64,31 +64,34 @@ repositories {
 
 dependencies {
     // Ktor server core
-    implementation("io.ktor:ktor-server-core-jvm:2.3.7")
+    implementation("io.ktor:ktor-server-core-jvm:3.5.0")
 
     // Netty engine - production-ready, high performance
-    implementation("io.ktor:ktor-server-netty-jvm:2.3.7")
+    implementation("io.ktor:ktor-server-netty-jvm:3.5.0")
 
     // Content negotiation for JSON
-    implementation("io.ktor:ktor-server-content-negotiation-jvm:2.3.7")
-    implementation("io.ktor:ktor-serialization-kotlinx-json-jvm:2.3.7")
+    implementation("io.ktor:ktor-server-content-negotiation-jvm:3.5.0")
+    implementation("io.ktor:ktor-serialization-kotlinx-json-jvm:3.5.0")
 
     // Authentication
-    implementation("io.ktor:ktor-server-auth-jvm:2.3.7")
-    implementation("io.ktor:ktor-server-auth-jwt-jvm:2.3.7")
+    implementation("io.ktor:ktor-server-auth-jvm:3.5.0")
+    implementation("io.ktor:ktor-server-auth-jwt-jvm:3.5.0")
 
     // Request validation
-    implementation("io.ktor:ktor-server-request-validation-jvm:2.3.7")
+    implementation("io.ktor:ktor-server-request-validation-jvm:3.5.0")
 
     // Status pages for error handling
-    implementation("io.ktor:ktor-server-status-pages-jvm:2.3.7")
+    implementation("io.ktor:ktor-server-status-pages-jvm:3.5.0")
+
+    // Response compression
+    implementation("io.ktor:ktor-server-compression-jvm:3.5.0")
 
     // Logging
-    implementation("ch.qos.logback:logback-classic:1.4.14")
+    implementation("ch.qos.logback:logback-classic:1.5.34")
 
     // Testing
-    testImplementation("io.ktor:ktor-server-tests-jvm:2.3.7")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:1.9.22")
+    testImplementation("io.ktor:ktor-server-test-host-jvm:3.5.0")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.0")
 }
 ```
 
@@ -100,6 +103,7 @@ Create your main application file. Ktor applications start with an `Application`
 // src/main/kotlin/com/example/Application.kt
 package com.example
 
+import com.example.plugins.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
@@ -117,6 +121,7 @@ fun main() {
 fun Application.module() {
     // Configure plugins
     configureSerialization()
+    configureStatusPages()
     configureAuthentication()
     configureRouting()
 }
@@ -231,6 +236,8 @@ Ktor's routing DSL is clean and expressive.
 // src/main/kotlin/com/example/plugins/Routing.kt
 package com.example.plugins
 
+import com.example.routes.authRoutes
+import com.example.routes.protectedRoutes
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.request.*
@@ -314,6 +321,9 @@ fun Application.configureRouting() {
                 call.respond(HttpStatusCode.NoContent)
             }
         }
+
+        authRoutes()
+        protectedRoutes()
     }
 }
 
@@ -331,6 +341,7 @@ For larger applications, organize routes into separate files.
 // src/main/kotlin/com/example/routes/UserRoutes.kt
 package com.example.routes
 
+import io.ktor.server.application.*
 import io.ktor.server.routing.*
 
 fun Route.userRoutes(userService: UserService) {
@@ -445,6 +456,8 @@ fun Application.configureAuthentication() {
 // src/main/kotlin/com/example/routes/ProtectedRoutes.kt
 package com.example.routes
 
+import com.example.plugins.ErrorResponse
+import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
@@ -497,6 +510,7 @@ package com.example.routes
 
 import com.example.plugins.JwtConfig
 import com.example.plugins.ValidationException
+import com.example.plugins.User
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.request.*
@@ -555,11 +569,11 @@ Exposed is JetBrains' SQL library for Kotlin, which pairs well with Ktor.
 ```kotlin
 // Add to build.gradle.kts
 dependencies {
-    implementation("org.jetbrains.exposed:exposed-core:0.46.0")
-    implementation("org.jetbrains.exposed:exposed-dao:0.46.0")
-    implementation("org.jetbrains.exposed:exposed-jdbc:0.46.0")
-    implementation("com.zaxxer:HikariCP:5.1.0")
-    implementation("org.postgresql:postgresql:42.7.1")
+    implementation("org.jetbrains.exposed:exposed-core:1.3.0")
+    implementation("org.jetbrains.exposed:exposed-dao:1.3.0")
+    implementation("org.jetbrains.exposed:exposed-jdbc:1.3.0")
+    implementation("com.zaxxer:HikariCP:7.0.2")
+    implementation("org.postgresql:postgresql:42.7.11")
 }
 ```
 
@@ -569,8 +583,10 @@ package com.example.database
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
-import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.v1.core.*
+import org.jetbrains.exposed.v1.jdbc.Database
+import org.jetbrains.exposed.v1.jdbc.SchemaUtils
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 
 // Define table schema
 object Users : Table("users") {
@@ -616,27 +632,31 @@ package com.example.repository
 
 import com.example.database.Users
 import com.example.models.User
-import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
+import org.jetbrains.exposed.v1.core.ResultRow
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.deleteWhere
+import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import org.jetbrains.exposed.v1.jdbc.update
 
 class UserRepository {
     // Wrap database operations in suspended transactions for coroutine support
     private suspend fun <T> dbQuery(block: suspend () -> T): T =
-        newSuspendedTransaction { block() }
+        suspendTransaction { block() }
 
     suspend fun findAll(): List<User> = dbQuery {
         Users.selectAll().map { rowToUser(it) }
     }
 
     suspend fun findById(id: Long): User? = dbQuery {
-        Users.select { Users.id eq id }
+        Users.selectAll().where { Users.id eq id }
             .map { rowToUser(it) }
             .singleOrNull()
     }
 
     suspend fun findByEmail(email: String): User? = dbQuery {
-        Users.select { Users.email eq email }
+        Users.selectAll().where { Users.email eq email }
             .map { rowToUser(it) }
             .singleOrNull()
     }
@@ -678,11 +698,11 @@ Ktor provides excellent testing utilities.
 // src/test/kotlin/com/example/ApplicationTest.kt
 package com.example
 
+import com.example.plugins.JwtConfig
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.server.testing.*
-import kotlinx.serialization.json.Json
 import kotlin.test.*
 
 class ApplicationTest {
@@ -849,6 +869,11 @@ Ktor with Netty handles thousands of concurrent connections efficiently due to i
 4. **Caching** - Add caching headers for static content
 
 ```kotlin
+import io.ktor.server.plugins.compression.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+
 // Enable compression
 install(Compression) {
     gzip {
@@ -858,9 +883,6 @@ install(Compression) {
 }
 
 // Handle blocking I/O properly
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-
 suspend fun readLargeFile(path: String): ByteArray = withContext(Dispatchers.IO) {
     // Blocking file I/O runs on IO dispatcher, not blocking Netty threads
     File(path).readBytes()
