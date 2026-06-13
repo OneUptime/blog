@@ -320,6 +320,7 @@ import (
     "bytes"
     "encoding/json"
     "fmt"
+    "io"
     "strings"
 )
 
@@ -338,9 +339,11 @@ func main() {
     decoder := json.NewDecoder(strings.NewReader(input))
 
     fmt.Println("Decoding stream:")
-    for decoder.More() {
+    for {
         var msg Message
-        if err := decoder.Decode(&msg); err != nil {
+        if err := decoder.Decode(&msg); err == io.EOF {
+            break
+        } else if err != nil {
             fmt.Println("Decode error:", err)
             break
         }
@@ -626,7 +629,7 @@ func main() {
 
 ## Handling Errors
 
-Always check for errors when working with JSON. Common error types include syntax errors, type mismatches, and missing required fields.
+Always check for errors when working with JSON. Common error types include syntax errors and type mismatches. Missing required fields are allowed by `encoding/json`, so handle them with separate validation.
 
 ```go
 package main
@@ -803,7 +806,7 @@ func main() {
     // For even better performance, consider:
     // 1. github.com/json-iterator/go - drop-in replacement, faster
     // 2. github.com/mailru/easyjson - code generation, much faster
-    // 3. github.com/bytedance/sonic - SIMD-accelerated, fastest
+    // 3. github.com/bytedance/sonic - SIMD-accelerated for supported platforms
 }
 ```
 
