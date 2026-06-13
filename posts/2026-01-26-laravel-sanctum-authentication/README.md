@@ -35,35 +35,46 @@ flowchart TD
 
 ### Installing Sanctum
 
-Sanctum comes pre-installed in new Laravel applications starting from Laravel 8. If you need to install it manually:
+In current Laravel applications, install Sanctum's API scaffolding with Artisan:
 
 ```bash
-# Install Sanctum via Composer
-
-composer require laravel/sanctum
-
-# Publish the Sanctum configuration and migration files
-php artisan vendor:publish --provider="Laravel\Sanctum\SanctumServiceProvider"
+# Install Sanctum and create the API route file / configuration
+php artisan install:api
 
 # Run the migrations to create the personal_access_tokens table
 php artisan migrate
 ```
 
+If your application does not already include Sanctum, install the package first, then run the `install:api` command above:
+
+```bash
+# Install Sanctum via Composer
+composer require laravel/sanctum
+
+# Publish the Sanctum configuration manually if you need to customize it
+php artisan vendor:publish --provider="Laravel\Sanctum\SanctumServiceProvider"
+```
+
 ### Configuration
 
-After publishing, you will find the configuration file at `config/sanctum.php`. Let's look at the key settings:
+After installing or publishing the configuration, you will find the configuration file at `config/sanctum.php`. Let's look at the key settings:
 
 ```php
 <?php
 
 // config/sanctum.php
+use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Laravel\Sanctum\Http\Middleware\AuthenticateSession;
+use Laravel\Sanctum\Sanctum;
+
 return [
     // Domains that can authenticate using Sanctum cookies
     // Add your SPA domain here for cookie-based authentication
     'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
         '%s%s',
         'localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1',
-        env('APP_URL') ? ','.parse_url(env('APP_URL'), PHP_URL_HOST) : ''
+        Sanctum::currentApplicationUrlWithPort()
     ))),
 
     // Middleware for Sanctum's guard
@@ -73,27 +84,41 @@ return [
     // For security, always set an expiration in production
     'expiration' => null,
 
-    // Prefix for Sanctum routes
-    'prefix' => 'sanctum',
+    // Optional prefix for newly generated tokens
+    'token_prefix' => env('SANCTUM_TOKEN_PREFIX', ''),
+
+    // Middleware used when processing first-party SPA requests
+    'middleware' => [
+        'authenticate_session' => AuthenticateSession::class,
+        'encrypt_cookies' => EncryptCookies::class,
+        'validate_csrf_token' => ValidateCsrfToken::class,
+    ],
 ];
 ```
 
 ### Middleware Setup
 
-Add Sanctum's middleware to your API middleware group in `app/Http/Kernel.php`:
+Enable Sanctum's stateful API middleware in `bootstrap/app.php`:
 
 ```php
 <?php
 
-// app/Http/Kernel.php
-protected $middlewareGroups = [
-    'api' => [
+// bootstrap/app.php
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Middleware;
+
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(
+        web: __DIR__.'/../routes/web.php',
+        api: __DIR__.'/../routes/api.php',
+        commands: __DIR__.'/../routes/console.php',
+        health: '/up',
+    )
+    ->withMiddleware(function (Middleware $middleware): void {
         // Enable Sanctum's stateful authentication for SPAs
-        \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-        \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
-        \Illuminate\Routing\Middleware\SubstituteBindings::class,
-    ],
-];
+        $middleware->statefulApi();
+    })
+    ->create();
 ```
 
 ### User Model Configuration
@@ -250,6 +275,7 @@ class AuthController extends Controller
 
 // routes/api.php
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\PostController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes - no authentication required
@@ -304,7 +330,8 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+    // Do not use "*" when supports_credentials is true
+    'allowed_origins' => ['http://localhost:3000', 'https://spa.yourdomain.com'],
 
     'allowed_origins_patterns' => [],
 
@@ -401,6 +428,8 @@ const api = axios.create({
     baseURL: 'http://your-laravel-app.com',
     // IMPORTANT: Include credentials (cookies) in requests
     withCredentials: true,
+    // IMPORTANT: Send the XSRF token header for cross-origin requests
+    withXSRFToken: true,
     headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
@@ -415,13 +444,13 @@ export async function login(email, password) {
 
     // Step 2: Send login request
     // Axios automatically includes the XSRF-TOKEN in the X-XSRF-TOKEN header
-    const response = await api.post('/api/login', { email, password });
+    const response = await api.post('/login', { email, password });
 
     return response.data;
 }
 
 export async function logout() {
-    const response = await api.post('/api/logout');
+    const response = await api.post('/logout');
     return response.data;
 }
 
@@ -530,6 +559,7 @@ class TokenController extends Controller
 
 namespace App\Http\Controllers;
 
+use App\Models\Post;
 use Illuminate\Http\Request;
 
 class PostController extends Controller
@@ -555,7 +585,12 @@ class PostController extends Controller
             ], 403);
         }
 
-        $post = Post::create($request->validated());
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'body' => 'required|string',
+        ]);
+
+        $post = Post::create($validated);
         return response()->json($post, 201);
     }
 
@@ -581,7 +616,27 @@ You can also use middleware to check abilities:
 ```php
 <?php
 
+// bootstrap/app.php
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Middleware;
+use Laravel\Sanctum\Http\Middleware\CheckAbilities;
+use Laravel\Sanctum\Http\Middleware\CheckForAnyAbility;
+
+return Application::configure(basePath: dirname(__DIR__))
+    ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->alias([
+            'abilities' => CheckAbilities::class,
+            'ability' => CheckForAnyAbility::class,
+        ]);
+    })
+    ->create();
+```
+
+```php
+<?php
+
 // routes/api.php
+
 Route::middleware(['auth:sanctum', 'abilities:write'])->group(function () {
     Route::post('/posts', [PostController::class, 'store']);
     Route::put('/posts/{post}', [PostController::class, 'update']);
@@ -610,25 +665,15 @@ return [
 
 ### Pruning Expired Tokens
 
-Add a scheduled command to clean up expired tokens. In `app/Console/Kernel.php`:
+Add a scheduled command to clean up expired tokens. In `routes/console.php`:
 
 ```php
 <?php
 
-namespace App\Console;
+use Illuminate\Support\Facades\Schedule;
 
-use Illuminate\Console\Scheduling\Schedule;
-use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
-
-class Kernel extends ConsoleKernel
-{
-    protected function schedule(Schedule $schedule)
-    {
-        // Prune tokens older than 24 hours after expiration
-        $schedule->command('sanctum:prune-expired --hours=24')
-            ->daily();
-    }
-}
+// Prune tokens older than 24 hours after expiration
+Schedule::command('sanctum:prune-expired --hours=24')->daily();
 ```
 
 ## Security Best Practices
@@ -641,10 +686,11 @@ Protect your authentication endpoints from brute force attacks:
 <?php
 
 // routes/api.php
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Cache\RateLimiting\Limit;
 
-// In RouteServiceProvider or bootstrap/app.php
+// In App\Providers\AppServiceProvider::boot()
 RateLimiter::for('authentication', function (Request $request) {
     // Limit login attempts by email and IP
     return Limit::perMinute(5)->by(
