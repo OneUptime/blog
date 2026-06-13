@@ -108,8 +108,9 @@ Now create a values file to customize the installation. Save this as `jenkins-va
 
 controller:
   # Jenkins controller image configuration
-  image: jenkins/jenkins
-  tag: lts-jdk17
+  image:
+    repository: jenkins/jenkins
+    tag: lts-jdk17
 
   # Resource allocation for the controller pod
   resources:
@@ -138,7 +139,6 @@ controller:
 
   # Enable Jenkins Configuration as Code
   JCasC:
-    enabled: true
     defaultConfig: true
 
   # Ingress configuration (optional - enable if you have an ingress controller)
@@ -234,9 +234,9 @@ Jenkins tunnel: jenkins-agent.jenkins.svc.cluster.local:50000
 
 If you need to configure it manually, here's a reference configuration:
 
-```groovy
-// Jenkins Configuration as Code snippet for Kubernetes cloud
-// This is already applied if you used the Helm values above
+```yaml
+# Jenkins Configuration as Code snippet for Kubernetes cloud
+# This is already applied if you used the Helm values above
 jenkins:
   clouds:
     - kubernetes:
@@ -280,10 +280,13 @@ Containers:
     Command:
     Args:
     Working Directory: /home/jenkins/agent
+    Privileged: true
     Resource Request CPU: 500m
     Resource Request Memory: 512Mi
     Resource Limit CPU: 2000m
     Resource Limit Memory: 2Gi
+    Environment Variables:
+      - DOCKER_TLS_CERTDIR=
 
   - Name: jnlp
     Image: jenkins/inbound-agent:latest
@@ -606,6 +609,14 @@ reclaimPolicy: Retain  # Keep data even if PVC is deleted
 allowVolumeExpansion: true
 ```
 
+Then reference the manually created claim from your Helm values:
+
+```yaml
+persistence:
+  enabled: true
+  existingClaim: jenkins-home
+```
+
 ---
 
 ## Step 10: Configure Resource Quotas
@@ -678,25 +689,26 @@ A simpler approach is to ensure quick recovery with proper monitoring:
 
 controller:
   # Multiple replicas require shared storage and session management
-  # For standard Jenkins, focus on fast recovery instead
+  # Standard Jenkins controllers are not active-active; focus on fast recovery instead
 
   # Increase probe thresholds for stability
-  livenessProbe:
-    initialDelaySeconds: 90
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 5
+  probes:
+    livenessProbe:
+      initialDelaySeconds: 90
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 5
 
-  readinessProbe:
-    initialDelaySeconds: 60
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
+    readinessProbe:
+      initialDelaySeconds: 60
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
 
   # Pod disruption budget ensures availability during updates
   podDisruptionBudget:
     enabled: true
-    minAvailable: 1
+    maxUnavailable: "0"
 
   # Topology spread for multi-node clusters
   topologySpreadConstraints:
@@ -707,11 +719,8 @@ controller:
         matchLabels:
           app.kubernetes.io/name: jenkins
 
-backup:
-  # Configure automated backups
-  enabled: true
-  schedule: "0 2 * * *"  # Daily at 2 AM
-  destination: "s3://my-bucket/jenkins-backups"
+# Configure automated backups outside the chart, for example by backing up
+# the Jenkins home PVC with your cloud backup tooling or Velero.
 ```
 
 ---
@@ -779,7 +788,7 @@ kubectl exec -it -n jenkins deployment/jenkins -c jenkins -- \
 1. **Use HTTPS**: Configure TLS through an ingress controller or load balancer
 2. **Limit RBAC**: Only grant the minimum required permissions
 3. **Scan Images**: Use only trusted base images for your agents
-4. **Secrets Management**: Store credentials in Kubernetes secrets, not Jenkins
+4. **Secrets Management**: Store credentials in Jenkins Credentials, Kubernetes Secrets, or an external secret manager - not in Jenkinsfiles
 5. **Network Policies**: Restrict traffic between Jenkins and other namespaces
 
 Example network policy:
@@ -803,7 +812,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: ingress-nginx
+              kubernetes.io/metadata.name: ingress-nginx
       ports:
         - port: 8080
     # Allow agent connections
@@ -820,6 +829,8 @@ spec:
       ports:
         - port: 53
           protocol: UDP
+        - port: 53
+          protocol: TCP
     # Allow HTTPS for plugin downloads
     - to:
         - ipBlock:
