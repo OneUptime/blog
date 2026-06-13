@@ -29,7 +29,7 @@ The web process pushes jobs onto Redis. Separate worker processes pull jobs off 
 
 ## 1. Install and Configure Redis
 
-First, install the Redis PHP extension and the Predis package:
+First, install the Redis PHP extension or the Predis package:
 
 ```bash
 # Install PHP Redis extension (recommended for performance)
@@ -114,6 +114,7 @@ Here's a complete job class with proper error handling:
 namespace App\Jobs;
 
 use App\Models\Podcast;
+use App\Notifications\PodcastProcessingFailed;
 use App\Services\AudioProcessor;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -250,7 +251,7 @@ ProcessPodcastUpload::dispatch($podcast, $path)
     ->afterCommit();
 
 // Chain multiple jobs to run in sequence
-Bus::chain([
+\Illuminate\Support\Facades\Bus::chain([
     new ProcessPodcastUpload($podcast, $path),
     new GeneratePodcastTranscript($podcast),
     new NotifySubscribers($podcast),
@@ -336,42 +337,43 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Http\Client\ConnectionException;
 
 class SyncInventory implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    // Retry up to 5 times
-    public int $tries = 5;
-
-    // Exponential backoff: wait 1s, 5s, 30s, 60s, 120s between retries
+    // Backoff schedule: wait 1s, 5s, 30s, 60s, 120s between retries
     public array $backoff = [1, 5, 30, 60, 120];
 
-    // Stop retrying after 10 minutes total
-    public int $retryUntil;
-
-    public function __construct(public int $productId)
-    {
-        $this->retryUntil = now()->addMinutes(10)->timestamp;
-    }
+    public function __construct(public int $productId) {}
 
     public function handle(): void
     {
-        // Your sync logic here
+        try {
+            // Your sync logic here
+        } catch (\Throwable $exception) {
+            if (! $this->shouldRetry($exception)) {
+                $this->fail($exception);
+                return;
+            }
+
+            throw $exception;
+        }
     }
 
-    // Dynamically calculate backoff based on attempt number
-    public function backoff(): array
+    // Stop retrying after 10 minutes total
+    public function retryUntil(): \DateTimeInterface
     {
-        return [1, 5, 30, 60, 120];
+        return now()->addMinutes(10);
     }
 
-    // Determine if the job should retry based on the exception
-    public function retryIf(\Throwable $exception): bool
+    // Decide which exceptions should be retried
+    private function shouldRetry(\Throwable $exception): bool
     {
         // Only retry on timeout or rate limit errors
-        return $exception instanceof \Illuminate\Http\Client\ConnectionException
-            || $exception instanceof RateLimitException;
+        return $exception instanceof ConnectionException
+            || $exception instanceof \App\Exceptions\RateLimitException;
     }
 }
 ```
@@ -453,7 +455,7 @@ class AppServiceProvider extends ServiceProvider
 
 ## 7. Job Batching
 
-Process large workloads by batching jobs together:
+Process large workloads by batching jobs together. Jobs added to a batch must use the `Illuminate\Bus\Batchable` trait:
 
 ```php
 <?php
@@ -462,10 +464,13 @@ Process large workloads by batching jobs together:
 namespace App\Http\Controllers;
 
 use App\Jobs\ExportUserData;
-use App\Models\User;
+use App\Models\Admin;
+use App\Notifications\BatchCompleted;
 use Illuminate\Bus\Batch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 
 class ExportController extends Controller
 {
@@ -510,7 +515,7 @@ class ExportController extends Controller
 Create the batches table:
 
 ```bash
-php artisan queue:batches-table
+php artisan make:queue-batches-table
 php artisan migrate
 ```
 
@@ -583,8 +588,7 @@ return [
                 'connection' => 'redis',
                 'queue' => ['audio-processing', 'exports'],
                 'balance' => 'simple',
-                'minProcesses' => 1,
-                'maxProcesses' => 5,
+                'processes' => 5,
                 'timeout' => 600,          // Longer timeout for heavy jobs
             ],
         ],
@@ -593,8 +597,7 @@ return [
                 'connection' => 'redis',
                 'queue' => ['default', 'notifications', 'audio-processing'],
                 'balance' => 'simple',
-                'minProcesses' => 1,
-                'maxProcesses' => 3,
+                'processes' => 3,
             ],
         ],
     ],
@@ -634,7 +637,7 @@ Access the dashboard at `/horizon` in your browser.
 Set up the failed jobs table:
 
 ```bash
-php artisan queue:failed-table
+php artisan make:queue-failed-table
 php artisan migrate
 ```
 
@@ -644,14 +647,17 @@ View and retry failed jobs:
 # List all failed jobs
 php artisan queue:failed
 
-# Retry a specific failed job by ID
-php artisan queue:retry 5
+# Retry a specific failed job by UUID
+php artisan queue:retry ce7bb17c-cdd8-41f0-a8ec-7b4fef4e5ece
 
 # Retry all failed jobs
 php artisan queue:retry all
 
 # Delete a failed job
-php artisan queue:forget 5
+php artisan queue:forget ce7bb17c-cdd8-41f0-a8ec-7b4fef4e5ece
+
+# If you use Horizon, delete a failed job with Horizon instead
+php artisan horizon:forget ce7bb17c-cdd8-41f0-a8ec-7b4fef4e5ece
 
 # Delete all failed jobs
 php artisan queue:flush
@@ -666,6 +672,7 @@ Programmatically handle failures in your job:
 namespace App\Jobs;
 
 use App\Models\Import;
+use App\Notifications\ImportFailed;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -806,7 +813,7 @@ flowchart TB
         W2[Laravel App]
     end
 
-    subgraph Redis["Redis Cluster"]
+    subgraph Redis["Redis Primary/Replica"]
         R1[(Primary)]
         R2[(Replica)]
         R3[(Replica)]
