@@ -194,11 +194,16 @@ public class OrderService
 {
     private readonly IBackgroundJobClient _backgroundJobs;
     private readonly IOrderRepository _repository;
+    private readonly IEmailService _emailService;
 
-    public OrderService(IBackgroundJobClient backgroundJobs, IOrderRepository repository)
+    public OrderService(
+        IBackgroundJobClient backgroundJobs,
+        IOrderRepository repository,
+        IEmailService emailService)
     {
         _backgroundJobs = backgroundJobs;
         _repository = repository;
+        _emailService = emailService;
     }
 
     public async Task<Order> CreateOrderAsync(CreateOrderRequest request)
@@ -453,8 +458,9 @@ public class JobLoggingFilter : JobFilterAttribute, IServerFilter
 }
 
 // Apply globally in configuration
-builder.Services.AddHangfire(config => config
-    .UseFilter(new JobLoggingFilter(loggerFactory.CreateLogger<JobLoggingFilter>()))
+builder.Services.AddHangfire((serviceProvider, config) => config
+    .UseFilter(new JobLoggingFilter(
+        serviceProvider.GetRequiredService<ILogger<JobLoggingFilter>>()))
     // ... other config
 );
 ```
@@ -518,16 +524,16 @@ public class NotificationService
     {
         // High priority - processed first
         _backgroundJobs.Enqueue<INotificationService>(
-            x => x.SendAlertAsync(message),
-            new EnqueuedState("critical"));
+            "critical",
+            x => x.SendAlertAsync(message));
     }
 
     public void SendMarketingEmail(string userId)
     {
         // Low priority - processed when critical and default queues are empty
         _backgroundJobs.Enqueue<INotificationService>(
-            x => x.SendMarketingEmailAsync(userId),
-            new EnqueuedState("low"));
+            "low",
+            x => x.SendMarketingEmailAsync(userId));
     }
 }
 ```
