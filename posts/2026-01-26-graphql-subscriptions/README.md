@@ -57,8 +57,8 @@ cd graphql-subscriptions-demo
 npm init -y
 
 # Install required dependencies
-npm install @apollo/server graphql graphql-subscriptions graphql-ws ws express cors
-npm install --save-dev typescript @types/node @types/express @types/ws ts-node
+npm install @apollo/server @as-integrations/express5 graphql graphql-subscriptions graphql-ws ws express cors graphql-tag @graphql-tools/schema
+npm install --save-dev typescript @types/node @types/express @types/ws @types/cors ts-node
 ```
 
 Create a `tsconfig.json` file:
@@ -322,7 +322,7 @@ export const resolvers = {
     messageAdded: {
       subscribe: withFilter(
         // The base subscription iterator
-        () => pubsub.asyncIterator([EVENTS.MESSAGE_ADDED]),
+        () => pubsub.asyncIterableIterator([EVENTS.MESSAGE_ADDED]),
 
         // Filter function that determines if this event should be sent
         // to this particular subscriber based on the roomId argument
@@ -335,13 +335,13 @@ export const resolvers = {
 
     // Subscribe to user status changes (no filtering needed)
     userStatusChanged: {
-      subscribe: () => pubsub.asyncIterator([EVENTS.USER_STATUS_CHANGED]),
+      subscribe: () => pubsub.asyncIterableIterator([EVENTS.USER_STATUS_CHANGED]),
     },
 
     // Subscribe to notifications for a specific user
     notificationReceived: {
       subscribe: withFilter(
-        () => pubsub.asyncIterator([EVENTS.NOTIFICATION_RECEIVED]),
+        () => pubsub.asyncIterableIterator([EVENTS.NOTIFICATION_RECEIVED]),
 
         // Only send notifications intended for this specific user
         (payload, variables) => {
@@ -361,13 +361,13 @@ Now let's put everything together and create the Apollo Server with WebSocket su
 // src/server.ts
 
 import { ApolloServer } from '@apollo/server';
-import { expressMiddleware } from '@apollo/server/express4';
+import { expressMiddleware } from '@as-integrations/express5';
 import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
 import { createServer } from 'http';
 import express from 'express';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { WebSocketServer } from 'ws';
-import { useServer } from 'graphql-ws/lib/use/ws';
+import { useServer } from 'graphql-ws/use/ws';
 import cors from 'cors';
 import { typeDefs } from './schema';
 import { resolvers } from './resolvers';
@@ -458,6 +458,13 @@ startServer().catch(console.error);
 
 Here's how to connect to subscriptions from a React client using Apollo Client.
 
+Install the client dependencies in your React app:
+
+```bash
+npm install @apollo/client graphql graphql-ws react react-dom
+npm install --save-dev @types/react @types/react-dom
+```
+
 ```typescript
 // client/src/apolloClient.ts
 
@@ -525,7 +532,8 @@ Here's a React component that uses the subscription to display real-time message
 // client/src/components/ChatRoom.tsx
 
 import React, { useEffect, useState } from 'react';
-import { useQuery, useMutation, useSubscription, gql } from '@apollo/client';
+import { gql } from '@apollo/client';
+import { useQuery, useMutation, useSubscription } from '@apollo/client/react';
 
 // GraphQL operations
 const GET_MESSAGES = gql`
@@ -589,14 +597,14 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ roomId, currentUser }) => {
   const { data: subscriptionData } = useSubscription(MESSAGE_SUBSCRIPTION, {
     variables: { roomId },
     // This callback fires whenever a new message is received
-    onSubscriptionData: ({ subscriptionData }) => {
-      console.log('New message received:', subscriptionData.data?.messageAdded);
+    onData: ({ data }) => {
+      console.log('New message received:', data.data?.messageAdded);
     },
   });
 
-  // Combine initial data with subscription updates
-  // Apollo Client handles this automatically with cache normalization,
-  // but for simplicity we track messages in local state here
+  // Combine initial data with subscription updates.
+  // Apollo Client normalizes objects by ID, but appending a new subscription
+  // result to this list still requires cache update logic or local state.
   const [messages, setMessages] = useState<Message[]>([]);
 
   useEffect(() => {
@@ -702,6 +710,12 @@ stateDiagram-v2
 
 The in-memory PubSub works for single-server setups, but you need Redis for horizontal scaling.
 
+Install the Redis PubSub dependencies:
+
+```bash
+npm install graphql-redis-subscriptions ioredis
+```
+
 ```typescript
 // src/pubsub-redis.ts
 
@@ -750,6 +764,13 @@ export const EVENTS = {
 
 Protect your subscriptions by validating authentication during connection.
 
+Install the JWT dependency:
+
+```bash
+npm install jsonwebtoken
+npm install --save-dev @types/jsonwebtoken
+```
+
 ```typescript
 // src/auth.ts
 
@@ -787,6 +808,8 @@ Update the WebSocket server configuration to use authentication:
 ```typescript
 // In server.ts, update the useServer configuration
 
+import { verifyToken } from './auth';
+
 const serverCleanup = useServer(
   {
     schema,
@@ -806,19 +829,19 @@ const serverCleanup = useServer(
         throw new Error('Invalid or expired token');
       }
 
-      // Store user info in context for use in resolvers
-      // This will be available in subscription resolvers
-      return { user };
+      // Store user info for later callbacks on this WebSocket connection
+      (ctx.extra as any).user = user;
+      return true;
     },
 
     // Make context available to resolvers
     context: async (ctx) => {
-      // The return value from onConnect is available here
-      return { user: ctx.extra?.user };
+      // Values returned here are available in subscription resolvers
+      return { user: (ctx.extra as any).user };
     },
 
     onDisconnect: async (ctx, code, reason) => {
-      const user = ctx.extra?.user;
+      const user = (ctx.extra as any).user;
       if (user) {
         console.log(`User ${user.username} disconnected`);
       }
@@ -876,6 +899,12 @@ export const SubscriptionErrors = {
 ## Testing Subscriptions
 
 Here's how to test your subscriptions using Jest and a WebSocket client.
+
+Install Jest for the test examples:
+
+```bash
+npm install --save-dev jest @types/jest
+```
 
 ```typescript
 // src/__tests__/subscriptions.test.ts
