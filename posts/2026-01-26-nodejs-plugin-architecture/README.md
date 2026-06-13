@@ -232,6 +232,7 @@ import { Plugin, PluginContext, PluginMetadata } from '../types/plugin';
 import { HookRegistry } from '../hooks/HookRegistry';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { pathToFileURL } from 'url';
 
 interface LoadedPlugin {
   instance: Plugin;
@@ -288,8 +289,10 @@ class PluginManager {
    */
   async loadPlugin(pluginPath: string): Promise<void> {
     try {
-      // Dynamic import of the plugin module
-      const pluginModule = await import(pluginPath);
+      // Dynamic import of the plugin module. ESM imports need a fully
+      // specified file URL, so import the plugin's entry point explicitly.
+      const entryPath = path.join(pluginPath, 'index.js');
+      const pluginModule = await import(pathToFileURL(entryPath).href);
 
       // Support both default exports and named 'plugin' exports
       const PluginClass = pluginModule.default || pluginModule.plugin;
@@ -387,7 +390,7 @@ class PluginManager {
           if (this.plugins.has(depName)) {
             visit(depName);
           } else {
-            console.warn(`Missing dependency: ${name} requires ${depName}`);
+            throw new Error(`Missing dependency: ${name} requires ${depName}`);
           }
         }
       }
@@ -524,6 +527,8 @@ class AuditLoggerPlugin implements Plugin {
   private context: PluginContext | null = null;
   private logBuffer: Array<{ timestamp: Date; action: string; data: unknown }> = [];
   private flushInterval: NodeJS.Timeout | null = null;
+  private readonly handleUserActionHook = this.handleUserAction.bind(this);
+  private readonly handleRequestCompleteHook = this.handleRequestComplete.bind(this);
 
   async initialize(context: PluginContext): Promise<void> {
     this.context = context;
@@ -531,10 +536,10 @@ class AuditLoggerPlugin implements Plugin {
 
     // Register for user action hooks
     // Priority 1 ensures this runs before other plugins that might modify data
-    hooks.register('user:action', this.handleUserAction.bind(this), 1);
+    hooks.register('user:action', this.handleUserActionHook, 1);
 
     // Register for request lifecycle hooks
-    hooks.register('request:complete', this.handleRequestComplete.bind(this), 100);
+    hooks.register('request:complete', this.handleRequestCompleteHook, 100);
 
     // Set up periodic flush of log buffer
     const flushIntervalMs = config.get('auditLogger.flushInterval', 5000);
@@ -618,8 +623,8 @@ class AuditLoggerPlugin implements Plugin {
 
     // Unregister hooks
     if (this.context) {
-      this.context.hooks.unregister('user:action', this.handleUserAction.bind(this));
-      this.context.hooks.unregister('request:complete', this.handleRequestComplete.bind(this));
+      this.context.hooks.unregister('user:action', this.handleUserActionHook);
+      this.context.hooks.unregister('request:complete', this.handleRequestCompleteHook);
     }
 
     this.context?.logger.info('Audit logger plugin destroyed');
@@ -645,6 +650,7 @@ import { ServiceContainer } from './utils/container';
 
 async function createApp() {
   const app = express();
+  app.use(express.json());
 
   // Set up application services
   const logger = createLogger();
@@ -667,10 +673,14 @@ async function createApp() {
   // Middleware to trigger hooks on each request
   app.use(async (req, res, next) => {
     const startTime = Date.now();
+    const requestIdHeader = req.headers['x-request-id'];
+    const requestId = Array.isArray(requestIdHeader)
+      ? requestIdHeader[0]
+      : requestIdHeader || generateId();
 
     // Trigger request:start hook
     await hooks.broadcast('request:start', {
-      requestId: req.headers['x-request-id'] || generateId(),
+      requestId,
       method: req.method,
       path: req.path,
     });
@@ -678,7 +688,7 @@ async function createApp() {
     // Capture response completion
     res.on('finish', async () => {
       await hooks.broadcast('request:complete', {
-        requestId: req.headers['x-request-id'],
+        requestId,
         method: req.method,
         path: req.path,
         statusCode: res.statusCode,
@@ -834,7 +844,7 @@ class UserActivityPlugin implements Plugin {
   metadata = { name: 'user-activity', version: '1.0.0' };
 
   async initialize(context: PluginContext): Promise<void> {
-    context.hooks.register('user:login', async (data) => {
+    context.hooks.register<{ userId: string }>('user:login', async (data) => {
       // Publish message that other plugins can react to
       await context.messageBus.publish('user:logged-in', {
         userId: data.userId,
@@ -905,6 +915,12 @@ interface RateLimiterConfig {
   keyGenerator: 'ip' | 'user' | 'custom';
 }
 
+type RequestStartData = {
+  ip?: string;
+  userId?: string;
+  rateLimited?: boolean;
+};
+
 class RateLimiterPlugin implements Plugin {
   metadata = {
     name: 'rate-limiter',
@@ -949,7 +965,7 @@ class RateLimiterPlugin implements Plugin {
     );
 
     // Register rate limiting hook
-    context.hooks.register('request:start', async (data) => {
+    context.hooks.register<RequestStartData>('request:start', async (data) => {
       const key = this.getKey(data);
       const allowed = this.checkLimit(key);
 
@@ -962,7 +978,7 @@ class RateLimiterPlugin implements Plugin {
     }, 0); // Priority 0: run before other plugins
   }
 
-  private getKey(data: { ip?: string; userId?: string }): string {
+  private getKey(data: RequestStartData): string {
     switch (this.config?.keyGenerator) {
       case 'user':
         return data.userId || data.ip || 'anonymous';
@@ -1013,6 +1029,8 @@ describe('RateLimiterPlugin', () => {
   let mockContext: PluginContext;
   let hooks: HookRegistry;
 
+  type RequestStartData = { ip: string; rateLimited?: boolean };
+
   beforeEach(() => {
     plugin = new RateLimiterPlugin();
     hooks = new HookRegistry();
@@ -1044,8 +1062,8 @@ describe('RateLimiterPlugin', () => {
   it('should allow requests under the limit', async () => {
     await plugin.initialize(mockContext);
 
-    const result1 = await hooks.trigger('request:start', { ip: '127.0.0.1' });
-    const result2 = await hooks.trigger('request:start', { ip: '127.0.0.1' });
+    const result1 = await hooks.trigger<RequestStartData>('request:start', { ip: '127.0.0.1' });
+    const result2 = await hooks.trigger<RequestStartData>('request:start', { ip: '127.0.0.1' });
 
     expect(result1.rateLimited).toBeUndefined();
     expect(result2.rateLimited).toBeUndefined();
@@ -1054,9 +1072,9 @@ describe('RateLimiterPlugin', () => {
   it('should block requests over the limit', async () => {
     await plugin.initialize(mockContext);
 
-    await hooks.trigger('request:start', { ip: '127.0.0.1' });
-    await hooks.trigger('request:start', { ip: '127.0.0.1' });
-    const result3 = await hooks.trigger('request:start', { ip: '127.0.0.1' });
+    await hooks.trigger<RequestStartData>('request:start', { ip: '127.0.0.1' });
+    await hooks.trigger<RequestStartData>('request:start', { ip: '127.0.0.1' });
+    const result3 = await hooks.trigger<RequestStartData>('request:start', { ip: '127.0.0.1' });
 
     expect(result3.rateLimited).toBe(true);
   });
@@ -1064,11 +1082,11 @@ describe('RateLimiterPlugin', () => {
   it('should track different IPs separately', async () => {
     await plugin.initialize(mockContext);
 
-    await hooks.trigger('request:start', { ip: '127.0.0.1' });
-    await hooks.trigger('request:start', { ip: '127.0.0.1' });
+    await hooks.trigger<RequestStartData>('request:start', { ip: '127.0.0.1' });
+    await hooks.trigger<RequestStartData>('request:start', { ip: '127.0.0.1' });
 
     // Different IP should not be rate limited
-    const result = await hooks.trigger('request:start', { ip: '192.168.1.1' });
+    const result = await hooks.trigger<RequestStartData>('request:start', { ip: '192.168.1.1' });
 
     expect(result.rateLimited).toBeUndefined();
   });
