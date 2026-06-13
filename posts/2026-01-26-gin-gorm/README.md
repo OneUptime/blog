@@ -382,11 +382,25 @@ func RunManualMigrations() {
     }
 
     // Add a check constraint for valid email format
-    DB.Exec(`
-        ALTER TABLE users
-        ADD CONSTRAINT IF NOT EXISTS chk_email_format
-        CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
-    `)
+    err = DB.Exec(`
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = 'chk_email_format'
+                  AND conrelid = 'users'::regclass
+            ) THEN
+                ALTER TABLE users
+                ADD CONSTRAINT chk_email_format
+                CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
+            END IF;
+        END
+        $$;
+    `).Error
+    if err != nil {
+        log.Println("Warning: Could not create email constraint:", err)
+    }
 }
 ```
 
@@ -404,6 +418,7 @@ package handlers
 
 import (
     "net/http"
+    "strconv"
 
     "github.com/gin-gonic/gin"
     "github.com/yourname/gin-gorm-api/config"
@@ -426,7 +441,7 @@ func CreateUser(c *gin.Context) {
     var input CreateUserInput
 
     // Bind and validate the JSON request body
-    // If validation fails, Gin returns a 400 error automatically
+    // If validation fails, return a 400 response with the error details
     if err := c.ShouldBindJSON(&input); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{
             "error":   "Validation failed",
@@ -516,10 +531,16 @@ func ListUsers(c *gin.Context) {
     page := c.DefaultQuery("page", "1")
     limit := c.DefaultQuery("limit", "10")
 
-    // Convert to integers for GORM
-    var pageNum, limitNum int
-    fmt.Sscanf(page, "%d", &pageNum)
-    fmt.Sscanf(limit, "%d", &limitNum)
+    // Convert to integers for GORM and keep values in a safe range
+    pageNum, err := strconv.Atoi(page)
+    if err != nil || pageNum < 1 {
+        pageNum = 1
+    }
+
+    limitNum, err := strconv.Atoi(limit)
+    if err != nil || limitNum < 1 || limitNum > 100 {
+        limitNum = 10
+    }
 
     // Calculate offset for pagination
     offset := (pageNum - 1) * limitNum
@@ -967,17 +988,6 @@ func TransferPost(c *gin.Context) {
             return err
         }
 
-        // Create an audit log entry
-        auditLog := map[string]interface{}{
-            "action":       "transfer",
-            "post_id":      input.PostID,
-            "old_user_id":  post.UserID,
-            "new_user_id":  input.NewUserID,
-        }
-        if err := tx.Table("audit_logs").Create(auditLog).Error; err != nil {
-            return err
-        }
-
         // Return nil to commit the transaction
         // Any error returned will cause a rollback
         return nil
@@ -1033,16 +1043,7 @@ func SetupRoutes(router *gin.Engine) {
             posts.POST("", handlers.CreatePost)
             posts.GET("", handlers.ListPosts)
             posts.GET("/:id", handlers.GetPost)
-            posts.PATCH("/:id", handlers.UpdatePost)
-            posts.DELETE("/:id", handlers.DeletePost)
             posts.POST("/transfer", handlers.TransferPost)
-        }
-
-        // Tag routes
-        tags := v1.Group("/tags")
-        {
-            tags.GET("", handlers.ListTags)
-            tags.GET("/:id/posts", handlers.GetTagPosts)
         }
     }
 }
