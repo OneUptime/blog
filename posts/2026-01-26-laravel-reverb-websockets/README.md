@@ -53,7 +53,7 @@ php artisan install:broadcasting
 # 1. Install the laravel/reverb package
 # 2. Publish the reverb.php config file
 # 3. Add REVERB_* variables to your .env file
-# 4. Install @laravel/echo npm package
+# 4. Install the laravel-echo and pusher-js npm packages
 ```
 
 After installation, your `.env` file will have these new variables:
@@ -68,8 +68,8 @@ REVERB_HOST="localhost"
 REVERB_PORT=8080
 REVERB_SCHEME=http
 
-# Broadcasting driver (use reverb instead of pusher)
-BROADCAST_DRIVER=reverb
+# Broadcasting connection (use reverb instead of pusher)
+BROADCAST_CONNECTION=reverb
 
 # Vite environment variables for client-side
 VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
@@ -368,7 +368,7 @@ Echo.private(`chat.${roomId}`)
         showTypingIndicator(event.user);
     });
 
-// Send typing indicator (client-to-client, doesn't hit server)
+// Send typing indicator (client-to-client, doesn't hit your Laravel application)
 function sendTypingIndicator() {
     Echo.private(`chat.${roomId}`)
         .whisper('typing', {
@@ -599,10 +599,14 @@ class NotificationManager {
         // Use your preferred toast library
         const toast = document.createElement('div');
         toast.className = 'notification-toast';
-        toast.innerHTML = `
-            <strong>${notification.title}</strong>
-            <p>${notification.message}</p>
-        `;
+
+        const title = document.createElement('strong');
+        title.textContent = notification.title;
+
+        const message = document.createElement('p');
+        message.textContent = notification.message;
+
+        toast.append(title, message);
         document.body.appendChild(toast);
 
         // Auto-remove after 5 seconds
@@ -637,18 +641,28 @@ return [
         'reverb' => [
             'host' => env('REVERB_SERVER_HOST', '0.0.0.0'),
             'port' => env('REVERB_SERVER_PORT', 8080),
+            'path' => env('REVERB_SERVER_PATH', ''),
             'hostname' => env('REVERB_HOST'),
             'options' => [
                 'tls' => [], // Configure TLS for production
             ],
-            // Scaling options for production
             'scaling' => [
-                'enabled' => env('REVERB_SCALING_ENABLED', true),
+                'enabled' => env('REVERB_SCALING_ENABLED', false),
                 'channel' => env('REVERB_SCALING_CHANNEL', 'reverb'),
+                'server' => [
+                    'url' => env('REDIS_URL'),
+                    'host' => env('REDIS_HOST', '127.0.0.1'),
+                    'port' => env('REDIS_PORT', '6379'),
+                    'username' => env('REDIS_USERNAME'),
+                    'password' => env('REDIS_PASSWORD'),
+                    'database' => env('REDIS_DB', '0'),
+                    'timeout' => env('REDIS_TIMEOUT', 60),
+                ],
             ],
             // Connection limits
             'max_request_size' => env('REVERB_MAX_REQUEST_SIZE', 10_000),
-            'pulse_ingest_interval' => env('REVERB_PULSE_INTERVAL', 15),
+            'pulse_ingest_interval' => env('REVERB_PULSE_INGEST_INTERVAL', 15),
+            'telescope_ingest_interval' => env('REVERB_TELESCOPE_INGEST_INTERVAL', 15),
         ],
     ],
 
@@ -671,10 +685,15 @@ return [
                 // Connection settings
                 'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
                 'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 30),
-                // Rate limiting
-                'max_message_size' => 10_000, // 10KB max message size
-                'max_messages_per_second' => 100,
-                'max_connections_per_ip' => 100,
+                'max_connections' => env('REVERB_APP_MAX_CONNECTIONS'),
+                'max_message_size' => env('REVERB_APP_MAX_MESSAGE_SIZE', 10_000),
+                'accept_client_events_from' => env('REVERB_APP_ACCEPT_CLIENT_EVENTS_FROM', 'members'),
+                'rate_limiting' => [
+                    'enabled' => env('REVERB_APP_RATE_LIMITING_ENABLED', false),
+                    'max_attempts' => env('REVERB_APP_RATE_LIMIT_MAX_ATTEMPTS', 60),
+                    'decay_seconds' => env('REVERB_APP_RATE_LIMIT_DECAY_SECONDS', 60),
+                    'terminate_on_limit' => env('REVERB_APP_RATE_LIMIT_TERMINATE', false),
+                ],
             ],
         ],
     ],
@@ -710,8 +729,8 @@ flowchart TB
     R2 <--> Redis
     R3 <--> Redis
 
-    App1 --> Redis
-    App2 --> Redis
+    App1 --> LB
+    App2 --> LB
 ```
 
 ---
@@ -789,6 +808,11 @@ class WebSocketHandler {
         }
     }
 
+    onStateChange(current, previous) {
+        // Update any connection-state specific UI here
+        console.log(`WebSocket state changed from ${previous} to ${current}`);
+    }
+
     scheduleReconnect() {
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             console.error('Max reconnection attempts reached');
@@ -843,6 +867,15 @@ Enable debug mode to troubleshoot WebSocket issues during development.
 // resources/js/bootstrap.js
 // Enable debugging for development
 
+import Echo from 'laravel-echo';
+import Pusher from 'pusher-js';
+
+window.Pusher = Pusher;
+
+if (import.meta.env.DEV) {
+    Pusher.logToConsole = true;
+}
+
 window.Echo = new Echo({
     broadcaster: 'reverb',
     key: import.meta.env.VITE_REVERB_APP_KEY,
@@ -850,8 +883,6 @@ window.Echo = new Echo({
     wsPort: import.meta.env.VITE_REVERB_PORT ?? 80,
     forceTLS: false,
     enabledTransports: ['ws', 'wss'],
-    // Enable logging in development
-    enableLogging: import.meta.env.DEV,
 });
 
 // In development, log all Echo events
@@ -872,8 +903,8 @@ if (import.meta.env.DEV) {
 # Start Reverb with debug output
 php artisan reverb:start --debug
 
-# Monitor WebSocket connections in real-time
-php artisan reverb:connections
+# Monitor Reverb connections and messages with Laravel Pulse
+php artisan pulse:check
 
 # Check Laravel's event broadcasting logs
 tail -f storage/logs/laravel.log | grep -i "broadcast"
