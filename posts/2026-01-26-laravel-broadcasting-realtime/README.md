@@ -21,7 +21,7 @@ Laravel Broadcasting works by broadcasting server-side Laravel events over a Web
 ```mermaid
 flowchart LR
     App["Laravel App"] -->|Fire Event| Broadcast["Broadcasting Driver"]
-    Broadcast -->|Pusher/Ably/Redis| WS["WebSocket Server"]
+    Broadcast -->|Reverb/Pusher/Ably| WS["WebSocket Server"]
     WS -->|Push| Client1["Client 1<br/>(Laravel Echo)"]
     WS -->|Push| Client2["Client 2<br/>(Laravel Echo)"]
     WS -->|Push| Client3["Client 3<br/>(Laravel Echo)"]
@@ -30,7 +30,7 @@ flowchart LR
 The flow is straightforward:
 1. Something happens in your Laravel app (database update, user action, etc.)
 2. You dispatch a broadcastable event
-3. Laravel sends the event to your WebSocket driver (Pusher, Ably, or Redis)
+3. Laravel sends the event to your WebSocket driver (Reverb, Pusher, or Ably)
 4. Connected clients receive the event through Laravel Echo
 
 ---
@@ -47,7 +47,7 @@ First, install the Laravel Broadcasting dependencies. If you're using Pusher as 
 composer require pusher/pusher-php-server
 
 # Install Laravel Echo and Pusher JS for the frontend
-npm install --save laravel-echo pusher-js
+npm install --save-dev laravel-echo pusher-js
 ```
 
 ### Configure Broadcasting Driver
@@ -55,12 +55,18 @@ npm install --save laravel-echo pusher-js
 Update your `.env` file with your Pusher credentials:
 
 ```env
-BROADCAST_DRIVER=pusher
+BROADCAST_CONNECTION=pusher
 
 PUSHER_APP_ID=your-app-id
 PUSHER_APP_KEY=your-app-key
 PUSHER_APP_SECRET=your-app-secret
+PUSHER_HOST=
+PUSHER_PORT=443
+PUSHER_SCHEME=https
 PUSHER_APP_CLUSTER=mt1
+
+VITE_PUSHER_APP_KEY="${PUSHER_APP_KEY}"
+VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
 ```
 
 Laravel's broadcasting configuration lives in `config/broadcasting.php`. The default configuration works well for most setups, but here's what matters:
@@ -68,7 +74,7 @@ Laravel's broadcasting configuration lives in `config/broadcasting.php`. The def
 ```php
 // config/broadcasting.php
 return [
-    'default' => env('BROADCAST_DRIVER', 'null'),
+    'default' => env('BROADCAST_CONNECTION', 'null'),
 
     'connections' => [
         'pusher' => [
@@ -78,27 +84,34 @@ return [
             'app_id' => env('PUSHER_APP_ID'),
             'options' => [
                 'cluster' => env('PUSHER_APP_CLUSTER'),
-                'useTLS' => true,
-                // For local development with Laravel Websockets package
-                // 'host' => '127.0.0.1',
-                // 'port' => 6001,
-                // 'scheme' => 'http',
+                'host' => env('PUSHER_HOST') ?: 'api-' . env('PUSHER_APP_CLUSTER', 'mt1') . '.pusher.com',
+                'port' => env('PUSHER_PORT', 443),
+                'scheme' => env('PUSHER_SCHEME', 'https'),
+                'encrypted' => true,
+                'useTLS' => env('PUSHER_SCHEME', 'https') === 'https',
             ],
         ],
     ],
 ];
 ```
 
-### Enable Broadcasting Service Provider
+### Enable Broadcasting
 
-Make sure the `BroadcastServiceProvider` is registered in `config/app.php`:
+In current Laravel applications, enable broadcasting with Artisan:
+
+```bash
+php artisan install:broadcasting --pusher
+```
+
+This creates `config/broadcasting.php` and `routes/channels.php`. If Laravel does not automatically register the broadcasting authorization routes, register the channels route file in `bootstrap/app.php`:
 
 ```php
-// config/app.php
-'providers' => [
-    // Other providers...
-    App\Providers\BroadcastServiceProvider::class,
-],
+// bootstrap/app.php
+->withRouting(
+    web: __DIR__.'/../routes/web.php',
+    channels: __DIR__.'/../routes/channels.php',
+    health: '/up',
+)
 ```
 
 ---
@@ -287,6 +300,10 @@ class UserJoinedDocument implements ShouldBroadcast
 <?php
 // routes/channels.php
 
+use App\Models\Document;
+use App\Models\User;
+use Illuminate\Support\Facades\Broadcast;
+
 // Presence channel authorization returns user data shown to other subscribers
 Broadcast::channel('document.{documentId}', function (User $user, int $documentId) {
     // Check if user has access to this document
@@ -455,6 +472,8 @@ class NotificationSent implements ShouldBroadcast
 <?php
 // routes/channels.php
 
+use Illuminate\Support\Facades\Broadcast;
+
 Broadcast::channel('notifications.{userId}', function ($user, $userId) {
     // Users can only access their own notification channel
     return (int) $user->id === (int) $userId;
@@ -599,7 +618,7 @@ export default {
 
 ## Using Queues for Better Performance
 
-By default, broadcasts happen synchronously. For better performance, implement `ShouldBroadcastNow` for immediate broadcasts or use queues:
+By default, broadcast events that implement `ShouldBroadcast` are placed on your application's queue. Make sure a queue worker is running, or implement `ShouldBroadcastNow` when you intentionally want the broadcast to use the sync queue:
 
 ```php
 <?php
@@ -607,19 +626,21 @@ By default, broadcasts happen synchronously. For better performance, implement `
 
 namespace App\Events;
 
+use App\Models\Order;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Queue\Attributes\Connection;
+use Illuminate\Queue\Attributes\Queue;
 use Illuminate\Queue\SerializesModels;
 
+#[Connection('redis')]
+#[Queue('broadcasts')]
 class OrderStatusUpdated implements ShouldBroadcast
 {
     use Dispatchable, SerializesModels;
 
-    // Specify which queue connection and queue name to use
-    public $connection = 'redis';
-    public $queue = 'broadcasts';
-
-    // Or use ShouldBroadcastNow for immediate, synchronous broadcasting
+    // Or use ShouldBroadcastNow to broadcast using the sync queue
     // class OrderStatusUpdated implements ShouldBroadcastNow
 
     public function __construct(public Order $order)
@@ -638,31 +659,28 @@ php artisan queue:work redis --queue=broadcasts
 
 ---
 
-## Self-Hosted Alternative: Laravel Websockets
+## Self-Hosted Alternative: Laravel Reverb
 
-If you prefer not to use a third-party service like Pusher, you can run your own WebSocket server with the Laravel Websockets package:
+If you prefer not to use a third-party service like Pusher, you can run your own WebSocket server with Laravel Reverb:
 
 ```bash
-composer require beyondcode/laravel-websockets
-php artisan vendor:publish --provider="BeyondCode\LaravelWebSockets\WebSocketsServiceProvider" --tag="migrations"
-php artisan migrate
-php artisan vendor:publish --provider="BeyondCode\LaravelWebSockets\WebSocketsServiceProvider" --tag="config"
+php artisan install:broadcasting --reverb
 ```
 
 Update your broadcasting configuration:
 
 ```php
 // config/broadcasting.php
-'pusher' => [
-    'driver' => 'pusher',
-    'key' => env('PUSHER_APP_KEY'),
-    'secret' => env('PUSHER_APP_SECRET'),
-    'app_id' => env('PUSHER_APP_ID'),
+'reverb' => [
+    'driver' => 'reverb',
+    'key' => env('REVERB_APP_KEY'),
+    'secret' => env('REVERB_APP_SECRET'),
+    'app_id' => env('REVERB_APP_ID'),
     'options' => [
-        'host' => '127.0.0.1',
-        'port' => 6001,
-        'scheme' => 'http',
-        'encrypted' => false,
+        'host' => env('REVERB_HOST', '127.0.0.1'),
+        'port' => env('REVERB_PORT', 8080),
+        'scheme' => env('REVERB_SCHEME', 'http'),
+        'useTLS' => env('REVERB_SCHEME', 'http') === 'https',
     ],
 ],
 ```
@@ -670,7 +688,7 @@ Update your broadcasting configuration:
 Start the WebSocket server:
 
 ```bash
-php artisan websockets:serve
+php artisan reverb:start
 ```
 
 ---
@@ -681,18 +699,14 @@ php artisan websockets:serve
 
 ```javascript
 // In your Echo configuration
+Pusher.logToConsole = true;
+
 window.Echo = new Echo({
     broadcaster: 'pusher',
     key: import.meta.env.VITE_PUSHER_APP_KEY,
     cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER,
     forceTLS: true,
-
-    // Enable logging for debugging
-    enableLogging: true,
 });
-
-// Or enable Pusher's internal logging
-Pusher.logToConsole = true;
 ```
 
 ### Test Broadcasting from Tinker
@@ -708,7 +722,7 @@ php artisan tinker
 ### Check Channel Authorization
 
 If private channels aren't working, verify:
-1. The `BroadcastServiceProvider` is registered
+1. Broadcasting is installed and `routes/channels.php` is registered
 2. Your `routes/channels.php` authorization logic is correct
 3. The CSRF token is included in your requests
 4. Your user is authenticated
