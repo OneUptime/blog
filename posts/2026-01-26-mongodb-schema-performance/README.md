@@ -28,7 +28,7 @@ graph TD
     E --> I[Sub-document 2]
 ```
 
-MongoDB stores documents in BSON format. Each document can be up to 16MB and can contain nested objects and arrays. The way you structure these documents directly impacts query performance.
+MongoDB stores documents in BSON format. Each document can be up to 16 mebibytes and can contain nested objects and arrays. The way you structure these documents directly impacts query performance.
 
 ## Embedding vs Referencing: The Core Decision
 
@@ -91,8 +91,8 @@ const orderSchema = {
   orderDate: ISODate("2026-01-15T10:30:00Z"),
   total: 149.99,
   items: [
-    { productId: ObjectId("..."), name: "Widget", quantity: 2, price: 49.99 },
-    { productId: ObjectId("..."), name: "Gadget", quantity: 1, price: 50.01 }
+    { productId: ObjectId("507f191e810c19729de860eb"), name: "Widget", quantity: 2, price: 49.99 },
+    { productId: ObjectId("507f191e810c19729de860ec"), name: "Gadget", quantity: 1, price: 50.01 }
   ]
 };
 ```
@@ -108,7 +108,7 @@ flowchart TD
     B -->|No| C[Is the data shared across documents?]
 
     C -->|Yes| G
-    C -->|No| D[Is the embedded data under 16KB?]
+    C -->|No| D[Is the embedded data bounded and under 16 MiB?]
 
     D -->|Yes| E[Embed the Data]
     D -->|No| F[Consider Partial Embedding + References]
@@ -199,7 +199,7 @@ Store frequently accessed fields from related documents to avoid joins:
 ```javascript
 // Instead of just storing the author ID, embed commonly needed fields
 const blogPostSchema = {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f191e810c19729de860ed"),
   title: "MongoDB Schema Design",
   content: "...",
 
@@ -234,14 +234,14 @@ For documents with large arrays, store only the most relevant subset:
 ```javascript
 // Product with reviews - only embed recent/top reviews
 const productSchema = {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f191e810c19729de860ee"),
   name: "Wireless Headphones",
   price: 79.99,
 
   // Subset: only the 10 most recent/helpful reviews
   topReviews: [
     {
-      userId: ObjectId("..."),
+      userId: ObjectId("507f191e810c19729de860ef"),
       userName: "Bob",
       rating: 5,
       text: "Great sound quality!",
@@ -260,9 +260,9 @@ const productSchema = {
 
 // Full reviews are in a separate collection for detailed view
 const reviewSchema = {
-  _id: ObjectId("..."),
-  productId: ObjectId("..."),
-  userId: ObjectId("..."),
+  _id: ObjectId("507f191e810c19729de860f0"),
+  productId: ObjectId("507f191e810c19729de860ee"),
+  userId: ObjectId("507f191e810c19729de860ef"),
   userName: "Bob",
   rating: 5,
   text: "Great sound quality!",
@@ -296,7 +296,7 @@ graph LR
 // Bucket pattern for IoT sensor data
 // Instead of one document per reading, group readings by time period
 const sensorBucketSchema = {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f191e810c19729de860f1"),
   sensorId: "sensor-001",
 
   // Bucket boundaries
@@ -328,7 +328,7 @@ db.sensorData.find(
     sensorId: "sensor-001",
     startTime: { $gte: ISODate("2026-01-01"), $lt: ISODate("2026-02-01") }
   },
-  { dayStats: 1, startTime: 1 }  // Only return aggregates
+  { _id: 0, dayStats: 1, startTime: 1 }  // Only return aggregates and bucket start times
 );
 ```
 
@@ -339,7 +339,7 @@ Pre-compute values that would be expensive to calculate at query time:
 ```javascript
 // E-commerce product with computed fields
 const productSchema = {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f191e810c19729de860f2"),
   name: "Running Shoes",
   basePrice: 120.00,
 
@@ -425,7 +425,7 @@ db.products.findOne({ _id: productId });
 // Good: Returns only needed fields
 db.products.findOne(
   { _id: productId },
-  { name: 1, price: 1, "computed.averageRating": 1 }
+  { _id: 0, name: 1, price: 1, "computed.averageRating": 1 }
 );
 ```
 
@@ -475,23 +475,24 @@ db.orders.aggregate([
     orderDate: { $gte: ISODate("2026-01-01") }
   }},
 
-  // $project early to reduce document size
-  { $project: {
-    userId: 1,
-    total: 1,
-    orderDate: 1
-  }},
-
-  // Now group the reduced dataset
+  // Now group the filtered dataset
   { $group: {
     _id: "$userId",
     orderCount: { $sum: 1 },
     totalSpent: { $sum: "$total" }
   }},
 
-  // Sort and limit last
+  // Sort and limit after grouping
   { $sort: { totalSpent: -1 }},
-  { $limit: 100 }
+  { $limit: 100 },
+
+  // Use $project at the end to shape the returned fields
+  { $project: {
+    _id: 0,
+    userId: "$_id",
+    orderCount: 1,
+    totalSpent: 1
+  }}
 ]);
 ```
 
@@ -499,12 +500,12 @@ db.orders.aggregate([
 
 ### Unbounded Arrays
 
-Arrays that grow without limit will eventually hit the 16MB document limit and degrade performance:
+Arrays that grow without limit will eventually hit the 16 mebibyte document limit and degrade performance:
 
 ```javascript
 // Bad: Comments array will grow forever
 const postSchema = {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f191e810c19729de860f3"),
   title: "Popular Post",
   comments: [
     // This array could contain thousands of comments
@@ -513,9 +514,9 @@ const postSchema = {
 
 // Good: Store comments in separate collection
 const commentSchema = {
-  _id: ObjectId("..."),
-  postId: ObjectId("..."),  // Reference to parent post
-  authorId: ObjectId("..."),
+  _id: ObjectId("507f191e810c19729de860f4"),
+  postId: ObjectId("507f191e810c19729de860f3"),  // Reference to parent post
+  authorId: ObjectId("507f191e810c19729de860f5"),
   text: "Great post!",
   createdAt: ISODate("2026-01-20T10:00:00Z")
 };
@@ -530,19 +531,19 @@ Splitting data into too many collections requires expensive joins:
 
 ```javascript
 // Bad: Over-normalized - requires multiple queries or $lookup
-const orderSchema = { _id: "...", customerId: "..." };
+const basicOrderSchema = { _id: "507f191e810c19729de860f6", customerId: "507f191e810c19729de860f7" };
 const orderItemSchema = { _id: "...", orderId: "...", productId: "..." };
 const orderShippingSchema = { _id: "...", orderId: "...", address: "..." };
 const orderPaymentSchema = { _id: "...", orderId: "...", method: "..." };
 
 // Good: Keep related data together when it's always accessed together
 const orderSchema = {
-  _id: ObjectId("..."),
-  customerId: ObjectId("..."),
+  _id: ObjectId("507f191e810c19729de860f6"),
+  customerId: ObjectId("507f191e810c19729de860f7"),
 
   // Embed items - they belong to this order only
   items: [
-    { productId: ObjectId("..."), name: "Widget", quantity: 2, price: 25.00 }
+    { productId: ObjectId("507f191e810c19729de860f8"), name: "Widget", quantity: 2, price: 25.00 }
   ],
 
   // Embed shipping - one shipping per order
@@ -588,7 +589,8 @@ async function monitoredQuery(collection, operation, ...args) {
   const start = Date.now();
 
   try {
-    const result = await collection[operation](...args);
+    const result = collection[operation](...args);
+    const data = typeof result?.toArray === "function" ? await result.toArray() : await result;
     const duration = Date.now() - start;
 
     // Log slow queries
@@ -599,7 +601,7 @@ async function monitoredQuery(collection, operation, ...args) {
       });
     }
 
-    return result;
+    return data;
   } catch (error) {
     console.error(`Query failed: ${collection.collectionName}.${operation}`, error);
     throw error;
@@ -607,7 +609,7 @@ async function monitoredQuery(collection, operation, ...args) {
 }
 
 // Usage
-const users = await monitoredQuery(db.users, 'find', { status: 'active' });
+const users = await monitoredQuery(db.users, "find", { status: "active" });
 ```
 
 ## Summary
