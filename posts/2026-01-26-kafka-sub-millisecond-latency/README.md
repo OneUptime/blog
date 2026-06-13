@@ -26,11 +26,11 @@ flowchart LR
 ```
 
 Each step adds latency:
-- Producer batching: 0-linger.ms
+- Producer batching: `linger.ms`
 - Network round trip: ~1ms local, higher remote
-- Broker disk write: ~1ms SSD, higher HDD
+- Broker log append/page cache, plus disk flush if forced
 - Replication: Additional network + disk per replica
-- Consumer fetch delay: 0-fetch.max.wait.ms
+- Consumer fetch delay: `fetch.max.wait.ms`
 
 ## Producer Configuration for Low Latency
 
@@ -45,8 +45,8 @@ props.put("value.serializer", StringSerializer.class.getName());
 // Disable batching delay - send immediately
 props.put("linger.ms", "0");
 
-// Small batch size to send quickly
-props.put("batch.size", "1");  // 1 byte = effectively no batching
+// Disable producer-side batching
+props.put("batch.size", "0");
 
 // Reduce buffer memory (less to fill)
 props.put("buffer.memory", "33554432");  // 32 MB
@@ -66,21 +66,22 @@ props.put("request.timeout.ms", "5000");
 // Single connection is faster for low volume
 props.put("max.in.flight.requests.per.connection", "1");
 
-// Enable idempotence for safety (minimal overhead)
-props.put("enable.idempotence", "true");
+// Idempotence requires acks=all; keep it disabled with acks=1
+props.put("enable.idempotence", "false");
 
 KafkaProducer<String, String> producer = new KafkaProducer<>(props);
 ```
 
 ## Synchronous Send for Predictable Latency
 
-For lowest latency, wait for each send to complete.
+For predictable acknowledged latency, wait for each send to complete.
 
 ```java
 // Synchronous send - blocks until broker ack
 public void sendLowLatency(String topic, String key, String value)
         throws ExecutionException, InterruptedException {
 
+    long startMs = System.currentTimeMillis();
     ProducerRecord<String, String> record = new ProducerRecord<>(topic, key, value);
 
     // get() blocks until ack received
@@ -89,7 +90,7 @@ public void sendLowLatency(String topic, String key, String value)
     // Latency is the full round trip
     System.out.printf("Sent to partition %d in %d ms%n",
         metadata.partition(),
-        System.currentTimeMillis() - record.timestamp());
+        System.currentTimeMillis() - startMs);
 }
 
 // Fire and forget - lowest latency, no guarantee
@@ -136,9 +137,7 @@ Optimize broker settings for latency.
 ```properties
 # server.properties
 
-# Faster log flush (trade durability for speed)
-
-# WARNING: Risk of data loss on crash
+# Force log flush for durability (expect higher latency)
 log.flush.interval.messages=1
 log.flush.interval.ms=0
 
@@ -176,16 +175,16 @@ sudo swapoff -a
 ulimit -n 100000
 
 # Tune TCP settings
-echo "net.core.rmem_max=16777216" >> /etc/sysctl.conf
-echo "net.core.wmem_max=16777216" >> /etc/sysctl.conf
-echo "net.ipv4.tcp_rmem=4096 87380 16777216" >> /etc/sysctl.conf
-echo "net.ipv4.tcp_wmem=4096 65536 16777216" >> /etc/sysctl.conf
-echo "net.core.netdev_max_backlog=30000" >> /etc/sysctl.conf
+echo "net.core.rmem_max=16777216" | sudo tee -a /etc/sysctl.conf
+echo "net.core.wmem_max=16777216" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv4.tcp_rmem=4096 87380 16777216" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv4.tcp_wmem=4096 65536 16777216" | sudo tee -a /etc/sysctl.conf
+echo "net.core.netdev_max_backlog=30000" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 
 # Use NVMe SSDs for log directories
 # Mount with noatime
-mount -o noatime /dev/nvme0n1 /var/kafka-logs
+sudo mount -o noatime /dev/nvme0n1 /var/kafka-logs
 
 # Pin JVM to specific CPU cores
 taskset -c 0-7 kafka-server-start.sh config/server.properties
@@ -197,7 +196,7 @@ JVM tuning:
 # KAFKA_HEAP_OPTS for low-latency GC
 export KAFKA_HEAP_OPTS="-Xms6g -Xmx6g"
 
-# Use ZGC or Shenandoah for low pause times
+# Use ZGC for low pause times; Generational ZGC requires Java 21+
 export KAFKA_JVM_PERFORMANCE_OPTS="-XX:+UseZGC -XX:+ZGenerational"
 
 # Or G1GC with tuned pauses
@@ -211,30 +210,29 @@ Instrument your application to measure actual latency.
 ```java
 public class LatencyTracker {
 
-    private final Histogram produceLatency;
-    private final Histogram e2eLatency;
+    private final Timer produceLatency;
+    private final Timer e2eLatency;
 
     public LatencyTracker(MeterRegistry registry) {
-        this.produceLatency = Histogram.builder("kafka.produce.latency")
+        this.produceLatency = Timer.builder("kafka.produce.latency")
             .publishPercentiles(0.5, 0.95, 0.99, 0.999)
             .register(registry);
 
-        this.e2eLatency = Histogram.builder("kafka.e2e.latency")
+        this.e2eLatency = Timer.builder("kafka.e2e.latency")
             .publishPercentiles(0.5, 0.95, 0.99, 0.999)
             .register(registry);
     }
 
     // Producer side
     public void recordProduceLatency(long startNanos) {
-        long latencyMs = (System.nanoTime() - startNanos) / 1_000_000;
-        produceLatency.record(latencyMs);
+        produceLatency.record(System.nanoTime() - startNanos, java.util.concurrent.TimeUnit.NANOSECONDS);
     }
 
     // Consumer side - requires timestamp in message
     public void recordE2ELatency(ConsumerRecord<?, ?> record) {
         long produceTime = record.timestamp();
         long consumeTime = System.currentTimeMillis();
-        e2eLatency.record(consumeTime - produceTime);
+        e2eLatency.record(consumeTime - produceTime, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 }
 
@@ -269,12 +267,12 @@ props.put("acks", "1");
 props.put("acks", "all");
 // ~3-5ms produce latency
 // Adds ISR replication time
-// No data loss (if min.insync.replicas > 1)
+// Strongest guarantee if min.insync.replicas > 1 and at least one ISR remains alive
 ```
 
 ## Single Partition for Lowest Latency
 
-Multiple partitions add coordination overhead.
+Multiple partitions add routing, ordering, and consumer-group overhead.
 
 ```bash
 # For ultra-low latency workloads
@@ -321,11 +319,11 @@ kafka-producer-perf-test.sh \
   --num-records 100000 \
   --record-size 100 \
   --throughput 10000 \
-  --producer-props \
+  --command-property \
     bootstrap.servers=localhost:9092 \
     acks=1 \
     linger.ms=0 \
-    batch.size=1
+    batch.size=0
 
 # Consumer performance test
 kafka-consumer-perf-test.sh \
