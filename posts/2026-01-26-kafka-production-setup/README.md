@@ -58,24 +58,24 @@ A production Kafka deployment consists of multiple brokers forming a cluster. Ea
 Before setting up Kafka, ensure you have:
 
 - At least 3 servers (physical or virtual) with minimum 8GB RAM and 4 CPU cores each
-- Java 11 or later installed on all nodes
+- Java 17 or later installed on all broker and controller nodes
 - Network connectivity between all nodes with low latency
 - Dedicated storage volumes for Kafka data (SSDs recommended)
 
 ## Step 1: Install Kafka on All Nodes
 
-First, download and extract Kafka on each server. We will use Kafka 3.6, which includes KRaft mode for running without ZooKeeper.
+First, download and extract Kafka on each server. We will use Kafka 4.3, which runs in KRaft mode without ZooKeeper.
 
 ```bash
 # Download Kafka (run on all nodes)
 
-wget https://downloads.apache.org/kafka/3.6.1/kafka_2.13-3.6.1.tgz
+wget https://downloads.apache.org/kafka/4.3.0/kafka_2.13-4.3.0.tgz
 
 # Extract the archive
-tar -xzf kafka_2.13-3.6.1.tgz
+tar -xzf kafka_2.13-4.3.0.tgz
 
 # Move to a standard location
-sudo mv kafka_2.13-3.6.1 /opt/kafka
+sudo mv kafka_2.13-4.3.0 /opt/kafka
 
 # Create a dedicated user for running Kafka
 sudo useradd -r -s /bin/false kafka
@@ -88,7 +88,7 @@ sudo chown -R kafka:kafka /opt/kafka /var/lib/kafka /var/log/kafka
 
 ## Step 2: Configure KRaft Mode
 
-KRaft (Kafka Raft) eliminates the need for ZooKeeper by using Kafka's own consensus protocol. Here is the configuration for a 3-node cluster.
+KRaft (Kafka Raft) eliminates the need for ZooKeeper by using Kafka's own consensus protocol. Here is the configuration for a compact 3-node cluster. For critical deployments, use dedicated controller nodes so controllers can be isolated, scaled, and rolled separately from brokers.
 
 ```mermaid
 graph LR
@@ -107,10 +107,10 @@ graph LR
     C --> B3
 ```
 
-Create the configuration file at `/opt/kafka/config/kraft/server.properties`:
+Create the configuration file at `/opt/kafka/config/server.properties`:
 
 ```properties
-# /opt/kafka/config/kraft/server.properties
+# /opt/kafka/config/server.properties
 # Node 1 configuration (adjust node.id for each server)
 
 # Unique identifier for this node in the cluster
@@ -121,10 +121,9 @@ node.id=1
 # Controllers handle metadata, brokers handle data
 process.roles=broker,controller
 
-# Define the controller quorum voters
-# Format: node_id@hostname:port
+# Define the controller bootstrap servers
 # List all three controllers for high availability
-controller.quorum.voters=1@kafka-node-1:9093,2@kafka-node-2:9093,3@kafka-node-3:9093
+controller.quorum.bootstrap.servers=kafka-node-1:9093,kafka-node-2:9093,kafka-node-3:9093
 
 # Network listeners configuration
 # PLAINTEXT for internal cluster communication
@@ -210,17 +209,24 @@ Before starting the cluster, you need to generate a unique cluster ID and format
 KAFKA_CLUSTER_ID=$(/opt/kafka/bin/kafka-storage.sh random-uuid)
 echo "Cluster ID: $KAFKA_CLUSTER_ID"
 
-# Format the storage directory on each node
-# This initializes the metadata log for KRaft
+# Generate directory IDs for the initial controllers (run once)
+CONTROLLER_1_UUID=$(/opt/kafka/bin/kafka-storage.sh random-uuid)
+CONTROLLER_2_UUID=$(/opt/kafka/bin/kafka-storage.sh random-uuid)
+CONTROLLER_3_UUID=$(/opt/kafka/bin/kafka-storage.sh random-uuid)
+
+# Format the storage directory on each node using the same values
+# This initializes the KRaft metadata log and the inter-broker SCRAM user
 /opt/kafka/bin/kafka-storage.sh format \
-    -t $KAFKA_CLUSTER_ID \
-    -c /opt/kafka/config/kraft/server.properties
+    --cluster-id $KAFKA_CLUSTER_ID \
+    --initial-controllers "1@kafka-node-1:9093:$CONTROLLER_1_UUID,2@kafka-node-2:9093:$CONTROLLER_2_UUID,3@kafka-node-3:9093:$CONTROLLER_3_UUID" \
+    --add-scram 'SCRAM-SHA-512=[name="admin",password="admin-secret"]' \
+    --config /opt/kafka/config/server.properties
 ```
 
 The output should look like:
 
 ```text
-Formatting /var/lib/kafka/data with metadata.version 3.6-IV2.
+Formatting metadata directory /var/lib/kafka/data.
 ```
 
 ## Step 4: Create Systemd Service
@@ -247,7 +253,7 @@ Environment="KAFKA_HEAP_OPTS=-Xms4g -Xmx4g"
 Environment="KAFKA_JVM_PERFORMANCE_OPTS=-XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35"
 
 # Start the Kafka server
-ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/server.properties
+ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties
 
 # Graceful shutdown with 30 second timeout
 ExecStop=/opt/kafka/bin/kafka-server-stop.sh
@@ -285,8 +291,8 @@ sudo systemctl status kafka
 Once all nodes are running, verify the cluster is working correctly.
 
 ```bash
-# Check cluster metadata and controller status
-/opt/kafka/bin/kafka-metadata.sh --snapshot /var/lib/kafka/data/__cluster_metadata-0/00000000000000000000.log --command "cat"
+# Check cluster metadata quorum and controller status
+/opt/kafka/bin/kafka-metadata-quorum.sh --bootstrap-server kafka-node-1:9092 describe --status
 
 # List all brokers in the cluster
 /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka-node-1:9092
@@ -330,8 +336,6 @@ sequenceDiagram
     Client->>Broker: TLS Handshake
     Broker->>Client: Present broker certificate
     Client->>Client: Verify against CA
-    Client->>Broker: Present client certificate
-    Broker->>Broker: Verify against CA
     Note over Client,Broker: Encrypted channel established
 
     Client->>Broker: SASL Authentication
@@ -454,8 +458,8 @@ ssl.key.password=your-secure-password
 ssl.truststore.location=/opt/kafka/ssl/kafka-node-1.truststore.jks
 ssl.truststore.password=your-secure-password
 
-# Require client authentication (mutual TLS)
-ssl.client.auth=required
+# Do not require mutual TLS when SASL is used for client authentication
+ssl.client.auth=none
 
 # Enable hostname verification
 ssl.endpoint.identification.algorithm=HTTPS
@@ -463,28 +467,33 @@ ssl.endpoint.identification.algorithm=HTTPS
 
 ### Configure SASL Authentication
 
-For SASL/SCRAM authentication, create user credentials:
+For SASL/SCRAM authentication, create application user credentials after the brokers are running. The `admin` SCRAM credential used for broker and controller communication was added during the storage format step.
+
+Create an admin client configuration at `/opt/kafka/config/admin-client.properties`:
+
+```properties
+security.protocol=SASL_SSL
+sasl.mechanism=SCRAM-SHA-512
+sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="admin" password="admin-secret";
+ssl.truststore.location=/opt/kafka/ssl/kafka-node-1.truststore.jks
+ssl.truststore.password=your-secure-password
+```
 
 ```bash
-# Create SCRAM credentials for admin user
-/opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka-node-1:9092 \
-    --alter \
-    --add-config 'SCRAM-SHA-512=[password=admin-secret]' \
-    --entity-type users \
-    --entity-name admin
-
 # Create SCRAM credentials for application users
 /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka-node-1:9092 \
     --alter \
-    --add-config 'SCRAM-SHA-512=[password=producer-secret]' \
+    --add-config 'SCRAM-SHA-512=[iterations=8192,password=producer-secret]' \
     --entity-type users \
-    --entity-name producer-app
+    --entity-name producer-app \
+    --command-config /opt/kafka/config/admin-client.properties
 
 /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka-node-1:9092 \
     --alter \
-    --add-config 'SCRAM-SHA-512=[password=consumer-secret]' \
+    --add-config 'SCRAM-SHA-512=[iterations=8192,password=consumer-secret]' \
     --entity-type users \
-    --entity-name consumer-app
+    --entity-name consumer-app \
+    --command-config /opt/kafka/config/admin-client.properties
 ```
 
 Add SASL configuration to `server.properties`:
@@ -494,14 +503,23 @@ Add SASL configuration to `server.properties`:
 # Use both SSL encryption and SASL authentication
 listeners=SASL_SSL://:9092,CONTROLLER://:9093
 advertised.listeners=SASL_SSL://kafka-node-1:9092
-listener.security.protocol.map=CONTROLLER:PLAINTEXT,SASL_SSL:SASL_SSL
+listener.security.protocol.map=CONTROLLER:SASL_SSL,SASL_SSL:SASL_SSL
 
 # Enable SCRAM mechanism for authentication
 sasl.enabled.mechanisms=SCRAM-SHA-512
 sasl.mechanism.inter.broker.protocol=SCRAM-SHA-512
+sasl.mechanism.controller.protocol=SCRAM-SHA-512
+inter.broker.listener.name=SASL_SSL
 
-# JAAS configuration for inter-broker communication
+# Authorizer used by ACLs in KRaft mode
+authorizer.class.name=org.apache.kafka.metadata.authorizer.StandardAuthorizer
+super.users=User:admin
+
+# JAAS configuration for broker and controller communication
 listener.name.sasl_ssl.scram-sha-512.sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
+    username="admin" \
+    password="admin-secret";
+listener.name.controller.scram-sha-512.sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
     username="admin" \
     password="admin-secret";
 ```
@@ -510,6 +528,8 @@ listener.name.sasl_ssl.scram-sha-512.sasl.jaas.config=org.apache.kafka.common.se
 
 Access Control Lists (ACLs) restrict which users can access specific resources.
 
+Make sure `authorizer.class.name=org.apache.kafka.metadata.authorizer.StandardAuthorizer` and `super.users=User:admin` are set in `server.properties` before adding ACLs.
+
 ```bash
 # Grant producer-app permission to write to order-events topic
 /opt/kafka/bin/kafka-acls.sh --bootstrap-server kafka-node-1:9092 \
@@ -517,7 +537,8 @@ Access Control Lists (ACLs) restrict which users can access specific resources.
     --allow-principal User:producer-app \
     --operation Write \
     --operation Describe \
-    --topic order-events
+    --topic order-events \
+    --command-config /opt/kafka/config/admin-client.properties
 
 # Grant consumer-app permission to read from order-events topic
 /opt/kafka/bin/kafka-acls.sh --bootstrap-server kafka-node-1:9092 \
@@ -526,10 +547,20 @@ Access Control Lists (ACLs) restrict which users can access specific resources.
     --operation Read \
     --operation Describe \
     --topic order-events \
-    --group order-processing-group
+    --command-config /opt/kafka/config/admin-client.properties
+
+# Grant consumer-app permission to use its consumer group
+/opt/kafka/bin/kafka-acls.sh --bootstrap-server kafka-node-1:9092 \
+    --add \
+    --allow-principal User:consumer-app \
+    --operation Read \
+    --group order-processing-group \
+    --command-config /opt/kafka/config/admin-client.properties
 
 # List all ACLs to verify configuration
-/opt/kafka/bin/kafka-acls.sh --bootstrap-server kafka-node-1:9092 --list
+/opt/kafka/bin/kafka-acls.sh --bootstrap-server kafka-node-1:9092 \
+    --list \
+    --command-config /opt/kafka/config/admin-client.properties
 ```
 
 ## Step 8: Configure Monitoring with JMX and Prometheus
@@ -569,7 +600,7 @@ Update the systemd service to enable JMX:
 
 ```ini
 # Add to /etc/systemd/system/kafka.service [Service] section
-Environment="KAFKA_JMX_OPTS=-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
+Environment="KAFKA_JMX_OPTS=-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.authenticate=true -Dcom.sun.management.jmxremote.password.file=/opt/kafka/config/jmxremote.password -Dcom.sun.management.jmxremote.access.file=/opt/kafka/config/jmxremote.access -Dcom.sun.management.jmxremote.ssl=true"
 ```
 
 ### Configure JMX Exporter
@@ -606,6 +637,14 @@ rules:
     labels:
       request: $2
     help: "Request metrics for $2 - $1"
+
+  # Request latency - 99th percentile total request time
+  - pattern: kafka.network<type=RequestMetrics, name=TotalTimeMs, request=(.+)><>99thPercentile
+    name: kafka_network_requestmetrics_totaltimems_p99
+    type: GAUGE
+    labels:
+      request: $1
+    help: "99th percentile total request time for $1"
 
   # Partition metrics - track partition state
   - pattern: kafka.server<type=ReplicaManager, name=(.+)><>Value
@@ -697,7 +736,7 @@ groups:
 
       # Alert on high request latency
       - alert: KafkaHighProduceLatency
-        expr: kafka_network_requestmetrics_totaltimems{request="Produce"} > 1000
+        expr: kafka_network_requestmetrics_totaltimems_p99{request="Produce"} > 1000
         for: 5m
         labels:
           severity: warning
@@ -707,13 +746,13 @@ groups:
 
       # Alert when disk usage is high
       - alert: KafkaLogDirectoryFull
-        expr: kafka_log_size_bytes / kafka_log_max_size_bytes > 0.85
+        expr: node_filesystem_avail_bytes{mountpoint="/var/lib/kafka/data"} / node_filesystem_size_bytes{mountpoint="/var/lib/kafka/data"} < 0.15
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "Kafka log directory nearly full"
-          description: "Log directory on {{ $labels.instance }} is {{ $value | humanizePercentage }} full"
+          description: "Less than 15% free space remains on {{ $labels.instance }}"
 ```
 
 ## Step 9: Production Client Configuration
@@ -748,8 +787,8 @@ public class KafkaProducerConfig {
         // This ensures data is not lost if a broker fails
         props.put(ProducerConfig.ACKS_CONFIG, "all");
 
-        // Enable idempotence to prevent duplicate messages
-        // This guarantees exactly-once semantics per partition
+        // Enable idempotence to prevent duplicate messages from producer retries
+        // Transactions are still required for end-to-end exactly-once processing
         props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
 
         // Number of retries for transient failures
@@ -778,6 +817,8 @@ public class KafkaProducerConfig {
         props.put("sasl.jaas.config",
             "org.apache.kafka.common.security.scram.ScramLoginModule required " +
             "username=\"producer-app\" password=\"producer-secret\";");
+        props.put("ssl.truststore.location", "/opt/kafka/ssl/kafka-node-1.truststore.jks");
+        props.put("ssl.truststore.password", "your-secure-password");
 
         return new KafkaProducer<>(props);
     }
@@ -867,6 +908,8 @@ public class KafkaConsumerConfig {
         props.put("sasl.jaas.config",
             "org.apache.kafka.common.security.scram.ScramLoginModule required " +
             "username=\"consumer-app\" password=\"consumer-secret\";");
+        props.put("ssl.truststore.location", "/opt/kafka/ssl/kafka-node-1.truststore.jks");
+        props.put("ssl.truststore.password", "your-secure-password");
 
         return new KafkaConsumer<>(props);
     }
