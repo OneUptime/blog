@@ -93,14 +93,15 @@ CREATE INDEX idx_users_email ON users(email);
 -- This query will now use idx_users_email instead of scanning the entire table
 
 -- Composite index for queries that filter on multiple columns
--- Column order matters: put the most selective column first
+-- Column order matters: put columns used by equality filters first
 CREATE INDEX idx_orders_user_status ON orders(user_id, status);
 
 -- This index helps these queries:
 -- SELECT * FROM orders WHERE user_id = 123;
 -- SELECT * FROM orders WHERE user_id = 123 AND status = 'pending';
 
--- But NOT this query (leading column not in WHERE):
+-- This can still be used for this query, but it is much less efficient
+-- than an index that starts with status:
 -- SELECT * FROM orders WHERE status = 'pending';
 ```
 
@@ -115,12 +116,12 @@ CREATE INDEX idx_active_users ON users(email)
 WHERE status = 'active';
 
 -- This index is smaller and faster because it excludes inactive users
--- Perfect for: SELECT * FROM users WHERE status = 'active' AND email LIKE 'john%';
+-- Perfect for: SELECT * FROM users WHERE status = 'active' AND email = 'john@example.com';
 
--- Index only recent orders (last 90 days)
--- Great for tables where you mostly query recent data
+-- Index recent orders using a fixed cutoff date
+-- Recreate this periodically if your definition of "recent" moves forward
 CREATE INDEX idx_recent_orders ON orders(created_at, user_id)
-WHERE created_at > CURRENT_DATE - INTERVAL '90 days';
+WHERE created_at > DATE '2024-04-01';
 ```
 
 ### GIN Indexes for Full-Text and JSONB
@@ -129,11 +130,11 @@ WHERE created_at > CURRENT_DATE - INTERVAL '90 days';
 -- Full-text search index
 -- GIN (Generalized Inverted Index) is optimized for values that contain multiple elements
 CREATE INDEX idx_articles_search ON articles
-USING GIN(to_tsvector('english', title || ' ' || body));
+USING GIN(to_tsvector('english', coalesce(title, '') || ' ' || coalesce(body, '')));
 
 -- Query using the full-text index:
 -- SELECT * FROM articles
--- WHERE to_tsvector('english', title || ' ' || body) @@ to_tsquery('postgresql & performance');
+-- WHERE to_tsvector('english', coalesce(title, '') || ' ' || coalesce(body, '')) @@ to_tsquery('postgresql & performance');
 
 -- JSONB index for querying JSON data
 -- Indexes all keys and values in the JSONB column
@@ -185,12 +186,12 @@ WHERE user_id = 123;
 ### Use EXISTS Instead of IN for Subqueries
 
 ```sql
--- Slower: IN with subquery scans all results
+-- IN is often optimized well, but it can be harder to reason about with large subqueries
 SELECT * FROM users
 WHERE id IN (SELECT user_id FROM orders WHERE total > 1000);
 
--- Faster: EXISTS stops at first match
--- PostgreSQL can optimize this to a semi-join
+-- EXISTS expresses a match check directly
+-- PostgreSQL can optimize both IN and EXISTS to semi-join plans, so measure both
 SELECT * FROM users u
 WHERE EXISTS (
     SELECT 1 FROM orders o
@@ -285,7 +286,7 @@ SHOW effective_cache_size;
 -- ALTER SYSTEM SET shared_buffers = '4GB';
 
 -- work_mem: Memory per operation (sort, hash)
--- Start with 64MB-256MB, increase for complex queries
+-- Start conservatively and increase for complex reporting queries
 -- Be careful: this is per-operation, not per-query
 -- ALTER SYSTEM SET work_mem = '128MB';
 
@@ -366,6 +367,7 @@ Set up logging to catch slow queries in production:
 -- ALTER SYSTEM SET log_min_duration_statement = '1000';  -- Log queries over 1 second
 
 -- Use pg_stat_statements extension for query statistics
+-- Requires pg_stat_statements in shared_preload_libraries and a server restart first
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 -- Find the slowest queries
@@ -406,7 +408,7 @@ flowchart TD
     G -->|Yes| H[Increase work_mem or add index]
     G -->|No| I{Nested loops on large sets?}
 
-    I -->|Yes| J[Consider hash or merge join hints]
+    I -->|Yes| J[Improve stats/indexes or test planner settings]
     I -->|No| K[Review query structure]
 
     D --> L[Test with EXPLAIN ANALYZE]
