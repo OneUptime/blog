@@ -121,6 +121,9 @@ log_disconnections = 1
 log_pooler_errors = 1
 stats_period = 60
 
+; Needed by pgbouncer_exporter and some PostgreSQL drivers
+ignore_startup_parameters = extra_float_digits
+
 ; Admin access
 admin_users = pgbouncer_admin
 stats_users = pgbouncer_stats
@@ -132,7 +135,7 @@ stats_users = pgbouncer_stats
 # /etc/pgbouncer/userlist.txt
 # Format: "username" "password"
 
-"myapp_user" "scram-sha-256$4096:salt$storedkey:serverkey"
+"myapp_user" "SCRAM-SHA-256$4096:salt$storedkey:serverkey"
 "pgbouncer_admin" "admin_password_here"
 "pgbouncer_stats" "stats_password_here"
 ```
@@ -145,16 +148,22 @@ psql -U postgres -c "SELECT concat('\"', usename, '\" \"', passwd, '\"') FROM pg
 
 # Method 2: Generate SCRAM hash with Python
 python3 -c "
+import hmac
 import hashlib
 import os
 import base64
 password = 'your_password'
 salt = os.urandom(16)
 iterations = 4096
-dk = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, iterations, dklen=32)
-print(f'scram-sha-256\${iterations}:{base64.b64encode(salt).decode()}\${base64.b64encode(dk).decode()}')
+salted_password = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, iterations)
+client_key = hmac.new(salted_password, b'Client Key', hashlib.sha256).digest()
+stored_key = hashlib.sha256(client_key).digest()
+server_key = hmac.new(salted_password, b'Server Key', hashlib.sha256).digest()
+print(f'SCRAM-SHA-256\${iterations}:{base64.b64encode(salt).decode()}\${base64.b64encode(stored_key).decode()}:{base64.b64encode(server_key).decode()}')
 "
 ```
+
+If PostgreSQL also requires SCRAM authentication for PgBouncer's server connections, use the exact SCRAM secret stored in PostgreSQL or store a plaintext password in PgBouncer; a newly generated SCRAM secret for the same password will not be enough unless PostgreSQL is updated to use that exact secret.
 
 ---
 
@@ -169,7 +178,7 @@ pool_mode = session
 - Connection assigned to client for entire session
 - Supports all PostgreSQL features
 - Least efficient pooling
-- Use when: Prepared statements, LISTEN/NOTIFY, session variables
+- Use when: SQL-level prepared statements, LISTEN/NOTIFY, session variables
 
 ### Transaction Pooling
 
@@ -180,6 +189,7 @@ pool_mode = transaction
 - Connection assigned only during transaction
 - Released back to pool after COMMIT/ROLLBACK
 - Does NOT support session-level features
+- Protocol-level named prepared statements are supported in PgBouncer 1.21+ when `max_prepared_statements` is enabled
 - Use when: Stateless applications (most web apps)
 
 ### Statement Pooling
@@ -197,8 +207,8 @@ pool_mode = statement
 
 | Feature | Session | Transaction | Statement |
 |---------|---------|-------------|-----------|
-| Prepared statements | Yes | No | No |
-| SET commands | Yes | No | No |
+| Prepared statements | Yes | Protocol-level named only | Protocol-level named only |
+| Session SET state | Yes | No | No |
 | LISTEN/NOTIFY | Yes | No | No |
 | Multi-statement transactions | Yes | Yes | No |
 | Connection efficiency | Low | High | Highest |
@@ -252,6 +262,7 @@ tcp_keepidle = 60
 tcp_keepintvl = 15
 
 ; Performance
+; server_reset_query is only used in session pooling by default
 server_reset_query = DISCARD ALL
 server_check_query = SELECT 1
 server_check_delay = 30
@@ -261,6 +272,9 @@ log_connections = 0
 log_disconnections = 0
 log_pooler_errors = 1
 stats_period = 60
+
+; Needed by pgbouncer_exporter and some PostgreSQL drivers
+ignore_startup_parameters = extra_float_digits
 ```
 
 ### System Tuning
@@ -410,7 +424,7 @@ PgBouncer exporter deployment:
 # Run pgbouncer_exporter
 docker run -d \
   -p 9127:9127 \
-  -e DATABASE_URL="postgres://pgbouncer_stats:password@pgbouncer:6432/pgbouncer" \
+  -e PGBOUNCER_EXPORTER_CONNECTION_STRING="postgres://pgbouncer_stats:password@pgbouncer:6432/pgbouncer" \
   prometheuscommunity/pgbouncer-exporter
 ```
 
@@ -422,7 +436,7 @@ groups:
   - name: pgbouncer
     rules:
       - alert: PgBouncerClientsWaiting
-        expr: pgbouncer_pools_client_waiting > 10
+        expr: pgbouncer_pools_client_waiting_connections > 10
         for: 5m
         labels:
           severity: warning
@@ -430,7 +444,7 @@ groups:
           summary: "Clients waiting for PgBouncer connections"
 
       - alert: PgBouncerPoolExhausted
-        expr: pgbouncer_pools_server_active / pgbouncer_pools_server_max > 0.9
+        expr: pgbouncer_pools_client_waiting_connections > 0
         for: 5m
         labels:
           severity: critical
@@ -451,7 +465,6 @@ SHOW POOLS;
 
 -- Temporary fix: Increase reserve pool
 SET reserve_pool_size = 20;
-RELOAD;
 
 -- Permanent fix in pgbouncer.ini:
 -- default_pool_size = 50
@@ -460,16 +473,19 @@ RELOAD;
 ### Problem: "prepared statement does not exist"
 
 ```ini
-; This error occurs with transaction pooling
+; This error occurs with transaction pooling when prepared statement tracking is disabled or when the client uses unsupported SQL-level PREPARE
 ; Options:
-; 1. Switch to session pooling (less efficient)
+; 1. Enable protocol-level prepared statement tracking in PgBouncer 1.21+
+max_prepared_statements = 200
+
+; 2. Switch to session pooling (less efficient)
 pool_mode = session
 
-; 2. Or disable prepared statements in your application
-; PostgreSQL connection string: ?prepare_threshold=0
+; 3. Or disable prepared statements in your application
+; JDBC connection string: ?prepareThreshold=0
 ```
 
-### Problem: DISCARD ALL Taking Too Long
+### Problem: DISCARD ALL Taking Too Long in Session Pooling
 
 ```ini
 ; Simplify server reset query
