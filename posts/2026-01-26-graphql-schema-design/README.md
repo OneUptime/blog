@@ -340,7 +340,7 @@ type OrderItem {
   lineTotal: Money!
 }
 
-# Custom scalar type for monetary values
+# Object type for monetary values
 # Stored as cents internally, formatted for display
 type Money {
   # Amount in smallest currency unit (e.g., cents)
