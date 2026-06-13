@@ -12,7 +12,7 @@ CQRS stands for Command Query Responsibility Segregation, a pattern that separat
 
 This might sound like unnecessary complexity at first, but consider what happens as your application grows. Your read operations need different optimizations than your writes. Users might need to search, filter, and aggregate data in ways that conflict with how you need to validate and store it. CQRS lets you handle these concerns separately.
 
-In this guide, we will build a complete CQRS implementation in Node.js, starting from basic concepts and working up to a production-ready structure.
+In this guide, we will build a complete CQRS implementation in Node.js, starting from basic concepts and working up to a production-minded structure.
 
 ## Understanding CQRS
 
@@ -35,7 +35,7 @@ class OrderService {
   async getOrdersForDashboard(filters) {
     // Complex read with joins, aggregations
     // Often requires different data shape than what we store
-    return Order.aggregate([...]);
+    return Order.aggregate([/* aggregation pipeline */]);
   }
 }
 ```
@@ -96,6 +96,7 @@ src/
     commandBus.js
     queryBus.js
     eventStore.js
+    eventPublisher.js
     readModelProjection.js
   repositories/
     orderWriteRepository.js
@@ -107,7 +108,7 @@ Start by installing dependencies:
 
 ```bash
 npm init -y
-npm install express uuid
+npm install express
 npm install --save-dev jest
 ```
 
@@ -256,6 +257,8 @@ The domain model contains your business logic. When state changes, it produces e
 ```javascript
 // src/domain/orderEvents.js
 
+const { randomUUID } = require('node:crypto');
+
 // Events represent things that have happened
 const OrderEvents = {
   ORDER_CREATED: 'ORDER_CREATED',
@@ -268,7 +271,7 @@ function createEvent(type, data) {
     type,
     data,
     timestamp: new Date().toISOString(),
-    id: require('uuid').v4()
+    id: randomUUID()
   };
 }
 
@@ -278,7 +281,7 @@ module.exports = { OrderEvents, createEvent };
 ```javascript
 // src/domain/order.js
 
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('node:crypto');
 const { OrderEvents, createEvent } = require('./orderEvents');
 
 class Order {
@@ -310,7 +313,7 @@ class Order {
     // Apply the creation event
     order.apply(
       createEvent(OrderEvents.ORDER_CREATED, {
-        orderId: uuidv4(),
+        orderId: randomUUID(),
         customerId,
         items,
         shippingAddress,
