@@ -50,9 +50,10 @@ graph TB
 
 Before installing Kubeflow, make sure you have:
 
-- A Kubernetes cluster (version 1.25 or later)
+- A Kubernetes cluster compatible with your Kubeflow release. For Kubeflow manifests v1.9.0, Kubernetes 1.29 is the validated version
 - kubectl configured to access your cluster
-- At least 16GB RAM and 4 CPUs available in your cluster
+- Kustomize 5.2.1 or later
+- At least 32GB RAM and 16 CPUs available in your cluster for the default manifests
 - A default StorageClass configured for persistent volumes
 
 You can verify your Kubernetes setup with these commands:
@@ -63,7 +64,7 @@ You can verify your Kubernetes setup with these commands:
 kubectl cluster-info
 
 # Verify Kubernetes version
-kubectl version --short
+kubectl version
 
 # Check available nodes and resources
 kubectl get nodes -o wide
@@ -74,7 +75,7 @@ kubectl get storageclass
 
 ## Installing Kubeflow
 
-There are several ways to install Kubeflow. The recommended approach for beginners is using the manifests provided by the Kubeflow project. Here we will use kustomize, which is built into kubectl.
+There are several ways to install Kubeflow. The recommended approach for beginners is using the manifests provided by the Kubeflow project. Here we will use the standalone kustomize CLI.
 
 ### Step 1: Clone the Kubeflow Manifests Repository
 
@@ -97,7 +98,7 @@ The installation uses kustomize to apply Kubernetes manifests. Run the following
 # The process may take 10-15 minutes depending on your cluster
 while ! kustomize build example | kubectl apply -f -; do
     echo "Retrying to apply resources..."
-    sleep 10
+    sleep 20
 done
 ```
 
@@ -164,7 +165,7 @@ Kubeflow Notebooks let you run Jupyter servers directly in your Kubernetes clust
 ```yaml
 # Example notebook server configuration
 name: my-notebook
-namespace: kubeflow-user
+namespace: kubeflow-user-example-com
 image: kubeflownotebookswg/jupyter-scipy:v1.9.0
 cpu: 2
 memory: 4Gi
@@ -257,7 +258,7 @@ from kfp import compiler
     base_image="python:3.10",
     packages_to_install=["pandas", "scikit-learn"]
 )
-def load_data() -> dsl.Output[dsl.Dataset]:
+def load_data(dataset: dsl.Output[dsl.Dataset]):
     """
     Load and prepare the dataset.
     This component downloads or generates training data.
@@ -274,7 +275,7 @@ def load_data() -> dsl.Output[dsl.Dataset]:
     df["target"] = iris.target
 
     # Save to the output path
-    df.to_csv(load_data.outputs["output"].path, index=False)
+    df.to_csv(dataset.path, index=False)
 
 
 # Define a component for training
@@ -366,14 +367,14 @@ def ml_pipeline(n_estimators: int = 100):
 
     # Step 2: Train the model using the loaded data
     train_task = train_model(
-        dataset=load_task.outputs["output"],
+        dataset=load_task.outputs["dataset"],
         n_estimators=n_estimators
     )
 
     # Step 3: Evaluate the trained model
     evaluate_task = evaluate_model(
         model=train_task.outputs["model"],
-        dataset=load_task.outputs["output"]
+        dataset=load_task.outputs["dataset"]
     )
 
 
@@ -445,14 +446,16 @@ apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
   name: sklearn-iris
-  namespace: kubeflow-user
+  namespace: kubeflow-user-example-com
 spec:
   predictor:
     # Use the sklearn server for scikit-learn models
-    sklearn:
+    model:
+      modelFormat:
+        name: sklearn
       # Point to your model location
       # This can be s3://, gs://, or a PVC path
-      storageUri: "pvc://model-storage/sklearn/iris"
+      storageUri: "pvc://model-storage/sklearn/iris/"
 
       # Resource requests and limits
       resources:
@@ -471,11 +474,11 @@ Apply the InferenceService:
 kubectl apply -f inference-service.yaml
 
 # Check the status
-kubectl get inferenceservice sklearn-iris -n kubeflow-user
+kubectl get inferenceservice sklearn-iris -n kubeflow-user-example-com
 
 # Wait for the service to be ready
 kubectl wait --for=condition=Ready inferenceservice/sklearn-iris \
-    -n kubeflow-user --timeout=300s
+    -n kubeflow-user-example-com --timeout=300s
 ```
 
 ### Making Predictions
@@ -494,6 +497,7 @@ import json
 # For external access, use the Istio ingress gateway
 
 SERVICE_URL = "http://localhost:8080/v1/models/sklearn-iris:predict"
+SERVICE_HOSTNAME = "sklearn-iris.kubeflow-user-example-com.example.com"
 
 # Prepare the input data
 # KServe expects data in a specific format
@@ -508,7 +512,10 @@ input_data = {
 # Send the prediction request
 response = requests.post(
     SERVICE_URL,
-    headers={"Content-Type": "application/json"},
+    headers={
+        "Content-Type": "application/json",
+        "Host": SERVICE_HOSTNAME,
+    },
     data=json.dumps(input_data)
 )
 
@@ -612,10 +619,10 @@ View the logs for the failed step:
 ```bash
 # Get the pod name for the failed step from the pipeline UI
 # Then check the logs
-kubectl logs <pod-name> -n kubeflow-user -c main
+kubectl logs <pod-name> -n kubeflow-user-example-com -c main
 
 # For init container issues
-kubectl logs <pod-name> -n kubeflow-user -c init
+kubectl logs <pod-name> -n kubeflow-user-example-com -c init
 ```
 
 ### Model Serving Errors
@@ -624,11 +631,11 @@ Debug KServe issues:
 
 ```bash
 # Check the inference service status
-kubectl get inferenceservice -n kubeflow-user
+kubectl get inferenceservice -n kubeflow-user-example-com
 
 # View the predictor pod logs
 kubectl logs -l serving.kserve.io/inferenceservice=sklearn-iris \
-    -n kubeflow-user -c kserve-container
+    -n kubeflow-user-example-com -c kserve-container
 ```
 
 ## Conclusion
