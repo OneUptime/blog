@@ -49,13 +49,16 @@ First, install the required packages:
 ```bash
 # Core LangChain packages
 
-pip install langchain langchain-openai langchain-community
+pip install -U langchain langchain-openai langchain-community langchain-text-splitters
 
 # Vector store (we'll use Chroma for local development)
-pip install chromadb
+pip install -U langchain-chroma chromadb
 
 # Document loaders for various file types
-pip install pypdf unstructured
+pip install -U pypdf unstructured beautifulsoup4 tqdm
+
+# Optional integrations used later in this guide
+pip install -U langchain-huggingface sentence-transformers langchain-pinecone faiss-cpu rank_bm25 langchain-classic
 ```
 
 Set up your API keys:
@@ -156,7 +159,7 @@ flowchart LR
 ### Recursive Character Text Splitter (Recommended Default)
 
 ```python
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # This splitter tries to keep paragraphs, sentences, and words together
 # It recursively splits on different separators: \n\n, \n, " ", ""
@@ -179,7 +182,7 @@ print(f"Chunk length: {len(chunks[0].page_content)} characters")
 ### Token-Based Splitting (For Precise Context Control)
 
 ```python
-from langchain.text_splitter import TokenTextSplitter
+from langchain_text_splitters import TokenTextSplitter
 
 # Split based on actual tokens (more accurate for LLM context windows)
 # Useful when you need precise control over context size
@@ -195,7 +198,7 @@ chunks = splitter.split_documents(documents)
 ### Code-Aware Splitting
 
 ```python
-from langchain.text_splitter import Language, RecursiveCharacterTextSplitter
+from langchain_text_splitters import Language, RecursiveCharacterTextSplitter
 
 # For code files, use language-aware splitting
 # This respects function boundaries, class definitions, etc.
@@ -250,7 +253,7 @@ flowchart LR
 ```python
 from langchain_openai import OpenAIEmbeddings
 
-# OpenAI's latest embedding model
+# OpenAI embedding model
 # Produces 1536-dimensional vectors by default
 embeddings = OpenAIEmbeddings(
     model="text-embedding-3-small",  # Smaller, faster, cheaper
@@ -271,7 +274,7 @@ vectors = embeddings.embed_documents(texts)
 ### Using Local Embeddings (No API Required)
 
 ```python
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 # Run embeddings locally using HuggingFace models
 # No API key needed, runs on your machine
@@ -294,7 +297,7 @@ Vector databases are optimized for storing embeddings and performing similarity 
 ### Using Chroma (Great for Development)
 
 ```python
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
@@ -308,7 +311,7 @@ vectorstore = Chroma.from_documents(
     collection_name="my_docs"   # Name for this collection
 )
 
-# The database is automatically persisted
+# The database is persisted automatically when persist_directory is set
 print(f"Stored {vectorstore._collection.count()} vectors")
 ```
 
@@ -342,7 +345,7 @@ vectorstore.save_local("./faiss_index")
 vectorstore = FAISS.load_local(
     "./faiss_index",
     embeddings,
-    allow_dangerous_deserialization=True  # Required for loading
+    allow_dangerous_deserialization=True  # Only use with indexes you trust
 )
 ```
 
@@ -387,11 +390,13 @@ sequenceDiagram
 
 ```python
 from langchain_openai import ChatOpenAI
-from langchain.chains import RetrievalQA
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
 
 # Initialize the LLM
 llm = ChatOpenAI(
-    model="gpt-4o",          # Use gpt-3.5-turbo for faster/cheaper responses
+    model="gpt-5.4-mini",    # Use gpt-5.4-nano for faster/cheaper responses
     temperature=0            # Lower temperature for more factual answers
 )
 
@@ -402,18 +407,40 @@ retriever = vectorstore.as_retriever(
     search_kwargs={"k": 4}
 )
 
+prompt = ChatPromptTemplate.from_template("""
+Answer the question based only on the following context. If you cannot
+find the answer in the context, say "I don't have enough information
+to answer this question."
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:
+""")
+
+def format_docs(docs):
+    return "\n\n---\n\n".join(doc.page_content for doc in docs)
+
 # Build the QA chain
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",          # Stuff all docs into one prompt
-    retriever=retriever,
-    return_source_documents=True  # Include source docs in response
+qa_chain = (
+    {
+        "context": retriever | format_docs,
+        "question": RunnablePassthrough()
+    }
+    | prompt
+    | llm
+    | StrOutputParser()
 )
 
 # Ask a question
-response = qa_chain.invoke({"query": "How do I configure logging?"})
-print("Answer:", response["result"])
-print("Sources:", [doc.metadata for doc in response["source_documents"]])
+question = "How do I configure logging?"
+answer = qa_chain.invoke(question)
+source_docs = retriever.invoke(question)
+
+print("Answer:", answer)
+print("Sources:", [doc.metadata for doc in source_docs])
 ```
 
 ### Using LCEL (LangChain Expression Language) for More Control
@@ -509,8 +536,8 @@ retriever = vectorstore.as_retriever(
 ### Self-Query Retriever (For Structured Metadata Filtering)
 
 ```python
-from langchain.retrievers.self_query.base import SelfQueryRetriever
-from langchain.chains.query_constructor.base import AttributeInfo
+from langchain_classic.retrievers.self_query.base import SelfQueryRetriever
+from langchain_classic.chains.query_constructor.schema import AttributeInfo
 
 # Define metadata fields that can be filtered
 metadata_field_info = [
@@ -539,7 +566,7 @@ self_query_retriever = SelfQueryRetriever.from_llm(
 ### Ensemble Retriever (Combine Multiple Strategies)
 
 ```python
-from langchain.retrievers import EnsembleRetriever
+from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
 
 # BM25 is keyword-based (good for exact matches)
@@ -583,33 +610,68 @@ flowchart TB
 ```
 
 ```python
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferMemory
+from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
-# Memory stores the conversation history
-memory = ConversationBufferMemory(
-    memory_key="chat_history",
-    return_messages=True,
-    output_key="answer"
-)
+contextualize_prompt = ChatPromptTemplate.from_messages([
+    ("system", """Given a chat history and the latest user question,
+rewrite the latest question as a standalone search query. Do not answer
+the question; only rewrite it if needed."""),
+    MessagesPlaceholder("chat_history"),
+    ("human", "{question}"),
+])
 
-# Conversational chain handles follow-up questions
-# It reformulates questions based on chat history before searching
-conversational_chain = ConversationalRetrievalChain.from_llm(
-    llm=llm,
-    retriever=retriever,
-    memory=memory,
-    return_source_documents=True,
-    verbose=True  # See the reformulated questions
+qa_prompt = ChatPromptTemplate.from_messages([
+    ("system", """Answer the question based only on the following context.
+If the context does not contain enough information, say so clearly.
+
+Context:
+{context}"""),
+    MessagesPlaceholder("chat_history"),
+    ("human", "{question}"),
+])
+
+def format_docs(docs):
+    return "\n\n---\n\n".join(doc.page_content for doc in docs)
+
+# Conversation history is stored as chat messages
+chat_history = []
+
+# Reformulate follow-up questions before searching
+question_rewriter = contextualize_prompt | llm | StrOutputParser()
+
+def retrieve_with_history(inputs):
+    if inputs["chat_history"]:
+        search_query = question_rewriter.invoke(inputs)
+    else:
+        search_query = inputs["question"]
+    return retriever.invoke(search_query)
+
+conversational_chain = (
+    RunnablePassthrough.assign(context=RunnableLambda(retrieve_with_history) | format_docs)
+    | qa_prompt
+    | llm
+    | StrOutputParser()
 )
 
 # First question
-response1 = conversational_chain.invoke({"question": "What is RAG?"})
-print("Answer:", response1["answer"])
+question1 = "What is RAG?"
+answer1 = conversational_chain.invoke({
+    "question": question1,
+    "chat_history": chat_history
+})
+print("Answer:", answer1)
+chat_history.extend([HumanMessage(content=question1), AIMessage(content=answer1)])
 
 # Follow-up question - "it" refers to RAG from the previous question
-response2 = conversational_chain.invoke({"question": "How does it reduce hallucinations?"})
-print("Answer:", response2["answer"])
+question2 = "How does it reduce hallucinations?"
+answer2 = conversational_chain.invoke({
+    "question": question2,
+    "chat_history": chat_history
+})
+print("Answer:", answer2)
 ```
 
 ---
@@ -626,9 +688,9 @@ This script demonstrates a full RAG pipeline from document loading to question a
 
 import os
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -712,7 +774,7 @@ Answer:
 """)
 
     # Initialize the LLM
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatOpenAI(model="gpt-5.4-mini", temperature=0)
 
     # Create retriever with MMR for diverse results
     retriever = vectorstore.as_retriever(
@@ -800,7 +862,7 @@ if __name__ == "__main__":
 # Instead of embedding one at a time, batch them
 # This reduces API calls and improves throughput
 texts = [chunk.page_content for chunk in chunks]
-embeddings_list = embeddings.embed_documents(texts)  # Single API call
+embeddings_list = embeddings.embed_documents(texts)  # Batched API calls
 ```
 
 ### 2. Use Async for Multiple Queries
@@ -821,8 +883,8 @@ answers = asyncio.run(answer_questions(chain, questions))
 ### 3. Cache Embeddings
 
 ```python
-from langchain.embeddings import CacheBackedEmbeddings
-from langchain.storage import LocalFileStore
+from langchain_classic.embeddings import CacheBackedEmbeddings
+from langchain_classic.storage import LocalFileStore
 
 # Cache embeddings to avoid re-computing them
 store = LocalFileStore("./embedding_cache")
