@@ -66,7 +66,7 @@ services:
       - "wal_level=logical"  # Required for CDC
 
   debezium:
-    image: debezium/connect:2.4
+    image: quay.io/debezium/connect:2.4
     depends_on:
       - kafka
       - postgres
@@ -97,6 +97,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO debezium;
 
 -- Create publication for all tables
 CREATE PUBLICATION debezium_pub FOR ALL TABLES;
+
+-- Optional: include full previous row values for UPDATE/DELETE events
+ALTER TABLE customers REPLICA IDENTITY FULL;
 ```
 
 PostgreSQL configuration:
@@ -144,11 +147,11 @@ For MySQL, enable binary logging.
 
 ```properties
 # my.cnf
-server-id = 1
+server-id = 223344
 log_bin = mysql-bin
 binlog_format = ROW
 binlog_row_image = FULL
-expire_logs_days = 7
+binlog_expire_logs_seconds = 604800
 gtid_mode = ON
 enforce_gtid_consistency = ON
 ```
@@ -165,7 +168,7 @@ curl -X POST http://localhost:8083/connectors \
       "database.port": "3306",
       "database.user": "debezium",
       "database.password": "dbz_password",
-      "database.server.id": "1",
+      "database.server.id": "184054",
       "topic.prefix": "myapp",
       "database.include.list": "inventory",
       "table.include.list": "inventory.orders,inventory.products",
@@ -181,7 +184,7 @@ Debezium produces structured change events.
 
 ```json
 {
-  "schema": { "...schema definition..." },
+  "schema": { "type": "struct", "fields": [] },
   "payload": {
     "before": {
       "id": 1001,
@@ -226,7 +229,7 @@ Process change events in your application.
 public class CustomerChangeConsumer {
 
     @KafkaListener(topics = "myapp.public.customers")
-    public void onCustomerChange(ConsumerRecord<String, String> record) {
+    public void onCustomerChange(ConsumerRecord<String, String> record) throws Exception {
         JsonNode event = objectMapper.readTree(record.value());
         JsonNode payload = event.get("payload");
 
@@ -249,9 +252,7 @@ public class CustomerChangeConsumer {
     }
 
     private void handleUpdate(JsonNode before, JsonNode after) {
-        log.info("Customer updated: {} -> {}",
-            before.get("name").asText(),
-            after.get("name").asText());
+        log.info("Customer updated: {}", after.get("id").asLong());
         // Update downstream systems
         searchService.updateCustomer(toCustomer(after));
         cacheService.invalidate("customer:" + after.get("id").asLong());
@@ -283,7 +284,7 @@ Control how Debezium handles initial data load.
 | `initial_only` | Snapshot only, no streaming |
 | `when_needed` | Snapshot if offsets unavailable |
 | `never` | No snapshot, stream changes only |
-| `schema_only` | Capture schema, no data snapshot |
+| `schema_only` | Capture schema, no data snapshot (MySQL) |
 
 ## Transformations
 
@@ -312,7 +313,7 @@ Transform events before they reach Kafka.
 
 Before transformation:
 ```json
-{"payload": {"before": {...}, "after": {"id": 1, "name": "Test"}, "op": "u"}}
+{"payload": {"before": {"id": 1}, "after": {"id": 1, "name": "Test"}, "op": "u"}}
 ```
 
 After transformation:
@@ -375,13 +376,13 @@ JMX metrics:
 
 ```yaml
 # Key Debezium metrics
-- debezium.metrics:type=connector-metrics,*
+- debezium.postgresql:type=connector-metrics,context=streaming,server=<topic.prefix>
   - MilliSecondsSinceLastEvent  # Lag indicator
   - TotalNumberOfEventsSeen
   - NumberOfEventsFiltered
   - QueueRemainingCapacity
 
-- debezium.metrics:type=snapshot-metrics,*
+- debezium.postgresql:type=connector-metrics,context=snapshot,server=<topic.prefix>
   - SnapshotRunning
   - RemainingTableCount
   - TotalTableCount
@@ -389,15 +390,12 @@ JMX metrics:
 
 ## Handling Failures
 
-Configure dead letter queues for problem records.
+Log tolerated source connector errors. Dead letter queues are configured on sink connectors that consume Debezium topics.
 
 ```json
 {
   "config": {
     "errors.tolerance": "all",
-    "errors.deadletterqueue.topic.name": "debezium-dlq",
-    "errors.deadletterqueue.topic.replication.factor": "3",
-    "errors.deadletterqueue.context.headers.enable": "true",
     "errors.log.enable": "true",
     "errors.log.include.messages": "true"
   }
