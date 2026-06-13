@@ -58,10 +58,11 @@ management:
       enabled: true
     health:
       show-details: always
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
+  metrics:
     tags:
       application: ${spring.application.name}
       environment: ${ENVIRONMENT:development}
@@ -106,18 +107,18 @@ public class OrderMetrics {
 
     public OrderMetrics(MeterRegistry registry) {
         // Create counters with descriptive names and tags
-        // Convention: use snake_case and prefix with domain
-        this.ordersCreated = Counter.builder("orders_created_total")
+        // Convention: use dot-separated Micrometer names and prefix with domain
+        this.ordersCreated = Counter.builder("orders.created")
             .description("Total number of orders created")
             .tag("application", "order-service")
             .register(registry);
 
-        this.ordersFailed = Counter.builder("orders_failed_total")
+        this.ordersFailed = Counter.builder("orders.failed")
             .description("Total number of failed orders")
             .tag("application", "order-service")
             .register(registry);
 
-        this.ordersCompleted = Counter.builder("orders_completed_total")
+        this.ordersCompleted = Counter.builder("orders.completed")
             .description("Total number of completed orders")
             .tag("application", "order-service")
             .register(registry);
@@ -159,13 +160,13 @@ public class PaymentMetrics {
     // Record payment with dynamic tags
     // Creates separate counter series for each payment method and status
     public void recordPayment(String paymentMethod, String status, double amount) {
-        registry.counter("payments_total",
+        registry.counter("payments",
             "method", paymentMethod,    // credit_card, paypal, bank_transfer
             "status", status            // success, failed, pending
         ).increment();
 
         // Also track payment amounts
-        registry.counter("payments_amount_total",
+        registry.counter("payments.amount",
             "method", paymentMethod,
             "status", status
         ).increment(amount);
@@ -198,21 +199,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class SystemMetrics {
 
     private final AtomicInteger activeConnections = new AtomicInteger(0);
-    private final AtomicInteger pendingTasks = new AtomicInteger(0);
 
     public SystemMetrics(MeterRegistry registry, BlockingQueue<?> taskQueue) {
         // Gauge that reads from AtomicInteger
-        Gauge.builder("active_connections", activeConnections, AtomicInteger::get)
+        Gauge.builder("active.connections", activeConnections, AtomicInteger::get)
             .description("Number of active client connections")
             .register(registry);
 
         // Gauge that directly observes a collection size
-        Gauge.builder("pending_tasks", taskQueue, BlockingQueue::size)
+        Gauge.builder("tasks.pending", taskQueue, BlockingQueue::size)
             .description("Number of tasks waiting to be processed")
             .register(registry);
 
         // Gauge for JVM memory usage
-        Gauge.builder("jvm_memory_used_bytes", Runtime.getRuntime(),
+        Gauge.builder("application.memory.used", Runtime.getRuntime(),
                 runtime -> runtime.totalMemory() - runtime.freeMemory())
             .description("JVM memory currently in use")
             .baseUnit("bytes")
@@ -225,14 +225,6 @@ public class SystemMetrics {
 
     public void connectionClosed() {
         activeConnections.decrementAndGet();
-    }
-
-    public void taskAdded() {
-        pendingTasks.incrementAndGet();
-    }
-
-    public void taskCompleted() {
-        pendingTasks.decrementAndGet();
     }
 }
 ```
@@ -267,7 +259,7 @@ public class ApiMetrics {
 
     // Create a timer for specific endpoints
     public Timer getEndpointTimer(String endpoint, String method) {
-        return Timer.builder("http_request_duration_seconds")
+        return Timer.builder("http.request.duration")
             .description("HTTP request duration in seconds")
             .tag("endpoint", endpoint)
             .tag("method", method)
@@ -283,9 +275,10 @@ public class ApiMetrics {
 
     // Wrap a callable with timing
     public <T> T timeOperation(String name, Callable<T> operation) throws Exception {
-        Timer timer = Timer.builder("operation_duration_seconds")
+        Timer timer = Timer.builder("operation.duration")
             .description("Operation duration")
             .tag("operation", name)
+            .tag("status", "unknown")
             .register(registry);
 
         return timer.recordCallable(operation);
@@ -293,15 +286,16 @@ public class ApiMetrics {
 
     // Wrap a supplier with timing (no checked exceptions)
     public <T> T timeSupplier(String name, Supplier<T> supplier) {
-        return Timer.builder("operation_duration_seconds")
+        return Timer.builder("operation.duration")
             .tag("operation", name)
+            .tag("status", "unknown")
             .register(registry)
             .record(supplier);
     }
 
     // Record duration manually when you cannot wrap the operation
     public void recordDuration(String operation, Duration duration, String status) {
-        Timer.builder("operation_duration_seconds")
+        Timer.builder("operation.duration")
             .tag("operation", operation)
             .tag("status", status)
             .register(registry)
@@ -336,9 +330,9 @@ public class OrderService {
     }
 
     // Automatically times this method
-    // Creates metric: order_service_create_order_seconds
+    // Creates Prometheus series such as order_service_create_order_seconds_count
     @Timed(
-        value = "order_service_create_order",
+        value = "order.service.create.order",
         description = "Time to create an order",
         percentiles = {0.5, 0.95, 0.99}
     )
@@ -351,7 +345,7 @@ public class OrderService {
 
     // Timer with extra tags
     @Timed(
-        value = "order_service_get_order",
+        value = "order.service.get.order",
         extraTags = {"layer", "service"}
     )
     public Order getOrder(String orderId) {
@@ -361,7 +355,14 @@ public class OrderService {
 }
 ```
 
-Enable the `@Timed` annotation by registering the aspect:
+Enable the `@Timed` annotation by making sure Spring AOP is on the classpath and registering the aspect:
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-aop</artifactId>
+</dependency>
+```
 
 ```java
 // MetricsConfig.java
@@ -407,7 +408,7 @@ public class RequestMetrics {
 
     public RequestMetrics(MeterRegistry registry) {
         // Track request body sizes
-        this.requestSize = DistributionSummary.builder("http_request_size_bytes")
+        this.requestSize = DistributionSummary.builder("http.request.size")
             .description("HTTP request body size in bytes")
             .baseUnit("bytes")
             .publishPercentiles(0.5, 0.95, 0.99)
@@ -416,7 +417,7 @@ public class RequestMetrics {
             .register(registry);
 
         // Track response body sizes
-        this.responseSize = DistributionSummary.builder("http_response_size_bytes")
+        this.responseSize = DistributionSummary.builder("http.response.size")
             .description("HTTP response body size in bytes")
             .baseUnit("bytes")
             .publishPercentiles(0.5, 0.95, 0.99)
@@ -437,7 +438,7 @@ public class RequestMetrics {
 
 ## HTTP Request Metrics Filter
 
-Create a filter to automatically capture metrics for all HTTP requests:
+Spring Boot already records `http.server.requests` for Spring MVC and WebFlux applications. If you need a separate custom filter, use a distinct meter name:
 
 ```java
 // MetricsFilter.java
@@ -485,7 +486,7 @@ public class MetricsFilter extends OncePerRequestFilter {
             // /users/123 becomes /users/{id}
             String normalizedUri = normalizeUri(request.getRequestURI());
 
-            sample.stop(Timer.builder("http_server_requests")
+            sample.stop(Timer.builder("custom.http.server.requests")
                 .description("HTTP server request duration")
                 .tag("method", request.getMethod())
                 .tag("uri", normalizedUri)
@@ -497,12 +498,11 @@ public class MetricsFilter extends OncePerRequestFilter {
 
     // Normalize URIs to prevent cardinality explosion
     // /users/123 -> /users/{id}
-    // /orders/abc-def-ghi/items/456 -> /orders/{id}/items/{id}
+    // /orders/abc-def-ghi/items/456 -> /orders/abc-def-ghi/items/{id}
     private String normalizeUri(String uri) {
         return uri
-            .replaceAll("/\\d+", "/{id}")
-            .replaceAll("/[a-f0-9-]{36}", "/{uuid}")
-            .replaceAll("/[a-zA-Z0-9-]+(?=/|$)", "/{id}");
+            .replaceAll("/[a-fA-F0-9-]{36}(?=/|$)", "/{uuid}")
+            .replaceAll("/\\d+(?=/|$)", "/{id}");
     }
 
     private String getOutcome(int status) {
@@ -529,7 +529,6 @@ package com.example.metrics;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -543,21 +542,22 @@ public class BusinessMetrics {
         this.registry = registry;
 
         // Track order values distribution
-        this.orderValue = DistributionSummary.builder("order_value_dollars")
+        this.orderValue = DistributionSummary.builder("order.value")
             .description("Order value in dollars")
             .baseUnit("dollars")
             .publishPercentiles(0.5, 0.75, 0.9, 0.95)
             .register(registry);
 
         // Track total revenue
-        this.revenueCounter = Counter.builder("revenue_total_dollars")
+        this.revenueCounter = Counter.builder("revenue")
             .description("Total revenue in dollars")
+            .baseUnit("dollars")
             .register(registry);
     }
 
     // Track user signups by source
     public void userSignedUp(String source, String plan) {
-        registry.counter("user_signups_total",
+        registry.counter("user.signups",
             "source", source,     // organic, paid, referral
             "plan", plan          // free, pro, enterprise
         ).increment();
@@ -568,21 +568,21 @@ public class BusinessMetrics {
         orderValue.record(value);
         revenueCounter.increment(value);
 
-        registry.counter("orders_completed_total",
+        registry.counter("orders.completed.by.category",
             "category", category
         ).increment();
     }
 
     // Track feature usage
-    public void featureUsed(String feature, String userId) {
-        registry.counter("feature_usage_total",
+    public void featureUsed(String feature) {
+        registry.counter("feature.usage",
             "feature", feature
         ).increment();
     }
 
     // Track subscription changes
     public void subscriptionChanged(String fromPlan, String toPlan) {
-        registry.counter("subscription_changes_total",
+        registry.counter("subscription.changes",
             "from_plan", fromPlan,
             "to_plan", toPlan
         ).increment();
@@ -645,7 +645,7 @@ spec:
 
 ## Best Practices
 
-1. **Use consistent naming** - Follow Prometheus naming conventions: `snake_case`, suffix with unit (e.g., `_seconds`, `_bytes`, `_total`)
+1. **Use consistent naming** - Use Micrometer's dot-separated lowercase names in code; the Prometheus registry converts them to Prometheus-style names with suffixes such as `_seconds`, `_bytes`, and `_total`
 
 2. **Avoid high cardinality** - Do not use unbounded values as tags (user IDs, request IDs). Normalize URIs.
 
