@@ -42,7 +42,7 @@ Let's build a GraphQL server with proper N+1 prevention from scratch. We'll use 
 # Initialize your project
 
 npm init -y
-npm install apollo-server graphql dataloader
+npm install @apollo/server graphql dataloader
 npm install --save-dev typescript @types/node ts-node
 ```
 
@@ -115,11 +115,32 @@ interface Post {
   content: string;
 }
 
+interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
 interface Profile {
   id: string;
   user_id: string;
   bio: string;
   avatar_url: string;
+}
+
+// Batch function for loading users by IDs
+async function batchUsersByIds(userIds: readonly string[]): Promise<(User | null)[]> {
+  const users = await db.query<User>(
+    `SELECT * FROM users WHERE id IN (?)`,
+    [userIds]
+  );
+
+  const userById = new Map<string, User>();
+  users.forEach(user => {
+    userById.set(user.id, user);
+  });
+
+  return userIds.map(id => userById.get(id) || null);
 }
 
 // Batch function for loading posts by user IDs
@@ -172,6 +193,7 @@ async function batchProfilesByUserIds(userIds: readonly string[]): Promise<(Prof
 // IMPORTANT: Never reuse DataLoader instances across requests
 export function createLoaders() {
   return {
+    userById: new DataLoader(batchUsersByIds),
     postsByUserId: new DataLoader(batchPostsByUserIds),
     profileByUserId: new DataLoader(batchProfilesByUserIds),
   };
@@ -186,9 +208,11 @@ DataLoader instances must be created fresh for each request. This ensures proper
 // File: src/server.ts
 // Apollo Server setup with DataLoader context
 
-import { ApolloServer } from 'apollo-server';
+import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
 import { typeDefs } from './schema';
 import { resolvers } from './resolvers';
+import { verifyToken } from './auth';
 import { createLoaders } from './loaders';
 
 // Define the context type for TypeScript
@@ -198,11 +222,14 @@ export interface Context {
   currentUser?: { id: string; role: string };
 }
 
-const server = new ApolloServer({
+const server = new ApolloServer<Context>({
   typeDefs,
   resolvers,
+});
+
+startStandaloneServer(server, {
   // Context function runs for EVERY request
-  context: ({ req }): Context => {
+  context: async ({ req }): Promise<Context> => {
     return {
       // Create fresh loaders for each request
       // This is crucial for proper batching and cache isolation
@@ -213,9 +240,7 @@ const server = new ApolloServer({
         : undefined,
     };
   },
-});
-
-server.listen().then(({ url }) => {
+}).then(({ url }) => {
   console.log(`Server ready at ${url}`);
 });
 ```
@@ -539,7 +564,8 @@ Add query logging to catch N+1 issues that slip through:
 // File: src/plugins/query-logger.ts
 // Apollo Server plugin for monitoring query counts
 
-import { ApolloServerPlugin } from 'apollo-server-plugin-base';
+import type { ApolloServerPlugin } from '@apollo/server';
+import { db } from '../database';
 
 interface RequestMetrics {
   queryCount: number;
@@ -557,7 +583,7 @@ export const queryLoggerPlugin: ApolloServerPlugin = {
       // Track database queries during request execution
       executionDidStart: async () => {
         // Hook into your database client to count queries
-        // This example assumes a db.on('query') event
+        // This example assumes db.on('query') and db.off('query') events
         const queryHandler = (query: string) => {
           metrics.queryCount++;
           metrics.queries.push(query);
@@ -566,8 +592,12 @@ export const queryLoggerPlugin: ApolloServerPlugin = {
         db.on('query', queryHandler);
 
         return {
-          willResolveField: async ({ info }) => {
+          willResolveField: () => {
             // Optional: track field-level timing
+          },
+
+          executionDidEnd: async () => {
+            db.off('query', queryHandler);
           },
         };
       },
@@ -585,9 +615,9 @@ export const queryLoggerPlugin: ApolloServerPlugin = {
         }
 
         // Add metrics to response extensions for debugging
-        if (process.env.NODE_ENV === 'development') {
-          response.extensions = {
-            ...response.extensions,
+        if (process.env.NODE_ENV === 'development' && response.body.kind === 'single') {
+          response.body.singleResult.extensions = {
+            ...response.body.singleResult.extensions,
             queryMetrics: {
               count: metrics.queryCount,
               queries: metrics.queries,
