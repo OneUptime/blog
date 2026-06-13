@@ -8,7 +8,7 @@ Description: A beginner's guide to OpenShift covering projects, deployments, rou
 
 ---
 
-OpenShift is Red Hat's enterprise Kubernetes platform that adds developer-friendly features, built-in CI/CD, and enhanced security on top of vanilla Kubernetes. If you have worked with Kubernetes before, you will find OpenShift familiar but with several additional concepts and tools that make deploying applications easier.
+OpenShift is Red Hat's enterprise Kubernetes platform that adds developer-friendly features, integrated build and deployment capabilities, and enhanced security on top of vanilla Kubernetes. If you have worked with Kubernetes before, you will find OpenShift familiar but with several additional concepts and tools that make deploying applications easier.
 
 This guide will walk you through the fundamentals of OpenShift, including projects, deployments, routes, builds, and how it differs from standard Kubernetes.
 
@@ -120,7 +120,7 @@ oc login --token=sha256~your-token-here --server=https://api.your-cluster.exampl
 
 ## Understanding Projects
 
-Projects in OpenShift are namespaces with additional features like resource quotas and role-based access control (RBAC) policies applied by default. They provide isolation between different applications or teams.
+Projects in OpenShift are namespaces with additional annotations and project-scoped policies, quotas, service accounts, and RBAC. They provide isolation between different applications or teams.
 
 ```mermaid
 graph LR
@@ -180,10 +180,10 @@ OpenShift provides multiple ways to deploy applications. Let's explore the most 
 The simplest way to deploy is using an existing container image:
 
 ```bash
-# Deploy nginx from Docker Hub
+# Deploy Apache HTTP Server from a Red Hat UBI image
 # The --name flag sets the application name
 # The --port flag specifies which port the container listens on
-oc new-app --name=my-nginx --docker-image=nginx:latest --port=80
+oc new-app --name=my-httpd --docker-image=registry.access.redhat.com/ubi9/httpd-24:latest --port=8080
 
 # Check the deployment status
 oc get pods
@@ -233,9 +233,9 @@ spec:
     spec:
       containers:
       - name: web
-        image: nginx:1.21
+        image: registry.access.redhat.com/ubi9/httpd-24:latest
         ports:
-        - containerPort: 80
+        - containerPort: 8080
         resources:
           # Always set resource limits in OpenShift
           # This prevents any single pod from consuming all cluster resources
@@ -249,13 +249,13 @@ spec:
         readinessProbe:
           httpGet:
             path: /
-            port: 80
+            port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
         livenessProbe:
           httpGet:
             path: /
-            port: 80
+            port: 8080
           initialDelaySeconds: 15
           periodSeconds: 20
 ```
@@ -290,8 +290,8 @@ spec:
   selector:
     app: my-web-app  # Must match the pod labels
   ports:
-  - port: 80         # Port the service listens on
-    targetPort: 80   # Port on the container to forward to
+  - port: 8080       # Port the service listens on
+    targetPort: 8080 # Port on the container to forward to
   type: ClusterIP    # Only accessible within the cluster
 ```
 
@@ -300,12 +300,12 @@ spec:
 oc apply -f service.yaml
 
 # Or create it imperatively
-oc expose deployment/my-web-app --port=80
+oc expose deployment/my-web-app --port=8080
 ```
 
 ### Creating a Route
 
-Routes are an OpenShift-specific resource that expose services externally with automatic TLS termination:
+Routes are an OpenShift-specific resource that expose services externally and can terminate TLS at the router:
 
 ```mermaid
 sequenceDiagram
@@ -327,7 +327,7 @@ sequenceDiagram
 
 ```yaml
 # route.yaml
-# Routes provide external access with automatic TLS
+# Routes provide external access and can use the router's default certificate
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -339,7 +339,7 @@ spec:
     kind: Service
     name: my-web-app
   port:
-    targetPort: 80
+    targetPort: 8080
   tls:
     # edge termination means TLS is terminated at the router
     # and traffic to pods is unencrypted (internal cluster network)
@@ -591,7 +591,7 @@ oc adm policy add-scc-to-user anyuid -z my-service-account
 By default, OpenShift:
 - Runs containers as a random, non-root UID
 - Prevents privileged containers
-- Drops all Linux capabilities
+- Drops all default Linux capabilities when using the default `restricted-v2` SCC in new OpenShift 4.11+ installations
 - Uses SELinux for additional isolation
 
 ## Useful Commands Reference
@@ -620,7 +620,7 @@ oc logs <pod-name>            # View pod logs
 oc logs -f <pod-name>         # Stream pod logs
 
 # Debugging
-oc debug deployment/<name>    # Start debug pod with deployment config
+oc debug deployment/<name>    # Start a debug pod from a deployment's pod template
 oc rsh <pod-name>             # Remote shell into a pod
 oc exec <pod-name> -- <cmd>   # Execute command in pod
 oc port-forward <pod> 8080:80 # Forward local port to pod
@@ -638,34 +638,34 @@ oc delete pod <name>
 oc delete all -l app=<label>  # Delete all resources with label
 ```
 
-## Complete Example: Deploying a Python Flask Application
+## Complete Example: Deploying a Python Django Application
 
 Let's put everything together with a complete example:
 
 ```bash
 # 1. Create a new project
-oc new-project flask-demo
+oc new-project django-demo
 
 # 2. Deploy directly from GitHub using S2I
-oc new-app python:3.9-ubi8~https://github.com/sclorg/django-ex.git --name=flask-app
+oc new-app python:3.11~https://github.com/sclorg/django-ex.git --name=django-app
 
 # 3. Watch the build progress
-oc logs -f buildconfig/flask-app
+oc logs -f buildconfig/django-app
 
 # 4. Once built, expose the application
-oc expose service/flask-app
+oc expose service/django-app
 
 # 5. Get the route URL
-oc get route flask-app -o jsonpath='{.spec.host}'
+oc get route django-app -o jsonpath='{.spec.host}'
 
 # 6. Add TLS to the route
-oc patch route flask-app -p '{"spec":{"tls":{"termination":"edge"}}}'
+oc patch route django-app -p '{"spec":{"tls":{"termination":"edge"}}}'
 
 # 7. Scale up the application
-oc scale deployment/flask-app --replicas=3
+oc scale deployment/django-app --replicas=3
 
 # 8. Set up autoscaling based on CPU
-oc autoscale deployment/flask-app --min=2 --max=10 --cpu-percent=80
+oc autoscale deployment/django-app --min=2 --max=10 --cpu-percent=80
 ```
 
 ## Summary
@@ -673,7 +673,7 @@ oc autoscale deployment/flask-app --min=2 --max=10 --cpu-percent=80
 OpenShift provides a production-ready Kubernetes platform with additional features that simplify the developer experience:
 
 - **Projects** provide namespace isolation with built-in RBAC
-- **Routes** handle external traffic with automatic TLS termination
+- **Routes** handle external traffic and can terminate TLS at the router
 - **BuildConfigs** enable in-cluster image builds from source code
 - **ImageStreams** manage container images and trigger deployments
 - **Security Context Constraints** enforce pod security by default
