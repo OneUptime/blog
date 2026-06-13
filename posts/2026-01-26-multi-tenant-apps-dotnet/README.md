@@ -44,7 +44,7 @@ flowchart TB
 | Strategy | Isolation | Cost | Complexity |
 |----------|-----------|------|------------|
 | Database per tenant | Highest | Highest | Medium |
-| Schema per tenant | High | Medium | High |
+| Schema per tenant | High | Medium | High (not directly supported by EF Core) |
 | Shared database | Lowest | Lowest | Low |
 
 ## Tenant Resolution
@@ -91,7 +91,7 @@ public class SubdomainTenantResolver : ITenantResolver
 }
 
 // HeaderTenantResolver.cs
-// Resolves tenant from X-Tenant-Id header (useful for APIs)
+// Resolves tenant from X-Tenant-Id header (useful for trusted internal APIs)
 public class HeaderTenantResolver : ITenantResolver
 {
     private readonly ITenantRepository _tenantRepository;
@@ -118,9 +118,15 @@ public class CompositeTenantResolver : ITenantResolver
 {
     private readonly IEnumerable<ITenantResolver> _resolvers;
 
-    public CompositeTenantResolver(IEnumerable<ITenantResolver> resolvers)
+    public CompositeTenantResolver(
+        SubdomainTenantResolver subdomainResolver,
+        HeaderTenantResolver headerResolver)
     {
-        _resolvers = resolvers;
+        _resolvers = new ITenantResolver[]
+        {
+            subdomainResolver,
+            headerResolver
+        };
     }
 
     public async Task<Tenant?> ResolveAsync(HttpContext context)
@@ -302,9 +308,9 @@ public class TenantDbContextFactory<TContext> where TContext : DbContext
         optionsBuilder.UseSqlServer(connectionString);
 
         // Create context with tenant-specific options
-        return (TContext)Activator.CreateInstance(
-            typeof(TContext),
-            optionsBuilder.Options)!;
+        return ActivatorUtilities.CreateInstance<TContext>(
+            _serviceProvider,
+            optionsBuilder.Options);
     }
 
     private string GetConnectionString(Tenant tenant)
@@ -364,7 +370,8 @@ public class MultiTenantDbContext : DbContext
         // Apply tenant filter to all entities implementing ITenantEntity
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
-            if (typeof(ITenantEntity).IsAssignableFrom(entityType.ClrType))
+            if (entityType.BaseType == null &&
+                typeof(ITenantEntity).IsAssignableFrom(entityType.ClrType))
             {
                 var method = typeof(MultiTenantDbContext)
                     .GetMethod(nameof(SetTenantQueryFilter),
@@ -622,7 +629,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Tenant services
 builder.Services.AddScoped<ITenantContext, TenantContext>();
-builder.Services.AddScoped<ITenantResolver, SubdomainTenantResolver>();
+builder.Services.AddScoped<SubdomainTenantResolver>();
+builder.Services.AddScoped<HeaderTenantResolver>();
+builder.Services.AddScoped<ITenantResolver, CompositeTenantResolver>();
 builder.Services.AddScoped<ITenantSettingsService, TenantSettingsService>();
 builder.Services.AddScoped<TenantFeatureService>();
 
