@@ -65,7 +65,8 @@ graph TD
 
     J --> U[__init__.py]
     J --> V[user_service.py]
-    J --> W[email_service.py]
+    J --> W[product_service.py]
+    J --> X[email_service.py]
 ```
 
 Let's break down each component:
@@ -86,6 +87,7 @@ myproject/
 │   ├── services/
 │   │   ├── __init__.py
 │   │   ├── user_service.py  # Business logic for users
+│   │   ├── product_service.py # Business logic for products
 │   │   └── email_service.py # Email handling
 │   ├── templates/
 │   │   ├── base.html
@@ -143,6 +145,7 @@ def create_app(config_name='development'):
     # This keeps sensitive data out of version control
     from config import config
     app.config.from_object(config[config_name])
+    config[config_name].init_app(app)
 
     # Initialize extensions with the app instance
     # This binds the extensions to this specific app
@@ -212,8 +215,8 @@ class Config:
     Base configuration class.
     Contains settings common to all environments.
     """
-    # Security settings - always load from environment variables
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'you-will-never-guess'
+    # Security settings - load secrets from environment variables
+    SECRET_KEY = os.environ.get('SECRET_KEY')
 
     # Database settings
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -234,6 +237,7 @@ class DevelopmentConfig(Config):
     """Development configuration with debug enabled."""
 
     DEBUG = True
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-me'
     SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
         'sqlite:///dev.db'
 
@@ -245,6 +249,7 @@ class TestingConfig(Config):
     """Testing configuration using in-memory database."""
 
     TESTING = True
+    SECRET_KEY = 'test-secret-key'
 
     # Use in-memory SQLite for fast tests
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
@@ -259,13 +264,18 @@ class ProductionConfig(Config):
     # Database URL must be set in production
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
 
-    # Security headers
+    # Secure session cookie settings
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True
 
     @staticmethod
     def init_app(app):
         """Production-specific initialization."""
+        if not app.config.get('SECRET_KEY'):
+            raise RuntimeError('SECRET_KEY must be set in production.')
+        if not app.config.get('SQLALCHEMY_DATABASE_URI'):
+            raise RuntimeError('DATABASE_URL must be set in production.')
+
         # Log to stderr in production
         import logging
         from logging import StreamHandler
@@ -292,17 +302,26 @@ Blueprints let you organize related routes and views into separate modules. Here
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models.user import User
+from urllib.parse import urljoin, urlsplit
 from app.services.user_service import UserService
-from app import db
 
 # Create the blueprint instance
 # The first argument is the blueprint name used in url_for()
 # The second argument is the import name (usually __name__)
-auth_bp = Blueprint('auth', __name__, template_folder='templates')
+auth_bp = Blueprint('auth', __name__)
 
 # Initialize the service layer
 user_service = UserService()
+
+
+def is_safe_redirect_url(target):
+    """Only allow redirects back to the current host."""
+    if not target:
+        return False
+
+    ref_url = urlsplit(request.host_url)
+    test_url = urlsplit(urljoin(request.host_url, target))
+    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
@@ -330,7 +349,7 @@ def login():
 
             # Handle next parameter for redirect after login
             next_page = request.args.get('next')
-            if next_page:
+            if is_safe_redirect_url(next_page):
                 return redirect(next_page)
             return redirect(url_for('main.index'))
 
@@ -524,7 +543,7 @@ Organize your models in separate files within the models directory:
 ```python
 # app/models/user.py
 
-from datetime import datetime
+from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
 from app import db, login_manager
@@ -551,11 +570,18 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     is_admin = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
 
     # Relationships
-    products = db.relationship('Product', backref='creator', lazy='dynamic')
+    products = db.relationship('Product', backref='creator', lazy='selectin')
 
     def set_password(self, password):
         """
@@ -590,13 +616,13 @@ class User(UserMixin, db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     """Load user by ID for Flask-Login."""
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 ```
 
 ```python
 # app/models/product.py
 
-from datetime import datetime
+from datetime import datetime, timezone
 from app import db
 
 
@@ -621,8 +647,15 @@ class Product(db.Model):
     category = db.Column(db.String(50), nullable=False, index=True)
     is_active = db.Column(db.Boolean, default=True)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
 
     def to_dict(self):
         """Convert product to dictionary for JSON serialization."""
@@ -673,7 +706,9 @@ class UserService:
         Returns:
             User object if authentication succeeds, None otherwise
         """
-        user = User.query.filter_by(email=email).first()
+        user = db.session.execute(
+            db.select(User).filter_by(email=email)
+        ).scalar_one_or_none()
 
         # Check if user exists and password is correct
         if user and user.check_password(password):
@@ -712,11 +747,13 @@ class UserService:
 
     def get_by_email(self, email: str) -> Optional[User]:
         """Find a user by email address."""
-        return User.query.filter_by(email=email).first()
+        return db.session.execute(
+            db.select(User).filter_by(email=email)
+        ).scalar_one_or_none()
 
     def get_by_id(self, user_id: int) -> Optional[User]:
         """Find a user by ID."""
-        return User.query.get(user_id)
+        return db.session.get(User, user_id)
 
     def update_user(self, user_id: int, data: dict) -> Optional[User]:
         """
@@ -835,9 +872,8 @@ sequenceDiagram
     participant D as Database
 
     C->>F: HTTP Request
-    F->>F: Load Configuration
-    F->>F: Initialize Extensions
-    F->>B: Route to Blueprint
+    F->>F: Match URL rule
+    F->>B: Dispatch to Blueprint
     B->>V: Call View Function
     V->>V: Validate Input
     V->>S: Call Service Method
@@ -920,6 +956,7 @@ def auth_client(app, client):
 # tests/test_api.py
 
 import json
+from app import db
 
 
 def test_get_products_empty(client):
@@ -953,7 +990,9 @@ def test_create_product_success(auth_client, app):
     # First, make the test user an admin
     with app.app_context():
         from app.models.user import User
-        user = User.query.filter_by(email='test@example.com').first()
+        user = db.session.execute(
+            db.select(User).filter_by(email='test@example.com')
+        ).scalar_one()
         user.is_admin = True
         db.session.commit()
 
