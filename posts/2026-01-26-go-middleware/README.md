@@ -83,13 +83,26 @@ import (
 // Go's ResponseWriter doesn't expose the status after WriteHeader is called
 type statusRecorder struct {
     http.ResponseWriter
-    statusCode int
+    statusCode  int
+    wroteHeader bool
 }
 
 // WriteHeader captures the status code before passing it through
 func (sr *statusRecorder) WriteHeader(code int) {
+    if sr.wroteHeader {
+        return
+    }
+    sr.wroteHeader = true
     sr.statusCode = code
     sr.ResponseWriter.WriteHeader(code)
+}
+
+// Write records the implicit 200 OK status when no status was set
+func (sr *statusRecorder) Write(b []byte) (int, error) {
+    if !sr.wroteHeader {
+        sr.WriteHeader(http.StatusOK)
+    }
+    return sr.ResponseWriter.Write(b)
 }
 
 // Logger middleware records request method, path, status, and duration
@@ -237,7 +250,9 @@ flowchart TD
 package middleware
 
 import (
+    "net"
     "net/http"
+    "strings"
     "sync"
     "time"
 )
@@ -277,14 +292,14 @@ func getClientIP(r *http.Request) string {
     forwarded := r.Header.Get("X-Forwarded-For")
     if forwarded != "" {
         // X-Forwarded-For can contain multiple IPs, take the first
-        return strings.Split(forwarded, ",")[0]
+        return strings.TrimSpace(strings.Split(forwarded, ",")[0])
     }
 
     // Fall back to direct connection IP
     // RemoteAddr includes port, so strip it
-    ip := r.RemoteAddr
-    if colonIndex := strings.LastIndex(ip, ":"); colonIndex != -1 {
-        ip = ip[:colonIndex]
+    ip, _, err := net.SplitHostPort(r.RemoteAddr)
+    if err != nil {
+        return r.RemoteAddr
     }
     return ip
 }
@@ -347,7 +362,7 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 }
 ```
 
-You need to add the missing import for strings at the top of the rate limiter file. The token bucket algorithm smoothly handles bursts while enforcing an average rate over time.
+This token bucket implementation handles bursts while enforcing a rate over time.
 
 ## Chaining Middleware
 
@@ -359,7 +374,7 @@ The simplest approach nests function calls, but it becomes hard to read with man
 
 ```go
 // Manual chaining works but gets unwieldy
-handler := Logger(Auth(authConfig)(RateLimiter.Middleware(finalHandler)))
+handler := Logger(rateLimiter.Middleware(Auth(authConfig)(finalHandler)))
 ```
 
 ### Using a Chain Helper
@@ -430,8 +445,8 @@ import (
 )
 
 func main() {
-    // Create rate limiter: 100 requests per minute, burst of 10
-    rateLimiter := middleware.NewRateLimiter(100, 10, time.Minute)
+    // Create rate limiter: 10 requests per minute, burst of 10
+    rateLimiter := middleware.NewRateLimiter(10, 10, time.Minute)
 
     // Configure authentication
     authConfig := middleware.AuthConfig{
@@ -565,6 +580,7 @@ import (
     "net/http"
     "net/http/httptest"
     "testing"
+    "time"
 )
 
 func TestLoggerMiddleware(t *testing.T) {
