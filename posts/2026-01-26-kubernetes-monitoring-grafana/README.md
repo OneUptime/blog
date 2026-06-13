@@ -175,7 +175,7 @@ sum(kube_node_status_allocatable{resource="memory"})
 
 ```promql
 # Node information with status
-kube_node_info * on(node) group_left() kube_node_status_condition{condition="Ready"}
+kube_node_info * on(node) group_left() kube_node_status_condition{condition="Ready", status="true"}
 ```
 
 Table configuration:
@@ -213,7 +213,9 @@ Create a dashboard focused on namespace-level metrics.
 ```yaml
 Variable: namespace
 Type: Query
-Query: label_values(kube_namespace_status_phase, namespace)
+Query type: Label values
+Metric: kube_namespace_status_phase
+Label: namespace
 Sort: Alphabetical (asc)
 ```
 
@@ -257,11 +259,17 @@ For detailed investigation of specific workloads.
 ```yaml
 Variable: namespace
 Type: Query
-Query: label_values(kube_pod_info, namespace)
+Query type: Label values
+Metric: kube_pod_info
+Label: namespace
 
 Variable: workload
 Type: Query
-Query: label_values(kube_deployment_labels{namespace="$namespace"}, deployment)
+Query type: Label values
+Metric: kube_deployment_labels
+Label: deployment
+Label filters:
+  - namespace = $namespace
 ```
 
 ### Pod Details Table
@@ -269,8 +277,8 @@ Query: label_values(kube_deployment_labels{namespace="$namespace"}, deployment)
 ```promql
 # Pod status and age
 kube_pod_info{namespace="$namespace", pod=~"$workload.*"}
-* on(pod, namespace) group_left()
-kube_pod_status_phase
+* on(pod, namespace) group_left(phase)
+(kube_pod_status_phase == 1)
 ```
 
 ### Container Resource Panels
@@ -316,20 +324,30 @@ Monitor individual node health and resource usage.
 ```yaml
 Variable: node
 Type: Query
-Query: label_values(kube_node_info, node)
+Query type: Label values
+Metric: node_uname_info
+Label: nodename
+
+Variable: instance
+Type: Query
+Query type: Label values
+Metric: node_uname_info
+Label: instance
+Label filters:
+  - nodename = $node
 ```
 
 ### System Metrics
 
 ```promql
 # Node CPU usage
-100 - (avg(rate(node_cpu_seconds_total{mode="idle", instance=~"$node.*"}[5m])) * 100)
+100 - (avg(rate(node_cpu_seconds_total{mode="idle", instance="$instance"}[5m])) * 100)
 
 # Node memory usage
-(1 - node_memory_MemAvailable_bytes{instance=~"$node.*"} / node_memory_MemTotal_bytes{instance=~"$node.*"}) * 100
+(1 - node_memory_MemAvailable_bytes{instance="$instance"} / node_memory_MemTotal_bytes{instance="$instance"}) * 100
 
 # Disk usage
-(1 - node_filesystem_avail_bytes{instance=~"$node.*", mountpoint="/"} / node_filesystem_size_bytes{instance=~"$node.*", mountpoint="/"}) * 100
+(1 - node_filesystem_avail_bytes{instance="$instance", mountpoint="/"} / node_filesystem_size_bytes{instance="$instance", mountpoint="/"}) * 100
 ```
 
 ### Pods Running on Node
@@ -343,10 +361,10 @@ kube_pod_info{node="$node"}
 
 ```promql
 # Network receive
-sum(rate(node_network_receive_bytes_total{instance=~"$node.*", device!~"lo|veth.*|docker.*|br.*"}[5m])) by (device)
+sum(rate(node_network_receive_bytes_total{instance="$instance", device!~"lo|veth.*|docker.*|br.*"}[5m])) by (device)
 
 # Network transmit
-sum(rate(node_network_transmit_bytes_total{instance=~"$node.*", device!~"lo|veth.*|docker.*|br.*"}[5m])) by (device)
+sum(rate(node_network_transmit_bytes_total{instance="$instance", device!~"lo|veth.*|docker.*|br.*"}[5m])) by (device)
 ```
 
 ## Alerting Rules
@@ -387,38 +405,45 @@ groups:
 ### Pod Issues
 
 ```yaml
-- alert: PodCrashLooping
-  expr: |
-    rate(kube_pod_container_status_restarts_total[15m]) * 60 * 15 > 3
-  for: 5m
-  labels:
-    severity: critical
-  annotations:
-    summary: "Pod {{ $labels.pod }} is crash looping"
+groups:
+  - name: kubernetes-pods
+    rules:
+      - alert: PodCrashLooping
+        expr: |
+          increase(kube_pod_container_status_restarts_total[15m]) > 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pod {{ $labels.pod }} is crash looping"
 
-- alert: PodNotReady
-  expr: |
-    kube_pod_status_ready{condition="true"} == 0
-  for: 15m
-  labels:
-    severity: warning
-  annotations:
-    summary: "Pod {{ $labels.pod }} has been not ready for 15 minutes"
+      - alert: PodNotReady
+        expr: |
+          kube_pod_status_ready{condition="false"} == 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pod {{ $labels.pod }} has been not ready for 15 minutes"
 ```
 
 ### Deployment Issues
 
 ```yaml
-- alert: DeploymentReplicasMismatch
-  expr: |
-    kube_deployment_spec_replicas
-    !=
-    kube_deployment_status_replicas_available
-  for: 15m
-  labels:
-    severity: warning
-  annotations:
-    summary: "Deployment {{ $labels.deployment }} has {{ $value }} unavailable replicas"
+groups:
+  - name: kubernetes-deployments
+    rules:
+      - alert: DeploymentReplicasMismatch
+        expr: |
+          kube_deployment_spec_replicas
+          -
+          kube_deployment_status_replicas_available
+          > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Deployment {{ $labels.deployment }} has {{ $value }} unavailable replicas"
 ```
 
 ## Best Practices
@@ -444,7 +469,7 @@ Exclude system metrics when focusing on workloads:
 
 ```promql
 # Exclude kube-system and monitoring namespaces
-{namespace!~"kube-system|monitoring"}
+container_cpu_usage_seconds_total{namespace!~"kube-system|monitoring", container!=""}
 ```
 
 ### Dashboard Organization
