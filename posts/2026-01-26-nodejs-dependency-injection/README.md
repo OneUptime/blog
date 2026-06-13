@@ -544,13 +544,13 @@ function createContainer() {
 module.exports = { createContainer };
 ```
 
-With Awilix, services automatically receive their dependencies based on constructor parameter names:
+With Awilix in `PROXY` mode, services automatically receive a cradle object whose properties match registered dependency names:
 
 ```javascript
 // src/services/userService.js - Works with Awilix
 class UserService {
   // Awilix will inject database, emailClient, and logger
-  // by matching parameter names to registered dependencies
+  // as properties on the cradle object
   constructor({ database, emailClient, logger }) {
     this.db = database;
     this.emailClient = emailClient;
@@ -596,7 +596,7 @@ function createApp() {
 
 ## TypeScript and Dependency Injection
 
-TypeScript makes DI even better with interfaces and decorators. Here is an example using `tsyringe`:
+TypeScript makes DI even better with interfaces and decorators. Here is an example using `tsyringe`. This assumes `experimentalDecorators` and `emitDecoratorMetadata` are enabled in `tsconfig.json`, `reflect-metadata` is imported once before resolving dependencies, and application-specific types like `User`, `CreateUserDto`, `UpdateUserDto`, and `EmailOptions` are defined elsewhere:
 
 ```typescript
 // src/interfaces/IUserService.ts
@@ -659,7 +659,11 @@ export class UserService implements IUserService {
       html: `<h1>Welcome ${userData.name}!</h1>`
     });
 
-    return this.findById(result.insertId);
+    const user = await this.findById(result.insertId);
+    if (!user) {
+      throw new Error('Created user not found');
+    }
+    return user;
   }
 
   // ... other methods
