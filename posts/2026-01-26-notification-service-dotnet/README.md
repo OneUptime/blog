@@ -56,7 +56,6 @@ dotnet add package MailKit
 dotnet add package FirebaseAdmin
 dotnet add package Twilio
 dotnet add package Scriban
-dotnet add package StackExchange.Redis
 ```
 
 ## Core Models
@@ -225,6 +224,7 @@ Implement email delivery using MailKit for SMTP support.
 ```csharp
 // Channels/EmailChannel.cs
 using MailKit.Net.Smtp;
+using MailKit.Security;
 using MimeKit;
 
 public interface INotificationChannel
@@ -296,7 +296,9 @@ public class EmailChannel : INotificationChannel
             await client.ConnectAsync(
                 _settings.SmtpHost,
                 _settings.SmtpPort,
-                _settings.UseSsl);
+                _settings.UseStartTls
+                    ? SecureSocketOptions.StartTls
+                    : SecureSocketOptions.None);
 
             if (!string.IsNullOrEmpty(_settings.Username))
             {
@@ -348,7 +350,7 @@ public class EmailSettings
 {
     public string SmtpHost { get; set; } = string.Empty;
     public int SmtpPort { get; set; } = 587;
-    public bool UseSsl { get; set; } = true;
+    public bool UseStartTls { get; set; } = true;
     public string Username { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
     public string FromAddress { get; set; } = string.Empty;
@@ -447,10 +449,16 @@ public class SmsChannel : INotificationChannel
         return status switch
         {
             MessageResource.StatusEnum.Queued => DeliveryStatus.Pending,
+            MessageResource.StatusEnum.Sending => DeliveryStatus.Pending,
+            MessageResource.StatusEnum.Accepted => DeliveryStatus.Pending,
+            MessageResource.StatusEnum.Scheduled => DeliveryStatus.Pending,
             MessageResource.StatusEnum.Sent => DeliveryStatus.Sent,
             MessageResource.StatusEnum.Delivered => DeliveryStatus.Delivered,
+            MessageResource.StatusEnum.Read => DeliveryStatus.Delivered,
+            MessageResource.StatusEnum.PartiallyDelivered => DeliveryStatus.Delivered,
             MessageResource.StatusEnum.Failed => DeliveryStatus.Failed,
             MessageResource.StatusEnum.Undelivered => DeliveryStatus.Failed,
+            MessageResource.StatusEnum.Canceled => DeliveryStatus.Failed,
             _ => DeliveryStatus.Pending
         };
     }
