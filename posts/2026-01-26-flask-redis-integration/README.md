@@ -48,13 +48,13 @@ Install Flask and the Redis client library:
 pip install flask redis
 ```
 
-For production deployments, you will also want connection pooling:
+For production deployments, you may also want the optional `hiredis` parser:
 
 ```bash
 pip install flask redis hiredis
 ```
 
-The `hiredis` package is a C-based parser that speeds up Redis operations significantly.
+The `hiredis` package is a C-based parser that can speed up Redis response parsing. The `redis` package already includes connection pooling.
 
 ### Basic Connection
 
@@ -84,7 +84,7 @@ def health_check():
     try:
         redis_client.ping()
         return {'status': 'healthy', 'redis': 'connected'}
-    except redis.ConnectionError:
+    except redis.exceptions.ConnectionError:
         return {'status': 'unhealthy', 'redis': 'disconnected'}, 503
 
 if __name__ == '__main__':
@@ -97,7 +97,7 @@ The `decode_responses=True` parameter is important - without it, Redis returns b
 
 ## Connection Pooling
 
-For production applications, always use connection pooling to avoid creating new connections for every request:
+For production applications, use an explicit shared connection pool to cap Redis connections across requests:
 
 ```python
 # config.py
@@ -180,7 +180,7 @@ def cache_result(key_prefix, ttl=300):
 
             # Try to get cached result
             cached = g.redis.get(cache_key)
-            if cached:
+            if cached is not None:
                 return json.loads(cached)
 
             # Execute function and cache result
@@ -233,7 +233,6 @@ Cache invalidation is one of the hardest problems in computer science. Here is a
 ```python
 # cache_manager.py
 import json
-from datetime import datetime
 
 class CacheManager:
     """Manages cache operations with proper invalidation"""
@@ -283,7 +282,7 @@ def get_user_posts(user_id):
     cache_key = f'user_posts:{user_id}'
 
     posts = cache.get(cache_key)
-    if posts:
+    if posts is not None:
         return jsonify(posts)
 
     # Fetch from database
@@ -331,10 +330,11 @@ pip install flask-session
 
 ```python
 # app.py
-from flask import Flask, session
+from flask import Flask, session, request
 from flask_session import Session
 import redis
 import os
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -343,7 +343,6 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-key-change-in-prod')
 app.config['SESSION_TYPE'] = 'redis'
 app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
-app.config['SESSION_USE_SIGNER'] = True  # Sign session cookie for security
 app.config['SESSION_KEY_PREFIX'] = 'myapp:session:'  # Namespace in Redis
 app.config['SESSION_REDIS'] = redis.Redis(
     host=os.getenv('REDIS_HOST', 'localhost'),
@@ -362,7 +361,7 @@ def login():
     # Store user info in session
     session['user_id'] = user.id
     session['user_email'] = user.email
-    session['logged_in_at'] = datetime.utcnow().isoformat()
+    session['logged_in_at'] = datetime.now(timezone.utc).isoformat()
 
     return {'status': 'logged_in'}
 
@@ -390,7 +389,7 @@ For more control, you can implement sessions manually:
 # sessions.py
 import uuid
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from functools import wraps
 from flask import request, g
 
@@ -407,8 +406,8 @@ class RedisSessionManager:
         session_id = str(uuid.uuid4())
         session_data = {
             'user_id': user_id,
-            'created_at': datetime.utcnow().isoformat(),
-            'last_activity': datetime.utcnow().isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'last_activity': datetime.now(timezone.utc).isoformat(),
             'metadata': metadata or {}
         }
 
@@ -421,6 +420,7 @@ class RedisSessionManager:
 
         # Track active sessions per user (for "log out all devices")
         self.redis.sadd(f'user_sessions:{user_id}', session_id)
+        self.redis.expire(f'user_sessions:{user_id}', self.ttl)
 
         return session_id
 
@@ -435,7 +435,7 @@ class RedisSessionManager:
         session_data = json.loads(data)
 
         # Update last activity and refresh TTL
-        session_data['last_activity'] = datetime.utcnow().isoformat()
+        session_data['last_activity'] = datetime.now(timezone.utc).isoformat()
         self.redis.setex(key, self.ttl, json.dumps(session_data))
 
         return session_data
@@ -528,7 +528,7 @@ sequenceDiagram
 # rate_limiter.py
 import time
 from functools import wraps
-from flask import request, g, jsonify
+from flask import request, g, jsonify, make_response
 
 class RateLimiter:
     """
@@ -607,15 +607,10 @@ def rate_limit(limit=100, window=60, key_func=None):
                 rate_key, limit, window
             )
 
-            # Add rate limit headers to response
-            response = None
             if not is_allowed:
-                response = jsonify({'error': 'Rate limit exceeded'})
-                response.status_code = 429
+                response = make_response(jsonify({'error': 'Rate limit exceeded'}), 429)
             else:
-                response = f(*args, **kwargs)
-                if not isinstance(response, tuple):
-                    response = jsonify(response) if isinstance(response, dict) else response
+                response = make_response(f(*args, **kwargs))
 
             # Add standard rate limit headers
             response.headers['X-RateLimit-Limit'] = str(limit)
@@ -692,7 +687,7 @@ flowchart TB
 ```python
 # events.py
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 class EventPublisher:
     """Publish events to Redis channels"""
@@ -712,7 +707,7 @@ class EventPublisher:
         event = {
             'type': event_type,
             'data': data,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
         self.redis.publish(channel, json.dumps(event))
@@ -769,7 +764,7 @@ import json
 
 def message_handler(message):
     """Process incoming pub/sub messages"""
-    if message['type'] == 'message':
+    if message['type'] in ('message', 'pmessage'):
         data = json.loads(message['data'])
         print(f"Received: {data['type']} - {data['data']}")
 
@@ -809,7 +804,7 @@ For simple background tasks without Celery, Redis lists work well:
 # task_queue.py
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 class SimpleTaskQueue:
     """
@@ -828,7 +823,7 @@ class SimpleTaskQueue:
             'name': task_name,
             'payload': payload,
             'priority': priority,
-            'created_at': datetime.utcnow().isoformat()
+            'created_at': datetime.now(timezone.utc).isoformat()
         }
 
         # Use LPUSH for high priority, RPUSH for normal
@@ -1041,6 +1036,7 @@ def health_check():
 ```python
 # config.py
 import os
+import redis
 
 class Config:
     """Base configuration"""
@@ -1153,7 +1149,7 @@ def login():
 def get_product(product_id):
     # Try cache first
     cached = g.cache.get(f'product:{product_id}')
-    if cached:
+    if cached is not None:
         return jsonify(cached)
 
     # Fetch from database
@@ -1165,7 +1161,7 @@ def get_product(product_id):
         f'product:{product_id}',
         product_data,
         ttl=600,
-        tags=['products', f'category:{product.category_id}']
+        tags=['products', f'product:{product_id}', f'category:{product.category_id}']
     )
 
     return jsonify(product_data)
