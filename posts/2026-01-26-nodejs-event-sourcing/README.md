@@ -59,7 +59,7 @@ cd event-sourcing-nodejs
 # Initialize npm and install dependencies
 npm init -y
 npm install uuid
-npm install -D typescript @types/node @types/uuid ts-node
+npm install -D typescript @types/node ts-node
 
 # Initialize TypeScript
 npx tsc --init
@@ -76,6 +76,7 @@ Configure TypeScript for modern Node.js in `tsconfig.json`:
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
+    "types": ["node"],
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -219,7 +220,7 @@ export class InMemoryEventStore implements EventStore {
     if (!stream || stream.length === 0) {
       return [];
     }
-    // Return a copy to prevent external modification
+    // Return a shallow copy to prevent callers from replacing the internal array
     return [...stream];
   }
 
@@ -782,7 +783,7 @@ export class CartSummaryProjection implements Projection {
 
 ## Projection Runner
 
-The projection runner subscribes to the event store and keeps projections up to date.
+The projection runner polls the event store and keeps projections up to date.
 
 ```typescript
 // src/projections/runner.ts
@@ -988,8 +989,11 @@ export class SnapshotShoppingCartRepository {
     await this.eventStore.append(cart.id, uncommittedEvents, expectedVersion);
     cart.clearUncommittedEvents();
 
-    // Check if we should take a snapshot
-    if (cart.version % this.snapshotFrequency === 0) {
+    // Check if this save crossed a snapshot boundary
+    if (
+      Math.floor(cart.version / this.snapshotFrequency) >
+      Math.floor(expectedVersion / this.snapshotFrequency)
+    ) {
       const snapshot = createCartSnapshot(cart);
       await this.snapshotStore.save(snapshot);
     }
