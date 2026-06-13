@@ -48,6 +48,8 @@ Create a Maven project with Connect dependencies.
 ```xml
 <!-- pom.xml -->
 <project>
+    <modelVersion>4.0.0</modelVersion>
+
     <groupId>com.example</groupId>
     <artifactId>custom-connector</artifactId>
     <version>1.0.0</version>
@@ -72,10 +74,23 @@ Create a Maven project with Connect dependencies.
             <version>2.0.9</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.11.0</version>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <release>11</release>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
@@ -323,6 +338,7 @@ public class HttpSinkConnector extends SinkConnector {
 public class HttpSinkTask extends SinkTask {
 
     private HttpClient httpClient;
+    private ErrantRecordReporter reporter;
     private String url;
     private int timeout;
 
@@ -335,6 +351,7 @@ public class HttpSinkTask extends SinkTask {
         httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofMillis(timeout))
             .build();
+        reporter = context.errantRecordReporter();
     }
 
     @Override
@@ -354,15 +371,30 @@ public class HttpSinkTask extends SinkTask {
                 HttpResponse<String> response = httpClient.send(
                     request, HttpResponse.BodyHandlers.ofString());
 
-                if (response.statusCode() >= 400) {
+                if (response.statusCode() >= 500) {
                     throw new RetriableException(
                         "HTTP error: " + response.statusCode());
                 }
+                if (response.statusCode() >= 400) {
+                    report(record, new ConnectException(
+                        "HTTP error: " + response.statusCode()));
+                }
 
             } catch (IOException | InterruptedException e) {
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
                 // RetriableException tells Connect to retry
                 throw new RetriableException("HTTP request failed", e);
             }
+        }
+    }
+
+    private void report(SinkRecord record, ConnectException error) {
+        if (reporter != null) {
+            reporter.report(record, error);
+        } else {
+            throw error;
         }
     }
 
@@ -549,7 +581,7 @@ curl http://localhost:8083/connectors/file-source/status
 
 ## Error Handling
 
-Configure dead letter queues for failed records.
+Configure dead letter queues for failed records reported by sink connectors, converters, or transforms.
 
 ```json
 {
