@@ -24,13 +24,13 @@ Before diving into code, you need to add the coroutines dependency to your proje
 // build.gradle.kts
 dependencies {
     // Core coroutines library
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 
     // For Android projects
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     // For testing coroutines
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }
 ```
 
@@ -39,9 +39,9 @@ dependencies {
 ```groovy
 // build.gradle
 dependencies {
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3'
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0'
 }
 ```
 
@@ -373,7 +373,7 @@ fun main() = runBlocking {
             println("Child 2 completed") // This still runs!
         }
 
-        // Handle the failed child
+        // Observe the failed child
         child1.invokeOnCompletion { exception ->
             if (exception != null) {
                 println("Child 1 failed: ${exception.message}")
@@ -402,14 +402,18 @@ suspend fun fetchDataSafely(): Result<Data> {
     return try {
         val data = apiService.fetchData()
         Result.success(data)
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         Result.failure(e)
     }
 }
 
-// Using runCatching for cleaner syntax
+// Using runCatching while preserving cancellation
 suspend fun fetchDataClean(): Result<Data> = runCatching {
     apiService.fetchData()
+}.onFailure { error ->
+    if (error is CancellationException) throw error
 }
 
 // Handling in the caller
@@ -532,7 +536,6 @@ suspend fun fetchWithTimeout(): Data? {
 
 ```kotlin
 import kotlinx.coroutines.*
-import kotlin.math.pow
 
 suspend fun <T> retryWithBackoff(
     times: Int = 3,
@@ -546,6 +549,8 @@ suspend fun <T> retryWithBackoff(
     repeat(times - 1) { attempt ->
         try {
             return block()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             println("Attempt ${attempt + 1} failed: ${e.message}")
         }
@@ -680,7 +685,7 @@ class UserServiceTest {
         var result = 0
 
         launch {
-            delay(1000) // Uses virtual time, completes instantly
+            delay(1000) // Uses virtual time controlled by the test scheduler
             result = 42
         }
 
@@ -689,6 +694,7 @@ class UserServiceTest {
         assertEquals(0, result) // Not yet complete
 
         advanceTimeBy(500)
+        runCurrent()
         assertEquals(42, result) // Now complete
     }
 
