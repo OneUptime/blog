@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix the 'ImportError: No module named' er
 
 ---
 
-> The "ImportError: No module named X" error is one of the most common issues Python developers encounter. It means Python cannot find the module you are trying to import, but the solution varies depending on the root cause.
+> The "ImportError: No module named X" error is one of the most common issues Python developers encounter. In Python 3, this is usually reported as `ModuleNotFoundError: No module named 'X'`, which is a subclass of `ImportError`. It means Python cannot find the module you are trying to import, but the solution varies depending on the root cause.
 
 This guide walks through the most common causes and their solutions, helping you quickly diagnose and fix import errors in your Python projects.
 
@@ -16,19 +16,18 @@ This guide walks through the most common causes and their solutions, helping you
 
 ## Understanding the Error
 
-When Python encounters an import statement, it searches for the module in several locations:
+When Python encounters an import statement, it checks built-in and frozen modules and searches the module path (`sys.path`), which includes:
 
 1. The directory containing the input script
 2. Directories in the PYTHONPATH environment variable
-3. Installation-dependent default directories (site-packages)
-4. Built-in modules
+3. Installation-dependent default directories such as the standard library and site-packages
 
-If Python cannot find the module in any of these locations, it raises an ImportError.
+If Python cannot find the module, it raises `ModuleNotFoundError` in Python 3.
 
 ```python
 # This causes the error if 'requests' is not installed
 
-import requests  # ImportError: No module named 'requests'
+import requests  # ModuleNotFoundError: No module named 'requests'
 ```
 
 ---
@@ -59,8 +58,8 @@ import sys
 print(sys.executable)  # Shows which Python is being used
 
 # List installed packages
-import pkg_resources
-installed = [pkg.key for pkg in pkg_resources.working_set]
+from importlib.metadata import distributions
+installed = {dist.metadata["Name"].lower() for dist in distributions()}
 print('requests' in installed)  # True if installed
 ```
 
@@ -125,13 +124,11 @@ import sys
 
 def in_virtualenv():
     """Check if running inside a virtual environment."""
-    # Check for venv
+    # Check for virtualenv
     if hasattr(sys, 'real_prefix'):
         return True
-    # Check for virtualenv
-    if hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix:
-        return True
-    return False
+    # Check for venv
+    return sys.base_prefix != sys.prefix
 
 print(f"In virtual environment: {in_virtualenv()}")
 ```
@@ -178,7 +175,7 @@ Relative imports only work inside packages and can cause confusion.
 #         helpers.py
 
 # In helpers.py - WRONG if running helpers.py directly
-from ..main import something  # ImportError if run as script
+from ..main import something  # ImportError or ImportError-related failure if run as a script
 
 # Solution 1: Run as a module
 # python -m myproject.utils.helpers
@@ -283,7 +280,7 @@ def debug_import(module_name):
     # Check if already imported
     if module_name in sys.modules:
         print(f"Module '{module_name}' is already imported")
-        print(f"Location: {sys.modules[module_name].__file__}")
+        print(f"Location: {getattr(sys.modules[module_name], '__file__', 'built-in or namespace module')}")
         return
 
     # Try to find the module
@@ -292,7 +289,7 @@ def debug_import(module_name):
     if spec is None:
         print(f"Module '{module_name}' NOT FOUND")
         print("\nPossible causes:")
-        print("  1. Module is not installed (pip install {module_name})")
+        print(f"  1. Module is not installed (pip install {module_name})")
         print("  2. You are using the wrong Python environment")
         print("  3. The module name is different from the package name")
     else:
@@ -434,4 +431,3 @@ Use virtual environments consistently, verify your Python executable, and use th
 ---
 
 *Building Python applications? [OneUptime](https://oneuptime.com) helps you monitor deployments and catch configuration issues before they affect users.*
-
