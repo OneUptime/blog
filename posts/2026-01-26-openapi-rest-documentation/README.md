@@ -789,13 +789,13 @@ Always validate your OpenAPI spec to catch errors early:
 
 ```bash
 # Install the OpenAPI CLI validator
-npm install -g @apidevtools/swagger-cli
+npm install -g @redocly/cli
 
 # Validate the specification
-swagger-cli validate openapi.yaml
+redocly lint --extends=minimal openapi.yaml
 
 # Bundle multiple files into one (if using $ref to external files)
-swagger-cli bundle openapi.yaml -o bundled-openapi.yaml
+redocly bundle openapi.yaml --output bundled-openapi.yaml
 ```
 
 You can also validate programmatically:
