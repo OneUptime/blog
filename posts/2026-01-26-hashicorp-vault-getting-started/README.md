@@ -179,7 +179,7 @@ The key components are:
 2. **Encryption Barrier**: All data passes through this layer for encryption/decryption
 3. **Secrets Engines**: Components that store, generate, or encrypt data
 4. **Auth Methods**: How clients authenticate to Vault
-5. **Audit Devices**: Log all requests and responses
+5. **Audit Devices**: Log most requests and responses, with a small set of exceptions
 
 ## Working with the Key/Value Secrets Engine
 
@@ -734,8 +734,8 @@ flowchart TD
 # Enable the UI
 ui = true
 
-# Disable memory locking (enable in production with proper capabilities)
-disable_mlock = false
+# Disable memory locking when using integrated storage (Raft)
+disable_mlock = true
 
 # Storage backend using integrated storage (Raft)
 storage "raft" {
@@ -750,7 +750,7 @@ listener "tcp" {
   tls_key_file  = "/opt/vault/tls/vault.key"
 }
 
-# API address for cluster communication
+# API address for client redirection and plugin backends
 api_addr = "https://vault.example.com:8200"
 cluster_addr = "https://vault-node-1.example.com:8201"
 
@@ -766,14 +766,8 @@ telemetry {
   disable_hostname          = true
 }
 
-# Audit logging to file
-audit {
-  type = "file"
-  path = "file"
-  options = {
-    file_path = "/var/log/vault/audit.log"
-  }
-}
+# Enable audit logging after Vault is initialized and unsealed:
+# vault audit enable file file_path=/var/log/vault/audit.log
 ```
 
 ## Summary
@@ -785,7 +779,7 @@ HashiCorp Vault provides a robust solution for secrets management with features 
 - **Encryption as a Service**: Encrypt data without managing encryption keys
 - **Flexible Authentication**: Support for multiple authentication methods
 - **Fine-grained Access Control**: Policies that control exactly who can access what
-- **Audit Logging**: Complete audit trail of all secret access
+- **Audit Logging**: Detailed audit trail of secret access, with a small set of exempted endpoints
 
 Start with the development server to learn the basics, then gradually move to a production setup with proper high availability, TLS encryption, and audit logging enabled.
 
