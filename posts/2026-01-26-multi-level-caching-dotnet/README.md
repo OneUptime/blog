@@ -35,9 +35,11 @@ flowchart LR
 First, install the required packages:
 
 ```bash
-dotnet add package Microsoft.Extensions.Caching.Memory
-dotnet add package Microsoft.Extensions.Caching.StackExchangeRedis
+dotnet package add Microsoft.Extensions.Caching.Memory
+dotnet package add Microsoft.Extensions.Caching.StackExchangeRedis
 ```
+
+If you're using the .NET 9 SDK or earlier, use `dotnet add package` instead of `dotnet package add`.
 
 Configure both caches in `Program.cs`:
 
@@ -320,12 +322,6 @@ public class StampedeProtectedCache : IMultiLevelCache
         finally
         {
             keyLock.Release();
-
-            // Clean up the lock if no one is waiting
-            if (keyLock.CurrentCount == 1)
-            {
-                _locks.TryRemove(key, out _);
-            }
         }
     }
 
@@ -353,6 +349,12 @@ public class CacheInvalidator
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly IMemoryCache _memoryCache;
+
+    public CacheInvalidator(IConnectionMultiplexer redis, IMemoryCache memoryCache)
+    {
+        _redis = redis;
+        _memoryCache = memoryCache;
+    }
 
     public async Task InvalidatePatternAsync(string pattern)
     {
@@ -531,7 +533,11 @@ public class CacheHealthCheck : IHealthCheck
         {
             // Test L1
             var testKey = $"health-check-{Guid.NewGuid()}";
-            _memoryCache.Set(testKey, "test", TimeSpan.FromSeconds(5));
+            _memoryCache.Set(testKey, "test", new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(5),
+                Size = 1
+            });
             var l1Result = _memoryCache.TryGetValue(testKey, out _);
             _memoryCache.Remove(testKey);
 
@@ -570,7 +576,7 @@ Multi-level caching combines the best of both worlds: the speed of in-memory cac
 | **Database** | ~10-50ms | Persistent | Source of truth |
 
 Remember these best practices:
-- Always set size limits on in-memory caches to prevent memory issues
+- Set size limits on dedicated in-memory caches to prevent memory issues
 - Use shorter TTLs for L1 than L2 to balance freshness and performance
 - Implement cache stampede protection for high-traffic keys
 - Use pub/sub for cross-instance L1 invalidation
