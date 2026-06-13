@@ -95,6 +95,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import warnings
 warnings.filterwarnings('ignore')
@@ -140,7 +141,7 @@ def load_and_prepare_data():
 
 def preprocess_data(data):
     """
-    Preprocess the data by scaling numerical features.
+    Split the data into training and test sets.
     """
     # Separate features and target
     X = data.drop('churn', axis=1)
@@ -151,12 +152,7 @@ def preprocess_data(data):
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    # Scale numerical features
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-
-    return X_train_scaled, X_test_scaled, y_train, y_test, scaler
+    return X_train, X_test, y_train, y_test
 
 def train_and_log_model(model_class, model_params, X_train, X_test, y_train, y_test, run_name):
     """
@@ -178,8 +174,11 @@ def train_and_log_model(model_class, model_params, X_train, X_test, y_train, y_t
         mlflow.log_param("test_samples", len(y_test))
         mlflow.log_param("feature_count", X_train.shape[1])
 
-        # Initialize and train the model
-        model = model_class(**model_params)
+        # Initialize and train a pipeline so preprocessing is included in the logged model
+        model = Pipeline([
+            ("scaler", StandardScaler()),
+            ("classifier", model_class(**model_params)),
+        ])
         model.fit(X_train, y_train)
 
         # Make predictions
@@ -216,10 +215,11 @@ def train_and_log_model(model_class, model_params, X_train, X_test, y_train, y_t
         )
 
         # Log feature importance as an artifact
-        if hasattr(model, 'feature_importances_'):
+        classifier = model.named_steps["classifier"]
+        if hasattr(classifier, 'feature_importances_'):
             importance_df = pd.DataFrame({
-                'feature': [f'feature_{i}' for i in range(len(model.feature_importances_))],
-                'importance': model.feature_importances_
+                'feature': X_train.columns,
+                'importance': classifier.feature_importances_
             }).sort_values('importance', ascending=False)
 
             importance_df.to_csv('feature_importance.csv', index=False)
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     # Load and prepare data
     print("Loading and preparing data...")
     data = load_and_prepare_data()
-    X_train, X_test, y_train, y_test, scaler = preprocess_data(data)
+    X_train, X_test, y_train, y_test = preprocess_data(data)
 
     # Define experiments to run
     # Each configuration will be logged as a separate run
@@ -280,10 +280,10 @@ The Model Registry is where models graduate from experiments to production candi
 ```mermaid
 stateDiagram-v2
     [*] --> None: Model Logged
-    None --> Staging: Promote for Testing
-    Staging --> Production: Approved
-    Staging --> Archived: Rejected
-    Production --> Archived: Replaced
+    None --> Candidate: Add candidate alias
+    Candidate --> Champion: Validation approved
+    Candidate --> Archived: Rejected
+    Champion --> Archived: Replaced
     Archived --> [*]
 ```
 
@@ -327,25 +327,24 @@ def register_best_model(experiment_name, model_name):
 
     return result
 
-def transition_model_stage(model_name, version, stage):
+def assign_model_alias(model_name, version, alias):
     """
-    Transition a model version to a new stage.
-    Valid stages: None, Staging, Production, Archived
+    Assign an alias to a model version.
+    Common aliases: candidate, champion, archived
     """
-    client.transition_model_version_stage(
+    client.set_registered_model_alias(
         name=model_name,
-        version=version,
-        stage=stage,
-        archive_existing_versions=True  # Archive any existing model in this stage
+        alias=alias,
+        version=version
     )
-    print(f"Model {model_name} version {version} transitioned to {stage}")
+    print(f"Model {model_name} version {version} assigned alias @{alias}")
 
 def get_production_model(model_name):
     """
     Load the current production model for inference.
     """
     # Load model using the production alias
-    model_uri = f"models:/{model_name}/Production"
+    model_uri = f"models:/{model_name}@champion"
 
     try:
         model = mlflow.sklearn.load_model(model_uri)
@@ -357,14 +356,15 @@ def get_production_model(model_name):
 
 def list_model_versions(model_name):
     """
-    List all versions of a registered model with their stages.
+    List all versions of a registered model with their aliases.
     """
     versions = client.search_model_versions(f"name='{model_name}'")
 
     print(f"\nModel: {model_name}")
     print("-" * 50)
     for v in versions:
-        print(f"Version {v.version}: Stage={v.current_stage}, "
+        aliases = ", ".join(v.aliases) if v.aliases else "none"
+        print(f"Version {v.version}: Aliases={aliases}, "
               f"Created={v.creation_timestamp}, "
               f"Run ID={v.run_id[:8]}...")
 
@@ -376,12 +376,12 @@ if __name__ == "__main__":
     result = register_best_model("customer-churn-prediction", model_name)
 
     if result:
-        # Transition to staging for testing
-        transition_model_stage(model_name, result.version, "Staging")
+        # Mark as a candidate for testing
+        assign_model_alias(model_name, result.version, "candidate")
 
         # After validation, promote to production
         # In practice, this would happen after automated tests pass
-        transition_model_stage(model_name, result.version, "Production")
+        assign_model_alias(model_name, result.version, "champion")
 
         # List all versions
         list_model_versions(model_name)
@@ -487,7 +487,7 @@ Serve a model as a REST API locally:
 
 ```bash
 # Serve the production model
-mlflow models serve -m "models:/churn-prediction-model/Production" -p 5001
+mlflow models serve -m "models:/churn-prediction-model@champion" -p 5001
 
 # Test the endpoint
 curl -X POST http://localhost:5001/invocations \
@@ -501,7 +501,7 @@ Create a Docker image for your model:
 
 ```bash
 # Build a Docker image containing the model
-mlflow models build-docker -m "models:/churn-prediction-model/Production" -n churn-model:latest
+mlflow models build-docker -m "models:/churn-prediction-model@champion" -n churn-model:latest
 
 # Run the container
 docker run -p 5001:8080 churn-model:latest
@@ -537,7 +537,7 @@ spec:
           env:
             # Configure model server settings
             - name: MLFLOW_MODEL_URI
-              value: "models:/churn-prediction-model/Production"
+              value: "models:/churn-prediction-model@champion"
             - name: GUNICORN_CMD_ARGS
               value: "--workers=4 --timeout=60"
           resources:
@@ -610,7 +610,7 @@ def run_batch_inference(model_name, input_path, output_path):
     Run batch inference on a dataset using the production model.
     """
     # Load the production model
-    model_uri = f"models:/{model_name}/Production"
+    model_uri = f"models:/{model_name}@champion"
     model = mlflow.sklearn.load_model(model_uri)
 
     # Load input data
