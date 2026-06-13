@@ -70,6 +70,9 @@ plugins {
 
     // JPA plugin - generates no-arg constructors for @Entity classes
     kotlin("plugin.jpa") version "1.9.20"
+
+    // All-open plugin - opens JPA entities for Hibernate lazy-loading proxies
+    kotlin("plugin.allopen") version "1.9.20"
 }
 
 group = "com.example"
@@ -83,11 +86,18 @@ repositories {
     mavenCentral()
 }
 
+allOpen {
+    annotation("jakarta.persistence.Entity")
+    annotation("jakarta.persistence.MappedSuperclass")
+    annotation("jakarta.persistence.Embeddable")
+}
+
 dependencies {
     // Spring Boot starters
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("org.springframework.security:spring-security-crypto")
 
     // Kotlin support
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
@@ -98,6 +108,9 @@ dependencies {
 
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("io.mockk:mockk:1.13.10")
+    testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:postgresql")
 }
 
 tasks.withType<KotlinCompile> {
@@ -369,12 +382,30 @@ class UserService(
 
 // Extension function to convert Entity to DTO
 // Keeps the mapping logic reusable and the service clean
-private fun User.toResponse() = UserResponse(
+fun User.toResponse() = UserResponse(
     id = this.id!!,
     name = this.name,
     email = this.email,
     createdAt = this.createdAt!!
 )
+```
+
+Add a `PasswordEncoder` bean for the service:
+
+```kotlin
+// src/main/kotlin/com/example/demo/config/PasswordConfig.kt
+package com.example.demo.config
+
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
+import org.springframework.security.crypto.password.PasswordEncoder
+
+@Configuration
+class PasswordConfig {
+    @Bean
+    fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
+}
 ```
 
 ## REST Controllers
@@ -538,9 +569,43 @@ For non-blocking I/O, Kotlin coroutines integrate naturally with Spring WebFlux.
 // build.gradle.kts - add these dependencies
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webflux")
+    implementation("org.springframework.boot:spring-boot-starter-data-r2dbc")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
+    runtimeOnly("org.postgresql:r2dbc-postgresql")
 }
+```
+
+Use a reactive datastore such as R2DBC for non-blocking database access. JPA repositories use blocking JDBC.
+
+```kotlin
+// src/main/kotlin/com/example/demo/entity/R2dbcUser.kt
+package com.example.demo.entity
+
+import org.springframework.data.annotation.Id
+import org.springframework.data.relational.core.mapping.Table
+import java.time.Instant
+
+@Table("users")
+data class R2dbcUser(
+    @Id
+    val id: Long? = null,
+    val name: String,
+    val email: String,
+    val passwordHash: String,
+    val createdAt: Instant? = null
+)
+```
+
+```kotlin
+// src/main/kotlin/com/example/demo/repository/UserCoroutineRepository.kt
+package com.example.demo.repository
+
+import com.example.demo.entity.R2dbcUser
+import org.springframework.data.repository.kotlin.CoroutineCrudRepository
+
+interface UserCoroutineRepository : CoroutineCrudRepository<R2dbcUser, Long>
 ```
 
 ```kotlin
@@ -556,7 +621,7 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/v2/users")
 class AsyncUserController(private val userService: AsyncUserService) {
 
-    // Suspend function - handles one request at a time without blocking threads
+    // Suspend function - returns a single result without blocking threads
     @GetMapping("/{id}")
     suspend fun getUser(@PathVariable id: Long): UserResponse {
         return userService.getUser(id)
@@ -575,6 +640,7 @@ class AsyncUserController(private val userService: AsyncUserService) {
 package com.example.demo.service
 
 import com.example.demo.dto.UserResponse
+import com.example.demo.entity.R2dbcUser
 import com.example.demo.exception.UserNotFoundException
 import com.example.demo.repository.UserCoroutineRepository
 import kotlinx.coroutines.flow.Flow
@@ -594,6 +660,13 @@ class AsyncUserService(private val userRepository: UserCoroutineRepository) {
         return userRepository.findAll().map { it.toResponse() }
     }
 }
+
+private fun R2dbcUser.toResponse() = UserResponse(
+    id = this.id!!,
+    name = this.name,
+    email = this.email,
+    createdAt = this.createdAt!!
+)
 ```
 
 ## Application Flow
@@ -672,6 +745,9 @@ data class AppProperties(
 
 ```kotlin
 // Enable in main application
+import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan
+
 @SpringBootApplication
 @ConfigurationPropertiesScan  // Scan for @ConfigurationProperties classes
 class DemoApplication
