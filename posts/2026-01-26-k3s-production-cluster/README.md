@@ -132,8 +132,8 @@ Open these ports between nodes:
 | 6443 | TCP | All | Servers | Kubernetes API |
 | 2379-2380 | TCP | Servers | Servers | etcd communication |
 | 10250 | TCP | All | All | Kubelet API |
-| 8472 | UDP | All | All | Flannel VXLAN |
-| 51820 | UDP | All | All | Flannel WireGuard |
+| 8472 | UDP | All | All | Flannel VXLAN (only if using the VXLAN backend) |
+| 51820-51821 | UDP | All | All | Flannel WireGuard (only if using the WireGuard backend; 51821 is for IPv6) |
 
 ### Prepare All Nodes
 
@@ -200,6 +200,7 @@ sudo ufw allow 2379:2380/tcp  # etcd
 sudo ufw allow 10250/tcp  # Kubelet
 sudo ufw allow 8472/udp   # Flannel VXLAN
 sudo ufw allow 51820/udp  # Flannel WireGuard
+sudo ufw allow 51821/udp  # Flannel WireGuard IPv6
 
 echo "Node preparation complete. Reboot recommended."
 ```
@@ -447,12 +448,11 @@ Join the remaining servers to the cluster:
 # Set your token and addresses
 export K3S_TOKEN="your_generated_token_here"
 export LB_IP="192.168.1.5"
-export FIRST_SERVER_IP="192.168.1.11"
 
 # Install K3s and join as a server
 curl -sfL https://get.k3s.io | sh -s - server \
     --token=$K3S_TOKEN \
-    --server=https://${FIRST_SERVER_IP}:6443 \
+    --server=https://${LB_IP}:6443 \
     --tls-san=$LB_IP \
     --tls-san=k3s.example.com \
     --disable=traefik \
@@ -478,9 +478,9 @@ sudo kubectl get nodes -o wide
 
 # Expected output:
 # NAME           STATUS   ROLES                       AGE   VERSION
-# k3s-server-1   Ready    control-plane,etcd,master   5m    v1.28.x+k3s1
-# k3s-server-2   Ready    control-plane,etcd,master   3m    v1.28.x+k3s1
-# k3s-server-3   Ready    control-plane,etcd,master   1m    v1.28.x+k3s1
+# k3s-server-1   Ready    control-plane,etcd,master   5m    vX.Y.Z+k3s1
+# k3s-server-2   Ready    control-plane,etcd,master   3m    vX.Y.Z+k3s1
+# k3s-server-3   Ready    control-plane,etcd,master   1m    vX.Y.Z+k3s1
 
 # Check etcd cluster health
 sudo k3s etcd-snapshot list
@@ -488,8 +488,8 @@ sudo k3s etcd-snapshot list
 # Verify all system pods are running
 sudo kubectl get pods -n kube-system
 
-# Check component health
-sudo kubectl get componentstatuses
+# Check control plane readiness
+sudo kubectl get --raw='/readyz?verbose'
 ```
 
 ## Adding Worker Nodes
@@ -557,7 +557,7 @@ Production clusters need proper certificate management. Install cert-manager for
 
 ```bash
 # Install cert-manager using kubectl
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager to be ready
 kubectl wait --for=condition=Available deployment/cert-manager -n cert-manager --timeout=300s
@@ -619,19 +619,24 @@ kubectl get clusterissuers
 
 ### Install NGINX Ingress Controller
 
-Since we disabled Traefik, install NGINX ingress for production:
+Since we disabled Traefik, install a supported NGINX ingress controller for production:
 
 ```bash
-# Install NGINX ingress controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.0/deploy/static/provider/baremetal/deploy.yaml
+# Install F5 NGINX Ingress Controller with NGINX Open Source
+kubectl create namespace nginx-ingress
+helm install nginx-ingress oci://ghcr.io/nginx/charts/nginx-ingress \
+    --version 2.6.0 \
+    --namespace nginx-ingress \
+    --set controller.service.type=NodePort \
+    --set controller.ingressClass.name=nginx
 
 # Wait for the controller to be ready
-kubectl wait --for=condition=Available deployment/ingress-nginx-controller \
+kubectl wait --for=condition=Ready pod \
+    -l app.kubernetes.io/name=nginx-ingress \
     -n ingress-nginx --timeout=300s
 
 # Check the ingress controller
-kubectl get pods -n ingress-nginx
-kubectl get svc -n ingress-nginx
+kubectl get pods,svc -n ingress-nginx
 ```
 
 ## Security Hardening
@@ -697,7 +702,7 @@ roleRef:
 Enforce pod security with a restricted policy:
 
 ```yaml
-# pod-security-policy.yaml
+# restricted-deployment.yaml
 # Example deployment following restricted security standards
 apiVersion: apps/v1
 kind: Deployment
@@ -725,7 +730,9 @@ spec:
           type: RuntimeDefault
       containers:
       - name: app
-        image: nginx:alpine
+        image: nginxinc/nginx-unprivileged:alpine
+        ports:
+        - containerPort: 8080
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
@@ -837,7 +844,7 @@ spec:
           kubernetes.io/metadata.name: ingress-nginx
     ports:
     - protocol: TCP
-      port: 80
+      port: 8080
 ```
 
 Apply network policies:
@@ -885,15 +892,15 @@ Velero provides application-level backup and restore:
 
 ```bash
 # Install Velero CLI
-wget https://github.com/vmware-tanzu/velero/releases/download/v1.13.0/velero-v1.13.0-linux-amd64.tar.gz
-tar -xvf velero-v1.13.0-linux-amd64.tar.gz
-sudo mv velero-v1.13.0-linux-amd64/velero /usr/local/bin/
+wget https://github.com/velero-io/velero/releases/download/v1.18.1/velero-v1.18.1-linux-amd64.tar.gz
+tar -xvf velero-v1.18.1-linux-amd64.tar.gz
+sudo mv velero-v1.18.1-linux-amd64/velero /usr/local/bin/
 
 # Install Velero with your backup storage provider
 # Example for AWS S3:
 velero install \
     --provider aws \
-    --plugins velero/velero-plugin-for-aws:v1.9.0 \
+    --plugins velero/velero-plugin-for-aws:v1.14.1 \
     --bucket your-backup-bucket \
     --backup-location-config region=us-east-1 \
     --secret-file ./credentials-velero \
@@ -923,14 +930,17 @@ sudo k3s server \
 # 3. Start K3s on the restored server
 sudo systemctl start k3s
 
-# 4. Remove old cluster data on other servers
+# 4. Confirm the reset flag was removed after normal startup
+sudo test ! -f /var/lib/rancher/k3s/server/db/reset-flag
+
+# 5. Remove old cluster data on other servers before rejoining them
 sudo rm -rf /var/lib/rancher/k3s/server/db
 
-# 5. Rejoin other servers to the cluster
+# 6. Rejoin other servers to the cluster
 # They will sync from the restored server
 sudo systemctl start k3s
 
-# 6. Verify cluster health
+# 7. Verify cluster health
 kubectl get nodes
 kubectl get pods -A
 ```
@@ -1082,7 +1092,8 @@ kubectl drain k3s-server-1 --ignore-daemonsets --delete-emptydir-data
 
 # 3. Upgrade K3s on the node
 # SSH to k3s-server-1
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.29.0+k3s1 sh -s - server
+# Replace vX.Y.Z+k3s1 with the next supported K3s version for your cluster
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=vX.Y.Z+k3s1 sh -s - server
 
 # 4. Verify the node is running new version
 kubectl get nodes
@@ -1102,7 +1113,9 @@ Install the K3s system upgrade controller for managed upgrades:
 
 ```bash
 # Install system upgrade controller
-kubectl apply -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
+kubectl apply \
+    -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/crd.yaml \
+    -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
 
 # Wait for controller to be ready
 kubectl wait --for=condition=Available deployment/system-upgrade-controller \
@@ -1130,7 +1143,8 @@ spec:
   serviceAccountName: system-upgrade
   upgrade:
     image: rancher/k3s-upgrade
-  version: v1.29.0+k3s1
+  # Replace vX.Y.Z+k3s1 with the next supported K3s version for your cluster
+  version: vX.Y.Z+k3s1
 ---
 apiVersion: upgrade.cattle.io/v1
 kind: Plan
@@ -1152,7 +1166,8 @@ spec:
   serviceAccountName: system-upgrade
   upgrade:
     image: rancher/k3s-upgrade
-  version: v1.29.0+k3s1
+  # Use the same version as server-plan
+  version: vX.Y.Z+k3s1
 ```
 
 ## Conclusion
