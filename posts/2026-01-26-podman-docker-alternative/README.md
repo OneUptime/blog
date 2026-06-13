@@ -8,13 +8,13 @@ Description: Learn how to use Podman as a drop-in replacement for Docker with ro
 
 ---
 
-Podman has emerged as a powerful container engine that offers a Docker-compatible CLI while providing additional security features like rootless containers by default. This guide walks you through practical usage patterns for running Podman as your primary container tool.
+Podman has emerged as a powerful container engine that offers a Docker-compatible CLI while providing additional security features like strong rootless container support. This guide walks you through practical usage patterns for running Podman as your primary container tool.
 
 ## Why Choose Podman Over Docker?
 
 Podman offers several advantages that make it worth considering:
 
-- **Rootless by default**: Run containers without root privileges, reducing security risks
+- **Rootless support**: Run containers without root privileges, reducing security risks
 - **Daemonless architecture**: No background daemon required, reducing resource usage
 - **Pod support**: Native support for grouping containers into pods (similar to Kubernetes pods)
 - **Docker CLI compatibility**: Most Docker commands work with Podman unchanged
@@ -154,7 +154,7 @@ podman info --format '{{.Store.ConfigFile}}'
 
 ## Creating and Managing Pods
 
-Pods group multiple containers that share network and storage namespaces, similar to Kubernetes pods.
+Pods group multiple containers that share a network namespace and can share volumes, similar to Kubernetes pods.
 
 ```mermaid
 graph TB
@@ -211,15 +211,15 @@ podman pod rm -f web-app
 
 ## Using Podman Compose
 
-Podman works with Docker Compose files through podman-compose or the built-in compose support.
+Podman works with Docker Compose files through podman-compose or the `podman compose` wrapper for an external Compose provider.
 
 ```bash
 # Install podman-compose
 # Python-based tool that reads docker-compose.yml files
 pip install podman-compose
 
-# Or use Podman's built-in compose support (Podman 3.0+)
-# This provides native compose functionality
+# Or use Podman's compose wrapper
+# This runs an external provider such as podman-compose or docker-compose
 podman compose --help
 ```
 
@@ -227,9 +227,6 @@ Create a `docker-compose.yml` file:
 
 ```yaml
 # docker-compose.yml
-# Standard Docker Compose format - works with Podman
-version: '3.8'
-
 services:
   # Web application service
   web:
@@ -282,7 +279,7 @@ volumes:
 # -d: run in detached mode
 podman-compose up -d
 
-# Or with native podman compose
+# Or with podman compose
 podman compose up -d
 
 # View running services
@@ -442,48 +439,57 @@ podman network inspect mynetwork
 podman run -d --network host nginx:alpine
 ```
 
-## Generating Systemd Services
+## Managing Systemd Services with Quadlet
 
-Podman can generate systemd unit files to manage containers as system services:
+Podman can manage containers as systemd services with Quadlet files:
 
 ```bash
-# Generate systemd unit file for existing container
-# --name: service name
-# --files: output to files instead of stdout
-# --new: create new container on service start (recommended)
-podman generate systemd --name webserver --files --new
+# Create the rootless Quadlet directory
+mkdir -p ~/.config/containers/systemd
+```
 
-# The generated file looks like webserver.service
-# Move it to systemd user directory for rootless
-mkdir -p ~/.config/systemd/user
-mv container-webserver.service ~/.config/systemd/user/
+Create `~/.config/containers/systemd/webserver.container`:
 
-# Reload systemd to recognize new service
+```ini
+[Container]
+Image=nginx:alpine
+ContainerName=webserver
+PublishPort=8080:80
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+# Reload the user systemd manager so Quadlet generates webserver.service
 systemctl --user daemon-reload
 
-# Enable service to start on boot
-# --now: also start it immediately
-systemctl --user enable --now container-webserver
+# Enable service to start with the user systemd instance
+systemctl --user enable --now webserver.service
+
+# Optional: keep user services running after logout and start them at boot
+loginctl enable-linger $(whoami)
 
 # Check service status
-systemctl --user status container-webserver
+systemctl --user status webserver.service
 
 # View service logs
-journalctl --user -u container-webserver
+journalctl --user -u webserver.service
 ```
 
 For system-wide services (requires root):
 
 ```bash
-# Generate for root/system service
-sudo podman generate systemd --name webserver --files --new
+# Place Quadlet files for rootful services in the system directory
+sudo mkdir -p /etc/containers/systemd
 
-# Move to system directory
-sudo mv container-webserver.service /etc/systemd/system/
+# Copy the example .container file to the system directory
+sudo install -Dm644 ~/.config/containers/systemd/webserver.container \
+    /etc/containers/systemd/webserver.container
 
 # Enable and start
 sudo systemctl daemon-reload
-sudo systemctl enable --now container-webserver
+sudo systemctl enable --now webserver.service
 ```
 
 ## Inspecting and Debugging Containers
@@ -554,7 +560,7 @@ Here's a quick reference for common Docker commands and their Podman equivalents
 |---------------|----------------|-------|
 | `docker run` | `podman run` | Identical syntax |
 | `docker build` | `podman build` | Identical syntax |
-| `docker-compose` | `podman-compose` or `podman compose` | Requires podman-compose or Podman 3.0+ |
+| `docker-compose` | `podman-compose` or `podman compose` | Requires podman-compose or another Compose provider |
 | `docker swarm` | N/A | Use Kubernetes or Podman pods |
 | `docker system prune` | `podman system prune` | Identical syntax |
 | `docker login` | `podman login` | Identical syntax |
@@ -606,6 +612,6 @@ podman run -v /path:/container/path:z image
 
 ## Summary
 
-Podman provides a secure, daemonless alternative to Docker while maintaining command compatibility. Its rootless capabilities and pod support make it particularly suitable for development environments and production workloads where security is a priority. The ability to generate systemd services makes it easy to manage containers as traditional system services.
+Podman provides a secure, daemonless alternative to Docker while maintaining command compatibility. Its rootless capabilities and pod support make it particularly suitable for development environments and production workloads where security is a priority. Quadlet support makes it easy to manage containers as traditional systemd services.
 
 Start by aliasing Docker to Podman, and gradually explore features like pods and rootless containers to take full advantage of what Podman offers.
