@@ -99,6 +99,8 @@ jobs:
       should-deploy: ${{ steps.check.outputs.deploy }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Determine version
         id: version
@@ -412,7 +414,12 @@ jobs:
 
       - id: changes
         run: |
-          CHANGED=$(git diff --name-only HEAD~1 | grep "^services/" | cut -d/ -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
+          CHANGED=$(git diff --name-only HEAD~1 | grep "^services/" | cut -d/ -f2 | sort -u || true)
+          if [ -n "$CHANGED" ]; then
+            CHANGED=$(printf "%s\n" "$CHANGED" | jq -R -s -c 'split("\n")[:-1]')
+          else
+            CHANGED="[]"
+          fi
           echo "services=$CHANGED" >> $GITHUB_OUTPUT
 
   build-services:
