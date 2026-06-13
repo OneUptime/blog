@@ -93,7 +93,7 @@ Now add validation to catch missing configuration at startup:
 ```typescript
 // config/env.validation.ts
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsNumber, IsString, validateSync } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString, validateSync } from 'class-validator';
 
 enum Environment {
   Development = 'development',
@@ -102,26 +102,29 @@ enum Environment {
 }
 
 class EnvironmentVariables {
+  @IsOptional()
   @IsEnum(Environment)
-  NODE_ENV: Environment;
+  NODE_ENV!: Environment;
 
+  @IsOptional()
   @IsNumber()
-  PORT: number;
+  PORT!: number;
 
   @IsString()
-  DATABASE_HOST: string;
+  DATABASE_HOST!: string;
 
+  @IsOptional()
   @IsNumber()
-  DATABASE_PORT: number;
+  DATABASE_PORT!: number;
 
   @IsString()
-  DATABASE_NAME: string;
+  DATABASE_NAME!: string;
 
   @IsString()
-  DATABASE_USERNAME: string;
+  DATABASE_USERNAME!: string;
 
   @IsString()
-  DATABASE_PASSWORD: string;
+  DATABASE_PASSWORD!: string;
 }
 
 // This function runs at startup and fails fast if config is invalid
@@ -206,7 +209,7 @@ The service encapsulates business logic and coordinates between repositories:
 
 ```typescript
 // modules/orders/services/orders.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Order, OrderStatus } from '../entities/order.entity';
@@ -258,7 +261,9 @@ export class OrdersService {
       await queryRunner.commitTransaction();
       return savedOrder;
     } catch (error) {
-      // Roll back all changes if anything fails
+      // Roll back database changes made through this query runner if anything fails.
+      // External side effects such as inventory reservations or payments need
+      // their own transaction participation or compensating actions.
       await queryRunner.rollbackTransaction();
       throw error;
     } finally {
@@ -290,8 +295,13 @@ flowchart LR
     H --> G
     G --> F
     F --> J[Interceptors - After]
-    J --> K[Exception Filter]
-    K --> L[Response]
+    J --> L[Response]
+    D -. errors .-> K[Exception Filter]
+    E -. errors .-> K
+    F -. errors .-> K
+    G -. errors .-> K
+    H -. errors .-> K
+    K --> L
 ```
 
 Each layer has a specific responsibility:
@@ -600,7 +610,7 @@ export class HttpCacheInterceptor implements NestInterceptor {
 
     // Check cache first
     const cachedResponse = await this.cacheManager.get(cacheKey);
-    if (cachedResponse) {
+    if (cachedResponse !== undefined && cachedResponse !== null) {
       return of(cachedResponse);
     }
 
@@ -632,7 +642,7 @@ interface LogContext {
 
 @Injectable({ scope: Scope.TRANSIENT })
 export class AppLogger implements LoggerService {
-  private context: string;
+  private context = AppLogger.name;
   private isProduction: boolean;
 
   constructor(private configService: ConfigService) {
