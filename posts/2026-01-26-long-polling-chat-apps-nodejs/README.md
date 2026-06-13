@@ -46,6 +46,7 @@ Start with a simple Express server that holds connections open:
 ```typescript
 // server.ts
 import express, { Request, Response } from 'express';
+import { randomUUID } from 'node:crypto';
 
 const app = express();
 app.use(express.json());
@@ -77,7 +78,7 @@ const pendingRequests: Map<string, PendingRequest> = new Map();
 app.get('/api/messages', (req: Request, res: Response) => {
   const roomId = req.query.roomId as string;
   const sinceId = parseInt(req.query.since as string) || 0;
-  const clientId = req.query.clientId as string || crypto.randomUUID();
+  const clientId = (req.query.clientId as string) || randomUUID();
 
   // Check if there are already new messages
   const newMessages = messages.filter(
@@ -152,6 +153,14 @@ The client needs to handle connection lifecycle, reconnection, and message order
 
 ```typescript
 // client.ts
+interface Message {
+  id: number;
+  roomId: string;
+  userId: string;
+  content: string;
+  timestamp: number;
+}
+
 class LongPollingClient {
   private baseUrl: string;
   private roomId: string;
@@ -288,6 +297,16 @@ A production chat server needs to manage multiple rooms efficiently:
 
 ```typescript
 // rooms/roomManager.ts
+import { Response } from 'express';
+
+interface Message {
+  id: number;
+  roomId: string;
+  userId: string;
+  content: string;
+  timestamp: number;
+}
+
 interface Room {
   id: string;
   name: string;
@@ -588,7 +607,23 @@ For multiple server instances, use Redis pub/sub to broadcast messages:
 
 ```typescript
 // scaling/redisAdapter.ts
-import { Redis } from 'ioredis';
+import { Response } from 'express';
+import Redis from 'ioredis';
+
+interface Message {
+  id: number;
+  roomId: string;
+  userId: string;
+  content: string;
+  timestamp: number;
+}
+
+interface PendingConnection {
+  res: Response;
+  userId: string;
+  sinceId: number;
+  timeoutId: NodeJS.Timeout;
+}
 
 const publisher = new Redis();
 const subscriber = new Redis();
@@ -641,7 +676,7 @@ class ScaledRoomManager {
   // Get messages from Redis
   async getMessagesSince(roomId: string, sinceId: number): Promise<Message[]> {
     const key = `room:${roomId}:messages`;
-    const data = await publisher.zrangebyscore(key, sinceId + 1, '+inf');
+    const data = await publisher.zrange(key, sinceId + 1, '+inf', 'BYSCORE');
     return data.map((d) => JSON.parse(d));
   }
 }
