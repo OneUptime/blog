@@ -67,7 +67,7 @@ go mod init gin-mongodb-api
 go get -u github.com/gin-gonic/gin
 
 # Install MongoDB Go driver
-go get go.mongodb.org/mongo-driver/mongo
+go get go.mongodb.org/mongo-driver/v2/mongo
 ```
 
 ---
@@ -108,8 +108,8 @@ import (
 	"log"
 	"time"
 
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 // Database holds the MongoDB client and database references
@@ -121,7 +121,7 @@ type Database struct {
 // ConnectDB establishes a connection to MongoDB and returns a Database instance.
 // It configures connection pooling and sets appropriate timeouts.
 func ConnectDB(uri, dbName string) (*Database, error) {
-	// Create a context with timeout for the connection attempt
+	// Create a context with timeout for the ping check
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -134,7 +134,7 @@ func ConnectDB(uri, dbName string) (*Database, error) {
 		SetServerSelectionTimeout(5 * time.Second) // Timeout for server selection
 
 	// Connect to MongoDB
-	client, err := mongo.Connect(ctx, clientOptions)
+	client, err := mongo.Connect(clientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +180,7 @@ package models
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // User represents a user document in MongoDB.
@@ -188,7 +188,7 @@ import (
 // The json tags define how fields appear in API responses.
 type User struct {
 	// ID is the MongoDB ObjectID, automatically generated if not provided
-	ID primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
+	ID bson.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
 
 	// Name is the user's full name (required)
 	Name string `bson:"name" json:"name" binding:"required"`
@@ -248,10 +248,9 @@ import (
 
 	"gin-mongodb-api/models"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 // Common errors returned by the repository
@@ -278,9 +277,12 @@ func NewUserRepository(collection *mongo.Collection) *UserRepository {
 // It sets timestamps and returns the created user with its ID.
 func (r *UserRepository) Create(ctx context.Context, user *models.User) (*models.User, error) {
 	// Check if email already exists to prevent duplicates
-	existingUser, _ := r.FindByEmail(ctx, user.Email)
-	if existingUser != nil {
+	existingUser, err := r.FindByEmail(ctx, user.Email)
+	if err == nil && existingUser != nil {
 		return nil, ErrEmailAlreadyExists
+	}
+	if err != nil && err != ErrUserNotFound {
+		return nil, err
 	}
 
 	// Set timestamps
@@ -297,18 +299,21 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) (*models
 	// Insert the document
 	result, err := r.collection.InsertOne(ctx, user)
 	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil, ErrEmailAlreadyExists
+		}
 		return nil, err
 	}
 
 	// Set the generated ID on the user struct
-	user.ID = result.InsertedID.(primitive.ObjectID)
+	user.ID = result.InsertedID.(bson.ObjectID)
 
 	return user, nil
 }
 
 // FindByID retrieves a user by their ObjectID.
 // Returns ErrUserNotFound if no user matches the ID.
-func (r *UserRepository) FindByID(ctx context.Context, id primitive.ObjectID) (*models.User, error) {
+func (r *UserRepository) FindByID(ctx context.Context, id bson.ObjectID) (*models.User, error) {
 	var user models.User
 
 	// Create filter to match the _id field
@@ -381,7 +386,7 @@ func (r *UserRepository) FindAll(ctx context.Context, page, limit int64) ([]*mod
 
 // Update modifies an existing user document.
 // Only non-nil fields in the update map will be changed.
-func (r *UserRepository) Update(ctx context.Context, id primitive.ObjectID, update bson.M) (*models.User, error) {
+func (r *UserRepository) Update(ctx context.Context, id bson.ObjectID, update bson.M) (*models.User, error) {
 	// Always update the updated_at timestamp
 	update["updated_at"] = time.Now()
 
@@ -395,6 +400,9 @@ func (r *UserRepository) Update(ctx context.Context, id primitive.ObjectID, upda
 	var user models.User
 	err := r.collection.FindOneAndUpdate(ctx, filter, updateDoc, opts).Decode(&user)
 	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil, ErrEmailAlreadyExists
+		}
 		if err == mongo.ErrNoDocuments {
 			return nil, ErrUserNotFound
 		}
@@ -406,7 +414,7 @@ func (r *UserRepository) Update(ctx context.Context, id primitive.ObjectID, upda
 
 // Delete removes a user document from the database.
 // Returns ErrUserNotFound if the user does not exist.
-func (r *UserRepository) Delete(ctx context.Context, id primitive.ObjectID) error {
+func (r *UserRepository) Delete(ctx context.Context, id bson.ObjectID) error {
 	filter := bson.M{"_id": id}
 
 	result, err := r.collection.DeleteOne(ctx, filter)
@@ -441,8 +449,7 @@ import (
 	"gin-mongodb-api/repository"
 
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // UserHandler contains all HTTP handlers for user operations.
@@ -504,7 +511,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 func (h *UserHandler) GetUser(c *gin.Context) {
 	// Parse the ID parameter from the URL
 	idParam := c.Param("id")
-	id, err := primitive.ObjectIDFromHex(idParam)
+	id, err := bson.ObjectIDFromHex(idParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid user ID format",
@@ -573,7 +580,7 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 func (h *UserHandler) UpdateUser(c *gin.Context) {
 	// Parse the ID parameter
 	idParam := c.Param("id")
-	id, err := primitive.ObjectIDFromHex(idParam)
+	id, err := bson.ObjectIDFromHex(idParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid user ID format",
@@ -617,6 +624,12 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 	// Perform the update
 	updatedUser, err := h.repo.Update(c.Request.Context(), id, update)
 	if err != nil {
+		if err == repository.ErrEmailAlreadyExists {
+			c.JSON(http.StatusConflict, gin.H{
+				"error": "A user with this email already exists",
+			})
+			return
+		}
 		if err == repository.ErrUserNotFound {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "User not found",
@@ -640,7 +653,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 func (h *UserHandler) DeleteUser(c *gin.Context) {
 	// Parse the ID parameter
 	idParam := c.Param("id")
-	id, err := primitive.ObjectIDFromHex(idParam)
+	id, err := bson.ObjectIDFromHex(idParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid user ID format",
@@ -747,10 +760,13 @@ Bring everything together in the main file:
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"gin-mongodb-api/config"
 	"gin-mongodb-api/handlers"
@@ -783,10 +799,16 @@ func main() {
 	// Configure routes
 	routes.SetupRoutes(router, userHandler)
 
+	// Create an HTTP server so it can be shut down gracefully
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: router,
+	}
+
 	// Start server in a goroutine
 	go func() {
 		log.Printf("Server starting on port %s", port)
-		if err := router.Run(":" + port); err != nil {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
 	}()
@@ -797,6 +819,13 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down server...")
+
+	// Gracefully stop accepting new requests and wait for in-flight requests
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("Server forced to shutdown: %v", err)
+	}
 
 	// Disconnect from MongoDB
 	if err := db.Disconnect(); err != nil {
@@ -830,9 +859,9 @@ import (
 	"log"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 // CreateIndexes sets up database indexes for optimal query performance.
