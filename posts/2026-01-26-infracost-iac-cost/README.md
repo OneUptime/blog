@@ -8,11 +8,11 @@ Description: Learn how to use Infracost to estimate infrastructure costs from Te
 
 ---
 
-Infrastructure costs can spiral out of control when developers provision resources without visibility into pricing. Infracost solves this by analyzing your Terraform code and showing cost estimates before you deploy. This guide walks through installing Infracost, generating cost breakdowns, and integrating it into your CI/CD pipeline.
+Infrastructure costs can spiral out of control when developers provision resources without visibility into pricing. Infracost solves this by analyzing your Terraform code and showing cost estimates before you deploy. This guide walks through installing Infracost, generating cost scans, and integrating it into your CI/CD pipeline.
 
 ## What is Infracost?
 
-Infracost is an open-source tool that estimates cloud costs from Infrastructure as Code (IaC). It parses Terraform plans and calculates monthly costs based on cloud provider pricing APIs. The tool supports AWS, Azure, Google Cloud, and over 1,000 Terraform resources.
+Infracost is an open-source tool that estimates cloud costs from Infrastructure as Code (IaC). It parses IaC projects locally and calculates monthly costs based on cloud provider pricing data. The tool supports AWS, Azure, Google Cloud, and over 1,000 Terraform resources.
 
 ```mermaid
 flowchart LR
@@ -42,27 +42,27 @@ infracost --version
 ```bash
 # Download and run the official installation script
 # This installs the latest version to /usr/local/bin
-curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/infracost/cli/master/scripts/install.sh | sh
 
 # Verify installation
 infracost --version
 ```
 
-### Register for an API Key
+### Register for an Account
 
-Infracost requires a free API key to fetch cloud pricing data. Register and authenticate:
+Infracost requires you to authenticate so it can fetch cloud pricing data. Register and authenticate:
 
 ```bash
-# Register for a free API key
-# This opens a browser and saves your key locally
+# Register or sign in to Infracost
+# This opens a browser and saves your session locally
 infracost auth login
 ```
 
-The key is stored in `~/.config/infracost/credentials.yml` and included automatically in future commands.
+The saved session is included automatically in future commands.
 
 ## Generating Your First Cost Estimate
 
-Navigate to a directory containing Terraform files and run the breakdown command.
+Navigate to a directory containing Terraform files and run the scan command.
 
 ### Example Terraform Configuration
 
@@ -127,14 +127,16 @@ resource "aws_eip" "nat" {
 }
 ```
 
-### Run Cost Breakdown
+### Run Cost Scan
 
-Generate a cost breakdown for the Terraform directory:
+Generate a cost scan for the Terraform directory:
 
 ```bash
-# Run infracost breakdown on the current directory
-# The --path flag specifies the Terraform root module location
-infracost breakdown --path .
+# Run infracost scan on the current directory
+infracost scan
+
+# Show the most expensive resources from the latest scan
+infracost inspect --top 10
 ```
 
 Sample output:
@@ -142,38 +144,23 @@ Sample output:
 ```text
 Project: .
 
- Name                                     Monthly Qty  Unit   Monthly Cost
-
- aws_db_instance.database
- ├─ Database instance (db.t3.medium, Multi-AZ)   730  hours       $119.72
- ├─ Storage (gp3)                                100  GB            $11.50
- └─ Additional backup storage              Monthly cost depends on usage
-
- aws_instance.web
- ├─ Instance usage (Linux/UNIX, on-demand, t3.medium) 730  hours  $30.37
- └─ root_block_device
-    └─ Storage (gp3)                              50  GB            $4.00
-
- aws_nat_gateway.main
- ├─ NAT gateway                                  730  hours        $32.85
- └─ Data processed                         Monthly cost depends on usage
-
- aws_eip.nat
- └─ IP address (if unused)                       730  hours         $3.65
-
- OVERALL TOTAL                                                    $202.09
+ADDRESS                    TYPE                    MONTHLY_COST
+aws_db_instance.database   aws_db_instance             $131.22
+aws_nat_gateway.main       aws_nat_gateway              $32.85
+aws_instance.web           aws_instance                 $30.37
+aws_eip.nat                aws_eip                       $3.65
 ```
 
 ## Comparing Costs Between Branches
 
-One of the most powerful features is comparing costs between your current state and proposed changes. This helps catch expensive modifications before they reach production.
+One of the most powerful features is comparing costs between your current state and proposed changes in pull requests. This helps catch expensive modifications before they reach production.
 
 ```mermaid
 flowchart TB
     subgraph "Cost Comparison Flow"
-        A[Main Branch] --> B[Generate Baseline JSON]
-        C[Feature Branch] --> D[Generate Proposed JSON]
-        B --> E[infracost diff]
+        A[Main Branch] --> B[Scan Baseline]
+        C[Feature Branch] --> D[Scan Proposed Changes]
+        B --> E[Infracost PR analysis]
         D --> E
         E --> F[Cost Difference Report]
     end
@@ -181,31 +168,32 @@ flowchart TB
 
 ### Generate Baseline Costs
 
-First, generate a JSON file from your main branch:
+For local checks, scan your main branch:
 
 ```bash
-# Checkout main branch and generate baseline costs
+# Checkout main branch and scan baseline costs
 git checkout main
 
-# Output costs to JSON format for later comparison
-# The --format json flag produces machine-readable output
-infracost breakdown --path . --format json --out-file infracost-base.json
+# Cache cost results for the main branch
+infracost scan
+infracost inspect --summary
 ```
 
 ### Compare with Feature Branch
 
-Switch to your feature branch and compare:
+Switch to your feature branch and scan again:
 
 ```bash
 # Checkout your feature branch with infrastructure changes
 git checkout feature/add-redis-cluster
 
-# Compare current branch against the baseline JSON
-# This shows cost differences: additions, removals, and changes
-infracost diff --path . --compare-to infracost-base.json
+# Review the updated cost summary and most expensive resources
+infracost scan
+infracost inspect --summary
+infracost inspect --top 10
 ```
 
-Sample diff output:
+In CI/CD pull request comments, the cost diff will look similar to this:
 
 ```text
 Project: .
@@ -314,10 +302,13 @@ jobs:
       # Post the cost comparison as a PR comment
       # Updates existing comment on subsequent pushes
       - name: Post PR comment
-        uses: infracost/actions/comment@v1
-        with:
-          path: /tmp/infracost-diff.json
-          behavior: update  # Update existing comment instead of creating new ones
+        run: |
+          infracost comment github \
+            --path /tmp/infracost-diff.json \
+            --repo $GITHUB_REPOSITORY \
+            --github-token ${{ github.token }} \
+            --pull-request ${{ github.event.pull_request.number }} \
+            --behavior update
 ```
 
 ### Required Secrets
@@ -337,11 +328,13 @@ For GitLab users, add this job to your pipeline:
 # Infracost job for merge request cost estimation
 infracost:
   stage: test
-  image: infracost/infracost:ci-latest
+  image:
+    name: infracost/infracost:ci-0.10
+    entrypoint: ['']
 
   # Only run on merge requests to avoid unnecessary API calls
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
   variables:
     # Path to your Terraform configuration
@@ -377,67 +370,48 @@ infracost:
         --repo $CI_PROJECT_PATH \
         --merge-request $CI_MERGE_REQUEST_IID \
         --gitlab-server-url $CI_SERVER_URL \
-        --gitlab-token $GITLAB_TOKEN
+        --gitlab-token $GITLAB_TOKEN \
+        --behavior update
 ```
 
 ## Setting Cost Policies
 
-Infracost supports policies to enforce cost guardrails. You can fail builds when costs exceed thresholds.
+Infracost supports FinOps policies and cost guardrails through Infracost Cloud. For custom CI/CD policy checks, you can also use Open Policy Agent (OPA) policies with Infracost JSON output.
 
 ### Policy File
 
-Create a policy file to define cost limits:
+Create an OPA policy file to define cost limits:
 
-`infracost-policy.yml`
+`infracost-policy.rego`
 
-```yaml
-# Infracost policy configuration
-# Defines thresholds that trigger warnings or failures
-version: 0.1
+```rego
+package infracost
 
-policies:
-  # Fail if monthly cost increase exceeds $500
-  - name: cost-increase-threshold
-    description: Block PRs that increase costs by more than $500/month
-    resource_type: infracost_total
-    condition:
-      # Compare the cost difference between baseline and proposed
-      # diff returns the monthly cost change (positive = increase)
-      diff: "> 500"
-    action: deny
-
-  # Warn on large EC2 instance types
-  - name: large-instance-warning
-    description: Warn when using expensive EC2 instance types
-    resource_type: aws_instance
-    condition:
-      # Match instance types in the compute-optimized or memory-optimized families
-      attribute: instance_type
-      matches: "^(c6i|r6i|x2)\\."
-    action: warn
-    message: "Large instance type detected. Consider if this is necessary."
-
-  # Block unencrypted storage
-  - name: require-encrypted-volumes
-    description: All EBS volumes must be encrypted
-    resource_type: aws_ebs_volume
-    condition:
-      attribute: encrypted
-      equals: false
-    action: deny
-    message: "EBS volumes must be encrypted for compliance."
+deny[out] {
+  max_diff := 500
+  diff := to_number(input.diffTotalMonthlyCost)
+  out := {
+    "failed": diff > max_diff,
+    "msg": sprintf("Monthly cost increase must be $%d or less; proposed increase is $%.2f.", [max_diff, diff]),
+  }
+}
 ```
 
 ### Running with Policies
 
-Apply the policy during your breakdown or diff:
+Apply the policy when posting the pull request comment:
 
 ```bash
-# Run breakdown with policy enforcement
-# The --policy-path flag loads your policy configuration
-infracost breakdown --path . --policy-path infracost-policy.yml
+# Evaluate the OPA policy against Infracost JSON in CI
+infracost comment github \
+  --path /tmp/infracost-diff.json \
+  --repo $GITHUB_REPOSITORY \
+  --github-token $GITHUB_TOKEN \
+  --pull-request $PR_NUMBER \
+  --behavior update \
+  --policy-path infracost-policy.rego
 
-# Exit code will be non-zero if any deny policies are triggered
+# Exit code will be non-zero if the policy fails
 echo "Exit code: $?"
 ```
 
@@ -467,11 +441,6 @@ resource_usage:
     monthly_tier_1_requests: 100000   # PUT, COPY, POST, LIST requests
     monthly_tier_2_requests: 1000000  # GET, SELECT requests
 
-    # Data transfer in GB
-    monthly_egress_data_transfer_gb:
-      us_east_1: 100                  # 100 GB egress to us-east-1
-      worldwide: 50                   # 50 GB egress worldwide
-
   # NAT Gateway data processing
   aws_nat_gateway.main:
     monthly_data_processed_gb: 500    # 500 GB through NAT gateway
@@ -488,12 +457,25 @@ resource_usage:
 
 ### Run with Usage File
 
-Include the usage file in your breakdown:
+With the current CLI, reference the usage file from `infracost.yml` so scans pick it up:
+
+`infracost.yml`
+
+```yaml
+version: "0.3"
+
+usage_file: infracost-usage.yml
+
+projects:
+  - path: .
+```
+
+Then run a scan:
 
 ```bash
-# Generate breakdown with usage-based cost estimates
-# The --usage-file flag includes your consumption projections
-infracost breakdown --path . --usage-file infracost-usage.yml
+# Generate estimates with usage-based cost estimates
+# The usage_file setting includes your consumption projections
+infracost scan
 ```
 
 ## Architecture Overview
@@ -504,7 +486,7 @@ Here is how Infracost fits into a typical infrastructure workflow:
 flowchart TB
     subgraph "Development"
         A[Write Terraform] --> B[Local Testing]
-        B --> C[infracost breakdown]
+        B --> C[infracost scan]
         C --> D{Cost OK?}
         D -->|Yes| E[Push to Git]
         D -->|No| A
@@ -535,17 +517,17 @@ Always check costs on your machine before opening a pull request:
 
 ```bash
 # Quick local check before committing
-infracost breakdown --path . --format table
+infracost scan
 ```
 
 ### 2. Use Terragrunt Support
 
-Infracost supports Terragrunt out of the box:
+Infracost supports Terragrunt:
 
 ```bash
 # Run on Terragrunt configurations
 # Infracost automatically detects terragrunt.hcl files
-infracost breakdown --path ./live/production
+infracost scan ./live/production
 ```
 
 ### 3. Generate Multiple Formats
@@ -553,23 +535,20 @@ infracost breakdown --path ./live/production
 Export costs in different formats for reporting:
 
 ```bash
-# HTML report for stakeholders
-infracost breakdown --path . --format html --out-file cost-report.html
-
 # JSON for programmatic processing
-infracost breakdown --path . --format json --out-file costs.json
+infracost scan --json > costs.json
 
-# Slack-formatted output
-infracost breakdown --path . --format slack
+# Summary for stakeholders
+infracost inspect --summary
 ```
 
-### 4. Cache Pricing Data
+### 4. Cache Infracost Data
 
-Speed up CI runs by caching the pricing database:
+Speed up CI runs by caching Infracost's local data:
 
 ```yaml
 # GitHub Actions caching example
-- name: Cache Infracost pricing data
+- name: Cache Infracost data
   uses: actions/cache@v4
   with:
     path: ~/.config/infracost
@@ -578,11 +557,12 @@ Speed up CI runs by caching the pricing database:
 
 ### 5. Set Up Alerts
 
-Configure Infracost Cloud to alert when costs exceed thresholds:
+Configure Infracost Cloud to alert when costs exceed thresholds and run a scan so results are available:
 
 ```bash
-# Upload results to Infracost Cloud for tracking
-infracost breakdown --path . --format json | infracost upload --path -
+# Scan the project and review policy or guardrail failures
+infracost scan
+infracost inspect --failing
 ```
 
 ## Troubleshooting
@@ -592,17 +572,17 @@ infracost breakdown --path . --format json | infracost upload --path -
 If a resource shows "Monthly cost depends on usage," provide a usage file with estimates or check if the resource type is supported:
 
 ```bash
-# List all supported resources
-infracost list
+# Show per-project diagnostics from the latest scan
+infracost inspect --diagnostics
 ```
 
 ### Authentication Errors
 
-Ensure your API key is configured:
+Ensure your account authentication is configured:
 
 ```bash
 # Check current configuration
-infracost configure get api_key
+infracost auth whoami
 
 # Re-authenticate if needed
 infracost auth login
@@ -610,17 +590,20 @@ infracost auth login
 
 ### Terraform Version Mismatch
 
-Specify the Terraform version if Infracost uses a different default:
+Check the Terraform version available in your environment if parsing fails because a different Terraform version is on your `PATH`:
 
 ```bash
-# Use a specific Terraform version
-INFRACOST_TERRAFORM_BINARY=/usr/local/bin/terraform-1.5 infracost breakdown --path .
+# Check the Terraform version that will be used by your shell
+terraform version
+
+# Update PATH or your version manager, then rerun the scan
+infracost scan
 ```
 
 ## Conclusion
 
 Infracost brings cost visibility into your infrastructure development workflow. By estimating costs from Terraform code, you catch expensive changes before they reach production. The CI/CD integration ensures every pull request includes cost impact, making FinOps a natural part of code review.
 
-Start with local breakdowns to understand your current infrastructure costs, then add the GitHub Actions or GitLab CI integration to automate cost checks on every pull request. Use policies to enforce guardrails and usage files for accurate consumption-based estimates.
+Start with local scans to understand your current infrastructure costs, then add the GitHub Actions or GitLab CI integration to automate cost checks on every pull request. Use policies to enforce guardrails and usage files for accurate consumption-based estimates.
 
 The shift-left approach to cloud costs saves money and prevents surprises in your monthly bill.
