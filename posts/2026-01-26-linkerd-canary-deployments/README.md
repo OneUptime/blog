@@ -83,6 +83,7 @@ Before you begin, ensure you have:
 - kubectl configured to access your cluster
 - Helm 3.x installed
 - Linkerd CLI installed
+- Linkerd 2.14 or later
 
 ## Installing Linkerd
 
@@ -153,6 +154,24 @@ linkerd viz check
 linkerd viz dashboard &
 ```
 
+Install the Linkerd SMI extension for TrafficSplit support:
+
+```bash
+# Install the Linkerd SMI extension CLI
+curl -sL https://linkerd.github.io/linkerd-smi/install | sh
+
+# Add linkerd-smi to your PATH
+export PATH=$PATH:$HOME/.linkerd2/bin
+
+# Install the SMI extension
+linkerd smi install | kubectl apply -f -
+
+# Verify the SMI extension
+linkerd smi check
+```
+
+> Note: Linkerd's SMI TrafficSplit support is deprecated in favor of Gateway API-based dynamic request routing. This guide uses TrafficSplit because Flagger's Linkerd provider still supports it, but new production designs should evaluate Gateway API routing.
+
 ## Installing Flagger
 
 Flagger is a progressive delivery operator that automates canary deployments. Install it with Linkerd support:
@@ -164,17 +183,22 @@ helm repo add flagger https://flagger.app
 # Update the repository cache
 helm repo update
 
+# Install Flagger's Canary CRD
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+
 # Install Flagger with Linkerd support
-helm install flagger flagger/flagger \
-  --namespace linkerd-viz \
+helm upgrade -i flagger flagger/flagger \
+  --namespace flagger-system \
+  --create-namespace \
+  --set crd.create=false \
   --set meshProvider=linkerd \
   --set metricsServer=http://prometheus.linkerd-viz:9090
 
 # Verify Flagger is running
-kubectl get pods -n linkerd-viz -l app.kubernetes.io/name=flagger
+kubectl get pods -n flagger-system -l app.kubernetes.io/name=flagger
 
 # Expected output:
-# NAME                       READY   STATUS    RUNNING   AGE
+# NAME                       READY   STATUS    RESTARTS   AGE
 # flagger-7d8b9f9c8f-xyz12   1/1     Running   0         1m
 ```
 
@@ -183,6 +207,9 @@ Install the Flagger load tester for generating traffic during analysis:
 ```bash
 # Install Flagger load tester in a test namespace
 kubectl create namespace test
+
+# Enable automatic proxy injection for load tester traffic
+kubectl annotate namespace test linkerd.io/inject=enabled
 
 # Deploy the load tester
 helm install flagger-loadtester flagger/loadtester \
@@ -341,17 +368,15 @@ spec:
     port: 9898
     # Target port on the container
     targetPort: http
-    # Gateway and host configuration for external traffic
-    # gatewayRefs:
-    #   - name: public-gateway
-    #     namespace: istio-system
+    # Gateway API deployments use gatewayRefs instead of SMI TrafficSplit.
+    # This SMI-based example does not set gatewayRefs.
 
   # Analysis configuration
   analysis:
     # How long to wait between analysis iterations
     interval: 30s
 
-    # Number of successful iterations before promotion
+    # Maximum number of failed metric checks before rollback
     threshold: 5
 
     # Maximum percentage of traffic to route to canary
@@ -373,6 +398,8 @@ spec:
           min: 99
         # How long to measure the metric
         interval: 1m
+        templateVariables:
+          direction: inbound
 
       # Latency metric - p99 must be under 500ms
       - name: latency
@@ -383,6 +410,8 @@ spec:
         thresholdRange:
           max: 500
         interval: 1m
+        templateVariables:
+          direction: inbound
 
     # Load testing during canary analysis
     webhooks:
@@ -417,8 +446,9 @@ spec:
       rate(
         response_total{
           namespace="{{ namespace }}",
-          deployment="{{ target }}",
-          classification="success"
+          deployment=~"{{ target }}",
+          classification!="failure",
+          direction="{{ variables.direction }}"
         }[{{ interval }}]
       )
     )
@@ -427,7 +457,8 @@ spec:
       rate(
         response_total{
           namespace="{{ namespace }}",
-          deployment="{{ target }}"
+          deployment=~"{{ target }}",
+          direction="{{ variables.direction }}"
         }[{{ interval }}]
       )
     )
@@ -450,7 +481,8 @@ spec:
         rate(
           response_latency_ms_bucket{
             namespace="{{ namespace }}",
-            deployment="{{ target }}"
+            deployment=~"{{ target }}",
+            direction="{{ variables.direction }}"
           }[{{ interval }}]
         )
       ) by (le)
@@ -629,10 +661,14 @@ linkerd viz tap deploy/podinfo-canary -n demo
 If the canary fails to meet the defined metrics, Flagger automatically rolls back:
 
 ```bash
-# Deploy a version that returns errors
+# Trigger a new canary deployment
 kubectl set image deployment/podinfo \
-  podinfo=ghcr.io/stefanprodan/podinfo:6.0.0-fault \
+  podinfo=ghcr.io/stefanprodan/podinfo:6.0.2 \
   -n demo
+
+# Generate HTTP 500 responses against the canary while analysis is running
+kubectl exec -n test deploy/flagger-loadtester -- \
+  hey -z 2m -q 10 -c 2 http://podinfo-canary.demo:9898/status/500
 
 # Watch the canary fail and rollback
 kubectl get canary podinfo -n demo -w
@@ -676,8 +712,9 @@ spec:
       rate(
         response_total{
           namespace="{{ namespace }}",
-          deployment="{{ target }}",
-          status_code!~"5.*"
+          deployment=~"{{ target }}",
+          status_code!~"5.*",
+          direction="{{ variables.direction }}"
         }[{{ interval }}]
       )
     )
@@ -686,7 +723,8 @@ spec:
       rate(
         response_total{
           namespace="{{ namespace }}",
-          deployment="{{ target }}"
+          deployment=~"{{ target }}",
+          direction="{{ variables.direction }}"
         }[{{ interval }}]
       )
     )
@@ -710,7 +748,8 @@ spec:
         rate(
           response_latency_ms_bucket{
             namespace="{{ namespace }}",
-            deployment="{{ target }}"
+            deployment=~"{{ target }}",
+            direction="{{ variables.direction }}"
           }[{{ interval }}]
         )
       ) by (le)
@@ -750,6 +789,8 @@ spec:
         thresholdRange:
           min: 99
         interval: 1m
+        templateVariables:
+          direction: inbound
 
       # Custom 5xx error rate must be below 1%
       - name: error-rate-5xx
@@ -759,6 +800,8 @@ spec:
         thresholdRange:
           max: 1
         interval: 1m
+        templateVariables:
+          direction: inbound
 
       # Custom p95 latency must be under 200ms
       - name: request-duration-p95
@@ -768,6 +811,8 @@ spec:
         thresholdRange:
           max: 200
         interval: 1m
+        templateVariables:
+          direction: inbound
 ```
 
 ## Manual Approval Gates
@@ -803,6 +848,8 @@ spec:
         thresholdRange:
           min: 99
         interval: 1m
+        templateVariables:
+          direction: inbound
     webhooks:
       # Pause at 50% for manual approval
       - name: manual-gate
@@ -909,6 +956,8 @@ spec:
         thresholdRange:
           min: 99
         interval: 1m
+        templateVariables:
+          direction: inbound
 ```
 
 ## Multi-Environment Setup
@@ -935,7 +984,7 @@ spec:
     # Longer intervals for production stability
     interval: 1m
 
-    # More iterations before promotion
+    # More failed metric checks tolerated before rollback
     threshold: 10
 
     # Lower max weight to limit blast radius
@@ -953,6 +1002,8 @@ spec:
         thresholdRange:
           min: 99.9
         interval: 2m
+        templateVariables:
+          direction: inbound
 
       - name: latency
         templateRef:
@@ -961,6 +1012,8 @@ spec:
         thresholdRange:
           max: 200
         interval: 2m
+        templateVariables:
+          direction: inbound
 
     webhooks:
       - name: manual-gate
@@ -984,7 +1037,7 @@ If the canary remains in Initializing state:
 
 ```bash
 # Check Flagger logs for errors
-kubectl logs -n linkerd-viz deploy/flagger -f
+kubectl logs -n flagger-system deploy/flagger -f
 
 # Verify the deployment exists and has the correct labels
 kubectl get deploy podinfo -n demo -o yaml | grep -A5 labels
@@ -1046,10 +1099,11 @@ kubectl delete svc podinfo-primary podinfo-canary -n demo
 kubectl delete trafficsplit podinfo -n demo
 
 # Uninstall Flagger
-helm uninstall flagger -n linkerd-viz
+helm uninstall flagger -n flagger-system
 helm uninstall flagger-loadtester -n test
 
 # Uninstall Linkerd
+linkerd smi uninstall | kubectl delete -f -
 linkerd viz uninstall | kubectl delete -f -
 linkerd uninstall | kubectl delete -f -
 ```
