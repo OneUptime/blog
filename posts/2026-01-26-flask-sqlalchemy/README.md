@@ -83,7 +83,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
 # MySQL
 # app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://user:password@localhost:3306/mydb'
 
-# Disable modification tracking (saves memory)
+# Disable modification tracking if you enable it elsewhere (disabled by default in Flask-SQLAlchemy 3.x)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Enable SQL query logging in development
@@ -99,6 +99,7 @@ For larger applications, use the factory pattern:
 
 ```python
 # app/__init__.py
+import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 
@@ -345,6 +346,7 @@ Posts can have multiple tags, and tags can be applied to multiple posts:
 ```python
 # models/tag.py
 from app import db
+from datetime import datetime
 
 # Association table for many-to-many relationship
 post_tags = db.Table(
@@ -394,7 +396,7 @@ post_tags = Post.query.get(1).tags.all()
 
 ### One-to-One Relationship
 
-Each user has exactly one profile:
+Each profile belongs to exactly one user, and each user can have at most one profile:
 
 ```python
 # models/profile.py
@@ -435,6 +437,8 @@ class Profile(db.Model):
 
 # Usage
 user = User.query.get(1)
+if user.profile is None:
+    user.profile = Profile()
 user.profile.bio = "Python developer"  # Access profile directly
 db.session.commit()
 ```
@@ -539,6 +543,8 @@ def bulk_create_tags(tag_names):
 ```
 
 ### Reading Records
+
+Flask-SQLAlchemy still supports the `Model.query` style shown below, but the current Flask-SQLAlchemy documentation describes it as a legacy interface. For new code, prefer `db.session.execute(db.select(...))` and helpers such as `db.get_or_404()`.
 
 ```python
 # Get by primary key
@@ -1096,7 +1102,7 @@ def get_user(user_id):
 @users_bp.route('/', methods=['POST'])
 def create_user():
     """Create a new user"""
-    data = request.get_json()
+    data = request.get_json() or {}
 
     # Validate required fields
     if not all(k in data for k in ['username', 'email', 'password']):
@@ -1122,7 +1128,7 @@ def create_user():
 def update_user(user_id):
     """Update an existing user"""
     user = User.query.get_or_404(user_id)
-    data = request.get_json()
+    data = request.get_json() or {}
 
     # Update allowed fields
     if 'email' in data:
@@ -1154,6 +1160,7 @@ def delete_user(user_id):
 ```python
 # app/errors.py
 from flask import jsonify
+from app import db
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 def register_error_handlers(app):
