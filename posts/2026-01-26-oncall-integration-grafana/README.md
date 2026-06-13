@@ -20,7 +20,7 @@ Effective on-call integration provides:
 
 ## Grafana OnCall Overview
 
-Grafana OnCall is a built-in incident management solution that integrates natively with Grafana Alerting. It handles:
+Grafana OnCall OSS is an incident management solution that integrates with Grafana Alerting. It handles:
 
 - Alert grouping and deduplication
 - On-call schedules and rotations
@@ -29,9 +29,9 @@ Grafana OnCall is a built-in incident management solution that integrates native
 
 ### Enabling Grafana OnCall
 
-> **Note:** As of March 2025, Grafana OnCall OSS has entered maintenance mode and is scheduled to be archived on March 24, 2026. For new deployments, Grafana recommends migrating to [Grafana Cloud IRM](https://grafana.com/blog/oncall-management-incident-response-grafana-cloud-irm/). The self-hosted OSS path described below still works until that date but will not receive new features.
+> **Note:** As of March 24, 2026, Grafana OnCall OSS has been archived, and the `grafana/oncall` repository is read-only. For new deployments, Grafana recommends [Grafana Cloud IRM](https://grafana.com/blog/oncall-management-incident-response-grafana-cloud-irm/). The self-hosted OSS path described below is useful for existing or legacy installations, but it is no longer actively developed.
 
-In Grafana Cloud, OnCall is available by default. For self-hosted Grafana, you can deploy Grafana OnCall separately:
+In Grafana Cloud, use Grafana Cloud IRM from the Alerts & IRM menu. For self-hosted legacy Grafana OnCall OSS, you can deploy Grafana OnCall separately:
 
 ```bash
 # Using Docker Compose
@@ -56,10 +56,10 @@ Integrations define how alerts enter OnCall.
 
 1. Navigate to OnCall > Integrations
 2. Click "New integration"
-3. Select "Grafana Alerting" as the type
+3. For the same Grafana instance, use "Quick connect" in the Grafana Alerting tile; for another Grafana instance, select the Alertmanager tile
 4. Name it (e.g., "Production Alerts")
 
-You will receive a webhook URL to use in Grafana Alerting contact points.
+For an external Grafana instance, you will receive a webhook URL to use in Grafana Alerting contact points.
 
 ### Step 2: Configure Contact Point
 
@@ -68,8 +68,8 @@ In Grafana Alerting, create a contact point that sends to OnCall:
 ```yaml
 # Contact point configuration
 Name: Production OnCall
-Type: Grafana OnCall
-Integration URL: https://oncall.example.com/integrations/v1/grafana/abc123/
+Type: Webhook
+URL: https://oncall.example.com/integrations/v1/grafana/abc123/
 ```
 
 ### Step 3: Create Notification Policy
@@ -170,7 +170,7 @@ Steps:
 
   - Step 4:
       Action: Notify Slack channel
-      Channel: #platform-incidents
+      Channel: "#platform-incidents"
 ```
 
 ### Severity-Based Escalation
@@ -210,19 +210,21 @@ Type: PagerDuty
 
 Settings:
   Integration Key: abc123...
-  Severity: auto  # Maps from Grafana alert labels
+  Severity: "{{ .CommonLabels.severity }}"  # Must render as critical, error, warning, or info
   Class: infrastructure
-  Component: "{{ .Labels.service }}"
-  Group: "{{ .Labels.namespace }}"
+  Component: "{{ .CommonLabels.service }}"
+  Group: "{{ .CommonLabels.namespace }}"
 ```
 
 Alert severity mapping:
 
 ```yaml
 # Grafana to PagerDuty severity mapping
-critical -> critical
-warning -> warning
-info -> info
+severity_mapping:
+  critical: critical
+  error: error
+  warning: warning
+  info: info
 ```
 
 ### Opsgenie Integration
@@ -234,10 +236,12 @@ Type: Opsgenie
 
 Settings:
   API Key: abc123...
-  API URL: https://api.opsgenie.com
-  Priority: P1  # or use template
-  Tags: ["grafana", "{{ .Labels.team }}"]
-  Teams: ["{{ .Labels.team }}-oncall"]
+  Alert API URL: https://api.opsgenie.com/v2/alerts
+  Override priority: true  # Set the og_priority label to P1, P2, P3, P4, or P5
+  Send notification tags as: Tags
+  Responders:
+    - Type: team
+      Name: platform-oncall
 ```
 
 ### Webhook to Custom Systems
@@ -253,21 +257,21 @@ Settings:
   URL: https://oncall.internal/api/alerts
   HTTP Method: POST
 
-  # Custom headers
-  HTTP Headers:
-    Authorization: Bearer $ONCALL_TOKEN
-    Content-Type: application/json
+  # Authorization header
+  Authentication Header Scheme: Bearer
+  Authentication Header Credentials: $ONCALL_TOKEN
 
-  # Message template
-  Message: |
-    {
-      "alert_name": "{{ .CommonLabels.alertname }}",
-      "severity": "{{ .CommonLabels.severity }}",
-      "service": "{{ .CommonLabels.service }}",
-      "summary": "{{ .CommonAnnotations.summary }}",
-      "dashboard_url": "{{ .ExternalURL }}",
-      "values": {{ .Values | toJson }}
-    }
+  # Custom payload template
+  Custom Payload: |
+    {{ coll.Dict
+      "alert_name" .CommonLabels.alertname
+      "severity" .CommonLabels.severity
+      "service" .CommonLabels.service
+      "summary" .CommonAnnotations.summary
+      "external_url" .ExternalURL
+      "alerts" .Alerts
+      | data.ToJSON
+    }}
 ```
 
 ## Alert Templates for On-Call
@@ -310,7 +314,7 @@ Good alert messages include:
 annotations:
   summary: "High error rate on {{ $labels.service }}"
   description: |
-    Error rate is {{ $value | humanizePercentage }} over the last 5 minutes.
+    Error rate is {{ humanizePercentage $values.A.Value }} over the last 5 minutes.
     This exceeds the threshold of 5%.
   runbook_url: "https://wiki.example.com/runbooks/high-error-rate"
   dashboard_url: "https://grafana.example.com/d/service-overview?var-service={{ $labels.service }}"
@@ -333,13 +337,15 @@ Engineers can acknowledge alerts via:
 Configure grouping to reduce noise:
 
 ```yaml
-Integration Settings:
-  Grouping Type: Time-based
-  Grouping Window: 5 minutes
+# For the Grafana Alerting integration, configure grouping in Grafana Alerting
+Notification Policy:
+  Group by: [alertname, service]
+  Group wait: 30 seconds
+  Group interval: 5 minutes
 
-  # Or use label-based grouping
-  Grouping Type: Label
-  Grouping Key: "{{ .Labels.alertname }}-{{ .Labels.service }}"
+# For generic webhook integrations, use an OnCall Grouping ID Template
+Integration Templates:
+  Grouping ID Template: "{{ payload.labels.alertname }}-{{ payload.labels.service }}"
 ```
 
 ### Silence and Maintenance
@@ -368,17 +374,19 @@ Track on-call burden to prevent burnout.
 
 ### Key Metrics
 
+For Grafana OnCall OSS metrics, use the `oncall_` prefix. In Grafana Cloud, the equivalent metrics use the `grafanacloud_oncall_instance_` prefix.
+
 ```promql
-# Alerts per on-call shift
-sum(increase(alertmanager_alerts_received_total[7d])) / 7
+# Alert group notifications per user over 7 days
+sum by (username) (increase(oncall_user_was_notified_of_alert_groups_total[7d]))
 
-# Average time to acknowledge
-avg(oncall_alert_acknowledge_time_seconds)
-
-# Escalation rate (alerts reaching secondary)
-sum(increase(oncall_escalation_total[7d]))
+# Average response time over 7 days
+sum(increase(oncall_alert_groups_response_time_seconds_sum[7d]))
 /
-sum(increase(oncall_alert_total[7d]))
+sum(increase(oncall_alert_groups_response_time_seconds_count[7d]))
+
+# Current alert groups by state
+sum by (state) (oncall_alert_groups_total)
 ```
 
 ### On-Call Report Dashboard
