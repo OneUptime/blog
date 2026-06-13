@@ -46,12 +46,15 @@ If you are starting a new Phoenix project, LiveView is included by default in Ph
 # Create a new Phoenix project with LiveView
 
 mix phx.new my_app
-
-# Or add to existing project - add to mix.exs
-{:phoenix_live_view, "~> 0.20"}
 ```
 
-After adding the dependency, run the installer to set up the necessary files.
+Or add LiveView to an existing project in `mix.exs`.
+
+```elixir
+{:phoenix_live_view, "~> 1.2"}
+```
+
+After adding the dependency, fetch it with Mix.
 
 ```bash
 mix deps.get
@@ -230,7 +233,7 @@ defmodule MyAppWeb.UserRegistrationLive do
 
       <!-- phx-change fires on every input change for live validation -->
       <!-- phx-submit fires when the form is submitted -->
-      <.form for={@form} phx-change="validate" phx-submit="save">
+      <.form for={@form} id="registration-form" phx-change="validate" phx-submit="save">
         <div class="field">
           <label for="email">Email</label>
           <.input field={@form[:email]} type="email" />
@@ -579,7 +582,7 @@ end
 
 ## Production Deployment
 
-LiveView uses WebSockets, which require sticky sessions when running multiple server instances. Configure your load balancer to route all connections from a client to the same server.
+LiveView uses WebSockets, so make sure your proxy or load balancer supports HTTP connection upgrades. When you enable long-polling fallback across multiple server instances, use Erlang clustering, a distributed PubSub adapter, or sticky sessions so repeated long-poll requests can find the user's stateful process.
 
 ```elixir
 # config/runtime.exs
@@ -590,13 +593,16 @@ config :my_app, MyAppWeb.Endpoint,
     port: String.to_integer(System.get_env("PORT") || "4000")
   ],
   secret_key_base: System.get_env("SECRET_KEY_BASE")
-
-# Configure PubSub for distributed nodes
-config :my_app, MyApp.PubSub,
-  adapter: Phoenix.PubSub.PG2
 ```
 
-For Kubernetes, use session affinity.
+```elixir
+# lib/my_app/application.ex
+children = [
+  {Phoenix.PubSub, name: MyApp.PubSub}
+]
+```
+
+For Kubernetes long-polling fallback without clustering or a distributed PubSub adapter, use session affinity.
 
 ```yaml
 # kubernetes service configuration
