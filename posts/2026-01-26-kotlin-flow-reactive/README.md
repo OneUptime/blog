@@ -34,10 +34,14 @@ First, add the coroutines dependencies to your project:
 // build.gradle.kts
 dependencies {
     // Core coroutines library
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 
     // For Android projects
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+
+    // For testing flows
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("app.cash.turbine:turbine:1.2.1")
 }
 ```
 
@@ -76,6 +80,7 @@ suspend fun main() {
 ### Using flowOf for Simple Values
 
 ```kotlin
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flowOf
 
 // Create a flow from fixed values
@@ -89,6 +94,7 @@ val listFlow = listOf("a", "b", "c").asFlow()
 
 ```kotlin
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 
 // Convert a callback-based API to a Flow
@@ -134,8 +140,10 @@ flowchart TD
 ### Transformation Operators
 
 ```kotlin
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 
+@OptIn(ExperimentalCoroutinesApi::class)
 suspend fun transformationExample() {
     val numbers = flowOf(1, 2, 3, 4, 5)
 
@@ -253,6 +261,7 @@ flowchart LR
 ### Combining Flows
 
 ```kotlin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 
 suspend fun combineFlowsExample() {
@@ -380,11 +389,11 @@ class CounterViewModel {
 
     fun increment() {
         // Update the state
-        _count.value++
+        _count.update { count -> count + 1 }
     }
 
     fun decrement() {
-        _count.value--
+        _count.update { count -> count - 1 }
     }
 
     // Update using update function for thread safety
@@ -408,6 +417,7 @@ suspend fun observeCounter(viewModel: CounterViewModel) {
 ### SharedFlow for Events
 
 ```kotlin
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 
 class EventBus {
@@ -466,7 +476,7 @@ suspend fun flowContextExample() {
     }
     .flowOn(Dispatchers.IO)  // Change context for upstream operations
     .map { data ->
-        // This also runs on Dispatchers.IO
+        // This runs on Dispatchers.Default
         processData(data)
     }
     .flowOn(Dispatchers.Default)  // Can chain flowOn
@@ -536,6 +546,7 @@ sequenceDiagram
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
+@OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class SearchViewModel(
     private val searchRepository: SearchRepository
 ) {
@@ -543,7 +554,7 @@ class SearchViewModel(
     private val _searchQuery = MutableStateFlow("")
 
     // Search results as a flow
-    val searchResults: Flow<List<SearchResult>> = _searchQuery
+    val searchResults: Flow<SearchState> = _searchQuery
         .debounce(300)  // Wait for user to stop typing
         .distinctUntilChanged()  // Ignore duplicate queries
         .filter { it.length >= 2 }  // Minimum query length
@@ -617,10 +628,10 @@ class MainActivity : AppCompatActivity() {
 fun MyScreen(viewModel: MyViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    when (uiState) {
+    when (val state = uiState) {
         is UiState.Loading -> LoadingIndicator()
-        is UiState.Success -> ContentView(uiState.data)
-        is UiState.Error -> ErrorView(uiState.message)
+        is UiState.Success -> ContentView(state.data)
+        is UiState.Error -> ErrorView(state.message)
     }
 }
 ```
@@ -630,6 +641,7 @@ fun MyScreen(viewModel: MyViewModel) {
 Kotlin provides utilities for testing flows effectively:
 
 ```kotlin
+import app.cash.turbine.test
 import kotlinx.coroutines.test.*
 import kotlinx.coroutines.flow.*
 import org.junit.Test
