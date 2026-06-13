@@ -45,7 +45,7 @@ on:
     paths:
       - 'packages/api/**'
       - 'libs/utils/**'         # API depends on utils
-      - 'libs/shared/**'        # API depends on shared
+      - 'packages/shared/**'    # API depends on shared
       - 'package.json'          # Root dependencies changed
       - 'pnpm-lock.yaml'
       - '.github/workflows/api.yml'
@@ -53,19 +53,19 @@ on:
     paths:
       - 'packages/api/**'
       - 'libs/utils/**'
-      - 'libs/shared/**'
+      - 'packages/shared/**'
 
 jobs:
   build-api:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
-          version: 8
-      - uses: actions/setup-node@v4
+          version: 11
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter api build
@@ -93,15 +93,16 @@ jobs:
       mobile: ${{ steps.filter.outputs.mobile }}
       shared: ${{ steps.filter.outputs.shared }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
             api:
               - 'packages/api/**'
               - 'libs/utils/**'
+              - 'packages/shared/**'
             web:
               - 'packages/web/**'
               - 'libs/ui-components/**'
@@ -116,8 +117,15 @@ jobs:
     if: needs.detect-changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: pnpm install
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
       - run: pnpm --filter api build
       - run: pnpm --filter api test
 
@@ -126,8 +134,15 @@ jobs:
     if: needs.detect-changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: pnpm install
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
       - run: pnpm --filter web build
       - run: pnpm --filter web test
 
@@ -136,8 +151,15 @@ jobs:
     if: needs.detect-changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: pnpm install
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
       - run: pnpm --filter mobile build
 ```
 
@@ -157,22 +179,22 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
-          fetch-depth: 2  # Needed for turbo to detect changes
+          fetch-depth: 0  # Needed for affected git comparisons
 
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v6
         with:
-          version: 8
+          version: 11
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
 
       # Cache Turborepo
       - name: Cache Turborepo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .turbo
           key: turbo-${{ github.sha }}
@@ -183,21 +205,21 @@ jobs:
 
       # Turbo automatically determines affected packages
       - name: Build affected packages
-        run: pnpm turbo run build --filter='...[origin/main]'
+        run: pnpm turbo run build --affected
 
       - name: Test affected packages
-        run: pnpm turbo run test --filter='...[origin/main]'
+        run: pnpm turbo run test --affected
 
       - name: Lint affected packages
-        run: pnpm turbo run lint --filter='...[origin/main]'
+        run: pnpm turbo run lint --affected
 ```
 
 Configure Turborepo for your monorepo:
 
 ```json
 {
-  "$schema": "https://turbo.build/schema.json",
-  "pipeline": {
+  "$schema": "https://turborepo.dev/schema.json",
+  "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
@@ -232,13 +254,13 @@ jobs:
   main:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Full history for Nx affected
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       # Nx Cloud for distributed caching
@@ -279,19 +301,19 @@ on:
       node-version:
         required: false
         type: string
-        default: '20'
+        default: '24'
 
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v6
         with:
-          version: 8
+          version: 11
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
           cache: 'pnpm'
@@ -347,15 +369,15 @@ jobs:
       matrix:
         package: [api, web, mobile, cli]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v6
         with:
-          version: 8
+          version: 11
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
 
       - run: pnpm install --frozen-lockfile
@@ -367,7 +389,7 @@ jobs:
         run: pnpm --filter ${{ matrix.package }} test
 
       - name: Upload build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.package }}-dist
           path: packages/${{ matrix.package }}/dist
@@ -382,20 +404,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v6
         with:
-          version: 8
+          version: 11
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
 
       # Cache built packages
       - name: Cache package builds
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             packages/*/dist
@@ -406,7 +428,7 @@ jobs:
 
       # Cache test results
       - name: Cache test results
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             packages/*/.jest-cache
@@ -428,28 +450,28 @@ jobs:
   dependency-graph:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v6
         with:
-          version: 8
+          version: 11
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
 
       - run: pnpm install
 
       - name: Generate dependency graph
         run: |
-          npx nx graph --file=dependency-graph.html
+          npx nx graph --file=dependency-graph.json
 
       - name: Upload graph
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dependency-graph
-          path: dependency-graph.html
+          path: dependency-graph.json
 ```
 
 ## Best Practices
