@@ -64,12 +64,18 @@ package main
 import (
     "fmt"
     "net/http"
+    "os"
     "path/filepath"
 
     "github.com/gin-gonic/gin"
 )
 
 func main() {
+    // Create uploads directory if it doesn't exist
+    if err := os.MkdirAll("./uploads", 0755); err != nil {
+        panic(fmt.Sprintf("Failed to create uploads directory: %v", err))
+    }
+
     // Create a Gin router with default middleware (logger and recovery)
     router := gin.Default()
 
@@ -192,6 +198,8 @@ Production APIs need proper validation. Let's create a comprehensive validation 
 package main
 
 import (
+    "fmt"
+    "io"
     "mime/multipart"
     "net/http"
     "path/filepath"
@@ -251,13 +259,13 @@ func ValidateFile(file *multipart.FileHeader, config FileConfig) error {
 
     // Read the first 512 bytes to detect content type
     buffer := make([]byte, 512)
-    _, err = src.Read(buffer)
-    if err != nil {
+    n, err := src.Read(buffer)
+    if err != nil && err != io.EOF {
         return fmt.Errorf("failed to read file: %w", err)
     }
 
     // Detect the content type
-    contentType := http.DetectContentType(buffer)
+    contentType := http.DetectContentType(buffer[:n])
 
     // Check if the content type is allowed
     typeValid := false
@@ -311,6 +319,7 @@ import (
     "crypto/rand"
     "encoding/hex"
     "fmt"
+    "io"
     "mime/multipart"
     "net/http"
     "os"
@@ -414,11 +423,12 @@ func validateFile(file *multipart.FileHeader, config FileConfig) error {
     defer src.Close()
 
     buffer := make([]byte, 512)
-    if _, err := src.Read(buffer); err != nil {
+    n, err := src.Read(buffer)
+    if err != nil && err != io.EOF {
         return err
     }
 
-    contentType := http.DetectContentType(buffer)
+    contentType := http.DetectContentType(buffer[:n])
     typeAllowed := false
     for _, allowed := range config.AllowedTypes {
         if strings.HasPrefix(contentType, allowed) {
@@ -662,6 +672,8 @@ Expected response for a single image upload:
 For large files, clients may want to track upload progress. While Gin handles the upload, you can add hooks for monitoring:
 
 ```go
+import "io"
+
 // ProgressReader wraps an io.Reader to track read progress
 type ProgressReader struct {
     Reader     io.Reader
@@ -732,6 +744,7 @@ package main
 import (
     "context"
     "fmt"
+    "io"
     "mime/multipart"
     "net/http"
 
@@ -770,11 +783,16 @@ func (u *S3Uploader) Upload(ctx context.Context, file *multipart.FileHeader, key
 
     // Detect content type
     buffer := make([]byte, 512)
-    src.Read(buffer)
-    contentType := http.DetectContentType(buffer)
+    n, err := src.Read(buffer)
+    if err != nil && err != io.EOF {
+        return "", fmt.Errorf("failed to read file: %w", err)
+    }
+    contentType := http.DetectContentType(buffer[:n])
 
     // Reset reader position
-    src.Seek(0, 0)
+    if _, err := src.Seek(0, io.SeekStart); err != nil {
+        return "", fmt.Errorf("failed to reset file: %w", err)
+    }
 
     // Upload to S3
     _, err = u.client.PutObject(ctx, &s3.PutObjectInput{
