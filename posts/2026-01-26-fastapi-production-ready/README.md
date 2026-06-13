@@ -127,8 +127,8 @@ Never hardcode configuration values. Use environment variables with Pydantic Set
 # app/config.py
 
 from functools import lru_cache
-from pydantic_settings import BaseSettings
-from pydantic import Field, PostgresDsn
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -148,7 +148,7 @@ class Settings(BaseSettings):
     workers: int = Field(default=4)
 
     # Database settings
-    database_url: PostgresDsn = Field(
+    database_url: str = Field(
         default="postgresql+asyncpg://user:pass@localhost/dbname"
     )
     db_pool_size: int = Field(default=10)
@@ -166,12 +166,12 @@ class Settings(BaseSettings):
         default=["http://localhost:3000"]
     )
 
-    class Config:
-        # Load from .env file if present
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        # Allow environment variables to override
-        extra = "ignore"
+    # Load from .env file if present and allow extra local variables.
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 @lru_cache()
@@ -466,7 +466,7 @@ Production applications need structured logging for easy parsing and analysis:
 import logging
 import sys
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -478,7 +478,7 @@ class JSONFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_data = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -707,7 +707,6 @@ Structure your endpoints with proper validation, documentation, and error handli
 ```python
 # app/api/v1/endpoints/users.py
 from fastapi import APIRouter, Depends, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import DbSession, CurrentUser, require_permission
 from app.api.v1.schemas.users import (
@@ -718,6 +717,7 @@ from app.api.v1.schemas.users import (
 )
 from app.services.user_service import UserService
 from app.core.exceptions import NotFoundError
+from app.models.domain import User
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -783,7 +783,7 @@ async def get_user(
 async def create_user(
     user_data: UserCreate,
     db: DbSession,
-    admin: CurrentUser = Depends(require_permission("admin:write")),
+    admin: User = Depends(require_permission("admin:write")),
 ):
     """
     Create a new user.
@@ -833,7 +833,7 @@ async def update_user(
 async def delete_user(
     user_id: str,
     db: DbSession,
-    admin: CurrentUser = Depends(require_permission("admin:write")),
+    admin: User = Depends(require_permission("admin:write")),
 ):
     """
     Delete a user.
@@ -872,6 +872,7 @@ Here's how to set up tests with pytest and test fixtures:
 ```python
 # tests/conftest.py
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -894,7 +895,7 @@ def get_test_settings() -> Settings:
     )
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_engine():
     """Create test database engine."""
     engine = create_async_engine(
@@ -916,7 +917,7 @@ async def test_engine():
     await engine.dispose()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_session(test_engine):
     """Create test database session."""
     session_factory = async_sessionmaker(
@@ -929,9 +930,14 @@ async def test_session(test_engine):
         yield session
 
 
-@pytest.fixture
-async def app(test_session):
+@pytest_asyncio.fixture
+async def app(test_session, monkeypatch):
     """Create test application with overridden dependencies."""
+    monkeypatch.setenv("DATABASE_URL", TEST_DATABASE_URL)
+    monkeypatch.setenv("DEBUG", "true")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key")
+    get_settings.cache_clear()
+
     application = create_application()
 
     # Override settings
@@ -947,9 +953,10 @@ async def app(test_session):
 
     # Clear overrides
     application.dependency_overrides.clear()
+    get_settings.cache_clear()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def client(app):
     """Create test HTTP client."""
     transport = ASGITransport(app=app)
@@ -1025,7 +1032,7 @@ Package your application for deployment with Docker:
 ```dockerfile
 # docker/Dockerfile
 # Build stage
-FROM python:3.12-slim as builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -1036,11 +1043,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python dependencies
 COPY pyproject.toml ./
+COPY README.md ./
+COPY app/ ./app/
 RUN pip install --no-cache-dir build \
     && python -m build --wheel
 
 # Runtime stage
-FROM python:3.12-slim as runtime
+FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
@@ -1074,7 +1083,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 CMD ["gunicorn", "app.main:app", \
      "--bind", "0.0.0.0:8000", \
      "--workers", "4", \
-     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--worker-class", "uvicorn_worker.UvicornWorker", \
      "--access-logfile", "-", \
      "--error-logfile", "-"]
 ```
@@ -1083,8 +1092,6 @@ And the Docker Compose file for local development:
 
 ```yaml
 # docker/docker-compose.yml
-version: "3.8"
-
 services:
   app:
     build:
@@ -1164,7 +1171,7 @@ backlog = 2048
 
 # Worker processes
 workers = multiprocessing.cpu_count() * 2 + 1
-worker_class = "uvicorn.workers.UvicornWorker"
+worker_class = "uvicorn_worker.UvicornWorker"
 worker_connections = 1000
 timeout = 30
 keepalive = 2
