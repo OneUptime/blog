@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Laravel, Laravel Scout, Full-Text Search, Algolia, Meilisearch, PHP, Elasticsearch
+Tags: Laravel, Laravel Scout, Full-Text Search, Algolia, Meilisearch, PHP, Typesense
 
 Description: A practical guide to implementing fast, full-text search in Laravel applications using Scout with various search drivers.
 
@@ -21,7 +21,7 @@ flowchart LR
     C --> D[Algolia]
     C --> E[Meilisearch]
     C --> F[Database]
-    C --> G[Elasticsearch]
+    C --> G[Typesense]
 
     H[Search Query] --> C
     C -->|Results| I[Collection of Models]
@@ -52,8 +52,9 @@ Scout supports multiple search drivers. Here's a comparison to help you choose:
 |--------|----------|---------|-------------|
 | Algolia | Production apps with high traffic | Paid (free tier available) | No |
 | Meilisearch | Self-hosted, privacy-focused apps | Free | Yes |
-| Database | Simple apps, development | Free | Yes |
-| Elasticsearch | Large-scale enterprise apps | Free (self-hosted) | Yes |
+| Database | Simple MySQL/PostgreSQL apps | Free | Yes |
+| Collection | Tests and small prototypes | Free | Yes |
+| Typesense | Fast search with typo tolerance and filtering | Free (self-hosted) | Yes |
 
 ### Setting Up Meilisearch (Recommended for Self-Hosted)
 
@@ -149,6 +150,7 @@ class Product extends Model
             // Include formatted price for display in search results
             'price' => $this->price,
             'sku' => $this->sku,
+            'created_at' => $this->created_at?->timestamp,
         ];
     }
 
@@ -177,11 +179,14 @@ sequenceDiagram
     participant Index as Search Index
 
     App->>Scout: Model Created/Updated
-    Scout->>Queue: Dispatch Index Job
-    Queue->>Driver: Process Job
+    alt Queueing enabled
+        Scout->>Queue: Dispatch Index Job
+        Queue->>Driver: Process Job
+    else Queueing disabled
+        Scout->>Driver: Sync Immediately
+    end
     Driver->>Index: Update Index
     Index-->>Driver: Confirmation
-    Driver-->>Queue: Job Complete
 ```
 
 ## Indexing Existing Records
@@ -342,11 +347,11 @@ class AdvancedSearchController extends Controller
 
         // Filter by price range if provided
         // Note: Numeric filtering support depends on your driver
-        if ($validated['min_price'] ?? null) {
+        if (array_key_exists('min_price', $validated) && $validated['min_price'] !== null) {
             $query->where('price', '>=', $validated['min_price']);
         }
 
-        if ($validated['max_price'] ?? null) {
+        if (array_key_exists('max_price', $validated) && $validated['max_price'] !== null) {
             $query->where('price', '<=', $validated['max_price']);
         }
 
@@ -370,6 +375,7 @@ Configure index settings for better search relevance:
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Laravel\Scout\Searchable;
 
 class Article extends Model
@@ -393,7 +399,7 @@ class Article extends Model
      * Modify the query used to retrieve models when making all models searchable.
      * This is useful for eager loading relationships.
      */
-    public function makeAllSearchableUsing($query)
+    protected function makeAllSearchableUsing(Builder $query): Builder
     {
         // Eager load the author relationship when indexing
         return $query->with('author');
@@ -421,7 +427,7 @@ class Article extends Model
             'content' => $this->content,
             'author_name' => $this->author->name,
             // Convert to timestamp for date filtering
-            'published_at' => $this->published_at->timestamp,
+            'published_at' => $this->published_at?->timestamp,
             'tags' => $this->tags,
         ];
     }
@@ -459,7 +465,7 @@ class Document extends Model
 
     /**
      * Get the indexable data array for the model.
-     * Include soft delete status for filtering.
+     * Scout maintains the hidden __soft_deleted field when soft_delete is enabled.
      */
     public function toSearchableArray(): array
     {
@@ -467,8 +473,6 @@ class Document extends Model
             'id' => $this->id,
             'title' => $this->title,
             'content' => $this->content,
-            // Include soft delete status in index
-            '__soft_deleted' => $this->trashed() ? 1 : 0,
         ];
     }
 }
@@ -498,8 +502,16 @@ For better performance, queue your search index updates:
 return [
     // Queue all search index operations
     'queue' => true,
+];
+```
 
-    // Or specify a specific queue and connection
+Or specify a specific queue and connection:
+
+```php
+<?php
+
+// In config/scout.php
+return [
     'queue' => [
         'connection' => 'redis',
         'queue' => 'scout',
@@ -644,7 +656,6 @@ class ConfigureSearchIndex extends Command
         $index->updateFilterableAttributes([
             'category',
             'price',
-            'in_stock',
         ]);
 
         // Configure sortable attributes
@@ -699,8 +710,8 @@ class ProductSearchTest extends TestCase
     {
         parent::setUp();
 
-        // Use the database driver for testing
-        config(['scout.driver' => 'database']);
+        // Use the collection driver for tests and small in-memory datasets
+        config(['scout.driver' => 'collection']);
     }
 
     public function test_can_search_products_by_name(): void
