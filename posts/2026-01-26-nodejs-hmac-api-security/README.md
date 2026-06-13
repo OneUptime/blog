@@ -70,7 +70,7 @@ export function createSignature(
   ];
 
   // Include body hash if present (handles large payloads efficiently)
-  if (components.body) {
+  if (components.body !== undefined) {
     const bodyHash = crypto
       .createHash('sha256')
       .update(components.body)
@@ -311,9 +311,9 @@ export function hmacAuthMiddleware(config: Partial<HmacMiddlewareConfig> = {}) {
         });
       }
 
-      // Get raw body for signature verification
-      // Note: This requires express.raw() or similar middleware
-      const bodyString = req.body ? JSON.stringify(req.body) : '';
+      // Use the exact raw body for signature verification
+      // Note: Save this with express.json({ verify }) or use express.raw()
+      const bodyString = (req as any).rawBody ?? '';
       const bodyHash = crypto
         .createHash('sha256')
         .update(bodyString)
@@ -367,6 +367,7 @@ Timestamps help, but a determined attacker could replay requests within the tole
 
 ```typescript
 // nonce-store.ts
+import { Request, Response, NextFunction } from 'express';
 
 interface NonceEntry {
   timestamp: number;
@@ -428,13 +429,13 @@ export function hmacAuthWithNonce(nonceStore: NonceStore) {
       return res.status(401).json({ error: 'Missing nonce header' });
     }
 
-    // Check nonce has not been used
+    // Include nonce in canonical string for signing
+    // ... verify the signature first
+
+    // After signature verification succeeds, check nonce has not been used
     if (!nonceStore.useNonce(nonce)) {
       return res.status(401).json({ error: 'Nonce already used (replay attack detected)' });
     }
-
-    // Include nonce in canonical string for signing
-    // ... rest of verification logic
 
     next();
   };
@@ -448,8 +449,8 @@ Update the client to include a unique nonce:
 const nonce = crypto.randomUUID();
 
 const canonicalString = [
-  method,
-  path,
+  options.method,
+  options.path,
   timestamp,
   nonce,
   bodyHash,
@@ -472,8 +473,12 @@ import crypto from 'crypto';
 
 const app = express();
 
-// Parse JSON bodies
-app.use(express.json());
+// Parse JSON bodies and keep the raw bytes for signature verification
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    (req as any).rawBody = buf.toString('utf8');
+  },
+}));
 
 // Store for API credentials (use database in production)
 const apiCredentials = new Map<string, { secret: string; name: string }>();
@@ -520,10 +525,9 @@ function verifyHmac(req: express.Request, res: express.Response, next: express.N
   if (usedNonces.has(nonce)) {
     return res.status(401).json({ error: 'Duplicate nonce - possible replay attack' });
   }
-  usedNonces.set(nonce, Date.now());
 
-  // Hash request body
-  const bodyString = JSON.stringify(req.body) || '';
+  // Hash the exact raw request body
+  const bodyString = (req as any).rawBody ?? '';
   const bodyHash = crypto.createHash('sha256').update(bodyString).digest('hex');
 
   // Build canonical string
@@ -549,6 +553,9 @@ function verifyHmac(req: express.Request, res: express.Response, next: express.N
       !crypto.timingSafeEqual(expectedBuf, signatureBuf)) {
     return res.status(401).json({ error: 'Invalid signature' });
   }
+
+  // Mark nonce as used only after the signature is valid
+  usedNonces.set(nonce, Date.now());
 
   // Attach client info to request
   (req as any).client = { apiKey, name: cred.name };
