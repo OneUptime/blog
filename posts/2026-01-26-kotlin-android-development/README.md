@@ -31,7 +31,7 @@ When creating a new project in Android Studio:
 
 1. Select "Empty Compose Activity" for modern UI development
 2. Set the language to Kotlin
-3. Choose a minimum SDK (API 24 covers 95%+ of devices)
+3. Choose a minimum SDK based on your app's device support requirements
 4. Set the package name following reverse domain notation
 
 ```kotlin
@@ -87,16 +87,18 @@ plugins {
     id("org.jetbrains.kotlin.android")
     // Kotlin compiler plugin for Compose
     id("org.jetbrains.kotlin.plugin.compose")
+    // Kotlin Symbol Processing for libraries such as Room
+    id("com.google.devtools.ksp")
 }
 
 android {
     namespace = "com.example.myapp"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.myapp"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -131,40 +133,48 @@ android {
 
 dependencies {
     // Core Android KTX - Kotlin extensions for Android
-    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.core:core-ktx:1.17.0")
 
     // Lifecycle - ViewModel and LiveData
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
 
     // Compose BOM - manages Compose library versions
-    implementation(platform("androidx.compose:compose-bom:2024.02.00"))
+    implementation(platform("androidx.compose:compose-bom:2026.05.00"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.05.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.activity:activity-compose:1.8.2")
+    implementation("androidx.activity:activity-compose:1.13.0")
 
     // Navigation for Compose
-    implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation("androidx.navigation:navigation-compose:2.9.8")
 
     // Retrofit for networking
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.retrofit2:retrofit:3.0.0")
+    implementation("com.squareup.retrofit2:converter-gson:3.0.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
     // Room for local database
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    annotationProcessor("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    ksp("androidx.room:room-compiler:2.8.4")
 
     // Coroutines for async operations
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+
+    // Permissions for Compose
+    implementation("com.google.accompanist:accompanist-permissions:0.37.3")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 ```
 
@@ -263,12 +273,12 @@ fun GreetingScreen() {
 
 ```kotlin
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -320,9 +330,9 @@ fun UserCard(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.Person,
-                contentDescription = null,
+            Text(
+                text = user.name.firstOrNull()?.uppercase() ?: "?",
+                style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.size(48.dp)
             )
 
@@ -426,17 +436,23 @@ class UsersViewModel(
 
 ```kotlin
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun UsersScreen(
     viewModel: UsersViewModel = viewModel(),
-    onUserClick: (User) -> Unit
+    onUserClick: (User) -> Unit,
+    onCreateClick: () -> Unit = {}
 ) {
-    // collectAsState converts Flow to Compose State
-    val uiState by viewModel.uiState.collectAsState()
+    // collectAsStateWithLifecycle converts Flow to Compose State safely on Android
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     // Handle different UI states
     when (val state = uiState) {
@@ -461,6 +477,16 @@ fun UsersScreen(
                 onRetry = { viewModel.loadUsers() }
             )
         }
+    }
+}
+
+@Composable
+fun EmptyState(message: String) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text = message)
     }
 }
 
@@ -774,23 +800,34 @@ The repository abstracts data sources and provides a clean API for the ViewModel
 package com.example.myapp.data.repository
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class UserRepository(
+interface UserRepository {
+    fun observeUsers(): Flow<List<User>> = emptyFlow()
+    suspend fun getUsers(forceRefresh: Boolean = false): List<User>
+    suspend fun getUserById(userId: Int): User? = null
+    suspend fun createUser(name: String, email: String): User {
+        throw UnsupportedOperationException("createUser is not implemented")
+    }
+    suspend fun deleteUser(userId: Int) {}
+}
+
+class DefaultUserRepository(
     private val userApi: UserApi,
     private val userDao: UserDao
-) {
+) : UserRepository {
     // Observe users with automatic updates from database
-    fun observeUsers(): Flow<List<User>> {
+    override fun observeUsers(): Flow<List<User>> {
         return userDao.observeAllUsers().map { entities ->
             entities.map { it.toUser() }
         }
     }
 
     // Fetch users with caching strategy
-    suspend fun getUsers(forceRefresh: Boolean = false): List<User> {
+    override suspend fun getUsers(forceRefresh: Boolean): List<User> {
         return withContext(Dispatchers.IO) {
             // Check if we need to refresh from network
             if (forceRefresh || shouldRefreshCache()) {
@@ -823,7 +860,7 @@ class UserRepository(
         }
     }
 
-    suspend fun getUserById(userId: Int): User? {
+    override suspend fun getUserById(userId: Int): User? {
         return withContext(Dispatchers.IO) {
             // Try cache first
             userDao.getUserById(userId)?.toUser()
@@ -844,7 +881,7 @@ class UserRepository(
         }
     }
 
-    suspend fun createUser(name: String, email: String): User {
+    override suspend fun createUser(name: String, email: String): User {
         return withContext(Dispatchers.IO) {
             val dto = userApi.createUser(CreateUserRequest(name, email))
             val entity = UserEntity(
@@ -858,7 +895,7 @@ class UserRepository(
         }
     }
 
-    suspend fun deleteUser(userId: Int) {
+    override suspend fun deleteUser(userId: Int) {
         withContext(Dispatchers.IO) {
             userApi.deleteUser(userId)
             userDao.deleteUserById(userId)
@@ -881,6 +918,9 @@ class UserRepository(
 package com.example.myapp.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -951,6 +991,7 @@ fun AppNavigation() {
 ### User Detail Screen Example
 
 ```kotlin
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserDetailScreen(
     userId: Int,
@@ -962,7 +1003,7 @@ fun UserDetailScreen(
         viewModel.loadUser(userId)
     }
 
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -1042,7 +1083,7 @@ Add to your project-level `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("com.google.dagger.hilt.android") version "2.48" apply false
+    id("com.google.dagger.hilt.android") version "2.57.1" apply false
 }
 ```
 
@@ -1050,14 +1091,14 @@ Add to your module-level `build.gradle.kts`:
 
 ```kotlin
 plugins {
+    id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
-    id("kotlin-kapt")
 }
 
 dependencies {
-    implementation("com.google.dagger:hilt-android:2.48")
-    kapt("com.google.dagger:hilt-android-compiler:2.48")
-    implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
+    implementation("com.google.dagger:hilt-android:2.57.1")
+    ksp("com.google.dagger:hilt-android-compiler:2.57.1")
+    implementation("androidx.hilt:hilt-lifecycle-viewmodel-compose:1.3.0")
 }
 ```
 
@@ -1103,7 +1144,7 @@ object AppModule {
         userApi: UserApi,
         userDao: UserDao
     ): UserRepository {
-        return UserRepository(userApi, userDao)
+        return DefaultUserRepository(userApi, userDao)
     }
 }
 ```
@@ -1116,6 +1157,9 @@ package com.example.myapp.ui.users
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -1148,14 +1192,16 @@ class UsersViewModel @Inject constructor(
 ### Using in Composables
 
 ```kotlin
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun UsersScreen(
     viewModel: UsersViewModel = hiltViewModel(), // Inject with Hilt
-    onUserClick: (User) -> Unit
+    onUserClick: (User) -> Unit,
+    onCreateClick: () -> Unit = {}
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     // ... rest of the composable
 }
 ```
@@ -1168,6 +1214,10 @@ fun UsersScreen(
 package com.example.myapp.ui.components
 
 import android.Manifest
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.*
 import androidx.compose.material3.*
 import com.google.accompanist.permissions.*
@@ -1251,18 +1301,21 @@ fun LocationPermissionHandler(
 package com.example.myapp.ui.users
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.*
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TestWatcher
+import org.junit.runner.Description
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class UsersViewModelTest {
 
-    // Test dispatcher for controlling coroutine execution
-    private val testDispatcher = StandardTestDispatcher()
+    @get:Rule
+    val mainDispatcherRule = MainDispatcherRule()
 
     // Fake repository for testing
     private lateinit var fakeRepository: FakeUserRepository
@@ -1320,9 +1373,26 @@ class FakeUserRepository : UserRepository {
         this.shouldFail = shouldFail
     }
 
-    override suspend fun getUsers(): List<User> {
+    override suspend fun getUsers(forceRefresh: Boolean): List<User> {
         if (shouldFail) throw Exception("Network error")
         return users
+    }
+
+    override suspend fun deleteUser(userId: Int) {
+        users = users.filterNot { it.id == userId }
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class MainDispatcherRule(
+    private val testDispatcher: TestDispatcher = UnconfinedTestDispatcher()
+) : TestWatcher() {
+    override fun starting(description: Description) {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    override fun finished(description: Description) {
+        Dispatchers.resetMain()
     }
 }
 ```
@@ -1336,6 +1406,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import org.junit.Rule
 import org.junit.Test
+import kotlin.test.assertEquals
 
 class UserListScreenTest {
 
