@@ -28,13 +28,13 @@ flowchart TB
     P1 --> C2[Consumer 2]
     P2 --> C3[Consumer 3]
 
-    Note1[Messages with same key<br/>always go to same partition]
+    Note1[Messages with same key<br/>go to same partition]
 ```
 
 Key principles:
-- Messages with the same key go to the same partition
+- Messages with the same key go to the same partition while the partition count and partitioner stay unchanged
 - Within a partition, messages are strictly ordered
-- Consumers in a group each read from exclusive partitions
+- Each partition is read by only one consumer in a consumer group
 
 ## Keying Messages for Order
 
@@ -218,47 +218,70 @@ public void consumeOrdered() {
 // Multi-threaded with per-key ordering
 public class OrderedProcessor {
 
-    // One queue per partition key - preserves per-key ordering
-    private final Map<String, BlockingQueue<ConsumerRecord<String, OrderEvent>>>
-        keyQueues = new ConcurrentHashMap<>();
+    // Fixed worker stripes - same key always maps to same queue
+    private final List<BlockingQueue<WorkItem>> queues = IntStream.range(0, 10)
+        .mapToObj(i -> new LinkedBlockingQueue<WorkItem>())
+        .toList();
 
-    private final ExecutorService executor = Executors.newFixedThreadPool(10);
+    private final ExecutorService executor =
+        Executors.newFixedThreadPool(queues.size());
 
-    public void consumeWithParallelism() {
+    public OrderedProcessor() {
+        for (BlockingQueue<WorkItem> queue : queues) {
+            executor.submit(() -> processQueue(queue));
+        }
+    }
+
+    public void consumeWithParallelism() throws InterruptedException {
         consumer.subscribe(List.of("order-events"));
 
         while (true) {
             ConsumerRecords<String, OrderEvent> records =
                 consumer.poll(Duration.ofMillis(100));
 
+            CountDownLatch batchDone = new CountDownLatch(records.count());
+            AtomicReference<RuntimeException> batchError =
+                new AtomicReference<>();
+
             for (ConsumerRecord<String, OrderEvent> record : records) {
-                // Route to per-key queue
-                String key = record.key();
-                keyQueues.computeIfAbsent(key, k -> {
-                    BlockingQueue<ConsumerRecord<String, OrderEvent>> queue =
-                        new LinkedBlockingQueue<>();
-                    // Start dedicated processor for this key
-                    executor.submit(() -> processQueue(queue));
-                    return queue;
-                }).add(record);
+                int queueIndex = Math.floorMod(Objects.hashCode(record.key()),
+                    queues.size());
+                queues.get(queueIndex).add(new WorkItem(record, batchDone,
+                    batchError));
+            }
+
+            batchDone.await();
+            if (batchError.get() != null) {
+                throw batchError.get();
             }
             consumer.commitSync();
         }
     }
 
     private void processQueue(
-            BlockingQueue<ConsumerRecord<String, OrderEvent>> queue) {
+            BlockingQueue<WorkItem> queue) {
         while (true) {
             try {
-                ConsumerRecord<String, OrderEvent> record =
-                    queue.take();  // Blocks until available
-                processEvent(record.value());
+                WorkItem work = queue.take();  // Blocks until available
+                try {
+                    processEvent(work.record().value());
+                } catch (RuntimeException e) {
+                    work.batchError().compareAndSet(null, e);
+                } finally {
+                    work.done().countDown();
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
     }
+
+    private record WorkItem(
+        ConsumerRecord<String, OrderEvent> record,
+        CountDownLatch done,
+        AtomicReference<RuntimeException> batchError
+    ) {}
 }
 ```
 
