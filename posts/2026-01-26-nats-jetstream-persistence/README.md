@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NATS, JetStream, Message Queue, Persistence, Distributed System
 
-Description: Learn how to use NATS JetStream for persistent messaging with streams, consumers, and exactly-once delivery semantics.
+Description: Learn how to use NATS JetStream for persistent messaging with streams, consumers, and deduplication.
 
 ---
 
-> NATS is fast. Really fast. But core NATS is fire-and-forget. Messages disappear if no subscriber is listening. JetStream changes that by adding persistence, replay, and exactly-once delivery to NATS. It turns NATS from a simple pub/sub system into a full-featured streaming platform.
+> NATS is fast. Really fast. But core NATS is fire-and-forget. Messages disappear if no subscriber is listening. JetStream changes that by adding persistence, replay, acknowledgments, and deduplication to NATS. It turns NATS from a simple pub/sub system into a full-featured streaming platform.
 
 JetStream is built into NATS Server 2.2+ and provides durable message storage, acknowledgments, and consumer groups. Think of it as Kafka-lite with the simplicity of NATS.
 
@@ -196,7 +196,7 @@ limitsStream := &nats.StreamConfig{
     MaxBytes:  1024 * 1024 * 1024, // 1GB max
 }
 
-// WorkQueuePolicy - Delete messages once acknowledged by ANY consumer
+// WorkQueuePolicy - Delete messages once acknowledged by their consumer
 // Perfect for job queues where each message should be processed once
 workQueueStream := &nats.StreamConfig{
     Name:      "JOBS",
@@ -204,7 +204,7 @@ workQueueStream := &nats.StreamConfig{
     Retention: nats.WorkQueuePolicy, // Message deleted after first ack
 }
 
-// InterestPolicy - Delete messages when no consumers are interested
+// InterestPolicy - Delete messages when all matching consumers have acknowledged them
 // Useful for ephemeral data that only matters if someone is listening
 interestStream := &nats.StreamConfig{
     Name:      "EVENTS",
@@ -420,7 +420,12 @@ func createPushConsumer(js nats.JetStreamContext) error {
         return err
     }
 
-    log.Printf("Push consumer created: %s", sub.ConsumerInfo().Name)
+    info, err := sub.ConsumerInfo()
+    if err != nil {
+        return err
+    }
+
+    log.Printf("Push consumer created: %s", info.Name)
     return nil
 }
 
@@ -532,7 +537,7 @@ func createQueueConsumer(js nats.JetStreamContext, workerID string) error {
 
 ## Exactly-Once Delivery
 
-JetStream provides exactly-once semantics through message deduplication and idempotent consumers.
+JetStream supports exactly-once publication through message deduplication. For consumption, combine idempotent processing with confirmed acknowledgments so the consumer can be sure the server received the ack.
 
 ```mermaid
 sequenceDiagram
@@ -598,7 +603,7 @@ func (p *OrderProcessor) ProcessMessage(msg *nats.Msg) error {
         return err
     }
 
-    // Use database transaction for exactly-once processing
+    // Use a database transaction to avoid duplicate processing effects
     tx, err := p.db.Begin()
     if err != nil {
         msg.Nak()
@@ -653,8 +658,10 @@ func (p *OrderProcessor) ProcessMessage(msg *nats.Msg) error {
         return err
     }
 
-    // Now safe to acknowledge
-    msg.Ack()
+    // Now safe to acknowledge and wait for the server to confirm the ack
+    if err := msg.AckSync(); err != nil {
+        return err
+    }
     return nil
 }
 ```
@@ -675,7 +682,7 @@ func replayFromTime(js nats.JetStreamContext, startTime time.Time) error {
             log.Printf("Message from %v: %s", meta.Timestamp, string(msg.Data))
             msg.Ack()
         },
-        nats.DeliverByStartTime(startTime), // Start from this timestamp
+        nats.StartTime(startTime), // Start from this timestamp
         nats.Durable("replay-consumer"),
         nats.ManualAck(),
     )
@@ -696,7 +703,7 @@ func replayFromSequence(js nats.JetStreamContext, startSeq uint64) error {
             log.Printf("Sequence %d: %s", meta.Sequence.Stream, string(msg.Data))
             msg.Ack()
         },
-        nats.DeliverByStartSequence(startSeq),
+        nats.StartSequence(startSeq),
         nats.Durable("sequence-replay"),
         nats.ManualAck(),
     )
@@ -797,7 +804,7 @@ func processWithDLQ(js nats.JetStreamContext) error {
     // Create dead letter stream
     js.AddStream(&nats.StreamConfig{
         Name:     "ORDERS_DLQ",
-        Subjects: []string{"orders.dlq.>"},
+        Subjects: []string{"orders-dlq.>"},
     })
 
     // Subscribe with retry handling
@@ -846,7 +853,7 @@ func sendToDLQ(js nats.JetStreamContext, originalMsg *nats.Msg, reason, errorMsg
 
     // Create DLQ message with original data and metadata
     dlqMsg := &nats.Msg{
-        Subject: "orders.dlq." + originalMsg.Subject,
+        Subject: "orders-dlq." + originalMsg.Subject,
         Data:    originalMsg.Data,
         Header:  nats.Header{},
     }
@@ -874,7 +881,7 @@ func sendToDLQ(js nats.JetStreamContext, originalMsg *nats.Msg, reason, errorMsg
 ```go
 func processDLQ(js nats.JetStreamContext) error {
     _, err := js.Subscribe(
-        "orders.dlq.>",
+        "orders-dlq.>",
         func(msg *nats.Msg) {
             // Log detailed information for debugging
             log.Printf("DLQ Message:")
@@ -1073,16 +1080,19 @@ func createProductionConsumer(js nats.JetStreamContext) error {
             5 * time.Minute,
         },
 
+        // Push consumer delivery subject
+        DeliverSubject: "orders.processor",
+
         // Rate limiting
-        RateLimit: 1000, // Messages per second
+        RateLimit: 1024 * 1024, // Bits per second
 
         // Batching
         MaxAckPending: 1000, // Max unacked messages
 
-        // Flow control
+        // Flow control for push consumers
         FlowControl: true,
 
-        // Heartbeat for detecting stalled consumers
+        // Heartbeat for detecting stalled push consumers
         Heartbeat: 5 * time.Second,
     })
     return err
@@ -1130,7 +1140,7 @@ NATS JetStream provides a powerful persistence layer that turns NATS into a full
 - **Streams** store messages with configurable retention policies
 - **Consumers** track delivery state and support multiple delivery patterns
 - **Deduplication** at the publisher level prevents duplicate messages
-- **Idempotent processing** at the consumer level ensures exactly-once semantics
+- **Idempotent processing** with confirmed acknowledgments helps prevent duplicate effects
 - **Dead letter queues** handle permanently failed messages
 
 JetStream strikes a good balance between simplicity and features. It is simpler than Kafka but more capable than Redis Streams. For many applications, it hits the sweet spot.
