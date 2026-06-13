@@ -43,7 +43,8 @@ public class ProblemResponse
     public DateTimeOffset Timestamp { get; set; }
 }
 
-// This follows RFC 7807 Problem Details standard
+// This follows the RFC 7807/RFC 9457 Problem Details shape
+// with traceId, errors, and timestamp as extension members
 // Example response:
 // {
 //   "type": "https://yourapi.com/errors/validation",
@@ -174,9 +175,12 @@ public class GlobalExceptionHandler : IExceptionHandler
 
         // Set response properties
         httpContext.Response.StatusCode = problem.Status;
-        httpContext.Response.ContentType = "application/problem+json";
 
-        await httpContext.Response.WriteAsJsonAsync(problem, cancellationToken);
+        await httpContext.Response.WriteAsJsonAsync(
+            problem,
+            options: null,
+            contentType: "application/problem+json",
+            cancellationToken: cancellationToken);
 
         // Return true to indicate the exception was handled
         return true;
@@ -341,9 +345,6 @@ public class ExceptionHandlingMiddleware
                 : "An unexpected error occurred.")
         };
 
-        context.Response.StatusCode = statusCode;
-        context.Response.ContentType = "application/problem+json";
-
         var problem = new ProblemResponse
         {
             Title = GetTitle(statusCode),
@@ -354,7 +355,11 @@ public class ExceptionHandlingMiddleware
             Timestamp = DateTimeOffset.UtcNow
         };
 
-        await context.Response.WriteAsJsonAsync(problem);
+        context.Response.StatusCode = statusCode;
+        await context.Response.WriteAsJsonAsync(
+            problem,
+            options: null,
+            contentType: "application/problem+json");
     }
 
     private static string GetTitle(int statusCode) => statusCode switch
@@ -423,7 +428,8 @@ builder.Services.AddControllers();
 // Register the exception handler
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
-// Required for IExceptionHandler to work
+// Required when using parameterless UseExceptionHandler()
+// to provide the default problem details service/fallback
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();
@@ -618,7 +624,7 @@ A well-designed global exception handler provides several benefits:
 
 | Benefit | Implementation |
 |---------|----------------|
-| Consistent format | RFC 7807 Problem Details |
+| Consistent format | RFC 7807/RFC 9457 Problem Details |
 | Proper status codes | Custom exception classes |
 | Security | Hide stack traces in production |
 | Debugging | Trace ID correlation |
