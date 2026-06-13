@@ -39,17 +39,20 @@ Make sure you have PHP 8.2 or higher and Composer installed. This guide uses Lar
 php -v
 # Should output something like: PHP 8.2.0
 
-# Create a new Laravel project
-composer create-project laravel/laravel book-api
+# Create a new Laravel 11 project
+composer create-project laravel/laravel:^11.0 book-api
 
 # Navigate to the project directory
 cd book-api
+
+# Install API routing and Sanctum
+php artisan install:api
 
 # Start the development server
 php artisan serve
 ```
 
-Laravel 11 includes a streamlined directory structure. The application will be available at `http://localhost:8000`.
+Laravel 11 includes a streamlined directory structure. The `install:api` command creates `routes/api.php` and installs Laravel Sanctum. The application will be available at `http://localhost:8000`.
 
 ---
 
@@ -296,17 +299,13 @@ flowchart LR
 
 ## Setting Up Authentication with Sanctum
 
-Laravel Sanctum provides a lightweight authentication system for APIs. Install and configure it:
+Laravel Sanctum provides a lightweight authentication system for APIs. If you did not already run `php artisan install:api` during setup, run it now:
 
 ```bash
-# Sanctum is included in Laravel 11, just publish the config
-php artisan vendor:publish --provider="Laravel\Sanctum\SanctumServiceProvider"
-
-# Run the Sanctum migrations
-php artisan migrate
+php artisan install:api
 ```
 
-The User model already includes the `HasApiTokens` trait in Laravel 11. Verify it exists:
+To issue API tokens, update the User model to use the `HasApiTokens` trait:
 
 ```php
 <?php
@@ -711,8 +710,9 @@ class BookController extends Controller
         $sortField = $request->get('sort', 'created_at');
         $sortDirection = $request->get('direction', 'desc');
         $allowedSorts = ['title', 'price', 'published_date', 'created_at'];
+        $allowedDirections = ['asc', 'desc'];
 
-        if (in_array($sortField, $allowedSorts)) {
+        if (in_array($sortField, $allowedSorts) && in_array($sortDirection, $allowedDirections)) {
             $query->orderBy($sortField, $sortDirection);
         }
 
