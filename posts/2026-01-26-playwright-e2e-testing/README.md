@@ -38,7 +38,7 @@ graph TD
 
 ## Installing Playwright
 
-Let's start by setting up a new Playwright project. You will need Node.js 16 or higher installed on your machine.
+Let's start by setting up a new Playwright project. You will need a supported Node.js version installed on your machine, such as the latest 20.x, 22.x, or 24.x release.
 
 ```bash
 # Create a new directory for your project
@@ -196,11 +196,14 @@ await page.click('form.login-form button.primary');
 Text selectors find elements by their visible text content.
 
 ```typescript
-// Exact text match
+// Case-insensitive substring match
 await page.click('text=Sign In');
 
-// Partial text match (case insensitive)
+// Same selector with different casing still matches
 await page.click('text=sign in');
+
+// Exact text match
+await page.click('text="Sign In"');
 
 // Using the getByText method (recommended)
 await page.getByText('Sign In').click();
