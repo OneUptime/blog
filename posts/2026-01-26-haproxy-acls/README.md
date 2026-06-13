@@ -350,14 +350,14 @@ frontend http_front
 
 backend variant_a_backend
     balance roundrobin
-    # Set cookie for variant A on first response
+    # Set cookie for variant A on responses served by this backend
     http-response set-header Set-Cookie "ab_test=variant_a; Path=/; Max-Age=604800"
     server var_a1 10.0.1.10:8080 check
     server var_a2 10.0.1.11:8080 check
 
 backend variant_b_backend
     balance roundrobin
-    # Set cookie for variant B on first response
+    # Set cookie for variant B on responses served by this backend
     http-response set-header Set-Cookie "ab_test=variant_b; Path=/; Max-Age=604800"
     server var_b1 10.0.2.10:8080 check
     server var_b2 10.0.2.11:8080 check
@@ -812,7 +812,7 @@ frontend http_front
     acl is_websocket hdr(Upgrade) -i websocket
 
     # Alternative: Check Connection header
-    acl is_ws_connection hdr(Connection) -i upgrade
+    acl is_ws_connection hdr_sub(Connection) -i upgrade
 
     # Route WebSocket traffic to dedicated backend
     use_backend websocket_backend if is_websocket is_ws_connection
@@ -845,7 +845,7 @@ frontend grpc_front
 
     # Detect gRPC requests
     # gRPC uses content-type: application/grpc
-    acl is_grpc hdr(content-type) -i application/grpc
+    acl is_grpc hdr_beg(content-type) -i application/grpc
 
     # Route gRPC to dedicated backend
     use_backend grpc_backend if is_grpc
@@ -942,10 +942,18 @@ frontend http_front
     # Only in non-production environments
     acl is_debug hdr(X-Debug) -m found
 
-    http-response set-header X-ACL-API %[acl_matched(is_api)] if is_debug
-    http-response set-header X-ACL-Internal %[acl_matched(is_internal)] if is_debug
-    http-response set-header X-ACL-Auth %[acl_matched(is_authenticated)] if is_debug
-    http-response set-header X-Backend %b if is_debug
+    http-request set-var(txn.debug) str(true) if is_debug
+    http-request set-var(txn.acl_api) str(false) if is_debug
+    http-request set-var(txn.acl_api) str(true) if is_debug is_api
+    http-request set-var(txn.acl_internal) str(false) if is_debug
+    http-request set-var(txn.acl_internal) str(true) if is_debug is_internal
+    http-request set-var(txn.acl_auth) str(false) if is_debug
+    http-request set-var(txn.acl_auth) str(true) if is_debug is_authenticated
+
+    http-response set-header X-ACL-API %[var(txn.acl_api)] if { var(txn.debug) -m str true }
+    http-response set-header X-ACL-Internal %[var(txn.acl_internal)] if { var(txn.debug) -m str true }
+    http-response set-header X-ACL-Auth %[var(txn.acl_auth)] if { var(txn.debug) -m str true }
+    http-response set-header X-Backend %b if { var(txn.debug) -m str true }
 
     default_backend web_backend
 ```
@@ -956,6 +964,7 @@ global
     log /dev/log local0 debug
 
 defaults
+    mode http
     log global
     option httplog
 
@@ -967,7 +976,8 @@ frontend http_front
 
     # Log ACL matches
     acl is_api path_beg /api
-    http-request set-var(txn.matched_api) acl_matched(is_api)
+    http-request set-var(txn.matched_api) str(false)
+    http-request set-var(txn.matched_api) str(true) if is_api
 
     # Include variable in log
     http-request capture var(txn.matched_api) len 10
