@@ -44,7 +44,7 @@ const app = express();
 const requestHistory = [];
 
 app.get('/api/data', (req, res) => {
-    // Store entire request object - this is the leak
+    // Store request-derived data indefinitely - this is the leak
     requestHistory.push({
         timestamp: Date.now(),
         headers: req.headers,
@@ -224,10 +224,10 @@ function captureHeapSnapshot(filename) {
     const snapshotPath = path.join(snapshotDir, filename);
 
     // Write heap snapshot to file
-    const snapshotStream = v8.writeHeapSnapshot(snapshotPath);
+    const snapshotFile = v8.writeHeapSnapshot(snapshotPath);
 
-    console.log(`Heap snapshot written to: ${snapshotStream}`);
-    return snapshotStream;
+    console.log(`Heap snapshot written to: ${snapshotFile}`);
+    return snapshotFile;
 }
 
 // Expose endpoint to trigger snapshots
@@ -268,7 +268,7 @@ node --expose-gc --inspect server.js
 
 ## Method 3: Using the Allocation Timeline
 
-The Allocation Timeline in Chrome DevTools shows memory allocations in real-time. This helps you see exactly when and where allocations happen.
+The Allocation Timeline in Chrome DevTools records memory allocations over time. This helps you see exactly when and where allocations happen.
 
 ```javascript
 // allocation-tracking-example.js
@@ -328,7 +328,7 @@ To use the Allocation Timeline:
 4. Perform the actions you want to profile
 5. Click "Stop"
 
-The timeline shows blue bars for allocations. Tall bars that persist indicate potential leaks.
+The timeline uses blue bars for objects that are still live at the end of the recording and gray bars for objects that were allocated but later garbage collected. Blue bars that remain after the relevant operation finishes indicate potential leaks.
 
 ## Method 4: Using heapdump Module
 
@@ -408,7 +408,7 @@ When you find a growing object in a heap snapshot, the key to fixing the leak is
 
 ```mermaid
 graph TD
-    A[Global/Window] --> B[requestHistory Array]
+    A[GC Roots / Global] --> B[requestHistory Array]
     B --> C[Object at index 0]
     B --> D[Object at index 1]
     B --> E[Object at index N...]
@@ -458,8 +458,9 @@ class BoundedCache {
 // Pattern 2: Event listeners not removed
 class Component {
     constructor(emitter) {
+        this.emitter = emitter;
         this.handler = this.onEvent.bind(this);
-        emitter.on('event', this.handler);
+        this.emitter.on('event', this.handler);
     }
 
     onEvent(data) {
@@ -468,7 +469,7 @@ class Component {
 
     // Fix: Always provide cleanup method
     destroy() {
-        emitter.removeListener('event', this.handler);
+        this.emitter.removeListener('event', this.handler);
     }
 }
 
@@ -508,6 +509,7 @@ test('should not leak memory during request processing', async () => {
 
     // Simulate workload
     for (let i = 0; i < 1000; i++) {
+        // Replace processRequest with your application's request handler or API call
         await processRequest({ id: i, data: 'test' });
     }
 
