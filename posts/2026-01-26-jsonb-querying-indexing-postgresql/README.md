@@ -129,7 +129,7 @@ SELECT * FROM events WHERE data @> '{"user_id": 123}';
 ### GIN with jsonb_path_ops
 
 ```sql
--- Smaller, faster index for @> queries only
+-- Smaller, faster index for @>, @?, and @@ queries
 CREATE INDEX idx_events_data_path ON events USING GIN (data jsonb_path_ops);
 
 -- Supports:
@@ -182,13 +182,13 @@ SELECT
     data->>'user_id' AS user_id,
     data->>'url' AS url
 FROM events
-WHERE data @> '{"event_type": "page_view"}'
+WHERE event_type = 'page_view'
   AND created_at > NOW() - INTERVAL '1 day';
 
 -- Bad: Extract then compare (may not use index)
 SELECT * FROM events
 WHERE (data->>'user_id')::INTEGER = 123
-  AND data->>'event_type' = 'page_view';
+  AND event_type = 'page_view';
 -- Consider expression index if you query this pattern often
 ```
 
@@ -456,7 +456,7 @@ PostgreSQL JSONB provides powerful document storage with relational database ben
 1. Use JSONB, not JSON, for better performance
 2. GIN indexes enable fast containment queries
 3. Expression indexes work best for specific field lookups
-4. Use jsonb_path_ops for smaller, faster indexes when you only need @>
+4. Use jsonb_path_ops for smaller, faster indexes when you only need @>, @?, and @@
 5. Extract frequently queried fields to regular columns when performance matters
 
 With proper indexing, JSONB queries can be nearly as fast as queries on regular columns while giving you schema flexibility.
