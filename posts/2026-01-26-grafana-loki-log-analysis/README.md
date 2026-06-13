@@ -8,7 +8,7 @@ Description: Learn how to use Grafana Loki for cost-effective log aggregation an
 
 ---
 
-Log analysis is critical for understanding system behavior, debugging issues, and maintaining application health. Grafana Loki provides a cost-effective solution for log aggregation that indexes only labels rather than full log content. This guide walks you through practical log analysis techniques using Loki and LogQL.
+Log analysis is critical for understanding system behavior, debugging issues, and maintaining application health. Grafana Loki provides a cost-effective solution for log aggregation that indexes timestamps and labels rather than full log content. This guide walks you through practical log analysis techniques using Loki and LogQL.
 
 ## Understanding the Log Analysis Workflow
 
@@ -34,11 +34,11 @@ flowchart LR
     end
 ```
 
-The key insight is that Loki stores log content in compressed chunks but only indexes labels. Your analysis strategy should leverage labels for filtering and then apply content searches on the filtered set.
+The key insight is that Loki stores log content in compressed chunks but indexes timestamps and labels. Your analysis strategy should leverage labels for filtering and then apply content searches on the filtered set.
 
 ## Setting Up Promtail for Effective Analysis
 
-Good log analysis starts with proper label configuration. Here's a Promtail configuration optimized for analysis:
+Good log analysis starts with proper label configuration. Promtail is end of life as of March 2, 2026, so use Grafana Alloy for new deployments. For existing Promtail deployments, here's a configuration optimized for analysis:
 
 ```yaml
 # promtail-config.yaml
@@ -83,10 +83,8 @@ scrape_configs:
           level:
           service:
 
-      # Store high-cardinality values in log line, not labels
-      # This keeps index size manageable
-      - output:
-          source: message
+      # Leave high-cardinality values in the original JSON log line,
+      # not labels. This keeps index size manageable.
 ```
 
 ## Label Strategy for Log Analysis
@@ -256,30 +254,34 @@ Work with numbers embedded in logs:
 ```logql
 # Extract latency and calculate average
 # unwrap converts a label to a numeric value
-{service="api-gateway"}
-  | json
-  | unwrap latency_ms
-  | avg_over_time([5m])
-
-# Calculate 99th percentile latency
-{service="api-gateway"}
-  | json
-  | unwrap latency_ms
-  | quantile_over_time(0.99, [5m])
-
-# Sum bytes transferred
-{service="api-gateway"}
-  | json
-  | unwrap bytes_sent
-  | sum_over_time([1h])
-
-# Group percentiles by endpoint
-avg by (endpoint) (
+avg_over_time(
   {service="api-gateway"}
     | json
-    | unwrap latency_ms
-    | quantile_over_time(0.95, [5m])
+    | unwrap latency_ms [5m]
 )
+
+# Calculate 99th percentile latency
+quantile_over_time(
+  0.99,
+  {service="api-gateway"}
+    | json
+    | unwrap latency_ms [5m]
+)
+
+# Sum bytes transferred
+sum_over_time(
+  {service="api-gateway"}
+    | json
+    | unwrap bytes_sent [1h]
+)
+
+# Group percentiles by endpoint
+quantile_over_time(
+  0.95,
+  {service="api-gateway"}
+    | json
+    | unwrap latency_ms [5m]
+) by (endpoint)
 ```
 
 ## Pattern Analysis with Regex
