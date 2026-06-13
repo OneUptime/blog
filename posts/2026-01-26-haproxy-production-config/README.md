@@ -14,7 +14,7 @@ HAProxy has been the workhorse of internet infrastructure for over two decades. 
 
 Before diving into configuration, it helps to understand what makes HAProxy stand out:
 
-- Single-threaded event-driven architecture (with multi-threading support since 1.8)
+- Event-driven architecture with multi-threading support since 1.8
 - Zero-copy forwarding for maximum throughput
 - Extremely low memory footprint - often under 100MB for high-traffic deployments
 - Connection pooling and keep-alive management
@@ -62,7 +62,7 @@ flowchart TB
 
 ## Installation
 
-On Debian/Ubuntu systems, install the latest stable version from the official PPA:
+On Debian/Ubuntu systems, install a maintained stable version from the Debian HAProxy packaging team's repository or PPA:
 
 ```bash
 # Add the HAProxy PPA for the latest stable release
@@ -162,10 +162,7 @@ defaults
     # Do not log connections without requests (reduces noise)
     option dontlognull
 
-    # Enable HTTP connection keep-alive
-    option http-keep-alive
-
-    # Close connections to servers after each request (backend pooling)
+    # Keep client connections alive while closing server-side connections after each response
     option http-server-close
 
     # Forward client IP to backend servers
@@ -188,7 +185,7 @@ defaults
     # Retry failed connections to other servers
     retries 3
 
-    # Specify which errors trigger server marking as down
+    # Health check timing: interval, failures before DOWN, successes before UP
     default-server inter 3s fall 3 rise 2
 ```
 
@@ -209,17 +206,17 @@ frontend http_front
 
     # ACME challenge for Let's Encrypt certificate renewal
     acl letsencrypt path_beg /.well-known/acme-challenge/
-    use_backend letsencrypt_backend if letsencrypt
 
     # Redirect everything else to HTTPS
     http-request redirect scheme https unless { ssl_fc } or letsencrypt
+    use_backend letsencrypt_backend if letsencrypt
 
 # Main HTTPS frontend
 frontend https_front
     # Bind to port 443 with SSL certificate
     bind *:443 ssl crt /etc/haproxy/certs/combined.pem alpn h2,http/1.1
 
-    # Enable HTTP/2
+    # Tell backends the original client-facing scheme
     http-request set-header X-Forwarded-Proto https
 
     # Security headers
@@ -352,7 +349,7 @@ Access the dashboard at `http://your-haproxy-server:8404/stats` to see:
 - Request rates per backend
 - Server health status
 - Connection counts
-- Response time percentiles
+- Response timing averages
 - Error rates
 
 ## SSL Certificate Management
@@ -448,7 +445,7 @@ Watch these metrics closely:
 - **haproxy_backend_active_servers** - Healthy servers per backend
 - **haproxy_backend_http_responses_total** - Response codes (watch for 5xx spikes)
 - **haproxy_backend_response_time_average_seconds** - Backend latency
-- **haproxy_backend_queue_current** - Requests waiting in queue
+- **haproxy_backend_current_queue** - Requests waiting in queue
 
 Set up alerts for:
 
