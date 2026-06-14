@@ -196,7 +196,7 @@ Now let us write actual code. We will use Python, but Pulsar has clients for Jav
 First, install the Pulsar Python client:
 
 ```bash
-pip install pulsar-client
+pip install "pulsar-client[avro]"
 ```
 
 Here is a producer that sends order events:
@@ -208,7 +208,7 @@ Here is a producer that sends order events:
 import pulsar
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 def create_order_event(order_id: int, customer_id: str, amount: float) -> dict:
     """
@@ -220,7 +220,7 @@ def create_order_event(order_id: int, customer_id: str, amount: float) -> dict:
         "customer_id": customer_id,
         "amount": amount,
         "currency": "USD",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "status": "created"
     }
 
@@ -354,7 +354,7 @@ def main():
     try:
         while True:
             # Receive a message with a 5-second timeout
-            # Returns None if no message is available within the timeout
+            # Raises pulsar.Timeout if no message is available within the timeout
             try:
                 msg = consumer.receive(timeout_millis=5000)
             except pulsar.Timeout:
@@ -451,7 +451,7 @@ Key points to understand:
 
 For high-throughput scenarios, you can partition topics across multiple brokers. Each partition can handle messages independently, enabling parallel processing.
 
-Create a partitioned topic using the admin API:
+Create a partitioned topic using the admin CLI:
 
 ```bash
 # Create a topic with 4 partitions
@@ -514,10 +514,10 @@ if __name__ == "__main__":
     main()
 ```
 
-When consuming from partitioned topics, Pulsar distributes partitions among consumers in the same subscription:
+When consuming from partitioned topics with a Shared subscription, Pulsar load-balances messages across consumers. A consumer can receive messages from any partition, so Shared subscriptions are useful for parallel processing but do not preserve overall ordering.
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph Topic["Partitioned Topic"]
         P0[Partition 0]
         P1[Partition 1]
@@ -531,9 +531,13 @@ flowchart TB
     end
 
     P0 --> C1
+    P0 --> C2
     P1 --> C1
+    P1 --> C2
+    P2 --> C1
     P2 --> C2
     P3 --> C2
+    P3 --> C1
 ```
 
 ## Implementing Dead Letter Queues
@@ -551,10 +555,11 @@ def main():
     client = pulsar.Client('pulsar://localhost:6650')
 
     # Configure dead letter policy
-    # After 3 failed attempts, messages go to the DLQ topic
+    # After 3 redeliveries, messages go to the DLQ topic
     dead_letter_policy = pulsar.ConsumerDeadLetterPolicy(
         max_redeliver_count=3,
-        dead_letter_topic='persistent://public/default/orders-dlq'
+        dead_letter_topic='persistent://public/default/orders-dlq',
+        initial_subscription_name='dlq-handler'
     )
 
     consumer = client.subscribe(
@@ -591,8 +596,8 @@ def main():
                 print(f"Processing failed: {e}")
                 print(f"Redelivery count: {msg.redelivery_count()}")
 
-                # Negative acknowledge triggers redelivery
-                # After max_redeliver_count failures, message goes to DLQ
+                # Negative acknowledge triggers redelivery.
+                # The dead letter policy sends messages that exceed max_redeliver_count to the DLQ.
                 consumer.negative_acknowledge(msg)
 
     except KeyboardInterrupt:
@@ -639,7 +644,7 @@ def main():
 
             # Log the failed message for investigation
             print(f"DLQ Message received:")
-            print(f"  Original topic: {msg.properties().get('ORIGIN_TOPIC', 'unknown')}")
+            print(f"  DLQ topic: {msg.topic_name()}")
             print(f"  Order ID: {payload.get('order_id')}")
             print(f"  Payload: {json.dumps(payload, indent=2)}")
 
@@ -746,8 +751,8 @@ def main():
         message_id = producer.send(order)
         print(f"Sent typed order: {message_id}")
 
-        # This would fail at runtime because the schema requires all fields
-        # invalid_order = OrderEvent(order_id=123)  # Missing required fields
+        # Validate required business fields in your application before sending
+        # if None is not an acceptable value.
 
     finally:
         producer.close()
@@ -828,8 +833,8 @@ docker exec -it pulsar-standalone bin/pulsar-admin topics stats \
 docker exec -it pulsar-standalone bin/pulsar-admin topics stats \
   persistent://public/default/orders | grep -A5 "subscriptions"
 
-# Get namespace-level statistics
-docker exec -it pulsar-standalone bin/pulsar-admin namespaces stats public/default
+# Dump broker topic statistics
+docker exec -it pulsar-standalone bin/pulsar-admin broker-stats topics
 ```
 
 For production deployments, you would typically scrape metrics from the `/metrics` endpoint and visualize them in Grafana:
@@ -850,6 +855,8 @@ As you begin building with Pulsar, keep these practices in mind:
 **Implement idempotent consumers.** Messages may be delivered more than once in failure scenarios. Design your processing logic to handle duplicates safely.
 
 **Configure dead letter queues.** Do not let poison messages block your queues. Set up DLQs and monitor them.
+
+**Use retry topics for strict retry limits.** Dead letter topics can be triggered by negative acknowledgments, but the negative-ack redelivery counter is not persisted and may reset. If you must guarantee that a message reaches a DLQ after a fixed number of attempts, use Pulsar's retry topic mechanism.
 
 **Use partition keys for related messages.** When message order matters within a group (like all events for a user), use partition keys to ensure they go to the same partition.
 
