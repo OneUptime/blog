@@ -102,25 +102,25 @@ Bad step:
 ```
 
 Good step:
-```markdown
+````markdown
 3. Promote the standby database to primary
 
    Run on the standby server:
    ```bash
    sudo -u postgres pg_ctl promote -D /var/lib/postgresql/14/main
-   ```bash
+   ```
 
    Expected output:
    ```text
    waiting for server to promote.... done
    server promoted
-   ```bash
+   ```
 
    If you see "server is not in standby mode", the standby may have already been promoted.
    Check the current role with: `SELECT pg_is_in_recovery();`
    - Returns `f` if primary
    - Returns `t` if standby
-```text
+````
 
 Notice the pattern: command to run, expected output, and what to do if the output differs.
 
@@ -128,7 +128,7 @@ Notice the pattern: command to run, expected output, and what to do if the outpu
 
 After completing the procedure, how do you know it worked? Include verification steps with specific success criteria.
 
-```markdown
+````markdown
 ## Verification
 
 After completing the failover, verify success:
@@ -136,21 +136,21 @@ After completing the failover, verify success:
 1. Check new primary is accepting writes:
    ```bash
    psql -h primary.db.internal -c "CREATE TABLE failover_test (id int); DROP TABLE failover_test;"
-   ```bash
+   ```
    Expected: Query completes without error
 
 2. Check application connectivity:
    ```bash
    curl -s http://api.internal/health | jq '.database'
-   ```bash
+   ```
    Expected: `"connected"`
 
 3. Check replication to new standby:
    ```bash
    psql -h primary.db.internal -c "SELECT client_addr, state FROM pg_stat_replication;"
-   ```bash
+   ```
    Expected: At least one row with `state = 'streaming'`
-```text
+````
 
 ### Escalation Paths
 
@@ -189,52 +189,52 @@ Write: `ssh admin@db-primary-01.prod.internal`
 
 If variables are necessary, define them at the start of the section:
 
-```markdown
+````markdown
 Set these variables based on the affected environment:
 ```bash
 export ENV="prod"  # or "staging"
 export CLUSTER="us-east-1"
-```bash
+```
 
 Then run:
 ```bash
 kubectl --context=${CLUSTER}-${ENV} get pods
-```bash
-```text
+```
+````
 
 ### Show Expected Output
 
 For every command, show what success looks like. This lets engineers quickly verify they are on the right track.
 
-```markdown
+````markdown
 ```bash
 systemctl status postgresql
-```bash
+```
 
 Expected output (healthy):
 ```text
 postgresql.service - PostgreSQL database server
    Active: active (running) since Mon 2026-01-15 10:30:00 UTC
-```bash
+```
 
 Expected output (problem):
 ```text
 postgresql.service - PostgreSQL database server
    Active: failed (Result: exit-code) since Mon 2026-01-15 10:30:00 UTC
-```bash
-```text
+```
+````
 
 ### Handle Edge Cases
 
 Real incidents rarely follow the happy path. Document what to do when things go wrong.
 
-```markdown
+````markdown
 ### If the service does not start
 
 Check the PostgreSQL logs:
 ```bash
 tail -100 /var/log/postgresql/postgresql-14-main.log
-```bash
+```
 
 Common errors:
 
@@ -243,11 +243,11 @@ Another process is using port 5432. Find and stop it:
 ```bash
 sudo lsof -i :5432
 sudo kill <PID>
-```bash
+```
 
 **"FATAL: could not open relation mapping file"**
 Data directory may be corrupted. Do not attempt repair - escalate immediately.
-```text
+````
 
 ## Testing Runbooks
 
@@ -372,7 +372,8 @@ Runbooks should explain why, not just what. Understanding why a step exists help
 4. Wait 60 seconds before proceeding
 
    This delay allows replication to catch up. Proceeding too quickly
-   can cause data loss if the old primary had uncommitted transactions.
+   can cause data loss if committed transactions from the old primary
+   have not reached the standby.
 ```
 
 ### Over-Automation
