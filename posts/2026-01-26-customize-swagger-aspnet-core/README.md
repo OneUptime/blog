@@ -15,7 +15,7 @@ Good API documentation makes the difference between an API that developers love 
 ### Installation
 
 ```bash
-dotnet add package Swashbuckle.AspNetCore
+dotnet package add Swashbuckle.AspNetCore
 ```
 
 ### Minimal Configuration
@@ -272,19 +272,9 @@ builder.Services.AddSwaggerGen(options =>
         BearerFormat = "JWT"
     });
 
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
     {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
+        [new OpenApiSecuritySchemeReference("Bearer", document)] = []
     });
 });
 ```
@@ -302,19 +292,9 @@ builder.Services.AddSwaggerGen(options =>
         Type = SecuritySchemeType.ApiKey
     });
 
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
     {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "ApiKey"
-                }
-            },
-            Array.Empty<string>()
-        }
+        [new OpenApiSecuritySchemeReference("ApiKey", document)] = []
     });
 });
 ```
@@ -375,7 +355,7 @@ public class AddRequiredHeaderParameter : IOperationFilter
             Required = true,
             Schema = new OpenApiSchema
             {
-                Type = "string"
+                Type = JsonSchemaType.String
             }
         });
     }
@@ -422,26 +402,17 @@ public class SecurityRequirementsOperationFilter : IOperationFilter
             return;
 
         // Add security requirement
-        operation.Security = new List<OpenApiSecurityRequirement>
-        {
+        var scheme = new OpenApiSecuritySchemeReference("Bearer", context.Document);
+        operation.Security =
+        [
             new OpenApiSecurityRequirement
             {
-                {
-                    new OpenApiSecurityScheme
-                    {
-                        Reference = new OpenApiReference
-                        {
-                            Type = ReferenceType.SecurityScheme,
-                            Id = "Bearer"
-                        }
-                    },
-                    authorizeAttributes
-                        .Where(a => !string.IsNullOrEmpty(a.Policy))
-                        .Select(a => a.Policy)
-                        .ToList()
-                }
+                [scheme] = authorizeAttributes
+                    .Where(a => !string.IsNullOrEmpty(a.Policy))
+                    .Select(a => a.Policy)
+                    .ToList()
             }
-        };
+        ];
 
         // Add 401 and 403 responses
         operation.Responses.TryAdd("401", new OpenApiResponse
@@ -472,7 +443,7 @@ public class ResponseExamplesOperationFilter : IOperationFilter
 
             if (badRequest.Content.TryGetValue("application/json", out var mediaType))
             {
-                mediaType.Example = new OpenApiString(@"{
+                mediaType.Example = JsonNode.Parse(@"{
                     ""type"": ""https://tools.ietf.org/html/rfc7231#section-6.5.1"",
                     ""title"": ""Bad Request"",
                     ""status"": 400,
@@ -491,7 +462,7 @@ public class ResponseExamplesOperationFilter : IOperationFilter
 
             serverError.Content["application/json"] = new OpenApiMediaType
             {
-                Example = new OpenApiString(@"{
+                Example = JsonNode.Parse(@"{
                     ""type"": ""https://tools.ietf.org/html/rfc7231#section-6.6.1"",
                     ""title"": ""Internal Server Error"",
                     ""status"": 500,
@@ -513,9 +484,9 @@ Customize how types are represented in the schema.
 // EnumSchemaFilter.cs
 public class EnumSchemaFilter : ISchemaFilter
 {
-    public void Apply(OpenApiSchema schema, SchemaFilterContext context)
+    public void Apply(IOpenApiSchema schema, SchemaFilterContext context)
     {
-        if (!context.Type.IsEnum)
+        if (!context.Type.IsEnum || schema is not OpenApiSchema concreteSchema)
             return;
 
         var enumType = context.Type;
@@ -533,7 +504,7 @@ public class EnumSchemaFilter : ISchemaFilter
             descriptions.Add($"- `{value}` - {description}");
         }
 
-        schema.Description = $"{schema.Description}\n\nPossible values:\n{string.Join("\n", descriptions)}";
+        concreteSchema.Description = $"{concreteSchema.Description}\n\nPossible values:\n{string.Join("\n", descriptions)}";
     }
 }
 
@@ -563,9 +534,9 @@ public enum OrderStatus
 // DefaultValueSchemaFilter.cs
 public class DefaultValueSchemaFilter : ISchemaFilter
 {
-    public void Apply(OpenApiSchema schema, SchemaFilterContext context)
+    public void Apply(IOpenApiSchema schema, SchemaFilterContext context)
     {
-        if (schema.Properties == null)
+        if (schema is not OpenApiSchema concreteSchema || concreteSchema.Properties == null)
             return;
 
         foreach (var property in context.Type.GetProperties())
@@ -574,12 +545,12 @@ public class DefaultValueSchemaFilter : ISchemaFilter
             if (defaultValueAttr == null)
                 continue;
 
-            var propertyName = property.Name.ToCamelCase();
+            var propertyName = JsonNamingPolicy.CamelCase.ConvertName(property.Name);
 
-            if (schema.Properties.TryGetValue(propertyName, out var propertySchema))
+            if (concreteSchema.Properties.TryGetValue(propertyName, out var propertySchema) &&
+                propertySchema is OpenApiSchema concretePropertySchema)
             {
-                propertySchema.Default = OpenApiAnyFactory.CreateFromJson(
-                    JsonSerializer.Serialize(defaultValueAttr.Value));
+                concretePropertySchema.Default = JsonSerializer.SerializeToNode(defaultValueAttr.Value);
             }
         }
     }
@@ -670,10 +641,16 @@ builder.Services.AddSwaggerGen(options =>
             return true;
 
         // v2 only includes operations with ApiVersion attribute
-        var versions = api.ActionDescriptor.EndpointMetadata
+        if (!api.TryGetMethodInfo(out MethodInfo methodInfo))
+        {
+            return false;
+        }
+
+        var versions = methodInfo.DeclaringType?
+            .GetCustomAttributes(true)
             .OfType<ApiVersionAttribute>()
             .SelectMany(a => a.Versions)
-            .ToList();
+            .ToList() ?? [];
 
         return versions.Any(v => v.ToString() == docName.TrimStart('v'));
     });
