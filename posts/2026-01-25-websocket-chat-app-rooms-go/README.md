@@ -74,7 +74,6 @@ type Client struct {
     hub      *Hub
     conn     *websocket.Conn
     send     chan []byte  // Buffered channel for outbound messages
-    room     string       // Current room the client is in
     username string       // Display name
 }
 
@@ -108,8 +107,6 @@ func (c *Client) readPump() {
             continue
         }
 
-        msg.Username = c.username
-
         // Handle different message types
         switch msg.Type {
         case "join":
@@ -117,10 +114,7 @@ func (c *Client) readPump() {
         case "leave":
             c.hub.leaveRoom <- &RoomRequest{client: c, room: msg.Room}
         case "message":
-            if c.room != "" {
-                msg.Room = c.room
-                c.hub.broadcast <- &msg
-            }
+            c.hub.broadcast <- &ClientMessage{client: c, message: &msg}
         }
     }
 }
@@ -148,13 +142,6 @@ func (c *Client) writePump() {
                 return
             }
             w.Write(message)
-
-            // Drain any queued messages to reduce write calls
-            n := len(c.send)
-            for i := 0; i < n; i++ {
-                w.Write([]byte{'\n'})
-                w.Write(<-c.send)
-            }
 
             if err := w.Close(); err != nil {
                 return
@@ -189,6 +176,12 @@ type RoomRequest struct {
     room   string
 }
 
+// ClientMessage represents a message sent by a client
+type ClientMessage struct {
+    client  *Client
+    message *Message
+}
+
 // Hub maintains active clients and broadcasts messages to rooms
 type Hub struct {
     // All connected clients
@@ -198,7 +191,7 @@ type Hub struct {
     rooms map[string]map[*Client]bool
 
     // Inbound messages to broadcast
-    broadcast chan *Message
+    broadcast chan *ClientMessage
 
     // Register requests from clients
     register chan *Client
@@ -215,7 +208,7 @@ type Hub struct {
 
 func newHub() *Hub {
     return &Hub{
-        broadcast:  make(chan *Message),
+        broadcast:  make(chan *ClientMessage),
         register:   make(chan *Client),
         unregister: make(chan *Client),
         joinRoom:   make(chan *RoomRequest),
@@ -235,8 +228,8 @@ func (h *Hub) run() {
         case client := <-h.unregister:
             if _, ok := h.clients[client]; ok {
                 // Remove from current room if in one
-                if client.room != "" {
-                    h.removeFromRoom(client, client.room)
+                if room := h.clientRoom(client); room != "" {
+                    h.removeFromRoom(client, room)
                 }
                 delete(h.clients, client)
                 close(client.send)
@@ -249,16 +242,36 @@ func (h *Hub) run() {
         case req := <-h.leaveRoom:
             h.removeFromRoom(req.client, req.room)
 
-        case msg := <-h.broadcast:
-            h.broadcastToRoom(msg)
+        case req := <-h.broadcast:
+            h.handleMessage(req.client, req.message)
         }
     }
 }
 
+func (h *Hub) handleMessage(client *Client, msg *Message) {
+    room := h.clientRoom(client)
+    if room == "" {
+        return
+    }
+
+    msg.Room = room
+    msg.Username = client.username
+    h.broadcastToRoom(msg)
+}
+
+func (h *Hub) clientRoom(client *Client) string {
+    for room, clients := range h.rooms {
+        if clients[client] {
+            return room
+        }
+    }
+    return ""
+}
+
 func (h *Hub) handleJoinRoom(client *Client, room string) {
     // Leave current room if in one
-    if client.room != "" {
-        h.removeFromRoom(client, client.room)
+    if currentRoom := h.clientRoom(client); currentRoom != "" {
+        h.removeFromRoom(client, currentRoom)
     }
 
     // Create room if it doesn't exist
@@ -269,7 +282,6 @@ func (h *Hub) handleJoinRoom(client *Client, room string) {
 
     // Add client to room
     h.rooms[room][client] = true
-    client.room = room
     log.Printf("%s joined room: %s", client.username, room)
 
     // Notify room members
@@ -302,7 +314,6 @@ func (h *Hub) removeFromRoom(client *Client, room string) {
                 log.Printf("Room deleted: %s", room)
             }
 
-            client.room = ""
             log.Printf("%s left room: %s", client.username, room)
         }
     }
