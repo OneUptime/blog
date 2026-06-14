@@ -105,9 +105,7 @@ config :my_app, Oban,
     # Prune completed jobs older than 7 days
     {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
     # Rescue stuck jobs (jobs that were running when the node crashed)
-    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)},
-    # Optional: Stager for better job distribution
-    Oban.Plugins.Stager
+    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)}
   ]
 ```
 
@@ -281,12 +279,12 @@ defmodule MyApp.Workers.WebhookDeliveryWorker do
 
       {:error, :not_found} ->
         # Endpoint no longer exists - do not retry
-        # Return :discard to mark as completed without retry
-        Logger.warn("Webhook endpoint not found, discarding",
+        # Return :cancel to stop retrying
+        Logger.warn("Webhook endpoint not found, cancelling",
           event_id: event_id,
           url: url
         )
-        {:discard, "Endpoint not found"}
+        {:cancel, "Endpoint not found"}
 
       {:error, reason} ->
         # Let it fail and retry with backoff
@@ -306,7 +304,7 @@ defmodule MyApp.Workers.WebhookDeliveryWorker do
   def backoff(%Oban.Job{attempt: attempt}) do
     # Exponential backoff: 15s, 30s, 60s, 120s, etc.
     # Capped at 1 hour
-    trunc(:math.pow(2, attempt) * 15)
+    trunc(:math.pow(2, attempt - 1) * 15)
     |> min(3600)
   end
 
@@ -482,7 +480,7 @@ When you try to insert a duplicate job within the uniqueness window:
 |> DataSyncWorker.new()
 |> Oban.insert()
 
-# job1.id == job2.id - same job, no duplicate created
+# job2.conflict? is true, and job1.id == job2.id - no duplicate created
 ```
 
 ---
@@ -555,21 +553,24 @@ defmodule MyApp.ObanTelemetry do
   end
 
   def handle_event([:oban, :job, :start], _measurements, meta, _config) do
+    job = meta.job
+
     Logger.info("Job started",
-      worker: meta.worker,
-      queue: meta.queue,
-      job_id: meta.id,
-      attempt: meta.attempt
+      worker: job.worker,
+      queue: job.queue,
+      job_id: job.id,
+      attempt: job.attempt
     )
   end
 
   def handle_event([:oban, :job, :stop], measurements, meta, _config) do
+    job = meta.job
     duration_ms = System.convert_time_unit(measurements.duration, :native, :millisecond)
 
     Logger.info("Job completed",
-      worker: meta.worker,
-      queue: meta.queue,
-      job_id: meta.id,
+      worker: job.worker,
+      queue: job.queue,
+      job_id: job.id,
       duration_ms: duration_ms,
       state: meta.state
     )
@@ -578,26 +579,27 @@ defmodule MyApp.ObanTelemetry do
     :telemetry.execute(
       [:my_app, :oban, :job, :duration],
       %{duration: duration_ms},
-      %{worker: meta.worker, queue: meta.queue}
+      %{worker: job.worker, queue: job.queue}
     )
   end
 
   def handle_event([:oban, :job, :exception], measurements, meta, _config) do
+    job = meta.job
     duration_ms = System.convert_time_unit(measurements.duration, :native, :millisecond)
 
     Logger.error("Job failed",
-      worker: meta.worker,
-      queue: meta.queue,
-      job_id: meta.id,
-      attempt: meta.attempt,
+      worker: job.worker,
+      queue: job.queue,
+      job_id: job.id,
+      attempt: job.attempt,
       duration_ms: duration_ms,
       error: inspect(meta.reason),
       stacktrace: Exception.format_stacktrace(meta.stacktrace)
     )
 
     # Alert on failures in critical queue
-    if meta.queue == :critical do
-      MyApp.Alerts.notify("Critical job failed: #{meta.worker}")
+    if job.queue == "critical" do
+      MyApp.Alerts.notify("Critical job failed: #{job.worker}")
     end
   end
 end
@@ -697,6 +699,7 @@ defmodule MyApp.Workers.WelcomeEmailWorkerTest do
       |> Oban.insert()
 
       # Should be the same job due to uniqueness
+      assert job2.conflict?
       assert job1.id == job2.id
     end
   end
@@ -709,11 +712,11 @@ Configure Oban for testing:
 # config/test.exs
 config :my_app, Oban,
   repo: MyApp.Repo,
-  # Use inline testing mode - jobs execute immediately
-  testing: :inline
+  # Use manual testing mode to assert on enqueued jobs
+  testing: :manual
 
-# Or use manual mode for more control
-# testing: :manual
+# Or use inline mode when jobs should execute immediately
+# testing: :inline
 ```
 
 ---
@@ -859,8 +862,8 @@ defmodule MyApp.Workers.InvoiceGenerationWorker do
       :ok
     else
       {:error, :order_not_found} ->
-        Logger.warn("Order not found, discarding job", order_id: order_id)
-        {:discard, "Order not found"}
+        Logger.warn("Order not found, cancelling job", order_id: order_id)
+        {:cancel, "Order not found"}
 
       {:error, :invoice_exists} ->
         Logger.info("Invoice already exists, skipping", order_id: order_id)
