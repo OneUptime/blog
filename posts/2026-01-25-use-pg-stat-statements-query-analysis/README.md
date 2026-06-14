@@ -23,6 +23,7 @@ pg_stat_statements is PostgreSQL's built-in extension for tracking query executi
 shared_preload_libraries = 'pg_stat_statements'
 
 # Optional configuration
+compute_query_id = on                  # Required for pg_stat_statements to identify queries
 pg_stat_statements.max = 10000        # Max number of statements to track
 pg_stat_statements.track = all        # Track all statements
 pg_stat_statements.track_utility = on # Track utility commands (CREATE, ALTER, etc.)
@@ -182,7 +183,7 @@ ORDER BY total_time_ms DESC;
 -- Extract table names and find problematic tables
 -- Note: This is a heuristic approach
 SELECT
-    regexp_matches(query, 'FROM\s+(\w+)', 'i') AS table_name,
+    (regexp_match(query, 'FROM\s+(\w+)', 'i'))[1] AS table_name,
     count(*) AS query_count,
     round(sum(total_exec_time)::numeric, 2) AS total_time_ms,
     sum(calls) AS total_calls
@@ -220,7 +221,7 @@ SELECT
     round(previous.mean_exec_time::numeric, 2) AS old_mean_ms,
     round(current.mean_exec_time::numeric, 2) AS new_mean_ms,
     round((previous.mean_exec_time - current.mean_exec_time)::numeric, 2) AS improvement_ms,
-    round(100 * (previous.mean_exec_time - current.mean_exec_time) / previous.mean_exec_time, 2) AS improvement_pct
+    round((100 * (previous.mean_exec_time - current.mean_exec_time) / nullif(previous.mean_exec_time, 0))::numeric, 2) AS improvement_pct
 FROM pg_stat_statements current
 JOIN query_stats_snapshot previous USING (queryid)
 WHERE previous.mean_exec_time > current.mean_exec_time
@@ -322,6 +323,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Schedule with pg_cron
+-- Requires pg_cron to be installed and enabled separately
 SELECT cron.schedule('collect_stats', '0 * * * *', 'SELECT collect_query_stats()');
 ```
 
@@ -399,7 +401,7 @@ WHERE queryid = 123456789;
 -- Export metrics for Prometheus
 SELECT
     'pg_stat_statements_total_time_seconds{database="' || d.datname || '"} ' ||
-    round(sum(s.total_exec_time) / 1000, 2) AS metric
+    round((sum(s.total_exec_time) / 1000)::numeric, 2) AS metric
 FROM pg_stat_statements s
 JOIN pg_database d ON s.dbid = d.oid
 GROUP BY d.datname;
@@ -436,7 +438,7 @@ HAVING round(100.0 * sum(shared_blks_hit) /
 3. **Focus on total time** - High call count with moderate time can matter more than one slow query
 4. **Check cache hit ratio** - Low ratio indicates need for more shared_buffers or better indexing
 5. **Monitor temp usage** - Temp file writes indicate memory pressure
-6. **Use queryid** - Stable identifier even when parameters change
+6. **Use queryid** - Useful identifier for normalized queries, but do not rely on it across major PostgreSQL versions
 7. **Filter noise** - Exclude pg_stat queries from analysis
 
 ---
