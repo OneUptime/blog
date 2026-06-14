@@ -118,13 +118,15 @@ Azure uses Resource Groups as an additional allocation layer. Combine tags with 
 rg-{project}-{environment}-{region}
 # Example: rg-checkout-prod-eastus
 
-# Apply tags via Azure CLI
-az resource tag --tags \
+# Apply tags to a resource group via Azure CLI
+az tag update \
+  --resource-id /subscriptions/{sub-id}/resourceGroups/{rg-name} \
+  --operation Merge \
+  --tags \
   Owner=platform-team \
   Project=checkout-service \
   Environment=production \
-  CostCenter=engineering-12345 \
-  --ids /subscriptions/{sub-id}/resourceGroups/{rg-name}
+  CostCenter=engineering-12345
 ```
 
 Use Azure Policy to require tags at resource creation:
@@ -151,12 +153,12 @@ Use Azure Policy to require tags at resource creation:
 
 ### GCP Labeling
 
-GCP calls tags "labels" and supports 64 per resource:
+For cost allocation, GCP uses labels and supports 64 per resource:
 
 ```bash
 # Apply labels via gcloud
-gcloud compute instances update my-instance \
-  --update-labels=owner=platform-team,project=checkout-service,environment=production
+gcloud compute instances add-labels my-instance \
+  --labels=owner=platform-team,project=checkout-service,environment=production
 
 # Or in Terraform
 resource "google_compute_instance" "default" {
@@ -231,7 +233,7 @@ Untagged resources break cost allocation. Attack this problem from multiple angl
 **Prevention:** Use cloud policies to block untagged resource creation.
 
 ```hcl
-# Terraform example - require tags on all resources
+# Terraform example - require tags on an AWS instance
 variable "required_tags" {
   type = map(string)
   default = {
@@ -252,8 +254,8 @@ resource "aws_instance" "example" {
 
   lifecycle {
     precondition {
-      condition     = var.required_tags["Owner"] != ""
-      error_message = "Owner tag is required"
+      condition     = alltrue([for value in values(var.required_tags) : value != ""])
+      error_message = "Owner, Project, Environment, and CostCenter tags are required"
     }
   }
 }
@@ -334,7 +336,17 @@ def get_tagged_costs(start_date, end_date):
         ]
     )
 
-    return response['ResultsByTime']
+    records = []
+    for result in response['ResultsByTime']:
+        for group in result.get('Groups', []):
+            project, environment = group['Keys']
+            records.append({
+                'Project': project.split('$', 1)[-1],
+                'Environment': environment.split('$', 1)[-1],
+                'UnblendedCost': group['Metrics']['UnblendedCost']
+            })
+
+    return records
 
 # Get last month's costs by project and environment
 costs = get_tagged_costs(
@@ -348,6 +360,8 @@ costs = get_tagged_costs(
 Transform raw billing data into allocation-ready records:
 
 ```python
+from datetime import datetime
+
 def process_cost_record(record):
     """
     Transform raw cost data into allocation record
@@ -449,6 +463,12 @@ Costs transfer to team budgets. Real financial accountability.
 Build a compliance bot that runs daily:
 
 ```python
+import os
+import boto3
+import requests
+
+SLACK_WEBHOOK = os.environ['SLACK_WEBHOOK']
+
 def check_tag_compliance():
     """
     Check all resources for required tags
