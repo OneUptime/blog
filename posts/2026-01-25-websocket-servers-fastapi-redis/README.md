@@ -34,10 +34,10 @@ flowchart LR
 
 ## Project Setup
 
-Start by installing the required packages. We need FastAPI for the web framework, uvicorn to run the server, redis for async Redis operations, and websockets for WebSocket support.
+Start by installing the required packages. We need FastAPI for the web framework, uvicorn to run the server, redis for async Redis operations, websockets for WebSocket support, and python-jose for the authentication example.
 
 ```bash
-pip install fastapi uvicorn redis websockets pydantic
+pip install fastapi uvicorn redis websockets pydantic "python-jose[cryptography]"
 ```
 
 Create a basic project structure:
@@ -196,10 +196,10 @@ class RedisPubSubManager:
 
         if self.pubsub:
             await self.pubsub.unsubscribe()
-            await self.pubsub.close()
+            await self.pubsub.aclose()
 
         if self.redis:
-            await self.redis.close()
+            await self.redis.aclose()
 
         logger.info("Disconnected from Redis")
 
@@ -280,6 +280,12 @@ class JoinRoomMessage(BaseModel):
     type: Literal["join_room"]
     room: str
 
+class RoomMessage(BaseModel):
+    """Room chat message structure"""
+    type: Literal["room_message"]
+    room: str
+    content: str
+
 class LeaveRoomMessage(BaseModel):
     """Room leave request"""
     type: Literal["leave_room"]
@@ -300,9 +306,11 @@ from contextlib import asynccontextmanager
 import json
 import logging
 import uuid
+from pydantic import ValidationError
 
 from connection_manager import ConnectionManager
 from redis_manager import RedisPubSubManager
+from models import ChatMessage, JoinRoomMessage, LeaveRoomMessage, RoomMessage, WebSocketMessage
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -375,10 +383,27 @@ async def websocket_endpoint(
         while True:
             # Wait for message from client
             raw_data = await websocket.receive_text()
-            data = json.loads(raw_data)
-            message_type = data.get("type")
+            try:
+                data = json.loads(raw_data)
+                message = WebSocketMessage(**data)
+            except (json.JSONDecodeError, ValidationError):
+                await websocket.send_json({
+                    "event": "error",
+                    "message": "Invalid message format"
+                })
+                continue
+
+            message_type = message.type
 
             if message_type == "chat":
+                try:
+                    chat_message = ChatMessage(**data)
+                except ValidationError:
+                    await websocket.send_json({
+                        "event": "error",
+                        "message": "Invalid chat message"
+                    })
+                    continue
                 # Broadcast chat message to all servers
                 await redis_manager.publish_broadcast({
                     "type": "broadcast",
@@ -386,13 +411,21 @@ async def websocket_endpoint(
                     "payload": {
                         "event": "chat",
                         "from": client_id,
-                        "content": data.get("content")
+                        "content": chat_message.content
                     }
                 })
 
             elif message_type == "join_room":
+                try:
+                    join_message = JoinRoomMessage(**data)
+                except ValidationError:
+                    await websocket.send_json({
+                        "event": "error",
+                        "message": "Invalid join room message"
+                    })
+                    continue
                 # Add to local room tracking
-                room = data.get("room")
+                room = join_message.room
                 connection_manager.join_room(client_id, room)
                 # Subscribe to room channel if needed
                 await redis_manager.subscribe_to_room(room)
@@ -409,7 +442,15 @@ async def websocket_endpoint(
 
             elif message_type == "room_message":
                 # Send message to room across all servers
-                room = data.get("room")
+                try:
+                    room_message = RoomMessage(**data)
+                except ValidationError:
+                    await websocket.send_json({
+                        "event": "error",
+                        "message": "Invalid room message"
+                    })
+                    continue
+                room = room_message.room
                 await redis_manager.publish_to_room(room, {
                     "type": "room_message",
                     "room": room,
@@ -417,9 +458,20 @@ async def websocket_endpoint(
                         "event": "chat",
                         "from": client_id,
                         "room": room,
-                        "content": data.get("content")
+                        "content": room_message.content
                     }
                 })
+
+            elif message_type == "leave_room":
+                try:
+                    leave_message = LeaveRoomMessage(**data)
+                except ValidationError:
+                    await websocket.send_json({
+                        "event": "error",
+                        "message": "Invalid leave room message"
+                    })
+                    continue
+                connection_manager.leave_room(client_id, leave_message.room)
 
             elif message_type == "pong":
                 # Heartbeat response, just acknowledge
@@ -455,7 +507,7 @@ For production systems, validate tokens before accepting WebSocket connections. 
 ```python
 # auth.py
 # WebSocket authentication utilities
-from fastapi import WebSocket, Query
+from fastapi import WebSocket, Query, WebSocketException, status
 from jose import jwt, JWTError
 from typing import Optional
 
@@ -471,12 +523,10 @@ async def authenticate_websocket(
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
         if not user_id:
-            await websocket.close(code=4001)
-            return None
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
         return {"user_id": user_id, "name": payload.get("name")}
     except JWTError:
-        await websocket.close(code=4001)
-        return None
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
 # Usage in WebSocket endpoint
 @app.websocket("/ws/secure")
@@ -486,8 +536,6 @@ async def secure_websocket_endpoint(
 ):
     # Authenticate before accepting
     user = await authenticate_websocket(websocket, token)
-    if not user:
-        return  # Connection already closed by authenticate function
 
     # Now accept the connection
     await websocket.accept()
