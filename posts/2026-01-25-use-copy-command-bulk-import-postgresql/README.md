@@ -8,7 +8,7 @@ Description: Learn how to use PostgreSQL's COPY command for efficient bulk data 
 
 ---
 
-The COPY command is PostgreSQL's fastest method for bulk data loading. While INSERT statements work fine for small amounts of data, COPY can load millions of rows in seconds by bypassing the SQL parser and writing directly to the table. This guide covers everything you need to know about using COPY effectively.
+The COPY command is PostgreSQL's fastest method for bulk data loading. While INSERT statements work fine for small amounts of data, COPY can load millions of rows in seconds by sending the data as a stream instead of parsing and planning one INSERT statement per row. This guide covers everything you need to know about using COPY effectively.
 
 ---
 
@@ -117,7 +117,7 @@ COPY users FROM '/path/to/users.bin' WITH (FORMAT binary);
 ## Using \copy in psql
 
 The `\copy` command runs on the client side, which is useful when:
-- You do not have superuser access
+- You do not have superuser access or the `pg_read_server_files`/`pg_write_server_files` roles
 - The file is on your local machine, not the server
 
 ```sql
@@ -133,7 +133,7 @@ The `\copy` command runs on the client side, which is useful when:
 | Feature | COPY | \copy |
 |---------|------|-------|
 | File location | Server filesystem | Client filesystem |
-| Permissions | Requires superuser | Regular user OK |
+| Permissions | Requires superuser or server-file role for file access | Regular user OK with table privileges |
 | Performance | Slightly faster | Network overhead |
 | Use case | Server scripts | Interactive/remote |
 
@@ -141,10 +141,10 @@ The `\copy` command runs on the client side, which is useful when:
 
 ## Handling Data Quality Issues
 
-### Skip Errors with ON_ERROR (PostgreSQL 17+)
+### Skip Data Conversion Errors with ON_ERROR (PostgreSQL 17+)
 
 ```sql
--- Skip rows with errors
+-- Skip rows with data type conversion errors
 COPY users FROM '/path/to/users.csv'
 WITH (FORMAT csv, HEADER true, ON_ERROR 'ignore');
 ```
@@ -178,7 +178,8 @@ SELECT
     created_at::TIMESTAMP
 FROM users_staging
 WHERE id ~ '^\d+$'
-  AND email ~ '^[^@]+@[^@]+\.[^@]+$';
+  AND email ~ '^[^@]+@[^@]+\.[^@]+$'
+  AND created_at ~ '^\d{4}-\d{2}-\d{2}';
 
 -- Clean up
 DROP TABLE users_staging;
@@ -234,17 +235,17 @@ CREATE INDEX idx_large_table_date ON large_table (created_at);
 ANALYZE large_table;
 ```
 
-### Disable Triggers During Import
+### Disable User Triggers During Import
 
 ```sql
--- Disable triggers
-ALTER TABLE large_table DISABLE TRIGGER ALL;
+-- Disable user-defined triggers
+ALTER TABLE large_table DISABLE TRIGGER USER;
 
 -- Perform import
 COPY large_table FROM '/path/to/data.csv' WITH CSV HEADER;
 
--- Re-enable triggers
-ALTER TABLE large_table ENABLE TRIGGER ALL;
+-- Re-enable user-defined triggers
+ALTER TABLE large_table ENABLE TRIGGER USER;
 ```
 
 ### Adjust Configuration for Bulk Load
@@ -269,7 +270,7 @@ RESET synchronous_commit;
 ### Use UNLOGGED Tables for Intermediate Data
 
 ```sql
--- Create unlogged table for staging (no WAL overhead)
+-- Create unlogged table for staging (data changes are not WAL-logged)
 CREATE UNLOGGED TABLE staging_data (
     id SERIAL,
     data JSONB
@@ -379,20 +380,22 @@ def bulk_import_from_list(conn, table_name, columns, data):
 
 def bulk_import_from_file(conn, table_name, filepath, has_header=True):
     """
-    Bulk import directly from file
+    Bulk import directly from a CSV file
     """
     with conn.cursor() as cur:
-        with open(filepath, 'r') as f:
+        with open(filepath, 'r', newline='') as f:
             if has_header:
                 # Skip header line
-                header = f.readline()
-                columns = header.strip().split(',')
+                header = next(csv.reader([f.readline()]))
                 cur.copy_expert(
-                    f"COPY {table_name} ({', '.join(columns)}) FROM STDIN WITH CSV",
+                    f"COPY {table_name} ({', '.join(header)}) FROM STDIN WITH CSV",
                     f
                 )
             else:
-                cur.copy_from(f, table_name, sep=',')
+                cur.copy_expert(
+                    f"COPY {table_name} FROM STDIN WITH CSV",
+                    f
+                )
     conn.commit()
 
 # Example usage
@@ -456,17 +459,17 @@ psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c \
 echo "Importing data..."
 START_TIME=$(date +%s)
 
-psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" <<EOF
+psql -v ON_ERROR_STOP=1 -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" <<EOF
 BEGIN;
 
--- Disable triggers for faster import
-ALTER TABLE $TABLE_NAME DISABLE TRIGGER ALL;
+-- Disable user-defined triggers for faster import
+ALTER TABLE $TABLE_NAME DISABLE TRIGGER USER;
 
 -- Perform import
 \copy $TABLE_NAME FROM '$INPUT_FILE' WITH CSV HEADER
 
--- Re-enable triggers
-ALTER TABLE $TABLE_NAME ENABLE TRIGGER ALL;
+-- Re-enable user-defined triggers
+ALTER TABLE $TABLE_NAME ENABLE TRIGGER USER;
 
 -- Update statistics
 ANALYZE $TABLE_NAME;
