@@ -102,7 +102,7 @@ func (s *Shortener) generateCode() (string, error) {
 }
 ```
 
-We use cryptographically random bytes instead of sequential IDs. Sequential IDs leak information about usage patterns and are easy to enumerate. Random codes provide security through obscurity.
+We use cryptographically random bytes instead of sequential IDs. Sequential IDs leak information about usage patterns and are easy to enumerate. Random codes make short URLs much harder to guess.
 
 ## Creating Short URLs
 
@@ -120,8 +120,8 @@ func (s *Shortener) Shorten(ctx context.Context, longURL string, ttl time.Durati
 
         key := fmt.Sprintf("url:%s", code)
 
-        // Use SETNX to avoid overwriting existing codes
-        // This is atomic - no race conditions
+        // Use SET with NX to avoid overwriting existing codes
+        // This is atomic and includes the TTL in the same command
         set, err := s.rdb.SetNX(ctx, key, longURL, ttl).Result()
         if err != nil {
             return "", fmt.Errorf("redis error: %w", err)
@@ -138,7 +138,7 @@ func (s *Shortener) Shorten(ctx context.Context, longURL string, ttl time.Durati
 }
 ```
 
-The `SETNX` command (SET if Not eXists) is crucial here. It atomically checks if the key exists and sets it only if it does not. This prevents two concurrent requests from accidentally using the same code.
+The go-redis `SetNX` call is crucial here. With a TTL, it uses Redis `SET` with the `NX` and expiration options, so Redis atomically checks if the key exists and sets it only if it does not. This prevents two concurrent requests from accidentally using the same code.
 
 ## Resolving Short URLs
 
@@ -170,22 +170,15 @@ Most URL shorteners track clicks. We can use a separate counter key:
 ```go
 // ResolveAndTrack returns the URL and increments the click counter
 func (s *Shortener) ResolveAndTrack(ctx context.Context, code string) (string, error) {
-    key := fmt.Sprintf("url:%s", code)
-    statsKey := fmt.Sprintf("stats:%s", code)
-
-    // Use pipeline to batch commands
-    pipe := s.rdb.Pipeline()
-    getCmd := pipe.Get(ctx, key)
-    pipe.Incr(ctx, statsKey)
-    _, err := pipe.Exec(ctx)
-
-    if err != nil && err != redis.Nil {
-        return "", fmt.Errorf("redis error: %w", err)
+    longURL, err := s.Resolve(ctx, code)
+    if err != nil {
+        return "", err
     }
 
-    longURL, err := getCmd.Result()
-    if err == redis.Nil {
-        return "", errors.New("short URL not found")
+    statsKey := fmt.Sprintf("stats:%s", code)
+
+    if err := s.rdb.Incr(ctx, statsKey).Err(); err != nil {
+        return "", fmt.Errorf("redis error: %w", err)
     }
 
     return longURL, nil
@@ -208,7 +201,7 @@ func (s *Shortener) GetStats(ctx context.Context, code string) (int64, error) {
 }
 ```
 
-Pipelining sends both commands in a single round trip, cutting latency in half.
+The counter is incremented only after the short code resolves, so missing or expired short URLs do not inflate click counts.
 
 ## HTTP Handlers
 
@@ -283,12 +276,12 @@ func (s *Shortener) handleRedirect(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // 301 for permanent redirects, 302 for temporary
-    http.Redirect(w, r, longURL, http.StatusMovedPermanently)
+    // 302 keeps the redirect temporary so clicks and expiration remain observable
+    http.Redirect(w, r, longURL, http.StatusFound)
 }
 ```
 
-The redirect handler returns a 301 status. This tells browsers to cache the redirect, reducing load on your server for repeat visitors.
+The redirect handler returns a 302 status. This keeps the redirect temporary, so browsers come back through your service and click tracking still works.
 
 ## Main Entry Point
 
@@ -378,7 +371,7 @@ Test the redirect:
 ```bash
 curl -I http://localhost:8080/Kj2mX9p
 
-# HTTP/1.1 301 Moved Permanently
+# HTTP/1.1 302 Found
 # Location: https://example.com/very/long/path
 ```
 
