@@ -34,6 +34,12 @@ Add the Micrometer dependencies to your `pom.xml`:
         <groupId>io.micrometer</groupId>
         <artifactId>micrometer-registry-prometheus</artifactId>
     </dependency>
+
+    <!-- Required for @Timed support with TimedAspect -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-aop</artifactId>
+    </dependency>
 </dependencies>
 ```
 
@@ -54,8 +60,9 @@ management:
       # Global tags applied to all metrics
       application: ${spring.application.name}
       environment: ${spring.profiles.active:default}
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
 ```
 
@@ -379,7 +386,7 @@ public class AsyncOperationMetrics {
 
 ## Creating Distribution Summaries
 
-Distribution summaries track the distribution of values like request sizes or response times.
+Distribution summaries track the distribution of values like request sizes or response sizes.
 
 ```java
 // RequestMetrics.java
@@ -516,11 +523,6 @@ public class AnnotatedService {
         return user;
     }
 
-    @Timed(
-        value = "email.send.duration",
-        description = "Time taken to send emails",
-        extraTags = {"type", "welcome"}  // Additional tags
-    )
     private void sendWelcomeEmail(User user) {
         // Email sending logic
     }
@@ -569,7 +571,7 @@ flowchart LR
     end
 
     subgraph Export
-        PR --> PE[/metrics endpoint]
+        PR --> PE[/actuator/prometheus endpoint]
         DR --> DA[Datadog API]
         CW --> AWS[AWS CloudWatch]
     end
@@ -623,9 +625,9 @@ Configure histogram buckets based on your expected value ranges:
 ```java
 Timer.builder("http.request.duration")
     .serviceLevelObjectives(
-        Duration.ofMillis(50),   // p50 target
-        Duration.ofMillis(100),  // p90 target
-        Duration.ofMillis(200)   // p99 target
+        Duration.ofMillis(50),   // 50ms SLO boundary
+        Duration.ofMillis(100),  // 100ms SLO boundary
+        Duration.ofMillis(200)   // 200ms SLO boundary
     )
     .register(registry);
 ```
