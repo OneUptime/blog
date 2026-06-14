@@ -25,10 +25,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-graphql = "7.0"
+async-graphql = { version = "7.0", features = ["dataloader"] }
 async-graphql-actix-web = "7.0"
 actix-web = "4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 ```
 
@@ -164,7 +166,7 @@ GraphQL subscriptions enable real-time updates over WebSocket connections. async
 
 ```rust
 use async_graphql::{Subscription, Context, Result, ID};
-use futures_util::Stream;
+use futures_util::{Stream, StreamExt};
 use tokio_stream::wrappers::BroadcastStream;
 
 pub struct SubscriptionRoot;
@@ -181,7 +183,7 @@ impl SubscriptionRoot {
 
         // Filter the broadcast stream to only this user's events
         let stream = BroadcastStream::new(events.subscribe())
-            .filter_map(move |event| {
+            .filter_map(move |event| async move {
                 match event {
                     Ok(UserEvent::Updated(user)) if user.id == id => Some(user),
                     _ => None,
@@ -292,7 +294,7 @@ let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
 
 ## Why This Approach Works
 
-The combination of Rust and async-graphql gives you several guarantees that are hard to achieve in dynamic languages. Your schema can never drift from your implementation because they are the same thing. Invalid queries fail at compile time, not runtime. The async runtime handles thousands of concurrent connections efficiently.
+The combination of Rust and async-graphql gives you several guarantees that are hard to achieve in dynamic languages. Your schema can never drift from your implementation because they are generated from the same Rust types and resolver signatures. Resolver type mismatches fail at compile time, while incoming GraphQL operations are validated against the schema before execution. The async runtime handles thousands of concurrent connections efficiently.
 
 For teams building APIs that need to be both flexible and reliable, this stack hits a sweet spot. You get the developer experience of GraphQL - introspection, precise data fetching, strong tooling - backed by a language that prevents entire categories of bugs before deployment.
 
