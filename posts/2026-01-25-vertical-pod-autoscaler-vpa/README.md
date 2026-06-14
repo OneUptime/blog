@@ -117,7 +117,7 @@ spec:
     updateMode: "Initial"
 ```
 
-### UpdateMode: Auto
+### UpdateMode: Recreate
 
 Automatically updates pods by evicting and recreating them with new resource requests.
 
@@ -132,7 +132,7 @@ spec:
     kind: Deployment
     name: myapp
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
 ```
 
 Resource Policies
@@ -152,7 +152,7 @@ spec:
     kind: Deployment
     name: myapp
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       - containerName: myapp
@@ -237,7 +237,7 @@ spec:
     kind: Deployment
     name: api-server
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
     minReplicas: 2  # Keep at least 2 replicas during updates
   resourcePolicy:
     containerPolicies:
@@ -322,7 +322,7 @@ spec:
     kind: Deployment
     name: myapp
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       - containerName: myapp
@@ -380,16 +380,20 @@ spec:
 
 ### Prometheus Metrics
 
-VPA exposes metrics that can be scraped:
+VPA components expose operational metrics that can be scraped:
 
 ```promql
-# VPA recommendations
-vpa_recommender_recommendation_cpu_cores
-vpa_recommender_recommendation_memory_bytes
+# VPA objects tracked by the recommender
+vpa_recommender_vpa_objects_count
+
+# Time to first recommendation
+vpa_recommender_recommendation_latency_seconds
 
 # Pods updated by VPA
 vpa_updater_evicted_pods_total
 ```
+
+For recommendation values, expose the `VerticalPodAutoscaler` status through kube-state-metrics custom resource metrics.
 
 ### Grafana Dashboard
 
@@ -427,8 +431,8 @@ kubectl logs -n kube-system -l app=vpa-recommender
 
 # Common issues:
 # - Metrics server not running
-# - Pod has no resource requests
-# - Not enough historical data (wait 24h)
+# - No pods match the VPA targetRef selector
+# - Not enough historical data (wait for more metrics)
 ```
 
 ### Pods Being Evicted Too Often
@@ -436,7 +440,7 @@ kubectl logs -n kube-system -l app=vpa-recommender
 ```yaml
 # Increase minReplicas to reduce disruption
 updatePolicy:
-  updateMode: "Auto"
+  updateMode: "Recreate"
   minReplicas: 3
 ```
 
@@ -459,7 +463,7 @@ resourcePolicy:
 3. **Use with PodDisruptionBudgets** to control eviction
 4. **Monitor VPA evictions** for unexpected restarts
 5. **Separate VPA and HPA concerns** to avoid conflicts
-6. **Wait for stable data** before enabling Auto mode
+6. **Wait for stable data** before enabling Recreate mode
 
 ```yaml
 # PDB to limit VPA disruption
@@ -481,7 +485,7 @@ spec:
 3. Wait 1-7 days for data collection
 4. Review recommendations and adjust bounds
 5. Enable UpdateMode: Initial for new pods
-6. Enable UpdateMode: Auto once confident
+6. Enable UpdateMode: Recreate once confident
 
 ---
 
