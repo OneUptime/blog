@@ -101,6 +101,8 @@ listen_port = 6432
 # Authentication
 auth_type = md5
 auth_file = /etc/pgbouncer/userlist.txt
+admin_users = admin
+stats_users = pgbouncer
 
 # Pool settings
 pool_mode = transaction
@@ -135,6 +137,7 @@ query_wait_timeout = 120
 
 "myuser" "md5passwordhash"
 "admin" "plaintext_password"
+"pgbouncer" "monitoring_password"
 
 # To generate MD5 hash:
 # echo -n "passwordusername" | md5sum
@@ -182,7 +185,7 @@ pool_mode = statement
 
 - Connection is returned after each statement
 - Highest efficiency but limited compatibility
-- Cannot use: Multi-statement transactions, prepared statements
+- Cannot use: Multi-statement transactions, SQL-level prepared statements
 - Use for: Simple query workloads
 
 ---
@@ -301,7 +304,7 @@ reserve_pool_timeout = 3
 
 ```bash
 # Connect to PgBouncer admin database
-psql -h localhost -p 6432 -U pgbouncer pgbouncer
+psql -h localhost -p 6432 -U admin pgbouncer
 
 # List available commands
 SHOW HELP;
@@ -344,72 +347,57 @@ wget https://github.com/prometheus-community/pgbouncer_exporter/releases/latest/
 tar xzf pgbouncer_exporter-linux-amd64.tar.gz
 
 # Run exporter
-./pgbouncer_exporter --pgBouncer.connectionString="postgres://pgbouncer:@localhost:6432/pgbouncer"
+./pgbouncer_exporter --pgBouncer.connectionString="postgres://pgbouncer:monitoring_password@localhost:6432/pgbouncer"
 ```
 
-### Create Monitoring Queries
+### Run Monitoring Commands
 
 ```sql
--- Pool utilization
-SELECT
-    database,
-    user,
-    cl_active + cl_waiting AS clients,
-    sv_active + sv_idle + sv_used AS servers,
-    pool_mode,
-    CASE
-        WHEN sv_active + sv_idle + sv_used = 0 THEN 0
-        ELSE round(100.0 * sv_active / (sv_active + sv_idle + sv_used))
-    END AS server_utilization_pct
-FROM (SELECT * FROM SHOW POOLS);
+-- Pool utilization inputs
+SHOW POOLS;
 
 -- Wait times
-SELECT
-    database,
-    maxwait,
-    maxwait_us
-FROM SHOW POOLS
-WHERE maxwait > 0;
+SHOW POOLS;
 ```
 
 ---
 
 ## Handling Prepared Statements
 
-Transaction mode has limitations with prepared statements.
+Transaction mode has limitations with SQL-level prepared statements (`PREPARE`/`EXECUTE`). Protocol-level named prepared statements are supported in current PgBouncer releases when `max_prepared_statements` is non-zero.
 
-### Option 1: Disable Server-Side Prepared Statements
+### Option 1: Avoid SQL-Level Prepared Statements
 
 ```python
-# Python/psycopg2 - disable prepared statements
+# Python/psycopg2 - no automatic server-side prepare is used
 conn = psycopg2.connect(
     host="localhost",
     port=6432,
     database="mydb",
     user="myuser",
-    options="-c statement_timeout=30000"  # Use options instead of prepared
+    password="mypass"
 )
 ```
 
 ```javascript
-// Node.js/pg - disable prepared statements
+// Node.js/pg - omit the "name" query option to avoid named prepared statements
 const pool = new Pool({
     host: 'localhost',
     port: 6432,
     database: 'mydb',
-    statement_timeout: 30000,
-    // Force simple query protocol
-    query_timeout: 30000
+    user: 'myuser',
+    password: 'mypass'
 });
 ```
 
 ### Option 2: Use Session Mode for Specific Users
 
 ```ini
-[users]
+[pgbouncer]
 # Regular users use transaction mode
-default = pool_mode=transaction
+pool_mode = transaction
 
+[users]
 # Application using prepared statements
 legacy_app = pool_mode=session
 ```
@@ -438,8 +426,8 @@ backend pgbouncer_back
 ```ini
 # pgbouncer.ini
 [databases]
-# Primary with failover to replica
-mydb = host=primary.example.com,replica.example.com port=5432 dbname=mydb
+# Primary with fallback to the next host after connection failure
+mydb = host=primary.example.com,replica.example.com port=5432 dbname=mydb load_balance_hosts=disable
 
 # Connection string parameters
 # connect_query runs on each new server connection
