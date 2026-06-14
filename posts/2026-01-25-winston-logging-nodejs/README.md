@@ -139,7 +139,7 @@ Send logs to different destinations:
 
 ```javascript
 const logger = winston.createLogger({
-    level: 'info',
+    level: 'debug',
     format: winston.format.combine(
         winston.format.timestamp(),
         winston.format.json()
@@ -296,9 +296,9 @@ app.get('/users/:id', (req, res) => {
 Log errors with full stack traces:
 
 ```javascript
-const logger = require('./logger');
+const winston = require('winston');
 
-// Error formatting
+// In src/logger.js, include this format before format.json()
 const errorFormat = winston.format((info) => {
     if (info.error instanceof Error) {
         info.error = {
@@ -308,6 +308,15 @@ const errorFormat = winston.format((info) => {
         };
     }
     return info;
+});
+
+const logger = winston.createLogger({
+    format: winston.format.combine(
+        errorFormat(),
+        winston.format.timestamp(),
+        winston.format.json()
+    ),
+    transports: [new winston.transports.Console()]
 });
 
 // Usage
