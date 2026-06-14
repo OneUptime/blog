@@ -51,10 +51,12 @@ Add Ecto and your database adapter to your `mix.exs` file:
 defp deps do
   [
     # Ecto with SQL support
-    {:ecto_sql, "~> 3.11"},
+    {:ecto_sql, "~> 3.14"},
     # PostgreSQL adapter (use :myxql for MySQL)
-    {:postgrex, "~> 0.17"},
-    # Optional: for UUID primary keys
+    {:postgrex, "~> 0.22"},
+    # Password hashing used in the user schema example
+    {:bcrypt_elixir, "~> 3.3"},
+    # Optional: for ULID primary keys
     {:ecto_ulid, "~> 0.3"}
   ]
 end
@@ -88,9 +90,13 @@ end
 
 ### Database Configuration
 
-Configure your database connection in `config/dev.exs`:
+Configure your Repo and database connection:
 
 ```elixir
+# config/config.exs
+config :my_app,
+  ecto_repos: [MyApp.Repo]
+
 # config/dev.exs
 config :my_app, MyApp.Repo,
   username: "postgres",
@@ -163,7 +169,7 @@ defmodule MyApp.Accounts.User do
     field :password_confirmation, :string, virtual: true
 
     # Automatically manages inserted_at and updated_at timestamps
-    timestamps()
+    timestamps(type: :utc_datetime)
   end
 
   @doc """
@@ -210,6 +216,7 @@ defmodule MyApp.Blog.Post do
     field :slug, :string
     field :published_at, :utc_datetime
     field :view_count, :integer, default: 0
+    field :deleted_at, :utc_datetime
 
     # belongs_to creates an author_id foreign key field
     belongs_to :author, MyApp.Accounts.User
@@ -220,7 +227,7 @@ defmodule MyApp.Blog.Post do
     # many_to_many uses a join table for the relationship
     many_to_many :tags, MyApp.Blog.Tag, join_through: "posts_tags"
 
-    timestamps()
+    timestamps(type: :utc_datetime)
   end
 
   def changeset(post, attrs) do
@@ -285,7 +292,7 @@ defmodule MyApp.Repo.Migrations.CreateUsers do
       add :role, :string, default: "user", null: false
 
       # timestamps() adds inserted_at and updated_at columns
-      timestamps()
+      timestamps(type: :utc_datetime)
     end
 
     # Create indexes for frequently queried columns
@@ -310,12 +317,13 @@ defmodule MyApp.Repo.Migrations.CreatePosts do
       add :slug, :string, null: false
       add :published_at, :utc_datetime
       add :view_count, :integer, default: 0
+      add :deleted_at, :utc_datetime
 
       # references/2 creates a foreign key constraint
       # on_delete: :delete_all removes posts when user is deleted
       add :author_id, references(:users, on_delete: :delete_all), null: false
 
-      timestamps()
+      timestamps(type: :utc_datetime)
     end
 
     create unique_index(:posts, [:slug])
@@ -337,7 +345,7 @@ defmodule MyApp.Repo.Migrations.CreatePostsTags do
       add :name, :string, null: false
       add :slug, :string, null: false
 
-      timestamps()
+      timestamps(type: :utc_datetime)
     end
 
     create unique_index(:tags, [:slug])
@@ -399,7 +407,7 @@ defmodule MyApp.Blog.Comment do
     belongs_to :post, MyApp.Blog.Post
     belongs_to :user, MyApp.Accounts.User
 
-    timestamps()
+    timestamps(type: :utc_datetime)
   end
 
   @doc """
@@ -446,7 +454,7 @@ defmodule MyApp.Accounts.Profile do
 
     belongs_to :user, MyApp.Accounts.User
 
-    timestamps()
+    timestamps(type: :utc_datetime)
   end
 
   def changeset(profile, attrs) do
@@ -583,7 +591,7 @@ defmodule MyApp.Blog do
   defp filter_by_published(query, nil), do: query
 
   defp filter_by_published(query, true) do
-    where(query, [p], not is_nil(p.published_at) and p.published_at <= ^DateTime.utc_now())
+    where(query, [p], not is_nil(p.published_at) and p.published_at <= ^DateTime.utc_now(:second))
   end
 
   defp filter_by_published(query, false) do
@@ -637,7 +645,7 @@ defmodule MyApp.Blog do
 
   @doc """
   List posts with associations using a single query with joins.
-  More efficient than separate preload queries for listing pages.
+  Useful when you want to fetch parent rows and selected associations together.
   """
   def list_posts_with_authors do
     Post
@@ -761,7 +769,7 @@ defmodule MyApp.Blog do
           |> Repo.update!()
 
         {:error, changeset} ->
-          # Rollback transaction by raising
+          # Rollback transaction with the changeset as the error value
           Repo.rollback(changeset)
       end
     end)
@@ -796,7 +804,7 @@ defmodule MyApp.Blog do
   Only returns published posts.
   """
   def get_published_post_by_slug(slug) do
-    now = DateTime.utc_now()
+    now = DateTime.utc_now(:second)
 
     Post
     |> where([p], p.slug == ^slug)
@@ -848,6 +856,7 @@ end
 
 ```elixir
 defmodule MyApp.Blog do
+  import Ecto.Query
   alias MyApp.Repo
   alias MyApp.Blog.Post
 
@@ -865,7 +874,7 @@ defmodule MyApp.Blog do
   """
   def publish_post(%Post{} = post) do
     post
-    |> Ecto.Changeset.change(published_at: DateTime.utc_now())
+    |> Ecto.Changeset.change(published_at: DateTime.utc_now(:second))
     |> Repo.update()
   end
 
@@ -883,7 +892,7 @@ defmodule MyApp.Blog do
   """
   def unpublish_author_posts(author_id) do
     from(p in Post, where: p.author_id == ^author_id)
-    |> Repo.update_all(set: [published_at: nil, updated_at: DateTime.utc_now()])
+    |> Repo.update_all(set: [published_at: nil, updated_at: DateTime.utc_now(:second)])
   end
 end
 ```
@@ -910,7 +919,7 @@ defmodule MyApp.Blog do
   """
   def soft_delete_post(%Post{} = post) do
     post
-    |> Ecto.Changeset.change(deleted_at: DateTime.utc_now())
+    |> Ecto.Changeset.change(deleted_at: DateTime.utc_now(:second))
     |> Repo.update()
   end
 
@@ -918,7 +927,7 @@ defmodule MyApp.Blog do
   Delete old unpublished drafts.
   """
   def cleanup_old_drafts(days_old \\ 90) do
-    cutoff = DateTime.add(DateTime.utc_now(), -days_old * 24 * 60 * 60, :second)
+    cutoff = DateTime.add(DateTime.utc_now(:second), -days_old * 24 * 60 * 60, :second)
 
     from(p in Post,
       where: is_nil(p.published_at),
@@ -1016,27 +1025,29 @@ defmodule MyApp.Orders do
     end)
     # Step 2: Create order items (depends on order being created)
     |> Multi.run(:order_items, fn repo, %{order: order} ->
-      order_items =
-        Enum.map(items, fn item ->
-          %OrderItem{}
-          |> OrderItem.changeset(%{
+      Enum.reduce_while(items, {:ok, []}, fn item, {:ok, order_items} ->
+        changeset =
+          OrderItem.changeset(%OrderItem{}, %{
             order_id: order.id,
             product_id: item.product_id,
             quantity: item.quantity,
             unit_price: item.price
           })
-          |> repo.insert!()
-        end)
 
-      {:ok, order_items}
+        case repo.insert(changeset) do
+          {:ok, order_item} -> {:cont, {:ok, [order_item | order_items]}}
+          {:error, changeset} -> {:halt, {:error, changeset}}
+        end
+      end)
     end)
     # Step 3: Update inventory levels
-    |> Multi.run(:inventory, fn repo, %{order_items: order_items} ->
-      Enum.each(order_items, fn item ->
-        Inventory.decrease_stock(item.product_id, item.quantity)
+    |> Multi.run(:inventory, fn _repo, %{order_items: order_items} ->
+      Enum.reduce_while(order_items, {:ok, []}, fn item, {:ok, updated_items} ->
+        case Inventory.decrease_stock(item.product_id, item.quantity) do
+          {:ok, updated_item} -> {:cont, {:ok, [updated_item | updated_items]}}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
       end)
-
-      {:ok, :inventory_updated}
     end)
     # Step 4: Calculate and update order total
     |> Multi.update(:update_total, fn %{order: order, order_items: items} ->
@@ -1149,7 +1160,7 @@ defmodule MyApp.Blog.Post do
     field :title, :string
     field :slug, :string
     belongs_to :author, MyApp.Accounts.User
-    timestamps()
+    timestamps(type: :utc_datetime)
   end
 
   def changeset(post, attrs) do
@@ -1179,7 +1190,7 @@ Ecto provides a powerful and flexible toolkit for database operations in Elixir:
 - **Migrations** version control your database schema
 - **Transactions** ensure data consistency across multiple operations
 
-The key to effective Ecto usage is understanding that it is not hiding the database from you. Instead, it gives you explicit control while providing safety through the type system and validation layer.
+The key to effective Ecto usage is understanding that it is not hiding the database from you. Instead, it gives you explicit control while providing safety through type casting and the validation layer.
 
 Start with simple schemas and queries, then gradually adopt more advanced patterns like composable queries and Ecto.Multi as your application grows.
 
