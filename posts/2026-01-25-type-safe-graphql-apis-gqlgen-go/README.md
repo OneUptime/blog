@@ -28,13 +28,13 @@ First, set up a new Go project and install gqlgen.
 ```bash
 mkdir graphql-api && cd graphql-api
 go mod init github.com/yourname/graphql-api
-go get github.com/99designs/gqlgen
+go get -tool github.com/99designs/gqlgen
 ```
 
 Initialize gqlgen in your project. This creates the config file and directory structure.
 
 ```bash
-go run github.com/99designs/gqlgen init
+go tool gqlgen init
 ```
 
 This generates several files:
@@ -43,6 +43,7 @@ This generates several files:
 - `graph/schema.graphqls` - Your GraphQL schema
 - `graph/schema.resolvers.go` - Where you implement resolver logic
 - `graph/model/models_gen.go` - Generated Go types from your schema
+- `graph/generated/generated.go` - Generated executable schema code
 
 ## Defining Your Schema
 
@@ -101,7 +102,7 @@ input NewUser {
 After changing the schema, regenerate the Go code.
 
 ```bash
-go run github.com/99designs/gqlgen generate
+go tool gqlgen generate
 ```
 
 ## Implementing Resolvers
@@ -241,7 +242,15 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input model.NewUser) 
 
 ## Field Resolvers for Relationships
 
-When a type has fields that require additional logic or database lookups, you implement field resolvers. gqlgen generates these when it detects relationships.
+When a type has fields that require additional logic or database lookups, you implement field resolvers. gqlgen generates these when you tell it a field needs a resolver. For the `User.tasks` relationship, add this to your `gqlgen.yml` and regenerate.
+
+```yaml
+models:
+  User:
+    fields:
+      tasks:
+        resolver: true
+```
 
 ```go
 // graph/schema.resolvers.go
@@ -275,8 +284,10 @@ import (
     "os"
 
     "github.com/99designs/gqlgen/graphql/handler"
+    "github.com/99designs/gqlgen/graphql/handler/transport"
     "github.com/99designs/gqlgen/graphql/playground"
     "github.com/yourname/graphql-api/graph"
+    "github.com/yourname/graphql-api/graph/generated"
 )
 
 const defaultPort = "8080"
@@ -291,9 +302,12 @@ func main() {
     resolver := graph.NewResolver()
 
     // Create the GraphQL server
-    srv := handler.NewDefaultServer(
-        graph.NewExecutableSchema(graph.Config{Resolvers: resolver}),
+    srv := handler.New(
+        generated.NewExecutableSchema(generated.Config{Resolvers: resolver}),
     )
+    srv.AddTransport(transport.Options{})
+    srv.AddTransport(transport.GET{})
+    srv.AddTransport(transport.POST{})
 
     // GraphQL Playground for testing queries in browser
     http.Handle("/", playground.Handler("GraphQL playground", "/query"))
@@ -322,6 +336,8 @@ package main
 import (
     "context"
     "net/http"
+
+    "github.com/yourname/graphql-api/graph/model"
 )
 
 type contextKey string
@@ -349,9 +365,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
     })
 }
 
+func validateTokenAndGetUser(token string) *model.User {
+    // Replace this with your real token validation.
+    return nil
+}
+
 // GetUserFromContext retrieves the authenticated user
-func GetUserFromContext(ctx context.Context) *User {
-    user, _ := ctx.Value(userCtxKey).(*User)
+func GetUserFromContext(ctx context.Context) *model.User {
+    user, _ := ctx.Value(userCtxKey).(*model.User)
     return user
 }
 ```
@@ -376,6 +397,7 @@ import (
     "fmt"
 
     "github.com/99designs/gqlgen/graphql"
+    "github.com/yourname/graphql-api/graph/model"
     "github.com/vektah/gqlparser/v2/gqlerror"
 )
 
@@ -389,7 +411,7 @@ func (e NotFoundError) Error() string {
     return fmt.Sprintf("%s with id %s not found", e.Resource, e.ID)
 }
 
-// Present the error as a GraphQL error with extensions
+// Update the earlier Task resolver to present the error as a GraphQL error with extensions
 func (r *queryResolver) Task(ctx context.Context, id string) (*model.Task, error) {
     task, exists := r.tasks[id]
     if !exists {
@@ -408,7 +430,7 @@ func (r *queryResolver) Task(ctx context.Context, id string) (*model.Task, error
 
 ## Common Pitfalls to Avoid
 
-**1. Not regenerating after schema changes** - Always run `go generate ./...` after modifying your schema. Forgetting this leads to confusing compile errors.
+**1. Not regenerating after schema changes** - Always run `go tool gqlgen generate` after modifying your schema. If you add a `//go:generate go tool gqlgen generate` directive to your project, you can also use `go generate ./...`. Forgetting this leads to confusing compile errors.
 
 **2. Circular imports** - Keep your model package separate from resolvers. gqlgen's generated code can cause import cycles if you are not careful about package structure.
 
@@ -439,8 +461,9 @@ schema:
   - graph/*.graphqls
 
 exec:
-  filename: graph/generated.go
-  package: graph
+  package: generated
+  layout: single-file
+  filename: graph/generated/generated.go
 
 model:
   filename: graph/model/models_gen.go
@@ -460,6 +483,10 @@ models:
   DateTime:
     model:
       - github.com/99designs/gqlgen/graphql.Time
+  User:
+    fields:
+      tasks:
+        resolver: true
 ```
 
 ## Wrapping Up
