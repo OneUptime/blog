@@ -89,24 +89,37 @@ public class OutboxMessageConfiguration : IEntityTypeConfiguration<OutboxMessage
 
         builder.HasKey(x => x.Id);
 
+        builder.Property(x => x.Id)
+            .HasColumnName("id");
+
         builder.Property(x => x.AggregateType)
+            .HasColumnName("aggregate_type")
             .HasMaxLength(256)
             .IsRequired();
 
         builder.Property(x => x.AggregateId)
+            .HasColumnName("aggregate_id")
             .HasMaxLength(256)
             .IsRequired();
 
         builder.Property(x => x.EventType)
+            .HasColumnName("event_type")
             .HasMaxLength(256)
             .IsRequired();
 
         builder.Property(x => x.Payload)
+            .HasColumnName("payload")
             .IsRequired();
+
+        builder.Property(x => x.CreatedAt)
+            .HasColumnName("created_at");
+
+        builder.Property(x => x.ProcessedAt)
+            .HasColumnName("processed_at");
 
         // Index for efficiently finding unprocessed messages
         builder.HasIndex(x => x.ProcessedAt)
-            .HasFilter("[ProcessedAt] IS NULL");
+            .HasFilter("processed_at IS NULL");
     }
 }
 ```
@@ -353,6 +366,9 @@ private async Task ProcessOutboxMessagesAsync(CancellationToken cancellationToke
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     var messageBus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
 
+    // Hold the row locks until messages are marked processed or the transaction rolls back
+    using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
     // Use a raw SQL query with locking for PostgreSQL
     var messages = await dbContext.OutboxMessages
         .FromSqlRaw(@"
@@ -362,9 +378,6 @@ private async Task ProcessOutboxMessagesAsync(CancellationToken cancellationToke
             LIMIT {0}
             FOR UPDATE SKIP LOCKED", _batchSize)
         .ToListAsync(cancellationToken);
-
-    // Process messages within a transaction
-    using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
     try
     {
@@ -393,6 +406,8 @@ For SQL Server, you can use `UPDLOCK` and `READPAST` hints:
 
 ```csharp
 // SQL Server version with locking hints
+using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
 var messages = await dbContext.OutboxMessages
     .FromSqlRaw(@"
         SELECT * FROM outbox_messages WITH (UPDLOCK, READPAST)
@@ -418,14 +433,12 @@ builder.Services.AddMassTransit(x =>
         // Use SQL Server (or configure for PostgreSQL, MySQL, etc.)
         o.UseSqlServer();
 
-        // Poll every second for new messages
-        o.QueryDelay = TimeSpan.FromSeconds(1);
-
-        // Process up to 100 messages per batch
-        o.QueryMessageLimit = 100;
-
         // Use the bus outbox for publishing
-        o.UseBusOutbox();
+        o.UseBusOutbox(options =>
+        {
+            // Deliver up to 100 messages per batch
+            options.MessageDeliveryLimit = 100;
+        });
     });
 
     x.UsingRabbitMq((context, cfg) =>
@@ -439,6 +452,19 @@ builder.Services.AddMassTransit(x =>
         cfg.ConfigureEndpoints(context);
     });
 });
+```
+
+Configure the MassTransit outbox entities in your DbContext so EF migrations create the required tables:
+
+```csharp
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    base.OnModelCreating(modelBuilder);
+
+    modelBuilder.AddInboxStateEntity();
+    modelBuilder.AddOutboxMessageEntity();
+    modelBuilder.AddOutboxStateEntity();
+}
 ```
 
 With MassTransit's outbox, publishing is automatic:
@@ -487,7 +513,7 @@ public class OrderService
 }
 ```
 
-MassTransit handles the outbox table creation, message serialization, and background processing automatically.
+MassTransit handles message serialization and background processing automatically, and the DbContext configuration adds the outbox tables to your EF migrations.
 
 ## Cleanup: Removing Processed Messages
 
@@ -534,7 +560,7 @@ public class OutboxCleanupService : BackgroundService
 
         var cutoffDate = DateTime.UtcNow.Subtract(_retentionPeriod);
 
-        // Delete in batches to avoid long-running transactions
+        // Delete matching rows with a set-based command
         var deletedCount = await dbContext.OutboxMessages
             .Where(m => m.ProcessedAt != null && m.ProcessedAt < cutoffDate)
             .ExecuteDeleteAsync(cancellationToken);
@@ -602,10 +628,11 @@ public class OrderCreatedConsumer : IConsumer<OrderCreatedEvent>
     public async Task Consume(ConsumeContext<OrderCreatedEvent> context)
     {
         var orderId = context.Message.OrderId;
+        var eventId = context.MessageId ?? throw new InvalidOperationException("MessageId is required for idempotency");
 
         // Check if we have already processed this event
         var alreadyProcessed = await _dbContext.ProcessedEvents
-            .AnyAsync(e => e.EventId == context.MessageId);
+            .AnyAsync(e => e.EventId == eventId);
 
         if (alreadyProcessed)
         {
@@ -621,7 +648,7 @@ public class OrderCreatedConsumer : IConsumer<OrderCreatedEvent>
         // Record that we processed this event
         _dbContext.ProcessedEvents.Add(new ProcessedEvent
         {
-            EventId = context.MessageId ?? Guid.NewGuid(),
+            EventId = eventId,
             ProcessedAt = DateTime.UtcNow
         });
 
