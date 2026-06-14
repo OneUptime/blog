@@ -32,7 +32,7 @@ This approach might seem counterintuitive if you come from a relational database
 
 ## 1. Why Single-Table Design?
 
-DynamoDB charges you per table for on-demand capacity and has limits on the number of tables per account. More importantly, DynamoDB does not support joins. If your application needs data from multiple entities in a single request, you have two options:
+DynamoDB charges for reading, writing, and storing data, and has limits on the number of tables per account. More importantly, DynamoDB does not support joins. If your application needs data from multiple entities in a single request, you have two options:
 
 1. Make multiple round trips to different tables (slow and expensive)
 2. Store related data together so you can fetch it in one query (fast and cheap)
@@ -45,9 +45,9 @@ Single-table design enables the second option.
 |---------|-------------|
 | Fewer round trips | Fetch related entities in a single query |
 | Lower latency | One network call instead of many |
-| Reduced costs | Fewer read capacity units consumed |
+| Reduced costs | Fewer repeated requests and less duplicated read work |
 | Simpler infrastructure | One table to manage, backup, and monitor |
-| Atomic transactions | TransactWriteItems works within a single table |
+| Atomic transactions | TransactWriteItems can keep denormalized copies consistent |
 
 ### The Mental Shift
 
@@ -77,7 +77,7 @@ flowchart LR
     D --> E[Filtered Results]
 ```
 
-A query always requires a partition key. The sort key condition is optional but lets you narrow down results efficiently. DynamoDB can only query within a single partition at a time on the base table.
+A query always requires a partition key value. The sort key condition is optional but lets you narrow down results efficiently. DynamoDB queries a single partition-key value at a time on the base table.
 
 ---
 
@@ -97,7 +97,7 @@ Let's design a table for an e-commerce application. First, list the access patte
 | Get order items | List all items in an order |
 | Get product by ID | Fetch product details |
 | Get orders by status | Find orders that are pending, shipped, etc. |
-| Get recent orders | List orders from the last 7 days |
+| Get recent orders by status | List recent pending, shipped, or completed orders |
 
 Now design your keys to support these patterns.
 
@@ -159,8 +159,8 @@ Let's implement the e-commerce data model.
 | Entity | PK | SK | GSI1PK | GSI1SK |
 |--------|----|----|--------|--------|
 | User | USER#\<userId\> | PROFILE | | |
-| Order | USER#\<userId\> | ORDER#\<date\>#\<orderId\> | ORDER#\<orderId\> | STATUS#\<status\> |
-| Order (lookup) | ORDER#\<orderId\> | META | | |
+| Order | USER#\<userId\> | ORDER#\<date\>#\<orderId\> | | |
+| Order (lookup) | ORDER#\<orderId\> | META | STATUS#\<status\> | ORDER#\<date\>#\<orderId\> |
 | Order Item | ORDER#\<orderId\> | ITEM#\<itemId\> | | |
 | Product | PRODUCT#\<productId\> | INFO | | |
 
@@ -290,7 +290,7 @@ Encode the hierarchy in the sort key:
 }
 ```
 
-Query all items in documents folder: `begins_with(SK, "FOLDER#documents#")`
+Query all items in documents folder: `PK = "FILESYSTEM#user123" AND begins_with(SK, "FOLDER#documents#")`
 
 ### Pattern 4: Time-Series Data
 
@@ -299,8 +299,8 @@ Use time-based partition keys to avoid hot partitions:
 ```javascript
 // Metrics partitioned by day
 {
-  PK: "METRICS#2024-01-15",
-  SK: "14:30:00#server1",
+  PK: "METRICS#server1#2024-01-15",
+  SK: "14:30:00",
   cpu: 45.2
 }
 ```
@@ -315,11 +315,7 @@ Use time-based partition keys to avoid hot partitions:
 // dynamodb-client.ts
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
-  DynamoDBDocumentClient,
-  PutCommand,
-  GetCommand,
-  QueryCommand,
-  TransactWriteCommand
+  DynamoDBDocumentClient
 } from "@aws-sdk/lib-dynamodb";
 
 // Create the low-level DynamoDB client
@@ -588,35 +584,73 @@ export async function getOrdersByStatus(status: string): Promise<OrderSummary[]>
 
 ```typescript
 // order-repository.ts (continued)
-import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 export async function updateOrderStatus(
   orderId: string,
   newStatus: string
 ): Promise<void> {
-  const timestamp = new Date().toISOString().split("T")[0];
-
-  // Update the order metadata with new status
-  // This also updates the GSI1 key for status-based queries
-  await docClient.send(
-    new UpdateCommand({
+  const existingOrder = await docClient.send(
+    new GetCommand({
       TableName: TABLE_NAME,
       Key: {
         PK: `ORDER#${orderId}`,
         SK: "META",
       },
-      UpdateExpression:
-        "SET #status = :newStatus, GSI1PK = :gsi1pk, updatedAt = :updatedAt",
-      ExpressionAttributeNames: {
-        "#status": "status", // status is a reserved word
-      },
-      ExpressionAttributeValues: {
-        ":newStatus": newStatus,
-        ":gsi1pk": `STATUS#${newStatus}`,
-        ":updatedAt": new Date().toISOString(),
-      },
-      // Ensure the order exists
-      ConditionExpression: "attribute_exists(PK)",
+    })
+  );
+
+  if (!existingOrder.Item) {
+    throw new Error(`Order ${orderId} not found`);
+  }
+
+  const order = existingOrder.Item;
+  const updatedAt = new Date().toISOString();
+
+  // Update both denormalized copies of the order status atomically.
+  await docClient.send(
+    new TransactWriteCommand({
+      TransactItems: [
+        {
+          Update: {
+            TableName: TABLE_NAME,
+            Key: {
+              PK: `ORDER#${orderId}`,
+              SK: "META",
+            },
+            UpdateExpression:
+              "SET #status = :newStatus, GSI1PK = :gsi1pk, updatedAt = :updatedAt",
+            ExpressionAttributeNames: {
+              "#status": "status", // status is a reserved word
+            },
+            ExpressionAttributeValues: {
+              ":newStatus": newStatus,
+              ":gsi1pk": `STATUS#${newStatus}`,
+              ":updatedAt": updatedAt,
+            },
+            ConditionExpression: "attribute_exists(PK)",
+          },
+        },
+        {
+          Update: {
+            TableName: TABLE_NAME,
+            Key: {
+              PK: `USER#${order.userId}`,
+              SK: order.GSI1SK,
+            },
+            UpdateExpression:
+              "SET #status = :newStatus, updatedAt = :updatedAt",
+            ExpressionAttributeNames: {
+              "#status": "status",
+            },
+            ExpressionAttributeValues: {
+              ":newStatus": newStatus,
+              ":updatedAt": updatedAt,
+            },
+            ConditionExpression: "attribute_exists(PK)",
+          },
+        },
+      ],
     })
   );
 }
@@ -661,6 +695,31 @@ interface LegacyOrder {
   created_at: Date;
 }
 
+async function writeBatchWithRetry(
+  requests: { PutRequest: { Item: Record<string, unknown> } }[]
+): Promise<void> {
+  let unprocessed = requests;
+  let attempt = 0;
+
+  while (unprocessed.length > 0) {
+    const response = await docClient.send(
+      new BatchWriteCommand({
+        RequestItems: {
+          [TABLE_NAME]: unprocessed,
+        },
+      })
+    );
+
+    unprocessed = response.UnprocessedItems?.[TABLE_NAME] || [];
+
+    if (unprocessed.length > 0) {
+      const delay = Math.min(100 * 2 ** attempt, 5000);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      attempt += 1;
+    }
+  }
+}
+
 export async function migrateUsers(users: LegacyUser[]): Promise<void> {
   // DynamoDB BatchWrite accepts up to 25 items per request
   const BATCH_SIZE = 25;
@@ -682,13 +741,7 @@ export async function migrateUsers(users: LegacyUser[]): Promise<void> {
       },
     }));
 
-    await docClient.send(
-      new BatchWriteCommand({
-        RequestItems: {
-          [TABLE_NAME]: putRequests,
-        },
-      })
-    );
+    await writeBatchWithRetry(putRequests);
 
     // Add delay to avoid throttling
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -696,7 +749,8 @@ export async function migrateUsers(users: LegacyUser[]): Promise<void> {
 }
 
 export async function migrateOrders(orders: LegacyOrder[]): Promise<void> {
-  const BATCH_SIZE = 25;
+  // Each order creates two DynamoDB items, so keep each batch under 25 writes.
+  const BATCH_SIZE = 12;
 
   for (let i = 0; i < orders.length; i += BATCH_SIZE) {
     const batch = orders.slice(i, i + BATCH_SIZE);
@@ -738,13 +792,7 @@ export async function migrateOrders(orders: LegacyOrder[]): Promise<void> {
       ];
     });
 
-    await docClient.send(
-      new BatchWriteCommand({
-        RequestItems: {
-          [TABLE_NAME]: putRequests,
-        },
-      })
-    );
+    await writeBatchWithRetry(putRequests);
 
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -841,7 +889,7 @@ Avoid partition keys with uneven distribution:
 
 **Unbounded item collections**
 
-DynamoDB limits partition size to 10GB. If a single partition key can accumulate unlimited items, add time-based bucketing:
+Large item collections can become slow to page through, create hot keys, and hit DynamoDB's 10GB item-collection limit if the table has local secondary indexes. If a single partition key can accumulate unlimited items, add time-based bucketing:
 
 ```javascript
 // BAD: Unbounded metrics for a server
