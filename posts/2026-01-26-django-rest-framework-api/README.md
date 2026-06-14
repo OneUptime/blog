@@ -38,7 +38,7 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
-pip install django djangorestframework
+pip install django djangorestframework django-filter
 
 # Create Django project
 django-admin startproject bookstore
@@ -61,6 +61,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     # Third party
     'rest_framework',
+    'rest_framework.authtoken',
+    'django_filters',
     # Local
     'books',
 ]
@@ -192,12 +194,16 @@ class AuthorSerializer(serializers.ModelSerializer):
 
 class ReviewSerializer(serializers.ModelSerializer):
     """Serializer for Review model"""
+    book = serializers.PrimaryKeyRelatedField(
+        queryset=Book.objects.all(),
+        required=False
+    )
     # Show username instead of user ID
     user = serializers.StringRelatedField(read_only=True)
 
     class Meta:
         model = Review
-        fields = ['id', 'user', 'rating', 'comment', 'created_at']
+        fields = ['id', 'book', 'user', 'rating', 'comment', 'created_at']
         read_only_fields = ['user', 'created_at']
 
     def validate_rating(self, value):
@@ -274,6 +280,7 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.exceptions import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import Author, Book, Review
 from .serializers import (
@@ -310,7 +317,7 @@ class BookViewSet(viewsets.ModelViewSet):
     Uses different serializers for list and detail views.
     """
     queryset = Book.objects.select_related('author').prefetch_related('reviews')
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     filter_backends = [
         DjangoFilterBackend,
         filters.SearchFilter,
@@ -367,6 +374,8 @@ class ReviewViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Set user to current user when creating review"""
+        if 'book' not in serializer.validated_data:
+            raise ValidationError({'book': 'This field is required.'})
         serializer.save(user=self.request.user)
 ```
 
@@ -472,7 +481,7 @@ flowchart TD
 
 ## Authentication Setup
 
-Set up token authentication for your API:
+Set up token authentication for your API. Token authentication requires `rest_framework.authtoken` in `INSTALLED_APPS`; if you did not add it during setup, add it now:
 
 ```python
 # Add to INSTALLED_APPS in settings.py
@@ -535,6 +544,25 @@ class RegisterView(APIView):
         }, status=status.HTTP_201_CREATED)
 ```
 
+Add the registration endpoint to your app URLs:
+
+```python
+# books/urls.py
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import AuthorViewSet, BookViewSet, ReviewViewSet, RegisterView
+
+router = DefaultRouter()
+router.register(r'authors', AuthorViewSet)
+router.register(r'books', BookViewSet)
+router.register(r'reviews', ReviewViewSet)
+
+urlpatterns = [
+    path('register/', RegisterView.as_view(), name='register'),
+    path('', include(router.urls)),
+]
+```
+
 ---
 
 ## Pagination and Filtering
@@ -558,7 +586,7 @@ class BookCursorPagination(CursorPagination):
     cursor_query_param = 'cursor'
 ```
 
-Add filtering with django-filter:
+Add filtering with django-filter. If you did not install and configure it during setup, install it and add `'django_filters'` to `INSTALLED_APPS`:
 
 ```bash
 pip install django-filter
@@ -566,22 +594,22 @@ pip install django-filter
 
 ```python
 # books/filters.py
-import django_filters
+from django_filters import rest_framework as filters
 from .models import Book
 
-class BookFilter(django_filters.FilterSet):
+class BookFilter(filters.FilterSet):
     """Custom filters for Book model"""
-    min_price = django_filters.NumberFilter(field_name='price', lookup_expr='gte')
-    max_price = django_filters.NumberFilter(field_name='price', lookup_expr='lte')
-    published_after = django_filters.DateFilter(
+    min_price = filters.NumberFilter(field_name='price', lookup_expr='gte')
+    max_price = filters.NumberFilter(field_name='price', lookup_expr='lte')
+    published_after = filters.DateFilter(
         field_name='published_date',
         lookup_expr='gte'
     )
-    published_before = django_filters.DateFilter(
+    published_before = filters.DateFilter(
         field_name='published_date',
         lookup_expr='lte'
     )
-    title_contains = django_filters.CharFilter(
+    title_contains = filters.CharFilter(
         field_name='title',
         lookup_expr='icontains'
     )
@@ -600,7 +628,7 @@ from .pagination import StandardPagination
 
 class BookViewSet(viewsets.ModelViewSet):
     queryset = Book.objects.select_related('author').prefetch_related('reviews')
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     pagination_class = StandardPagination
     filter_backends = [
         DjangoFilterBackend,
