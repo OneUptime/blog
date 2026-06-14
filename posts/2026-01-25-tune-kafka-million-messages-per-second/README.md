@@ -75,7 +75,7 @@ props.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 134217728);  // 128MB
 props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "lz4");
 
 // Number of in-flight requests per connection
-// Higher values improve throughput but may reorder on retries
+// Higher values improve throughput but may reorder on retries if idempotence is disabled
 props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
 
 // Acknowledgment level
@@ -96,6 +96,7 @@ Never wait for each send to complete:
 ```java
 // Bad: Synchronous sending (slow)
 for (String message : messages) {
+    ProducerRecord<String, String> record = new ProducerRecord<>("events", message);
     producer.send(record).get();  // Blocks!
 }
 
@@ -113,7 +114,7 @@ producer.flush();  // Wait for all sends to complete at the end
 
 ### Multiple Producer Instances
 
-For extreme throughput, run multiple producers:
+KafkaProducer is thread-safe, and sharing one producer is usually faster than creating many. If a single producer instance is saturated after measuring, shard sends across multiple producers:
 
 ```java
 public class ProducerPool {
@@ -131,7 +132,7 @@ public class ProducerPool {
     }
 
     public void send(ProducerRecord<String, String> record) {
-        int index = roundRobin.getAndIncrement() % producers.size();
+        int index = Math.floorMod(roundRobin.getAndIncrement(), producers.size());
         producers.get(index).send(record);
     }
 
@@ -156,22 +157,23 @@ num.network.threads=8
 num.io.threads=16
 
 # Socket buffer sizes for network performance
-socket.send.buffer.bytes=1048576       # 1MB
-socket.receive.buffer.bytes=1048576    # 1MB
-socket.request.max.bytes=104857600     # 100MB
+# 1MB send and receive buffers, 100MB max request size
+socket.send.buffer.bytes=1048576
+socket.receive.buffer.bytes=1048576
+socket.request.max.bytes=104857600
 
 # Replica fetcher threads (for replication throughput)
 num.replica.fetchers=4
 
 # Message batch size
-replica.fetch.max.bytes=10485760       # 10MB per fetch
+# 10MB per partition fetch
+replica.fetch.max.bytes=10485760
 
 # Log segment size (larger = fewer file handles)
-log.segment.bytes=1073741824           # 1GB segments
+# 1GB segments
+log.segment.bytes=1073741824
 
-# Flush settings (OS manages flushing for best performance)
-log.flush.interval.messages=10000
-log.flush.interval.ms=1000
+# Flush settings: leave unset for throughput so the OS can manage background flushing
 
 # Replication settings
 default.replication.factor=3
@@ -181,7 +183,8 @@ min.insync.replicas=2
 auto.create.topics.enable=false
 
 # Maximum message size
-message.max.bytes=10485760             # 10MB
+# 10MB max record batch size
+message.max.bytes=10485760
 ```
 
 ### JVM Tuning
@@ -233,10 +236,7 @@ kafka-configs.sh --bootstrap-server kafka:9092 \
     --entity-type topics \
     --entity-name events \
     --alter \
-    --add-config segment.bytes=1073741824,\
-                 segment.ms=3600000,\
-                 retention.bytes=107374182400,\
-                 cleanup.policy=delete
+    --add-config segment.bytes=1073741824,segment.ms=3600000,retention.bytes=107374182400,cleanup.policy=delete
 ```
 
 ## Consumer Tuning
@@ -260,6 +260,9 @@ props.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, 10485760);  // 10MB
 
 // Maximum records per poll
 props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 1000);
+
+// Use manual commits when committing after processing
+props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
 // Session and heartbeat timeouts
 props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 30000);
@@ -314,7 +317,8 @@ public class ParallelConsumer {
                 try {
                     future.get();
                 } catch (Exception e) {
-                    // Handle error
+                    // Do not commit offsets for records that may not have finished processing
+                    throw new RuntimeException("Partition processing failed", e);
                 }
             }
 
@@ -377,18 +381,17 @@ kafka-producer-perf-test.sh \
     --num-records 10000000 \
     --record-size 1000 \
     --throughput -1 \
-    --producer-props \
-        bootstrap.servers=kafka1:9092,kafka2:9092,kafka3:9092 \
-        batch.size=131072 \
-        linger.ms=10 \
-        compression.type=lz4 \
-        acks=1
+    --bootstrap-server kafka1:9092,kafka2:9092,kafka3:9092 \
+    --command-property batch.size=131072 \
+    --command-property linger.ms=10 \
+    --command-property compression.type=lz4 \
+    --command-property acks=1
 
 # Consumer benchmark
 kafka-consumer-perf-test.sh \
     --bootstrap-server kafka1:9092 \
     --topic benchmark-topic \
-    --messages 10000000 \
+    --num-records 10000000 \
     --fetch-size 1048576
 ```
 
