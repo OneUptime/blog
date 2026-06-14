@@ -98,6 +98,10 @@ executors:
       # Redis service container for cache tests
       - image: cimg/redis:7.2
     working_directory: ~/project
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
+      REDIS_URL: redis://localhost:6379
 ```
 
 ## Defining Reusable Commands
@@ -252,10 +256,10 @@ jobs:
           command: |
             # Use CircleCI's test splitting for parallel execution
             # This distributes tests evenly across containers
-            TESTFILES=$(circleci tests glob "src/**/*.test.ts" | circleci tests split --split-by=timings)
+            circleci tests glob "src/**/*.test.ts" | circleci tests split --split-by=timings > /tmp/test-files
 
-            # Run only the tests assigned to this container
-            npm run test:unit -- --testPathPattern="$TESTFILES"
+            # Run only the tests assigned to this container with Jest
+            xargs npm run test:unit -- --runTestsByPath < /tmp/test-files
       - store_test_results:
           path: test-results/unit
 
@@ -265,6 +269,11 @@ jobs:
     steps:
       - checkout
       - setup-npm-cache
+      - run:
+          name: Install service client tools
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client redis-tools
       - run:
           name: Wait for services
           command: |
@@ -290,8 +299,6 @@ jobs:
       - run:
           name: Run database migrations
           command: npm run db:migrate
-          environment:
-            DATABASE_URL: postgresql://testuser:testpass@localhost:5432/testdb
       - run-tests-with-coverage:
           test_type: integration
 
@@ -304,18 +311,17 @@ jobs:
       - run:
           name: Audit npm dependencies
           command: |
-            # Run npm audit and capture results
-            # Allow high severity findings to fail the build
-            npm audit --audit-level=high || true
-
-            # Generate detailed report
+            # Generate detailed report for artifacts
             npm audit --json > audit-report.json || true
+
+            # Fail the build for high or critical vulnerabilities
+            npm audit --audit-level=high
       - run:
           name: Check for known vulnerabilities
           command: |
             # Install and run Snyk for deeper analysis
             npm install -g snyk
-            snyk test --severity-threshold=high || true
+            snyk test --severity-threshold=high
       - store_artifacts:
           path: audit-report.json
 
@@ -340,6 +346,9 @@ jobs:
             REGISTRY="your-registry.com"
             IMAGE_NAME="$REGISTRY/your-app"
 
+            # Authenticate before pushing to the registry
+            echo "$DOCKER_PASSWORD" | docker login "$REGISTRY" -u "$DOCKER_USERNAME" --password-stdin
+
             # Build image with build arguments
             docker build \
               --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
@@ -351,6 +360,10 @@ jobs:
 
             # Save image for later use
             docker save "$IMAGE_NAME:$IMAGE_TAG" | gzip > docker-image.tar.gz
+
+            # Push the tags used by the deployment jobs
+            docker push "$IMAGE_NAME:$IMAGE_TAG"
+            docker push "$IMAGE_NAME:latest"
       - persist_to_workspace:
           root: .
           paths:
@@ -367,8 +380,7 @@ jobs:
           name: Deploy to staging
           command: |
             # Install deployment tools
-            curl -LO "https://dl.k8s.io/release/stable.txt"
-            curl -LO "https://dl.k8s.io/release/$(cat stable.txt)/bin/linux/amd64/kubectl"
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
             chmod +x kubectl
             sudo mv kubectl /usr/local/bin/
 
@@ -419,6 +431,11 @@ jobs:
       - run:
           name: Deploy to production
           command: |
+            # Install deployment tools
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl
+            sudo mv kubectl /usr/local/bin/
+
             # Configure kubectl for production cluster
             echo "$PROD_KUBECONFIG" | base64 -d > kubeconfig.yaml
             export KUBECONFIG=kubeconfig.yaml
@@ -505,7 +522,8 @@ workflows:
             branches:
               only: main
 
-  # Nightly scheduled workflow for extended tests
+  # Legacy config-based scheduled workflow for extended tests
+  # For new schedules, CircleCI recommends schedule triggers configured in the web app or API
   nightly:
     triggers:
       - schedule:
@@ -543,7 +561,7 @@ graph TB
         D[DOCKER_USERNAME]
         E[DOCKER_PASSWORD]
         F[KUBECONFIG]
-        G[SLACK_WEBHOOK]
+        G[SLACK_ACCESS_TOKEN]
     end
 
     A --> D
@@ -582,7 +600,7 @@ workflows:
             - hold-for-approval
 ```
 
-Navigate to **Organization Settings > Contexts** in CircleCI to create contexts and add environment variables.
+Navigate to **Org > Contexts** in CircleCI to create contexts and add environment variables.
 
 ## Caching Strategies
 
@@ -729,14 +747,14 @@ jobs:
 
             # Check memory
             free -m
-      # Enable SSH access when this step fails
+      # Let this step fail, then use CircleCI's SSH rerun option
       - run:
           name: Failing step
           command: npm run problematic-script
-      # Add this to enable SSH on failure
+      # After this fails, rerun the job with SSH from the CircleCI UI
       - run:
-          name: Enable SSH on failure
-          command: echo "SSH debugging enabled"
+          name: Capture failure context
+          command: echo "Use Rerun job with SSH to inspect this failed job"
           when: on_fail
 ```
 
