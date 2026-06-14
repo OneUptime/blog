@@ -54,7 +54,7 @@ A common mistake is setting this too high. More connections don't automatically 
 connections = ((core_count * 2) + effective_spindle_count)
 ```
 
-For SSDs, effective spindle count is typically 1. So a 4-core machine would get `(4 * 2) + 1 = 9` connections. That feels low, but database connections spend most of their time waiting on I/O, not executing. A small number of connections can handle surprisingly high throughput if queries are efficient.
+Use the physical core count of the database server, not the CPU count of each application instance. The HikariCP wiki notes that effective spindle count is `0` when the active data set is fully cached and approaches the real spindle count as cache hit rate falls; it does not give a special SSD value. So a database server with 4 physical cores and 1 effective spindle would get `(4 * 2) + 1 = 9` connections. That feels low, but database connections spend most of their time waiting on I/O, not executing. A small number of connections can handle surprisingly high throughput if queries are efficient.
 
 In practice, I start with `maximum-pool-size` between 10 and 20 for most web applications and adjust based on monitoring. Here's how to configure it programmatically if you need more control:
 
@@ -64,12 +64,15 @@ public class HikariConfig {
 
     @Bean
     @ConfigurationProperties("spring.datasource.hikari")
-    public HikariDataSource dataSource() {
-        HikariDataSource ds = new HikariDataSource();
+    public HikariDataSource dataSource(DataSourceProperties properties) {
+        HikariDataSource ds = properties.initializeDataSourceBuilder()
+            .type(HikariDataSource.class)
+            .build();
 
-        // Calculate pool size based on available processors
-        int cores = Runtime.getRuntime().availableProcessors();
-        int poolSize = (cores * 2) + 1;
+        // Use database server capacity, not application JVM CPU count
+        int databaseCores = 4;
+        int effectiveSpindles = 1;
+        int poolSize = (databaseCores * 2) + effectiveSpindles;
 
         // Cap at a reasonable maximum
         ds.setMaximumPoolSize(Math.min(poolSize, 20));
@@ -142,7 +145,7 @@ In development, set this aggressively low - maybe 5 seconds. In production, set 
 
 ## Monitoring Pool Health
 
-Configuration is only half the battle. You need visibility into how the pool behaves under load. HikariCP exposes metrics that you should wire into your monitoring system:
+Configuration is only half the battle. You need visibility into how the pool behaves under load. With Spring Boot Actuator and a Micrometer registry on the classpath, Hikari-specific metrics are auto-bound. If you create a `HikariDataSource` manually, pass the Micrometer registry to HikariCP:
 
 ```java
 @Configuration
@@ -152,7 +155,9 @@ public class HikariMetricsConfig {
     public HikariDataSource dataSource(MeterRegistry registry) {
         HikariDataSource ds = new HikariDataSource();
         ds.setJdbcUrl("jdbc:postgresql://localhost:5432/mydb");
-        ds.setMetricRegistry(registry);
+        ds.setUsername("app");
+        ds.setPassword("secret");
+        ds.setMetricsTrackerFactory(new MicrometerMetricsTrackerFactory(registry));
 
         // Now you get metrics like:
         // hikaricp.connections.active
