@@ -170,7 +170,7 @@ wandb.finish()
 
 ```python
 import wandb
-from wandb.keras import WandbCallback
+from wandb.integration.keras import WandbMetricsLogger, WandbModelCheckpoint
 import tensorflow as tf
 from tensorflow import keras
 
@@ -205,13 +205,16 @@ model.compile(
 x_train = x_train.reshape(-1, 784).astype('float32') / 255.0
 x_test = x_test.reshape(-1, 784).astype('float32') / 255.0
 
-# Train with WandbCallback - automatically logs metrics and model
+# Train with W&B callbacks - log metrics and model checkpoints
 model.fit(
     x_train, y_train,
     epochs=config.epochs,
     batch_size=config.batch_size,
     validation_split=0.2,
-    callbacks=[WandbCallback(save_model=True)]
+    callbacks=[
+        WandbMetricsLogger(),
+        WandbModelCheckpoint("models")
+    ]
 )
 
 # Evaluate
@@ -290,6 +293,7 @@ Run automated hyperparameter optimization:
 
 ```python
 import wandb
+import numpy as np
 
 # Define sweep configuration
 sweep_config = {
@@ -389,13 +393,10 @@ artifact = wandb.Artifact(
 # Add model file
 artifact.add_file("best_model.pth")
 
-# Log artifact
-wandb.log_artifact(artifact)
-
-# Link to model registry with aliases
+# Link to the Model registry with aliases
 wandb.run.link_artifact(
     artifact,
-    "my-team/model-registry/text-classifier",
+    "wandb-registry-Model/text-classifier",
     aliases=["latest", "production"]
 )
 
@@ -403,7 +404,7 @@ wandb.finish()
 
 # Later: Load model from registry
 run = wandb.init(project="inference")
-artifact = run.use_artifact("my-team/model-registry/text-classifier:production")
+artifact = run.use_artifact("wandb-registry-Model/text-classifier:production")
 artifact_dir = artifact.download()
 model.load_state_dict(torch.load(f"{artifact_dir}/best_model.pth"))
 ```
@@ -442,22 +443,23 @@ dataset_artifact.add_file("training_data.csv")
 
 # Log and version the dataset
 wandb.log_artifact(dataset_artifact)
+wandb.finish()
 
 # Reference dataset in training runs
 run = wandb.init(project="training")
-dataset = run.use_artifact("sentiment-dataset:latest")
+dataset = run.use_artifact("dataset-versioning/sentiment-dataset:latest")
 data_dir = dataset.download()
 # Training code uses data_dir/training_data.csv
 ```
 
 ## Team Collaboration
 
-Create reports and share results:
+Query runs and export results:
 
 ```python
 import wandb
 
-# Create a report programmatically
+# Query runs programmatically
 api = wandb.Api()
 
 # Get runs from a project
@@ -493,14 +495,15 @@ Set up alerts for important events:
 
 ```python
 import wandb
+from wandb import AlertLevel
 
-wandb.init(project="alerting-demo")
+run = wandb.init(project="alerting-demo")
 
 # Alert when training completes
-wandb.alert(
+run.alert(
     title="Training Complete",
     text="Model training finished with accuracy 0.95",
-    level=wandb.AlertLevel.INFO
+    level=AlertLevel.INFO
 )
 
 # Alert on errors
@@ -508,10 +511,10 @@ try:
     # Training code
     pass
 except Exception as e:
-    wandb.alert(
+    run.alert(
         title="Training Failed",
         text=f"Error: {str(e)}",
-        level=wandb.AlertLevel.ERROR
+        level=AlertLevel.ERROR
     )
     raise
 
@@ -521,10 +524,10 @@ for epoch in range(100):
     wandb.log({"loss": loss})
 
     if loss > 10.0:
-        wandb.alert(
+        run.alert(
             title="High Loss Detected",
             text=f"Loss spiked to {loss} at epoch {epoch}",
-            level=wandb.AlertLevel.WARN
+            level=AlertLevel.WARN
         )
 ```
 
