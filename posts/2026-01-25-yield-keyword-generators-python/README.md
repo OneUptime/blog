@@ -68,9 +68,9 @@ import sys
 squares_list = get_squares_list(1000000)
 print(f"List size: {sys.getsizeof(squares_list)} bytes")  # ~8MB
 
-# Generator stores almost nothing
+# Generator stores only its current state
 squares_gen = get_squares_generator(1000000)
-print(f"Generator size: {sys.getsizeof(squares_gen)} bytes")  # ~128 bytes
+print(f"Generator size: {sys.getsizeof(squares_gen)} bytes")  # Small, implementation-dependent
 ```
 
 ## Generator Execution Flow
@@ -258,7 +258,7 @@ print(acc.send(3))   # Send 3, returns 18
 
 ```python
 def controlled_generator():
-    """Generator demonstrating all control methods."""
+    """Generator demonstrating send() and close()."""
     try:
         while True:
             value = yield
