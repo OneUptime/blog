@@ -32,7 +32,7 @@ sequenceDiagram
 
 Think of a GenServer as a process that:
 - Holds state between function calls
-- Processes messages one at a time (no race conditions)
+- Processes messages one at a time for its own state
 - Can be supervised and restarted on failure
 - Provides both synchronous and asynchronous interfaces
 
@@ -55,7 +55,7 @@ defmodule MyApp.JobQueue do
   Starts the job queue process and links it to the caller.
   """
   def start_link(opts \\ []) do
-    # The name option registers this process globally
+    # An atom name registers this process locally on the current node
     name = Keyword.get(opts, :name, __MODULE__)
     GenServer.start_link(__MODULE__, [], name: name)
   end
@@ -269,7 +269,7 @@ defmodule MyApp.AdvancedJobQueue do
 
   @impl true
   def handle_call(:pause, _from, state) do
-    # Cancel the next tick by setting a flag
+    # Ignore the next tick by setting a flag
     {:reply, :ok, Map.put(state, :paused, true)}
   end
 
@@ -473,7 +473,7 @@ defmodule MyApp.WorkerPool do
 
   @doc """
   Finds an available worker and assigns a task.
-  Returns {:ok, result} or {:error, :no_workers_available}.
+  Returns {:ok, result}, {:error, :busy}, or {:error, :no_workers_available}.
   """
   def run(task, timeout \\ 5000) do
     case find_available_worker() do
@@ -487,15 +487,15 @@ defmodule MyApp.WorkerPool do
 
   @doc """
   Runs a task asynchronously.
-  Returns :ok immediately.
+  Returns :ok after the worker accepts the task, or an error tuple if no worker can accept it.
   """
-  def run_async(task) do
+  def run_async(task, timeout \\ 5000) do
     case find_available_worker() do
       nil ->
         {:error, :no_workers_available}
 
       worker ->
-        MyApp.Worker.run_async(worker, task)
+        MyApp.Worker.run_async(worker, task, timeout)
     end
   end
 
@@ -538,8 +538,8 @@ defmodule MyApp.Worker do
     GenServer.call(worker, {:run, task}, timeout)
   end
 
-  def run_async(worker, task) do
-    GenServer.cast(worker, {:run_async, task})
+  def run_async(worker, task, timeout \\ 5000) do
+    GenServer.call(worker, {:run_async, task}, timeout)
   end
 
   # Server callbacks
@@ -552,6 +552,11 @@ defmodule MyApp.Worker do
   @impl true
   def handle_call(:available?, _from, state) do
     {:reply, state.status == :idle, state}
+  end
+
+  @impl true
+  def handle_call({:run, _task}, _from, %{status: :busy} = state) do
+    {:reply, {:error, :busy}, state}
   end
 
   @impl true
@@ -569,7 +574,12 @@ defmodule MyApp.Worker do
   end
 
   @impl true
-  def handle_cast({:run_async, task}, state) do
+  def handle_call({:run_async, _task}, _from, %{status: :busy} = state) do
+    {:reply, {:error, :busy}, state}
+  end
+
+  @impl true
+  def handle_call({:run_async, task}, _from, state) do
     state = %{state | status: :busy, current_task: task}
 
     # Execute in a spawned process to not block the GenServer
@@ -579,7 +589,7 @@ defmodule MyApp.Worker do
       send(parent, {:task_complete, result})
     end)
 
-    {:noreply, state}
+    {:reply, :ok, state}
   end
 
   @impl true
@@ -881,7 +891,7 @@ end
 ```elixir
 @impl true
 def init(_) do
-  # Trap exits to get terminate callback
+  # Trap exits so terminate/2 can run during supervisor shutdown
   Process.flag(:trap_exit, true)
   {:ok, initial_state()}
 end
@@ -960,8 +970,9 @@ defmodule MyApp.JobQueueTest do
     assert JobQueue.pending_count(queue) == 5
   end
 
+  @tag skip: "requires supervised queue setup"
   test "survives crashes and restarts", %{pid: pid} do
-    # This tests the supervisor - simulate a crash
+    # This test needs a supervised queue process instead of the linked setup above
     Process.exit(pid, :kill)
 
     # Wait for supervisor to restart
