@@ -48,7 +48,6 @@ Let's start with a simple but functional webhook handler. This example receives 
 
 # Basic webhook handler with signature verification
 from fastapi import FastAPI, Request, HTTPException, Header
-from datetime import datetime
 import hashlib
 import hmac
 import json
@@ -76,7 +75,7 @@ def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
 @app.post("/webhooks/events")
 async def handle_webhook(
     request: Request,
-    x_webhook_signature: str = Header(None, alias="X-Webhook-Signature")
+    x_webhook_signature: str | None = Header(default=None, alias="X-Webhook-Signature")
 ):
     """
     Handle incoming webhook events.
@@ -86,11 +85,13 @@ async def handle_webhook(
     # Important: Read body before parsing JSON
     body = await request.body()
 
-    # Verify the signature if present
-    if x_webhook_signature:
-        if not verify_signature(body, x_webhook_signature, WEBHOOK_SECRET):
-            # Log failed verification attempts for security monitoring
-            raise HTTPException(status_code=401, detail="Invalid signature")
+    # Require and verify the signature
+    if not x_webhook_signature:
+        raise HTTPException(status_code=401, detail="Missing signature")
+
+    if not verify_signature(body, x_webhook_signature, WEBHOOK_SECRET):
+        # Log failed verification attempts for security monitoring
+        raise HTTPException(status_code=401, detail="Invalid signature")
 
     # Parse the JSON payload
     try:
@@ -127,7 +128,7 @@ Webhook senders often retry failed deliveries. Without idempotency handling, you
 # idempotent_handler.py
 # Webhook handler with idempotency support using Redis
 from fastapi import FastAPI, Request, HTTPException, Header
-from datetime import datetime, timedelta
+from datetime import timedelta
 import redis
 import json
 
@@ -149,28 +150,43 @@ class IdempotencyStore:
         self.redis = redis_client
         self.key_prefix = "webhook:processed:"
 
-    def is_processed(self, event_id: str) -> bool:
-        """Check if we've already processed this event"""
-        key = f"{self.key_prefix}{event_id}"
-        return self.redis.exists(key) > 0
+    def get_previous_result(self, event_id: str) -> dict:
+        """Get the result from a previous processing attempt"""
+        key = f"{self.key_prefix}{event_id}:result"
+        data = self.redis.get(key)
+        return json.loads(data) if data else None
+
+    def claim_event(self, event_id: str) -> bool:
+        """
+        Atomically claim an event for processing.
+        Returns False if another request already claimed it.
+        """
+        key = f"{self.key_prefix}{event_id}:lock"
+        return bool(self.redis.set(
+            key,
+            "processing",
+            ex=IDEMPOTENCY_TTL,
+            nx=True
+        ))
 
     def mark_processed(self, event_id: str, result: dict):
         """
         Mark an event as processed and store the result.
         The result is stored so we can return the same response on retries.
         """
-        key = f"{self.key_prefix}{event_id}"
-        self.redis.setex(
-            key,
-            IDEMPOTENCY_TTL,
-            json.dumps(result)
+        result_key = f"{self.key_prefix}{event_id}:result"
+        lock_key = f"{self.key_prefix}{event_id}:lock"
+        self.redis.set(
+            result_key,
+            json.dumps(result),
+            ex=IDEMPOTENCY_TTL
         )
+        self.redis.delete(lock_key)
 
-    def get_previous_result(self, event_id: str) -> dict:
-        """Get the result from a previous processing attempt"""
-        key = f"{self.key_prefix}{event_id}"
-        data = self.redis.get(key)
-        return json.loads(data) if data else None
+    def release_claim(self, event_id: str):
+        """Release the processing claim after a failed attempt"""
+        key = f"{self.key_prefix}{event_id}:lock"
+        self.redis.delete(key)
 
 idempotency_store = IdempotencyStore(redis_client)
 
@@ -181,7 +197,7 @@ async def handle_payment_webhook(
 ):
     """
     Handle payment webhooks with idempotency.
-    If we've seen this event before, return the cached result.
+    If we've already processed this event, return the cached result.
     """
     body = await request.body()
     payload = json.loads(body)
@@ -195,14 +211,21 @@ async def handle_payment_webhook(
             detail="Missing event ID or idempotency key"
         )
 
-    # Check if we've already processed this event
-    if idempotency_store.is_processed(event_id):
-        # Return the same result we returned before
-        previous_result = idempotency_store.get_previous_result(event_id)
+    # Return the same result we returned before
+    previous_result = idempotency_store.get_previous_result(event_id)
+    if previous_result:
         return previous_result
 
-    # Process the new event
-    result = await process_payment_event(payload)
+    # Claim the event before processing to avoid duplicate concurrent work
+    if not idempotency_store.claim_event(event_id):
+        return {"status": "accepted", "reason": "event_already_processing"}
+
+    try:
+        # Process the new event
+        result = await process_payment_event(payload)
+    except Exception:
+        idempotency_store.release_claim(event_id)
+        raise
 
     # Store the result for future retries
     idempotency_store.mark_processed(event_id, result)
@@ -233,13 +256,12 @@ For heavy processing, don't make the webhook sender wait. Accept the webhook imm
 ```python
 # async_webhook_handler.py
 # Webhook handler with background task processing
-from fastapi import FastAPI, Request, BackgroundTasks
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
-
-app = FastAPI()
 
 class WebhookEvent(BaseModel):
     """Data model for webhook events"""
@@ -251,6 +273,7 @@ class WebhookEvent(BaseModel):
 
 # In-memory queue for demonstration (use Redis/RabbitMQ in production)
 event_queue = asyncio.Queue()
+worker_tasks = []
 
 async def enqueue_event(event: WebhookEvent):
     """Add event to processing queue"""
@@ -309,14 +332,19 @@ async def handle_payment_received(data: dict):
     """Handle payment events"""
     print(f"Payment received: {data.get('amount')}")
 
-@app.on_event("startup")
-async def start_workers():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Start background workers when the app starts"""
     # Start 3 worker tasks for parallel processing
     for _ in range(3):
-        asyncio.create_task(process_event_worker())
+        worker_tasks.append(asyncio.create_task(process_event_worker()))
+    yield
+    for task in worker_tasks:
+        task.cancel()
 
-@app.post("/webhooks/async")
+app = FastAPI(lifespan=lifespan)
+
+@app.post("/webhooks/async", status_code=202)
 async def handle_async_webhook(request: Request):
     """
     Accept webhooks and queue for async processing.
@@ -326,9 +354,9 @@ async def handle_async_webhook(request: Request):
 
     # Create event object
     event = WebhookEvent(
-        id=payload.get("id", str(datetime.utcnow().timestamp())),
+        id=payload.get("id", str(datetime.now(timezone.utc).timestamp())),
         type=payload.get("type", "unknown"),
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         data=payload.get("data", {})
     )
 
@@ -358,7 +386,7 @@ import hashlib
 import hmac
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -375,7 +403,7 @@ def require_signature(f):
     """
     @wraps(f)
     def decorated(*args, **kwargs):
-        signature = request.headers.get("X-Webhook-Signature")
+        signature = request.headers.get("X-Hub-Signature-256")
 
         if not signature:
             logger.warning("Missing webhook signature")
@@ -390,9 +418,10 @@ def require_signature(f):
             body,
             hashlib.sha256
         ).hexdigest()
+        expected_signature = f"sha256={expected}"
 
         # Constant-time comparison
-        if not hmac.compare_digest(signature, expected):
+        if not hmac.compare_digest(signature, expected_signature):
             logger.warning(f"Invalid signature from {request.remote_addr}")
             return jsonify({"error": "Invalid signature"}), 401
 
@@ -404,11 +433,11 @@ def log_webhook(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         logger.info(f"Webhook received: {request.path} from {request.remote_addr}")
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         result = f(*args, **kwargs)
 
-        duration = (datetime.utcnow() - start_time).total_seconds() * 1000
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
         logger.info(f"Webhook processed in {duration:.2f}ms")
 
         return result
@@ -506,20 +535,27 @@ from webhook_handler import app, WEBHOOK_SECRET
 
 client = TestClient(app)
 
-def generate_signature(payload: dict, secret: str) -> str:
+def encode_payload(payload: dict) -> bytes:
+    """Encode JSON the same way TestClient sends it"""
+    return json.dumps(payload, separators=(",", ":")).encode()
+
+def generate_signature(body: bytes, secret: str) -> str:
     """Generate a valid signature for testing"""
-    body = json.dumps(payload).encode()
     return hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
 def test_valid_webhook():
     """Test that valid webhooks are accepted"""
     payload = {"id": "evt_123", "type": "test.event", "data": {}}
-    signature = generate_signature(payload, WEBHOOK_SECRET)
+    body = encode_payload(payload)
+    signature = generate_signature(body, WEBHOOK_SECRET)
 
     response = client.post(
         "/webhooks/events",
-        json=payload,
-        headers={"X-Webhook-Signature": signature}
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Webhook-Signature": signature
+        }
     )
 
     assert response.status_code == 200
@@ -546,8 +582,7 @@ def test_missing_signature():
         json=payload
     )
 
-    # Depending on your policy, you might accept or reject
-    assert response.status_code in [200, 401]
+    assert response.status_code == 401
 ```
 
 ---
