@@ -35,6 +35,10 @@ cd MyPostgresApp
 # Add the required packages
 dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL
 dotnet add package Microsoft.EntityFrameworkCore.Design
+dotnet add package Swashbuckle.AspNetCore
+
+# Install EF Core CLI tools if you don't already have them
+dotnet tool install --global dotnet-ef
 ```
 
 ### Define Your Entities
@@ -274,6 +278,7 @@ public partial class InitialCreate : Migration
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
+        migrationBuilder.DropTable(name: "ProductTag");
         migrationBuilder.DropTable(name: "products");
         migrationBuilder.DropTable(name: "categories");
         migrationBuilder.DropTable(name: "tags");
@@ -517,6 +522,9 @@ public class OrderDetails
 Configure the JSONB mapping:
 
 ```csharp
+// In AppDbContext
+public DbSet<Order> Orders => Set<Order>();
+
 // In AppDbContext.OnModelCreating
 modelBuilder.Entity<Order>(entity =>
 {
@@ -527,11 +535,10 @@ modelBuilder.Entity<Order>(entity =>
         .HasColumnType("jsonb");
 
     // Map strongly-typed property to JSONB
-    entity.Property(o => o.Details)
-        .HasColumnType("jsonb")
-        .HasConversion(
-            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-            v => JsonSerializer.Deserialize<OrderDetails>(v, (JsonSerializerOptions?)null)!);
+    entity.OwnsOne(o => o.Details, details =>
+    {
+        details.ToJson();
+    });
 });
 ```
 
@@ -539,8 +546,8 @@ Query JSONB data:
 
 ```csharp
 // Query using JSONB operators
-var ordersWithNotes = await _context.Orders
-    .Where(o => EF.Functions.JsonContains(o.Details, new { Notes = new[] { "urgent" } }))
+var mobileOrders = await _context.Orders
+    .Where(o => EF.Functions.JsonContains(o.Metadata!, @"{""source"": ""mobile""}"))
     .ToListAsync();
 ```
 
@@ -586,6 +593,8 @@ Use PostgreSQL's full-text search capabilities:
 
 ```csharp
 // Add a search vector column
+using NpgsqlTypes;
+
 public class Article
 {
     public int Id { get; set; }
@@ -602,19 +611,17 @@ modelBuilder.Entity<Article>(entity =>
     entity.ToTable("articles");
 
     // Create generated column for search vector
-    entity.Property(a => a.SearchVector)
-        .HasColumnType("tsvector")
-        .IsGeneratedTsVectorColumn("english", "Title", "Content");
-
-    // Add GIN index for fast full-text search
-    entity.HasIndex(a => a.SearchVector)
+    entity.HasGeneratedTsVectorColumn(
+            a => a.SearchVector,
+            "english",
+            a => new { a.Title, a.Content })
         .HasMethod("GIN");
 });
 
 // Perform full-text search
 var results = await _context.Articles
-    .Where(a => a.SearchVector.Matches("database & performance"))
-    .OrderByDescending(a => a.SearchVector.Rank(EF.Functions.ToTsQuery("database & performance")))
+    .Where(a => a.SearchVector.Matches(EF.Functions.ToTsQuery("english", "database & performance")))
+    .OrderByDescending(a => a.SearchVector.Rank(EF.Functions.ToTsQuery("english", "database & performance")))
     .ToListAsync();
 ```
 
