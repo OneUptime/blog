@@ -314,19 +314,19 @@ data:
     default allow = false
 
     # Allow if the request has valid SPIFFE identity
-    allow {
+    allow if {
         valid_spiffe_id
         authorized_service
     }
 
     # Validate SPIFFE ID format
-    valid_spiffe_id {
+    valid_spiffe_id if {
         input.spiffe_id
         startswith(input.spiffe_id, "spiffe://example.org/")
     }
 
     # Service-to-service authorization matrix
-    authorized_service {
+    authorized_service if {
         service_permissions[input.source_service][_] == input.target_service
     }
 
@@ -337,12 +337,12 @@ data:
     }
 
     # Deny requests from unknown services
-    deny[msg] {
+    deny contains msg if {
         not valid_spiffe_id
         msg := "Invalid or missing SPIFFE ID"
     }
 
-    deny[msg] {
+    deny contains msg if {
         not authorized_service
         msg := sprintf("Service %v not authorized to access %v", [input.source_service, input.target_service])
     }
@@ -358,6 +358,7 @@ package middleware
 import (
     "context"
     "net/http"
+    "path"
     "time"
 
     "github.com/spiffe/go-spiffe/v2/spiffeid"
@@ -434,7 +435,7 @@ func (m *ZeroTrustMiddleware) Verify(next http.Handler) http.Handler {
 func extractServiceName(id spiffeid.ID) string {
     // Extract service name from SPIFFE ID path
     // spiffe://example.org/ns/default/sa/api -> api
-    return id.Path()[len(id.Path())-1]
+    return path.Base(id.Path())
 }
 ```
 
@@ -509,12 +510,16 @@ spec:
 # device_trust.py - Device attestation service
 
 from flask import Flask, request, jsonify
-import jwt
 import hashlib
+import os
+import time
+
+import jwt
 
 app = Flask(__name__)
 
 TRUSTED_DEVICES = {}  # In production, use a database
+SECRET_KEY = os.environ["DEVICE_TOKEN_SECRET"]
 
 @app.route('/attest', methods=['POST'])
 def attest_device():
@@ -555,6 +560,14 @@ def check_device_posture(posture):
             return False
 
     return True
+
+def verify_device_certificate(device_cert):
+    """Verify the device certificate against a trusted device registry"""
+    return device_cert in TRUSTED_DEVICES
+
+def extract_device_id(device_cert):
+    """Extract a stable device identifier from the certificate"""
+    return TRUSTED_DEVICES[device_cert]
 
 def generate_device_token(device_id, posture):
     """Generate short-lived token bound to device"""
@@ -601,17 +614,11 @@ data:
     apiVersion: audit.k8s.io/v1
     kind: Policy
     rules:
-      # Log all authentication failures
-      - level: Request
-        resources:
-          - group: ""
-            resources: ["*"]
-        verbs: ["*"]
+      # Log anonymous requests for authentication investigations
+      - level: Metadata
+        users: ["system:anonymous"]
         omitStages:
           - RequestReceived
-        # Only failed requests
-        nonResourceURLs:
-          - "*"
 
       # Log all access to secrets
       - level: RequestResponse
@@ -625,10 +632,6 @@ data:
           - group: "networking.k8s.io"
             resources: ["networkpolicies"]
 
-      # Log authentication events
-      - level: Metadata
-        users: ["system:anonymous"]
-        verbs: ["*"]
 ```
 
 ## Zero Trust Checklist
