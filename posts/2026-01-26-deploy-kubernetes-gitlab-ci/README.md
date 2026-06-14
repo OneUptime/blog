@@ -18,16 +18,10 @@ Before deploying, your pipeline needs access to your Kubernetes cluster. There a
 
 The recommended approach uses the GitLab Kubernetes Agent, which provides secure, pull-based access without exposing cluster credentials.
 
-First, install the agent in your cluster:
+First, configure and install the agent in your cluster:
 
 ```yaml
-# agent-config.yaml in your project
-
-gitops:
-  manifest_projects:
-    - id: your-group/your-project
-      paths:
-        - glob: 'manifests/**/*.yaml'
+# .gitlab/agents/agent-name/config.yaml in your project
 
 ci_access:
   projects:
@@ -48,8 +42,6 @@ deploy:
     - kubectl apply -f manifests/
   environment:
     name: production
-    kubernetes:
-      namespace: production
 ```
 
 ### Kubeconfig File
@@ -133,10 +125,10 @@ For more control, apply complete manifest files with variable substitution.
 deploy:
   stage: deploy
   image:
-    name: bitnami/kubectl:latest
+    name: alpine/kubectl:1.36.1
     entrypoint: [""]
   before_script:
-    - apk add --no-cache gettext  # For envsubst
+    - apk add --no-cache gettext-envsubst  # For envsubst
   script:
     # Substitute environment variables in manifests
     - envsubst < manifests/deployment.yaml > deployment-rendered.yaml
@@ -190,10 +182,6 @@ deploy:
   before_script:
     - export KUBECONFIG=$KUBECONFIG_FILE
   script:
-    # Add repository if using external charts
-    - helm repo add stable https://charts.helm.sh/stable
-    - helm repo update
-
     # Deploy using values file
     - helm upgrade --install $APP_NAME ./chart
       --namespace $KUBE_NAMESPACE
@@ -386,7 +374,6 @@ rollback:
   when: manual
   environment:
     name: production
-    action: stop
 ```
 
 ## Verifying Deployments
