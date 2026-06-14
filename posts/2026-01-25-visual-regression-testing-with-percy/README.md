@@ -59,7 +59,7 @@ Configure Playwright tests to capture Percy snapshots:
 
 ```typescript
 // tests/visual.spec.ts
-import { test, expect } from '@playwright/test';
+import { test } from '@playwright/test';
 import percySnapshot from '@percy/playwright';
 
 test.describe('Visual Regression Tests', () => {
@@ -263,7 +263,7 @@ snapshot:
   # Minimum height
   min-height: 1024
 
-  # Wait for fonts to load
+  # Enable JavaScript in Percy's rendering environment
   enable-javascript: true
 
   # Percy CSS to apply
@@ -282,13 +282,13 @@ snapshot:
 storybook:
   # Only capture specific stories
   include:
-    - Components/**
-    - Pages/**
+    - "^Components/"
+    - "^Pages/"
 
   # Exclude stories
   exclude:
-    - "**/*-docs"
-    - "**/Playground"
+    - ".*-docs$"
+    - ".*Playground$"
 
 # Discovery settings
 discovery:
@@ -412,10 +412,6 @@ jobs:
 
       - name: Run visual tests
         run: npx percy exec -- npx playwright test tests/visual/
-
-      - name: Percy finalize
-        if: always()
-        run: npx percy build:finalize
 ```
 
 ## Review Workflow
