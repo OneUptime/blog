@@ -20,7 +20,7 @@ Django and Celery work together naturally. Celery handles the task execution and
 
 - Tasks can access Django models directly
 - Configuration lives in your Django settings
-- Management commands for running workers
+- Celery CLI commands for running workers
 - Seamless integration with the Django ecosystem
 
 ```mermaid
@@ -29,8 +29,8 @@ flowchart LR
     B -->|Deliver Task| C[Celery Worker]
     C -->|Execute| D[Task Logic]
     D -->|Access| E[Django Models]
-    D -->|Store Result| B
-    A -->|Check Result| B
+    D -->|Store Result| F[Django DB Result Backend]
+    A -->|Check Result| F
 ```
 
 ---
@@ -125,7 +125,6 @@ INSTALLED_APPS = [
 # Celery Configuration
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_RESULT_BACKEND = 'django-db'  # Store results in Django database
-CELERY_CACHE_BACKEND = 'django-cache'
 
 # Serialization settings - JSON is safer than pickle
 CELERY_ACCEPT_CONTENT = ['json']
@@ -203,7 +202,7 @@ You can trigger tasks from anywhere in your Django code. The `.delay()` method q
 
 ```python
 # myapp/views.py
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.contrib.auth import login
 from django.contrib import messages
 from .tasks import send_welcome_email
@@ -402,6 +401,7 @@ Use `link_error` to handle failures with a separate task:
 # myapp/tasks.py
 from celery import shared_task
 from .models import ImportJob
+from .notifications import send_notification
 
 
 @shared_task
@@ -426,9 +426,15 @@ def import_data(self, job_id, file_path):
     pass
 
 
-# In your view, set up the error callback
+# myapp/views.py
+from django.http import JsonResponse
+from .models import ImportJob
+from .tasks import handle_import_failure, import_data
+
+
 def start_import(request):
-    job = ImportJob.objects.create(user=request.user, file=file)
+    uploaded_file = request.FILES['file']
+    job = ImportJob.objects.create(user=request.user, file=uploaded_file)
 
     import_data.apply_async(
         args=[job.id, job.file.path],
@@ -496,8 +502,9 @@ CELERY_BEAT_SCHEDULE = {
 # myapp/tasks.py
 from celery import shared_task
 from django.utils import timezone
+from django.contrib.sessions.models import Session
 from datetime import timedelta
-from .models import Order, Session, User
+from .models import Order, User
 
 
 @shared_task
@@ -524,10 +531,8 @@ def check_pending_orders():
 @shared_task
 def cleanup_expired_sessions():
     """Remove expired sessions from database"""
-    cutoff = timezone.now() - timedelta(days=30)
-
     deleted, _ = Session.objects.filter(
-        last_activity__lt=cutoff
+        expire_date__lt=timezone.now()
     ).delete()
 
     return {'deleted_count': deleted}
@@ -582,11 +587,12 @@ Type=forking
 User=www-data
 Group=www-data
 WorkingDirectory=/var/www/myproject
+PIDFile=/run/celery/worker.pid
 ExecStart=/var/www/myproject/venv/bin/celery \
     -A myproject worker \
     --loglevel=info \
     --concurrency=4 \
-    --pidfile=/var/run/celery/worker.pid \
+    --pidfile=/run/celery/worker.pid \
     --logfile=/var/log/celery/worker.log \
     --detach
 
@@ -604,8 +610,6 @@ Running Django Celery in Docker is straightforward:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   web:
     build: .
