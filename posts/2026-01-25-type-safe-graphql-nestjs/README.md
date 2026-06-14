@@ -36,7 +36,8 @@ nest new graphql-api
 
 # Install GraphQL dependencies
 cd graphql-api
-npm install @nestjs/graphql @nestjs/apollo @apollo/server graphql
+npm install @nestjs/graphql @nestjs/apollo @apollo/server @as-integrations/express5 graphql
+npm install class-validator class-transformer uuid
 ```
 
 Configure the GraphQL module in your application. The code-first approach uses decorators to generate the schema automatically from your TypeScript classes.
@@ -58,8 +59,8 @@ import { UsersModule } from './users/users.module';
       autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
       // Sort schema alphabetically for consistency
       sortSchema: true,
-      // Enable GraphQL Playground in development
-      playground: process.env.NODE_ENV !== 'production',
+      // Enable GraphiQL in development
+      graphiql: process.env.NODE_ENV !== 'production',
     }),
     UsersModule,
   ],
@@ -118,7 +119,7 @@ export class User {
 
   // Fields can be marked as non-nullable (default) or nullable
   @Field(() => Date, { nullable: true })
-  lastLoginAt?: Date;
+  lastLoginAt?: Date | null;
 }
 ```
 
@@ -145,7 +146,7 @@ export class Post {
   author: User;
 
   // Int type for numeric fields
-  @Field(() => Int, { defaultValue: 0 })
+  @Field(() => Int)
   viewCount: number;
 
   @Field(() => [String], { description: 'Post tags' })
@@ -440,7 +441,6 @@ Create custom exceptions that translate to meaningful GraphQL errors.
 
 ```typescript
 // src/common/exceptions/graphql-exceptions.ts
-import { HttpException, HttpStatus } from '@nestjs/common';
 import { GraphQLError } from 'graphql';
 
 export class UserNotFoundError extends GraphQLError {
@@ -491,7 +491,7 @@ export class UsersModule {}
 
 ## Testing Your API
 
-Run the application and test your GraphQL API using the built-in Playground.
+Run the application and test your GraphQL API using the built-in GraphiQL IDE.
 
 ```bash
 npm run start:dev
@@ -550,7 +550,7 @@ When building type-safe GraphQL APIs with NestJS, keep these practices in mind:
 1. **Use code-first approach** for maximum type safety between TypeScript and GraphQL
 2. **Validate inputs** using class-validator decorators on input types
 3. **Keep resolvers thin** by moving business logic to services
-4. **Use ResolveField** for computed or nested data to avoid N+1 queries
+4. **Use ResolveField** for computed or nested data, and batch nested lookups with tools like DataLoader to avoid N+1 queries
 5. **Register enums** with registerEnumType so GraphQL understands them
 6. **Add descriptions** to types and fields for self-documenting APIs
 
