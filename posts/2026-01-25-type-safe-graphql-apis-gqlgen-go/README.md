@@ -193,6 +193,10 @@ func (r *queryResolver) User(ctx context.Context, id string) (*model.User, error
 
 Now the mutation resolvers for creating and updating data.
 
+```bash
+go get github.com/google/uuid
+```
+
 ```go
 // CreateTask adds a new task
 func (r *mutationResolver) CreateTask(ctx context.Context, input model.NewTask) (*model.Task, error) {
