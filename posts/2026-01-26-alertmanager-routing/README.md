@@ -182,7 +182,7 @@ route:
           matchers:
             - team = backend
           routes:
-            # Critical backend alerts also page
+            # Critical backend alerts use the PagerDuty receiver
             - receiver: 'backend-pagerduty'
               matchers:
                 - severity = critical
@@ -366,6 +366,8 @@ time_intervals:
       - weekdays: ['monday:friday']
         times:
           - start_time: '17:00'
+            end_time: '24:00'
+          - start_time: '00:00'
             end_time: '09:00'
       - weekdays: ['saturday', 'sunday']
 
@@ -378,6 +380,7 @@ route:
         - severity =~ "warning|critical"
       active_time_intervals:
         - business-hours
+      continue: true
 
     # After hours: only page for critical
     - receiver: 'oncall-pagerduty'
@@ -390,13 +393,13 @@ route:
     - receiver: 'null'
       matchers:
         - severity != critical
-      mute_time_intervals:
-        - business-hours
+      active_time_intervals:
+        - after-hours
 ```
 
 ## Testing Your Routing Configuration
 
-Before deploying, validate your routing logic using the Alertmanager API:
+Before deploying, validate your routing logic using `amtool`:
 
 ```bash
 # Check configuration syntax
@@ -405,6 +408,7 @@ Before deploying, validate your routing logic using the Alertmanager API:
 # Test which route an alert would match
 ./amtool config routes test \
   --config.file=alertmanager.yml \
+  --tree \
   severity=critical \
   team=backend \
   environment=production
