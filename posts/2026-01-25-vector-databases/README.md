@@ -88,9 +88,10 @@ class PineconeVectorDB:
         self.metric = metric
 
         # Create index if not exists
-        if index_name not in self.pc.list_indexes().names():
+        if not self.pc.has_index(index_name):
             self.pc.create_index(
                 name=index_name,
+                vector_type="dense",
                 dimension=dimension,
                 metric=metric,
                 spec=ServerlessSpec(
@@ -120,8 +121,8 @@ class PineconeVectorDB:
             for r in records
         ]
 
-        # Batch upsert (max 100 vectors per batch)
-        batch_size = 100
+        # Batch upsert (keep each request under Pinecone's record/request limits)
+        batch_size = 1000
         total_upserted = 0
 
         for i in range(0, len(vectors), batch_size):
@@ -368,7 +369,7 @@ class ChromaVectorDB:
         # Get or create collection
         self.collection = self.client.get_or_create_collection(
             name=collection_name,
-            metadata={"hnsw:space": "cosine"}
+            configuration={"hnsw": {"space": "cosine"}}
         )
 
     def add(
@@ -478,19 +479,41 @@ class RAGPipeline:
         query_embedding = self.embedding_model.embed(query)
 
         # Search vector database
-        results = self.vector_db.search(
-            query_vector=query_embedding,
-            top_k=self.top_k
+        if hasattr(self.vector_db, "search"):
+            results = self.vector_db.search(
+                query_vector=query_embedding,
+                top_k=self.top_k
+            )
+
+            return [
+                RetrievedContext(
+                    text=result.metadata.get("text", ""),
+                    score=result.score,
+                    source=result.metadata.get("source", "unknown"),
+                    metadata=result.metadata
+                )
+                for result in results
+            ]
+
+        results = self.vector_db.query(
+            query_embeddings=[query_embedding],
+            n_results=self.top_k,
+            include=["documents", "metadatas", "distances"]
         )
 
         # Format retrieved contexts
         contexts = []
-        for result in results:
+        for document, metadata, distance in zip(
+            results["documents"][0],
+            results["metadatas"][0],
+            results["distances"][0]
+        ):
+            metadata = metadata or {}
             contexts.append(RetrievedContext(
-                text=result.metadata.get("text", ""),
-                score=result.score,
-                source=result.metadata.get("source", "unknown"),
-                metadata=result.metadata
+                text=document,
+                score=distance,
+                source=metadata.get("source", "unknown"),
+                metadata=metadata
             ))
 
         return contexts
@@ -558,6 +581,7 @@ Please answer the question based on the provided context."""
 # Usage
 def create_rag_system():
     from openai import OpenAI
+    from vectordb.chroma_client import ChromaVectorDB
 
     # Initialize components
     openai_client = OpenAI()
@@ -594,7 +618,7 @@ def create_rag_system():
 ```python
 # vectordb/index_optimization.py
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 @dataclass
 class IndexConfig:
@@ -693,7 +717,7 @@ class IndexOptimizer:
 
 | Database | Best For | Deployment | Indexing |
 |----------|----------|------------|----------|
-| **Pinecone** | Production, managed | Cloud | HNSW |
+| **Pinecone** | Production, managed | Cloud | Managed ANN |
 | **Milvus** | Self-hosted, scale | On-prem/Cloud | HNSW, IVF |
 | **ChromaDB** | Development, prototyping | Local | HNSW |
 | **Weaviate** | Multi-modal, GraphQL | Cloud/On-prem | HNSW |
