@@ -238,112 +238,22 @@ public class UnsupportedVersionException extends RuntimeException {
 
 Header versioning keeps URLs clean and moves version information into HTTP headers. This approach is popular with teams that prefer not to embed versioning in the URL structure.
 
-### Implementation with Custom Annotation
-
-```java
-// ApiVersion.java
-// Custom annotation to mark controller methods with version requirements
-package com.example.api.annotation;
-
-import java.lang.annotation.*;
-
-@Target({ElementType.METHOD, ElementType.TYPE})
-@Retention(RetentionPolicy.RUNTIME)
-public @interface ApiVersion {
-    int value();  // The version number this endpoint supports
-}
-```
-
-```java
-// ApiVersionRequestMappingHandlerMapping.java
-// Custom handler that routes requests based on X-API-Version header
-package com.example.api.config;
-
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
-import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
-import org.springframework.web.method.HandlerMethod;
-import jakarta.servlet.http.HttpServletRequest;
-import java.lang.reflect.Method;
-
-public class ApiVersionRequestMappingHandlerMapping
-        extends RequestMappingHandlerMapping {
-
-    @Override
-    protected RequestMappingInfo getMappingForMethod(
-            Method method, Class<?> handlerType) {
-
-        RequestMappingInfo info = super.getMappingForMethod(method, handlerType);
-        if (info == null) return null;
-
-        // Check for @ApiVersion on method first, then on class
-        ApiVersion methodAnnotation = method.getAnnotation(ApiVersion.class);
-        if (methodAnnotation != null) {
-            return createVersionedMapping(info, methodAnnotation.value());
-        }
-
-        ApiVersion typeAnnotation = handlerType.getAnnotation(ApiVersion.class);
-        if (typeAnnotation != null) {
-            return createVersionedMapping(info, typeAnnotation.value());
-        }
-
-        return info;
-    }
-
-    // Add header condition to the request mapping
-    private RequestMappingInfo createVersionedMapping(
-            RequestMappingInfo info, int version) {
-
-        // Require X-API-Version header to match
-        String headerCondition = "X-API-Version=" + version;
-
-        return RequestMappingInfo
-            .paths(info.getPatternValues().toArray(new String[0]))
-            .methods(info.getMethodsCondition().getMethods()
-                .toArray(new org.springframework.web.bind.annotation.RequestMethod[0]))
-            .headers(headerCondition)
-            .build();
-    }
-}
-```
-
-```java
-// WebConfig.java
-// Register the custom handler mapping
-package com.example.api.config;
-
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class WebConfig {
-
-    @Bean
-    public ApiVersionRequestMappingHandlerMapping
-            apiVersionRequestMappingHandlerMapping() {
-
-        ApiVersionRequestMappingHandlerMapping mapping =
-            new ApiVersionRequestMappingHandlerMapping();
-        mapping.setOrder(0);  // Higher priority than default handler
-        return mapping;
-    }
-}
-```
+### Implementation with Header Conditions
 
 ```java
 // UserController.java
-// Controller using custom @ApiVersion annotation
+// Controller using X-API-Version header conditions
 package com.example.api;
 
 import org.springframework.web.bind.annotation.*;
-import com.example.api.annotation.ApiVersion;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
 
     // Responds to requests with header: X-API-Version: 1
-    @ApiVersion(1)
-    @GetMapping
+    @GetMapping(headers = "X-API-Version=1")
     public List<UserResponseV1> getUsersV1() {
         return userService.getAllUsers().stream()
             .map(this::toV1Response)
@@ -351,8 +261,7 @@ public class UserController {
     }
 
     // Responds to requests with header: X-API-Version: 2
-    @ApiVersion(2)
-    @GetMapping
+    @GetMapping(headers = "X-API-Version=2")
     public List<UserResponseV2> getUsersV2() {
         return userService.getAllUsers().stream()
             .map(this::toV2Response)
@@ -376,6 +285,7 @@ package com.example.api;
 
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.MediaType;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
@@ -555,8 +465,8 @@ public class DeprecationInterceptor implements HandlerInterceptor {
 
         // Add deprecation warning for V1 endpoints
         if (path.contains("/v1/")) {
-            response.setHeader("Deprecation", "true");
-            response.setHeader("Sunset", "Sat, 01 Jun 2026 00:00:00 GMT");
+            response.setHeader("Deprecation", "@1780272000");
+            response.setHeader("Sunset", "Tue, 01 Jun 2027 00:00:00 GMT");
             response.setHeader("Link",
                 "</api/v2" + path.substring(path.indexOf("/v1/") + 3) + ">; rel=\"successor-version\"");
         }
