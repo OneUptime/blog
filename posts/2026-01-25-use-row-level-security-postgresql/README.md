@@ -43,6 +43,7 @@ CREATE TABLE documents (
     content TEXT,
     owner_id INTEGER NOT NULL,
     department TEXT,
+    is_public BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -50,7 +51,7 @@ CREATE TABLE documents (
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 
 -- By default, with RLS enabled and no policies, no rows are visible
--- (except to table owners and superusers)
+-- (except to table owners, superusers, and roles with BYPASSRLS)
 ```
 
 ### Create a Simple Policy
@@ -161,10 +162,23 @@ CREATE TABLE users (
     role TEXT DEFAULT 'user'
 );
 
+CREATE TABLE teams (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    tenant_id INTEGER NOT NULL REFERENCES tenants(id)
+);
+
+CREATE TABLE team_members (
+    team_id INTEGER REFERENCES teams(id),
+    user_id INTEGER REFERENCES users(id),
+    PRIMARY KEY (team_id, user_id)
+);
+
 CREATE TABLE projects (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+    team_id INTEGER REFERENCES teams(id),
     created_by INTEGER REFERENCES users(id),
     created_at TIMESTAMP DEFAULT NOW()
 );
@@ -193,7 +207,7 @@ CREATE POLICY tenant_isolation ON projects
 # Python example: Set tenant context for each request
 
 import psycopg2
-from flask import Flask, g, request
+from flask import Flask, g, jsonify, request
 
 app = Flask(__name__)
 
@@ -206,8 +220,8 @@ def get_db_connection():
     user_id = get_user_from_request(request)
 
     with conn.cursor() as cur:
-        cur.execute("SET app.tenant_id = %s", (tenant_id,))
-        cur.execute("SET app.current_user_id = %s", (user_id,))
+        cur.execute("SELECT set_config('app.tenant_id', %s, false)", (str(tenant_id),))
+        cur.execute("SELECT set_config('app.current_user_id', %s, false)", (str(user_id),))
 
     return conn
 
@@ -332,7 +346,7 @@ ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 -- Allow inserts but no updates or deletes
 CREATE POLICY audit_insert ON audit_logs
     FOR INSERT
-    WITH CHECK (true);  -- Anyone can insert
+    WITH CHECK (true);  -- Any role with INSERT privilege can insert
 
 CREATE POLICY audit_select ON audit_logs
     FOR SELECT
@@ -341,7 +355,7 @@ CREATE POLICY audit_select ON audit_logs
         OR is_admin()                 -- Admins see all
     );
 
--- No UPDATE or DELETE policies = no modifications allowed
+-- No UPDATE or DELETE policies = no modifications allowed for roles subject to RLS
 ```
 
 ### Hierarchical Data Access
@@ -376,10 +390,17 @@ RETURNS TABLE(org_id INTEGER) AS $$
     SELECT id FROM org_tree;
 $$ LANGUAGE sql STABLE;
 
+CREATE OR REPLACE FUNCTION current_org_id()
+RETURNS INTEGER AS $$
+BEGIN
+    RETURN current_setting('app.current_org_id', true)::INTEGER;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
 -- Policy using the function
 CREATE POLICY org_hierarchy ON org_documents
     FOR ALL
-    USING (org_id IN (SELECT get_accessible_orgs(current_org_id())));
+    USING (org_id IN (SELECT org_id FROM get_accessible_orgs(current_org_id())));
 ```
 
 ---
@@ -389,7 +410,7 @@ CREATE POLICY org_hierarchy ON org_documents
 ### Superuser and Table Owners
 
 ```sql
--- Superusers always bypass RLS
+-- Superusers and roles with BYPASSRLS always bypass RLS
 -- Table owners bypass RLS by default
 
 -- Force RLS on table owner too
@@ -408,7 +429,7 @@ CREATE ROLE service_account BYPASSRLS;
 CREATE POLICY service_bypass ON documents
     FOR ALL
     TO service_account
-    USING (true);  -- See everything
+    USING (true);  -- Allow all rows for roles with table privileges
 ```
 
 ---
@@ -421,7 +442,7 @@ SET ROLE app_user;
 SET app.current_user_id = '1';
 SET app.tenant_id = '100';
 
--- Should only see user 1's documents in tenant 100
+-- Should only see user 1's documents
 SELECT * FROM documents;
 
 -- Try to access another user's document
@@ -464,7 +485,7 @@ WHERE relname = 'documents';
 ```sql
 -- Add indexes for columns used in policies
 CREATE INDEX idx_documents_owner ON documents (owner_id);
-CREATE INDEX idx_documents_tenant ON documents (tenant_id);
+CREATE INDEX idx_projects_tenant ON projects (tenant_id);
 
 -- For complex policies, consider partial indexes
 CREATE INDEX idx_documents_public ON documents (id)
