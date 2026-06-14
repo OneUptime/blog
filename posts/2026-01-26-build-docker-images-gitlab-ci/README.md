@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab CI, Docker, Container, CI/CD, DevOps, Container Registry
 
-Description: Learn how to build, tag, and push Docker images with GitLab CI using Docker-in-Docker, Kaniko, and BuildKit for fast, secure container builds.
+Description: Learn how to build, tag, and push Docker images with GitLab CI using Docker-in-Docker, rootless BuildKit, and Buildx for fast, secure container builds.
 
 ---
 
@@ -38,29 +38,33 @@ build-image:
 
 The `docker:dind` service runs a full Docker daemon. Your job connects to it via TCP. This works but requires privileged mode on the runner.
 
-## Kaniko for Rootless Builds
+## BuildKit Rootless Builds
 
-Kaniko builds images without requiring a Docker daemon or privileged access.
+Rootless BuildKit builds images without requiring a Docker daemon or privileged access.
 
 ```yaml
 build-image:
   stage: build
   image:
-    name: gcr.io/kaniko-project/executor:v1.19.0-debug
+    name: moby/buildkit:rootless
     entrypoint: [""]
+  variables:
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
+  before_script:
+    # BuildKit reads credentials from this file
+    - mkdir -p ~/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > ~/.docker/config.json
   script:
-    # Kaniko reads credentials from this file
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
     # Build and push in one command
-    - /kaniko/executor
-      --context "${CI_PROJECT_DIR}"
-      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
-      --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}"
-      --destination "${CI_REGISTRY_IMAGE}:latest"
+    - |
+      buildctl-daemonless.sh build \
+        --frontend dockerfile.v0 \
+        --local context=. \
+        --local dockerfile=. \
+        --output type=image,name=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA,push=true
 ```
 
-Kaniko executes Dockerfile commands directly in the container, writing layers to the registry without needing Docker. This is more secure but can be slower for complex builds.
+BuildKit executes Dockerfile builds directly in the container, writing the resulting image to the registry without needing Docker. This is more secure than privileged Docker-in-Docker and provides a maintained replacement for Kaniko.
 
 ## BuildKit with Buildx
 
@@ -229,6 +233,12 @@ stages:
 
 build-image:
   stage: build
+  image: docker:24.0
+  services:
+    - docker:24.0-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
   script:
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
     # Save image to file for scanning
@@ -251,14 +261,20 @@ scan-image:
 
 push-image:
   stage: push
+  image: docker:24.0
+  services:
+    - docker:24.0-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker load < image.tar
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-  dependencies:
-    - build-image
   needs:
-    - scan-image
+    - job: build-image
+      artifacts: true
+    - job: scan-image
 ```
 
 ## Build Arguments and Secrets
@@ -280,6 +296,7 @@ For secrets during build, use BuildKit's secret mounting:
 
 ```dockerfile
 # Dockerfile
+# syntax=docker/dockerfile:1
 FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
@@ -381,4 +398,4 @@ build-backend:
 
 ---
 
-Building Docker images in GitLab CI balances speed, security, and simplicity. Start with Docker-in-Docker for familiarity, then move to Kaniko if you need rootless builds or BuildKit if you need advanced caching. The key is matching your build approach to your security requirements and performance needs.
+Building Docker images in GitLab CI balances speed, security, and simplicity. Start with Docker-in-Docker for familiarity, then move to rootless BuildKit if you need daemonless builds or Buildx if you need advanced caching. The key is matching your build approach to your security requirements and performance needs.
