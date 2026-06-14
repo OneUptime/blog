@@ -35,7 +35,7 @@ flowchart TD
     end
 ```
 
-When a pod needs to resolve a DNS name, the request goes to CoreDNS. CoreDNS then determines whether the query is for an internal Kubernetes service or an external domain. Internal queries are resolved using the Kubernetes API, while external queries are forwarded to upstream DNS servers.
+When a pod needs to resolve a DNS name, the request goes to CoreDNS. CoreDNS then determines whether the query is for an internal Kubernetes service or an external domain. Internal queries are resolved from Kubernetes service and pod data that CoreDNS watches through the Kubernetes API, while external queries are forwarded to upstream DNS servers.
 
 ## CoreDNS Architecture in Kubernetes
 
@@ -241,7 +241,7 @@ data:
         ready
 
         # hosts plugin: Add custom static DNS entries
-        # Place this BEFORE the kubernetes plugin
+        # fallthrough lets unmatched names continue to later plugins
         hosts {
            # Format: IP_ADDRESS HOSTNAME
            192.168.1.100 legacy-database.internal
@@ -361,7 +361,7 @@ metadata:
 data:
   Corefile: |
     # Handle cluster.local domain (Kubernetes services)
-    cluster.local:53 {
+    cluster.local in-addr.arpa ip6.arpa:53 {
         errors
         cache 30
         kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -377,7 +377,7 @@ data:
         cache 30
         # Forward to internal corporate DNS servers
         forward . 10.0.0.53 10.0.0.54 {
-           # Use TCP if UDP fails
+           # Prefer UDP for TCP client queries; truncated responses retry over TCP
            prefer_udp
            # Health check interval
            health_check 5s
@@ -403,11 +403,9 @@ data:
         ready
         prometheus :9153
 
-        # Forward to public DNS servers
-        forward . 8.8.8.8 8.8.4.4 {
-           # Use TLS for DNS queries (DNS over TLS)
-           # tls_servername dns.google
-           prefer_udp
+        # Forward to Google Public DNS using DNS over TLS
+        forward . tls://8.8.8.8 tls://8.8.4.4 {
+           tls_servername dns.google
            max_concurrent 1000
         }
 
@@ -467,7 +465,7 @@ spec:
 
 ### Understanding ndots
 
-The `ndots` option controls when Kubernetes treats a hostname as fully qualified.
+The `ndots` option controls when the resolver tries a hostname as absolute before applying search domains.
 
 ```mermaid
 flowchart TD
@@ -481,7 +479,7 @@ flowchart TD
     F2 --> F3[api.example.com.cluster.local]
     F3 --> F4[api.example.com - absolute]
 
-    D --> G[Treat as absolute immediately]
+    D --> G[Try absolute name first]
     G --> H[api.example.com]
 ```
 
@@ -557,7 +555,7 @@ kubectl scale deployment coredns -n kube-system --replicas=3
 kubectl get pods -n kube-system -l k8s-app=kube-dns
 ```
 
-For automatic scaling based on cluster size, use the cluster-proportional-autoscaler:
+For automatic scaling based on cluster size, use the cluster-proportional-autoscaler. The deployment below assumes you also create the required ServiceAccount, RBAC rules, and ConfigMap for the autoscaler:
 
 ```yaml
 # coredns-autoscaler.yaml
@@ -579,7 +577,7 @@ spec:
       serviceAccountName: coredns-autoscaler
       containers:
       - name: autoscaler
-        image: registry.k8s.io/cpa/cluster-proportional-autoscaler:1.8.8
+        image: registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.10.3
         command:
           - /cluster-proportional-autoscaler
           - --namespace=kube-system
@@ -604,7 +602,7 @@ CoreDNS exposes Prometheus metrics on port 9153.
 
 ```bash
 # Port-forward to access metrics
-kubectl port-forward -n kube-system svc/kube-dns 9153:9153
+kubectl port-forward -n kube-system deployment/coredns 9153:9153
 
 # View metrics
 curl http://localhost:9153/metrics
@@ -618,8 +616,8 @@ Key metrics to monitor:
 | `coredns_dns_responses_total` | Total responses by response code |
 | `coredns_dns_request_duration_seconds` | Request latency histogram |
 | `coredns_cache_hits_total` | Cache hit count |
-| `coredns_cache_misses_total` | Cache miss count |
-| `coredns_forward_requests_total` | Forwarded requests count |
+| `coredns_cache_requests_total` | Cache request count; derive misses from requests minus hits |
+| `coredns_proxy_request_duration_seconds_count{proxy_name="forward"}` | Forwarded requests count |
 
 Example Prometheus alert rules:
 
