@@ -8,7 +8,7 @@ Description: Learn how to capture and process real-time data changes in DynamoDB
 
 ---
 
-DynamoDB Streams captures a time-ordered sequence of item-level changes in any DynamoDB table. Every insert, update, or delete generates a stream record that you can process with Lambda, Kinesis, or custom consumers.
+DynamoDB Streams captures a time-ordered sequence of item-level changes in any DynamoDB table. Every insert, delete, or data-changing update generates a stream record that you can process with Lambda, the DynamoDB Streams Kinesis adapter, or custom consumers.
 
 Use cases include:
 
@@ -30,7 +30,7 @@ flowchart LR
 
     subgraph Consumers
         Lambda[Lambda Function]
-        Kinesis[Kinesis Data Streams]
+        Kinesis[Kinesis Adapter]
         Custom[Custom Consumer]
     end
 
@@ -166,24 +166,27 @@ sequenceDiagram
  */
 export const handler = async (event) => {
     console.log(`Processing ${event.Records.length} records`);
+    const failedRecords = [];
 
     // Process each record in the batch
-    // DynamoDB streams guarantee ordering per partition key
+    // DynamoDB Streams preserve ordering for modifications to the same item
     for (const record of event.Records) {
         try {
             await processRecord(record);
         } catch (error) {
-            // Log the error but continue processing other records
-            // Consider using a dead-letter queue for failed records
+            // Track the failed record so Lambda can retry from this sequence number
             console.error(`Failed to process record: ${error.message}`, {
                 eventId: record.eventID,
                 eventName: record.eventName
             });
+            failedRecords.push({
+                itemIdentifier: record.dynamodb.SequenceNumber
+            });
         }
     }
 
-    // Return success - Lambda will checkpoint after this
-    return { statusCode: 200, body: 'Processed' };
+    // Requires FunctionResponseTypes: ["ReportBatchItemFailures"] in the event source mapping
+    return { batchItemFailures: failedRecords };
 };
 
 /**
@@ -338,17 +341,17 @@ def handler(event, context):
         try:
             process_record(record)
         except Exception as e:
-            # Track failures for potential DLQ handling
+            # Track failures so Lambda can retry from the failed sequence number
             logger.error(f"Failed to process record {record['eventID']}: {e}")
-            failed_records.append(record['eventID'])
+            failed_records.append(record['dynamodb']['SequenceNumber'])
 
     if failed_records:
-        # Partial batch failure - return failed record IDs
+        # Partial batch failure - return failed sequence numbers
         # Requires FunctionResponseTypes: ["ReportBatchItemFailures"] in event source mapping
         return {
             'batchItemFailures': [
-                {'itemIdentifier': record_id}
-                for record_id in failed_records
+                {'itemIdentifier': sequence_number}
+                for sequence_number in failed_records
             ]
         }
 
@@ -846,11 +849,11 @@ DynamoDB Streams and Lambda publish metrics automatically:
 
 | Metric | What It Tells You |
 |--------|-------------------|
-| `IteratorAge` | How far behind your consumer is (target: < 1 minute) |
-| `GetRecords.IteratorAgeMilliseconds` | Time since oldest record in batch was written |
-| `Lambda Errors` | Failed invocations |
-| `Lambda Duration` | Processing time per batch |
-| `Lambda ConcurrentExecutions` | Parallelism level |
+| `AWS/Lambda IteratorAge` | How far behind your Lambda stream consumer is (target: < 1 minute) |
+| `AWS/Lambda Errors` | Failed invocations |
+| `AWS/Lambda Duration` | Processing time per batch |
+| `AWS/Lambda ConcurrentExecutions` | Parallelism level |
+| Event source mapping metrics | Optional per-mapping event counts when `MetricsConfig` is enabled |
 
 ### CloudWatch Alarm for Consumer Lag
 
@@ -864,10 +867,10 @@ Resources:
       AlarmDescription: Stream consumer is falling behind
 
       MetricName: IteratorAge
-      Namespace: AWS/DynamoDB
+      Namespace: AWS/Lambda
       Dimensions:
-        - Name: TableName
-          Value: !Ref UsersTable
+        - Name: FunctionName
+          Value: !Ref StreamProcessor
 
       Statistic: Maximum
       Period: 60
@@ -938,7 +941,7 @@ Stream records expire after 24 hours. If processing is slow:
 
 ### 3. Handle Duplicates
 
-Stream processing is at-least-once. Records may be delivered more than once during retries or shard splits. Make your handlers idempotent:
+Stream processing with Lambda is at-least-once. Records may be processed more than once during retries. Make your handlers idempotent:
 
 ```javascript
 // Use conditional writes to ensure idempotency
@@ -965,7 +968,7 @@ Events:
       Stream: !GetAtt Table.StreamArn
       FilterCriteria:
         Filters:
-          # Only process records where status changed to 'active'
+          # Only process records where the new status is 'active'
           - Pattern: '{"dynamodb": {"NewImage": {"status": {"S": ["active"]}}}}'
 ```
 
