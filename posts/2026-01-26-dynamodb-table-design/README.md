@@ -83,7 +83,7 @@ Let's design a schema for an e-commerce application. First, list the access patt
 | Access Pattern | Query |
 |---------------|-------|
 | Get user by ID | PK = USER#userId |
-| Get order by ID | PK = ORDER#orderId |
+| Get order by ID | GSI: GSI1PK = ORDER#orderId |
 | Get all orders for a user | PK = USER#userId, SK begins_with ORDER# |
 | Get order items | PK = ORDER#orderId, SK begins_with ITEM# |
 | Get user by email | GSI: email |
@@ -155,15 +155,21 @@ async function createUser(user) {
 
 // Create an order
 async function createOrder(order) {
+  const createdAt = new Date().toISOString();
   const item = {
     ...keys.order(order.userId, order.id),
     entityType: 'ORDER',
+    orderId: order.id,
+    userId: order.userId,
     status: order.status,
     total: order.total,
-    createdAt: new Date().toISOString(),
+    createdAt,
+    // GSI for order lookup
+    GSI1PK: `ORDER#${order.id}`,
+    GSI1SK: `USER#${order.userId}`,
     // GSI for status queries
-    GSI1PK: `STATUS#${order.status}`,
-    GSI1SK: order.createdAt
+    GSI2PK: `STATUS#${order.status}`,
+    GSI2SK: createdAt
   };
 
   await client.send(new PutItemCommand({
@@ -243,6 +249,8 @@ const goodDesign = {
 };
 
 // GOOD: Write sharding for high-traffic items
+const { GetItemCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
+
 function getShardedKey(baseKey, shardCount = 10) {
   // Distribute writes across multiple partitions
   const shard = Math.floor(Math.random() * shardCount);
@@ -480,10 +488,6 @@ async function getDepartments(orgId) {
   const response = await client.send(new QueryCommand({
     TableName: TABLE_NAME,
     KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
-    ExpressionAttributeValues: marshall({
-      ':pk': `ORG#${orgId}`,
-      ':sk': 'DEPT#'
-    }),
     // Filter to only department entities, not teams under them
     FilterExpression: 'entityType = :type',
     ExpressionAttributeValues: marshall({
@@ -542,7 +546,7 @@ async function storeSensorReading(sensorId, reading) {
     entityType: 'READING',
     value: reading.value,
     unit: reading.unit,
-    ttl: ttl  // DynamoDB will auto-delete after this time
+    ttl: ttl  // DynamoDB can automatically delete the item after this time
   };
 
   await client.send(new PutItemCommand({
