@@ -10,7 +10,7 @@ Description: A beginner's guide to Cilium for Kubernetes networking, covering in
 
 ## Introduction
 
-Cilium is a powerful open-source networking solution for Kubernetes that leverages eBPF (extended Berkeley Packet Filter) to provide high-performance networking, security, and observability. Unlike traditional CNI (Container Network Interface) plugins that rely on iptables, Cilium operates directly in the Linux kernel, offering better performance and more granular control over network traffic.
+Cilium is a powerful open-source networking solution for Kubernetes that leverages eBPF (extended Berkeley Packet Filter) to provide high-performance networking, security, and observability. Unlike many traditional CNI (Container Network Interface) plugins that rely heavily on iptables, Cilium programs eBPF in the Linux kernel, offering better performance and more granular control over network traffic.
 
 This guide walks you through getting started with Cilium, from installation to implementing network policies and enabling observability with Hubble.
 
@@ -56,7 +56,8 @@ Each node runs a Cilium agent that programs eBPF maps in the kernel. The Cilium 
 
 Before installing Cilium, ensure you have:
 
-- A Kubernetes cluster (v1.21 or later recommended)
+- A Kubernetes cluster version compatible with your Cilium release (Cilium 1.19 is tested with Kubernetes 1.32 through 1.35)
+- Linux nodes that meet Cilium's kernel requirements (kernel 5.10 or later, or an equivalent distribution kernel)
 - kubectl configured to access your cluster
 - Helm 3.x installed (for Helm-based installation)
 
@@ -65,7 +66,7 @@ You can verify your cluster is ready:
 ```bash
 # Check Kubernetes version
 
-kubectl version --short
+kubectl version
 
 # Verify kubectl can access the cluster
 kubectl get nodes
@@ -81,9 +82,11 @@ The Cilium CLI is the easiest way to install Cilium. First, install the CLI tool
 # For Linux (amd64)
 CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
 CLI_ARCH=amd64
-curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz
+if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
+curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
 sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
-rm cilium-linux-${CLI_ARCH}.tar.gz
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 
 # For macOS
 brew install cilium-cli
@@ -109,11 +112,12 @@ helm repo add cilium https://helm.cilium.io/
 helm repo update
 
 # Install Cilium with Hubble enabled
-helm install cilium cilium/cilium --version 1.15.0 \
+helm install cilium cilium/cilium --version 1.19.4 \
     --namespace kube-system \
+    --set hubble.enabled=true \
     --set hubble.relay.enabled=true \
     --set hubble.ui.enabled=true \
-    --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,http}"
+    --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,httpV2}"
 ```
 
 The Helm installation allows you to customize various aspects of Cilium. Here are some common configuration options:
@@ -122,6 +126,7 @@ The Helm installation allows you to customize various aspects of Cilium. Here ar
 # values.yaml - Example Cilium configuration
 # Enable Hubble for observability
 hubble:
+  enabled: true
   relay:
     enabled: true
   ui:
@@ -135,7 +140,7 @@ hubble:
       - flow
       - port-distribution
       - icmp
-      - http
+      - httpV2
 
 # Configure IP address management
 ipam:
@@ -149,17 +154,17 @@ ipam:
 bandwidthManager:
   enabled: true
 
-# Enable native routing mode (recommended for cloud providers)
+# Enable native routing mode when your network can route Pod CIDRs
 routingMode: native
 
 # Configure kube-proxy replacement
-kubeProxyReplacement: strict
+kubeProxyReplacement: true
 ```
 
 Apply the custom configuration:
 
 ```bash
-helm install cilium cilium/cilium --version 1.15.0 \
+helm install cilium cilium/cilium --version 1.19.4 \
     --namespace kube-system \
     -f values.yaml
 ```
@@ -291,7 +296,7 @@ spec:
               - method: POST
                 path: "/api/v1/orders"
 
-              # Allow GET requests to health check endpoint from anyone
+              # Allow GET requests to the health check endpoint from web-client pods
               - method: GET
                 path: "/health"
 ```
@@ -318,8 +323,7 @@ spec:
     # Allow DNS resolution (required for FQDN rules to work)
     - toEndpoints:
         - matchLabels:
-            io.cilium.k8s.policy.cluster: default
-            io.cilium.k8s.policy.serviceaccount: kube-dns
+            k8s:io.kubernetes.pod.namespace: kube-system
             k8s-app: kube-dns
       toPorts:
         - ports:
@@ -364,12 +368,12 @@ spec:
     # Allow traffic from the staging namespace
     - fromEndpoints:
         - matchLabels:
-            io.cilium.k8s.namespace.labels.name: staging
+            k8s:io.kubernetes.pod.namespace: staging
 
     # Allow traffic from the monitoring namespace (for metrics scraping)
     - fromEndpoints:
         - matchLabels:
-            io.cilium.k8s.namespace.labels.name: monitoring
+            k8s:io.kubernetes.pod.namespace: monitoring
       toPorts:
         - ports:
             - port: "9090"
@@ -384,11 +388,13 @@ Hubble is Cilium's observability platform that provides deep visibility into net
 
 ```bash
 # For Linux
-HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
 HUBBLE_ARCH=amd64
-curl -L --fail --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-${HUBBLE_ARCH}.tar.gz
+if [ "$(uname -m)" = "aarch64" ]; then HUBBLE_ARCH=arm64; fi
+curl -L --fail --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
 sudo tar xzvfC hubble-linux-${HUBBLE_ARCH}.tar.gz /usr/local/bin
-rm hubble-linux-${HUBBLE_ARCH}.tar.gz
+rm hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
 
 # For macOS
 brew install hubble
@@ -481,28 +487,13 @@ The UI shows:
 
 Hubble can export metrics to Prometheus for long-term storage and alerting:
 
-```yaml
-# prometheus-servicemonitor.yaml
-# ServiceMonitor for Prometheus Operator to scrape Hubble metrics
-
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: hubble
-  namespace: kube-system
-  labels:
-    app: hubble
-spec:
-  selector:
-    matchLabels:
-      k8s-app: hubble
-  namespaceSelector:
-    matchNames:
-      - kube-system
-  endpoints:
-    - port: hubble-metrics
-      interval: 30s
-      path: /metrics
+```bash
+# Create a Prometheus Operator ServiceMonitor for Hubble metrics
+helm upgrade cilium cilium/cilium --namespace kube-system \
+    --reuse-values \
+    --set hubble.enabled=true \
+    --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,httpV2}" \
+    --set hubble.metrics.serviceMonitor.enabled=true
 ```
 
 Key metrics exposed by Hubble include:
@@ -519,10 +510,10 @@ Cilium can fully replace kube-proxy, providing better performance for service lo
 
 ```bash
 # Install Cilium with kube-proxy replacement
-helm upgrade cilium cilium/cilium --version 1.15.0 \
+helm upgrade cilium cilium/cilium --version 1.19.4 \
     --namespace kube-system \
     --reuse-values \
-    --set kubeProxyReplacement=strict \
+    --set kubeProxyReplacement=true \
     --set k8sServiceHost=<API_SERVER_IP> \
     --set k8sServicePort=<API_SERVER_PORT>
 ```
@@ -531,10 +522,10 @@ Verify kube-proxy replacement is working:
 
 ```bash
 # Check Cilium kube-proxy replacement status
-kubectl -n kube-system exec ds/cilium -- cilium status | grep KubeProxyReplacement
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep KubeProxyReplacement
 
 # View service load balancing rules
-kubectl -n kube-system exec ds/cilium -- cilium service list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg service list
 ```
 
 Benefits of replacing kube-proxy:
@@ -556,21 +547,21 @@ cilium status
 kubectl -n kube-system logs -l k8s-app=cilium --tail=100
 
 # Check specific node's Cilium agent
-kubectl -n kube-system exec ds/cilium -- cilium status --verbose
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose
 
 # List all Cilium endpoints
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list
 ```
 
 ### Debugging Network Policies
 
 ```bash
 # Check if a policy is applied to an endpoint
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list
-kubectl -n kube-system exec ds/cilium -- cilium endpoint get <endpoint-id>
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint get <endpoint-id>
 
 # Check policy verdicts
-kubectl -n kube-system exec ds/cilium -- cilium policy get
+kubectl -n kube-system exec ds/cilium -- cilium-dbg policy get
 
 # Monitor policy decisions in real-time
 hubble observe --verdict DROPPED --follow
@@ -585,14 +576,14 @@ hubble observe --verdict DROPPED --follow
 kubectl rollout restart deployment -n <namespace>
 
 # Check if endpoints are in ready state
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list | grep -v ready
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep -v ready
 ```
 
 **Issue**: DNS resolution not working
 
 ```bash
 # Check if CoreDNS pods are managed by Cilium
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list | grep kube-dns
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep kube-dns
 
 # Verify DNS traffic is allowed
 hubble observe --protocol udp --port 53
@@ -602,7 +593,7 @@ hubble observe --protocol udp --port 53
 
 ```bash
 # Check if cluster has proper CIDR configuration
-kubectl -n kube-system exec ds/cilium -- cilium config | grep -i cidr
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config | grep -i cidr
 
 # Verify egress policy allows external traffic
 kubectl get ciliumnetworkpolicies -A
@@ -610,23 +601,46 @@ kubectl get ciliumnetworkpolicies -A
 
 ## Best Practices
 
-### 1. Start with Monitoring Mode
+### 1. Start with Visibility Before Enforcement
 
-Before enforcing policies, use Cilium in monitoring mode to understand your traffic patterns:
+Before enforcing restrictive policies, use Hubble to understand your traffic patterns. If you need to intercept DNS for visibility without putting endpoints into default-deny, disable default-deny on that policy:
 
 ```yaml
 # audit-policy.yaml
-# Policy that logs all traffic without blocking
+# Policy that observes DNS without forcing default-deny
 
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
-  name: audit-all
+  name: observe-dns
 spec:
-  endpointSelector: {}
-  ingress:
-    - {}
-  ingressDeny: []
+  endpointSelector:
+    matchExpressions:
+      - key: "io.kubernetes.pod.namespace"
+        operator: "NotIn"
+        values:
+          - "kube-system"
+      - key: "k8s-app"
+        operator: "NotIn"
+        values:
+          - kube-dns
+  enableDefaultDeny:
+    egress: false
+    ingress: false
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: TCP
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
 ```
 
 ### 2. Use Endpoint Selectors Carefully
@@ -678,6 +692,6 @@ Key takeaways from this guide:
 - CiliumNetworkPolicy provides Layer 7 filtering and DNS-aware rules
 - Hubble offers deep visibility into network flows and service dependencies
 - Cilium can replace kube-proxy for better service load balancing performance
-- Start with monitoring and gradually enforce policies to avoid disruption
+- Start with visibility and gradually enforce policies to avoid disruption
 
 As you gain experience with Cilium, explore advanced features like cluster mesh for multi-cluster networking, Cilium Service Mesh for sidecar-free mTLS, and Tetragon for security observability. These capabilities make Cilium a comprehensive platform for securing and observing your Kubernetes infrastructure.
