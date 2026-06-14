@@ -80,7 +80,7 @@ aws dynamodb update-table \
         }]"
 ```
 
-This creates an index where you can query by `status` and optionally filter or sort by `createdAt`.
+This creates an index where you can query by `status` and optionally use `createdAt` in range conditions or sort order.
 
 ## Creating a GSI with CloudFormation
 
@@ -205,7 +205,7 @@ Here is the equivalent in Python using boto3:
 
 import boto3
 from boto3.dynamodb.conditions import Key
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def get_orders_by_status(status: str, start_date: str, end_date: str) -> list:
     """
@@ -273,8 +273,10 @@ def get_all_orders_by_status(status: str) -> list:
 
 if __name__ == '__main__':
     # Find pending orders from the last 7 days
-    end = datetime.utcnow().isoformat() + 'Z'
-    start = (datetime.utcnow() - timedelta(days=7)).isoformat() + 'Z'
+    end = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    start = (
+        datetime.now(timezone.utc) - timedelta(days=7)
+    ).isoformat().replace('+00:00', 'Z')
 
     orders = get_orders_by_status('PENDING', start, end)
 
@@ -374,7 +376,7 @@ This pattern is useful for:
 Every write to your base table that affects a GSI attribute triggers a write to the GSI. This means:
 
 - Writing one item can consume WCUs from the table AND each affected GSI
-- GSIs have their own throughput (or share the table's on-demand capacity)
+- GSIs use the table's capacity mode; in provisioned mode, each GSI has its own throughput settings
 - A throttled GSI can back-pressure writes to your table
 
 ```mermaid
@@ -388,7 +390,7 @@ sequenceDiagram
     Table->>GSI1: Replicate (1 WCU)
     Table->>GSI2: Replicate (1 WCU)
 
-    Note over Table,GSI2: Total: 3 WCUs consumed
+    Note over Table,GSI2: Example for <=1 KB item/index entries: 3 WCUs consumed
 
     GSI1-->>Table: Throttled!
     Table-->>App: WriteThrottled
@@ -401,7 +403,7 @@ Best practices for GSI throughput:
 # Check for GSI throttling in CloudWatch
 
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def check_gsi_throttling(table_name: str, index_name: str) -> dict:
     """
@@ -410,7 +412,7 @@ def check_gsi_throttling(table_name: str, index_name: str) -> dict:
     """
     cloudwatch = boto3.client('cloudwatch', region_name='us-east-1')
 
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(hours=1)
 
     # Check write throttle events
@@ -509,7 +511,7 @@ const order = {
 
 ## Handling GSI Eventual Consistency
 
-GSIs are eventually consistent, meaning there is a small delay between writing to the base table and the data appearing in the GSI. For most applications, this delay is milliseconds, but you should design for it.
+GSIs are eventually consistent, meaning there is a small delay between writing to the base table and the data appearing in the GSI. Under normal conditions this is usually a fraction of a second, but you should design for it.
 
 ```mermaid
 sequenceDiagram
@@ -520,7 +522,7 @@ sequenceDiagram
     App->>Table: UpdateItem(status='SHIPPED')
     Table-->>App: Success
 
-    Note over Table,GSI: Replication delay<br/>(usually < 100ms)
+    Note over Table,GSI: Replication delay<br/>(usually a fraction of a second)
 
     App->>GSI: Query(status='SHIPPED')
     GSI-->>App: Old data (still shows 'PROCESSING')
@@ -539,6 +541,10 @@ Strategies for handling eventual consistency:
 
 import time
 from typing import Optional
+from datetime import datetime, timezone
+
+import boto3
+from boto3.dynamodb.conditions import Key
 
 def update_and_verify_status(
     order_id: str,
@@ -560,13 +566,13 @@ def update_and_verify_status(
         ExpressionAttributeNames={'#status': 'status'},
         ExpressionAttributeValues={
             ':status': new_status,
-            ':now': datetime.utcnow().isoformat() + 'Z'
+            ':now': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
     )
 
     # Verify the update propagated to GSI
     for attempt in range(max_retries):
-        time.sleep(0.1 * (attempt + 1))  # Exponential backoff
+        time.sleep(0.1 * (attempt + 1))  # Simple incremental backoff
 
         response = table.query(
             IndexName='status-createdAt-index',
@@ -622,7 +628,7 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: Orders
-      BillingMode: PAY_PER_REQUEST  # Scale to zero when not in use
+      BillingMode: PAY_PER_REQUEST  # No provisioned read/write capacity to manage
 
       AttributeDefinitions:
         - AttributeName: userId
@@ -655,7 +661,7 @@ Resources:
               - total
               - customerName
 
-  # CloudWatch alarm for unexpected GSI costs
+  # CloudWatch alarm for GSI write throttling
   GSIThrottleAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
