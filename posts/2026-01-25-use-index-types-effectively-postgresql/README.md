@@ -39,7 +39,7 @@ graph TD
     F --> F1[Large Tables]
     F --> F2[Sequential Data]
 
-    G --> G1[Partitioned Data]
+    G --> G1[Space-Partitioned Data]
     G --> G2[IP Addresses]
 ```
 
@@ -53,7 +53,7 @@ B-tree is the default and most commonly used index type. It works well for equal
 
 - Equality comparisons (`=`)
 - Range queries (`<`, `>`, `<=`, `>=`, `BETWEEN`)
-- Pattern matching with prefix (`LIKE 'abc%'`)
+- Pattern matching with prefix (`LIKE 'abc%'`; use a pattern operator class such as `text_pattern_ops` when the database does not use the `C` locale)
 - Sorting (`ORDER BY`)
 - `IS NULL` and `IS NOT NULL`
 
@@ -78,17 +78,17 @@ CREATE INDEX idx_products_price ON products (price DESC NULLS LAST);
 ### Query Examples for B-tree
 
 ```sql
--- These queries will use the B-tree index on email
+-- These queries can use the B-tree index on email
 SELECT * FROM users WHERE email = 'user@example.com';  -- Equality
 SELECT * FROM users WHERE email LIKE 'user%';           -- Prefix pattern
 SELECT * FROM users WHERE email > 'a' AND email < 'b';  -- Range
 
 -- Multi-column index usage
--- Full index used
+-- Most efficient when the leading column is constrained
 SELECT * FROM orders WHERE customer_id = 100 AND order_date > '2026-01-01';
--- Partial index used (left-most column)
+-- Can use the left-most column
 SELECT * FROM orders WHERE customer_id = 100;
--- Index NOT used (skips left column)
+-- Usually much less useful because it skips the left-most column
 SELECT * FROM orders WHERE order_date > '2026-01-01';
 
 -- Check if index is being used
@@ -99,13 +99,13 @@ EXPLAIN ANALYZE SELECT * FROM users WHERE email = 'user@example.com';
 
 ## Hash Index
 
-Hash indexes are optimized for equality comparisons only. They are smaller and faster than B-tree for simple equality lookups.
+Hash indexes are optimized for equality comparisons only. They can be smaller than B-tree indexes for longer values and can reduce access time for equality lookups on large tables.
 
 ### When to Use Hash
 
 - Only equality comparisons (`=`)
 - When you never need range queries on the column
-- When index size matters (hash indexes are smaller)
+- When index size matters for longer indexed values
 
 ### Hash Examples
 
@@ -120,7 +120,7 @@ CREATE INDEX idx_orders_uuid ON orders USING HASH (order_uuid);
 ### Hash Index Considerations
 
 ```sql
--- Hash index WILL be used for:
+-- Hash index can be used for:
 SELECT * FROM sessions WHERE session_token = 'abc123';
 
 -- Hash index will NOT be used for:
@@ -196,7 +196,8 @@ CREATE TABLE events (
 -- Default GIN index supports @>, ?, ?|, ?& operators
 CREATE INDEX idx_events_data ON events USING GIN (data);
 
--- For path-based queries, use jsonb_path_ops
+-- For @>, @?, and @@ queries, jsonb_path_ops is smaller and more specific,
+-- but it does not support the ?, ?|, and ?& key-existence operators.
 CREATE INDEX idx_events_data_path ON events USING GIN (data jsonb_path_ops);
 
 -- Query examples
@@ -220,7 +221,7 @@ GiST indexes support complex data types and operators, particularly useful for g
 
 - Geometric data (points, boxes, polygons)
 - Range types (tsrange, int4range)
-- Network addresses (inet, cidr)
+- Network addresses (inet, cidr, with the `inet_ops` operator class)
 - Full-text search (alternative to GIN)
 - Nearest-neighbor searches
 
@@ -241,7 +242,7 @@ CREATE INDEX idx_locations_coords ON locations USING GiST (coordinates);
 SELECT * FROM locations
 WHERE coordinates <@ box '((0,0),(10,10))';
 
--- Find nearest locations (requires pg_trgm extension for KNN)
+-- Find nearest locations using KNN GiST
 SELECT name, coordinates <-> point '(5,5)' as distance
 FROM locations
 ORDER BY coordinates <-> point '(5,5)'
@@ -252,6 +253,9 @@ LIMIT 10;
 
 ```sql
 -- Create table with time ranges
+-- btree_gist is needed so the integer room_id can participate in a GiST exclusion constraint.
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
 CREATE TABLE reservations (
     id SERIAL PRIMARY KEY,
     room_id INTEGER,
@@ -296,10 +300,11 @@ CREATE INDEX idx_logs_created ON logs USING BRIN (created_at);
 CREATE INDEX idx_events_time ON events USING BRIN (event_time)
 WITH (pages_per_range = 64);
 
--- Check BRIN index effectiveness
-SELECT * FROM brin_page_items(
-    get_raw_page('idx_logs_created', 0),
-    'idx_logs_created'
+-- Inspect BRIN metadata (requires the pageinspect extension and superuser privileges)
+CREATE EXTENSION IF NOT EXISTS pageinspect;
+
+SELECT * FROM brin_metapage_info(
+    get_raw_page('idx_logs_created', 0)
 );
 ```
 
@@ -347,10 +352,10 @@ WHERE deleted_at IS NULL;
 ### Partial Index Usage
 
 ```sql
--- This query will use the partial index
+-- This query can use the partial index
 SELECT * FROM users WHERE email = 'test@example.com' AND is_active = true;
 
--- This query will NOT use the partial index
+-- This query cannot use the partial index
 SELECT * FROM users WHERE email = 'test@example.com' AND is_active = false;
 ```
 
