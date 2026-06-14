@@ -140,7 +140,7 @@ SELECT name, setting, short_desc
 FROM pg_settings
 WHERE name LIKE '%autovacuum%';
 
--- Check tables waiting for vacuum
+-- Check tables with many dead tuples
 SELECT
     schemaname,
     relname,
@@ -278,21 +278,12 @@ echo "Starting vacuum maintenance at $(date)"
 # Vacuum analyze all tables
 psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" <<EOF
 -- Vacuum and analyze tables with high dead tuple ratio
-DO \$\$
-DECLARE
-    r RECORD;
-BEGIN
-    FOR r IN
-        SELECT schemaname, relname
-        FROM pg_stat_user_tables
-        WHERE n_dead_tup > 10000
-        OR (n_dead_tup > 1000 AND
-            n_dead_tup > 0.1 * (n_live_tup + n_dead_tup))
-    LOOP
-        RAISE NOTICE 'Vacuuming %.%', r.schemaname, r.relname;
-        EXECUTE format('VACUUM ANALYZE %I.%I', r.schemaname, r.relname);
-    END LOOP;
-END \$\$;
+SELECT format('VACUUM ANALYZE %I.%I;', schemaname, relname)
+FROM pg_stat_user_tables
+WHERE n_dead_tup > 10000
+OR (n_dead_tup > 1000 AND
+    n_dead_tup > 0.1 * (n_live_tup + n_dead_tup))
+\gexec
 
 -- Update statistics for all tables
 ANALYZE;
@@ -325,10 +316,10 @@ VACUUM FULL VERBOSE bloated_table;
 ### Online Alternative to VACUUM FULL
 
 ```sql
--- pg_repack extension allows online table rewrite
+-- pg_repack extension allows online table rewrite with only brief locks
 CREATE EXTENSION pg_repack;
 
--- Repack a table without locking
+-- Repack a table without a long ACCESS EXCLUSIVE lock
 -- Run from command line:
 -- pg_repack -d mydb -t bloated_table
 
@@ -407,22 +398,11 @@ ALTER TABLE high_churn_table SET (
 ### 3. Schedule Full Vacuum During Maintenance Windows
 
 ```sql
--- Create maintenance function
-CREATE OR REPLACE FUNCTION maintenance_vacuum()
-RETURNS void AS $$
-DECLARE
-    r RECORD;
-BEGIN
-    FOR r IN
-        SELECT schemaname, relname
-        FROM pg_stat_user_tables
-        WHERE n_dead_tup > n_live_tup * 0.5  -- > 50% dead
-    LOOP
-        RAISE NOTICE 'VACUUM FULL on %.%', r.schemaname, r.relname;
-        EXECUTE format('VACUUM FULL %I.%I', r.schemaname, r.relname);
-    END LOOP;
-END;
-$$ LANGUAGE plpgsql;
+-- Generate and execute VACUUM FULL statements in psql
+SELECT format('VACUUM FULL %I.%I;', schemaname, relname)
+FROM pg_stat_user_tables
+WHERE n_dead_tup > n_live_tup * 0.5  -- > 50% dead
+\gexec
 ```
 
 ### 4. Monitor and Alert
