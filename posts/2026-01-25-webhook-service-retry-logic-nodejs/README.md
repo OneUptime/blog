@@ -131,13 +131,28 @@ function buildSignatureHeader(payload: string, secret: string): string {
 // Verify incoming webhook signature (for the receiver side)
 function verifySignature(
   payload: string,
-  header: string,
+  header: string | undefined,
   secret: string,
   tolerance: number = 300  // 5 minutes
 ): boolean {
+  if (!header) {
+    return false;
+  }
+
   const parts = header.split(',');
-  const timestamp = parseInt(parts[0].replace('t=', ''), 10);
-  const signature = parts[1].replace('v1=', '');
+  const timestampPart = parts.find(part => part.startsWith('t='));
+  const signaturePart = parts.find(part => part.startsWith('v1='));
+
+  if (!timestampPart || !signaturePart) {
+    return false;
+  }
+
+  const timestamp = parseInt(timestampPart.slice(2), 10);
+  const signature = signaturePart.slice(3);
+
+  if (!Number.isFinite(timestamp)) {
+    return false;
+  }
 
   // Check timestamp is within tolerance
   const now = Math.floor(Date.now() / 1000);
@@ -146,12 +161,15 @@ function verifySignature(
   }
 
   const expectedSignature = generateSignature(payload, secret, timestamp);
+  const received = Buffer.from(signature, 'hex');
+  const expected = Buffer.from(expectedSignature, 'hex');
+
+  if (received.length !== expected.length) {
+    return false;
+  }
 
   // Use timing-safe comparison to prevent timing attacks
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expectedSignature)
-  );
+  return crypto.timingSafeEqual(received, expected);
 }
 ```
 
@@ -242,7 +260,7 @@ class WebhookQueueManager {
     const stmt = this.db.prepare(`
       SELECT * FROM deliveries
       WHERE status = 'pending'
-        AND next_attempt_at <= datetime('now')
+        AND datetime(next_attempt_at) <= datetime('now')
       ORDER BY next_attempt_at ASC
       LIMIT ?
     `);
@@ -310,11 +328,18 @@ class WebhookQueueManager {
   }
 
   // Move failed deliveries to dead letter status
-  markAsDead(id: string, error: string): void {
+  markAsDead(
+    id: string,
+    error: string,
+    attempts: number,
+    responseStatus?: number
+  ): void {
     this.updateDelivery(id, {
       status: 'dead',
+      attempts,
       lastError: error,
       lastAttemptAt: new Date(),
+      responseStatus,
     });
   }
 }
@@ -576,7 +601,12 @@ class WebhookDeliveryWorker extends EventEmitter {
       });
     } else {
       // Move to dead letter queue
-      this.queue.markAsDead(delivery.id, result.error ?? 'Unknown error');
+      this.queue.markAsDead(
+        delivery.id,
+        result.error ?? 'Unknown error',
+        newAttempts,
+        result.statusCode
+      );
 
       this.emit('dead-letter', {
         deliveryId: delivery.id,
@@ -755,12 +785,16 @@ Create a simple test endpoint to verify delivery.
 import express from 'express';
 
 const app = express();
-app.use(express.json());
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    (req as any).rawBody = buf.toString('utf8');
+  },
+}));
 
 // Test endpoint that logs received webhooks
 app.post('/webhooks', (req, res) => {
   const signature = req.headers['x-webhook-signature'] as string;
-  const payload = JSON.stringify(req.body);
+  const payload = (req as any).rawBody;
 
   // Verify signature
   const isValid = verifySignature(payload, signature, 'your-secret');
