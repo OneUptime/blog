@@ -53,7 +53,7 @@ Key concepts:
 | **Table** | Contains all data, divided into partitions | Unlimited |
 | **Partition** | Logical division based on partition key | Days/months of data |
 | **Part** | Physical data files, immutable once written | Hundreds of MB |
-| **Granule** | Smallest unit of data reading | 8,192 rows default |
+| **Granule** | Smallest unit of data reading | Up to 8,192 rows or 10 MB by default |
 
 ClickHouse reads data in granules. When you query, it first identifies which granules might contain matching rows using sparse indexes, then reads only those granules. The goal of table design is to minimize the number of granules ClickHouse needs to read.
 
@@ -63,7 +63,7 @@ The `ORDER BY` key determines how data is physically sorted on disk. This is the
 
 ### How the ORDER BY Key Works
 
-When data is inserted, ClickHouse sorts it by the ORDER BY columns and stores a sparse index. This index contains one entry per granule (every 8,192 rows by default), recording the minimum value of the ORDER BY key in that granule.
+When data is inserted, ClickHouse sorts it by the ORDER BY columns and stores a sparse index. This index contains one entry per granule (up to 8,192 rows or 10 MB by default), recording the ORDER BY key value for the first row in that granule.
 
 ```sql
 -- Create a table with an ORDER BY key
@@ -167,7 +167,7 @@ PARTITION BY toYYYYMM(event_date)
 -- Daily partitioning for high-volume ingestion (100M+ rows/day)
 PARTITION BY toYYYYMMDD(event_date)
 
--- Composite partitioning for multi-tenant systems
+-- Composite partitioning for multi-tenant systems with a small, bounded tenant count
 PARTITION BY (tenant_id, toYYYYMM(event_date))
 ```
 
@@ -177,7 +177,7 @@ Avoid these partition key mistakes:
 |---------|---------|-----|
 | **Too many partitions** | Thousands of small parts, slow merges | Use coarser granularity |
 | **High cardinality key** | Partition per user = disaster | Never partition by user_id |
-| **No time component** | Cannot use TTL for data lifecycle | Always include time |
+| **Partition not aligned with TTL** | TTL deletes may rewrite parts instead of dropping whole partitions | For retention TTLs, partition by the same date/month field |
 
 ### How Many Partitions Are Too Many?
 
@@ -268,7 +268,7 @@ ORDER BY (timestamp);
 Choose precision based on your needs:
 
 ```sql
--- Date only (3 bytes)
+-- Date only (2 bytes)
 event_date Date              -- 2024-01-15
 
 -- Seconds precision (4 bytes)
@@ -285,7 +285,7 @@ For most analytics, `DateTime` (seconds) is sufficient. Use `DateTime64` only wh
 
 ## Compression Settings
 
-ClickHouse compresses data by column. The default LZ4 compression is fast but not the most space-efficient. You can tune compression per column.
+ClickHouse compresses data by column. The default compression is LZ4 in self-managed ClickHouse and ZSTD in ClickHouse Cloud. You can tune compression per column.
 
 ```sql
 CREATE TABLE metrics (
@@ -373,7 +373,7 @@ SETTINGS index_granularity = 8192;
 Typical queries this schema optimizes:
 
 ```sql
--- Query 1: Daily active users per tenant (fast: uses full ORDER BY prefix)
+-- Query 1: Daily active users per tenant (fast: uses tenant + date ORDER BY prefix)
 SELECT
     event_date,
     uniq(user_id) as dau
@@ -393,7 +393,7 @@ WHERE tenant_id = 123
   AND user_id = 456789
 ORDER BY event_time;
 
--- Query 3: Conversion funnel (fast: uses tenant + date + event_type)
+-- Query 3: Conversion funnel (fast: uses tenant + date ORDER BY prefix, then filters event_type)
 SELECT
     event_type,
     uniq(user_id) as users
@@ -485,9 +485,13 @@ ORDER BY (service, level, timestamp)
 TTL timestamp + INTERVAL 14 DAY
 SETTINGS index_granularity = 8192;
 
--- Add skip indexes for text search
-ALTER TABLE logs ADD INDEX idx_message message TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4;
+-- Add skip indexes for text search and trace lookup
+ALTER TABLE logs ADD INDEX idx_message message TYPE text(tokenizer = splitByNonAlpha);
 ALTER TABLE logs ADD INDEX idx_trace_id trace_id TYPE bloom_filter(0.01) GRANULARITY 1;
+
+-- For an existing table, materialize new indexes so they apply to existing parts
+ALTER TABLE logs MATERIALIZE INDEX idx_message;
+ALTER TABLE logs MATERIALIZE INDEX idx_trace_id;
 ```
 
 ## Skip Indexes for Additional Filtering
@@ -498,8 +502,13 @@ When you need to filter on columns not in the ORDER BY key, skip indexes help Cl
 -- Add skip indexes to existing table
 ALTER TABLE app_events
     ADD INDEX idx_session session_id TYPE bloom_filter(0.01) GRANULARITY 4,
-    ADD INDEX idx_url page_url TYPE tokenbf_v1(10240, 3, 0) GRANULARITY 4,
+    ADD INDEX idx_url page_url TYPE ngrambf_v1(3, 10240, 3, 0) GRANULARITY 4,
     ADD INDEX idx_country country TYPE set(100) GRANULARITY 4;
+
+-- For an existing table, materialize new indexes so they apply to existing parts
+ALTER TABLE app_events MATERIALIZE INDEX idx_session;
+ALTER TABLE app_events MATERIALIZE INDEX idx_url;
+ALTER TABLE app_events MATERIALIZE INDEX idx_country;
 ```
 
 Skip index types:
@@ -509,8 +518,9 @@ Skip index types:
 | **minmax** | Range queries on sorted values | `WHERE amount > 100` |
 | **set(N)** | Equality on low cardinality | `WHERE country = 'US'` |
 | **bloom_filter** | Equality on high cardinality | `WHERE user_id = 123` |
-| **tokenbf_v1** | Text search / substring matching | `WHERE message LIKE '%error%'` |
-| **ngrambf_v1** | Fuzzy text matching | `WHERE url LIKE '%/api/%'` |
+| **text** | Full-text search | `WHERE hasToken(message, 'error')` |
+| **tokenbf_v1** | Legacy word/token matching | `WHERE hasToken(message, 'error')` |
+| **ngrambf_v1** | Legacy substring matching | `WHERE url LIKE '%/api/%'` |
 
 ```mermaid
 flowchart TD
@@ -555,7 +565,7 @@ flowchart TD
 
 3. **Set your partition key**
    - Use time-based partitioning (monthly for most cases)
-   - Add tenant_id for multi-tenant systems
+   - Add tenant_id only when tenant cardinality is small enough to keep partition count low
    - Keep total partitions under 1,000
 
 4. **Choose optimal column types**
@@ -571,7 +581,8 @@ flowchart TD
 6. **Add skip indexes**
    - bloom_filter for high-cardinality lookups
    - set() for low-cardinality filters
-   - tokenbf_v1 for text search
+   - text indexes for full-text search
+   - ngrambf_v1 for legacy substring search
 
 7. **Set TTL rules**
    - Delete old data automatically
