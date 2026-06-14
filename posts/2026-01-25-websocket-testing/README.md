@@ -36,17 +36,17 @@ interface TestServerContext {
     stop: () => Promise<void>;
 }
 
-export async function createTestServer(): Promise<TestServerContext> {
+export async function createTestServer(listenPort = 0): Promise<TestServerContext> {
     const server = createServer();
     const wss = new WebSocketServer({ server });
 
     // Handle connections
-    wss.on('connection', (ws, request) => {
+    wss.on('connection', (ws, _request) => {
         console.log('Client connected');
 
         ws.on('message', (data) => {
             const message = JSON.parse(data.toString());
-            handleMessage(ws, message);
+            handleMessage(wss, ws, message);
         });
 
         ws.on('close', () => {
@@ -54,9 +54,9 @@ export async function createTestServer(): Promise<TestServerContext> {
         });
     });
 
-    // Start server on random port
+    // Start server on the requested port, or a random port when listenPort is 0
     const port = await new Promise<number>((resolve) => {
-        server.listen(0, () => {
+        server.listen(listenPort, () => {
             const address = server.address() as any;
             resolve(address.port);
         });
@@ -68,6 +68,7 @@ export async function createTestServer(): Promise<TestServerContext> {
         port,
         url: `ws://localhost:${port}`,
         stop: () => new Promise((resolve) => {
+            wss.clients.forEach((client) => client.terminate());
             wss.close(() => {
                 server.close(() => resolve());
             });
@@ -75,7 +76,7 @@ export async function createTestServer(): Promise<TestServerContext> {
     };
 }
 
-function handleMessage(ws: WebSocket, message: any) {
+function handleMessage(wss: WebSocketServer, ws: WebSocket, message: any) {
     switch (message.type) {
         case 'echo':
             ws.send(JSON.stringify({ type: 'echo', payload: message.payload }));
@@ -88,7 +89,6 @@ function handleMessage(ws: WebSocket, message: any) {
             break;
         case 'broadcast':
             // Send to all clients
-            const wss = (ws as any).server;
             wss.clients.forEach((client: WebSocket) => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(JSON.stringify({
@@ -158,21 +158,21 @@ describe('WebSocket Connection Lifecycle', () => {
 
         await waitForOpen(ws);
 
+        const closeEvent = new Promise<{ code: number }>((resolve) => {
+            ws.on('close', (code) => resolve({ code }));
+        });
+
         // Server closes the connection
         server.wss.clients.forEach((client) => {
             client.close(1001, 'Server shutting down');
         });
 
-        const closeEvent = await new Promise<{ code: number }>((resolve) => {
-            ws.on('close', (code) => resolve({ code }));
-        });
-
-        expect(closeEvent.code).toBe(1001);
+        expect((await closeEvent).code).toBe(1001);
     });
 
     test('handles connection errors', async () => {
         // Connect to non-existent server
-        const ws = new WebSocket('ws://localhost:99999');
+        const ws = new WebSocket('ws://127.0.0.1:65535');
 
         const error = await new Promise<Error>((resolve) => {
             ws.on('error', (err) => resolve(err));
@@ -402,7 +402,7 @@ describe('WebSocket Reconnection', () => {
         expect(client.connected).toBe(false);
 
         // Restart server on same port
-        server = await createTestServer();
+        server = await createTestServer(port);
 
         // Wait for reconnection
         await new Promise(r => setTimeout(r, 500));
@@ -435,10 +435,11 @@ describe('WebSocket Reconnection', () => {
                         resolve(true);
                     });
                     ws.on('error', () => {
+                        const delay = this.getDelay();
                         this.attempt++;
                         setTimeout(() => {
                             this.connect(url).then(resolve);
-                        }, this.getDelay());
+                        }, delay);
                     });
                 });
             }
@@ -457,9 +458,19 @@ describe('WebSocket Reconnection', () => {
 
         // Connect to non-existent server to trigger retries
         // Then start server after a few attempts
-        const server = await createTestServer();
+        let server = await createTestServer();
+        const { port, url } = server;
+        await server.stop();
 
-        await client.connect(server.url);
+        const restart = setTimeout(async () => {
+            server = await createTestServer(port);
+        }, 350);
+
+        await client.connect(url);
+        clearTimeout(restart);
+
+        expect(attempts.length).toBeGreaterThan(1);
+        expect(attempts[1]).toBeGreaterThanOrEqual(100);
 
         await server.stop();
     });
@@ -474,7 +485,7 @@ Test Socket.IO specific features:
 // socket-io.test.ts
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { io, Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
 
 describe('Socket.IO Testing', () => {
     let httpServer: any;
@@ -501,6 +512,10 @@ describe('Socket.IO Testing', () => {
             socket.on('room-message', ({ room, message }) => {
                 ioServer.to(room).emit('room-broadcast', { room, message });
             });
+
+            socket.on('request-with-ack', (data, callback) => {
+                callback({ status: 'ok', received: data });
+            });
         });
 
         httpServer.listen(0, () => {
@@ -510,8 +525,7 @@ describe('Socket.IO Testing', () => {
     });
 
     afterAll((done) => {
-        ioServer.close();
-        httpServer.close(done);
+        ioServer.close(done);
     });
 
     test('connects with Socket.IO protocol', (done) => {
@@ -577,12 +591,6 @@ describe('Socket.IO Testing', () => {
 
     test('handles acknowledgments', (done) => {
         const socket = io(`http://localhost:${port}`);
-
-        ioServer.on('connection', (serverSocket) => {
-            serverSocket.on('request-with-ack', (data, callback) => {
-                callback({ status: 'ok', received: data });
-            });
-        });
 
         socket.on('connect', () => {
             socket.emit('request-with-ack', { test: 'data' }, (response: any) => {
