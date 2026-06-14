@@ -89,9 +89,9 @@ dbt --version
 
 # Expected output:
 # Core:
-#   - installed: 1.7.0
+#   - installed: x.y.z
 # Plugins:
-#   - postgres: 1.7.0
+#   - postgres: x.y.z
 ```
 
 ## Creating Your First dbt Project
@@ -111,7 +111,6 @@ This creates the following structure:
 ```text
 my_analytics/
 ├── dbt_project.yml          # Project configuration
-├── profiles.yml             # Connection profiles (usually in ~/.dbt/)
 ├── models/                  # Your SQL models
 │   └── example/
 │       ├── my_first_dbt_model.sql
@@ -455,23 +454,23 @@ Execute models with the `dbt run` command:
 # Run all models
 dbt run
 
-# Run specific model and its dependencies
-dbt run --select fct_orders+
+# Run specific model and its upstream dependencies
+dbt run --select +fct_orders
 
 # Run all models with a tag
 dbt run --select tag:staging
 
-# Run only models that have changed
-dbt run --select state:modified+
+# Run only models that have changed compared to a previous manifest
+dbt run --select state:modified+ --state path/to/artifacts
 
-# Dry run to see what would execute
+# Schema-only run that executes SQL while limiting refs and sources to zero rows
 dbt run --empty
 ```
 
 Example output:
 
 ```text
-Running with dbt=1.7.0
+Running with dbt=x.y.z
 Found 4 models, 8 tests, 0 snapshots, 0 analyses, 0 macros
 
 Concurrency: 4 threads
@@ -494,6 +493,8 @@ Completed successfully
 
 dbt has two types of tests: generic tests (built-in) and singular tests (custom SQL).
 
+The `dbt_utils.expression_is_true` examples below assume you have added the `dbt-labs/dbt_utils` package to your project and run `dbt deps`.
+
 ### Generic Tests in schema.yml
 
 ```yaml
@@ -506,45 +507,49 @@ models:
     columns:
       - name: order_id
         description: "Primary key"
-        tests:
+        data_tests:
           - unique  # No duplicate order IDs
           - not_null  # Every row has an order ID
 
       - name: customer_id
         description: "Foreign key to dim_customers"
-        tests:
+        data_tests:
           - not_null
           - relationships:  # Referential integrity check
-              to: ref('dim_customers')
-              field: customer_id
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
 
       - name: order_status
         description: "Current status of the order"
-        tests:
+        data_tests:
           - accepted_values:
-              values: ['pending', 'shipped', 'delivered', 'cancelled']
+              arguments:
+                values: ['pending', 'shipped', 'delivered', 'cancelled']
 
       - name: order_amount
         description: "Order total in dollars"
-        tests:
+        data_tests:
           - not_null
           # Custom test: orders should be positive
           - dbt_utils.expression_is_true:
-              expression: ">= 0"
+              arguments:
+                expression: ">= 0"
 
   - name: dim_customers
     description: "Customer dimension with lifetime metrics"
     columns:
       - name: customer_id
-        tests:
+        data_tests:
           - unique
           - not_null
 
       - name: lifetime_value
-        tests:
+        data_tests:
           - not_null
           - dbt_utils.expression_is_true:
-              expression: ">= 0"
+              arguments:
+                expression: ">= 0"
 ```
 
 ### Singular Tests (Custom SQL)
@@ -633,7 +638,7 @@ dbt docs generate
 # Start local documentation server
 dbt docs serve
 
-# Opens browser to http://localhost:8080
+# Opens browser to http://localhost:8580
 ```
 
 The documentation includes:
@@ -641,15 +646,15 @@ The documentation includes:
 - Column descriptions
 - Data lineage DAG
 - Test coverage
-- Source freshness
+- Source definitions and freshness metadata when configured
 
 ```mermaid
 flowchart LR
     subgraph Documentation["dbt Docs"]
         A[Model Catalog]
         B[Lineage Graph]
-        C[Test Results]
-        D[Source Freshness]
+        C[Tests]
+        D[Source Metadata]
     end
 
     E[dbt docs generate] --> A
@@ -789,7 +794,7 @@ models:
         +tags: ['finance']
 
 # Persist test failures for debugging
-tests:
+data_tests:
   +store_failures: true
   +schema: dbt_test_failures
 
@@ -858,4 +863,3 @@ dbt source freshness                 # Check source data freshness
 ---
 
 dbt transforms how teams manage data transformations. By treating your SQL as code with version control, testing, and documentation, you build reliable data pipelines that scale with your organization. Start small with a few staging models, add tests, and expand to marts as your needs grow.
-
