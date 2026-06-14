@@ -93,7 +93,7 @@ defmodule ClusterManager do
 
   @doc """
   Attempts to connect to a single node.
-  Returns {:ok, node} on success, {:error, node} on failure.
+  Returns {:ok, node} on success, {:error, reason} on failure.
   """
   def connect_node(node) when is_atom(node) do
     case Node.connect(node) do
@@ -104,8 +104,8 @@ defmodule ClusterManager do
         IO.puts("Failed to connect to #{node}")
         {:error, node}
       :ignored ->
-        # Node is already connected
-        {:ok, node}
+        # The local node is not alive, so it cannot join a cluster
+        {:error, :local_node_not_alive}
     end
   end
 
@@ -174,7 +174,7 @@ config :libcluster,
       config: [
         port: 45892,
         if_addr: "0.0.0.0",
-        multicast_addr: "230.1.1.251",
+        multicast_addr: "255.255.255.255",
         broadcast_only: true
       ]
     ],
@@ -378,7 +378,7 @@ defmodule DistributedTaskRunner do
 
   # Selects the next node using round-robin scheduling
   defp select_node(state) do
-    nodes = available_nodes()
+    nodes = Node.list()
 
     if Enum.empty?(nodes) do
       # If no remote nodes, execute locally
@@ -594,8 +594,7 @@ defmodule WorkerPool do
 
   @impl true
   def init(opts) do
-    # Ensure the pg scope is started
-    :pg.start_link()
+    # The default :pg scope is started by the :kernel application.
 
     # Join this process to the worker pool group
     :pg.join(@group, self())
@@ -811,7 +810,7 @@ Mnesia is Erlang's built-in distributed database, perfect for shared state:
 defmodule DistributedCache do
   @moduledoc """
   Implements a distributed cache using Mnesia.
-  Data is automatically replicated across cluster nodes.
+  Data is replicated across the Mnesia nodes configured for the table.
   """
 
   require Logger
@@ -824,8 +823,8 @@ defmodule DistributedCache do
   Call this once when setting up the cluster.
   """
   def setup_cluster(nodes) do
-    # Stop Mnesia if it's running
-    :mnesia.stop()
+    # Stop Mnesia on all nodes if it's running
+    :rpc.multicall(nodes, :mnesia, :stop, [])
 
     # Create the schema on all nodes
     case :mnesia.create_schema(nodes) do
@@ -864,13 +863,22 @@ defmodule DistributedCache do
   Adds a new node to the Mnesia cluster and replicates the cache table.
   """
   def add_node_to_cluster(new_node) do
+    # Start Mnesia on the new node and connect it to this Mnesia system
+    :rpc.call(new_node, :mnesia, :start, [])
+
     # Add the new node to the schema
     case :mnesia.change_config(:extra_db_nodes, [new_node]) do
       {:ok, _} ->
         # Copy the table to the new node
-        :rpc.call(new_node, :mnesia, :add_table_copy, [@table_name, new_node, :ram_copies])
-        Logger.info("Node #{new_node} added to Mnesia cluster")
-        :ok
+        case :mnesia.add_table_copy(@table_name, new_node, :ram_copies) do
+          {:atomic, :ok} ->
+            Logger.info("Node #{new_node} added to Mnesia cluster")
+            :ok
+
+          {:aborted, reason} ->
+            Logger.error("Failed to copy table to #{new_node}: #{inspect(reason)}")
+            {:error, reason}
+        end
 
       {:error, reason} ->
         Logger.error("Failed to add node: #{inspect(reason)}")
@@ -1227,8 +1235,8 @@ defmodule DistributedCounter do
   defp broadcast_state(counter_name, counter) do
     Node.list()
     |> Enum.each(fn node ->
-      # Send to the same counter on other nodes
-      GenServer.cast({via_tuple(counter_name), node}, {:sync, counter})
+      # Run the cast on the remote node so its local Registry is used
+      :rpc.cast(node, GenServer, :cast, [via_tuple(counter_name), {:sync, counter}])
     end)
   end
 end
@@ -1421,7 +1429,7 @@ if config_env() == :prod do
   config :myapp, MyApp.Endpoint,
     url: [host: System.get_env("HOST") || "localhost"]
 
-  # Configure the node name using the pod IP
+  # Store the expected node name for app code; releases use RELEASE_NODE before runtime.exs
   config :myapp,
     node_name: :"#{app_name}@#{pod_ip}"
 end
@@ -1488,6 +1496,8 @@ spec:
             secretKeyRef:
               name: myapp-secrets
               key: erlang-cookie
+        - name: ERL_AFLAGS
+          value: "-kernel inet_dist_listen_min 9000 inet_dist_listen_max 9000"
 ---
 # Headless service for node discovery
 apiVersion: v1
