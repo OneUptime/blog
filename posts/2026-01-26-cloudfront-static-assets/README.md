@@ -28,17 +28,17 @@ flowchart TD
 
     subgraph "AWS Origin"
         S3[S3 Bucket]
-        OAI[Origin Access Identity]
+        OAC[Origin Access Control]
     end
 
     U1 -->|Request| E1
     U2 -->|Request| E2
     U3 -->|Request| E3
 
-    E1 -->|Cache Miss| OAI
-    E2 -->|Cache Miss| OAI
-    E3 -->|Cache Miss| OAI
-    OAI --> S3
+    E1 -->|Cache Miss| OAC
+    E2 -->|Cache Miss| OAC
+    E3 -->|Cache Miss| OAC
+    OAC --> S3
 ```
 
 ## Step 1: Create an S3 Bucket for Static Assets
@@ -79,7 +79,7 @@ aws s3 cp ./dist/images/ s3://my-static-assets-bucket/images/ \
     --recursive \
     --cache-control "public, max-age=2592000"
 
-# Upload fonts with CORS headers
+# Upload fonts with long-lived cache headers
 aws s3 cp ./dist/fonts/ s3://my-static-assets-bucket/fonts/ \
     --recursive \
     --cache-control "public, max-age=31536000, immutable"
@@ -103,7 +103,7 @@ aws cloudfront create-origin-access-control \
 # Note the Id from the response - you will need it for the distribution
 ```
 
-Update your S3 bucket policy to allow CloudFront access:
+After you have a CloudFront distribution ID, update your S3 bucket policy to allow CloudFront access:
 
 ```json
 {
@@ -189,6 +189,7 @@ Resources:
         Name: !Sub "${AWS::StackName}-response-headers"
         Comment: Security and cache headers for static assets
         CorsConfig:
+          AccessControlAllowCredentials: false
           AccessControlAllowOrigins:
             Items:
               - "https://example.com"
@@ -547,12 +548,16 @@ Enable CloudFront metrics and logging to track your CDN performance:
 ```yaml
 # Add to your CloudFront distribution configuration
 DistributionConfig:
-  # Enable real-time logs for detailed request analysis
+  # Enable standard logs for request analysis
   Logging:
     Enabled: true
     IncludeCookies: false
+    # Use a separate log bucket with ACLs enabled for CloudFront standard logs
     Bucket: my-cloudfront-logs.s3.amazonaws.com
     Prefix: static-assets/
+  # Attach real-time logs to the cache behavior you want to monitor
+  DefaultCacheBehavior:
+    RealtimeLogConfigArn: !Ref RealTimeLogConfig
 
 # Create a real-time log configuration for streaming metrics
 RealTimeLogConfig:
