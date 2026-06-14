@@ -86,15 +86,16 @@ kind: ClusterConfig
 metadata:
   name: cilium-eks-cluster
   region: us-west-2
-  version: "1.28"
+  version: "1.29"
 
-# Disable the default VPC CNI addon
-# Cilium will handle all pod networking instead
+# Disable the default networking add-ons
+# Cilium will handle pod networking and kube-proxy replacement
+addonsConfig:
+  disableDefaultAddons: true
+
+# Keep CoreDNS, but do not install the default VPC CNI or kube-proxy
 addons:
-  - name: vpc-cni
-    version: latest
-    # Setting attachPolicyARNs to empty disables the addon
-    attachPolicyARNs: []
+  - name: coredns
 
 # IAM OIDC provider is required for Cilium service accounts
 iam:
@@ -141,24 +142,31 @@ kubectl get nodes
 
 # Expected output (nodes will be NotReady until CNI is installed):
 # NAME                                           STATUS     ROLES    AGE   VERSION
-# ip-192-168-1-100.us-west-2.compute.internal   NotReady   <none>   2m    v1.28.0
-# ip-192-168-2-101.us-west-2.compute.internal   NotReady   <none>   2m    v1.28.0
-# ip-192-168-3-102.us-west-2.compute.internal   NotReady   <none>   2m    v1.28.0
+# ip-192-168-1-100.us-west-2.compute.internal   NotReady   <none>   2m    v1.29.0
+# ip-192-168-2-101.us-west-2.compute.internal   NotReady   <none>   2m    v1.29.0
+# ip-192-168-3-102.us-west-2.compute.internal   NotReady   <none>   2m    v1.29.0
 ```
 
 ## Removing the AWS VPC CNI (If Present)
 
-If you created a standard EKS cluster, you need to remove the AWS VPC CNI before installing Cilium:
+If you created a standard EKS cluster, you need to remove the AWS VPC CNI before installing Cilium. If you plan to use Cilium kube-proxy replacement, remove kube-proxy as well:
 
 ```bash
 # Check if AWS VPC CNI is installed
 kubectl get pods -n kube-system -l k8s-app=aws-node
 
+# Delete the managed add-ons if they exist
+aws eks delete-addon --cluster-name cilium-eks-cluster --addon-name vpc-cni || true
+aws eks delete-addon --cluster-name cilium-eks-cluster --addon-name kube-proxy || true
+
 # Delete the AWS VPC CNI daemonset
-kubectl delete daemonset aws-node -n kube-system
+kubectl delete daemonset aws-node -n kube-system --ignore-not-found
+
+# Delete kube-proxy if you are enabling Cilium kube-proxy replacement
+kubectl delete daemonset kube-proxy -n kube-system --ignore-not-found
 
 # Delete the associated configmap
-kubectl delete configmap amazon-vpc-cni -n kube-system
+kubectl delete configmap amazon-vpc-cni -n kube-system --ignore-not-found
 
 # Verify removal
 kubectl get pods -n kube-system | grep aws-node
@@ -177,6 +185,58 @@ helm repo add cilium https://helm.cilium.io/
 helm repo update
 ```
 
+Create an IAM role for the Cilium operator. ENI mode requires the operator to call the EC2 API to create ENIs and allocate IP addresses:
+
+```bash
+# Capture your AWS account ID
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Create the IAM policy used by the Cilium operator
+cat > cilium-operator-policy.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DeleteNetworkInterface",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeSecurityGroups",
+        "ec2:CreateNetworkInterface",
+        "ec2:AttachNetworkInterface",
+        "ec2:DetachNetworkInterface",
+        "ec2:ModifyNetworkInterfaceAttribute",
+        "ec2:AssignPrivateIpAddresses",
+        "ec2:UnassignPrivateIpAddresses",
+        "ec2:CreateTags",
+        "ec2:DescribeTags",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceTypes"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+
+aws iam create-policy \
+  --policy-name CiliumOperatorPolicy \
+  --policy-document file://cilium-operator-policy.json
+
+# Create only the IAM role; Helm will create and annotate the service account
+eksctl create iamserviceaccount \
+  --cluster cilium-eks-cluster \
+  --namespace kube-system \
+  --name cilium-operator \
+  --role-name CiliumOperatorRole \
+  --attach-policy-arn arn:aws:iam::$AWS_ACCOUNT_ID:policy/CiliumOperatorPolicy \
+  --role-only \
+  --approve
+```
+
 Create a values file with EKS-specific configuration:
 
 ```yaml
@@ -187,10 +247,8 @@ Create a values file with EKS-specific configuration:
 # This allows pods to get IPs from the VPC CIDR
 eni:
   enabled: true
-
-# AWS-specific settings
-awsEnablePrefixDelegation: true
-awsReleaseExcessIPs: true
+  awsEnablePrefixDelegation: true
+  awsReleaseExcessIPs: true
 
 # IPAM configuration
 # eni mode uses AWS ENI for IP address management
@@ -204,8 +262,8 @@ egressMasqueradeInterfaces: eth0
 endpointRoutes:
   enabled: true
 
-# Tunnel mode must be disabled when using ENI
-tunnel: disabled
+# Use native routing instead of tunneling when using ENI
+routingMode: native
 
 # Disable eBPF-based masquerading in ENI mode
 # AWS VPC handles NAT for outbound traffic
@@ -225,16 +283,20 @@ hubble:
   ui:
     enabled: true
 
-# Install the Cilium CLI as part of the deployment
-# Useful for troubleshooting and management
-cilium:
-  image:
-    repository: quay.io/cilium/cilium
-    tag: v1.15.0
+# Pin the Cilium agent image to match the Helm chart version
+image:
+  repository: quay.io/cilium/cilium
+  tag: v1.19.4
 
 # Operator configuration
 operator:
   replicas: 2
+
+# Annotate the operator service account with the IRSA role created above
+serviceAccounts:
+  operator:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/CiliumOperatorRole
 
 # Prometheus metrics for monitoring
 prometheus:
@@ -243,14 +305,15 @@ prometheus:
     enabled: false
 
 # Node initialization configuration
-# This handles the taint removal after Cilium is ready
 nodeinit:
   enabled: true
-  removeCbrBridge: true
-  reconfigureKubelet: true
 
 # Kubernetes-specific settings
-kubeProxyReplacement: strict
+kubeProxyReplacement: "true"
+
+# Required when kube-proxy is not installed; use your EKS API endpoint host
+k8sServiceHost: <eks-api-endpoint-host>
+k8sServicePort: 443
 
 # Cluster configuration
 # Replace with your actual cluster name
@@ -267,7 +330,7 @@ Install Cilium:
 ```bash
 # Install Cilium using Helm with the custom values
 helm install cilium cilium/cilium \
-  --version 1.15.0 \
+  --version 1.19.4 \
   --namespace kube-system \
   --values cilium-values.yaml
 
@@ -326,9 +389,9 @@ kubectl get nodes
 
 # Expected output:
 # NAME                                           STATUS   ROLES    AGE   VERSION
-# ip-192-168-1-100.us-west-2.compute.internal   Ready    <none>   10m   v1.28.0
-# ip-192-168-2-101.us-west-2.compute.internal   Ready    <none>   10m   v1.28.0
-# ip-192-168-3-102.us-west-2.compute.internal   Ready    <none>   10m   v1.28.0
+# ip-192-168-1-100.us-west-2.compute.internal   Ready    <none>   10m   v1.29.0
+# ip-192-168-2-101.us-west-2.compute.internal   Ready    <none>   10m   v1.29.0
+# ip-192-168-3-102.us-west-2.compute.internal   Ready    <none>   10m   v1.29.0
 ```
 
 ## Cilium Network Flow on EKS
@@ -450,7 +513,7 @@ Hubble provides real-time visibility into network traffic. Access the Hubble CLI
 kubectl port-forward -n kube-system svc/hubble-relay 4245:80 &
 
 # Install Hubble CLI
-export HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
+export HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
 curl -L --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-amd64.tar.gz
 tar xzvf hubble-linux-amd64.tar.gz
 sudo mv hubble /usr/local/bin/
@@ -509,9 +572,9 @@ encryption:
   type: wireguard
 
 # WireGuard-specific settings
-wireguard:
-  # Use userspace WireGuard if kernel module is not available
-  userspaceFallback: false
+  wireguard:
+    # Use userspace WireGuard if kernel module is not available
+    userspaceFallback: false
 ```
 
 Upgrade the Cilium installation:
@@ -539,15 +602,12 @@ kubectl exec -n kube-system ds/cilium -- wg show
 Cilium can replace kube-proxy for service load balancing, using eBPF for better performance:
 
 ```yaml
-# Service with Cilium load balancing annotations
+# Service using Cilium's eBPF load balancing datapath
 apiVersion: v1
 kind: Service
 metadata:
   name: api-gateway
   namespace: production
-  annotations:
-    # Use Cilium's maglev algorithm for consistent hashing
-    service.cilium.io/loadbalancer-algorithm: maglev
 spec:
   type: LoadBalancer
   ports:
@@ -629,10 +689,10 @@ Key metrics to monitor:
 
 ```bash
 # Number of endpoints managed by Cilium
-cilium_endpoint_count
+cilium_endpoint
 
-# Network policy verdict counts
-cilium_policy_verdict_total
+# Endpoint policy enforcement status
+cilium_policy_endpoint_enforcement_status
 
 # eBPF map operations
 cilium_bpf_map_ops_total
@@ -686,7 +746,7 @@ kubectl exec -n kube-system ds/cilium -- cilium status | grep "allocated"
 
 # Enable prefix delegation for more IPs per ENI
 # Add to your Helm values:
-# awsEnablePrefixDelegation: true
+# eni.awsEnablePrefixDelegation: true
 
 # Verify prefix delegation is active
 kubectl exec -n kube-system ds/cilium -- cilium status --verbose | grep -i prefix
@@ -707,8 +767,9 @@ kubectl delete crd ciliumidentities.cilium.io
 kubectl delete crd ciliumnetworkpolicies.cilium.io
 kubectl delete crd ciliumnodes.cilium.io
 
-# Reinstall AWS VPC CNI if needed
-kubectl apply -f https://raw.githubusercontent.com/aws/amazon-vpc-cni-k8s/master/config/master/aws-k8s-cni.yaml
+# Reinstall AWS VPC CNI and kube-proxy as EKS add-ons if needed
+aws eks create-addon --cluster-name cilium-eks-cluster --addon-name vpc-cni
+aws eks create-addon --cluster-name cilium-eks-cluster --addon-name kube-proxy
 ```
 
 ## Conclusion
