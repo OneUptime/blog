@@ -10,7 +10,7 @@ Description: A practical guide to getting started with ClickHouse for analytics 
 
 If you have ever waited minutes for an analytical query to return results, you know the frustration of traditional databases when faced with billions of rows. ClickHouse solves this problem by being purpose-built for analytical workloads, delivering query results in milliseconds that would take other databases seconds or minutes.
 
-ClickHouse is an open-source column-oriented database management system designed for online analytical processing (OLAP). It was originally developed at Yandex to power their web analytics platform, handling over 600 petabytes of data and processing billions of events per second.
+ClickHouse is an open-source column-oriented database management system designed for online analytical processing (OLAP). It was originally developed at Yandex to power their web analytics platform, which has stored more than 20 trillion rows and processes tens of billions of events per day.
 
 ## Why ClickHouse for Analytics?
 
@@ -58,7 +58,7 @@ graph LR
 
 ### Compression and Performance
 
-Column storage enables better compression since similar values are stored together. A column of integers compresses much better than mixed data types in a row. ClickHouse typically achieves 10x to 20x compression ratios, meaning 1TB of raw data fits in 50-100GB on disk.
+Column storage enables better compression since similar values are stored together. A column of integers compresses much better than mixed data types in a row. ClickHouse can achieve substantial compression; its documentation notes that clickstream data is often compressed about 6x to 10x, meaning 1TB of raw data may fit in roughly 100-170GB on disk depending on the schema, ordering key, and codecs.
 
 ## Installation
 
@@ -76,6 +76,7 @@ docker run -d \
   --name clickhouse-server \
   -p 8123:8123 \
   -p 9000:9000 \
+  -e CLICKHOUSE_PASSWORD=changeme \
   -v clickhouse-data:/var/lib/clickhouse \
   -v clickhouse-logs:/var/log/clickhouse-server \
   clickhouse/clickhouse-server
@@ -89,7 +90,7 @@ Connect using the ClickHouse client:
 
 ```bash
 # Start the ClickHouse client
-docker exec -it clickhouse-server clickhouse-client
+docker exec -it clickhouse-server clickhouse-client --password changeme
 ```
 
 ### Installing on Ubuntu/Debian
@@ -98,10 +99,12 @@ For production deployments, install directly on the host:
 
 ```bash
 # Add the ClickHouse repository
-sudo apt-get install -y apt-transport-https ca-certificates dirmngr
-sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 8919F6BD2B48D754
+sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
+curl -fsSL 'https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key' | \
+  sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
 
-echo "deb https://packages.clickhouse.com/deb stable main" | sudo tee \
+ARCH=$(dpkg --print-architecture)
+echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=${ARCH}] https://packages.clickhouse.com/deb stable main" | sudo tee \
   /etc/apt/sources.list.d/clickhouse.list
 
 # Install ClickHouse server and client
@@ -161,6 +164,8 @@ ENGINE = MergeTree()
 PARTITION BY toYYYYMM(event_date)
 -- Primary key determines physical sort order and sparse index
 ORDER BY (event_date, event_type, user_id, event_time)
+-- Enables SAMPLE queries using a column included in the ORDER BY key
+SAMPLE BY user_id
 -- Time-to-live: automatically delete data older than 90 days
 TTL event_date + INTERVAL 90 DAY
 -- Additional settings for this table
@@ -175,7 +180,7 @@ SETTINGS index_granularity = 8192;
 
 **ORDER BY**: The most important clause for performance. Columns listed first get the best filtering performance. Order them by:
 1. Time columns (most queries filter by date)
-2. High-cardinality filter columns
+2. Frequently filtered columns, usually ordered from lower to higher cardinality
 3. Columns used in GROUP BY
 
 **LowCardinality**: A special wrapper type that dictionary-encodes columns with few unique values (like country codes or event types). It dramatically reduces storage and speeds up filtering.
@@ -336,11 +341,11 @@ SELECT
     uniqExact(user_id) AS unique_visitors,
     avg(duration_ms) AS avg_time_on_page_ms,
     avg(scroll_depth) AS avg_scroll_percent,
-    -- Bounce rate: sessions with only one page view
+    -- Short-view rate: page views shorter than 5 seconds
     round(
         countIf(duration_ms < 5000) / count() * 100,
         2
-    ) AS bounce_rate_percent
+    ) AS short_view_rate_percent
 FROM events
 WHERE event_type = 'page_view'
     AND event_date >= today() - 7
@@ -363,11 +368,13 @@ WITH user_first_week AS (
 SELECT
     cohort_week,
     count(DISTINCT ufw.user_id) AS cohort_size,
-    countIf(
+    uniqIf(
+        e.user_id,
         e.event_date >= cohort_week + 7
         AND e.event_date < cohort_week + 14
     ) AS week_1_retained,
-    countIf(
+    uniqIf(
+        e.user_id,
         e.event_date >= cohort_week + 14
         AND e.event_date < cohort_week + 21
     ) AS week_2_retained,
