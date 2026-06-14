@@ -46,7 +46,7 @@ graph TB
 Before implementing WAF:
 
 - Kubernetes cluster (v1.21+)
-- Ingress controller (NGINX or similar)
+- Maintained ingress controller or Gateway API implementation
 - Understanding of your application's traffic patterns
 - Test environment for rule validation
 
@@ -54,7 +54,7 @@ Before implementing WAF:
 
 ## ModSecurity with NGINX Ingress
 
-Enable ModSecurity in the NGINX Ingress Controller:
+For existing ingress-nginx deployments, enable ModSecurity in the NGINX Ingress Controller:
 
 ```yaml
 # nginx-ingress-values.yaml
@@ -65,8 +65,13 @@ controller:
   # Enable ModSecurity
   config:
     enable-modsecurity: "true"
-    enable-owasp-modsecurity-crs: "true"
     modsecurity-snippet: |
+      # Include mounted rule files before the CRS so allowlist/exclusion rules run early
+      Include /etc/nginx/owasp-modsecurity-crs/plugins/*.conf
+
+      # Include the OWASP CRS when using a custom ModSecurity snippet
+      Include /etc/nginx/owasp-modsecurity-crs/nginx-modsecurity.conf
+
       # ModSecurity configuration
       SecRuleEngine On
       SecRequestBodyAccess On
@@ -80,6 +85,7 @@ controller:
       SecAuditLogRelevantStatus "^(?:5|4(?!04))"
       SecAuditLogParts ABIJDEFHZ
       SecAuditLogType Serial
+      SecAuditLogFormat JSON
       SecAuditLog /var/log/modsec_audit.log
 
       # Rule settings
@@ -88,6 +94,17 @@ controller:
 
       # Paranoia level (1-4, higher = more rules)
       SecAction "id:900000,phase:1,nolog,pass,t:none,setvar:tx.paranoia_level=1"
+
+  # Mount custom rule files into the CRS plugins directory
+  extraVolumes:
+    - name: modsecurity-rules
+      configMap:
+        name: modsecurity-rules
+        optional: true
+  extraVolumeMounts:
+    - name: modsecurity-rules
+      mountPath: /etc/nginx/owasp-modsecurity-crs/plugins
+      readOnly: true
 
   # Resource limits
   resources:
@@ -123,7 +140,7 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
 
 ## Custom ModSecurity Rules
 
-Create custom rules for your application:
+Create custom rules for your application. The Helm values above mount this ConfigMap into the ingress-nginx controller:
 
 ```yaml
 # modsecurity-rules.yaml
@@ -194,9 +211,10 @@ metadata:
   annotations:
     # Enable ModSecurity for this ingress
     nginx.ingress.kubernetes.io/enable-modsecurity: "true"
-    nginx.ingress.kubernetes.io/enable-owasp-core-rules: "true"
     # Custom snippet for this ingress
     nginx.ingress.kubernetes.io/modsecurity-snippet: |
+      Include /etc/nginx/owasp-modsecurity-crs/plugins/*.conf
+      Include /etc/nginx/owasp-modsecurity-crs/nginx-modsecurity.conf
       SecRuleEngine On
       SecAuditEngine On
       # Higher paranoia for sensitive endpoints
@@ -220,7 +238,7 @@ spec:
 
 ## Coraza WAF Sidecar
 
-Deploy Coraza as a sidecar for application-level protection:
+Deploy Coraza as a sidecar reverse proxy for application-level protection:
 
 ```yaml
 # deployment-with-coraza.yaml
@@ -248,17 +266,19 @@ spec:
 
       # Coraza WAF sidecar
       - name: coraza-waf
-        image: corazawaf/coraza-proxy-wasm:latest
+        image: ghcr.io/coreruleset/coraza-crs:nginx
         ports:
         - containerPort: 8081
         env:
-        - name: BACKEND_URL
-          value: "http://localhost:8080"
-        - name: LISTEN_PORT
+        - name: BACKEND
+          value: "127.0.0.1:8080"
+        - name: PORT
           value: "8081"
+        - name: CORAZA_RULE_ENGINE
+          value: "On"
         volumeMounts:
         - name: coraza-config
-          mountPath: /etc/coraza
+          mountPath: /opt/coraza/rules.d
           readOnly: true
         resources:
           requests:
@@ -280,26 +300,15 @@ metadata:
   name: coraza-config
   namespace: production
 data:
-  coraza.conf: |
+  custom-rules.conf: |
     # Coraza configuration
     SecRuleEngine On
     SecRequestBodyAccess On
     SecResponseBodyAccess Off
 
-    # Include OWASP CRS
-    Include /etc/coraza/crs-setup.conf
-    Include /etc/coraza/rules/*.conf
-
     # Custom rules
     SecRule REQUEST_URI "@contains /admin" \
       "id:1000001,phase:1,deny,status:403,msg:'Admin access blocked'"
-
-  crs-setup.conf: |
-    SecAction "id:900000,phase:1,pass,t:none,nolog,setvar:tx.paranoia_level=1"
-    SecAction "id:900001,phase:1,pass,t:none,nolog,setvar:tx.crs_validate_utf8_encoding=1"
-    SecAction "id:900002,phase:1,pass,t:none,nolog,setvar:tx.arg_name_length=100"
-    SecAction "id:900003,phase:1,pass,t:none,nolog,setvar:tx.arg_length=400"
-    SecAction "id:900004,phase:1,pass,t:none,nolog,setvar:tx.total_arg_length=64000"
 
 ---
 # Service pointing to WAF port
@@ -350,9 +359,12 @@ resource "aws_wafv2_web_acl" "main" {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
 
-        # Exclude specific rules that cause false positives
-        excluded_rule {
+        # Count a specific rule that causes false positives
+        rule_action_override {
           name = "SizeRestrictions_BODY"
+          action_to_use {
+            count {}
+          }
         }
       }
     }
@@ -534,16 +546,9 @@ data:
     [INPUT]
         Name              tail
         Path              /var/log/modsec_audit.log
-        Parser            modsecurity
+        Parser            modsecurity_json
         Tag               waf.modsecurity
         Refresh_Interval  10
-
-    [FILTER]
-        Name          parser
-        Match         waf.modsecurity
-        Key_Name      log
-        Parser        modsecurity_json
-        Reserve_Data  On
 
     [OUTPUT]
         Name          es
@@ -555,18 +560,13 @@ data:
 
   parsers.conf: |
     [PARSER]
-        Name        modsecurity
-        Format      regex
-        Regex       ^(?<timestamp>[^ ]+) (?<client_ip>[^ ]+) (?<message>.*)$
-
-    [PARSER]
         Name        modsecurity_json
         Format      json
         Time_Key    timestamp
         Time_Format %Y-%m-%d %H:%M:%S
 ```
 
-Prometheus alerts for WAF:
+Prometheus alerts for WAF. The first alert uses ingress-nginx metrics; the other examples assume you export WAF log-derived counters from Fluent Bit, Promtail, or a custom exporter:
 
 ```yaml
 # waf-alerts.yaml
