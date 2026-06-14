@@ -8,7 +8,7 @@ Description: A beginner's guide to Apache Flink for stream processing, covering 
 
 ---
 
-Apache Flink is a distributed stream processing framework that handles both batch and real-time data. If you need to process millions of events per second with low latency and exactly-once guarantees, Flink is an excellent choice. This guide walks you through everything you need to know to get started.
+Apache Flink is a distributed stream processing framework that handles both batch and real-time data. If you need to process millions of events per second with low latency and exactly-once guarantees when checkpointing and compatible sources and sinks are configured, Flink is an excellent choice. This guide walks you through everything you need to know to get started.
 
 ---
 
@@ -45,10 +45,10 @@ graph LR
 ### Key Features
 
 - **True streaming**: Processes events one at a time, not in micro-batches
-- **Exactly-once semantics**: Guarantees each event is processed exactly once
+- **Exactly-once semantics**: Provides exactly-once state consistency with checkpointing and compatible sources and sinks
 - **Event time processing**: Handles out-of-order events correctly
 - **Stateful computations**: Maintains state across events efficiently
-- **Fault tolerance**: Recovers from failures without data loss
+- **Fault tolerance**: Recovers from failures using checkpoints
 
 ---
 
@@ -137,7 +137,15 @@ Create a new Maven project with the following `pom.xml`:
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-connector-kafka</artifactId>
-            <version>3.1.0-1.18</version>
+            <version>3.2.0-1.18</version>
+        </dependency>
+
+        <!-- RocksDB state backend -->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-statebackend-rocksdb</artifactId>
+            <version>${flink.version}</version>
+            <scope>provided</scope>
         </dependency>
 
         <!-- JSON processing -->
@@ -391,6 +399,7 @@ package com.example;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
@@ -403,9 +412,12 @@ public class KafkaStreamingJob {
     public static void main(String[] args) throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
+        // Enable checkpointing so Kafka offsets and sink writes are coordinated
+        env.enableCheckpointing(60000);
+
         // Configure the Kafka source
         KafkaSource<String> source = KafkaSource.<String>builder()
-            // Kafka broker address
+            // Kafka broker address (use kafka:29092 when running inside Docker Compose)
             .setBootstrapServers("localhost:9092")
             // Topic to consume from
             .setTopics("input-topic")
@@ -431,6 +443,7 @@ public class KafkaStreamingJob {
 
         // Configure the Kafka sink
         KafkaSink<String> sink = KafkaSink.<String>builder()
+            // Use kafka:29092 when running inside Docker Compose
             .setBootstrapServers("localhost:9092")
             .setRecordSerializer(
                 KafkaRecordSerializationSchema.builder()
@@ -438,6 +451,7 @@ public class KafkaStreamingJob {
                     .setValueSerializationSchema(new SimpleStringSchema())
                     .build()
             )
+            .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
             .build();
 
         // Write results to Kafka
@@ -519,29 +533,26 @@ public class WindowingBasics {
 
     // Aggregator that counts elements in the window
     public static class CountAggregator
-            implements AggregateFunction<PageView, Long, Tuple2<String, Long>> {
-
-        private String currentPage;
+            implements AggregateFunction<PageView, Tuple2<String, Long>, Tuple2<String, Long>> {
 
         @Override
-        public Long createAccumulator() {
-            return 0L;
+        public Tuple2<String, Long> createAccumulator() {
+            return new Tuple2<>("", 0L);
         }
 
         @Override
-        public Long add(PageView value, Long accumulator) {
-            currentPage = value.page;
-            return accumulator + 1;
+        public Tuple2<String, Long> add(PageView value, Tuple2<String, Long> accumulator) {
+            return new Tuple2<>(value.page, accumulator.f1 + 1);
         }
 
         @Override
-        public Tuple2<String, Long> getResult(Long accumulator) {
-            return new Tuple2<>(currentPage, accumulator);
+        public Tuple2<String, Long> getResult(Tuple2<String, Long> accumulator) {
+            return accumulator;
         }
 
         @Override
-        public Long merge(Long a, Long b) {
-            return a + b;
+        public Tuple2<String, Long> merge(Tuple2<String, Long> a, Tuple2<String, Long> b) {
+            return new Tuple2<>(a.f0, a.f1 + b.f1);
         }
     }
 
@@ -629,26 +640,30 @@ For local development with Kafka:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
+version: '2.2'
 
 services:
   jobmanager:
-    image: flink:1.18.1-java11
+    image: flink:1.18.1-scala_2.12
     ports:
       - "8081:8081"
     command: jobmanager
     environment:
-      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
 
   taskmanager:
-    image: flink:1.18.1-java11
+    image: flink:1.18.1-scala_2.12
     depends_on:
       - jobmanager
     command: taskmanager
+    scale: 2
     environment:
-      - JOB_MANAGER_RPC_ADDRESS=jobmanager
-    deploy:
-      replicas: 2
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -656,11 +671,12 @@ services:
       - "9092:9092"
     environment:
       KAFKA_NODE_ID: 1
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
@@ -755,6 +771,8 @@ Configure memory properly for large state:
 
 ```java
 // Use RocksDB for large state
+import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend;
+
 env.setStateBackend(new EmbeddedRocksDBStateBackend());
 ```
 
