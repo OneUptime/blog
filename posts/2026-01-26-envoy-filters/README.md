@@ -294,7 +294,7 @@ Network filters operate at the L4 (transport) layer and handle protocol-specific
 
 ### HTTP Connection Manager
 
-The HTTP Connection Manager is the most commonly used network filter. It handles HTTP/1.1, HTTP/2, and HTTP/3 traffic:
+The HTTP Connection Manager is the most commonly used network filter. In TCP and TLS listener configurations like the one below, it handles HTTP/1.1 and HTTP/2 traffic. HTTP/3 uses Envoy's QUIC/UDP listener support with the HTTP Connection Manager configured for that listener:
 
 ```yaml
 # Complete HTTP Connection Manager configuration
@@ -318,7 +318,7 @@ static_resources:
                 # Codec type: AUTO detects HTTP/1.1 vs HTTP/2
                 codec_type: AUTO
 
-                # Enable HTTP/2 for upstream connections
+                # Downstream HTTP/2 settings
                 http2_protocol_options:
                   max_concurrent_streams: 100
                   initial_stream_window_size: 65536
@@ -469,7 +469,7 @@ flowchart LR
 
 ### Router Filter
 
-The Router filter is mandatory and must be the last filter in the chain. It performs the actual routing to upstream clusters:
+For configurations that proxy requests to upstream clusters, the Router filter is the typical terminal filter and must be the last filter in the chain. It performs the actual routing to upstream clusters:
 
 ```yaml
 # Router filter configuration with retry and timeout settings
@@ -822,30 +822,32 @@ route_config:
     - name: api
       domains: ["api.example.com"]
       # Virtual host level CORS policy
-      cors:
-        # Allowed origins (exact match)
-        allow_origin_string_match:
-          - exact: "https://app.example.com"
-          - exact: "https://admin.example.com"
-          # Regex match for development environments
-          - safe_regex:
-              google_re2: {}
-              regex: "https://.*\\.example\\.dev"
+      typed_per_filter_config:
+        envoy.filters.http.cors:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+          # Allowed origins (exact match)
+          allow_origin_string_match:
+            - exact: "https://app.example.com"
+            - exact: "https://admin.example.com"
+            # Regex match for development environments
+            - safe_regex:
+                google_re2: {}
+                regex: "https://.*\\.example\\.dev"
 
-        # Allowed HTTP methods
-        allow_methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+          # Allowed HTTP methods
+          allow_methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
 
-        # Allowed request headers
-        allow_headers: "content-type, authorization, x-request-id, x-api-key"
+          # Allowed request headers
+          allow_headers: "content-type, authorization, x-request-id, x-api-key"
 
-        # Headers exposed to the client
-        expose_headers: "x-request-id, x-ratelimit-remaining"
+          # Headers exposed to the client
+          expose_headers: "x-request-id, x-ratelimit-remaining"
 
-        # Allow credentials (cookies, authorization headers)
-        allow_credentials: true
+          # Allow credentials (cookies, authorization headers)
+          allow_credentials: true
 
-        # Preflight cache duration
-        max_age: "86400"
+          # Preflight cache duration
+          max_age: "86400"
 
       routes:
         # Route with different CORS policy
@@ -857,7 +859,9 @@ route_config:
             envoy.filters.http.cors:
               "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
               allow_origin_string_match:
-                - exact: "*"
+                - safe_regex:
+                    google_re2: {}
+                    regex: ".*"
               allow_methods: "GET, OPTIONS"
               allow_headers: "content-type"
               max_age: "3600"
@@ -1110,8 +1114,8 @@ http_filters:
           # Disable compression if response has ETag
           disable_on_etag_header: true
 
-        # Remove Accept-Encoding header after compression decision
-        disable_on_etag_header: true
+        # Remove Accept-Encoding before forwarding the request upstream
+        remove_accept_encoding_header: true
 
       # Compressor library configuration
       compressor_library:
@@ -1186,13 +1190,15 @@ static_resources:
                   virtual_hosts:
                     - name: backend
                       domains: ["*"]
-                      cors:
-                        allow_origin_string_match:
-                          - exact: "https://app.example.com"
-                        allow_methods: "GET, POST, PUT, DELETE, OPTIONS"
-                        allow_headers: "content-type, authorization"
-                        allow_credentials: true
-                        max_age: "86400"
+                      typed_per_filter_config:
+                        envoy.filters.http.cors:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+                          allow_origin_string_match:
+                            - exact: "https://app.example.com"
+                          allow_methods: "GET, POST, PUT, DELETE, OPTIONS"
+                          allow_headers: "content-type, authorization"
+                          allow_credentials: true
+                          max_age: "86400"
                       routes:
                         - match:
                             prefix: "/"
@@ -1439,15 +1445,17 @@ static_resources:
                         - "api.example.com:*"
 
                       # CORS configuration
-                      cors:
-                        allow_origin_string_match:
-                          - exact: "https://app.example.com"
-                          - exact: "https://admin.example.com"
-                        allow_methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
-                        allow_headers: "content-type, authorization, x-request-id"
-                        expose_headers: "x-request-id, x-ratelimit-remaining"
-                        allow_credentials: true
-                        max_age: "86400"
+                      typed_per_filter_config:
+                        envoy.filters.http.cors:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+                          allow_origin_string_match:
+                            - exact: "https://app.example.com"
+                            - exact: "https://admin.example.com"
+                          allow_methods: "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+                          allow_headers: "content-type, authorization, x-request-id"
+                          expose_headers: "x-request-id, x-ratelimit-remaining"
+                          allow_credentials: true
+                          max_age: "86400"
 
                       # Retry policy for all routes
                       retry_policy:
@@ -1835,4 +1843,4 @@ Whether you're implementing authentication, rate limiting, traffic transformatio
 - [Envoy Filter Reference](https://www.envoyproxy.io/docs/envoy/latest/configuration/listeners/network_filters/network_filters)
 - [HTTP Filter Reference](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/http_filters)
 - [Envoy Lua Filter API](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/lua_filter)
-- [Envoy Examples Repository](https://github.com/envoyproxy/envoy/tree/main/examples)
+- [Envoy Examples Repository](https://github.com/envoyproxy/examples)
