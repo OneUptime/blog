@@ -8,11 +8,11 @@ Description: Learn how to build interactive web applications with Blazor includi
 
 ---
 
-Blazor is a framework for building interactive web applications using C# instead of JavaScript. It runs on WebAssembly in the browser or on the server with SignalR. This guide covers everything you need to know to build production-ready Blazor applications.
+Blazor is a framework for building interactive web applications using C# instead of JavaScript. It can run on WebAssembly in the browser or on the server with SignalR, and modern Blazor Web Apps can choose server-side, WebAssembly, or automatic interactive render modes per component. This guide covers everything you need to know to build production-ready Blazor applications.
 
 ## Understanding Blazor Hosting Models
 
-Blazor offers two hosting models: Blazor WebAssembly and Blazor Server. Each has distinct advantages depending on your use case.
+Blazor has traditionally offered two hosting models: Blazor WebAssembly and Blazor Server. In .NET 8 and later, the Blazor Web App template unifies these scenarios with render modes, while standalone Blazor WebAssembly apps remain available for static-site deployments. Each approach has distinct advantages depending on your use case.
 
 ```mermaid
 flowchart TB
@@ -44,12 +44,12 @@ flowchart TB
 Start by creating a new Blazor project using the .NET CLI.
 
 ```bash
-# Create a new Blazor WebAssembly project
+# Create a new Blazor Web App project
 
+dotnet new blazor -o MyBlazorApp
+
+# Or create a standalone Blazor WebAssembly project
 dotnet new blazorwasm -o MyBlazorApp
-
-# Or create a Blazor Server project
-dotnet new blazorserver -o MyBlazorApp
 
 # Navigate to the project directory
 cd MyBlazorApp
@@ -66,18 +66,19 @@ A typical Blazor project has a well-organized structure that separates concerns.
 flowchart TD
     Root["MyBlazorApp/"]
 
-    Root --> Pages["Pages/"]
-    Root --> Shared["Shared/"]
+    Root --> Components["Components/"]
     Root --> Services["Services/"]
     Root --> wwwroot["wwwroot/"]
     Root --> Program["Program.cs"]
 
+    Components --> Pages["Pages/"]
+    Components --> Layout["Layout/"]
     Pages --> Index["Index.razor"]
     Pages --> Counter["Counter.razor"]
     Pages --> FetchData["FetchData.razor"]
 
-    Shared --> MainLayout["MainLayout.razor"]
-    Shared --> NavMenu["NavMenu.razor"]
+    Layout --> MainLayout["MainLayout.razor"]
+    Layout --> NavMenu["NavMenu.razor"]
 
     wwwroot --> CSS["css/"]
     wwwroot --> JS["js/"]
@@ -126,7 +127,7 @@ Blazor components are the building blocks of your application. Each component is
 Blazor supports one-way and two-way data binding for creating reactive UIs.
 
 ```csharp
-// File: Pages/DataBindingDemo.razor
+// File: Components/Pages/DataBindingDemo.razor
 @page "/binding-demo"
 
 <h2>Data Binding Examples</h2>
@@ -294,14 +295,14 @@ public class UserRegistration
 ```
 
 ```csharp
-// File: Pages/Register.razor
+// File: Components/Pages/Register.razor
 @page "/register"
 @inject NavigationManager Navigation
 
 <h2>User Registration</h2>
 
 @* EditForm provides form handling and validation context *@
-<EditForm Model="@user" OnValidSubmit="HandleValidSubmit">
+<EditForm FormName="registration" Model="@user" OnValidSubmit="HandleValidSubmit">
     @* Displays validation summary at the top of the form *@
     <DataAnnotationsValidator />
     <ValidationSummary />
@@ -444,7 +445,8 @@ builder.Services.AddScoped(sp => new HttpClient
 });
 
 // Register services with appropriate lifetimes
-// Scoped: One instance per user circuit (recommended for most services)
+// Scoped: One instance per user circuit in Blazor Server.
+// In Blazor WebAssembly, scoped services behave like singletons.
 builder.Services.AddScoped<IWeatherService, WeatherService>();
 
 // Singleton: One instance shared across all users
@@ -457,7 +459,7 @@ await builder.Build().RunAsync();
 ```
 
 ```csharp
-// File: Pages/Weather.razor
+// File: Components/Pages/Weather.razor
 @page "/weather"
 @inject IWeatherService WeatherService
 
@@ -626,7 +628,7 @@ public class AppState
 Sometimes you need to call JavaScript from Blazor or vice versa.
 
 ```csharp
-// File: Pages/JsInteropDemo.razor
+// File: Components/Pages/JsInteropDemo.razor
 @page "/js-interop"
 @inject IJSRuntime JS
 
@@ -731,7 +733,9 @@ builder.Services.AddAuthorizationCore();
 // File: Services/CustomAuthStateProvider.cs
 
 using Microsoft.AspNetCore.Components.Authorization;
+using System.Net.Http.Headers;
 using System.Security.Claims;
+using System.Text.Json;
 
 public class CustomAuthStateProvider : AuthenticationStateProvider
 {
@@ -810,6 +814,8 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
 
     private string AddPadding(string base64)
     {
+        base64 = base64.Replace('-', '+').Replace('_', '/');
+
         switch (base64.Length % 4)
         {
             case 2: return base64 + "==";
@@ -821,7 +827,7 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
 ```
 
 ```csharp
-// File: Pages/SecurePage.razor
+// File: Components/Pages/SecurePage.razor
 @page "/secure"
 @attribute [Authorize]
 
@@ -853,8 +859,8 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
 Implement proper error handling to create resilient applications.
 
 ```csharp
-// File: Components/ErrorBoundary.razor
-@inherits ErrorBoundary
+// File: Components/CustomErrorBoundary.razor
+@inherits Microsoft.AspNetCore.Components.Web.ErrorBoundary
 
 @if (CurrentException != null)
 {
@@ -878,18 +884,18 @@ else
 ```
 
 ```csharp
-// File: Pages/Index.razor
+// File: Components/Pages/Index.razor
 
 @page "/"
 
-<ErrorBoundary @ref="errorBoundary">
+<CustomErrorBoundary @ref="errorBoundary">
     <ChildContent>
         <ProductList />
     </ChildContent>
-</ErrorBoundary>
+</CustomErrorBoundary>
 
 @code {
-    private ErrorBoundary? errorBoundary;
+    private CustomErrorBoundary? errorBoundary;
 
     protected override void OnParametersSet()
     {
@@ -924,7 +930,7 @@ dotnet publish -c Release -o ./publish
 # File: Dockerfile
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app
-EXPOSE 80
+EXPOSE 8080
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
@@ -945,7 +951,7 @@ ENTRYPOINT ["dotnet", "MyBlazorApp.dll"]
 ```bash
 # Build and run Docker container
 docker build -t myblazorapp .
-docker run -d -p 8080:80 myblazorapp
+docker run -d -p 8080:8080 myblazorapp
 ```
 
 ## Performance Optimization
