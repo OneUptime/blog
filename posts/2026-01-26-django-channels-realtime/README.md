@@ -46,21 +46,22 @@ First, install Django Channels and the Redis channel layer:
 ```bash
 # Install Django Channels and Redis support
 
-pip install channels channels-redis
+python -m pip install -U 'channels[daphne]' channels-redis
 ```
 
 Update your Django settings to use Channels:
 
 ```python
 # settings.py
-# Add channels to installed apps
+# Add Daphne and Channels to installed apps
 INSTALLED_APPS = [
+    'daphne',  # Add Daphne before Django apps for ASGI runserver support
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'channels',  # Add channels
+    'channels',  # Add channels for worker support
     'myapp',
 ]
 
@@ -87,18 +88,23 @@ import os
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.auth import AuthMiddlewareStack
-import myapp.routing  # We'll create this next
+from channels.security.websocket import AllowedHostsOriginValidator
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings')
+django_asgi_app = get_asgi_application()
+
+import myapp.routing  # We'll create this next
 
 # ProtocolTypeRouter directs traffic based on protocol type
 application = ProtocolTypeRouter({
     # Regular HTTP requests go to Django
-    'http': get_asgi_application(),
+    'http': django_asgi_app,
     # WebSocket connections use our custom routing
-    'websocket': AuthMiddlewareStack(  # Adds Django session auth to WebSocket
-        URLRouter(
-            myapp.routing.websocket_urlpatterns  # WebSocket URL routes
+    'websocket': AllowedHostsOriginValidator(
+        AuthMiddlewareStack(  # Adds Django session auth to WebSocket
+            URLRouter(
+                myapp.routing.websocket_urlpatterns  # WebSocket URL routes
+            )
         )
     ),
 })
@@ -268,7 +274,7 @@ from . import consumers
 websocket_urlpatterns = [
     re_path(r'ws/echo/$', consumers.EchoConsumer.as_asgi()),
     # Room name is captured from the URL
-    re_path(r'ws/chat/(?P<room_name>\w+)/$', consumers.ChatConsumer.as_asgi()),
+    re_path(r'ws/chat/(?P<room_name>[A-Za-z0-9_]{1,95})/$', consumers.ChatConsumer.as_asgi()),
 ]
 ```
 
@@ -348,7 +354,10 @@ class ChatClient {
         const chat = document.getElementById('chat-messages');
         const div = document.createElement('div');
         div.className = 'message';
-        div.innerHTML = `<strong>${username}:</strong> ${message}`;
+        const name = document.createElement('strong');
+        name.textContent = `${username}:`;
+        div.appendChild(name);
+        div.appendChild(document.createTextNode(` ${message}`));
         chat.appendChild(div);
         chat.scrollTop = chat.scrollHeight;
     }
@@ -620,13 +629,24 @@ Update ASGI to use the custom middleware:
 
 ```python
 # myproject/asgi.py
+import os
+from django.core.asgi import get_asgi_application
+from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.security.websocket import AllowedHostsOriginValidator
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings')
+django_asgi_app = get_asgi_application()
+
 from myapp.middleware import TokenAuthMiddleware
+import myapp.routing
 
 application = ProtocolTypeRouter({
-    'http': get_asgi_application(),
-    'websocket': TokenAuthMiddleware(  # Use custom token auth
-        URLRouter(
-            myapp.routing.websocket_urlpatterns
+    'http': django_asgi_app,
+    'websocket': AllowedHostsOriginValidator(
+        TokenAuthMiddleware(  # Use custom token auth
+            URLRouter(
+                myapp.routing.websocket_urlpatterns
+            )
         )
     ),
 })
@@ -645,8 +665,8 @@ pip install daphne
 # Run with Daphne
 daphne -b 0.0.0.0 -p 8000 myproject.asgi:application
 
-# Or with Uvicorn (faster, but requires uvloop)
-pip install uvicorn
+# Or with Uvicorn
+pip install 'uvicorn[standard]'
 uvicorn myproject.asgi:application --host 0.0.0.0 --port 8000 --workers 4
 ```
 
@@ -654,8 +674,6 @@ Docker Compose setup for production:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   web:
     build: .
