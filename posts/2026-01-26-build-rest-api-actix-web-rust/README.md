@@ -45,6 +45,7 @@ actix-web = "4"
 actix-rt = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
 sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -498,12 +499,11 @@ Actix Web supports middleware for cross-cutting concerns. Here is an example of 
 ```rust
 // src/middleware.rs
 use actix_web::{
+    body::{EitherBody, MessageBody},
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
     Error, HttpResponse,
 };
-use futures::future::{ok, Either, Ready};
-use std::future::Future;
-use std::pin::Pin;
+use futures_util::future::{ready, LocalBoxFuture, Ready};
 
 pub struct ApiKeyAuth {
     api_key: String,
@@ -519,19 +519,19 @@ impl<Svc, Bd> Transform<Svc, ServiceRequest> for ApiKeyAuth
 where
     Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error>,
     Svc::Future: 'static,
-    Bd: 'static,
+    Bd: MessageBody + 'static,
 {
-    type Response = ServiceResponse<Bd>;
+    type Response = ServiceResponse<EitherBody<Bd>>;
     type Error = Error;
     type Transform = ApiKeyAuthMiddleware<Svc>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: Svc) -> Self::Future {
-        ok(ApiKeyAuthMiddleware {
+        ready(Ok(ApiKeyAuthMiddleware {
             service,
             api_key: self.api_key.clone(),
-        })
+        }))
     }
 }
 
@@ -544,21 +544,21 @@ impl<Svc, Bd> Service<ServiceRequest> for ApiKeyAuthMiddleware<Svc>
 where
     Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error>,
     Svc::Future: 'static,
-    Bd: 'static,
+    Bd: MessageBody + 'static,
 {
-    type Response = ServiceResponse<Bd>;
+    type Response = ServiceResponse<EitherBody<Bd>>;
     type Error = Error;
-    type Future = Either<
-        Svc::Future,
-        Ready<Result<Self::Response, Self::Error>>,
-    >;
+    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         // Skip auth for health check
         if req.path() == "/api/v1/health" {
-            return Either::Left(self.service.call(req));
+            let fut = self.service.call(req);
+            return Box::pin(async move {
+                fut.await.map(ServiceResponse::map_into_left_body)
+            });
         }
 
         // Check for API key header
@@ -569,7 +569,10 @@ where
 
         match api_key {
             Some(key) if key == self.api_key => {
-                Either::Left(self.service.call(req))
+                let fut = self.service.call(req);
+                Box::pin(async move {
+                    fut.await.map(ServiceResponse::map_into_left_body)
+                })
             }
             _ => {
                 let response = HttpResponse::Unauthorized()
@@ -577,7 +580,9 @@ where
                         "success": false,
                         "error": "Invalid or missing API key"
                     }));
-                Either::Right(ok(req.into_response(response).map_into_boxed_body()))
+                Box::pin(async move {
+                    Ok(req.into_response(response).map_into_right_body())
+                })
             }
         }
     }
@@ -588,6 +593,8 @@ To use the middleware, wrap your routes:
 
 ```rust
 // In main.rs
+mod middleware;
+
 use crate::middleware::ApiKeyAuth;
 
 HttpServer::new(move || {
