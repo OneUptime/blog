@@ -25,7 +25,7 @@ Key benefits of vLLM:
 Install vLLM with pip. You need a GPU with CUDA support.
 
 ```bash
-# Install vLLM with CUDA 12.1 support
+# Install vLLM with the default CUDA-enabled wheels
 
 pip install vllm
 
@@ -42,13 +42,11 @@ Start serving a model with a single command:
 
 ```bash
 # Serve Llama 2 7B with default settings
-python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Llama-2-7b-chat-hf \
+vllm serve meta-llama/Llama-2-7b-chat-hf \
     --port 8000
 
 # Serve with specific GPU memory utilization
-python -m vllm.entrypoints.openai.api_server \
-    --model mistralai/Mistral-7B-Instruct-v0.2 \
+vllm serve mistralai/Mistral-7B-Instruct-v0.2 \
     --gpu-memory-utilization 0.90 \
     --port 8000
 ```
@@ -139,12 +137,13 @@ spec:
     spec:
       containers:
         - name: vllm
-          image: vllm/vllm-openai:v0.3.0
+          image: vllm/vllm-openai:latest
+          command: ["/bin/sh", "-c"]
           ports:
             - containerPort: 8000
           env:
             # HuggingFace token for gated models
-            - name: HUGGING_FACE_HUB_TOKEN
+            - name: HF_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: hf-credentials
@@ -153,18 +152,13 @@ spec:
             - name: HF_HOME
               value: /models
           args:
-            - "--model"
-            - "meta-llama/Llama-2-13b-chat-hf"
-            - "--tensor-parallel-size"
-            - "2"
-            - "--gpu-memory-utilization"
-            - "0.90"
-            - "--max-model-len"
-            - "4096"
-            - "--host"
-            - "0.0.0.0"
-            - "--port"
-            - "8000"
+            - >
+              vllm serve meta-llama/Llama-2-13b-chat-hf
+              --tensor-parallel-size 2
+              --gpu-memory-utilization 0.90
+              --max-model-len 4096
+              --host 0.0.0.0
+              --port 8000
           resources:
             limits:
               nvidia.com/gpu: "2"  # Request 2 GPUs
@@ -237,8 +231,7 @@ For models that do not fit on a single GPU, use tensor parallelism to split the 
 
 ```bash
 # Serve a 70B model across 4 GPUs
-python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Llama-2-70b-chat-hf \
+vllm serve meta-llama/Llama-2-70b-chat-hf \
     --tensor-parallel-size 4 \
     --gpu-memory-utilization 0.95 \
     --max-model-len 2048 \
@@ -277,8 +270,7 @@ print(output[0].outputs[0].text)
 Fine-tune vLLM performance with these configuration options:
 
 ```bash
-python -m vllm.entrypoints.openai.api_server \
-    --model mistralai/Mistral-7B-Instruct-v0.2 \
+vllm serve mistralai/Mistral-7B-Instruct-v0.2 \
     --gpu-memory-utilization 0.90 \
     --max-num-batched-tokens 32768 \
     --max-num-seqs 256 \
@@ -289,7 +281,7 @@ python -m vllm.entrypoints.openai.api_server \
 ```
 
 Key parameters explained:
-- `gpu-memory-utilization`: Fraction of GPU memory for KV cache (0.85-0.95 recommended)
+- `gpu-memory-utilization`: Fraction of GPU memory used by the vLLM model executor; vLLM uses this budget when profiling and allocating KV cache
 - `max-num-batched-tokens`: Maximum tokens per batch (higher = better throughput)
 - `max-num-seqs`: Maximum concurrent sequences
 - `block-size`: KV cache block size (16 or 32)
@@ -374,7 +366,7 @@ stream_response("Write a short story about a robot learning to cook:")
 1. **Pre-download models**: Download models before deployment to avoid cold start delays
 2. **Use appropriate GPU memory utilization**: Start at 0.85 and increase carefully
 3. **Match tensor parallelism to your hardware**: Use NVLink-connected GPUs for best performance
-4. **Enable quantization for production**: AWQ or GPTQ reduces memory by 50-75%
+4. **Consider quantization for production**: AWQ or GPTQ can reduce memory usage significantly
 5. **Set reasonable max sequence lengths**: Shorter lengths allow larger batches
 6. **Monitor GPU memory**: Watch for OOM errors during peak load
 
