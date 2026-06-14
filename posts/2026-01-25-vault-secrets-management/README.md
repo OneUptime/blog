@@ -18,7 +18,7 @@ Vault goes beyond simple secret storage:
 - **Dynamic Secrets**: Generate credentials on-demand with automatic expiration
 - **Encryption as a Service**: Encrypt data without managing keys
 - **Identity-Based Access**: Authenticate services and users with policies
-- **Secret Leasing**: All secrets have TTLs and can be revoked
+- **Secret Leasing**: Dynamic secrets and tokens have TTLs and can be revoked
 - **Audit Logging**: Every access is logged for compliance
 
 ## Architecture Overview
@@ -98,14 +98,21 @@ kubectl exec -n vault vault-0 -- vault operator init \
 
 # Store the output securely! You need 3 of 5 keys to unseal.
 
-# Unseal each pod (repeat with 3 different keys)
+# Unseal the first pod (repeat with 3 different keys)
 kubectl exec -n vault vault-0 -- vault operator unseal $KEY1
 kubectl exec -n vault vault-0 -- vault operator unseal $KEY2
 kubectl exec -n vault vault-0 -- vault operator unseal $KEY3
 
-# Join other pods to the cluster
+# Join other pods to the cluster, then unseal each one
 kubectl exec -n vault vault-1 -- vault operator raft join http://vault-0.vault-internal:8200
+kubectl exec -n vault vault-1 -- vault operator unseal $KEY1
+kubectl exec -n vault vault-1 -- vault operator unseal $KEY2
+kubectl exec -n vault vault-1 -- vault operator unseal $KEY3
+
 kubectl exec -n vault vault-2 -- vault operator raft join http://vault-0.vault-internal:8200
+kubectl exec -n vault vault-2 -- vault operator unseal $KEY1
+kubectl exec -n vault vault-2 -- vault operator unseal $KEY2
+kubectl exec -n vault vault-2 -- vault operator unseal $KEY3
 ```
 
 ## Secrets Engines
@@ -277,7 +284,7 @@ vault write auth/oidc/role/default \
   bound_audiences="$CLIENT_ID" \
   allowed_redirect_uris="http://localhost:8250/oidc/callback" \
   user_claim="email" \
-  policies="default"
+  token_policies="default"
 ```
 
 ## Kubernetes Integration
@@ -293,8 +300,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
     metadata:
+      labels:
+        app: myapp
       annotations:
         # Enable Vault Agent injection
         vault.hashicorp.com/agent-inject: "true"
@@ -313,7 +325,7 @@ spec:
         - name: myapp
           image: myapp:v1.0
           # Secret available at /vault/secrets/config
-          command: ["sh", "-c", "source /vault/secrets/config && ./start.sh"]
+          command: ["sh", "-c", ". /vault/secrets/config && ./start.sh"]
 ```
 
 ### Using the Vault CSI Provider
@@ -374,7 +386,7 @@ vault audit enable file file_path=/vault/logs/audit.log
 vault audit enable syslog tag="vault" facility="AUTH"
 
 # View audit log entry
-# Every request and response is logged with requestor identity
+# With a small set of exceptions, requests and responses are logged with requestor identity
 ```
 
 ## Policies
