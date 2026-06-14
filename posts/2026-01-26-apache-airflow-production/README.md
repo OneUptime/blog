@@ -66,7 +66,7 @@ For most production deployments, **CeleryExecutor** offers the best balance of s
 
 ## Production Deployment with Docker Compose
 
-Docker Compose provides a solid foundation for production deployments, especially for teams not running Kubernetes. Here is a complete production-ready configuration:
+Docker Compose can be a practical starting point for smaller, self-managed deployments, especially for teams not running Kubernetes. Treat it as a baseline that still needs production review for your environment. The example below targets the Airflow 2.x Docker image shown; for new production deployments, use a currently supported Airflow release and adapt the service names and health checks from the matching official Docker Compose file:
 
 ```yaml
 # docker-compose.yaml
@@ -102,9 +102,12 @@ x-airflow-common: &airflow-common
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'false'
     AIRFLOW__WEBSERVER__SECRET_KEY: ${WEBSERVER_SECRET_KEY}
     AIRFLOW__WEBSERVER__WORKERS: 4
+    AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: 'true'
+    AIRFLOW__WEBSERVER__COOKIE_SECURE: 'true'
+    AIRFLOW__WEBSERVER__COOKIE_SAMESITE: Lax
 
     # API authentication
-    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
 
     # Logging to remote storage
     AIRFLOW__LOGGING__REMOTE_LOGGING: 'true'
@@ -237,7 +240,7 @@ services:
       - -c
       - |
         # Initialize database schema
-        airflow db upgrade
+        airflow db migrate
         # Create admin user if not exists
         airflow users create \
           --username admin \
@@ -283,7 +286,7 @@ Create an environment file with your secrets:
 
 # Generate a Fernet key for encryption
 # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-FERNET_KEY=your-32-character-fernet-key-here
+FERNET_KEY=your-base64-encoded-fernet-key
 
 # Secure random strings for secrets
 WEBSERVER_SECRET_KEY=your-random-secret-key
@@ -389,10 +392,9 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # WebSocket support for log streaming
+        # Forwarded headers for links, redirects, and log fetching behind TLS
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection "";
     }
 }
 ```
@@ -409,8 +411,6 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.empty import EmptyOperator
-from airflow.utils.task_group import TaskGroup
-from airflow.models import Variable
 
 # Default arguments applied to all tasks
 default_args = {
@@ -431,7 +431,7 @@ dag = DAG(
     dag_id='production_etl_pipeline',
     default_args=default_args,
     description='Daily ETL pipeline for analytics data',
-    schedule_interval='0 6 * * *',  # Run at 6 AM daily
+    schedule='0 6 * * *',  # Run at 6 AM daily
     start_date=datetime(2024, 1, 1),
     catchup=False,  # Disable backfill on deployment
     max_active_runs=1,  # Prevent overlapping runs
@@ -456,13 +456,13 @@ def extract_data(**context):
     Extract data from source system.
     Uses XCom to pass data references between tasks.
     """
-    execution_date = context['execution_date']
+    logical_date = context['logical_date']
 
     # Log execution context for debugging
-    context['ti'].log.info(f"Extracting data for {execution_date}")
+    context['ti'].log.info(f"Extracting data for {logical_date}")
 
     # Your extraction logic here
-    extracted_path = f"s3://data-lake/raw/{execution_date.strftime('%Y/%m/%d')}"
+    extracted_path = f"s3://data-lake/raw/{logical_date.strftime('%Y/%m/%d')}"
 
     # Push result to XCom for downstream tasks
     return extracted_path
@@ -518,27 +518,21 @@ with dag:
     extract = PythonOperator(
         task_id='extract',
         python_callable=extract_data,
-        provide_context=True,
     )
 
     transform = PythonOperator(
         task_id='transform',
         python_callable=transform_data,
-        provide_context=True,
     )
 
     load = PythonOperator(
         task_id='load',
         python_callable=load_data,
-        provide_context=True,
-        # SLA for this critical task
-        sla=timedelta(hours=2),
     )
 
     validate = PythonOperator(
         task_id='validate',
         python_callable=validate_data,
-        provide_context=True,
     )
 
     end = EmptyOperator(
@@ -574,8 +568,8 @@ mappings:
   - match: "airflow.dag_processing.total_parse_time"
     name: "airflow_dag_processing_total_parse_time"
 
-  - match: "airflow.scheduler.tasks.running"
-    name: "airflow_scheduler_tasks_running"
+  - match: "airflow.executor.running_tasks"
+    name: "airflow_executor_running_tasks"
 
   - match: "airflow.scheduler.tasks.starving"
     name: "airflow_scheduler_tasks_starving"
@@ -584,6 +578,17 @@ mappings:
     name: "airflow_pool_open_slots"
     labels:
       pool: "$1"
+
+  - match: "airflow.dag_processing.import_errors"
+    name: "airflow_dag_processing_import_errors"
+
+  - match: "airflow.ti.finish.*.*.*"
+    name: "airflow_ti_finish"
+    match_metric_type: counter
+    labels:
+      dag_id: "$1"
+      task_id: "$2"
+      state: "$3"
 ```
 
 ### Key Metrics to Alert On
@@ -607,8 +612,8 @@ groups:
       # Task failures
       - alert: AirflowHighTaskFailureRate
         expr: |
-          rate(airflow_ti_failures[1h]) /
-          (rate(airflow_ti_failures[1h]) + rate(airflow_ti_successes[1h])) > 0.1
+          sum(rate(airflow_ti_finish_total{state="failed"}[1h])) /
+          (sum(rate(airflow_ti_finish_total{state="failed"}[1h])) + sum(rate(airflow_ti_finish_total{state="success"}[1h]))) > 0.1
         for: 15m
         labels:
           severity: warning
@@ -638,31 +643,12 @@ groups:
 
 PostgreSQL requires regular maintenance for optimal Airflow performance:
 
-```sql
--- maintenance/cleanup.sql
--- Run these queries periodically to keep your database healthy
+```bash
+# Preview cleanup candidates before deleting anything
+airflow db clean --clean-before-timestamp "2024-01-01T00:00:00+00:00" --dry-run
 
--- Clean up old task instances (keep 90 days)
-DELETE FROM task_instance
-WHERE execution_date < NOW() - INTERVAL '90 days';
-
--- Clean up old DAG runs
-DELETE FROM dag_run
-WHERE execution_date < NOW() - INTERVAL '90 days';
-
--- Clean up old logs
-DELETE FROM log
-WHERE dttm < NOW() - INTERVAL '30 days';
-
--- Clean up old XCom data
-DELETE FROM xcom
-WHERE execution_date < NOW() - INTERVAL '7 days';
-
--- Vacuum and analyze after cleanup
-VACUUM ANALYZE task_instance;
-VACUUM ANALYZE dag_run;
-VACUUM ANALYZE log;
-VACUUM ANALYZE xcom;
+# Archive and delete metadata older than the cutoff
+airflow db clean --clean-before-timestamp "2024-01-01T00:00:00+00:00"
 ```
 
 Automate this with a maintenance DAG:
@@ -673,32 +659,28 @@ Automate this with a maintenance DAG:
 
 from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.providers.postgres.operators.postgres import PostgresOperator
+from airflow.operators.bash import BashOperator
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
 dag = DAG(
     dag_id='airflow_db_maintenance',
-    schedule_interval='0 3 * * 0',  # Weekly on Sunday at 3 AM
+    schedule='0 3 * * 0',  # Weekly on Sunday at 3 AM
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=['maintenance'],
 )
 
-cleanup = PostgresOperator(
-    task_id='cleanup_old_records',
-    postgres_conn_id='airflow_db',
-    sql="""
-        DELETE FROM task_instance WHERE execution_date < NOW() - INTERVAL '90 days';
-        DELETE FROM dag_run WHERE execution_date < NOW() - INTERVAL '90 days';
-        DELETE FROM log WHERE dttm < NOW() - INTERVAL '30 days';
-        DELETE FROM xcom WHERE execution_date < NOW() - INTERVAL '7 days';
-    """,
+cleanup = BashOperator(
+    task_id='cleanup_old_metadata',
+    bash_command='airflow db clean --clean-before-timestamp "{{ macros.ds_add(ds, -90) }}T00:00:00+00:00" --yes',
     dag=dag,
 )
 
-vacuum = PostgresOperator(
+vacuum = SQLExecuteQueryOperator(
     task_id='vacuum_database',
-    postgres_conn_id='airflow_db',
+    conn_id='airflow_db',
     sql="VACUUM ANALYZE;",
+    autocommit=True,
     dag=dag,
 )
 
