@@ -155,7 +155,7 @@ Build a dashboard that shows these key relationships:
 
 SELECT
     time_bucket('1 hour', time) AS hour,
-    avg(http_requests_total) / avg(cpu_cores) AS requests_per_core,
+    avg(requests_per_second) / avg(cpu_cores) AS requests_per_core,
     avg(cpu_usage_percent) AS avg_cpu,
     percentile_cont(0.95) WITHIN GROUP (ORDER BY cpu_usage_percent) AS p95_cpu
 FROM metrics
@@ -219,7 +219,7 @@ def analyze_bottlenecks(prometheus_url, service_name):
         'cpu_saturation': f'avg(rate(process_cpu_seconds_total{{service="{service_name}"}}[5m])) > 0.8',
         'memory_pressure': f'avg(process_resident_memory_bytes{{service="{service_name}"}}) / avg(node_memory_MemTotal_bytes) > 0.85',
         'db_connection_saturation': f'avg(db_pool_active_connections{{service="{service_name}"}}) / avg(db_pool_max_connections) > 0.8',
-        'request_queue_growth': f'rate(request_queue_size{{service="{service_name}"}}[5m]) > 0',
+        'request_queue_growth': f'deriv(request_queue_size{{service="{service_name}"}}[5m]) > 0',
     }
 
     bottlenecks = []
@@ -384,7 +384,7 @@ groups:
 
       # Predictive alert - traffic growing faster than capacity
       - alert: CapacityRunway
-        expr: predict_linear(http_requests_total[7d], 30*24*3600) > (max_service_capacity * 0.9)
+        expr: predict_linear(sum(rate(http_requests_total[5m]))[7d:1h], 30*24*3600) > (max_service_capacity * 0.9)
         for: 1h
         labels:
           severity: warning
