@@ -61,7 +61,7 @@ func NewDeploymentState(blueURL, greenURL string) (*DeploymentState, error) {
 }
 ```
 
-The `sync.RWMutex` is critical here. Multiple goroutines will read the active state on every request, but only the switch operation writes to it. Using a read-write lock lets us handle thousands of concurrent requests without blocking.
+The `sync.RWMutex` is critical here. Multiple goroutines will read the active state on every request, but only the switch operation writes to it. Using a read-write lock minimizes contention for read-heavy traffic.
 
 ## Building the Reverse Proxy
 
@@ -270,10 +270,10 @@ func main() {
 
 ## Graceful Connection Draining
 
-The code above switches traffic instantly. In production, you want to drain existing connections from the old backend before fully switching. Here's a more sophisticated approach:
+The code above switches traffic instantly. In production, you want to give existing requests to the old backend time to finish before stopping that backend. Here's a fixed-delay approach:
 
 ```go
-// GracefulSwitch waits for in-flight requests to complete
+// GracefulSwitch switches traffic, then waits before the old backend is stopped.
 func (sh *SwitchHandler) GracefulSwitch(targetColor string, drainTimeout time.Duration) error {
     sh.state.mu.Lock()
 
@@ -287,12 +287,12 @@ func (sh *SwitchHandler) GracefulSwitch(targetColor string, drainTimeout time.Du
     sh.state.activeColor = targetColor
     sh.state.mu.Unlock()
 
-    // Give in-flight requests time to complete on old backend
+    // Give in-flight requests time to complete on the old backend before it is stopped
     // In a real system, you'd track active connections
-    log.Printf("Draining connections from %s for %v", previousColor, drainTimeout)
+    log.Printf("Waiting %v before stopping %s", drainTimeout, previousColor)
     time.Sleep(drainTimeout)
 
-    log.Printf("Drain complete, fully switched to %s", targetColor)
+    log.Printf("Delay complete, traffic is switched to %s", targetColor)
     return nil
 }
 ```
@@ -305,8 +305,8 @@ Before going live, test the failure scenarios:
 
 1. Start the proxy with only blue running. Verify traffic flows to blue.
 2. Start green and hit the switch endpoint. Verify traffic moves to green.
-3. Kill green and try to switch back. The health check should block it.
-4. Restart green, wait for health checks, then switch successfully.
+3. Kill blue and try to switch back. The health check should block it.
+4. Restart blue, wait for health checks, then switch successfully.
 
 This exercise reveals edge cases your monitoring needs to catch. What happens if both backends fail? How fast do health checks detect failure? These questions matter more than the happy path.
 
