@@ -8,11 +8,11 @@ Description: Learn how to validate incoming HTTP requests in Spring applications
 
 ---
 
-Every Spring application that accepts user input needs validation. Without it, you end up with garbage data in your database, cryptic error messages for users, and security vulnerabilities waiting to be exploited. Bean Validation (JSR 380) provides a declarative way to define validation rules directly on your model classes, and Spring integrates it seamlessly into request handling.
+Every Spring application that accepts user input needs validation. Without it, you end up with garbage data in your database, cryptic error messages for users, and security vulnerabilities waiting to be exploited. Bean Validation (Jakarta Bean Validation, formerly JSR 380) provides a declarative way to define validation rules directly on your model classes, and Spring integrates it seamlessly into request handling.
 
 ## Setting Up Bean Validation
 
-If you are using Spring Boot, the validation starter is included with `spring-boot-starter-web`. For standalone Spring projects, add the Hibernate Validator dependency:
+If you are using Spring Boot, add the validation starter. It brings in Jakarta Bean Validation support and Hibernate Validator:
 
 ```xml
 <dependency>
@@ -122,12 +122,11 @@ This produces a clean JSON response when validation fails:
 
 ## Validating Path Variables and Query Parameters
 
-Bean Validation works with path variables and query parameters too. Add `@Validated` to your controller class, then use constraints directly on method parameters.
+Bean Validation works with path variables and query parameters too. Use constraints directly on method parameters.
 
 ```java
 @RestController
 @RequestMapping("/api/products")
-@Validated  // Required for method parameter validation
 public class ProductController {
 
     @GetMapping("/{id}")
@@ -145,20 +144,21 @@ public class ProductController {
 }
 ```
 
-Note that path and query parameter validation throws `ConstraintViolationException` instead of `MethodArgumentNotValidException`. Handle it separately in your exception handler:
+In Spring Framework 6.1 and later, path and query parameter validation throws `HandlerMethodValidationException` instead of `MethodArgumentNotValidException`. Handle it separately in your exception handler:
 
 ```java
-@ExceptionHandler(ConstraintViolationException.class)
-public ResponseEntity<Map<String, Object>> handleConstraintViolation(
-        ConstraintViolationException ex) {
+@ExceptionHandler(HandlerMethodValidationException.class)
+public ResponseEntity<Map<String, Object>> handleHandlerMethodValidation(
+        HandlerMethodValidationException ex) {
 
     Map<String, String> errors = new HashMap<>();
 
-    ex.getConstraintViolations().forEach(violation -> {
-        String path = violation.getPropertyPath().toString();
-        // Extract just the parameter name from the path
-        String paramName = path.substring(path.lastIndexOf('.') + 1);
-        errors.put(paramName, violation.getMessage());
+    ex.getParameterValidationResults().forEach(result -> {
+        String paramName = result.getMethodParameter().getParameterName();
+        String errorKey = paramName != null ? paramName : "parameter";
+        result.getResolvableErrors().forEach(error -> {
+            errors.put(errorKey, error.getDefaultMessage());
+        });
     });
 
     Map<String, Object> response = new HashMap<>();
@@ -364,8 +364,8 @@ Here is a quick reference of the most useful built-in constraints:
 |------------|-------------|
 | `@NotNull` | Value must not be null |
 | `@NotBlank` | String must not be null and must contain non-whitespace |
-| `@NotEmpty` | Collection, map, or array must not be null or empty |
-| `@Size(min, max)` | String length or collection size must be within range |
+| `@NotEmpty` | String, collection, map, or array must not be null or empty |
+| `@Size(min, max)` | String length or collection, map, or array size must be within range |
 | `@Min(value)` | Number must be greater than or equal to value |
 | `@Max(value)` | Number must be less than or equal to value |
 | `@Email` | Must be a valid email format |
