@@ -22,6 +22,7 @@ pip install pytest
 
 ```python
 # test_calculator.py
+import pytest
 
 def add(a, b):
     return a + b
@@ -77,6 +78,7 @@ def check_something():  # NOT discovered
 
 ```python
 # test_user.py
+import pytest
 
 class TestUser:
     """Group related tests in a class."""
@@ -322,6 +324,7 @@ Mark tests for selective running:
 
 ```python
 import pytest
+import sys
 
 @pytest.mark.slow
 def test_long_running():
