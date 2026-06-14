@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Query Builder, Type Safety, SQL, Database, Design Pattern, SQLAlchemy
 
-Description: Learn how to build a type-safe query builder in Python that catches errors at development time instead of runtime.
+Description: Learn how to build a type-safe query builder in Python that catches errors earlier in development before they reach your database.
 
 ---
 
-> Raw SQL strings are error-prone. You concatenate strings, forget quotes, introduce SQL injection, and only find out when your query fails in production. A type-safe query builder catches these mistakes before your code even runs.
+> Raw SQL strings are error-prone. You concatenate strings, forget quotes, introduce SQL injection, and only find out when your query fails in production. A type-safe query builder catches many of these mistakes before your query reaches the database.
 
-Building a query builder in Python requires balancing flexibility with type safety. Python's type hints, combined with dataclasses and generics, let you create fluent APIs that your IDE can validate as you type.
+Building a query builder in Python requires balancing flexibility with type safety. Python's type hints, combined with dataclasses and generics, let you create fluent APIs that your IDE can understand while the builder validates schema details at runtime.
 
 ---
 
@@ -28,9 +28,9 @@ query = "SELECT * FROM users WERE status = 'active'"  # Typo in WHERE
 
 A type-safe query builder prevents these issues by:
 - Validating column names against a schema
-- Automatically handling parameter escaping
-- Providing IDE autocomplete for columns and operators
-- Catching typos at development time
+- Passing values as parameters so the database driver can handle escaping
+- Providing IDE autocomplete for builder methods and operators
+- Catching many typos during local testing before queries reach production
 
 ---
 
@@ -220,12 +220,13 @@ print(params)
 
 ## Adding Generic Type Support
 
-To get IDE autocomplete for column names, we can use TypedDict and generics:
+To derive valid column names from a schema instead of maintaining a set by hand, we can use TypedDict and generics:
 
 ```python
 # typed_query_builder.py
-from typing import TypedDict, Generic, TypeVar, get_type_hints, Type
+from typing import Any, Generic, List, Optional, Set, Tuple, Type, TypeVar, TypedDict, get_type_hints
 from dataclasses import dataclass, field
+from query_builder import Condition, Operator, OrderBy
 
 # Define table schema as TypedDict
 class UserSchema(TypedDict):
@@ -236,14 +237,14 @@ class UserSchema(TypedDict):
     created_at: str
 
 
-T = TypeVar("T", bound=TypedDict)
+T = TypeVar("T")
 
 
 @dataclass
 class TypedSelectQuery(Generic[T]):
     """Query builder with schema type validation"""
 
-    _schema: Type[T] = None
+    _schema: Optional[Type[T]] = None
     _table: str = ""
     _columns: List[str] = field(default_factory=list)
     _conditions: List[Condition] = field(default_factory=list)
@@ -332,7 +333,7 @@ class TypedSelectQuery(Generic[T]):
         return sql, params
 
 
-# Usage with type safety
+# Usage with schema validation
 query = (
     TypedSelectQuery.for_table("users", UserSchema)
     .select("id", "name", "email")
@@ -355,11 +356,12 @@ A complete query builder needs more than SELECT:
 # mutation_builders.py
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Tuple, Set, Optional
+from query_builder import Condition, Operator
 
 
 @dataclass
 class InsertQuery:
-    """Type-safe INSERT query builder"""
+    """Schema-validated INSERT query builder"""
 
     _table: str = ""
     _columns: List[str] = field(default_factory=list)
@@ -559,6 +561,8 @@ Here is how to use the query builder with asyncpg for actual database operations
 # db_integration.py
 import asyncpg
 from typing import List, Dict, Any, Optional
+from mutation_builders import InsertQuery, UpdateQuery, DeleteQuery
+from query_builder import SelectQuery
 
 class Database:
     """Database wrapper using the type-safe query builder"""
@@ -652,6 +656,9 @@ ORDER_COLUMNS = {"id", "user_id", "total", "status", "created_at"}
 
 **2. Create table-specific query helpers:**
 ```python
+from query_builder import SelectQuery
+from schemas import ORDER_COLUMNS, USER_COLUMNS
+
 def users_query() -> SelectQuery:
     return SelectQuery().table("users", USER_COLUMNS)
 
@@ -661,6 +668,11 @@ def orders_query() -> SelectQuery:
 
 **3. Add query logging for debugging:**
 ```python
+import logging
+from typing import Any, List, Tuple
+
+logger = logging.getLogger(__name__)
+
 def build_with_log(query) -> Tuple[str, List[Any]]:
     sql, params = query.build()
     logger.debug(f"SQL: {sql}, Params: {params}")
@@ -673,9 +685,9 @@ def build_with_log(query) -> Tuple[str, List[Any]]:
 
 A type-safe query builder provides several advantages over raw SQL strings:
 
-- **Validation at development time**: Catch typos and invalid columns before running queries
-- **IDE support**: Get autocomplete for column names and methods
-- **SQL injection prevention**: Parameters are always properly escaped
+- **Earlier validation**: Catch typos and invalid columns during local testing before queries reach production
+- **IDE support**: Get autocomplete for builder methods and schema types
+- **SQL injection prevention**: Values are passed as parameters instead of interpolated into SQL strings
 - **Composability**: Build complex queries by chaining simple methods
 - **Testability**: Each builder method can be unit tested independently
 
