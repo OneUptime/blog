@@ -40,13 +40,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.7"
+axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tracing = "0.1"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
 ```
 
 ---
@@ -254,22 +258,26 @@ Stripe uses a slightly different signature format that includes a timestamp to p
 
 ```rust
 // Stripe signature header format: t=timestamp,v1=signature
-fn parse_stripe_signature(header: &str) -> Option<(i64, String)> {
+fn parse_stripe_signature(header: &str) -> Option<(i64, Vec<String>)> {
     let mut timestamp = None;
-    let mut signature = None;
+    let mut signatures = Vec::new();
 
     for part in header.split(',') {
+        let part = part.trim();
         if let Some(ts) = part.strip_prefix("t=") {
             timestamp = ts.parse().ok();
         } else if let Some(sig) = part.strip_prefix("v1=") {
-            signature = Some(sig.to_string());
+            signatures.push(sig.to_string());
         }
     }
 
-    match (timestamp, signature) {
-        (Some(t), Some(s)) => Some((t, s)),
-        _ => None,
+    if let Some(t) = timestamp {
+        if !signatures.is_empty() {
+            return Some((t, signatures));
+        }
     }
+
+    None
 }
 
 async fn stripe_webhook(
@@ -283,7 +291,7 @@ async fn stripe_webhook(
         .and_then(|v| v.to_str().ok())
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let (timestamp, signature) = parse_stripe_signature(sig_header)
+    let (timestamp, signatures) = parse_stripe_signature(sig_header)
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     // Check timestamp to prevent replay attacks (5 minute window)
@@ -298,9 +306,14 @@ async fn stripe_webhook(
     }
 
     // Stripe signs: "{timestamp}.{payload}"
-    let signed_payload = format!("{}.{}", timestamp, String::from_utf8_lossy(&body));
+    let mut signed_payload = timestamp.to_string().into_bytes();
+    signed_payload.push(b'.');
+    signed_payload.extend_from_slice(&body);
 
-    if !state.verifier.verify_hex(signed_payload.as_bytes(), &signature) {
+    if !signatures
+        .iter()
+        .any(|signature| state.verifier.verify_hex(&signed_payload, signature))
+    {
         eprintln!("Invalid Stripe signature");
         return Err(StatusCode::UNAUTHORIZED);
     }
