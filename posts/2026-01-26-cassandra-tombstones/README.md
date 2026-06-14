@@ -47,11 +47,20 @@ DELETE email FROM users WHERE user_id = 'user_123';
 
 ### Row Tombstone
 
-Created when you delete an entire row.
+Created when you delete a row inside a partition with a full primary key.
 
 ```cql
--- This creates a row tombstone
-DELETE FROM users WHERE user_id = 'user_123';
+CREATE TABLE user_events (
+    user_id text,
+    event_id timeuuid,
+    event_type text,
+    PRIMARY KEY ((user_id), event_id)
+);
+
+-- This creates a row tombstone for one clustering row
+DELETE FROM user_events
+WHERE user_id = 'user_123'
+AND event_id = 12345678-1234-1234-1234-123456789abc;
 ```
 
 ### Range Tombstone
@@ -113,12 +122,12 @@ flowchart TD
     G -->|No| H[Tombstone Remains Until Compaction]
     H --> G
     G -->|Yes| I[Tombstone Eligible for Removal]
-    I --> J{All Replicas Synced?}
+    I --> J{Older shadowed data included?}
     J -->|Yes| K[Tombstone Permanently Removed]
-    J -->|No| L[Tombstone May Resurface Data]
+    J -->|No| L[Tombstone Remains Until Later Compaction]
 ```
 
-The key setting is `gc_grace_seconds`, which defaults to 10 days (864000 seconds). This grace period ensures all replicas have received the delete before the tombstone is purged.
+The key setting is `gc_grace_seconds`, which defaults to 10 days (864000 seconds). This grace period gives unavailable replicas time to receive the delete before the tombstone can be purged during compaction.
 
 ## Detecting Tombstone Problems
 
@@ -166,7 +175,7 @@ Caused by: TombstoneOverwhelmingException:
 Check tombstone statistics with nodetool commands.
 
 ```bash
-# View SSTable metadata including tombstone count
+# View table statistics including tombstone metrics
 nodetool tablestats keyspace_name.table_name
 
 # Sample output includes:
@@ -182,8 +191,8 @@ nodetool tablestats keyspace_name.table_name
 # Compaction pending: 3
 # Droppable tombstone ratio: 0.42  <-- High ratio indicates tombstone buildup
 
-# View per-SSTable tombstone data
-nodetool cfstats keyspace_name.table_name -H
+# View table statistics in human-readable form
+nodetool tablestats keyspace_name.table_name -H
 ```
 
 ### SSTable Metadata Analysis
@@ -191,6 +200,8 @@ nodetool cfstats keyspace_name.table_name -H
 Use sstablemetadata to inspect individual SSTables for tombstone counts.
 
 ```bash
+# Run this on a stopped Cassandra node, or against copied SSTables offline
+
 # Navigate to Cassandra data directory
 cd /var/lib/cassandra/data/keyspace_name/table_name-uuid/
 
@@ -470,8 +481,8 @@ AND compaction = {
 }
 AND default_time_to_live = 604800;  -- 7 days
 
--- With TWCS, entire SSTables are dropped after TTL
--- No tombstones needed when all data in a window expires
+-- With TWCS, fully expired SSTables can be dropped after TTL
+-- This avoids scanning large numbers of expired cells during reads
 ```
 
 ```mermaid
@@ -491,7 +502,7 @@ flowchart LR
     end
 
     D[After TTL Expires] --> E[Drop Entire Day 1 Window]
-    E --> F[No Tombstones Created]
+    E --> F[Expired Cells Removed Together]
 ```
 
 ### Strategy 3: Partition Design to Isolate Deletes
@@ -523,8 +534,8 @@ SELECT * FROM user_sessions_good
 WHERE user_id = 'user_123'
 AND day = '2026-01-26';
 
--- Old days automatically expire without tombstone accumulation
--- Entire partitions are dropped, not individual rows
+-- Old days automatically expire in isolated time buckets
+-- Fully expired SSTables can be dropped together
 ```
 
 ### Strategy 4: Force Compaction
@@ -537,7 +548,7 @@ Manually trigger compaction to remove eligible tombstones.
 # significant disk I/O and temporary disk space usage
 nodetool compact keyspace_name table_name
 
-# Force compaction with specific SSTables
+# Avoid creating a single large output SSTable
 nodetool compact keyspace_name table_name -s
 
 # Check compaction status
@@ -545,6 +556,7 @@ nodetool compactionstats
 
 # If using STCS or LCS, consider user-defined compaction
 # to target specific SSTables with high tombstone ratios
+nodetool compact --user-defined /path/to/mc-123-big-Data.db /path/to/mc-124-big-Data.db
 nodetool garbagecollect keyspace_name table_name
 ```
 
@@ -553,14 +565,16 @@ nodetool garbagecollect keyspace_name table_name
 When deleting all data in a table, TRUNCATE is more efficient than DELETE.
 
 ```cql
--- BAD: Creates a tombstone for every row
-DELETE FROM temp_processing_table;
+-- BAD: Deleting every row individually creates many tombstones
+DELETE FROM temp_processing_table WHERE id = 'row_1';
+DELETE FROM temp_processing_table WHERE id = 'row_2';
+DELETE FROM temp_processing_table WHERE id = 'row_3';
 
--- GOOD: Drops SSTables directly, no tombstones
+-- GOOD: Removes table data without per-row tombstones
 TRUNCATE temp_processing_table;
 
--- For partition-level bulk delete, consider dropping and recreating
--- if the entire partition should be removed
+-- For repeated partition-level bulk deletes, consider time bucketing
+-- so old data expires and compacts away together
 ```
 
 ## Application-Level Strategies
@@ -577,7 +591,9 @@ Query filters exclude inactive records.
 """
 
 from cassandra.cluster import Cluster
-from datetime import datetime
+from cassandra.query import UNSET_VALUE
+from datetime import datetime, timedelta
+import time
 
 class UserRepository:
     def __init__(self, session):
@@ -597,21 +613,20 @@ class UserRepository:
 
         self.get_active_stmt = session.prepare("""
             SELECT * FROM users
-            WHERE user_id = ? AND is_active = true
-            ALLOW FILTERING
+            WHERE user_id = ?
         """)
 
     def create_user(self, user_id, name, email):
         """Create a new active user."""
         self.session.execute(
             self.insert_stmt,
-            [user_id, name, email, True, None]
+            [user_id, name, email, True, UNSET_VALUE]
         )
 
     def delete_user(self, user_id):
         """
         Soft delete: mark as inactive instead of DELETE.
-        No tombstones created.
+        No DELETE tombstones created.
         """
         self.session.execute(
             self.soft_delete_stmt,
@@ -624,7 +639,8 @@ class UserRepository:
             self.get_active_stmt,
             [user_id]
         )
-        return result.one()
+        row = result.one()
+        return row if row and row.is_active else None
 
     def hard_delete_inactive_users(self, older_than_days=90):
         """
@@ -680,8 +696,8 @@ Isolates tombstones to time-based partitions that can be dropped entirely.
 """
 
 from cassandra.cluster import Cluster
-from cassandra.query import BatchStatement
 from datetime import datetime, timedelta
+import json
 import uuid
 
 class TimeWindowedQueue:
@@ -756,7 +772,7 @@ class TimeWindowedQueue:
         Process all pending jobs in a specific time window.
 
         Instead of deleting processed jobs, we mark them processed.
-        The entire partition expires via TTL, avoiding tombstones.
+        The time bucket expires via TTL, avoiding delete-heavy tombstone buildup.
         """
         pending = self.session.execute(
             self.get_pending_stmt,
@@ -833,17 +849,17 @@ groups:
 
       # Alert when queries are scanning too many tombstones
       - alert: CassandraTombstoneScanWarning
-        expr: rate(cassandra_client_request_tombstones_scanned_total[5m]) > 10000
+        expr: cassandra_table_tombstones_scanned_per_read > 10000
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "Excessive tombstone scanning detected"
-          description: "Queries are scanning {{ $value }} tombstones per second"
+          description: "Table reads are scanning an average of {{ $value }} tombstones"
 
-      # Alert on tombstone-related read failures
+      # Alert on tombstone-related read failures if your log exporter exposes them
       - alert: CassandraTombstoneReadFailures
-        expr: rate(cassandra_client_request_failures_total{reason="tombstone"}[5m]) > 0
+        expr: increase(cassandra_tombstone_overwhelming_exceptions_total[5m]) > 0
         for: 5m
         labels:
           severity: critical
@@ -872,7 +888,7 @@ tombstone_ratio = Gauge(
 
 tombstone_scanned = Gauge(
     'cassandra_table_tombstones_scanned_per_read',
-    'Average tombstones scanned per read',
+    'Average tombstones scanned per read over the last five minutes',
     ['keyspace', 'table']
 )
 
@@ -909,6 +925,16 @@ def collect_tombstone_metrics():
                     keyspace=current_keyspace,
                     table=current_table
                 ).set(ratio)
+
+        # Parse average tombstones per read from nodetool tablestats
+        elif 'Average tombstones per slice' in line:
+            match = re.search(r'(\d+\.?\d*)', line)
+            if match and current_keyspace and current_table:
+                average = float(match.group(1))
+                tombstone_scanned.labels(
+                    keyspace=current_keyspace,
+                    table=current_table
+                ).set(average)
 
 def main():
     # Start Prometheus metrics server
