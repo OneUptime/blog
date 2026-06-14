@@ -18,7 +18,7 @@ Dependency injection is fundamental to .NET development, but choosing the wrong 
 |----------|------------------|----------|
 | **Transient** | Every time requested | Lightweight, stateless services |
 | **Scoped** | Once per request/scope | Database contexts, unit of work |
-| **Singleton** | Once for app lifetime | Configuration, caches, HTTP clients |
+| **Singleton** | Once for app lifetime | Configuration, caches, shared state |
 
 Let us explore each one with practical examples.
 
@@ -183,7 +183,7 @@ public class InMemoryCacheService : ICacheService
 builder.Services.AddSingleton<ICacheService, InMemoryCacheService>();
 ```
 
-### HttpClient Should Be Singleton (via Factory)
+### HttpClient Should Be Managed by the Factory
 
 ```csharp
 // Register HttpClient properly using the factory pattern
@@ -195,8 +195,8 @@ builder.Services.AddHttpClient<IExternalApiClient, ExternalApiClient>(client =>
 .AddTransientHttpErrorPolicy(policy =>
     policy.WaitAndRetryAsync(3, attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt))));
 
-// The HttpClient is managed by the factory (effectively singleton)
-// but the typed client wrapper can have any lifetime
+// The factory creates short-lived HttpClient instances and pools the handlers.
+// Typed clients registered with AddHttpClient are transient by default.
 public class ExternalApiClient : IExternalApiClient
 {
     private readonly HttpClient _client;
@@ -217,13 +217,13 @@ public class ExternalApiClient : IExternalApiClient
 
 ## The Captive Dependency Problem
 
-The most common DI mistake is injecting a shorter-lived service into a longer-lived one. This is called the "captive dependency" problem.
+The most common DI mistake is injecting a scoped service into a singleton. This is called the "captive dependency" problem.
 
 ```mermaid
 flowchart TD
     A[Singleton Service] -->|WRONG| B[Scoped Service]
-    A -->|WRONG| C[Transient Service]
-    D[Scoped Service] -->|WRONG| E[Transient Service]
+    A -->|CHECK THREAD SAFETY| C[Transient Service]
+    D[Scoped Service] -->|OK| E[Transient Service]
     F[Scoped Service] -->|OK| G[Singleton Service]
     H[Transient Service] -->|OK| I[Scoped Service]
     H -->|OK| J[Singleton Service]
@@ -245,7 +245,7 @@ public class SingletonReportGenerator : IReportGenerator
     }
 }
 
-// This will fail at runtime with ValidateScopes enabled
+// This will fail during provider validation or resolution with ValidateScopes enabled
 builder.Services.AddSingleton<IReportGenerator, SingletonReportGenerator>();
 ```
 
@@ -284,7 +284,7 @@ public class SingletonReportGenerator : IReportGenerator
     public async Task<Report> GenerateReportAsync()
     {
         // Create a new scope for this operation
-        using var scope = _scopeFactory.CreateScope();
+        await using var scope = _scopeFactory.CreateAsyncScope();
 
         // Resolve scoped services from the new scope
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -323,7 +323,7 @@ public class OrderProcessingBackgroundService : BackgroundService
             try
             {
                 // Each iteration gets its own scope
-                using var scope = _scopeFactory.CreateScope();
+                await using var scope = _scopeFactory.CreateAsyncScope();
                 var orderService = scope.ServiceProvider
                     .GetRequiredService<IOrderProcessingService>();
 
@@ -390,7 +390,7 @@ public class DynamicPaymentService
 | Repository | Scoped | Usually wraps DbContext |
 | Unit of Work | Scoped | Coordinates multiple repos |
 | Validators | Transient | Stateless, lightweight |
-| HttpClient | Singleton (via factory) | Socket exhaustion prevention |
+| HttpClient | Factory-managed | Socket exhaustion prevention |
 | Configuration | Singleton | Read once, use everywhere |
 | Logging | Singleton | Thread-safe by design |
 | Cache | Singleton | Shared across requests |
@@ -433,4 +433,4 @@ Dependency injection scopes are straightforward once you understand the rules:
 2. **Scoped**: One instance per request. Use for database contexts and request-specific state.
 3. **Singleton**: One instance forever. Use for configuration, caches, and thread-safe services.
 
-The golden rule: never inject a shorter-lived service into a longer-lived one. Enable `ValidateScopes` in development to catch violations early. When singletons need scoped services, use `IServiceScopeFactory` to create explicit scopes.
+The golden rule: never inject scoped services into singletons. Enable `ValidateScopes` in development to catch violations early. When singletons need scoped services, use `IServiceScopeFactory` to create explicit scopes.
