@@ -150,7 +150,7 @@ OPTIONS (
 );
 ```
 
-### Enable Pushdown for Better Performance
+### Check Pushdown for Better Performance
 
 ```sql
 -- Check if WHERE clause is pushed down
@@ -160,14 +160,14 @@ SELECT * FROM remote_customers WHERE id = 123;
 -- Output should show:
 -- Remote SQL: SELECT id, name, email FROM public.customers WHERE id = 123
 
--- Create server with explicit pushdown options
+-- Create server with explicit planning and fetch options
 CREATE SERVER optimized_server
 FOREIGN DATA WRAPPER postgres_fdw
 OPTIONS (
     host 'remote-db.example.com',
     dbname 'remote_database',
     fetch_size '10000',
-    use_remote_estimate 'true'  -- Use remote statistics
+    use_remote_estimate 'true'  -- Use remote cost estimates
 );
 ```
 
@@ -186,7 +186,7 @@ OPTIONS (ADD use_remote_estimate 'true');
 
 ## Using file_fdw for CSV Files
 
-The `file_fdw` extension allows querying CSV and text files directly.
+The `file_fdw` extension allows read-only querying of CSV and text files directly.
 
 ### Setup file_fdw
 
@@ -228,7 +228,7 @@ JOIN categories t ON c.id = t.data_id;
 ### Log File Analysis Example
 
 ```sql
--- Create foreign table for access logs
+-- Create foreign table for CSV-formatted access logs
 CREATE FOREIGN TABLE access_logs (
     ip_address INET,
     request_time TIMESTAMP,
@@ -239,9 +239,10 @@ CREATE FOREIGN TABLE access_logs (
 )
 SERVER file_server
 OPTIONS (
-    filename '/var/log/nginx/access.log',
+    filename '/var/log/nginx/access.csv',
     format 'csv',
-    delimiter ' '
+    header 'true',
+    delimiter ','
 );
 
 -- Analyze traffic patterns
@@ -264,13 +265,14 @@ ORDER BY 1;
 ```bash
 # Ubuntu/Debian
 
-sudo apt-get install postgresql-14-mysql-fdw
+# Replace 18 with your PostgreSQL server major version
+sudo apt-get install postgresql-18-mysql-fdw
 
 # From source
 git clone https://github.com/EnterpriseDB/mysql_fdw.git
 cd mysql_fdw
 make USE_PGXS=1
-make USE_PGXS=1 install
+sudo make USE_PGXS=1 install
 ```
 
 ### Configure mysql_fdw
@@ -416,13 +418,13 @@ SELECT
     'Region A' AS region,
     date,
     total_sales
-FROM region_a_server.sales
+FROM region_a_sales
 UNION ALL
 SELECT
     'Region B' AS region,
     date,
     total_sales
-FROM region_b_server.sales;
+FROM region_b_sales;
 
 -- Query the unified view
 SELECT
@@ -469,8 +471,8 @@ ORDER BY a.lifetime_value DESC;
 ## Security Considerations
 
 ```sql
--- Store passwords in a password file instead of user mapping
--- Create .pgpass file on server: hostname:port:database:username:password
+-- Store shared connection details in a libpq service file where appropriate
+-- Keep per-user credentials in user mappings
 
 -- Use encrypted connections
 CREATE SERVER secure_remote
@@ -492,17 +494,18 @@ GRANT SELECT ON FOREIGN TABLE remote_customers TO reporting_role;
 
 ---
 
-## Monitoring FDW Performance
+## Monitoring FDW Connections and Query Plans
 
 ```sql
--- Check FDW statistics
+-- Check open postgres_fdw connections
 SELECT
-    foreign_table_name,
-    total_calls,
-    total_rows,
-    total_time
-FROM pg_stat_user_tables
-WHERE foreign_table_name IS NOT NULL;
+    server_name,
+    user_name,
+    valid,
+    used_in_xact,
+    closed,
+    remote_backend_pid
+FROM postgres_fdw_get_connections(true);
 
 -- Use EXPLAIN to analyze query pushdown
 EXPLAIN (VERBOSE, ANALYZE)
