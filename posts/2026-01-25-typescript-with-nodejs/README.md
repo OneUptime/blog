@@ -296,7 +296,7 @@ import { authMiddleware } from '../middleware/auth';
 const router = Router();
 
 router.get('/profile', authMiddleware, (req: Request, res: Response) => {
-    // TypeScript knows req.user exists after auth middleware
+    // TypeScript knows req.user is a valid Request property
     res.json({ user: req.user });
 });
 
@@ -497,7 +497,7 @@ Your Dockerfile can use multi-stage builds:
 
 ```dockerfile
 # Build stage
-FROM node:18-alpine AS builder
+FROM node:lts-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -505,10 +505,10 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:18-alpine
+FROM node:lts-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 USER node
 CMD ["node", "dist/index.js"]
