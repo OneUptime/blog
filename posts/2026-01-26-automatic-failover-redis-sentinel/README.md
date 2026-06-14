@@ -139,6 +139,9 @@ Each Sentinel instance needs its own configuration file.
 port 26379
 bind 0.0.0.0
 
+# Require clients and other Sentinels to authenticate
+requirepass your-sentinel-password
+
 # Sentinel data directory
 dir /var/lib/redis-sentinel
 
@@ -175,7 +178,7 @@ Create similar files for Sentinel 2 (port 26380) and Sentinel 3 (port 26381).
 
 ## Docker Compose Deployment
 
-Here's a complete Docker Compose setup for testing.
+Here's a complete Docker Compose setup for testing. In the mounted config files for this Docker network, use `172.20.0.10` as the master address in `replicaof` and `sentinel monitor`, use `dir /data` for Redis and Sentinel, and remove the `logfile` lines so the containers log to stdout.
 
 ```yaml
 # docker-compose.yml
@@ -293,7 +296,7 @@ Check that Sentinels are working and know about each other.
 
 ```bash
 # Connect to Sentinel
-redis-cli -p 26379
+redis-cli -p 26379 -a your-sentinel-password
 
 # Get master information
 SENTINEL master mymaster
@@ -348,7 +351,7 @@ const redis = new Redis({
   ],
   name: 'mymaster', // Master name as defined in Sentinel config
   password: 'your-redis-password',
-  sentinelPassword: 'your-redis-password', // If Sentinels require auth
+  sentinelPassword: 'your-sentinel-password', // If Sentinels require auth
 
   // Retry strategy during failover
   retryStrategy: (times) => {
@@ -384,8 +387,17 @@ redis.on('reconnecting', (delay) => {
   console.log(`Reconnecting in ${delay}ms...`);
 });
 
-redis.on('+switch-master', (newMaster) => {
-  console.log('Master switched to:', newMaster);
+// Sentinel failover events are published by Sentinel, not by the data connection.
+const sentinelEvents = new Redis(26379, '172.20.0.20', {
+  password: 'your-sentinel-password',
+});
+
+sentinelEvents.subscribe('+switch-master');
+sentinelEvents.on('message', (channel, message) => {
+  const [masterName, oldIp, oldPort, newIp, newPort] = message.split(' ');
+  console.log(
+    `Master ${masterName} switched from ${oldIp}:${oldPort} to ${newIp}:${newPort}`
+  );
 });
 
 module.exports = redis;
@@ -499,7 +511,7 @@ Simulate a master failure to verify your setup works.
 # Simulate master failure and observe automatic recovery
 
 echo "Current master:"
-redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
+redis-cli -p 26379 -a your-sentinel-password SENTINEL get-master-addr-by-name mymaster
 
 echo ""
 echo "Killing master..."
@@ -511,11 +523,11 @@ sleep 10
 
 echo ""
 echo "New master:"
-redis-cli -p 26379 SENTINEL get-master-addr-by-name mymaster
+redis-cli -p 26379 -a your-sentinel-password SENTINEL get-master-addr-by-name mymaster
 
 echo ""
 echo "Sentinel status:"
-redis-cli -p 26379 SENTINEL master mymaster | grep -E "^(ip|port|flags|num-slaves)"
+redis-cli --raw -p 26379 -a your-sentinel-password SENTINEL master mymaster | grep -E "^(ip|port|flags|num-slaves)"
 
 echo ""
 echo "Restarting old master (will become replica)..."
@@ -524,7 +536,7 @@ docker start redis-master
 sleep 5
 echo ""
 echo "Final topology:"
-redis-cli -p 26379 SENTINEL replicas mymaster | grep -E "^(ip|port|flags)"
+redis-cli --raw -p 26379 -a your-sentinel-password SENTINEL replicas mymaster | grep -E "^(ip|port|flags)"
 ```
 
 ## Notification Script
@@ -538,15 +550,11 @@ Sentinel can run scripts when events occur. This is useful for alerting.
 
 EVENT_TYPE=$1
 EVENT_DESCRIPTION=$2
-MASTER_NAME=$3
-ROLE=$4
-IP=$5
-PORT=$6
 
 LOG_FILE="/var/log/redis/sentinel-events.log"
 
 # Log the event
-echo "$(date '+%Y-%m-%d %H:%M:%S') [$EVENT_TYPE] $MASTER_NAME $ROLE $IP:$PORT - $EVENT_DESCRIPTION" >> $LOG_FILE
+echo "$(date '+%Y-%m-%d %H:%M:%S') [$EVENT_TYPE] $EVENT_DESCRIPTION" >> $LOG_FILE
 
 # Send alert based on event type
 case $EVENT_TYPE in
@@ -554,17 +562,18 @@ case $EVENT_TYPE in
     # Master is objectively down (quorum agrees)
     curl -X POST "https://your-alerting-service.com/webhook" \
       -H "Content-Type: application/json" \
-      -d "{\"event\": \"master_down\", \"master\": \"$MASTER_NAME\", \"ip\": \"$IP\"}"
+      -d "{\"event\": \"master_down\", \"description\": \"$EVENT_DESCRIPTION\"}"
     ;;
   "+switch-master")
     # New master elected
+    read -r MASTER_NAME OLD_IP OLD_PORT NEW_IP NEW_PORT <<< "$EVENT_DESCRIPTION"
     curl -X POST "https://your-alerting-service.com/webhook" \
       -H "Content-Type: application/json" \
-      -d "{\"event\": \"failover_complete\", \"new_master\": \"$IP:$PORT\"}"
+      -d "{\"event\": \"failover_complete\", \"master\": \"$MASTER_NAME\", \"old_master\": \"$OLD_IP:$OLD_PORT\", \"new_master\": \"$NEW_IP:$NEW_PORT\"}"
     ;;
   "+sdown")
     # Instance subjectively down (this Sentinel thinks so)
-    echo "Instance $IP:$PORT is subjectively down"
+    echo "Instance is subjectively down: $EVENT_DESCRIPTION"
     ;;
 esac
 ```
