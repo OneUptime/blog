@@ -52,7 +52,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # File upload settings
 FILE_UPLOAD_MAX_MEMORY_SIZE = 2621440  # 2.5 MB - files larger than this go to temp
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760  # 10 MB - max request body size
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760  # 10 MB - max non-file request data
 FILE_UPLOAD_PERMISSIONS = 0o644  # File permissions for uploaded files
 FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o755  # Directory permissions
 
@@ -319,16 +319,27 @@ class AvatarUploadForm(forms.ModelForm):
 
         return avatar
 
+class MultipleFileInput(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
+class MultipleFileField(forms.FileField):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('widget', MultipleFileInput())
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        single_file_clean = super().clean
+        if isinstance(data, (list, tuple)):
+            return [single_file_clean(d, initial) for d in data]
+        return [single_file_clean(data, initial)]
+
 class MultipleFileForm(forms.Form):
     """Form for uploading multiple files at once"""
-    files = forms.FileField(
-        widget=forms.ClearableFileInput(attrs={'multiple': True}),
-        required=True
-    )
+    files = MultipleFileField(required=True)
 
     def clean_files(self):
         """Validate multiple files"""
-        files = self.files.getlist('files')
+        files = self.cleaned_data.get('files', [])
 
         # Limit number of files
         if len(files) > 10:
@@ -414,24 +425,23 @@ def download_document(request, pk):
     """
     document = get_object_or_404(Document, pk=pk, user=request.user)
 
-    # Get the file path
-    file_path = document.file.path
-
     # Check if file exists
-    if not os.path.exists(file_path):
+    if not document.file.storage.exists(document.file.name):
         raise Http404('File not found')
 
     # Determine content type
-    content_type, _ = mimetypes.guess_type(file_path)
+    content_type, _ = mimetypes.guess_type(document.file.name)
     if content_type is None:
         content_type = 'application/octet-stream'
 
     # Return file response with download header
+    document.file.open('rb')
     response = FileResponse(
-        open(file_path, 'rb'),
-        content_type=content_type
+        document.file,
+        as_attachment=True,
+        filename=document.filename,
+        content_type=content_type,
     )
-    response['Content-Disposition'] = f'attachment; filename="{document.filename}"'
     return response
 
 @login_required
@@ -463,9 +473,7 @@ def upload_avatar(request):
         if form.is_valid():
             # Delete old avatar if it exists
             if profile.avatar:
-                old_avatar = profile.avatar.path
-                if os.path.exists(old_avatar):
-                    os.remove(old_avatar)
+                profile.avatar.delete(save=False)
 
             form.save()
             messages.success(request, 'Avatar updated successfully.')
@@ -858,21 +866,21 @@ def validate_image_dimensions(file, max_width=4096, max_height=4096, min_width=1
         img = Image.open(file)
         width, height = img.size
         file.seek(0)  # Reset file pointer
-
-        if width > max_width or height > max_height:
-            raise ValidationError(
-                f'Image dimensions ({width}x{height}) exceed maximum '
-                f'({max_width}x{max_height})'
-            )
-
-        if width < min_width or height < min_height:
-            raise ValidationError(
-                f'Image dimensions ({width}x{height}) are below minimum '
-                f'({min_width}x{min_height})'
-            )
-
     except Exception as e:
+        file.seek(0)
         raise ValidationError(f'Could not read image: {str(e)}')
+
+    if width > max_width or height > max_height:
+        raise ValidationError(
+            f'Image dimensions ({width}x{height}) exceed maximum '
+            f'({max_width}x{max_height})'
+        )
+
+    if width < min_width or height < min_height:
+        raise ValidationError(
+            f'Image dimensions ({width}x{height}) are below minimum '
+            f'({min_width}x{min_height})'
+        )
 
 def scan_for_malware(file):
     """
@@ -1041,51 +1049,61 @@ INSTALLED_APPS = [
     'storages',
 ]
 
-# AWS Credentials (use environment variables in production)
-AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME')
-AWS_S3_REGION_NAME = 'us-east-1'
 
 # S3 settings
 AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
-AWS_S3_OBJECT_PARAMETERS = {
-    'CacheControl': 'max-age=86400',  # 1 day cache
+STORAGES = {
+    # Use S3 for media files
+    'default': {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': {
+            'access_key': os.environ.get('AWS_ACCESS_KEY_ID'),
+            'secret_key': os.environ.get('AWS_SECRET_ACCESS_KEY'),
+            'bucket_name': AWS_STORAGE_BUCKET_NAME,
+            'region_name': 'us-east-1',
+            'custom_domain': AWS_S3_CUSTOM_DOMAIN,
+            'location': 'media',
+            'object_parameters': {
+                'CacheControl': 'max-age=86400',  # 1 day cache
+            },
+            'default_acl': 'private',  # Files are private by default
+            'file_overwrite': False,  # Don't overwrite files with same name
+            'querystring_auth': True,  # Generate signed URLs for private files
+            'querystring_expire': 3600,  # Signed URLs expire in 1 hour
+        },
+    },
+    'staticfiles': {
+        'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+    },
 }
-AWS_DEFAULT_ACL = 'private'  # Files are private by default
-AWS_S3_FILE_OVERWRITE = False  # Don't overwrite files with same name
-AWS_QUERYSTRING_AUTH = True  # Generate signed URLs for private files
-AWS_QUERYSTRING_EXPIRE = 3600  # Signed URLs expire in 1 hour
-
-# Use S3 for media files
-DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
 
 # Separate static files storage (optional)
-# STATICFILES_STORAGE = 'storages.backends.s3boto3.S3StaticStorage'
+# Configure the "staticfiles" key in STORAGES to use S3StaticStorage if needed.
 ```
 
 Create a custom storage backend for different file types:
 
 ```python
 # uploads/storage.py
-from storages.backends.s3boto3 import S3Boto3Storage
+from storages.backends.s3 import S3Storage
 
-class PublicMediaStorage(S3Boto3Storage):
+class PublicMediaStorage(S3Storage):
     """Storage for public media files (like avatars)"""
     location = 'media/public'
     default_acl = 'public-read'
     file_overwrite = False
     querystring_auth = False  # No signed URLs needed
 
-class PrivateMediaStorage(S3Boto3Storage):
+class PrivateMediaStorage(S3Storage):
     """Storage for private media files (like documents)"""
     location = 'media/private'
     default_acl = 'private'
     file_overwrite = False
     querystring_auth = True  # Generate signed URLs
 
-class DocumentStorage(S3Boto3Storage):
+class DocumentStorage(S3Storage):
     """Storage specifically for documents with custom settings"""
     location = 'documents'
     default_acl = 'private'
@@ -1136,7 +1154,6 @@ Process uploaded images (resize, thumbnail, etc.):
 from PIL import Image
 from io import BytesIO
 from django.core.files.uploadedfile import InMemoryUploadedFile
-import sys
 
 def resize_image(image_file, max_width=800, max_height=800, quality=85):
     """
@@ -1160,6 +1177,7 @@ def resize_image(image_file, max_width=800, max_height=800, quality=85):
     output = BytesIO()
     img.save(output, format='JPEG', quality=quality, optimize=True)
     output.seek(0)
+    image_file.seek(0)
 
     # Create new InMemoryUploadedFile
     return InMemoryUploadedFile(
@@ -1167,7 +1185,7 @@ def resize_image(image_file, max_width=800, max_height=800, quality=85):
         'ImageField',
         f'{image_file.name.rsplit(".", 1)[0]}.jpg',
         'image/jpeg',
-        sys.getsizeof(output),
+        output.getbuffer().nbytes,
         None
     )
 
@@ -1199,13 +1217,14 @@ def create_thumbnail(image_file, size=(150, 150)):
     output = BytesIO()
     img.save(output, format='JPEG', quality=80)
     output.seek(0)
+    image_file.seek(0)
 
     return InMemoryUploadedFile(
         output,
         'ImageField',
         f'thumb_{image_file.name.rsplit(".", 1)[0]}.jpg',
         'image/jpeg',
-        sys.getsizeof(output),
+        output.getbuffer().nbytes,
         None
     )
 
@@ -1665,7 +1684,7 @@ Follow these guidelines to keep file uploads secure:
 
 # Limit upload size at Django level
 FILE_UPLOAD_MAX_MEMORY_SIZE = 2621440  # 2.5 MB
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760  # 10 MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760  # 10 MB for non-file request data
 
 # Set restrictive file permissions
 FILE_UPLOAD_PERMISSIONS = 0o644
