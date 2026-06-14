@@ -109,15 +109,18 @@ There are several ways to register a custom model binder.
 ```csharp
 // Attributes/DateRangeBinderAttribute.cs
 [AttributeUsage(AttributeTargets.Parameter | AttributeTargets.Property)]
-public class DateRangeBinderAttribute : Attribute, IModelNameProvider
+public class DateRangeBinderAttribute : ModelBinderAttribute
 {
-    public string? Name { get; set; }
+    public DateRangeBinderAttribute()
+        : base(typeof(DateRangeModelBinder))
+    {
+    }
 }
 
 // Usage in controller
 [HttpGet("orders")]
 public IActionResult GetOrders(
-    [ModelBinder(BinderType = typeof(DateRangeModelBinder))]
+    [DateRangeBinder]
     DateRange dateRange)
 {
     return Ok(new { dateRange.Start, dateRange.End });
@@ -310,7 +313,7 @@ Decrypt parameters that were encrypted on the client side.
 
 ```csharp
 // Binders/EncryptedModelBinder.cs
-public class EncryptedModelBinder<T> : IModelBinder
+public class EncryptedModelBinder : IModelBinder
 {
     private readonly IEncryptionService _encryption;
 
@@ -345,7 +348,8 @@ public class EncryptedModelBinder<T> : IModelBinder
         {
             // Decrypt and deserialize
             var decrypted = _encryption.Decrypt(encryptedValue);
-            var model = JsonSerializer.Deserialize<T>(decrypted);
+            var model = JsonSerializer.Deserialize(
+                decrypted, bindingContext.ModelType);
 
             bindingContext.Result = ModelBindingResult.Success(model);
         }
@@ -364,37 +368,15 @@ public class EncryptedModelBinder<T> : IModelBinder
     }
 }
 
-// Create a binder that gets encryption service from DI
-public class EncryptedModelBinderProvider : IModelBinderProvider
+// Attribute that uses the binder and lets it get services from DI
+[AttributeUsage(AttributeTargets.Parameter | AttributeTargets.Property)]
+public class EncryptedAttribute : ModelBinderAttribute
 {
-    public IModelBinder? GetBinder(ModelBinderProviderContext context)
+    public EncryptedAttribute()
+        : base(typeof(EncryptedModelBinder))
     {
-        if (context == null)
-        {
-            throw new ArgumentNullException(nameof(context));
-        }
-
-        // Check for [Encrypted] attribute on the parameter
-        var metadata = context.Metadata;
-        if (metadata.ContainerType != null)
-        {
-            var propertyInfo = metadata.ContainerType
-                .GetProperty(metadata.PropertyName ?? "");
-
-            if (propertyInfo?.GetCustomAttribute<EncryptedAttribute>() != null)
-            {
-                var binderType = typeof(EncryptedModelBinder<>)
-                    .MakeGenericType(metadata.ModelType);
-                return new BinderTypeModelBinder(binderType);
-            }
-        }
-
-        return null;
     }
 }
-
-[AttributeUsage(AttributeTargets.Parameter | AttributeTargets.Property)]
-public class EncryptedAttribute : Attribute { }
 ```
 
 ## Database Lookup Binder
