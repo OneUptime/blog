@@ -26,8 +26,9 @@ Grafana automatically saves a new version each time you save a dashboard.
 ### Viewing Version History
 
 1. Open the dashboard
-2. Click the gear icon (Dashboard settings)
-3. Select "Versions" from the left menu
+2. Click Edit
+3. Click the Dashboard options icon
+4. Select "Settings" and open the "Versions" tab
 
 You will see a list of all versions with:
 - Version number
@@ -37,9 +38,9 @@ You will see a list of all versions with:
 
 ### Comparing Versions
 
-Select two versions and click "Compare" to see a diff:
+Select two versions and click "Compare versions" to see a diff:
 
-```json
+```jsonc
 // Version 5 (before)
 {
   "panels": [
@@ -73,21 +74,20 @@ To restore a version:
 
 1. Open version history
 2. Click "Restore" next to the desired version
-3. Confirm the restoration
 
 This creates a new version based on the old one, preserving full history.
 
 ### Version Retention
 
-By default, Grafana keeps all versions. Configure retention in `grafana.ini`:
+By default, Grafana keeps 20 versions per dashboard. Configure retention in `grafana.ini`:
 
 ```ini
 [dashboards]
-# Maximum versions to store per dashboard (0 = unlimited)
+# Maximum versions to store per dashboard (minimum: 1)
 
 versions_to_keep = 20
 
-# Minimum interval between saves (seconds)
+# Minimum allowed dashboard refresh interval
 min_refresh_interval = 5s
 ```
 
@@ -98,8 +98,10 @@ For team collaboration and deployment automation, store dashboards in Git.
 ### Exporting Dashboards
 
 Export a dashboard via the UI:
-1. Dashboard settings > JSON Model
-2. Copy or download the JSON
+1. Click Edit
+2. Click the Dashboard options icon
+3. Settings > JSON Model
+4. Copy or download the JSON
 
 Or use the API:
 
@@ -237,7 +239,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Validate JSON syntax
         run: |
@@ -251,7 +253,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Deploy to staging
         env:
@@ -264,7 +266,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Deploy to production
         env:
@@ -284,7 +286,7 @@ Include dashboard JSON diffs in PR reviews:
     git diff origin/main -- dashboards/ > dashboard-changes.diff
 
 - name: Comment on PR
-  uses: actions/github-script@v6
+  uses: actions/github-script@v8
   with:
     script: |
       const fs = require('fs');
@@ -299,7 +301,7 @@ Include dashboard JSON diffs in PR reviews:
 
 ## Provisioning for Immutable Dashboards
 
-Provisioning treats dashboards as code, preventing UI modifications.
+Provisioning treats dashboards as code and can prevent UI modifications.
 
 ### Provisioning Configuration
 
