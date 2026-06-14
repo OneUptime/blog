@@ -61,8 +61,10 @@ public class CsvOutputFormatter : TextOutputFormatter
     {
         if (type == null) return false;
 
+        if (type == typeof(string)) return false;
+
         // Handle collections of objects
-        if (typeof(IEnumerable).IsAssignableFrom(type))
+        if (typeof(IEnumerable).IsAssignableFrom(type) && GetElementType(type) != null)
         {
             return true;
         }
@@ -161,6 +163,7 @@ Create a CSV input formatter to accept CSV data in requests:
 ```csharp
 using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.Net.Http.Headers;
+using System.Collections;
 using System.Reflection;
 using System.Text;
 
@@ -339,6 +342,7 @@ app.Run();
 ```csharp
 [ApiController]
 [Route("api/[controller]")]
+[FormatFilter]
 public class ProductsController : ControllerBase
 {
     private static readonly List<Product> Products = new()
@@ -486,6 +490,7 @@ For high-performance scenarios, add Protocol Buffers support:
 using Google.Protobuf;
 using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.Net.Http.Headers;
+using System.Reflection;
 
 public class ProtobufOutputFormatter : OutputFormatter
 {
