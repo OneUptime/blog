@@ -55,6 +55,11 @@ dotnet add package Serilog.Sinks.File
 
 # For reading configuration from appsettings.json
 dotnet add package Serilog.Settings.Configuration
+
+# Common enrichers used below
+dotnet add package Serilog.Enrichers.Environment
+dotnet add package Serilog.Enrichers.Thread
+dotnet add package Serilog.Enrichers.Process
 ```
 
 ### Step 2: Basic Configuration
@@ -187,7 +192,7 @@ Configure Serilog through your configuration file for easier environment-specifi
 ```json
 {
   "Serilog": {
-    "Using": ["Serilog.Sinks.Console", "Serilog.Sinks.File"],
+    "Using": ["Serilog.Sinks.Console", "Serilog.Sinks.File", "Serilog.Enrichers.Environment", "Serilog.Enrichers.Thread"],
     "MinimumLevel": {
       "Default": "Information",
       "Override": {
@@ -294,7 +299,7 @@ public class OrderService
 
 Enrichers automatically add properties to every log event. This is useful for adding contextual information like machine name, environment, or request correlation IDs.
 
-### Built-in Enrichers
+### Common Enrichers
 
 ```csharp
 Log.Logger = new LoggerConfiguration()
@@ -303,7 +308,6 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.WithEnvironmentName()      // ASPNETCORE_ENVIRONMENT
     .Enrich.WithThreadId()             // Thread ID
     .Enrich.WithProcessId()            // Process ID
-    .Enrich.WithCorrelationId()        // Request correlation
     .WriteTo.Console()
     .CreateLogger();
 ```
@@ -336,11 +340,11 @@ public class TenantEnricher : ILogEventEnricher
 }
 
 // Register in DI
-builder.Services.AddScoped<TenantEnricher>();
+builder.Services.AddSingleton<ILogEventEnricher, TenantEnricher>();
 
 // Use in configuration
 builder.Host.UseSerilog((context, services, configuration) => configuration
-    .Enrich.With(services.GetRequiredService<TenantEnricher>())
+    .ReadFrom.Services(services)
     .WriteTo.Console()
 );
 ```
