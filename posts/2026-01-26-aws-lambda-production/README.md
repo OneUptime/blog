@@ -50,7 +50,7 @@ The key principle here is separation of concerns. Your handler should be thin - 
 const { processOrder } = require('../services/orderService');
 const { validateOrderInput } = require('../utils/validation');
 const { logger } = require('../utils/logger');
-const { AppError } = require('../utils/errors');
+const { handleError } = require('./errorHandler');
 
 exports.handler = async (event, context) => {
   // Disable waiting for empty event loop to avoid timeouts
@@ -325,15 +325,16 @@ The key insight is that code outside your handler function runs once during cold
 // Initialize AWS SDK clients outside the handler
 // These are reused across invocations, avoiding re-initialization overhead
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand, PutCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
+const { NodeHttpHandler } = require('@smithy/node-http-handler');
 
 // Create clients at module level - runs once during cold start
 const ddbClient = new DynamoDBClient({
-  // Use keep-alive for connection reuse
-  requestHandler: {
+  // Configure the Node HTTP handler for explicit timeouts
+  requestHandler: new NodeHttpHandler({
     connectionTimeout: 5000,
     socketTimeout: 5000
-  }
+  })
 });
 
 const docClient = DynamoDBDocumentClient.from(ddbClient, {
@@ -385,7 +386,7 @@ const AWS = require('aws-sdk');
 const { S3Client } = require('@aws-sdk/client-s3');
 
 // 2. Use provisioned concurrency for critical functions
-// Configure in SAM/CloudFormation:
+// Configure in SAM with AutoPublishAlias, or in CloudFormation on a version or alias:
 // ProvisionedConcurrencyConfig:
 //   ProvisionedConcurrentExecutions: 5
 
@@ -463,18 +464,9 @@ For distributed tracing, integrate with OpenTelemetry:
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { AwsLambdaInstrumentation } = require('@opentelemetry/instrumentation-aws-lambda');
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
-
-// Initialize tracing before handler code runs
-const provider = new NodeTracerProvider({
-  resource: new Resource({
-    'service.name': process.env.AWS_LAMBDA_FUNCTION_NAME,
-    'service.version': process.env.FUNCTION_VERSION || '1.0.0',
-    'deployment.environment': process.env.ENVIRONMENT || 'production'
-  })
-});
 
 // Send traces to OneUptime or your observability backend
 const exporter = new OTLPTraceExporter({
@@ -484,11 +476,21 @@ const exporter = new OTLPTraceExporter({
   }
 });
 
-// Batch spans for efficient export
-provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
-  maxQueueSize: 100,
-  scheduledDelayMillis: 500  // Flush quickly for Lambda's short lifecycle
-}));
+// Initialize tracing before handler code runs
+const provider = new NodeTracerProvider({
+  resource: resourceFromAttributes({
+    'service.name': process.env.AWS_LAMBDA_FUNCTION_NAME,
+    'service.version': process.env.FUNCTION_VERSION || '1.0.0',
+    'deployment.environment': process.env.ENVIRONMENT || 'production'
+  }),
+  // Batch spans for efficient export
+  spanProcessors: [
+    new BatchSpanProcessor(exporter, {
+      maxQueueSize: 100,
+      scheduledDelayMillis: 500  // Flush quickly for Lambda's short lifecycle
+    })
+  ]
+});
 
 provider.register();
 
@@ -512,7 +514,7 @@ const { CloudWatchClient, PutMetricDataCommand } = require('@aws-sdk/client-clou
 
 const cloudwatch = new CloudWatchClient({});
 
-// Buffer metrics and flush periodically to reduce API calls
+// Buffer metrics and flush at the end of the invocation or when full to reduce API calls
 const metricsBuffer = [];
 
 async function recordMetric(name, value, unit = 'Count', dimensions = {}) {
@@ -527,7 +529,7 @@ async function recordMetric(name, value, unit = 'Count', dimensions = {}) {
   metricsBuffer.push(metric);
 
   // Flush if buffer is full
-  if (metricsBuffer.length >= 20) {
+  if (metricsBuffer.length >= 1000) {
     await flushMetrics();
   }
 }
@@ -535,7 +537,7 @@ async function recordMetric(name, value, unit = 'Count', dimensions = {}) {
 async function flushMetrics() {
   if (metricsBuffer.length === 0) return;
 
-  const metrics = metricsBuffer.splice(0, 20);
+  const metrics = metricsBuffer.splice(0, 1000);
 
   await cloudwatch.send(new PutMetricDataCommand({
     Namespace: process.env.METRICS_NAMESPACE || 'MyApp',
@@ -638,7 +640,11 @@ function validate(schemaName, data) {
   return data;
 }
 
-module.exports = { validate };
+function validateOrderInput(data) {
+  return validate('createOrder', data);
+}
+
+module.exports = { validate, validateOrderInput };
 ```
 
 ---
@@ -729,7 +735,7 @@ For integration tests, use LocalStack or AWS SAM Local:
 ```javascript
 // tests/integration/api.test.js
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 
 // Point to LocalStack for integration tests
 const client = new DynamoDBClient({
@@ -827,19 +833,19 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub 'order-api-${Environment}'
+      CodeUri: ../
       Handler: src/handlers/api.handler
       Description: Order management API
 
+      # Publish versions through an alias so provisioned concurrency can target it
+      AutoPublishAlias: live
+      ProvisionedConcurrencyConfig: !If
+        - IsProduction
+        - ProvisionedConcurrentExecutions: 5
+        - !Ref AWS::NoValue
+
       # Enable X-Ray tracing for distributed tracing
       Tracing: Active
-
-      # VPC configuration for database access
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
-        SubnetIds:
-          - !Ref PrivateSubnet1
-          - !Ref PrivateSubnet2
 
       # Environment variables
       Environment:
@@ -886,16 +892,7 @@ Resources:
         External:
           - '@aws-sdk/*'
 
-  # Provisioned concurrency for production
-  OrderApiProvisionedConcurrency:
-    Type: AWS::Lambda::Version
-    Condition: IsProduction
-    Properties:
-      FunctionName: !Ref OrderApi
-      ProvisionedConcurrencyConfig:
-        ProvisionedConcurrentExecutions: 5
-
-  # DynamoDB table with auto-scaling
+  # DynamoDB table with on-demand capacity
   OrdersTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -1012,11 +1009,12 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Build
-        run: sam build
+        run: sam build --template-file infrastructure/template.yaml
 
       - name: Deploy to staging
         run: |
           sam deploy \
+            --template-file .aws-sam/build/template.yaml \
             --stack-name order-api-staging \
             --parameter-overrides Environment=staging \
             --no-confirm-changeset \
@@ -1041,11 +1039,12 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Build
-        run: sam build
+        run: sam build --template-file infrastructure/template.yaml
 
       - name: Deploy to production
         run: |
           sam deploy \
+            --template-file .aws-sam/build/template.yaml \
             --stack-name order-api-production \
             --parameter-overrides Environment=production \
             --no-confirm-changeset \
