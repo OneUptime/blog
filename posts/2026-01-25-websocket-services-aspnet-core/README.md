@@ -20,17 +20,17 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services for WebSocket handling
 builder.Services.AddSingleton<WebSocketConnectionManager>();
-builder.Services.AddSingleton<MessageBroadcaster>();
+builder.Services.AddSingleton<ChannelManager>();
 
 var app = builder.Build();
 
 // Enable WebSocket support with configuration options
 var webSocketOptions = new WebSocketOptions
 {
-    // How long to wait for a pong response before closing the connection
+    // How often the server sends keep-alive frames
     KeepAliveInterval = TimeSpan.FromSeconds(30),
-    // Maximum size of a single message (prevent memory exhaustion attacks)
-    ReceiveBufferSize = 4 * 1024  // 4 KB
+    // How long to wait for a pong response before aborting the connection
+    KeepAliveTimeout = TimeSpan.FromSeconds(10)
 };
 
 app.UseWebSockets(webSocketOptions);
@@ -77,6 +77,9 @@ public class WebSocketConnectionManager
     // Track which user owns which connections (one user can have multiple tabs)
     private readonly ConcurrentDictionary<string, HashSet<string>> _userConnections = new();
 
+    // WebSocket supports one concurrent send and one concurrent receive.
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _sendLocks = new();
+
     private readonly ILogger<WebSocketConnectionManager> _logger;
 
     public WebSocketConnectionManager(ILogger<WebSocketConnectionManager> logger)
@@ -94,6 +97,7 @@ public class WebSocketConnectionManager
 
         // Register the connection
         _connections.TryAdd(connectionId, webSocket);
+        _sendLocks.TryAdd(connectionId, new SemaphoreSlim(1, 1));
         TrackUserConnection(userId, connectionId);
 
         _logger.LogInformation(
@@ -110,6 +114,7 @@ public class WebSocketConnectionManager
         {
             // Clean up when connection ends
             _connections.TryRemove(connectionId, out _);
+            _sendLocks.TryRemove(connectionId, out _);
             RemoveUserConnection(userId, connectionId);
 
             _logger.LogInformation(
@@ -216,15 +221,28 @@ public class WebSocketConnectionManager
     // Send a message to a specific connection
     public async Task SendToConnectionAsync(string connectionId, string message)
     {
-        if (_connections.TryGetValue(connectionId, out var socket) &&
-            socket.State == WebSocketState.Open)
+        if (!_connections.TryGetValue(connectionId, out var socket) ||
+            !_sendLocks.TryGetValue(connectionId, out var sendLock))
         {
-            var bytes = Encoding.UTF8.GetBytes(message);
-            await socket.SendAsync(
-                new ArraySegment<byte>(bytes),
-                WebSocketMessageType.Text,
-                endOfMessage: true,
-                CancellationToken.None);
+            return;
+        }
+
+        await sendLock.WaitAsync();
+        try
+        {
+            if (socket.State == WebSocketState.Open)
+            {
+                var bytes = Encoding.UTF8.GetBytes(message);
+                await socket.SendAsync(
+                    new ArraySegment<byte>(bytes),
+                    WebSocketMessageType.Text,
+                    endOfMessage: true,
+                    CancellationToken.None);
+            }
+        }
+        finally
+        {
+            sendLock.Release();
         }
     }
 
@@ -248,6 +266,23 @@ public class WebSocketConnectionManager
     public async Task BroadcastAsync(string message)
     {
         var tasks = _connections.Keys.Select(id => SendToConnectionAsync(id, message));
+        await Task.WhenAll(tasks);
+    }
+
+    public int GetConnectionCount()
+    {
+        return _connections.Count;
+    }
+
+    public async Task CloseAllConnectionsAsync()
+    {
+        var tasks = _connections.Values
+            .Where(socket => socket.State == WebSocketState.Open)
+            .Select(socket => socket.CloseAsync(
+                WebSocketCloseStatus.NormalClosure,
+                "Server shutting down",
+                CancellationToken.None));
+
         await Task.WhenAll(tasks);
     }
 }
@@ -353,13 +388,16 @@ public class WebSocketMessage
 public class MessageHandler
 {
     private readonly WebSocketConnectionManager _connectionManager;
+    private readonly ChannelManager _channelManager;
     private readonly ILogger<MessageHandler> _logger;
 
     public MessageHandler(
         WebSocketConnectionManager connectionManager,
+        ChannelManager channelManager,
         ILogger<MessageHandler> logger)
     {
         _connectionManager = connectionManager;
+        _channelManager = channelManager;
         _logger = logger;
     }
 
@@ -387,6 +425,12 @@ public class MessageHandler
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(message.Type))
+        {
+            await SendErrorAsync(connectionId, "Message type is required");
+            return;
+        }
+
         // Route based on message type
         switch (message.Type.ToLowerInvariant())
         {
@@ -403,7 +447,7 @@ public class MessageHandler
                 break;
 
             case "broadcast":
-                await HandleBroadcastAsync(userId, message);
+                await HandleBroadcastAsync(connectionId, message);
                 break;
 
             default:
@@ -436,7 +480,51 @@ public class MessageHandler
             JsonSerializer.Serialize(response));
     }
 
-    // Implement other handlers as needed
+    private async Task HandleSubscribeAsync(
+        string connectionId,
+        string userId,
+        string? channel)
+    {
+        if (string.IsNullOrWhiteSpace(channel))
+        {
+            await SendErrorAsync(connectionId, "Channel is required");
+            return;
+        }
+
+        _channelManager.Subscribe(connectionId, channel);
+        await _connectionManager.SendToConnectionAsync(
+            connectionId,
+            JsonSerializer.Serialize(new { type = "subscribed", channel }));
+    }
+
+    private async Task HandleUnsubscribeAsync(
+        string connectionId,
+        string? channel)
+    {
+        if (string.IsNullOrWhiteSpace(channel))
+        {
+            await SendErrorAsync(connectionId, "Channel is required");
+            return;
+        }
+
+        _channelManager.Unsubscribe(connectionId, channel);
+        await _connectionManager.SendToConnectionAsync(
+            connectionId,
+            JsonSerializer.Serialize(new { type = "unsubscribed", channel }));
+    }
+
+    private async Task HandleBroadcastAsync(
+        string connectionId,
+        WebSocketMessage message)
+    {
+        if (string.IsNullOrWhiteSpace(message.Channel))
+        {
+            await SendErrorAsync(connectionId, "Channel is required");
+            return;
+        }
+
+        await _channelManager.PublishAsync(message.Channel, message.Payload);
+    }
 }
 ```
 
@@ -491,7 +579,7 @@ public class ChannelManager
         }
     }
 
-    public async Task PublishAsync(string channel, object message)
+    public async Task PublishAsync(string channel, object? message)
     {
         if (!_channels.TryGetValue(channel, out var connections))
         {
@@ -532,15 +620,15 @@ public class RedisBackplane : IDisposable
 {
     private readonly ConnectionMultiplexer _redis;
     private readonly ISubscriber _subscriber;
-    private readonly WebSocketConnectionManager _connectionManager;
+    private readonly ChannelManager _channelManager;
     private readonly ILogger<RedisBackplane> _logger;
 
     public RedisBackplane(
         IConfiguration config,
-        WebSocketConnectionManager connectionManager,
+        ChannelManager channelManager,
         ILogger<RedisBackplane> logger)
     {
-        _connectionManager = connectionManager;
+        _channelManager = channelManager;
         _logger = logger;
 
         var redisConnection = config.GetConnectionString("Redis")
@@ -559,7 +647,7 @@ public class RedisBackplane : IDisposable
                 if (message.HasValue)
                 {
                     // Forward Redis message to local WebSocket clients
-                    await _connectionManager.BroadcastToChannelAsync(
+                    await _channelManager.PublishAsync(
                         channel,
                         message.ToString());
                 }
@@ -609,7 +697,7 @@ public class WebSocketHealthCheck : IHealthCheck
             { "connections", connectionCount }
         };
 
-        // Consider unhealthy if too many connections (adjust threshold)
+        // Consider degraded if too many connections (adjust threshold)
         if (connectionCount > 10000)
         {
             return Task.FromResult(HealthCheckResult.Degraded(
