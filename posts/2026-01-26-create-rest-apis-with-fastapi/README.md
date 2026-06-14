@@ -67,8 +67,8 @@ async def health_check():
 ```python
 # models.py
 # Request and response models with Pydantic
-from pydantic import BaseModel, Field, EmailStr, validator
-from typing import Optional, List
+from pydantic import BaseModel, ConfigDict, Field, EmailStr, field_validator
+from typing import Optional
 from datetime import datetime
 from enum import Enum
 
@@ -88,7 +88,8 @@ class UserCreate(UserBase):
     """Model for creating a new user."""
     password: str = Field(..., min_length=8)
 
-    @validator('password')
+    @field_validator('password')
+    @classmethod
     def password_strength(cls, v):
         """Validate password has at least one digit."""
         if not any(c.isdigit() for c in v):
@@ -97,13 +98,11 @@ class UserCreate(UserBase):
 
 class UserResponse(UserBase):
     """Model for user response (excludes password)."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     created_at: datetime
     is_active: bool = True
-
-    class Config:
-        # Allow ORM models to be converted
-        orm_mode = True
 
 class UserUpdate(BaseModel):
     """Model for partial user updates."""
@@ -119,6 +118,7 @@ class UserUpdate(BaseModel):
 # CRUD endpoints with validation
 from fastapi import FastAPI, HTTPException, status, Query, Path
 from typing import List, Optional
+from datetime import datetime, timezone
 from models import UserCreate, UserResponse, UserUpdate
 
 app = FastAPI()
@@ -141,9 +141,9 @@ async def create_user(user: UserCreate):
             )
 
     # Create user record
-    user_data = user.dict()
+    user_data = user.model_dump()
     user_data["id"] = user_id_counter
-    user_data["created_at"] = datetime.utcnow()
+    user_data["created_at"] = datetime.now(timezone.utc)
     user_data["is_active"] = True
 
     # Remove password from stored data (in real app, hash it)
@@ -192,7 +192,7 @@ async def update_user(user_id: int, user_update: UserUpdate):
         )
 
     # Update only provided fields
-    update_data = user_update.dict(exclude_unset=True)
+    update_data = user_update.model_dump(exclude_unset=True)
     users_db[user_id].update(update_data)
 
     return users_db[user_id]
@@ -215,8 +215,12 @@ async def delete_user(user_id: int):
 ```python
 # dependencies.py
 # Reusable dependencies with FastAPI
-from fastapi import Depends, HTTPException, status, Header
+from fastapi import FastAPI, Depends, HTTPException, status, Header, Query
+from sqlalchemy.orm import Session
 from typing import Optional
+from database import SessionLocal, Item
+
+app = FastAPI()
 
 # Database session dependency
 async def get_db():
@@ -232,13 +236,13 @@ class PaginationParams:
     """Common pagination parameters."""
     def __init__(
         self,
-        skip: int = 0,
-        limit: int = 10,
+        skip: int = Query(0, ge=0),
+        limit: int = Query(10, ge=1, le=100),
         sort_by: Optional[str] = None,
         order: str = "asc"
     ):
         self.skip = skip
-        self.limit = min(limit, 100)  # Cap at 100
+        self.limit = limit
         self.sort_by = sort_by
         self.order = order
 
@@ -264,7 +268,7 @@ async def list_items(
 
     if pagination.sort_by:
         column = getattr(Item, pagination.sort_by, None)
-        if column:
+        if column is not None:
             if pagination.order == "desc":
                 column = column.desc()
             query = query.order_by(column)
@@ -285,8 +289,10 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+app = FastAPI()
 
 # Configuration
 SECRET_KEY = "your-secret-key-here"
@@ -317,7 +323,7 @@ def get_password_hash(password: str) -> str:
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -376,19 +382,22 @@ async def read_users_me(current_user = Depends(get_current_user)):
 ```python
 # database.py
 # Async database operations with SQLAlchemy
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, declarative_base
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import declarative_base
 from sqlalchemy import Column, Integer, String, DateTime
-from datetime import datetime
+from datetime import datetime, timezone
+from models import UserCreate
+from auth import get_password_hash
+
+app = FastAPI()
 
 # Create async engine
 DATABASE_URL = "postgresql+asyncpg://user:password@localhost/dbname"
 engine = create_async_engine(DATABASE_URL, echo=True)
 
 # Create async session factory
-AsyncSessionLocal = sessionmaker(
-    engine, class_=AsyncSession, expire_on_commit=False
-)
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 Base = declarative_base()
 
@@ -399,7 +408,7 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     name = Column(String)
     hashed_password = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 # Async dependency
 async def get_async_db():
@@ -572,4 +581,3 @@ The combination of Python type hints and Pydantic makes FastAPI APIs self-docume
 ---
 
 *Building FastAPI applications? [OneUptime](https://oneuptime.com) helps you monitor your APIs, track performance, and get alerted when issues arise.*
-
