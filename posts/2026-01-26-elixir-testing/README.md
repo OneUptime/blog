@@ -24,7 +24,7 @@ flowchart TD
     D --> I[Ecto Sandbox]
 ```
 
-Elixir provides multiple testing approaches out of the box:
+The Elixir ecosystem provides multiple testing approaches:
 - **ExUnit**: The built-in test framework
 - **Doctests**: Tests embedded in documentation
 - **StreamData**: Property-based testing library
@@ -38,17 +38,16 @@ Every Mix project comes with a `test` directory and a `test_helper.exs` file. He
 # test/test_helper.exs
 
 # Start ExUnit with common options
+# ExUnit randomizes test order by default and prints the seed for reproducibility
 
 ExUnit.start(
   # Capture logs during test runs to keep output clean
   capture_log: true,
-  # Run tests in a random order to catch order-dependent bugs
-  seed: 0,
   # Exclude slow tests by default (run with --include slow)
   exclude: [:slow]
 )
 
-# Configure Ecto for async tests (if using Phoenix/Ecto)
+# Configure Ecto sandbox for explicit checkouts (if using Phoenix/Ecto)
 Ecto.Adapters.SQL.Sandbox.mode(MyApp.Repo, :manual)
 ```
 
@@ -467,7 +466,7 @@ defmodule MyAppWeb.UserControllerTest do
       update_attrs = %{name: "Updated Name"}
 
       conn = put(conn, ~p"/api/users/#{user.id}", user: update_attrs)
-      assert %{"id" => ^id} = json_response(conn, 200)["data"]
+      assert %{"id" => id} = json_response(conn, 200)["data"]
 
       # Verify the update persisted
       conn = get(conn, ~p"/api/users/#{id}")
