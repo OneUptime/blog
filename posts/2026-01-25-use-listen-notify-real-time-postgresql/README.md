@@ -8,7 +8,7 @@ Description: Learn how to use PostgreSQL's LISTEN/NOTIFY for real-time communica
 
 ---
 
-PostgreSQL's LISTEN/NOTIFY provides a simple yet powerful pub/sub mechanism built directly into the database. Instead of constantly polling the database for changes, your application can subscribe to channels and receive instant notifications when data changes. This is perfect for real-time dashboards, chat applications, and event-driven architectures.
+PostgreSQL's LISTEN/NOTIFY provides a simple yet powerful pub/sub mechanism built directly into the database. Instead of constantly polling the database for changes, your application can subscribe to channels and receive notifications after transactions commit. This is perfect for real-time dashboards, chat applications, and event-driven architectures.
 
 ---
 
@@ -84,7 +84,7 @@ BEGIN
     -- Send notification
     PERFORM pg_notify('data_changes', payload::text);
 
-    RETURN NEW;
+    RETURN COALESCE(NEW, OLD);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -320,13 +320,12 @@ listenForChanges().catch(console.error);
 ### Backend (Python/FastAPI)
 
 ```python
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from typing import List
 import asyncpg
 import asyncio
 import json
-
-app = FastAPI()
 
 # Connected WebSocket clients
 
@@ -358,14 +357,28 @@ async def db_listener():
 
     await conn.add_listener('dashboard_updates', on_notification)
 
-    # Keep listener running
-    while True:
-        await asyncio.sleep(1)
+    try:
+        # Keep listener running
+        while True:
+            await asyncio.sleep(1)
+    finally:
+        await conn.remove_listener('dashboard_updates', on_notification)
+        await conn.close()
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     # Start database listener
-    asyncio.create_task(db_listener())
+    listener_task = asyncio.create_task(db_listener())
+    try:
+        yield
+    finally:
+        listener_task.cancel()
+        try:
+            await listener_task
+        except asyncio.CancelledError:
+            pass
+
+app = FastAPI(lifespan=lifespan)
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -506,17 +519,33 @@ BEGIN
     INSERT INTO notification_queue (channel, payload)
     VALUES (
         TG_TABLE_NAME || '_changes',
-        json_build_object('id', NEW.id, 'action', TG_OP)::text
+        json_build_object(
+            'id', CASE TG_OP
+                WHEN 'DELETE' THEN OLD.id
+                ELSE NEW.id
+            END,
+            'action', TG_OP
+        )::text
     );
-    RETURN NEW;
+    RETURN COALESCE(NEW, OLD);
 END;
 $$ LANGUAGE plpgsql;
 
 -- Separate process sends batched notifications
 -- Run every second:
--- SELECT pg_notify(channel, json_agg(payload)::text)
--- FROM notification_queue WHERE NOT processed
--- GROUP BY channel;
+-- WITH marked AS (
+--     UPDATE notification_queue
+--     SET processed = TRUE
+--     WHERE NOT processed
+--     RETURNING channel, payload
+-- ),
+-- batch AS (
+--     SELECT channel, json_agg(payload) AS payloads
+--     FROM marked
+--     GROUP BY channel
+-- )
+-- SELECT pg_notify(channel, payloads::text)
+-- FROM batch;
 ```
 
 ### Payload Size Limits
@@ -553,9 +582,11 @@ $$ LANGUAGE plpgsql;
 ## Monitoring and Troubleshooting
 
 ```sql
--- Check for pending notifications
-SELECT * FROM pg_stat_activity
-WHERE query LIKE '%LISTEN%';
+-- Check this session's active LISTEN channels
+SELECT * FROM pg_listening_channels();
+
+-- Check how much of PostgreSQL's notification queue is occupied
+SELECT pg_notification_queue_usage();
 
 -- View notification queue (if using queue pattern)
 SELECT
@@ -574,7 +605,7 @@ GROUP BY channel;
 1. **Keep payloads small** - Stay under 8000 bytes, send IDs only for large data
 2. **Use connection pooling carefully** - Each listener needs a dedicated connection
 3. **Handle reconnection** - Always implement reconnect logic in clients
-4. **Consider message ordering** - Notifications may arrive out of order under load
+4. **Consider transaction timing** - Notifications are delivered only after transactions complete, and disconnected clients can miss messages
 5. **Use channels wisely** - Too many channels can be hard to manage
 6. **Monitor listener connections** - Ensure listeners stay connected
 
