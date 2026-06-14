@@ -37,9 +37,9 @@ flowchart LR
 
 Chaos engineering is not randomly breaking things. It is a disciplined, scientific approach to discovering system weaknesses before they cause real outages.
 
-## The Four Principles
+## Core Principles
 
-Chaos engineering follows four core principles that distinguish it from random destruction.
+Chaos engineering follows core principles that distinguish it from random destruction.
 
 ### 1. Build a Hypothesis Around Steady State Behavior
 
@@ -118,14 +118,14 @@ Before breaking anything, you need baseline measurements. Spend time observing y
 ```python
 # baseline_monitor.py - Collect steady state metrics
 
-import time
+from datetime import datetime, timedelta, timezone
 from prometheus_api_client import PrometheusConnect
 
 class BaselineCollector:
     def __init__(self, prometheus_url: str):
         self.prom = PrometheusConnect(url=prometheus_url)
 
-    def collect_baseline(self, service_name: str, duration_hours: int = 24):
+    def collect_baseline(self, service_name: str, duration_hours: float = 24):
         """
         Collect baseline metrics for a service over a time period.
         Run this before any chaos experiments to understand normal behavior.
@@ -144,7 +144,9 @@ class BaselineCollector:
         # Response latency - how fast are we responding
         latency_query = f'''
             histogram_quantile(0.99,
-                rate(http_request_duration_seconds_bucket{{service="{service_name}"}}[5m])
+                sum by (le) (
+                    rate(http_request_duration_seconds_bucket{{service="{service_name}"}}[5m])
+                )
             )
         '''
         metrics['p99_latency'] = self._get_percentiles(latency_query, duration_hours)
@@ -157,14 +159,17 @@ class BaselineCollector:
 
         return metrics
 
-    def _get_percentiles(self, query: str, hours: int):
+    def _get_percentiles(self, query: str, hours: float):
         """Calculate percentiles from historical data"""
 
         # Query Prometheus for historical values
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(hours=hours)
+
         result = self.prom.custom_query_range(
             query=query,
-            start_time=time.time() - (hours * 3600),
-            end_time=time.time(),
+            start_time=start_time,
+            end_time=end_time,
             step='1m'
         )
 
@@ -210,10 +215,10 @@ Good hypothesis: "When one recommendation-service pod is killed, the success rat
 # experiment.py - Define and run a chaos experiment
 
 from dataclasses import dataclass
-from typing import Callable, Dict, Any
-from datetime import datetime, timedelta
+from typing import Dict, Any
+from datetime import datetime, timezone
 import subprocess
-import json
+import time
 
 @dataclass
 class Hypothesis:
@@ -252,7 +257,12 @@ def create_pod_kill_experiment(service_name: str) -> Experiment:
                 'max_p99_latency_ms': 200
             }
         ),
-        failure_injection=f"kubectl delete pod -l app={service_name} --wait=false | head -1",
+        failure_injection=(
+            f"kubectl delete pod "
+            f"\"$(kubectl get pod -l app={service_name} "
+            f"-o jsonpath='{{{{.items[0].metadata.name}}}}')\" "
+            "--wait=false"
+        ),
         duration_seconds=300,  # Observe for 5 minutes after injection
         rollback_command=f"kubectl rollout restart deployment/{service_name}"
     )
@@ -268,7 +278,7 @@ class ExperimentRunner:
 
         results = {
             'experiment': experiment.name,
-            'started_at': datetime.utcnow().isoformat(),
+            'started_at': datetime.now(timezone.utc).isoformat(),
             'hypothesis': experiment.hypothesis.description,
             'status': 'running'
         }
@@ -284,7 +294,7 @@ class ExperimentRunner:
 
         try:
             # Inject the failure
-            print(f"[{datetime.utcnow()}] Injecting failure: {experiment.failure_injection}")
+            print(f"[{datetime.now(timezone.utc)}] Injecting failure: {experiment.failure_injection}")
             subprocess.run(experiment.failure_injection, shell=True, check=True)
 
             # Monitor during the experiment
@@ -310,10 +320,10 @@ class ExperimentRunner:
 
         finally:
             # Always run rollback
-            print(f"[{datetime.utcnow()}] Running rollback: {experiment.rollback_command}")
+            print(f"[{datetime.now(timezone.utc)}] Running rollback: {experiment.rollback_command}")
             subprocess.run(experiment.rollback_command, shell=True)
 
-        results['completed_at'] = datetime.utcnow().isoformat()
+        results['completed_at'] = datetime.now(timezone.utc).isoformat()
         return results
 
     def _check_steady_state(self, service: str) -> Dict[str, Any]:
@@ -323,7 +333,8 @@ class ExperimentRunner:
 
         # Check if metrics look normal
         healthy = True
-        if metrics['success_rate']['p50'] < 0.99:
+        success_rate = metrics.get('success_rate') or {}
+        if success_rate.get('p50', 0) < 0.99:
             healthy = False
 
         return {'healthy': healthy, 'metrics': metrics}
@@ -336,7 +347,7 @@ class ExperimentRunner:
 
         for i in range(duration // interval):
             obs = self.baseline.collect_baseline(service, duration_hours=0.01)
-            obs['timestamp'] = datetime.utcnow().isoformat()
+            obs['timestamp'] = datetime.now(timezone.utc).isoformat()
             observations.append(obs)
 
             # Safety abort if things go very wrong
@@ -352,7 +363,8 @@ class ExperimentRunner:
         """Check if we should abort due to excessive degradation"""
 
         # Abort if success rate drops below 90% (regardless of hypothesis)
-        if observation.get('success_rate', {}).get('p50', 1.0) < 0.90:
+        success_rate = observation.get('success_rate') or {}
+        if success_rate.get('p50', 1.0) < 0.90:
             return True
         return False
 
@@ -360,8 +372,8 @@ class ExperimentRunner:
         """Did the system behave as hypothesized?"""
 
         for obs in observations:
-            success_rate = obs.get('success_rate', {}).get('p50', 0)
-            latency = obs.get('p99_latency', {}).get('p50', float('inf'))
+            success_rate = (obs.get('success_rate') or {}).get('p50', 0)
+            latency = (obs.get('p99_latency') or {}).get('p50', float('inf'))
 
             if success_rate < criteria.get('min_success_rate', 0):
                 return False
