@@ -117,18 +117,18 @@ NAMESPACE="${1:-wireguard}"
 NODE_NAME="${2:-node-1}"
 
 # Create namespace if it does not exist
-kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
 # Generate private and public keys
 PRIVATE_KEY=$(wg genkey)
-PUBLIC_KEY=$(echo $PRIVATE_KEY | wg pubkey)
+PUBLIC_KEY=$(printf '%s' "$PRIVATE_KEY" | wg pubkey)
 
 # Create Kubernetes secret with the keys
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: Secret
 metadata:
-  name: wireguard-keys-${NODE_NAME}
+  name: wireguard-keys
   namespace: ${NAMESPACE}
 type: Opaque
 stringData:
@@ -140,11 +140,13 @@ echo "Keys generated for ${NODE_NAME}"
 echo "Public Key: ${PUBLIC_KEY}"
 ```
 
+When deploying a mesh, render a node-specific Secret and WireGuard address for each node. Kubernetes does not expand `NODE_NAME` inside `secretKeyRef.name`, so this static example uses a single Secret name for the rendered manifest.
+
 ---
 
 ## Deploying WireGuard as a DaemonSet
 
-Deploy WireGuard across all nodes using a DaemonSet. This ensures consistent VPN configuration:
+Deploy WireGuard across all nodes using a DaemonSet. Render node-specific keys, addresses, and peers before applying the manifest:
 
 ```yaml
 # wireguard-daemonset.yaml
@@ -190,10 +192,7 @@ spec:
           # Load WireGuard kernel module
           modprobe wireguard
 
-          # Create WireGuard interface if not exists
-          ip link show wg0 || ip link add wg0 type wireguard
-
-          echo "WireGuard interface initialized"
+          echo "WireGuard kernel module loaded"
         volumeMounts:
         - name: lib-modules
           mountPath: /lib/modules
@@ -218,6 +217,9 @@ spec:
             secretKeyRef:
               name: wireguard-keys
               key: privateKey
+        command:
+        - /bin/bash
+        - /config/configure.sh
         volumeMounts:
         - name: wireguard-config
           mountPath: /config
@@ -256,9 +258,9 @@ metadata:
   name: wireguard-config
   namespace: wireguard
 data:
-  wg0.conf: |
+  wg0.conf.template: |
     [Interface]
-    # Each node gets a unique address in the VPN subnet
+    # Replace this address with a unique value for each node
     Address = 10.200.0.1/24
     ListenPort = 51820
     # Private key injected from secret
@@ -289,10 +291,14 @@ data:
   # Script to generate node-specific config
   configure.sh: |
     #!/bin/bash
+    set -euo pipefail
+
     # Substitute environment variables in config template
-    envsubst < /config/wg0.conf.template > /etc/wireguard/wg0.conf
+    mkdir -p /etc/wireguard
+    sed "s|\${WG_PRIVATE_KEY}|${WG_PRIVATE_KEY}|g" /config/wg0.conf.template > /etc/wireguard/wg0.conf
 
     # Bring up the interface
+    ip link show wg0 >/dev/null 2>&1 && wg-quick down wg0 || true
     wg-quick up wg0
 
     # Keep container running
@@ -301,71 +307,58 @@ data:
 
 ---
 
-## Using the WireGuard Operator
+## Using wg-access-server
 
-For production environments, consider using the WireGuard Operator for automated peer management:
+For production environments, consider using wg-access-server for web-based peer management:
 
 ```yaml
-# wireguard-operator-values.yaml
-# Helm values for WireGuard operator deployment
+# wg-access-server-values.yaml
+# Helm values for wg-access-server deployment
 
-replicaCount: 1
+web:
+  config:
+    adminUsername: admin
+    adminPassword: "<admin-password>"
+  service:
+    type: ClusterIP
 
-image:
-  repository: place1/wg-access-server
-  tag: latest
-
-config:
-  wireguard:
-    # External IP or hostname for VPN connections
-    externalHost: vpn.example.com
+wireguard:
+  config:
+    privateKey: "<wireguard-private-key>"
+  service:
+    type: LoadBalancer
     port: 51820
 
-  # VPN network configuration
-  vpn:
-    cidr: 10.200.0.0/16
-    gatewayInterface: eth0
-
-  # DNS configuration for VPN clients
-  dns:
-    enabled: true
-    upstream:
-    - 8.8.8.8
-    - 8.8.4.4
-
-# Storage for peer configurations
-storage:
-  type: kubernetes
+persistence:
+  enabled: true
+  size: 100Mi
 
 # Ingress for admin interface
 ingress:
   enabled: true
-  className: nginx
+  ingressClassName: nginx
   hosts:
-  - host: vpn.example.com
-    paths:
-    - path: /
-      pathType: Prefix
+  - vpn.example.com
 ```
 
-Install the operator:
+Install wg-access-server:
 
 ```bash
 # Add the Helm repository
-helm repo add wireguard https://place1.github.io/wg-access-server
+helm repo add wg-access-server https://freifunkMUC.github.io/wg-access-server-chart/
 
-# Install the operator
-helm install wireguard-operator wireguard/wg-access-server \
+# Install wg-access-server
+helm install wireguard wg-access-server/wg-access-server \
   --namespace wireguard \
   --create-namespace \
-  --values wireguard-operator-values.yaml
+  --values wg-access-server-values.yaml
 ```
 
 ---
 
 ## Network Policy Integration
 
-Combine WireGuard with Kubernetes Network Policies for defense in depth:
+For WireGuard deployments that do not use `hostNetwork: true`, combine WireGuard with Kubernetes Network Policies for defense in depth:
 
 ```yaml
 # wireguard-network-policy.yaml
@@ -435,7 +428,7 @@ Create a monitoring script to track VPN health:
 # Exports WireGuard metrics for Prometheus
 
 # Get interface statistics
-wg show wg0 dump | while read line; do
+wg show wg0 dump | tail -n +2 | while read -r line; do
     if [ -n "$line" ]; then
         # Parse peer information
         PUBLIC_KEY=$(echo $line | awk '{print $1}')
