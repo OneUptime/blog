@@ -58,7 +58,7 @@ Ceph is designed for commodity hardware, but your cluster's performance depends 
 
 ### Minimum for a Test Cluster
 
-- **3 nodes** (Ceph requires odd numbers for quorum)
+- **3 nodes** (enough for three monitor daemons and host-level OSD replication)
 - **4 CPU cores** per node
 - **8 GB RAM** per node (more for production)
 - **1 SSD** for OS (50+ GB)
@@ -70,7 +70,7 @@ Ceph is designed for commodity hardware, but your cluster's performance depends 
 - **5+ nodes** for better fault tolerance
 - **16+ CPU cores** per OSD node
 - **64+ GB RAM** per node (Ceph uses ~4GB per OSD by default)
-- **NVMe for journals/WAL** if using HDDs for data
+- **NVMe for BlueStore DB/WAL** if using HDDs for data
 - **10 Gbps+ network** with dedicated storage network
 - **Separate network interfaces** for public and cluster traffic
 
@@ -120,8 +120,8 @@ sudo apt update && sudo apt upgrade -y
 # Install required dependencies for cephadm
 sudo apt install -y python3 python3-pip lvm2 chrony podman
 
-# Cephadm uses containers, so ensure podman or docker is running
-sudo systemctl enable --now podman
+# Cephadm uses containers, so verify podman or docker is installed
+podman --version
 ```
 
 ### Configure Time Synchronization
@@ -191,10 +191,10 @@ ssh ceph-node3 hostname
 
 ## Step 2: Install Cephadm
 
-Cephadm is the official deployment tool for Ceph Reef (v18) and later versions. It uses containers to deploy and manage all Ceph daemons.
+Cephadm is the official deployment tool for modern Ceph releases. It uses containers to deploy and manage all Ceph daemons. This guide uses Ceph Reef (v18).
 
 ```bash
-# Download the latest cephadm script
+# Download the Reef cephadm standalone executable
 curl --silent --remote-name --location \
   https://download.ceph.com/rpm-reef/el9/noarch/cephadm
 
@@ -263,15 +263,15 @@ You should see output indicating one monitor and one manager are running:
 Now add the other nodes to the cluster. Run these commands from the bootstrap node.
 
 ```bash
-# Enter the cephadm shell
-sudo cephadm shell
-
 # Copy the SSH key to remote hosts (cephadm needs access)
 ssh-copy-id -f -i /etc/ceph/ceph.pub root@ceph-node2
 ssh-copy-id -f -i /etc/ceph/ceph.pub root@ceph-node3
 
+# Enter the cephadm shell for running Ceph commands
+sudo cephadm shell
+
 # Add the hosts to the cluster
-# Specify both public and cluster network IPs using labels
+# Specify each host's public network address and add the _admin label
 ceph orch host add ceph-node2 10.0.1.12 --labels _admin
 ceph orch host add ceph-node3 10.0.1.13 --labels _admin
 
@@ -390,7 +390,7 @@ rbd pool init rbd-pool
 ceph osd pool ls detail
 ```
 
-The number 128 represents placement groups (PGs). A rough formula is:
+The number 128 represents placement groups (PGs). Modern Ceph releases include the PG autoscaler, but if you preselect PG counts manually, a rough starting formula is:
 
 ```text
 PGs = (OSDs * 100) / replication_factor
@@ -422,8 +422,9 @@ On a client machine with the Ceph client tools installed:
 sudo apt install -y ceph-common
 
 # Copy ceph.conf and keyring from a cluster node
-sudo scp ceph-node1:/etc/ceph/ceph.conf /etc/ceph/
-sudo scp ceph-node1:/etc/ceph/ceph.client.admin.keyring /etc/ceph/
+sudo mkdir -p /etc/ceph
+sudo scp root@ceph-node1:/etc/ceph/ceph.conf /etc/ceph/
+sudo scp root@ceph-node1:/etc/ceph/ceph.client.admin.keyring /etc/ceph/
 
 # Map the RBD image to a local block device
 sudo rbd map rbd-pool/my-disk --name client.admin
@@ -488,17 +489,23 @@ ceph fs status myfs
 # Install ceph-common on client
 sudo apt install -y ceph-common
 
-# Get the admin secret key
-ceph auth get-key client.admin
+# Copy ceph.conf and keyring from a cluster node if they are not already present
+sudo mkdir -p /etc/ceph
+sudo scp root@ceph-node1:/etc/ceph/ceph.conf /etc/ceph/
+sudo scp root@ceph-node1:/etc/ceph/ceph.client.admin.keyring /etc/ceph/
+
+# Store the admin secret key in a file
+sudo ceph auth get-key client.admin | sudo tee /etc/ceph/admin.secret > /dev/null
+sudo chmod 600 /etc/ceph/admin.secret
 
 # Mount using the kernel driver
 sudo mkdir -p /mnt/cephfs
-sudo mount -t ceph ceph-node1:/ /mnt/cephfs \
-  -o name=admin,secret=AQD...your-key-here...
+sudo mount -t ceph admin@.myfs=/ /mnt/cephfs \
+  -o secretfile=/etc/ceph/admin.secret
 
 # Or mount using FUSE (more compatible but slower)
 sudo apt install -y ceph-fuse
-sudo ceph-fuse -m ceph-node1:6789 /mnt/cephfs
+sudo ceph-fuse --id admin --client_fs myfs /mnt/cephfs
 ```
 
 ## Step 11: Monitor Cluster Health
@@ -519,7 +526,8 @@ ceph -w
 ### Enable Prometheus Metrics
 
 ```bash
-# Deploy Prometheus and Grafana for monitoring
+# Deploy Prometheus, Grafana, Alertmanager, and node-exporter for monitoring
+ceph orch apply node-exporter
 ceph orch apply prometheus
 ceph orch apply grafana
 ceph orch apply alertmanager
@@ -597,12 +605,12 @@ ceph orch upgrade status
 ### Check Service Logs
 
 ```bash
-# View logs for a specific daemon
-ceph log last 100 osd.0
+# View recent cluster log entries
+ceph log last 100
 
-# Or check container logs directly
-sudo podman logs ceph-mon.ceph-node1
-sudo podman logs ceph-osd.0
+# Or check daemon logs through cephadm on the host running the daemon
+sudo cephadm logs --name mon.ceph-node1 -- -n 100
+sudo cephadm logs --name osd.0 -- -n 100
 ```
 
 ---
