@@ -35,7 +35,7 @@ graph TB
 
 The primary key has two components:
 
-- **Partition Key**: Determines which node in the cluster stores the row. All rows with the same partition key are stored together on the same node. This is critical for query performance.
+- **Partition Key**: Determines which replica nodes in the cluster store the row. All rows with the same partition key are stored together on the same set of replica nodes. This is critical for query performance.
 - **Clustering Columns**: Define the sort order of rows within a partition and help make each row unique. You can query ranges of clustering columns efficiently.
 
 ## The Query-First Design Approach
@@ -81,12 +81,13 @@ The first query needs all activities for a specific user. The user ID becomes th
 CREATE TABLE user_activities (
     user_id uuid,                    -- Partition key: groups data by user
     activity_timestamp timestamp,    -- Clustering column: sorts activities by time
+    activity_id uuid,                -- Tie-breaker to keep same-timestamp events unique
     activity_type text,              -- Type of activity (login, purchase, etc.)
     activity_data text,              -- JSON or other serialized activity details
     device_info text,                -- Device that generated the activity
     ip_address text,                 -- IP address of the request
-    PRIMARY KEY (user_id, activity_timestamp)
-) WITH CLUSTERING ORDER BY (activity_timestamp DESC);
+    PRIMARY KEY (user_id, activity_timestamp, activity_id)
+) WITH CLUSTERING ORDER BY (activity_timestamp DESC, activity_id ASC);
 -- DESC ordering returns most recent activities first without extra sorting
 ```
 
@@ -107,18 +108,19 @@ The second query filters by activity type. You cannot efficiently filter on a no
 ```cql
 -- Table design for: Get activities filtered by type
 -- activity_type is now part of the primary key for efficient filtering
--- We use a composite partition key to keep partitions from growing unbounded
+-- We use a composite partition key to keep each user/type partition smaller
 
 CREATE TABLE user_activities_by_type (
     user_id uuid,                    -- Part of partition key
     activity_type text,              -- Part of partition key: enables type filtering
     activity_timestamp timestamp,    -- Clustering column for time ordering
+    activity_id uuid,                -- Tie-breaker to keep same-timestamp events unique
     activity_data text,
     device_info text,
     ip_address text,
-    PRIMARY KEY ((user_id, activity_type), activity_timestamp)
+    PRIMARY KEY ((user_id, activity_type), activity_timestamp, activity_id)
     -- Double parentheses indicate composite partition key
-) WITH CLUSTERING ORDER BY (activity_timestamp DESC);
+) WITH CLUSTERING ORDER BY (activity_timestamp DESC, activity_id ASC);
 ```
 
 Now you can query by type efficiently:
@@ -145,12 +147,13 @@ CREATE TABLE user_activities_by_month (
     user_id uuid,                    -- Part of partition key
     year_month text,                 -- Part of partition key: '2026-01' format
     activity_timestamp timestamp,    -- Clustering column for range queries
+    activity_id uuid,                -- Tie-breaker to keep same-timestamp events unique
     activity_type text,
     activity_data text,
     device_info text,
     ip_address text,
-    PRIMARY KEY ((user_id, year_month), activity_timestamp)
-) WITH CLUSTERING ORDER BY (activity_timestamp DESC);
+    PRIMARY KEY ((user_id, year_month), activity_timestamp, activity_id)
+) WITH CLUSTERING ORDER BY (activity_timestamp DESC, activity_id ASC);
 ```
 
 Query a specific month:
@@ -224,18 +227,19 @@ flowchart TB
 
 ## Managing Data Duplication
 
-Writing to multiple tables is a core Cassandra pattern. You can maintain consistency using batch statements for tables with the same partition key, or use application-level logic for different partitions.
+Writing to multiple tables is a core Cassandra pattern. You can use batch statements for atomic, isolated updates within the same partition. For writes that touch different partitions, use logged batches sparingly or use application-level logic.
 
 ```cql
--- Batch insert when tables share the same partition key structure
--- Batches are atomic within a single partition
+-- Logged batch insert across multiple partitions
+-- Useful when the batch must eventually apply as a unit, but it is not isolated like a SQL transaction
 
-BEGIN BATCH
+BEGIN LOGGED BATCH
     INSERT INTO user_activities (
-        user_id, activity_timestamp, activity_type, activity_data, device_info, ip_address
+        user_id, activity_timestamp, activity_id, activity_type, activity_data, device_info, ip_address
     ) VALUES (
         550e8400-e29b-41d4-a716-446655440000,
         '2026-01-26 10:30:00',
+        7b6f4f82-05d8-4d8f-8d9f-5b5f8c7a2b1c,
         'purchase',
         '{"item_id": "ABC123", "amount": 99.99}',
         'iPhone 15 Pro',
@@ -243,22 +247,24 @@ BEGIN BATCH
     );
 
     INSERT INTO user_activities_by_type (
-        user_id, activity_type, activity_timestamp, activity_data, device_info, ip_address
+        user_id, activity_type, activity_timestamp, activity_id, activity_data, device_info, ip_address
     ) VALUES (
         550e8400-e29b-41d4-a716-446655440000,
         'purchase',
         '2026-01-26 10:30:00',
+        7b6f4f82-05d8-4d8f-8d9f-5b5f8c7a2b1c,
         '{"item_id": "ABC123", "amount": 99.99}',
         'iPhone 15 Pro',
         '192.168.1.100'
     );
 
     INSERT INTO user_activities_by_month (
-        user_id, year_month, activity_timestamp, activity_type, activity_data, device_info, ip_address
+        user_id, year_month, activity_timestamp, activity_id, activity_type, activity_data, device_info, ip_address
     ) VALUES (
         550e8400-e29b-41d4-a716-446655440000,
         '2026-01',
         '2026-01-26 10:30:00',
+        7b6f4f82-05d8-4d8f-8d9f-5b5f8c7a2b1c,
         'purchase',
         '{"item_id": "ABC123", "amount": 99.99}',
         'iPhone 15 Pro',
@@ -267,7 +273,7 @@ BEGIN BATCH
 APPLY BATCH;
 ```
 
-For high-throughput applications, consider using logged batches sparingly. They add coordination overhead. Unlogged batches or individual writes are often faster when atomicity is not required.
+For high-throughput applications, consider using logged batches sparingly. They add coordination overhead. Individual writes are often faster when atomicity is not required, and unlogged batches are recommended only for writes that stay within a single partition.
 
 ## Partition Sizing Guidelines
 
@@ -357,7 +363,7 @@ print(f"Recommendation: {estimate['recommendation']}")
 
 ### Anti-Pattern 1: Using ALLOW FILTERING
 
-The ALLOW FILTERING clause lets you query columns not in the primary key, but it scans all partitions. This is a performance disaster at scale.
+The ALLOW FILTERING clause lets Cassandra execute queries it would normally reject, but it can require scanning many partitions. This is a performance disaster at scale when the query is not restricted by partition key.
 
 ```cql
 -- BAD: This query scans all partitions
@@ -442,7 +448,7 @@ sequenceDiagram
 ```
 
 Secondary indexes are acceptable when:
-- The indexed column has moderate cardinality (hundreds to thousands of unique values)
+- The indexed column has low-to-moderate cardinality and the query returns a bounded result set
 - Queries always include the partition key
 - The query is not latency-sensitive
 
@@ -462,7 +468,7 @@ WHERE activity_type = 'login';
 -- This requires contacting every node in the cluster
 ```
 
-For most use cases, a denormalized table is a better choice than a secondary index.
+For most high-throughput use cases, a denormalized table is a better choice than a secondary index. On newer Cassandra versions, consider Storage-Attached Indexing (SAI) when you need secondary-index-style queries.
 
 ## Time Series Data Patterns
 
@@ -553,22 +559,38 @@ public List<Metric> getRecentMetrics(String metricName, int hours) {
     }
 
     // Query each bucket in parallel
-    List<CompletableFuture<AsyncResultSet>> futures = buckets.stream()
+    List<CompletableFuture<List<Row>>> futures = buckets.stream()
         .map(bucket -> session.executeAsync(
             SimpleStatement.newInstance(
                 "SELECT * FROM metrics WHERE metric_name = ? AND bucket = ?",
                 metricName,
                 bucket
             )
-        ).toCompletableFuture())
+        ).thenCompose(this::collectRows).toCompletableFuture())
         .collect(Collectors.toList());
 
     // Combine and return results
     return futures.stream()
         .map(CompletableFuture::join)
-        .flatMap(rs -> StreamSupport.stream(rs.currentPage().spliterator(), false))
+        .flatMap(List::stream)
         .map(this::rowToMetric)
         .collect(Collectors.toList());
+}
+
+private CompletionStage<List<Row>> collectRows(AsyncResultSet resultSet) {
+    List<Row> rows = new ArrayList<>();
+    return collectRows(resultSet, rows);
+}
+
+private CompletionStage<List<Row>> collectRows(AsyncResultSet resultSet, List<Row> rows) {
+    resultSet.currentPage().forEach(rows::add);
+
+    if (resultSet.hasMorePages()) {
+        return resultSet.fetchNextPage()
+            .thenCompose(nextPage -> collectRows(nextPage, rows));
+    }
+
+    return CompletableFuture.completedFuture(rows);
 }
 ```
 
