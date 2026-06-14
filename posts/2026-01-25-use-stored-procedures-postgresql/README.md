@@ -18,7 +18,7 @@ Before diving into procedures, it is important to understand how they differ fro
 
 | Feature | Function | Procedure |
 |---------|----------|-----------|
-| Return value | Must return a value | Cannot return a value directly |
+| Return value | Must declare a return type | No `RETURNS` clause; can use output parameters |
 | Transaction control | Cannot COMMIT/ROLLBACK | Can COMMIT/ROLLBACK |
 | Call syntax | SELECT or expression | CALL statement |
 | Use in queries | Can be used in SELECT | Cannot be used in SELECT |
@@ -91,6 +91,10 @@ BEGIN
         updated_at = NOW()
     WHERE id = recipient_id;
 
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Recipient account % not found', recipient_id;
+    END IF;
+
     -- Record the transaction
     INSERT INTO transactions (from_account, to_account, amount, created_at)
     VALUES (sender_id, recipient_id, amount, NOW());
@@ -108,7 +112,7 @@ CALL transfer_funds(1, 2, 100.00);
 
 ## Transaction Control in Procedures
 
-The key advantage of procedures over functions is the ability to control transactions.
+The key advantage of procedures over functions is the ability to control transactions. Transaction control is only allowed when the procedure is called at the top level, not inside an explicit transaction block.
 
 ### Using COMMIT and ROLLBACK
 
@@ -176,10 +180,10 @@ $$;
 CALL process_large_dataset(500);
 ```
 
-### Savepoints in Procedures
+### Exception Blocks for Partial Rollbacks
 
 ```sql
--- Procedure using savepoints for partial rollbacks
+-- Procedure using exception blocks for partial rollbacks
 CREATE OR REPLACE PROCEDURE import_user_data(
     user_data JSONB
 )
@@ -194,7 +198,7 @@ BEGIN
         SELECT * FROM jsonb_to_recordset(user_data)
         AS x(email TEXT, name TEXT, department TEXT)
     LOOP
-        -- Create savepoint before each user import
+        -- Start a protected block before each user import
         BEGIN
             -- Attempt to insert the user
             INSERT INTO users (email, name, department)
@@ -345,17 +349,17 @@ CREATE OR REPLACE PROCEDURE admin_reset_password(
 )
 LANGUAGE plpgsql
 SECURITY DEFINER  -- Runs as procedure owner
-SET search_path = public  -- Prevent search_path injection
+SET search_path = public, pg_temp  -- Prevent search_path injection
 AS $$
 BEGIN
     -- Verify caller has admin role (even though procedure runs as owner)
     IF NOT EXISTS (
         SELECT 1 FROM pg_roles
-        WHERE rolname = current_user
+        WHERE rolname = session_user
         AND rolsuper = false
         AND EXISTS (
             SELECT 1 FROM user_roles
-            WHERE username = current_user
+            WHERE username = session_user
             AND role = 'admin'
         )
     ) THEN
@@ -374,7 +378,7 @@ BEGIN
 
     -- Audit log
     INSERT INTO security_audit (action, target_email, performed_by, performed_at)
-    VALUES ('password_reset', target_email, current_user, NOW());
+    VALUES ('password_reset', target_email, session_user, NOW());
 END;
 $$;
 
