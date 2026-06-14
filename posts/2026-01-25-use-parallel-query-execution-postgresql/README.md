@@ -221,7 +221,7 @@ SET parallel_tuple_cost = 0;
 SET min_parallel_table_scan_size = 0;
 SET min_parallel_index_scan_size = 0;
 
--- Now even small tables use parallel workers
+-- Now even small tables can use parallel workers
 EXPLAIN ANALYZE SELECT count(*) FROM small_table;
 ```
 
@@ -249,8 +249,8 @@ RESET max_parallel_workers_per_gather;
 ### Operations That Do Not Parallelize
 
 ```sql
--- Writing queries (INSERT, UPDATE, DELETE)
--- Cannot be parallelized
+-- Ordinary data-modifying queries (INSERT, UPDATE, DELETE)
+-- Do not get parallel plans
 
 -- Queries with cursors
 DECLARE c CURSOR FOR SELECT * FROM large_table;
@@ -258,9 +258,9 @@ DECLARE c CURSOR FOR SELECT * FROM large_table;
 -- Queries in functions marked as not parallel-safe
 -- Queries with certain extensions
 
--- Serializable isolation level
-BEGIN ISOLATION LEVEL SERIALIZABLE;
-SELECT * FROM table;  -- No parallelism
+-- Queries that lock rows
+BEGIN;
+SELECT * FROM large_table FOR UPDATE;  -- No parallelism
 COMMIT;
 ```
 
@@ -277,8 +277,8 @@ WHERE proname = 'my_function';
 -- 1. Table too small
 -- 2. Already in a parallel query
 -- 3. Function marked as parallel unsafe
--- 4. Transaction is serializable
--- 5. Query is writing data
+-- 4. Query writes data or locks rows
+-- 5. Query might be suspended, such as a cursor
 ```
 
 ---
