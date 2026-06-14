@@ -119,7 +119,8 @@ ORDER BY day;
 REFRESH MATERIALIZED VIEW sales_summary;
 
 -- Concurrent refresh (allows reads during refresh)
--- Requires a unique index
+-- Requires at least one unique index that uses only column names
+-- and includes all rows (not a partial or expression index)
 CREATE UNIQUE INDEX idx_sales_summary_unique
 ON sales_summary (month, product_category);
 
@@ -131,7 +132,7 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY sales_summary;
 | Refresh Type | Pros | Cons |
 |--------------|------|------|
 | Standard | Faster, no index needed | Blocks reads during refresh |
-| Concurrent | No blocking | Requires unique index, slower |
+| Concurrent | Allows reads during refresh | Requires a qualifying unique index, slower |
 
 ### Scheduled Refresh with pg_cron
 
@@ -239,9 +240,9 @@ WHERE relname = 'order_analytics';
 
 ## Advanced Patterns
 
-### Incremental Refresh Pattern
+### Conditional Refresh Pattern
 
-PostgreSQL does not support incremental refresh natively, but you can simulate it:
+PostgreSQL does not support incremental refresh natively, but you can avoid unnecessary full refreshes:
 
 ```sql
 -- Create a tracking table
@@ -258,6 +259,9 @@ SELECT
     COUNT(*) AS event_count
 FROM events
 GROUP BY 1;
+
+CREATE UNIQUE INDEX idx_incremental_summary_day
+ON incremental_summary (day);
 
 -- Function to check if refresh is needed
 CREATE OR REPLACE FUNCTION needs_refresh(view_name TEXT)
@@ -373,9 +377,9 @@ GROUP BY 1, 2;
 SELECT
     schemaname,
     matviewname,
-    pg_size_pretty(pg_relation_size(schemaname || '.' || matviewname)) AS size
+    pg_size_pretty(pg_relation_size(format('%I.%I', schemaname, matviewname)::regclass)) AS size
 FROM pg_matviews
-ORDER BY pg_relation_size(schemaname || '.' || matviewname) DESC;
+ORDER BY pg_relation_size(format('%I.%I', schemaname, matviewname)::regclass) DESC;
 
 -- Check if materialized view has data
 SELECT
@@ -403,7 +407,7 @@ DECLARE
 BEGIN
     start_time := clock_timestamp();
 
-    EXECUTE format('REFRESH MATERIALIZED VIEW CONCURRENTLY %I', view_name);
+    EXECUTE format('REFRESH MATERIALIZED VIEW %I', view_name);
 
     end_time := clock_timestamp();
 
@@ -419,13 +423,13 @@ $$;
 
 ## Best Practices
 
-1. **Add unique indexes** for concurrent refresh capability
+1. **Add qualifying unique indexes** for concurrent refresh capability
 2. **Schedule refreshes** during low-traffic periods
 3. **Monitor refresh duration** to catch performance degradation
 4. **Use WITH NO DATA** for large views to separate creation from population
 5. **Index based on query patterns**, not just for concurrent refresh
 6. **Consider data freshness requirements** when setting refresh frequency
-7. **Stack views** for complex aggregations to enable partial refreshes
+7. **Stack views** for complex aggregations to support staged refresh schedules
 
 ---
 
