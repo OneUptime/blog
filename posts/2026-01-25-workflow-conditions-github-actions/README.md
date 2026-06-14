@@ -130,9 +130,8 @@ on:
       - 'src/**'
       - 'package.json'
       - '.github/workflows/ci.yml'
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
+      - '!**.md'
+      - '!docs/**'
 
 # Or use path filters at the job level with dorny/paths-filter
 jobs:
@@ -143,7 +142,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -188,7 +187,7 @@ steps:
       path: coverage/
 
   - name: Notify on failure
-    if: failure()  # Only run if a previous step failed
+    if: steps.tests.outcome == 'failure'  # Run if the continued test step failed
     run: curl -X POST ${{ secrets.SLACK_WEBHOOK }} -d '{"text":"Tests failed!"}'
 
   - name: Notify on success
