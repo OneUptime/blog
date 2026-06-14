@@ -28,25 +28,14 @@ The V8 isolate model also means no cold starts. Instead of spinning up container
 
 ## Setting Up Your Development Environment
 
-First, install Wrangler, the CLI for managing Workers:
-
-```bash
-# Install wrangler globally
-
-npm install -g wrangler
-
-# Authenticate with your Cloudflare account
-wrangler login
-```
-
-Create a new project:
+First, create a new Worker project with C3, Cloudflare's project generator. C3 installs Wrangler, the CLI for managing Workers, as a local project dependency:
 
 ```bash
 # Create a new Worker project
-wrangler init my-worker
+npm create cloudflare@latest -- my-worker
 
 # Choose your template when prompted
-# For this guide, select "Hello World" worker
+# For this guide, select "Hello World example" and "Worker only"
 ```
 
 This generates a project structure:
@@ -55,7 +44,7 @@ This generates a project structure:
 my-worker/
   src/
     index.ts       # Your Worker code
-  wrangler.toml    # Configuration file
+  wrangler.jsonc   # Configuration file
   package.json
   tsconfig.json
 ```
@@ -84,7 +73,7 @@ Test it locally:
 
 ```bash
 # Start local development server
-wrangler dev
+npx wrangler dev
 ```
 
 Your Worker runs at `http://localhost:8787`. Every change hot-reloads instantly.
@@ -170,7 +159,7 @@ export default {
 
 Workers KV provides a global key-value store. Data written in one region becomes available worldwide within 60 seconds. It excels at read-heavy workloads - think configuration, feature flags, and cached content.
 
-Configure KV in `wrangler.toml`:
+Configure KV in your Wrangler configuration. The examples below use TOML:
 
 ```toml
 name = "my-worker"
@@ -188,10 +177,10 @@ Create the namespace:
 
 ```bash
 # Create a KV namespace for production
-wrangler kv:namespace create USERS_KV
+npx wrangler kv namespace create USERS_KV
 
 # Create one for local development
-wrangler kv:namespace create USERS_KV --preview
+npx wrangler kv namespace create USERS_KV --preview
 ```
 
 KV operations are straightforward:
@@ -230,12 +219,10 @@ Each Durable Object is a single instance that runs in one location. All requests
 // Each user gets their own Durable Object instance
 
 export class RateLimiter {
-  state: DurableObjectState;
   requestCount: number;
   windowStart: number;
 
-  constructor(state: DurableObjectState, env: Env) {
-    this.state = state;
+  constructor(ctx: DurableObjectState, env: Env) {
     this.requestCount = 0;
     this.windowStart = Date.now();
   }
@@ -303,7 +290,7 @@ export default {
 };
 ```
 
-Update `wrangler.toml` for Durable Objects:
+Update your Wrangler configuration for Durable Objects:
 
 ```toml
 [[durable_objects.bindings]]
@@ -312,7 +299,7 @@ class_name = "RateLimiter"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["RateLimiter"]
+new_sqlite_classes = ["RateLimiter"]
 ```
 
 ## Making External API Calls
@@ -321,7 +308,7 @@ Workers can call external APIs, but you need to handle errors and timeouts caref
 
 ```typescript
 // Calling external APIs with proper error handling
-// Workers have a 30-second CPU time limit but can wait longer on I/O
+// Workers have CPU time limits, but can wait longer on I/O
 
 async function fetchWithRetry(
   url: string,
@@ -468,23 +455,23 @@ Deploy your Worker:
 
 ```bash
 # Deploy to production
-wrangler deploy
+npx wrangler deploy
 
 # Deploy to a specific environment
-wrangler deploy --env staging
+npx wrangler deploy --env staging
 ```
 
 Set up secrets for API keys and sensitive configuration:
 
 ```bash
 # Add a secret - you'll be prompted to enter the value
-wrangler secret put API_KEY
+npx wrangler secret put API_KEY
 
 # List existing secrets
-wrangler secret list
+npx wrangler secret list
 ```
 
-Configure environments in `wrangler.toml`:
+Configure environments in your Wrangler configuration:
 
 ```toml
 name = "my-worker"
@@ -518,7 +505,7 @@ const body = await request.json();
 // clonedRequest still has the body available
 ```
 
-**Workers have execution limits.** CPU time is capped at 30 seconds (50ms on the free plan). However, I/O wait time does not count against this. Long-running compute should be chunked or moved to a queue.
+**Workers have execution limits.** CPU time is capped at 10ms on the free plan. On the paid plan, the default CPU limit is 30 seconds and can be increased up to 5 minutes. However, I/O wait time does not count against this. Long-running compute should be chunked or moved to a queue.
 
 **KV is eventually consistent.** Writes propagate globally in about 60 seconds. If you need immediate consistency, use Durable Objects.
 
@@ -527,7 +514,7 @@ const body = await request.json();
 ```typescript
 // Cache expensive operations
 const cache = caches.default;
-const cacheKey = new Request(request.url, request);
+const cacheKey = new Request(request.url, { method: "GET" });
 
 // Check cache first
 let response = await cache.match(cacheKey);
