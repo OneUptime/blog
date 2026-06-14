@@ -70,7 +70,7 @@ pg_restore -C -d postgres backup.dump
 # Use single transaction (rollback on error)
 pg_restore --single-transaction -d mydb backup.dump
 
-# Continue on errors
+# Log restore output while skipping ownership and privileges
 pg_restore --no-acl --no-owner -d mydb backup.dump 2>&1 | tee restore.log
 ```
 
@@ -113,7 +113,7 @@ pg_restore -t users -t orders -t products -d mydb backup.dump
 # Restore specific schema
 pg_restore -n public -d mydb backup.dump
 
-# Restore table and its indexes
+# Restore table and a specific index
 pg_restore -t users -I idx_users_email -d mydb backup.dump
 
 # Restore function
@@ -196,8 +196,8 @@ psql -U postgres -c "CREATE ROLE original_owner WITH LOGIN;"
 # Solution 2: Skip ownership
 pg_restore --no-owner -d mydb backup.dump
 
-# Solution 3: Remap ownership
-pg_restore --role=myuser -d mydb backup.dump
+# Solution 3: Restore as a role that will own newly created objects
+pg_restore --no-owner --role=myuser -d mydb backup.dump
 ```
 
 ### Table Already Exists
@@ -218,7 +218,7 @@ pg_restore -d mydb backup.dump
 # Disable triggers during restore
 pg_restore -a --disable-triggers -d mydb backup.dump
 
-# Or use single transaction
+# Or use single transaction so a failed restore rolls back
 pg_restore --single-transaction -d mydb backup.dump
 ```
 
@@ -325,18 +325,21 @@ fi
 
 ### Point-in-Time Recovery
 
-For point-in-time recovery, you need both base backup and WAL archives:
+For point-in-time recovery, you need a file-system-level base backup and WAL archives. Logical dumps created by `pg_dump` and restored with `pg_restore` cannot be used for WAL replay:
 
 ```bash
-# 1. Restore base backup
-pg_restore -d mydb base_backup.dump
+# 1. Restore the base backup into the PostgreSQL data directory
+# For example, unpack a pg_basebackup tar backup while PostgreSQL is stopped
+tar -xf base_backup.tar -C "$PGDATA"
 
-# 2. Apply WAL files up to target time
-# Configure recovery.conf or postgresql.conf:
+# 2. Configure WAL retrieval and the target time in postgresql.conf
 # restore_command = 'cp /archive/%f %p'
-# recovery_target_time = '2026-01-25 10:30:00'
+# recovery_target_time = '2026-01-25 10:30:00+00'
 
-# 3. Start PostgreSQL - it will replay WAL to target time
+# 3. Create recovery.signal in the data directory
+touch "$PGDATA/recovery.signal"
+
+# 4. Start PostgreSQL - it will replay WAL to the target time
 ```
 
 ### Selective Table Recovery
@@ -365,7 +368,7 @@ psql -U postgres -d "$DB_NAME" -c "
     TRUNCATE TABLE $TABLE_NAME;
 "
 
-pg_dump -U postgres -t "$TABLE_NAME" "${DB_NAME}_recovery" | \
+pg_dump -U postgres --data-only -t "$TABLE_NAME" "${DB_NAME}_recovery" | \
     psql -U postgres -d "$DB_NAME"
 
 # Clean up
@@ -381,17 +384,14 @@ echo "Table $TABLE_NAME recovered"
 ### Optimize Restore Speed
 
 ```bash
-# Use maximum parallel jobs (match CPU cores)
+# Start with parallel jobs near the number of CPU cores
 pg_restore -j 8 -d mydb backup.dump
 
-# Disable synchronous commit during restore
-psql -U postgres -d mydb -c "ALTER SYSTEM SET synchronous_commit = off;"
-pg_restore -d mydb backup.dump
-psql -U postgres -d mydb -c "ALTER SYSTEM SET synchronous_commit = on;"
-psql -U postgres -c "SELECT pg_reload_conf();"
+# Disable synchronous commit for the restore session
+PGOPTIONS="-c synchronous_commit=off" pg_restore -d mydb backup.dump
 
-# Increase maintenance_work_mem
-psql -U postgres -d mydb -c "SET maintenance_work_mem = '2GB';"
+# Increase maintenance_work_mem for the restore session
+PGOPTIONS="-c maintenance_work_mem=2GB" pg_restore -d mydb backup.dump
 ```
 
 ### Post-Restore Optimization
