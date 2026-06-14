@@ -37,6 +37,7 @@ Here is a simple implementation using Redis lists as queues.
 ```typescript
 // dlq-redis.ts
 import Redis from 'ioredis';
+import { randomUUID } from 'node:crypto';
 
 interface Message<T> {
   id: string;
@@ -69,7 +70,7 @@ class DeadLetterQueue<T> {
   // Add a message to the main queue
   async enqueue(payload: T): Promise<string> {
     const message: Message<T> = {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       payload,
       attempts: 0,
       createdAt: new Date().toISOString(),
@@ -80,13 +81,16 @@ class DeadLetterQueue<T> {
   }
 
   // Get a message for processing
-  // Uses BRPOPLPUSH for reliable processing
+  // Uses BLMOVE for reliable processing
   async dequeue(timeout: number = 5): Promise<Message<T> | null> {
-    const raw = await this.redis.brpoplpush(
+    const raw = await this.redis.call(
+      'BLMOVE',
       this.mainQueue,
       this.processingQueue,
+      'RIGHT',
+      'LEFT',
       timeout
-    );
+    ) as string | null;
 
     if (!raw) return null;
 
@@ -138,14 +142,18 @@ class DeadLetterQueue<T> {
       0,
       now
     );
+    let moved = 0;
 
     for (const raw of messages) {
-      // Move to main queue
-      await this.redis.lpush(this.mainQueue, raw);
-      await this.redis.zrem(`${this.mainQueue}:delayed`, raw);
+      // Claim the delayed message before re-queueing to avoid duplicate moves
+      const removed = await this.redis.zrem(`${this.mainQueue}:delayed`, raw);
+      if (removed > 0) {
+        await this.redis.lpush(this.mainQueue, raw);
+        moved++;
+      }
     }
 
-    return messages.length;
+    return moved;
   }
 
   // Get DLQ message count
@@ -161,13 +169,23 @@ class DeadLetterQueue<T> {
 
   // Reprocess a single message from DLQ
   async reprocessOne(): Promise<Message<T> | null> {
-    const raw = await this.redis.rpoplpush(this.dlqQueue, this.mainQueue);
+    const raw = await this.redis.rpop(this.dlqQueue);
     if (!raw) return null;
 
     const message: Message<T> = JSON.parse(raw);
     // Reset attempts for reprocessing
     message.attempts = 0;
+    message.lastError = undefined;
+    message.lastAttemptAt = undefined;
+    await this.redis.lpush(this.mainQueue, JSON.stringify(message));
     return message;
+  }
+
+  // Clear all messages from the DLQ
+  async clearDlq(): Promise<number> {
+    const count = await this.getDlqSize();
+    await this.redis.del(this.dlqQueue);
+    return count;
   }
 
   // Reprocess all DLQ messages
@@ -190,6 +208,7 @@ Here is how to build a consumer that properly handles retries and dead lettering
 ```typescript
 // consumer.ts
 import { DeadLetterQueue, Message } from './dlq-redis';
+import Redis from 'ioredis';
 
 interface OrderMessage {
   orderId: string;
@@ -314,6 +333,7 @@ RabbitMQ has built-in dead letter exchange (DLX) support. Here is how to set it 
 ```typescript
 // dlq-rabbitmq.ts
 import amqp, { Connection, Channel, ConsumeMessage } from 'amqplib';
+import { randomUUID } from 'node:crypto';
 
 interface RabbitMQConfig {
   url: string;
@@ -390,7 +410,7 @@ class RabbitMQDeadLetterQueue<T> {
 
   async publish(payload: T, messageId?: string): Promise<void> {
     const message = {
-      id: messageId || crypto.randomUUID(),
+      id: messageId || randomUUID(),
       payload,
       attempts: 0,
       createdAt: new Date().toISOString(),
@@ -435,9 +455,18 @@ class RabbitMQDeadLetterQueue<T> {
     message.attempts += 1;
 
     if (message.attempts >= this.config.maxRetries) {
-      // Send to DLQ by rejecting without requeue
-      // RabbitMQ will route to DLX
-      this.channel!.reject(msg, false);
+      // Publish the updated message to the DLX, then acknowledge the original
+      this.channel!.publish(
+        `${this.config.exchangeName}.dlx`,
+        this.config.queueName,
+        Buffer.from(JSON.stringify({
+          ...message,
+          lastError: error.message,
+          lastAttemptAt: new Date().toISOString(),
+        })),
+        { persistent: true }
+      );
+      this.channel!.ack(msg);
       console.log(`Message ${message.id} sent to DLQ`);
     } else {
       // Acknowledge original message
@@ -465,26 +494,27 @@ class RabbitMQDeadLetterQueue<T> {
   async reprocessDlq(handler: (payload: T) => Promise<void>): Promise<number> {
     let processed = 0;
 
-    await this.channel!.consume(
-      `${this.config.queueName}.dlq`,
-      async (msg: ConsumeMessage | null) => {
-        if (!msg) return;
+    while (true) {
+      const msg = await this.channel!.get(`${this.config.queueName}.dlq`, {
+        noAck: false,
+      });
 
-        const message = JSON.parse(msg.content.toString());
-        // Reset attempts
-        message.attempts = 0;
+      if (!msg) break;
 
-        try {
-          await handler(message.payload);
-          this.channel!.ack(msg);
-          processed++;
-        } catch (error) {
-          // Keep in DLQ if still failing
-          this.channel!.reject(msg, false);
-        }
-      },
-      { noAck: false }
-    );
+      const message = JSON.parse(msg.content.toString());
+      // Reset attempts
+      message.attempts = 0;
+
+      try {
+        await handler(message.payload);
+        this.channel!.ack(msg);
+        processed++;
+      } catch (error) {
+        // Keep in DLQ if still failing
+        this.channel!.nack(msg, false, true);
+        break;
+      }
+    }
 
     return processed;
   }
@@ -505,19 +535,13 @@ Monitoring your dead letter queues is essential for production reliability.
 ```typescript
 // dlq-monitor.ts
 import { DeadLetterQueue } from './dlq-redis';
-import { Gauge, Counter } from 'prom-client';
+import { Gauge } from 'prom-client';
 
 // Prometheus metrics for DLQ monitoring
 const dlqSize = new Gauge({
   name: 'dlq_messages_total',
   help: 'Number of messages in dead letter queue',
   labelNames: ['queue'],
-});
-
-const dlqProcessed = new Counter({
-  name: 'dlq_messages_processed_total',
-  help: 'Total messages processed from DLQ',
-  labelNames: ['queue', 'status'],
 });
 
 interface DLQStats {
@@ -740,7 +764,7 @@ class DLQReprocessor<T> {
     // Archive to cold storage before clearing
     await this.archiveMessages(messages);
     // Then clear
-    return messages.length;
+    return this.dlq.clearDlq();
   }
 
   private async archiveMessages(messages: Message<T>[]): Promise<void> {
