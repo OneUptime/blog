@@ -17,8 +17,6 @@ The `depends_on` directive controls startup order, but it does not wait for serv
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   web:
     build: ./web
@@ -50,12 +48,10 @@ sequenceDiagram
 
 ## Solution 1: Health Checks with depends_on Condition
 
-Docker Compose version 2.1+ supports health checks with `depends_on` conditions:
+Current Docker Compose supports health checks with `depends_on` conditions:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   web:
     build: ./web
@@ -104,7 +100,7 @@ healthcheck:
   # Number of consecutive failures before marking unhealthy
   retries: 3
 
-  # Grace period before health checks start
+  # Grace period while startup failures do not count
   # Useful for services that need initialization time
   start_period: 30s
 ```
@@ -139,8 +135,6 @@ CMD ["wait-for-it.sh", "postgres:5432", "--", "python", "app.py"]
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   web:
     build: .
@@ -215,7 +209,7 @@ def retry_connection(max_retries=5, delay=2):
                     if retries == max_retries:
                         raise
                     print(f"Database not ready, retry {retries}/{max_retries}")
-                    time.sleep(delay * retries)  # Exponential backoff
+                    time.sleep(delay * retries)  # Incremental backoff
         return wrapper
     return decorator
 
@@ -263,7 +257,7 @@ async function connectWithRetry(config, maxRetries = 10, delay = 2000) {
         throw new Error(`Failed to connect after ${maxRetries} attempts`);
       }
 
-      // Exponential backoff
+      // Incremental backoff
       await sleep(delay * attempt);
     }
   }
@@ -355,7 +349,7 @@ mysql:
   environment:
     MYSQL_ROOT_PASSWORD: secret
   healthcheck:
-    test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+    test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
     interval: 10s
     timeout: 5s
     retries: 5
@@ -377,12 +371,12 @@ mongo:
 
 ```yaml
 elasticsearch:
-  image: elasticsearch:8.11.0
+  image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
   environment:
     - discovery.type=single-node
     - xpack.security.enabled=false
   healthcheck:
-    test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+    test: ["CMD-SHELL", "curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' || exit 1"]
     interval: 10s
     timeout: 5s
     retries: 10
@@ -420,8 +414,6 @@ Here is a full example bringing all the concepts together:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   web:
     build: ./web
