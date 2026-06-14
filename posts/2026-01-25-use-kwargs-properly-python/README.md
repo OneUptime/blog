@@ -159,7 +159,7 @@ def configure(**kwargs):
 
 configure(debug=True, timeout=60, custom_option='value')
 # debug=True, verbose=False, timeout=60
-# remaining: {'debug': True, 'verbose': False, 'custom_option': 'value'}
+# remaining: {'debug': True, 'custom_option': 'value'}
 ```
 
 ## Validating kwargs
@@ -314,10 +314,10 @@ result = slow_function(5, multiplier=3)
 ### Factory Functions
 
 ```python
+import logging
+
 def create_logger(name, **kwargs):
     """Factory function for creating configured loggers."""
-    import logging
-
     logger = logging.getLogger(name)
 
     # Extract logger-specific options
@@ -399,7 +399,7 @@ def add_item(item, **kwargs):
 
 ```python
 def process(**kwargs):
-    # BAD - modifies caller's dict if passed with **
+    # BAD - modifies collected kwargs before returning
     kwargs['processed'] = True
     return kwargs
 
