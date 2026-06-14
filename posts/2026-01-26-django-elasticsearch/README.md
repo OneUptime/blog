@@ -60,7 +60,7 @@ The architecture keeps your primary data in PostgreSQL while Elasticsearch handl
 ```bash
 # Install the required packages
 
-pip install django-elasticsearch-dsl elasticsearch
+pip install "django-elasticsearch-dsl>=8,<9" "elasticsearch>=8,<9"
 
 # If you need async support
 pip install elasticsearch[async]
@@ -77,7 +77,7 @@ docker run -d \
   -p 9200:9200 \
   -e "discovery.type=single-node" \
   -e "xpack.security.enabled=false" \
-  elasticsearch:8.11.0
+  docker.elastic.co/elasticsearch/elasticsearch:8.11.0
 ```
 
 ### Configure Django Settings
@@ -168,6 +168,7 @@ class ProductDocument(Document):
         fields={
             'raw': fields.KeywordField(),  # For exact matching and sorting
             'suggest': fields.CompletionField(),  # For auto-complete
+            'trigram': fields.TextField(analyzer='trigram'),  # For phrase suggestions
         }
     )
 
@@ -201,10 +202,22 @@ class ProductDocument(Document):
             'number_of_shards': 1,
             'number_of_replicas': 0,
             'analysis': {
+                'filter': {
+                    'shingle': {
+                        'type': 'shingle',
+                        'min_shingle_size': 2,
+                        'max_shingle_size': 3,
+                    }
+                },
                 'analyzer': {
                     'default': {
                         'type': 'standard',
                         'stopwords': '_english_',
+                    },
+                    'trigram': {
+                        'type': 'custom',
+                        'tokenizer': 'standard',
+                        'filter': ['lowercase', 'shingle'],
                     }
                 }
             }
@@ -267,8 +280,8 @@ Index all existing data:
 # Populate all indices
 python manage.py search_index --populate
 
-# Populate a specific index
-python manage.py search_index --populate -f
+# Populate documents for a specific Django model
+python manage.py search_index --populate --models products.Product
 ```
 
 ### Automatic Indexing with Signals
@@ -291,7 +304,7 @@ class ProductDocument(Document):
         model = Product
 
         # Ignore auto-syncing and handle manually
-        # Set to True to enable automatic signal-based indexing
+        # Set to True to disable automatic signal-based indexing
         ignore_signals = False
 
         # Don't perform an index refresh after every update
@@ -393,39 +406,15 @@ class ProductSearchService:
         Returns:
             Dict with results, total count, and pagination info
         """
-        # Start with a base search
-        search = self.document.search()
-
-        # Only search active products
-        search = search.filter('term', is_active=True)
-
-        # Apply full-text search if query provided
-        if query:
-            search = search.query(
-                Q('multi_match',
-                    query=query,
-                    fields=['name^3', 'description', 'brand^2'],
-                    fuzziness='AUTO',
-                    operator='and',  # All terms must match
-                )
-            )
-
-        # Apply category filter
-        if category:
-            search = search.filter('term', category=category)
-
-        # Apply brand filter
-        if brand:
-            search = search.filter('term', brand=brand)
-
-        # Apply price range filter
-        if min_price is not None or max_price is not None:
-            price_filter = {}
-            if min_price is not None:
-                price_filter['gte'] = min_price
-            if max_price is not None:
-                price_filter['lte'] = max_price
-            search = search.filter('range', price=price_filter)
+        # Build the filtered search
+        search = self._apply_filters_and_query(
+            self.document.search(),
+            query=query,
+            category=category,
+            brand=brand,
+            min_price=min_price,
+            max_price=max_price,
+        )
 
         # Apply sorting
         search = self._apply_sorting(search, sort_by)
@@ -460,6 +449,45 @@ class ProductSearchService:
 
         sort_field = sort_options.get(sort_by, '_score')
         return search.sort(sort_field)
+
+    def _apply_filters_and_query(
+        self,
+        search,
+        query=None,
+        category=None,
+        brand=None,
+        min_price=None,
+        max_price=None,
+        **kwargs
+    ):
+        """Apply the shared query and filters used by plain and faceted search."""
+        search = search.filter('term', is_active=True)
+
+        if query:
+            search = search.query(
+                Q('multi_match',
+                    query=query,
+                    fields=['name^3', 'description', 'brand^2'],
+                    fuzziness='AUTO',
+                    operator='and',
+                )
+            )
+
+        if category:
+            search = search.filter('term', category=category)
+
+        if brand:
+            search = search.filter('term', brand=brand)
+
+        if min_price is not None or max_price is not None:
+            price_filter = {}
+            if min_price is not None:
+                price_filter['gte'] = min_price
+            if max_price is not None:
+                price_filter['lte'] = max_price
+            search = search.filter('range', price=price_filter)
+
+        return search
 ```
 
 ---
@@ -516,6 +544,15 @@ class FacetedSearchService(ProductSearchService):
         # Apply filters and query (same as parent class)
         search = self._apply_filters_and_query(search, **kwargs)
 
+        # Apply sorting and pagination
+        sort_by = kwargs.get('sort_by', 'relevance')
+        page = kwargs.get('page', 1)
+        page_size = kwargs.get('page_size', 20)
+        search = self._apply_sorting(search, sort_by)
+        start = (page - 1) * page_size
+        end = start + page_size
+        search = search[start:end]
+
         # Add aggregations for facets
         # Category facet: shows all categories with document counts
         search.aggs.bucket(
@@ -556,6 +593,9 @@ class FacetedSearchService(ProductSearchService):
         return {
             'results': [hit.to_dict() for hit in response],
             'total': response.hits.total.value,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': (response.hits.total.value + page_size - 1) // page_size,
             'facets': facets,
         }
 
@@ -649,11 +689,11 @@ def get_search_suggestions(query, size=5):
         'did_you_mean',
         query,
         phrase={
-            'field': 'name',
+            'field': 'name.trigram',
             'size': size,
             'gram_size': 3,
             'direct_generator': [{
-                'field': 'name',
+                'field': 'name.trigram',
                 'suggest_mode': 'popular',
             }],
             'highlight': {
@@ -783,6 +823,8 @@ class ProductSearchResultSerializer(serializers.Serializer):
 
     def get_score(self, obj):
         """Extract the relevance score from the hit"""
+        if isinstance(obj, dict):
+            return obj.get('score') or obj.get('_score')
         return getattr(obj.meta, 'score', None)
 
 
@@ -1225,7 +1267,13 @@ class MockElasticsearchTest(TestCase):
         mock_response.hits.total.value = 1
         mock_response.__iter__ = lambda self: iter([mock_hit])
 
-        mock_search.return_value.query.return_value.execute.return_value = mock_response
+        mock_search_obj = MagicMock()
+        mock_search.return_value = mock_search_obj
+        mock_search_obj.filter.return_value = mock_search_obj
+        mock_search_obj.query.return_value = mock_search_obj
+        mock_search_obj.sort.return_value = mock_search_obj
+        mock_search_obj.__getitem__.return_value = mock_search_obj
+        mock_search_obj.execute.return_value = mock_response
 
         service = ProductSearchService()
         results = service.search(query='mock')
