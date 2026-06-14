@@ -30,7 +30,7 @@ flowchart TD
 ```
 
 A thread pool consists of:
-- **Core threads**: Always running, waiting for work
+- **Core threads**: Baseline worker threads that the pool keeps available once created, unless core thread timeout is enabled
 - **Task queue**: Buffer for pending tasks
 - **Max threads**: Upper limit when queue is full
 - **Keep-alive time**: How long idle threads wait before terminating
@@ -56,7 +56,7 @@ import os
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 # Get CPU count
-cpu_count = os.cpu_count()
+cpu_count = os.cpu_count() or 1
 
 # For CPU-bound work, use ProcessPoolExecutor (bypasses GIL)
 # Threads = CPU cores
@@ -84,7 +84,7 @@ Where:
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-cpu_count = os.cpu_count()
+cpu_count = os.cpu_count() or 1
 
 # Example: API calls that take 100ms, processing takes 10ms
 # Wait time = 100ms, Service time = 10ms
@@ -197,7 +197,9 @@ public class ThreadPoolConfig {
             int waitTimeMs, int serviceTimeMs) {
 
         int coreCount = Runtime.getRuntime().availableProcessors();
-        int optimalThreads = coreCount * (1 + waitTimeMs / Math.max(serviceTimeMs, 1));
+        int optimalThreads = (int) Math.ceil(
+            coreCount * (1.0 + ((double) waitTimeMs / Math.max(serviceTimeMs, 1)))
+        );
         int maxThreads = Math.min(optimalThreads * 2, 200);
 
         return new ThreadPoolExecutor(
@@ -237,6 +239,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scheduling.annotation.EnableAsync;
+import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
 @EnableAsync
@@ -264,7 +267,7 @@ public class AsyncConfig {
         int coreCount = Runtime.getRuntime().availableProcessors();
 
         // Assuming 100ms wait, 5ms service time
-        int optimalThreads = coreCount * (1 + 100 / 5);
+        int optimalThreads = (int) Math.ceil(coreCount * (1.0 + (100.0 / 5)));
 
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(optimalThreads);
@@ -313,6 +316,7 @@ server:
 # monitored_pool.py
 import threading
 import time
+import os
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import Callable, Any, Dict
 from dataclasses import dataclass, field
@@ -348,7 +352,7 @@ class MonitoredThreadPool:
     """Thread pool with built-in monitoring"""
 
     def __init__(self, max_workers: int = None, name: str = "pool"):
-        self.max_workers = max_workers or (os.cpu_count() * 2)
+        self.max_workers = max_workers or ((os.cpu_count() or 1) * 2)
         self.name = name
         self.executor = ThreadPoolExecutor(
             max_workers=self.max_workers,
@@ -420,6 +424,7 @@ print(pool.get_stats())
 ```python
 # async_pool.py
 import asyncio
+import aiohttp
 from typing import List, Callable, Any
 
 class AsyncTaskPool:
@@ -450,16 +455,20 @@ class AsyncTaskPool:
 
 
 # Usage
-async def fetch_url(url: str) -> dict:
+async def fetch_url(session: aiohttp.ClientSession, url: str) -> dict:
+    async with session.get(url) as response:
+        return await response.json()
+
+async def main():
+    pool = AsyncTaskPool(max_concurrency=50)
+
+    # Fetch many URLs concurrently (max 50 at a time)
+    urls = ["https://api.example.com/item/" + str(i) for i in range(1000)]
     async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            return await response.json()
+        results = await pool.map(lambda url: fetch_url(session, url), urls)
+    return results
 
-pool = AsyncTaskPool(max_concurrency=50)
-
-# Fetch many URLs concurrently (max 50 at a time)
-urls = ["https://api.example.com/item/" + str(i) for i in range(1000)]
-results = await pool.map(fetch_url, urls)
+results = asyncio.run(main())
 ```
 
 ---
@@ -470,7 +479,7 @@ Node.js is single-threaded for JavaScript execution, but you can use worker thre
 
 ```javascript
 // worker-pool.js
-const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+const { Worker, isMainThread, parentPort } = require('worker_threads');
 const os = require('os');
 
 class WorkerPool {
@@ -490,23 +499,16 @@ class WorkerPool {
   addWorker() {
     const worker = new Worker(this.workerScript);
 
-    worker.on('message', (result) => {
-      // Return worker to free pool
-      this.freeWorkers.push(worker);
-
-      // Process next task if any
-      if (this.taskQueue.length > 0) {
-        const { task, resolve, reject } = this.taskQueue.shift();
-        this.runTask(task, resolve, reject);
-      }
-    });
-
     worker.on('error', (err) => {
       console.error('Worker error:', err);
       // Remove failed worker and create new one
       const index = this.workers.indexOf(worker);
       if (index !== -1) {
         this.workers.splice(index, 1);
+      }
+      const freeIndex = this.freeWorkers.indexOf(worker);
+      if (freeIndex !== -1) {
+        this.freeWorkers.splice(freeIndex, 1);
       }
       this.addWorker();
     });
@@ -529,6 +531,15 @@ class WorkerPool {
         reject(new Error(result.error));
       } else {
         resolve(result.data);
+      }
+
+      // Return worker to free pool
+      this.freeWorkers.push(worker);
+
+      // Process next task if any
+      if (this.taskQueue.length > 0) {
+        const { task: nextTask, resolve: nextResolve, reject: nextReject } = this.taskQueue.shift();
+        this.runTask(nextTask, nextResolve, nextReject);
       }
     });
 
@@ -572,15 +583,19 @@ if (!isMainThread) {
 // Usage
 const pool = new WorkerPool('./worker.js', 4);
 
-// Run CPU-intensive tasks
-const results = await Promise.all([
-  pool.run({ type: 'compute', data: largeDataset1 }),
-  pool.run({ type: 'compute', data: largeDataset2 }),
-  pool.run({ type: 'compute', data: largeDataset3 }),
-]);
+async function main() {
+  // Run CPU-intensive tasks
+  const results = await Promise.all([
+    pool.run({ type: 'compute', data: largeDataset1 }),
+    pool.run({ type: 'compute', data: largeDataset2 }),
+    pool.run({ type: 'compute', data: largeDataset3 }),
+  ]);
 
-console.log(pool.getStats());
-// { totalWorkers: 4, freeWorkers: 4, busyWorkers: 0, queuedTasks: 0 }
+  console.log(pool.getStats());
+  // { totalWorkers: 4, freeWorkers: 4, busyWorkers: 0, queuedTasks: 0 }
+}
+
+main().catch(console.error);
 ```
 
 ---
