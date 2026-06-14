@@ -26,9 +26,9 @@ Other tools exist (Kasten K10, Trilio), but Velero remains the most widely adopt
 
 Before installing Velero, ensure you have:
 
-- A running Kubernetes cluster (v1.16+)
+- A running Kubernetes cluster (v1.16+, or v1.20+ for CSI snapshots)
 - kubectl configured with cluster-admin privileges
-- An S3-compatible storage bucket (AWS S3, MinIO, GCS, Azure Blob)
+- An object storage bucket (AWS S3, MinIO, Google Cloud Storage, Azure Blob)
 - The Velero CLI installed locally
 
 ```bash
@@ -37,9 +37,9 @@ Before installing Velero, ensure you have:
 brew install velero
 
 # Or download the binary directly
-wget https://github.com/vmware-tanzu/velero/releases/download/v1.13.0/velero-v1.13.0-linux-amd64.tar.gz
-tar -xvf velero-v1.13.0-linux-amd64.tar.gz
-sudo mv velero-v1.13.0-linux-amd64/velero /usr/local/bin/
+wget https://github.com/vmware-tanzu/velero/releases/download/v1.18.1/velero-v1.18.1-linux-amd64.tar.gz
+tar -xvf velero-v1.18.1-linux-amd64.tar.gz
+sudo mv velero-v1.18.1-linux-amd64/velero /usr/local/bin/
 ```
 
 ## Setting Up Storage Backend
@@ -67,7 +67,7 @@ With credentials ready, install Velero into your cluster:
 # Install Velero with AWS plugin
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.1 \
   --bucket my-velero-backups \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
@@ -76,7 +76,7 @@ velero install \
 # For MinIO or S3-compatible storage, add these flags:
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.1 \
   --bucket velero-backups \
   --backup-location-config region=minio,s3ForcePathStyle=true,s3Url=http://minio.storage:9000 \
   --snapshot-location-config region=minio \
@@ -120,8 +120,8 @@ velero backup describe production-backup --details
 
 The backup process captures:
 - All Kubernetes API objects in the selected scope
-- Persistent volume snapshots (if CSI plugin is configured)
-- Custom resource definitions and their instances
+- Persistent volume snapshots (if CSI support is enabled)
+- Custom resource instances in the selected scope, and CRDs when cluster-scoped resources are included
 
 ## Scheduling Automated Backups
 
@@ -195,10 +195,10 @@ velero restore describe production-backup-20260125120000 --details
 For stateful workloads, you need more than resource manifests. Velero integrates with CSI drivers to snapshot volumes:
 
 ```bash
-# Install CSI plugin alongside Velero
+# Install Velero with CSI snapshot support enabled
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0,velero/velero-plugin-for-csi:v0.7.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.1 \
   --features=EnableCSI \
   --bucket my-velero-backups \
   --backup-location-config region=us-east-1 \
@@ -206,7 +206,7 @@ velero install \
   --secret-file ./credentials-velero
 ```
 
-Annotate PVCs to include them in backups:
+For Velero v1.14 and later, CSI snapshot support is built into Velero, so you only need the storage provider plugin and the `EnableCSI` feature flag. If you need to use a specific `VolumeSnapshotClass` instead of the default class, annotate the PVC:
 
 ```yaml
 # pvc-with-backup.yaml
@@ -218,8 +218,8 @@ metadata:
   labels:
     app: postgres
   annotations:
-    # Velero will snapshot this PVC during backups
-    backup.velero.io/backup-volumes: postgres-data
+    # Velero will use this class when snapshotting this PVC
+    velero.io/csi-volumesnapshot-class: ebs-csi-snapclass
 spec:
   accessModes:
     - ReadWriteOnce
@@ -241,16 +241,21 @@ metadata:
   name: postgres
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: postgres
   template:
     metadata:
+      labels:
+        app: postgres
       annotations:
-        # Freeze database before snapshot
+        # Flush dirty pages before snapshot
         pre.hook.backup.velero.io/container: postgres
-        pre.hook.backup.velero.io/command: '["/bin/bash", "-c", "pg_ctl stop -m fast"]'
+        pre.hook.backup.velero.io/command: '["/bin/bash", "-c", "psql -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres} -c \"CHECKPOINT\""]'
         pre.hook.backup.velero.io/timeout: 30s
-        # Restart after snapshot
+        # Run cleanup or logging after snapshot
         post.hook.backup.velero.io/container: postgres
-        post.hook.backup.velero.io/command: '["/bin/bash", "-c", "pg_ctl start"]'
+        post.hook.backup.velero.io/command: '["/bin/bash", "-c", "echo backup hook completed"]'
     spec:
       containers:
         - name: postgres
@@ -282,8 +287,8 @@ velero restore create --from-backup production-backup \
 **Volumes not being backed up:**
 
 ```bash
-# Verify CSI plugin is installed
-velero plugin get
+# Verify CSI support is enabled on the Velero server
+kubectl get deployment -n velero velero -o jsonpath='{.spec.template.spec.containers[0].args}'
 
 # Check VolumeSnapshotClass exists
 kubectl get volumesnapshotclass
@@ -322,7 +327,7 @@ spec:
 ```
 
 Key metrics to track:
-- `velero_backup_total`: Total backup attempts
+- `velero_backup_attempt_total`: Total backup attempts
 - `velero_backup_success_total`: Successful backups
 - `velero_backup_failure_total`: Failed backups
 - `velero_restore_total`: Restore operations
