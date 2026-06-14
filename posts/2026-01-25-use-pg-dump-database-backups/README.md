@@ -155,8 +155,8 @@ pg_dump --inserts mydb > backup_inserts.sql
 # Include column names in INSERT statements
 pg_dump --column-inserts mydb > backup_column_inserts.sql
 
-# Disable triggers during restore (useful for foreign keys)
-pg_dump --disable-triggers mydb > backup_notriggers.sql
+# Disable triggers during data-only restore (requires superuser privileges)
+pg_dump -a --disable-triggers -S postgres mydb > data_notriggers.sql
 ```
 
 ---
@@ -262,6 +262,8 @@ DB_NAME="production"
 S3_BUCKET="my-db-backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
+set -o pipefail
+
 # Create backup and stream directly to S3
 pg_dump -h localhost -U postgres -F c "$DB_NAME" | \
     aws s3 cp - "s3://${S3_BUCKET}/${DB_NAME}/${DB_NAME}_${TIMESTAMP}.dump"
@@ -301,7 +303,7 @@ pg_dumpall -h localhost -U postgres --globals-only > globals.sql
 pg_dumpall -h localhost -U postgres --roles-only > roles.sql
 
 # Restore full cluster
-psql -h localhost -U postgres -f full_cluster_backup.sql postgres
+psql -X -h localhost -U postgres -f full_cluster_backup.sql -d postgres
 ```
 
 ---
