@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, Zod, Validation, Schema, Type Safety, Node.js
 
-Description: A practical guide to validating data with Zod in TypeScript, covering schema definitions, custom validators, error handling, and integration with Express and React applications.
+Description: A practical guide to validating data with Zod in TypeScript, covering schema definitions, custom validators, error handling, and integration with Express applications.
 
 ---
 
@@ -49,9 +49,9 @@ import { z } from 'zod';
 
 // Define a schema for user data
 const UserSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Invalid email address'),
-  age: z.number().int().positive().optional()
+  name: z.string().min(2, { error: 'Name must be at least 2 characters' }),
+  email: z.email({ error: 'Invalid email address' }),
+  age: z.int().positive().optional()
 });
 
 // Infer the TypeScript type from the schema
@@ -70,7 +70,7 @@ try {
   console.log('Valid user:', user);
 } catch (error) {
   if (error instanceof z.ZodError) {
-    console.log('Validation errors:', error.errors);
+    console.log('Validation errors:', error.issues);
   }
 }
 
@@ -80,7 +80,7 @@ const result = UserSchema.safeParse(userData);
 if (result.success) {
   console.log('Valid user:', result.data);
 } else {
-  console.log('Validation errors:', result.error.errors);
+  console.log('Validation errors:', result.error.issues);
 }
 ```
 
@@ -102,14 +102,14 @@ const dateSchema = z.date();
 const bigintSchema = z.bigint();
 
 // String validations
-const emailSchema = z.string().email();
-const urlSchema = z.string().url();
-const uuidSchema = z.string().uuid();
+const emailSchema = z.email();
+const urlSchema = z.url();
+const uuidSchema = z.uuid();
 const regexSchema = z.string().regex(/^[A-Z]{3}-\d{4}$/);
 const lengthSchema = z.string().min(5).max(100);
 
 // Number validations
-const intSchema = z.number().int();
+const intSchema = z.int();
 const positiveSchema = z.number().positive();
 const rangeSchema = z.number().min(0).max(100);
 const finiteSchema = z.number().finite();
@@ -121,7 +121,7 @@ const fixedLengthSchema = z.array(z.string()).length(3);
 
 // Object schema
 const objectSchema = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   name: z.string(),
   tags: z.array(z.string())
 });
@@ -159,26 +159,26 @@ import { z } from 'zod';
 
 // Address schema
 const AddressSchema = z.object({
-  street: z.string().min(1, 'Street is required'),
-  city: z.string().min(1, 'City is required'),
-  state: z.string().length(2, 'Use 2-letter state code'),
-  zipCode: z.string().regex(/^\d{5}(-\d{4})?$/, 'Invalid ZIP code'),
+  street: z.string().min(1, { error: 'Street is required' }),
+  city: z.string().min(1, { error: 'City is required' }),
+  state: z.string().length(2, { error: 'Use 2-letter state code' }),
+  zipCode: z.string().regex(/^\d{5}(-\d{4})?$/, { error: 'Invalid ZIP code' }),
   country: z.string().default('US')
 });
 
 // Order item schema
 const OrderItemSchema = z.object({
-  productId: z.string().uuid(),
-  quantity: z.number().int().positive(),
+  productId: z.uuid(),
+  quantity: z.int().positive(),
   unitPrice: z.number().positive(),
   discount: z.number().min(0).max(1).default(0) // 0-100% as decimal
 });
 
 // Full order schema
 const OrderSchema = z.object({
-  id: z.string().uuid(),
-  customerId: z.string().uuid(),
-  items: z.array(OrderItemSchema).nonempty('Order must have at least one item'),
+  id: z.uuid(),
+  customerId: z.uuid(),
+  items: z.array(OrderItemSchema).min(1, { error: 'Order must have at least one item' }),
   shippingAddress: AddressSchema,
   billingAddress: AddressSchema.optional(),
   status: z.enum(['pending', 'processing', 'shipped', 'delivered', 'cancelled']),
@@ -228,35 +228,35 @@ import { z } from 'zod';
 // Password with strength requirements
 const PasswordSchema = z
   .string()
-  .min(8, 'Password must be at least 8 characters')
+  .min(8, { error: 'Password must be at least 8 characters' })
   .refine(
     (password) => /[A-Z]/.test(password),
-    'Password must contain at least one uppercase letter'
+    { error: 'Password must contain at least one uppercase letter' }
   )
   .refine(
     (password) => /[a-z]/.test(password),
-    'Password must contain at least one lowercase letter'
+    { error: 'Password must contain at least one lowercase letter' }
   )
   .refine(
     (password) => /[0-9]/.test(password),
-    'Password must contain at least one number'
+    { error: 'Password must contain at least one number' }
   )
   .refine(
     (password) => /[^A-Za-z0-9]/.test(password),
-    'Password must contain at least one special character'
+    { error: 'Password must contain at least one special character' }
   );
 
 // Registration form with password confirmation
 const RegistrationSchema = z
   .object({
-    email: z.string().email(),
+    email: z.email(),
     password: PasswordSchema,
     confirmPassword: z.string()
   })
   .refine(
     (data) => data.password === data.confirmPassword,
     {
-      message: 'Passwords do not match',
+      error: 'Passwords do not match',
       path: ['confirmPassword'] // Path to the field with the error
     }
   );
@@ -270,7 +270,7 @@ const DateRangeSchema = z
   .refine(
     (data) => data.endDate > data.startDate,
     {
-      message: 'End date must be after start date',
+      error: 'End date must be after start date',
       path: ['endDate']
     }
   );
@@ -281,7 +281,7 @@ const PaymentSchema = z
     method: z.enum(['credit_card', 'bank_transfer', 'paypal']),
     cardNumber: z.string().optional(),
     bankAccount: z.string().optional(),
-    paypalEmail: z.string().email().optional()
+    paypalEmail: z.email().optional()
   })
   .refine(
     (data) => {
@@ -291,7 +291,7 @@ const PaymentSchema = z
       return true;
     },
     {
-      message: 'Card number is required for credit card payments',
+      error: 'Card number is required for credit card payments',
       path: ['cardNumber']
     }
   )
@@ -303,7 +303,7 @@ const PaymentSchema = z
       return true;
     },
     {
-      message: 'Bank account is required for bank transfers',
+      error: 'Bank account is required for bank transfers',
       path: ['bankAccount']
     }
   )
@@ -315,7 +315,7 @@ const PaymentSchema = z
       return true;
     },
     {
-      message: 'PayPal email is required for PayPal payments',
+      error: 'PayPal email is required for PayPal payments',
       path: ['paypalEmail']
     }
   );
@@ -333,7 +333,6 @@ import { z } from 'zod';
 
 // Normalize email to lowercase
 const EmailSchema = z
-  .string()
   .email()
   .transform((email) => email.toLowerCase().trim());
 
@@ -341,13 +340,13 @@ const EmailSchema = z
 const NumericStringSchema = z
   .string()
   .transform((val) => parseInt(val, 10))
-  .refine((val) => !isNaN(val), 'Must be a valid number');
+  .refine((val) => !isNaN(val), { error: 'Must be a valid number' });
 
 // Parse date strings
 const DateStringSchema = z
   .string()
   .transform((val) => new Date(val))
-  .refine((date) => !isNaN(date.getTime()), 'Invalid date');
+  .refine((date) => !isNaN(date.getTime()), { error: 'Invalid date' });
 
 // Sanitize and transform user input
 const UserInputSchema = z.object({
@@ -365,13 +364,13 @@ const UserInputSchema = z.object({
   phone: z
     .string()
     .transform((phone) => phone.replace(/\D/g, '')) // Remove non-digits
-    .refine((phone) => phone.length === 10, 'Phone must be 10 digits')
+    .refine((phone) => phone.length === 10, { error: 'Phone must be 10 digits' })
 });
 
 // Coerce types from unknown input
 const CoercionSchema = z.object({
   id: z.coerce.number(),      // Convert string to number
-  active: z.coerce.boolean(), // Convert string to boolean
+  active: z.stringbool(),     // Convert "true" and "false" strings to boolean
   date: z.coerce.date()       // Convert string to date
 });
 
@@ -395,10 +394,10 @@ Integrate Zod with Express for request validation.
 ```typescript
 // express-validation.ts
 import express, { Request, Response, NextFunction } from 'express';
-import { z, ZodSchema, ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 
 // Validation middleware factory
-function validate<T extends ZodSchema>(schema: T) {
+function validate<T extends z.ZodType>(schema: T) {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
       // Validate and replace body with parsed data
@@ -408,7 +407,7 @@ function validate<T extends ZodSchema>(schema: T) {
       if (error instanceof ZodError) {
         res.status(400).json({
           error: 'Validation failed',
-          details: error.errors.map((err) => ({
+          details: error.issues.map((err) => ({
             field: err.path.join('.'),
             message: err.message
           }))
@@ -423,21 +422,21 @@ function validate<T extends ZodSchema>(schema: T) {
 // Request schemas
 const CreateUserSchema = z.object({
   name: z.string().min(2).max(100),
-  email: z.string().email(),
+  email: z.email(),
   role: z.enum(['user', 'admin']).default('user')
 });
 
 const UpdateUserSchema = CreateUserSchema.partial(); // All fields optional
 
 const QuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  page: z.coerce.number().pipe(z.int().positive()).default(1),
+  limit: z.coerce.number().pipe(z.int().min(1).max(100)).default(20),
   sortBy: z.enum(['name', 'email', 'createdAt']).default('createdAt'),
   order: z.enum(['asc', 'desc']).default('desc')
 });
 
 // Validate query parameters
-function validateQuery<T extends ZodSchema>(schema: T) {
+function validateQuery<T extends z.ZodType>(schema: T) {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
       req.query = schema.parse(req.query) as any;
@@ -446,7 +445,7 @@ function validateQuery<T extends ZodSchema>(schema: T) {
       if (error instanceof ZodError) {
         res.status(400).json({
           error: 'Invalid query parameters',
-          details: error.errors
+          details: error.issues
         });
         return;
       }
@@ -464,7 +463,7 @@ app.post(
   '/users',
   validate(CreateUserSchema),
   (req: Request, res: Response) => {
-    // req.body is now typed as z.infer<typeof CreateUserSchema>
+    // req.body has been validated and replaced with parsed data
     const user = req.body;
     res.json({ message: 'User created', user });
   }
@@ -509,11 +508,11 @@ Customize error messages for better user experience.
 // error-formatting.ts
 import { z, ZodError } from 'zod';
 
-// Format Zod errors into a flat object
+// Format Zod issues into a flat object
 function formatErrors(error: ZodError): Record<string, string> {
   const formatted: Record<string, string> = {};
 
-  for (const issue of error.errors) {
+  for (const issue of error.issues) {
     const path = issue.path.join('.');
 
     // Only keep the first error for each field
@@ -526,49 +525,52 @@ function formatErrors(error: ZodError): Record<string, string> {
 }
 
 // Custom error map for localization or custom messages
-const customErrorMap: z.ZodErrorMap = (issue, ctx) => {
+const customErrorMap = (issue: z.core.$ZodRawIssue): string | undefined => {
   switch (issue.code) {
     case z.ZodIssueCode.invalid_type:
       if (issue.expected === 'string') {
-        return { message: 'This field must be text' };
+        return 'This field must be text';
       }
       if (issue.expected === 'number') {
-        return { message: 'This field must be a number' };
+        return 'This field must be a number';
       }
       break;
 
     case z.ZodIssueCode.too_small:
-      if (issue.type === 'string') {
-        return { message: `Must be at least ${issue.minimum} characters` };
+      if (issue.origin === 'string') {
+        return `Must be at least ${issue.minimum} characters`;
       }
-      if (issue.type === 'array') {
-        return { message: `Must have at least ${issue.minimum} items` };
+      if (issue.origin === 'array') {
+        return `Must have at least ${issue.minimum} items`;
+      }
+      if (issue.origin === 'number') {
+        return `Must be at least ${issue.minimum}`;
       }
       break;
 
     case z.ZodIssueCode.too_big:
-      if (issue.type === 'string') {
-        return { message: `Must be no more than ${issue.maximum} characters` };
+      if (issue.origin === 'string') {
+        return `Must be no more than ${issue.maximum} characters`;
       }
       break;
 
-    case z.ZodIssueCode.invalid_string:
-      if (issue.validation === 'email') {
-        return { message: 'Please enter a valid email address' };
+    case z.ZodIssueCode.invalid_format:
+      if (issue.format === 'email') {
+        return 'Please enter a valid email address';
       }
       break;
   }
 
   // Fall back to default message
-  return { message: ctx.defaultError };
+  return undefined;
 };
 
 // Use custom error map globally
-z.setErrorMap(customErrorMap);
+z.config({ customError: customErrorMap });
 
-// Or use per-schema
+// Then parse a schema that uses the global map
 const FormSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
   age: z.number().min(18)
 });
 
@@ -592,13 +594,13 @@ import { z } from 'zod';
 
 // Pagination schema
 const PaginationSchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20)
+  page: z.coerce.number().pipe(z.int().positive()).default(1),
+  limit: z.coerce.number().pipe(z.int().min(1).max(100)).default(20)
 });
 
 // ID parameter schema
 const IdSchema = z.object({
-  id: z.string().uuid()
+  id: z.uuid()
 });
 
 // Timestamp fields
@@ -614,27 +616,26 @@ const SoftDeleteSchema = z.object({
 
 // Compose schemas
 function createEntitySchema<T extends z.ZodRawShape>(shape: T) {
-  return z
-    .object({
-      id: z.string().uuid()
-    })
-    .extend(shape)
-    .merge(TimestampSchema)
-    .merge(SoftDeleteSchema);
+  return z.object({
+    id: z.uuid(),
+    ...shape,
+    ...TimestampSchema.shape,
+    ...SoftDeleteSchema.shape
+  });
 }
 
 // Usage
 const ProductSchema = createEntitySchema({
   name: z.string().min(1),
   price: z.number().positive(),
-  stock: z.number().int().min(0)
+  stock: z.int().min(0)
 });
 
 type Product = z.infer<typeof ProductSchema>;
 // Product includes id, name, price, stock, createdAt, updatedAt, deletedAt
 
 // API response wrapper
-function createResponseSchema<T extends z.ZodTypeAny>(dataSchema: T) {
+function createResponseSchema<T extends z.ZodType>(dataSchema: T) {
   return z.object({
     success: z.literal(true),
     data: dataSchema,
