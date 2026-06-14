@@ -107,13 +107,13 @@ print(config["database"]["host"])
 import csv
 
 # Read CSV as list of dictionaries
-with open("data.csv", "r") as f:
+with open("data.csv", "r", newline="") as f:
     reader = csv.DictReader(f)
     for row in reader:
         print(row["name"], row["email"])
 
 # Read CSV as list of lists
-with open("data.csv", "r") as f:
+with open("data.csv", "r", newline="") as f:
     reader = csv.reader(f)
     header = next(reader)  # Skip header
     for row in reader:
