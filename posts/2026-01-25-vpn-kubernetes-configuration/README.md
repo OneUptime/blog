@@ -179,50 +179,20 @@ Tailscale provides a mesh VPN that works well with Kubernetes.
 
 ### Tailscale Operator
 
-```yaml
-# tailscale-operator.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: tailscale
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: tailscale-auth
-  namespace: tailscale
-stringData:
-  TS_AUTHKEY: "tskey-auth-xxxxx"
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: tailscale-operator
-  namespace: tailscale
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: tailscale-operator
-  template:
-    metadata:
-      labels:
-        app: tailscale-operator
-    spec:
-      serviceAccountName: tailscale-operator
-      containers:
-        - name: operator
-          image: tailscale/k8s-operator:latest
-          env:
-            - name: TS_AUTHKEY
-              valueFrom:
-                secretKeyRef:
-                  name: tailscale-auth
-                  key: TS_AUTHKEY
-            - name: OPERATOR_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
+```bash
+# Install the Tailscale Kubernetes Operator with Helm
+helm repo add tailscale https://pkgs.tailscale.com/helmcharts
+helm repo update
+
+helm upgrade \
+  --install \
+  tailscale-operator \
+  tailscale/tailscale-operator \
+  --namespace=tailscale \
+  --create-namespace \
+  --set-string oauth.clientId="<OAuth client ID>" \
+  --set-string oauth.clientSecret="<OAuth client secret>" \
+  --wait
 ```
 
 ### Expose Service via Tailscale
@@ -249,54 +219,21 @@ spec:
 
 ```yaml
 # tailscale-subnet-router.yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: tailscale.com/v1alpha1
+kind: Connector
 metadata:
   name: tailscale-subnet-router
   namespace: tailscale
 spec:
   replicas: 1
-  selector:
-    matchLabels:
-      app: tailscale-router
-  template:
-    metadata:
-      labels:
-        app: tailscale-router
-    spec:
-      containers:
-        - name: tailscale
-          image: tailscale/tailscale:latest
-          securityContext:
-            capabilities:
-              add:
-                - NET_ADMIN
-          env:
-            - name: TS_AUTHKEY
-              valueFrom:
-                secretKeyRef:
-                  name: tailscale-auth
-                  key: TS_AUTHKEY
-            - name: TS_ROUTES
-              value: "10.96.0.0/12,10.244.0.0/16"  # Service and Pod CIDRs
-            - name: TS_USERSPACE
-              value: "false"
-            - name: TS_ACCEPT_DNS
-              value: "true"
-          volumeMounts:
-            - name: dev-tun
-              mountPath: /dev/net/tun
-            - name: state
-              mountPath: /var/lib/tailscale
-      volumes:
-        - name: dev-tun
-          hostPath:
-            path: /dev/net/tun
-        - name: state
-          emptyDir: {}
+  hostnamePrefix: tailscale-subnet-router
+  subnetRouter:
+    advertiseRoutes:
+      - "10.96.0.0/12"   # Service CIDR
+      - "10.244.0.0/16"  # Pod CIDR
 ```
 
-## OpenVPN Access Server
+## OpenVPN Server
 
 ### Deploy OpenVPN
 
@@ -330,15 +267,6 @@ spec:
           volumeMounts:
             - name: openvpn-data
               mountPath: /etc/openvpn
-          env:
-            - name: OVPN_SERVER_URL
-              value: "udp://vpn.example.com"
-            - name: OVPN_NETWORK
-              value: "10.8.0.0 255.255.255.0"
-            - name: OVPN_ROUTES
-              value: "10.96.0.0 255.240.0.0"
-            - name: OVPN_DNS_SERVERS
-              value: "10.96.0.10"
       volumes:
         - name: openvpn-data
           persistentVolumeClaim:
@@ -432,7 +360,8 @@ data:
     Address = 10.200.0.1/24
     ListenPort = 51821
     PrivateKey = ${CLUSTER_A_PRIVATE_KEY}
-    PostUp = ip route add 10.244.128.0/17 via 10.200.0.2
+    PostUp = ip route add 10.244.128.0/17 via 10.200.0.2 dev %i
+    PostDown = ip route del 10.244.128.0/17 via 10.200.0.2 dev %i
 
     # Cluster B
     [Peer]
@@ -465,26 +394,21 @@ spec:
           add:
             - NET_ADMIN
         privileged: true
+      lifecycle:
+        postStart:
+          exec:
+            command:
+              - sh
+              - -c
+              - |
+                while ! ip link show wg0; do sleep 1; done
+                ip route add 192.168.0.0/16 dev wg0
       volumeMounts:
         - name: wg-config
           mountPath: /config/wg_confs
       env:
         - name: TZ
           value: "UTC"
-
-  initContainers:
-    - name: init-routes
-      image: busybox
-      securityContext:
-        privileged: true
-      command:
-        - sh
-        - -c
-        - |
-          # Wait for VPN interface
-          while ! ip link show wg0; do sleep 1; done
-          # Route specific traffic through VPN
-          ip route add 192.168.0.0/16 dev wg0
 
   volumes:
     - name: wg-config
@@ -542,18 +466,19 @@ spec:
 # vpn-monitor.sh
 
 NAMESPACE="vpn"
+POD=$(kubectl get pods -n $NAMESPACE -l app=wireguard -o jsonpath='{.items[0].metadata.name}')
 
 echo "=== WireGuard Status ==="
-kubectl exec -n $NAMESPACE deploy/wireguard -- wg show
+kubectl exec -n $NAMESPACE pod/$POD -- wg show
 
 echo -e "\n=== Connected Peers ==="
-kubectl exec -n $NAMESPACE deploy/wireguard -- wg show wg0 peers
+kubectl exec -n $NAMESPACE pod/$POD -- wg show wg0 peers
 
 echo -e "\n=== Transfer Statistics ==="
-kubectl exec -n $NAMESPACE deploy/wireguard -- wg show wg0 transfer
+kubectl exec -n $NAMESPACE pod/$POD -- wg show wg0 transfer
 
 echo -e "\n=== Latest Handshakes ==="
-kubectl exec -n $NAMESPACE deploy/wireguard -- wg show wg0 latest-handshakes
+kubectl exec -n $NAMESPACE pod/$POD -- wg show wg0 latest-handshakes
 ```
 
 ### Prometheus Metrics
