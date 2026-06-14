@@ -48,6 +48,7 @@ SELECT pg_advisory_unlock(12345);
 -- Locks persist until:
 -- 1. Explicitly released with pg_advisory_unlock
 -- 2. Session disconnects
+-- Repeated session-level lock calls stack and need matching unlock calls
 ```
 
 ### Transaction-Level Locks
@@ -104,7 +105,7 @@ def process_order(conn, order_id):
     """Process order with advisory lock to prevent duplicates"""
     cursor = conn.cursor()
 
-    # Generate unique lock key from order_id
+    # Generate stable lock key from order_id
     lock_key = int(hashlib.md5(f"order-{order_id}".encode()).hexdigest()[:15], 16)
 
     # Try to acquire lock (non-blocking)
@@ -208,6 +209,7 @@ COMMIT;  -- Advisory lock released
 
 ```python
 import psycopg2
+import hashlib
 import time
 import os
 
@@ -215,8 +217,8 @@ def run_scheduled_task(conn, task_name, interval_seconds):
     """Run a scheduled task with distributed locking"""
     cursor = conn.cursor()
 
-    # Use task name hash as lock key
-    lock_key = hash(task_name) % (2**31)  # Ensure it fits in int4
+    # Use a stable task name hash as a bigint lock key
+    lock_key = int(hashlib.sha256(task_name.encode()).hexdigest()[:15], 16)
 
     while True:
         try:
@@ -314,7 +316,7 @@ WHERE l.locktype = 'advisory'
 GROUP BY pid, usename, application_name
 ORDER BY lock_count DESC;
 
--- Find sessions holding specific lock
+-- Find sessions holding a specific bigint lock key
 SELECT
     a.pid,
     a.usename,
@@ -325,8 +327,24 @@ SELECT
 FROM pg_locks l
 JOIN pg_stat_activity a ON l.pid = a.pid
 WHERE l.locktype = 'advisory'
-AND l.classid = 0  -- First key
-AND l.objid = 12345  -- Second key (or only key for bigint)
+AND l.objsubid = 1
+AND ((l.classid::bigint << 32) | l.objid::bigint) = 12345
+AND l.granted = true;
+
+-- Find sessions holding a specific two-integer lock key
+SELECT
+    a.pid,
+    a.usename,
+    a.application_name,
+    a.query_start,
+    a.state,
+    a.query
+FROM pg_locks l
+JOIN pg_stat_activity a ON l.pid = a.pid
+WHERE l.locktype = 'advisory'
+AND l.objsubid = 2
+AND l.classid = 1  -- First key
+AND l.objid = 100  -- Second key
 AND l.granted = true;
 ```
 
@@ -378,12 +396,13 @@ SELECT release_named_lock('process-payments');
 ```python
 from contextlib import contextmanager
 import psycopg2
+import hashlib
 
 @contextmanager
 def mutex(conn, resource_name):
     """Database-backed mutex using advisory locks"""
     cursor = conn.cursor()
-    lock_id = hash(resource_name) % (2**63)  # bigint
+    lock_id = int(hashlib.sha256(resource_name.encode()).hexdigest()[:15], 16)
 
     try:
         cursor.execute("SELECT pg_advisory_lock(%s)", (lock_id,))
