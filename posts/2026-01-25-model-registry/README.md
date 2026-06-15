@@ -23,7 +23,7 @@ flowchart TD
         C[Version Control]
         D[Metadata Store]
         E[Artifact Storage]
-        F[Stage Management]
+        F[Alias Management]
     end
 
     subgraph "Deployment"
@@ -50,7 +50,9 @@ flowchart TD
 # registry/mlflow_setup.py
 
 import mlflow
+import mlflow.sklearn
 from mlflow.tracking import MlflowClient
+from mlflow.models import infer_signature
 import os
 
 # Configure MLflow tracking server
@@ -109,14 +111,14 @@ def log_and_register_model(
             mlflow.set_tags(tags)
 
         # Log model with signature inference
-        signature = mlflow.models.infer_signature(
-            model_input=params.get("sample_input"),
-            model_output=params.get("sample_output")
+        signature = infer_signature(
+            params.get("sample_input"),
+            params.get("sample_output")
         )
 
         mlflow.sklearn.log_model(
-            model,
-            artifact_path="model",
+            sk_model=model,
+            name="model",
             signature=signature,
             registered_model_name=model_name
         )
@@ -124,84 +126,60 @@ def log_and_register_model(
         return run.info.run_id
 ```
 
-### Model Stage Management
+### Model Alias Management
 
 ```python
-# registry/stage_management.py
+# registry/alias_management.py
 from mlflow.tracking import MlflowClient
 from enum import Enum
 from typing import Optional
 
-class ModelStage(Enum):
-    NONE = "None"
-    STAGING = "Staging"
-    PRODUCTION = "Production"
-    ARCHIVED = "Archived"
+class ModelAlias(Enum):
+    CANDIDATE = "candidate"
+    CHAMPION = "champion"
 
-class ModelStageManager:
+class ModelAliasManager:
     """
-    Manage model lifecycle stages.
+    Manage model lifecycle aliases.
 
-    Controls transitions between staging, production, and archived states.
+    Controls assignment of candidate and champion aliases.
     """
 
     def __init__(self):
         self.client = MlflowClient()
 
-    def transition_model(
+    def set_alias(
         self,
         model_name: str,
         version: str,
-        stage: ModelStage,
-        archive_existing: bool = True
+        alias: ModelAlias
     ):
         """
-        Transition a model version to a new stage.
+        Assign an alias to a model version.
 
         Args:
             model_name: Name of the registered model
-            version: Version to transition
-            stage: Target stage
-            archive_existing: Archive current model in target stage
+            version: Version to assign
+            alias: Target alias
         """
-        # Archive existing model in target stage if requested
-        if archive_existing and stage in [ModelStage.STAGING, ModelStage.PRODUCTION]:
-            self._archive_current_stage(model_name, stage)
-
-        # Transition to new stage
-        self.client.transition_model_version_stage(
+        self.client.set_registered_model_alias(
             name=model_name,
-            version=version,
-            stage=stage.value
+            alias=alias.value,
+            version=version
         )
 
-        print(f"Transitioned {model_name} v{version} to {stage.value}")
-
-    def _archive_current_stage(self, model_name: str, stage: ModelStage):
-        """Archive any model currently in the given stage."""
-        current_models = self.client.get_latest_versions(
-            model_name,
-            stages=[stage.value]
-        )
-
-        for model in current_models:
-            self.client.transition_model_version_stage(
-                name=model_name,
-                version=model.version,
-                stage=ModelStage.ARCHIVED.value
-            )
-            print(f"Archived {model_name} v{model.version}")
+        print(f"Assigned alias {alias.value} to {model_name} v{version}")
 
     def get_production_model(self, model_name: str) -> Optional[str]:
         """Get the current production model version."""
-        models = self.client.get_latest_versions(
-            model_name,
-            stages=[ModelStage.PRODUCTION.value]
-        )
-
-        if models:
-            return models[0].version
-        return None
+        try:
+            model = self.client.get_model_version_by_alias(
+                model_name,
+                ModelAlias.CHAMPION.value
+            )
+            return model.version
+        except Exception:
+            return None
 
     def get_model_history(self, model_name: str) -> list:
         """Get version history for a model."""
@@ -211,7 +189,7 @@ class ModelStageManager:
         for v in versions:
             history.append({
                 "version": v.version,
-                "stage": v.current_stage,
+                "aliases": v.aliases,
                 "created_at": v.creation_timestamp,
                 "description": v.description,
                 "run_id": v.run_id
@@ -220,21 +198,20 @@ class ModelStageManager:
         return sorted(history, key=lambda x: int(x["version"]), reverse=True)
 
 # Usage
-manager = ModelStageManager()
+manager = ModelAliasManager()
 
-# Promote model to staging
-manager.transition_model(
+# Mark model as a candidate
+manager.set_alias(
     model_name="fraud_detector",
     version="3",
-    stage=ModelStage.STAGING
+    alias=ModelAlias.CANDIDATE
 )
 
 # After testing, promote to production
-manager.transition_model(
+manager.set_alias(
     model_name="fraud_detector",
     version="3",
-    stage=ModelStage.PRODUCTION,
-    archive_existing=True
+    alias=ModelAlias.CHAMPION
 )
 ```
 
@@ -496,6 +473,21 @@ class ModelRegistry:
         conn.commit()
         conn.close()
 
+    def update_tags(
+        self,
+        model_name: str,
+        version: int,
+        tags: Dict[str, str]
+    ):
+        """Update tags for a model version."""
+        conn = sqlite3.connect(self.db_path)
+        conn.execute(
+            "UPDATE model_versions SET tags = ? WHERE model_name = ? AND version = ?",
+            (json.dumps(tags), model_name, version)
+        )
+        conn.commit()
+        conn.close()
+
     def get_production_version(self, model_name: str) -> Optional[ModelVersion]:
         """Get the current production version of a model."""
         conn = sqlite3.connect(self.db_path)
@@ -541,8 +533,8 @@ class ModelRegistry:
             comparison["metrics_comparison"][metric] = {
                 "version_a": val_a,
                 "version_b": val_b,
-                "delta": (val_b - val_a) if val_a and val_b else None,
-                "pct_change": ((val_b - val_a) / val_a * 100) if val_a and val_b and val_a != 0 else None
+                "delta": (val_b - val_a) if val_a is not None and val_b is not None else None,
+                "pct_change": ((val_b - val_a) / val_a * 100) if val_a not in (None, 0) and val_b is not None else None
             }
 
         return comparison
@@ -553,8 +545,8 @@ class ModelRegistry:
 ```python
 # serving/registry_serving.py
 import mlflow
+import mlflow.pyfunc
 from mlflow.tracking import MlflowClient
-from functools import lru_cache
 import threading
 import time
 
@@ -572,6 +564,9 @@ class RegistryModelServer:
         self._model = None
         self._version = None
         self._lock = threading.Lock()
+
+        # Load the current production model before serving requests
+        self._check_for_updates()
 
         # Start background refresh
         self._start_refresh_thread()
@@ -591,28 +586,27 @@ class RegistryModelServer:
 
     def _check_for_updates(self):
         """Check if a new production model is available."""
-        versions = self.client.get_latest_versions(
+        latest = self.client.get_model_version_by_alias(
             self.model_name,
-            stages=["Production"]
+            "champion"
         )
 
-        if not versions:
-            return
-
-        latest = versions[0]
         if latest.version != self._version:
             print(f"New production model detected: v{latest.version}")
-            self._load_model(latest.version)
+            self._load_model()
 
-    def _load_model(self, version: str):
-        """Load a specific model version."""
-        model_uri = f"models:/{self.model_name}/{version}"
+    def _load_model(self):
+        """Load the model version assigned to the champion alias."""
+        model_uri = f"models:/{self.model_name}@champion"
 
         with self._lock:
             self._model = mlflow.pyfunc.load_model(model_uri)
-            self._version = version
+            self._version = self.client.get_model_version_by_alias(
+                self.model_name,
+                "champion"
+            ).version
 
-        print(f"Loaded {self.model_name} v{version}")
+        print(f"Loaded {self.model_name} v{self._version}")
 
     def predict(self, data):
         """Make prediction with the current production model."""
@@ -638,8 +632,9 @@ predictions = server.predict(features)
 ```python
 # registry/lineage.py
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional
 import json
+from registry.custom_registry import ModelRegistry
 
 @dataclass
 class ModelLineage:
@@ -682,7 +677,10 @@ class LineageTracker:
 
         # Store as tags on the model version
         model_version = self.registry.get_version(model_name, version)
+        if not model_version:
+            raise ValueError("Version not found")
         model_version.tags["lineage"] = json.dumps(lineage_data)
+        self.registry.update_tags(model_name, version, model_version.tags)
 
     def get_lineage(self, model_name: str, version: int) -> Optional[ModelLineage]:
         """Get lineage for a model version."""
@@ -732,7 +730,7 @@ class LineageTracker:
 | **Version Control** | Track all model versions with unique IDs |
 | **Artifact Storage** | Store model binaries in durable storage |
 | **Metadata Store** | Track metrics, parameters, and tags |
-| **Stage Management** | Control lifecycle transitions |
+| **Alias Management** | Control lifecycle references such as candidate and champion |
 | **Lineage Tracking** | Record data and code provenance |
 | **Model Serving** | Load models for inference |
 
