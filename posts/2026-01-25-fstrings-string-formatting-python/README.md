@@ -35,7 +35,7 @@ triple = f"""Triple quotes: {name}"""
 
 ## Expressions in f-strings
 
-F-strings can contain any valid Python expression:
+F-strings can contain Python expressions:
 
 ```python
 x = 10
@@ -55,6 +55,8 @@ print(f"Sum: {sum(numbers)}")  # Sum: 15
 print(f"Length: {len(numbers)}")  # Length: 5
 
 # Conditional expressions
+name = "Alice"
+age = 30
 status = "adult" if age >= 18 else "minor"
 print(f"{name} is an {status}")  # Alice is an adult
 ```
@@ -175,7 +177,7 @@ print(f"Full: {now:%B %d, %Y}")  # Full: January 25, 2026
 # %B - full month name
 # %A - full weekday name
 
-print(f"Day: {now:%A}")  # Day: Saturday
+print(f"Day: {now:%A}")  # Day: Sunday
 ```
 
 ## Debugging with f-strings (Python 3.8+)
@@ -205,7 +207,7 @@ print(f"{name.upper()=}")  # name.upper()='ALICE'
 # Escape braces by doubling them
 print(f"{{curly braces}}")  # {curly braces}
 
-# Backslashes in f-strings (no backslash in expression)
+# Backslashes in f-strings (use variables for Python 3.6-3.11 compatibility)
 newline = "\n"
 print(f"Line1{newline}Line2")
 
