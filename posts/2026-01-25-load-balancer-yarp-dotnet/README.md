@@ -207,8 +207,7 @@ Register the custom policy:
 ```csharp
 // Program.cs
 builder.Services.AddReverseProxy()
-    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
-    .AddConfigFilter<CustomConfigFilter>();
+    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
 // Register custom load balancing policy
 builder.Services.AddSingleton<ILoadBalancingPolicy, WeightedLoadBalancingPolicy>();
@@ -264,8 +263,8 @@ Configure active and passive health checks to route traffic only to healthy dest
         }
       },
       "Destinations": {
-        "server-1": { "Address": "http://server1:5000", "Health": "http://server1:5000/health" },
-        "server-2": { "Address": "http://server2:5000", "Health": "http://server2:5000/health" }
+        "server-1": { "Address": "http://server1:5000" },
+        "server-2": { "Address": "http://server2:5000" }
       }
     }
   }
@@ -282,20 +281,26 @@ public class CustomHealthCheckPolicy : IActiveHealthCheckPolicy
     public string Name => "CustomCheck";
 
     private readonly ILogger<CustomHealthCheckPolicy> _logger;
+    private readonly IDestinationHealthUpdater _healthUpdater;
 
-    public CustomHealthCheckPolicy(ILogger<CustomHealthCheckPolicy> logger)
+    public CustomHealthCheckPolicy(
+        ILogger<CustomHealthCheckPolicy> logger,
+        IDestinationHealthUpdater healthUpdater)
     {
         _logger = logger;
+        _healthUpdater = healthUpdater;
     }
 
     public void ProbingCompleted(
         ClusterState cluster,
         IReadOnlyList<DestinationProbingResult> probingResults)
     {
-        foreach (var result in probingResults)
+        var newHealthStates = new NewActiveDestinationHealth[probingResults.Count];
+
+        for (var i = 0; i < probingResults.Count; i++)
         {
-            var destination = result.Destination;
-            var response = result.Response;
+            var destination = probingResults[i].Destination;
+            var response = probingResults[i].Response;
 
             DestinationHealth health;
 
@@ -316,7 +321,7 @@ public class CustomHealthCheckPolicy : IActiveHealthCheckPolicy
             else
             {
                 // Check response body for custom health indicators
-                var content = result.Response?.Content.ReadAsStringAsync().Result;
+                var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
                 if (content?.Contains("\"status\":\"healthy\"") == true)
                 {
                     health = DestinationHealth.Healthy;
@@ -329,10 +334,18 @@ public class CustomHealthCheckPolicy : IActiveHealthCheckPolicy
                 }
             }
 
-            destination.Health.Active = health;
+            newHealthStates[i] = new NewActiveDestinationHealth(destination, health);
         }
+
+        _healthUpdater.SetActive(cluster, newHealthStates);
     }
 }
+```
+
+Register the custom health check policy:
+
+```csharp
+builder.Services.AddSingleton<IActiveHealthCheckPolicy, CustomHealthCheckPolicy>();
 ```
 
 ## Session Affinity (Sticky Sessions)
@@ -363,73 +376,57 @@ Available session affinity policies:
 - **Cookie** - Uses a cookie to track affinity
 - **CustomHeader** - Uses a custom header
 - **HashCookie** - Uses hashed cookie value
+- **ArrCookie** - Uses a cookie format compatible with IIS ARR affinity
 
 ## Code-Based Configuration
 
 Configure YARP programmatically for dynamic scenarios:
 
 ```csharp
-public class YarpConfigProvider : IProxyConfigProvider
+static (IReadOnlyList<RouteConfig> Routes, IReadOnlyList<ClusterConfig> Clusters)
+    CreateConfig(List<ServerInfo>? servers = null)
 {
-    private volatile InMemoryConfig _config;
-
-    public YarpConfigProvider()
+    servers ??= new List<ServerInfo>
     {
-        _config = CreateConfig();
-    }
+        new("server-1", "http://localhost:5001"),
+        new("server-2", "http://localhost:5002")
+    };
 
-    public IProxyConfig GetConfig() => _config;
-
-    public void UpdateConfig(List<ServerInfo> servers)
+    var routes = new[]
     {
-        var oldConfig = _config;
-        _config = CreateConfig(servers);
-        oldConfig.SignalChange();
-    }
-
-    private InMemoryConfig CreateConfig(List<ServerInfo>? servers = null)
-    {
-        servers ??= new List<ServerInfo>
+        new RouteConfig
         {
-            new("server-1", "http://localhost:5001"),
-            new("server-2", "http://localhost:5002")
-        };
+            RouteId = "api-route",
+            ClusterId = "api-cluster",
+            Match = new RouteMatch { Path = "/api/{**catch-all}" }
+        }
+    };
 
-        var routes = new[]
+    var destinations = servers.ToDictionary(
+        s => s.Name,
+        s => new DestinationConfig { Address = s.Address });
+
+    var clusters = new[]
+    {
+        new ClusterConfig
         {
-            new RouteConfig
+            ClusterId = "api-cluster",
+            LoadBalancingPolicy = "RoundRobin",
+            Destinations = destinations,
+            HealthCheck = new HealthCheckConfig
             {
-                RouteId = "api-route",
-                ClusterId = "api-cluster",
-                Match = new RouteMatch { Path = "/api/{**catch-all}" }
-            }
-        };
-
-        var destinations = servers.ToDictionary(
-            s => s.Name,
-            s => new DestinationConfig { Address = s.Address });
-
-        var clusters = new[]
-        {
-            new ClusterConfig
-            {
-                ClusterId = "api-cluster",
-                LoadBalancingPolicy = "RoundRobin",
-                Destinations = destinations,
-                HealthCheck = new HealthCheckConfig
+                Active = new ActiveHealthCheckConfig
                 {
-                    Active = new ActiveHealthCheckConfig
-                    {
-                        Enabled = true,
-                        Interval = TimeSpan.FromSeconds(10),
-                        Path = "/health"
-                    }
+                    Enabled = true,
+                    Interval = TimeSpan.FromSeconds(10),
+                    Policy = "ConsecutiveFailures",
+                    Path = "/health"
                 }
             }
-        };
+        }
+    };
 
-        return new InMemoryConfig(routes, clusters);
-    }
+    return (routes, clusters);
 }
 
 public record ServerInfo(string Name, string Address);
@@ -439,18 +436,18 @@ Register and use the config provider:
 
 ```csharp
 // Program.cs
-var configProvider = new YarpConfigProvider();
+var (routes, clusters) = CreateConfig();
 
-builder.Services.AddSingleton(configProvider);
 builder.Services.AddReverseProxy()
-    .LoadFromMemory(configProvider);
+    .LoadFromMemory(routes, clusters);
 
 var app = builder.Build();
 
 // API to update servers dynamically
-app.MapPost("/admin/servers", (List<ServerInfo> servers, YarpConfigProvider provider) =>
+app.MapPost("/admin/servers", (List<ServerInfo> servers, InMemoryConfigProvider provider) =>
 {
-    provider.UpdateConfig(servers);
+    var (updatedRoutes, updatedClusters) = CreateConfig(servers);
+    provider.Update(updatedRoutes, updatedClusters);
     return Results.Ok();
 });
 
@@ -470,16 +467,24 @@ builder.Services.AddReverseProxy()
     {
         // Add headers to proxied requests
         context.AddRequestHeader("X-Forwarded-By", "YARP-LB");
-        context.AddRequestHeader("X-Request-Id", Guid.NewGuid().ToString());
 
         // Copy original host
-        context.AddOriginalHostHeader();
+        context.AddOriginalHost(true);
+
+        context.AddRequestTransform(transformContext =>
+        {
+            transformContext.ProxyRequest.Headers.TryAddWithoutValidation(
+                "X-Request-Id",
+                Guid.NewGuid().ToString());
+            return ValueTask.CompletedTask;
+        });
 
         // Add response transformation
-        context.AddResponseTransform(async transformContext =>
+        context.AddResponseTransform(transformContext =>
         {
             var response = transformContext.HttpContext.Response;
-            response.Headers["X-Served-By"] = transformContext.DestinationPrefix;
+            response.Headers["X-Served-By"] = "YARP-LB";
+            return ValueTask.CompletedTask;
         });
     });
 ```
@@ -590,7 +595,7 @@ builder.Services.AddReverseProxy()
     .AddTransforms(context =>
     {
         context.AddRequestHeader("X-Forwarded-By", "YarpLoadBalancer");
-        context.AddOriginalHostHeader();
+        context.AddOriginalHost(true);
     });
 
 var app = builder.Build();
@@ -629,7 +634,7 @@ app.MapReverseProxy(pipeline =>
 
         // Log proxied requests
         var cluster = context.GetRouteModel()?.Config?.ClusterId ?? "unknown";
-        var destination = context.GetProxyFeature().ProxiedDestination?.DestinationId ?? "unknown";
+        var destination = context.GetReverseProxyFeature().ProxiedDestination?.DestinationId ?? "unknown";
         var status = context.Response.StatusCode;
 
         context.RequestServices.GetRequiredService<LoadBalancerMetrics>()
@@ -688,7 +693,7 @@ Configuration for the complete example:
 | Feature | Use Case |
 |---------|----------|
 | **Round Robin** | Equal distribution across similar servers |
-| **Least Requests** | When servers have different capacities |
+| **Least Requests** | When requests have uneven durations |
 | **Power of Two Choices** | Large clusters with varying load |
 | **Weighted** | Servers with different processing power |
 | **Session Affinity** | Stateful applications requiring sticky sessions |
