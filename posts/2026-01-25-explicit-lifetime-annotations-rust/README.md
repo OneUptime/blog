@@ -124,7 +124,7 @@ fn keep_first<'a, 'b>(x: &'a str, _y: &'b str) -> &'a str {
     x
 }
 
-// Static lifetime - always explicit
+// Static return lifetime - explicit
 fn static_str() -> &'static str {
     "I live forever"
 }
@@ -255,10 +255,7 @@ fn main() {
 The `'static` lifetime means the reference can live for the entire program:
 
 ```rust
-// String literals are 'static
-let s: &'static str = "hello";
-
-// Constants are 'static
+// Static items have 'static lifetime
 static GLOBAL: i32 = 42;
 
 // Owned data can satisfy 'static bounds
@@ -267,6 +264,9 @@ fn take_static<T: 'static>(value: T) {
 }
 
 fn main() {
+    // String literals are 'static
+    let s: &'static str = "hello";
+
     take_static(String::from("owned"));  // OK: String is owned
     take_static(42);  // OK: i32 is Copy and owned
     take_static("literal");  // OK: &'static str
@@ -377,7 +377,7 @@ fn main() {
 | Multiple references, ambiguous return | Yes |
 | Struct with references | Yes |
 | Method with `&self` | No (elided) |
-| Static lifetime | Yes (`'static`) |
+| Static return lifetime | Yes (`'static`) |
 | Generic with lifetime bound | Yes |
 
 Lifetime annotations ensure references remain valid. The compiler requires them when it cannot infer the relationship between input and output lifetimes. Master the elision rules to know when you can omit annotations and when they are required.
