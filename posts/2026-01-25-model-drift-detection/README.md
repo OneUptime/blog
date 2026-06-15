@@ -21,7 +21,7 @@ flowchart TD
 
     subgraph "Concept Drift"
         C[Target Relationship Changes]
-        D[P Y given X Shifts]
+        D["P(y | X) Shifts"]
     end
 
     subgraph "Prediction Drift"
@@ -101,11 +101,16 @@ class PSIDriftDetector:
         bin_edges = np.unique(bin_edges)
         if len(bin_edges) < 3:
             # Fall back to equal-width bins
-            bin_edges = np.linspace(
-                reference_data.min(),
-                reference_data.max(),
-                self.n_bins + 1
-            )
+            min_value = reference_data.min()
+            max_value = reference_data.max()
+            if min_value == max_value:
+                bin_edges = np.array([-np.inf, min_value, np.inf])
+            else:
+                bin_edges = np.linspace(min_value, max_value, self.n_bins + 1)
+
+        # Include current values outside the original reference range
+        bin_edges[0] = -np.inf
+        bin_edges[-1] = np.inf
 
         # Calculate expected proportions
         expected_counts, _ = np.histogram(reference_data, bins=bin_edges)
@@ -182,6 +187,7 @@ import numpy as np
 from typing import Dict, Tuple
 from collections import deque
 from datetime import datetime
+from dataclasses import dataclass
 
 @dataclass
 class KSResult:
@@ -286,7 +292,7 @@ class ADWINDetector:
         Initialize ADWIN detector.
 
         Args:
-            delta: Confidence parameter (lower = more sensitive)
+            delta: Confidence parameter (higher = more sensitive)
         """
         self.delta = delta
         self.window = deque()
@@ -559,6 +565,12 @@ from dataclasses import dataclass
 from typing import Dict, List
 from datetime import datetime
 import json
+import numpy as np
+
+from drift.adwin_detector import ADWINDetector
+from drift.ks_detector import KSDriftDetector
+from drift.prediction_drift import PredictionDriftMonitor
+from drift.psi_detector import DriftMetrics, PSIDriftDetector
 
 @dataclass
 class DriftReport:
