@@ -31,10 +31,9 @@ First, add the necessary dependencies to your `Cargo.toml`:
 [dependencies]
 config = "0.14"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 ```
 
-The `config` crate does the heavy lifting for parsing and merging configuration sources. Serde handles serialization into your Rust structs.
+The `config` crate does the heavy lifting for parsing and merging configuration sources. Serde handles deserialization into your Rust structs.
 
 ## Defining Your Configuration Structure
 
@@ -71,7 +70,7 @@ pub struct LoggingConfig {
 }
 ```
 
-This structure gives you compile-time guarantees about what configuration values exist and their types.
+This structure gives you typed access to configuration values and catches missing or mismatched values when configuration is loaded.
 
 ## Building the Configuration Loader
 
@@ -285,6 +284,7 @@ mod tests {
                 url: "postgres://localhost/myapp_test".to_string(),
                 max_connections: 5,
                 timeout_seconds: 5,
+                password: None,
             },
             logging: LoggingConfig {
                 level: "debug".to_string(),
