@@ -8,7 +8,7 @@ Description: Learn how to implement comprehensive audit logging in PostgreSQL us
 
 ---
 
-When regulators ask "who accessed what data and when," you need answers. PostgreSQL's built-in logging captures some information, but it falls short for serious audit requirements. pgAudit fills this gap by providing detailed session and object audit logging that satisfies compliance frameworks like SOC 2, HIPAA, and PCI DSS.
+When regulators ask "who accessed what data and when," you need answers. PostgreSQL's built-in logging captures some information, but it falls short for serious audit requirements. pgAudit fills this gap by providing detailed session and object audit logging that can support compliance frameworks like SOC 2, HIPAA, and PCI DSS.
 
 ## Why pgAudit Over Standard Logging
 
@@ -17,7 +17,7 @@ PostgreSQL's standard logging can capture queries, but it has limitations:
 - No distinction between SELECT on sensitive vs non-sensitive tables
 - Cannot filter by specific objects or operations
 - Logs show the query text but not which objects were actually accessed
-- No structured format for compliance reporting
+- No audit-specific fields for compliance reporting
 
 pgAudit addresses these by providing:
 - Object-level audit logging (who accessed which table)
@@ -50,6 +50,7 @@ sudo dnf install pgaudit_16
 ```bash
 git clone https://github.com/pgaudit/pgaudit.git
 cd pgaudit
+git checkout REL_16_STABLE
 make USE_PGXS=1
 sudo make USE_PGXS=1 install
 ```
@@ -79,7 +80,7 @@ CREATE EXTENSION pgaudit;
 # postgresql.conf - pgAudit settings
 
 # Session audit logging - what operations to log for all users
-# Options: READ, WRITE, FUNCTION, ROLE, DDL, MISC, ALL, NONE
+# Options: READ, WRITE, FUNCTION, ROLE, DDL, MISC, MISC_SET, ALL, NONE
 pgaudit.log = 'DDL, WRITE'
 
 # Log catalog (system table) access - usually disabled for noise reduction
@@ -88,13 +89,13 @@ pgaudit.log_catalog = off
 # Include the object name in the audit log
 pgaudit.log_relation = on
 
-# Log statement even if command fails
+# Log statement text only once for each statement/substatement
 pgaudit.log_statement_once = on
 
 # Include parameter values in logs (careful with sensitive data)
 pgaudit.log_parameter = on
 
-# Log level for audit messages
+# Log level for client-visible audit messages when pgaudit.log_client is on
 pgaudit.log_level = 'log'
 ```
 
@@ -121,7 +122,7 @@ Sample log output:
 
 ```text
 AUDIT: SESSION,1,1,WRITE,INSERT,TABLE,public.users,
-       "INSERT INTO users (email, name) VALUES ('john@example.com', 'John Doe')"
+       "INSERT INTO users (email, name) VALUES ('john@example.com', 'John Doe')",<not logged>
 ```
 
 ### Log All DDL Changes
@@ -151,7 +152,7 @@ pgaudit.log = 'DDL, WRITE'
 
 ## Object Audit Logging
 
-Object-level auditing provides fine-grained control over which tables are audited and for which users.
+Object-level auditing provides fine-grained control over which tables and operations are audited.
 
 ### Create an Audit Role
 
@@ -172,7 +173,7 @@ ALTER SYSTEM SET pgaudit.role = 'auditor';
 SELECT pg_reload_conf();
 ```
 
-Now, any query that touches tables where `auditor` has permissions will be logged.
+Now, supported statements that touch tables where `auditor` has permissions for the executed command will be logged. Object audit logging covers `SELECT`, `INSERT`, `UPDATE`, and `DELETE`; it does not cover `TRUNCATE`.
 
 ### Example: Audit Sensitive Tables Only
 
@@ -212,7 +213,7 @@ ALTER ROLE reporter SET pgaudit.log = 'DDL';
 pgAudit logs follow this format:
 
 ```text
-AUDIT: TYPE,STATEMENT_ID,SUBSTATEMENT_ID,CLASS,COMMAND,OBJECT_TYPE,OBJECT_NAME,STATEMENT
+AUDIT: TYPE,STATEMENT_ID,SUBSTATEMENT_ID,CLASS,COMMAND,OBJECT_TYPE,OBJECT_NAME,STATEMENT,PARAMETER
 ```
 
 | Field | Description |
@@ -220,26 +221,27 @@ AUDIT: TYPE,STATEMENT_ID,SUBSTATEMENT_ID,CLASS,COMMAND,OBJECT_TYPE,OBJECT_NAME,S
 | TYPE | SESSION or OBJECT |
 | STATEMENT_ID | Unique ID for the statement |
 | SUBSTATEMENT_ID | For statements with sub-operations |
-| CLASS | READ, WRITE, FUNCTION, ROLE, DDL, MISC |
+| CLASS | READ, WRITE, FUNCTION, ROLE, DDL, MISC, MISC_SET |
 | COMMAND | SQL command (SELECT, INSERT, etc.) |
 | OBJECT_TYPE | TABLE, INDEX, SEQUENCE, etc. |
 | OBJECT_NAME | Fully qualified object name |
 | STATEMENT | The SQL query |
+| PARAMETER | Statement parameters when `pgaudit.log_parameter` is enabled, otherwise `<not logged>` |
 
 ### Sample Log Entries
 
 ```text
 # INSERT operation
 AUDIT: SESSION,1,1,WRITE,INSERT,TABLE,public.orders,
-       "INSERT INTO orders (customer_id, amount) VALUES (42, 99.99)"
+       "INSERT INTO orders (customer_id, amount) VALUES (42, 99.99)",<not logged>
 
 # DDL operation
 AUDIT: SESSION,2,1,DDL,CREATE TABLE,TABLE,public.new_table,
-       "CREATE TABLE new_table (id serial primary key, data text)"
+       "CREATE TABLE new_table (id serial primary key, data text)",<not logged>
 
 # Object-level audit (SELECT on sensitive table)
 AUDIT: OBJECT,3,1,READ,SELECT,TABLE,public.customer_ssn,
-       "SELECT ssn FROM customer_ssn WHERE customer_id = 123"
+       "SELECT ssn FROM customer_ssn WHERE customer_id = 123",<not logged>
 ```
 
 ## Log Output Configuration
@@ -258,16 +260,14 @@ log_rotation_size = 100MB
 
 ### JSON Logging for SIEM Integration
 
-Use a log shipper to parse CSV logs into JSON:
+PostgreSQL can write logs in JSON format. Use a log shipper to forward the JSON log entries and parse pgAudit details from the `message` field:
 
-```bash
-#!/bin/bash
-# parse_audit_logs.sh - Convert pgAudit CSV to JSON
-
-csvtool namedcol log_time,user_name,database_name,message \
-    /var/log/postgresql/postgresql-2026-01-25.csv | \
-    jq -R -s 'split("\n") | map(select(length > 0) | split(",") |
-        {timestamp: .[0], user: .[1], database: .[2], audit: .[3]})'
+```ini
+# postgresql.conf
+log_destination = 'jsonlog'
+logging_collector = on
+log_directory = '/var/log/postgresql'
+log_filename = 'postgresql-%Y-%m-%d.log'
 ```
 
 ## Querying Audit Logs
@@ -303,10 +303,45 @@ CREATE INDEX idx_audit_object ON audit_log_archive(object_name);
 ### Import from CSV Log
 
 ```sql
--- Load audit entries (requires parsing the audit message)
-COPY audit_log_archive (log_time, user_name, database_name, raw_log)
+-- Load into a staging table that matches PostgreSQL's csvlog columns
+CREATE TEMP TABLE postgres_log_staging (
+    log_time TIMESTAMPTZ,
+    user_name TEXT,
+    database_name TEXT,
+    process_id INT,
+    connection_from TEXT,
+    session_id TEXT,
+    session_line_num BIGINT,
+    command_tag TEXT,
+    session_start_time TIMESTAMPTZ,
+    virtual_transaction_id TEXT,
+    transaction_id BIGINT,
+    error_severity TEXT,
+    sql_state_code TEXT,
+    message TEXT,
+    detail TEXT,
+    hint TEXT,
+    internal_query TEXT,
+    internal_query_pos INT,
+    context TEXT,
+    query TEXT,
+    query_pos INT,
+    location TEXT,
+    application_name TEXT,
+    backend_type TEXT,
+    leader_pid INT,
+    query_id BIGINT
+);
+
+COPY postgres_log_staging
 FROM '/var/log/postgresql/postgresql-2026-01-25.csv'
-WITH (FORMAT csv, HEADER true);
+WITH (FORMAT csv);
+
+-- Load audit entries (requires parsing the audit message for audit fields)
+INSERT INTO audit_log_archive (log_time, user_name, database_name, connection_from, raw_log)
+SELECT log_time, user_name, database_name, connection_from, message
+FROM postgres_log_staging
+WHERE message LIKE 'AUDIT:%';
 ```
 
 ### Compliance Queries
@@ -363,14 +398,16 @@ ALTER SYSTEM SET pgaudit.log = 'DDL, WRITE';
 -- This reduces volume significantly
 ```
 
-### Benchmark Impact
+### Relative Impact
 
-| Configuration | Overhead |
-|--------------|----------|
-| pgaudit.log = 'DDL' | < 1% |
-| pgaudit.log = 'WRITE' | 1-3% |
-| pgaudit.log = 'READ' | 5-15% |
-| pgaudit.log = 'ALL' | 10-20% |
+Actual overhead depends on workload, statement volume, log destination, storage, and whether parameters or per-relation entries are logged.
+
+| Configuration | Expected impact |
+|--------------|-----------------|
+| pgaudit.log = 'DDL' | Low on most application workloads |
+| pgaudit.log = 'WRITE' | Workload-dependent |
+| pgaudit.log = 'READ' | High on read-heavy systems |
+| pgaudit.log = 'ALL' | Highest log volume and overhead |
 
 ## Compliance Checklist
 
