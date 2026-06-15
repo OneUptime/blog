@@ -22,7 +22,7 @@ When tables grow beyond hundreds of millions of rows, problems compound:
 
 ## Table Partitioning
 
-Partitioning splits a logical table into smaller physical tables. Queries automatically target only relevant partitions.
+Partitioning splits a logical table into smaller physical tables. Queries can automatically target only relevant partitions.
 
 ### Range Partitioning by Date
 
@@ -83,7 +83,7 @@ BEGIN
     FOR i IN 0..11 LOOP
         PERFORM create_monthly_partition(
             'events',
-            CURRENT_DATE + (i || ' months')::INTERVAL
+            (CURRENT_DATE + (i || ' months')::INTERVAL)::DATE
         );
     END LOOP;
 END $$;
@@ -127,21 +127,21 @@ CREATE INDEX idx_events_purchases ON events (user_id, event_time)
 
 ### BRIN Indexes for Time-Series Data
 
-Block Range INdexes are tiny and perfect for naturally ordered data.
+Block Range INdexes are tiny and well-suited to naturally ordered data.
 
 ```sql
--- BRIN index on time column (very small, very fast for range queries)
+-- BRIN index on time column (very small, efficient for correlated range queries)
 CREATE INDEX idx_events_time_brin ON events USING brin (event_time);
 
--- Compare sizes
+-- Compare index sizes on partitions
 SELECT
     indexrelid::regclass AS index_name,
     pg_size_pretty(pg_relation_size(indexrelid)) AS size
 FROM pg_stat_user_indexes
-WHERE relname = 'events';
+WHERE relname LIKE 'events_%';
 
--- BRIN: 100 KB
--- B-tree on same column: 10 GB
+-- Example: BRIN: 100 KB
+-- Example: B-tree on same column: 10 GB
 ```
 
 ### Covering Indexes
@@ -153,7 +153,7 @@ Include columns in the index to enable index-only scans.
 CREATE INDEX idx_events_covering ON events (user_id, event_time)
     INCLUDE (event_type, payload);
 
--- Now this query uses index-only scan
+-- Now this query can use an index-only scan when visibility map entries allow it
 SELECT user_id, event_time, event_type, payload
 FROM events
 WHERE user_id = 12345 AND event_time > '2026-01-01';
@@ -164,10 +164,13 @@ WHERE user_id = 12345 AND event_time > '2026-01-01';
 Never lock a billion-row table for index creation.
 
 ```sql
--- Create index without blocking writes
-CREATE INDEX CONCURRENTLY idx_events_user ON events (user_id);
+-- Create indexes on partitions without blocking writes
+CREATE INDEX CONCURRENTLY idx_events_2026_01_user ON events_2026_01 (user_id);
+CREATE INDEX CONCURRENTLY idx_events_2026_02_user ON events_2026_02 (user_id);
 
--- This takes hours but does not block production
+-- After every partition has a matching index, create the parent index
+-- non-concurrently; this is metadata-only when matching partition indexes exist
+CREATE INDEX idx_events_user ON events (user_id);
 ```
 
 ## Query Optimization
@@ -206,12 +209,13 @@ LIMIT 1000;
 -- Bad: exact count takes minutes
 SELECT COUNT(*) FROM events;
 
--- Good: approximate count from statistics (instant)
-SELECT reltuples::bigint AS approximate_count
-FROM pg_class
-WHERE relname = 'events';
+-- Good: approximate count from partition statistics (instant)
+SELECT SUM(c.reltuples)::bigint AS approximate_count
+FROM pg_class c
+JOIN pg_inherits i ON i.inhrelid = c.oid
+WHERE i.inhparent = 'events'::regclass;
 
--- Or use HyperLogLog extension for cardinality
+-- Or use the HyperLogLog extension for cardinality if it is installed
 CREATE EXTENSION IF NOT EXISTS hll;
 ```
 
@@ -221,7 +225,7 @@ CREATE EXTENSION IF NOT EXISTS hll;
 -- Enable parallel queries
 SET max_parallel_workers_per_gather = 4;
 
--- Queries will use multiple workers
+-- Eligible queries may use multiple workers
 EXPLAIN ANALYZE
 SELECT event_type, COUNT(*)
 FROM events
@@ -338,10 +342,10 @@ ORDER BY idx_scan DESC;
 ### Bulk Loading with COPY
 
 ```sql
--- Disable indexes temporarily
+-- Disable autovacuum temporarily
 ALTER TABLE events_2026_01 SET (autovacuum_enabled = false);
 
--- Load data
+-- Load data from a server-side file
 COPY events_2026_01 FROM '/data/events.csv' WITH CSV HEADER;
 
 -- Re-enable and analyze
@@ -357,7 +361,7 @@ ANALYZE events_2026_01;
 
 for file in /data/events_2026_*.csv; do
     partition=$(basename "$file" .csv)
-    psql -c "COPY ${partition} FROM '${file}' WITH CSV HEADER" &
+    psql -c "\\copy ${partition} FROM '${file}' WITH CSV HEADER" &
 done
 wait
 ```
