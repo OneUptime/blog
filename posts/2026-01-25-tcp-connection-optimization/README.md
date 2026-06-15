@@ -48,11 +48,11 @@ net.core.wmem_default = 262144
 net.core.wmem_max = 16777216
 
 # TCP-specific buffer sizes (min, default, max)
-# These override the core settings for TCP sockets
+# TCP autotuning uses these limits for TCP sockets
 net.ipv4.tcp_rmem = 4096 262144 16777216
 net.ipv4.tcp_wmem = 4096 262144 16777216
 
-# Total memory for TCP buffers (in pages, page = 4KB)
+# Total memory for TCP buffers (in memory pages, usually 4KB on x86)
 net.ipv4.tcp_mem = 786432 1048576 1572864
 
 # Apply changes
@@ -80,28 +80,28 @@ net.ipv4.tcp_synack_retries = 2
 net.ipv4.tcp_max_tw_buckets = 2000000
 ```
 
-### TIME_WAIT Optimization
+### TIME_WAIT and FIN_WAIT_2 Optimization
 
 TIME_WAIT sockets can accumulate and exhaust resources on busy servers.
 
 ```bash
 # /etc/sysctl.conf - TIME_WAIT handling
 
-# Allow reuse of TIME_WAIT sockets for new connections
+# Allow reuse of TIME_WAIT sockets for new outgoing connections
 # when safe from a protocol standpoint
 net.ipv4.tcp_tw_reuse = 1
 
-# Reduce TIME_WAIT duration (default is 60 seconds)
-# Note: This requires kernel 4.12+ with tcp_fin_timeout
+# Reduce how long orphaned FIN_WAIT_2 sockets remain
+# before the kernel aborts them (default is 60 seconds)
 net.ipv4.tcp_fin_timeout = 15
 
-# Enable TCP timestamps (required for tcp_tw_reuse)
+# Enable TCP timestamps (used by tcp_tw_reuse safety checks)
 net.ipv4.tcp_timestamps = 1
 ```
 
 ## Congestion Control Algorithms
 
-Modern congestion control algorithms significantly outperform the default.
+Modern congestion control algorithms can outperform the default for some workloads.
 
 ```bash
 # Check available congestion control algorithms
@@ -110,7 +110,7 @@ sysctl net.ipv4.tcp_available_congestion_control
 # Check current algorithm
 sysctl net.ipv4.tcp_congestion_control
 
-# Set BBR (recommended for most use cases)
+# Set BBR (benchmark this against your workload)
 # BBR requires kernel 4.9+
 sysctl -w net.ipv4.tcp_congestion_control=bbr
 
@@ -193,6 +193,7 @@ Creating new TCP connections is expensive. Connection pooling reuses existing co
 ### Python Connection Pool
 
 ```python
+import socket
 import urllib3
 from urllib3.util.retry import Retry
 
@@ -236,6 +237,7 @@ package main
 import (
     "net"
     "net/http"
+    "syscall"
     "time"
 )
 
@@ -418,7 +420,7 @@ net.core.somaxconn = 65535
 net.ipv4.tcp_max_syn_backlog = 65535
 net.core.netdev_max_backlog = 65535
 
-# TIME_WAIT handling
+# TIME_WAIT and FIN_WAIT_2 handling
 net.ipv4.tcp_tw_reuse = 1
 net.ipv4.tcp_fin_timeout = 15
 
