@@ -28,7 +28,7 @@ r.zadd('leaderboard', {
 })
 
 # Get top 3 players (highest scores first)
-top_players = r.zrevrange('leaderboard', 0, 2, withscores=True)
+top_players = r.zrange('leaderboard', 0, 2, desc=True, withscores=True)
 print("Top 3:")
 for rank, (player, score) in enumerate(top_players, 1):
     print(f"  #{rank} {player}: {score}")
@@ -87,7 +87,7 @@ class Leaderboard:
 
     def get_top(self, count: int = 10) -> List[dict]:
         """Get top N players"""
-        results = self.r.zrevrange(self.key, 0, count - 1, withscores=True)
+        results = self.r.zrange(self.key, 0, count - 1, desc=True, withscores=True)
         return [
             {'rank': i + 1, 'player': player, 'score': score}
             for i, (player, score) in enumerate(results)
@@ -102,7 +102,7 @@ class Leaderboard:
         start = max(0, rank - count)
         end = rank + count
 
-        results = self.r.zrevrange(self.key, start, end, withscores=True)
+        results = self.r.zrange(self.key, start, end, desc=True, withscores=True)
         return [
             {'rank': start + i + 1, 'player': player, 'score': score}
             for i, (player, score) in enumerate(results)
@@ -113,7 +113,7 @@ class Leaderboard:
         start = (page - 1) * page_size
         end = start + page_size - 1
 
-        results = self.r.zrevrange(self.key, start, end, withscores=True)
+        results = self.r.zrange(self.key, start, end, desc=True, withscores=True)
         return [
             {'rank': start + i + 1, 'player': player, 'score': score}
             for i, (player, score) in enumerate(results)
@@ -129,8 +129,8 @@ class Leaderboard:
 
     def get_score_range(self, min_score: float, max_score: float) -> List[dict]:
         """Get players within a score range"""
-        results = self.r.zrevrangebyscore(
-            self.key, max_score, min_score, withscores=True
+        results = self.r.zrange(
+            self.key, max_score, min_score, byscore=True, desc=True, withscores=True
         )
         return [
             {'player': player, 'score': score}
@@ -173,6 +173,7 @@ Create daily, weekly, or monthly leaderboards:
 ```python
 import redis
 from datetime import datetime, timedelta
+from typing import List
 
 r = redis.Redis(decode_responses=True)
 
@@ -223,7 +224,7 @@ class TimeBasedLeaderboard:
     def get_top(self, period: str, count: int = 10, date: datetime = None):
         """Get top players for a specific period"""
         key = self._get_key(period, date)
-        results = self.r.zrevrange(key, 0, count - 1, withscores=True)
+        results = self.r.zrange(key, 0, count - 1, desc=True, withscores=True)
         return [
             {'rank': i + 1, 'player': player, 'score': score}
             for i, (player, score) in enumerate(results)
@@ -256,7 +257,7 @@ for entry in lb.get_top('alltime', 5):
 
 ## Handling Score Ties
 
-When scores are equal, sorted sets order by member name. For custom tie-breaking:
+When scores are equal, sorted sets order by member name lexicographically (reversed for descending ranges). For custom tie-breaking:
 
 ```python
 import redis
@@ -285,7 +286,7 @@ class TieBreakingLeaderboard:
 
     def get_top(self, count: int = 10):
         """Get top players with tie-breaking by time"""
-        results = self.r.zrevrange(self.key, 0, count - 1, withscores=True)
+        results = self.r.zrange(self.key, 0, count - 1, desc=True, withscores=True)
         return [
             {
                 'rank': i + 1,
@@ -337,7 +338,7 @@ def update_score_with_notification(leaderboard_key, player_id, new_score):
     update = {
         'player': player_id,
         'score': new_score,
-        'old_rank': old_rank + 1 if old_rank else None,
+        'old_rank': old_rank + 1 if old_rank is not None else None,
         'new_rank': new_rank + 1
     }
 
@@ -363,12 +364,12 @@ def listen_for_updates(leaderboard_key):
 | Add/Update score | ZADD | O(log N) |
 | Get rank | ZREVRANK | O(log N) |
 | Get score | ZSCORE | O(1) |
-| Get top N | ZREVRANGE | O(log N + M) |
+| Get top N | ZRANGE REV | O(log N + M) |
 | Increment score | ZINCRBY | O(log N) |
 | Count players | ZCARD | O(1) |
 
 Best practices:
-- Use ZREVRANGE for high-to-low rankings
+- Use ZRANGE with REV (or redis-py's `desc=True`) for high-to-low rankings
 - Implement pagination for large leaderboards
 - Use composite scores for tie-breaking
 - Create separate keys for different time periods
