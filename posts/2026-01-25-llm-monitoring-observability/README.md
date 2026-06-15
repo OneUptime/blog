@@ -135,7 +135,8 @@ class LLMMetricsCollector:
     Tracks costs, latency, and usage patterns.
     """
 
-    # Pricing per 1K tokens (as of early 2026)
+    # Example pricing per 1K tokens. Verify current rates with each provider
+    # before using these values in production billing.
     PRICING = {
         "claude-sonnet-4-20250514": {"input": 0.003, "output": 0.015},
         "claude-opus-4-20250514": {"input": 0.015, "output": 0.075},
@@ -463,7 +464,10 @@ class LLMQualityMonitor:
 def completeness_score(response: str) -> float:
     """Check if response seems complete."""
     # Simple heuristic: ends with punctuation
-    if response.strip()[-1] in '.!?':
+    stripped = response.strip()
+    if not stripped:
+        return 0.0
+    if stripped[-1] in '.!?':
         return 1.0
     return 0.5
 
@@ -480,6 +484,7 @@ monitor = LLMQualityMonitor()
 monitor.add_evaluator("completeness", completeness_score)
 monitor.add_evaluator("relevance", relevance_keywords_score(["python", "code", "example"]))
 
+response = "Here is a Python code example."
 quality = monitor.evaluate(response)
 ```
 
@@ -489,7 +494,7 @@ quality = monitor.evaluate(response)
 # monitoring/cost_tracking.py
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Optional
 import sqlite3
 from collections import defaultdict
 
@@ -656,6 +661,13 @@ from typing import Dict, Any, Optional
 import time
 import uuid
 from contextlib import contextmanager
+from datetime import datetime
+
+from monitoring.cost_tracking import CostRecord, CostTracker
+from monitoring.llm_metrics import LLMMetrics, LLMMetricsCollector
+from monitoring.logging import LLMLogger
+from monitoring.quality import LLMQualityMonitor
+from monitoring.tracing import LLMTracer
 
 class LLMMonitoringClient:
     """
