@@ -36,7 +36,7 @@ Add these to your `Cargo.toml`:
 ```toml
 [dependencies]
 tokio = { version = "1.35", features = ["full"] }
-axum = "0.7"
+axum = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
@@ -155,7 +155,7 @@ impl LogBuffer {
     // Collect logs into batches and yield them
     pub async fn next_batch(&mut self) -> Option<Vec<LogEntry>> {
         let mut batch = Vec::with_capacity(self.batch_size);
-        let deadline = tokio::time::Instant::now() + self.flush_interval;
+        let mut deadline = tokio::time::Instant::now() + self.flush_interval;
 
         loop {
             let timeout = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -183,6 +183,7 @@ impl LogBuffer {
                         return Some(batch);
                     }
                     // Reset deadline and keep waiting
+                    deadline = tokio::time::Instant::now() + self.flush_interval;
                 }
             }
         }
@@ -197,7 +198,7 @@ This batching approach is critical for performance. Writing one log at a time wo
 For simplicity, we'll write to rotating log files. In production, you'd likely swap this for a database writer:
 
 ```rust
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
@@ -238,6 +239,7 @@ impl FileWriter {
     }
 
     fn rotate_file(&mut self, date: &str) -> std::io::Result<()> {
+        fs::create_dir_all(&self.base_path)?;
         let filename = self.base_path.join(format!("logs-{}.ndjson", date));
 
         let file = OpenOptions::new()
@@ -292,9 +294,11 @@ async fn main() {
 
     info!("Log aggregator listening on port 8080");
 
-    axum::serve(listener, app).await.unwrap();
+    if let Err(e) = axum::serve(listener, app).await {
+        error!("HTTP server exited with error: {}", e);
+    }
 
-    // Clean shutdown
+    // Wait for the storage worker if the server exits
     storage_handle.await.unwrap();
 }
 ```
@@ -326,6 +330,6 @@ The key is keeping the ingestion path fast and simple. Fancy processing should h
 
 Building a log aggregation service in Rust gives you a reliable, performant foundation for your observability stack. The combination of async I/O, memory safety, and low-level control makes Rust ideal for this class of infrastructure.
 
-The code above handles the happy path well. For production use, you'll want to add proper error handling, graceful shutdown signals, health check endpoints, and comprehensive metrics. But the core architecture - async ingestion, bounded buffering, and batched writes - will scale to millions of logs per second on modest hardware.
+The code above handles the happy path well. For production use, you'll want to add proper error handling, graceful shutdown signals, health check endpoints, and comprehensive metrics. But the core architecture - async ingestion, bounded buffering, and batched writes - is the foundation for a high-throughput log pipeline.
 
 Start simple, measure everything, and optimize the bottlenecks you actually hit.
