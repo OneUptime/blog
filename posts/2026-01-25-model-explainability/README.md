@@ -98,7 +98,11 @@ class SHAPExplainer:
 
         # Initialize appropriate explainer
         if model_type == "tree":
-            self.explainer = shap.TreeExplainer(model)
+            self.explainer = shap.TreeExplainer(
+                model,
+                background_data,
+                model_output="probability" if hasattr(model, 'predict_proba') else "raw"
+            )
         elif model_type == "kernel":
             # Use K-means to summarize background data
             background_summary = shap.kmeans(background_data, 50)
@@ -110,6 +114,25 @@ class SHAPExplainer:
             self.explainer = shap.DeepExplainer(model, background_data)
         else:
             raise ValueError(f"Unknown model type: {model_type}")
+
+    def _select_output(self, values):
+        """Select the positive class output for binary classifiers."""
+        if isinstance(values, list):
+            return values[1]
+        values = np.asarray(values)
+        if values.ndim == 3:
+            return values[:, :, 1]
+        return values
+
+    def _select_expected_value(self):
+        """Select the expected value matching the explained output."""
+        expected_value = self.explainer.expected_value
+        if isinstance(expected_value, list):
+            return expected_value[1]
+        expected_value = np.asarray(expected_value)
+        if expected_value.ndim > 0:
+            return expected_value[1]
+        return expected_value
 
     def explain_prediction(
         self,
@@ -128,21 +151,14 @@ class SHAPExplainer:
         """
         # Get SHAP values
         shap_values = self.explainer.shap_values(instance.reshape(1, -1))
-
-        # Handle multi-class case (use positive class)
-        if isinstance(shap_values, list):
-            shap_values = shap_values[1]  # Positive class
-
-        shap_values = shap_values.flatten()
+        shap_values = self._select_output(shap_values).flatten()
 
         # Get prediction and base value
         prediction = self.model.predict_proba(instance.reshape(1, -1))[0][1] \
             if hasattr(self.model, 'predict_proba') \
             else self.model.predict(instance.reshape(1, -1))[0]
 
-        base_value = self.explainer.expected_value
-        if isinstance(base_value, list):
-            base_value = base_value[1]
+        base_value = self._select_expected_value()
 
         # Build contributions list
         contributions = []
@@ -192,9 +208,7 @@ class SHAPExplainer:
         Returns mean absolute SHAP value for each feature.
         """
         shap_values = self.explainer.shap_values(data)
-
-        if isinstance(shap_values, list):
-            shap_values = shap_values[1]
+        shap_values = self._select_output(shap_values)
 
         importance = np.abs(shap_values).mean(axis=0)
 
@@ -210,9 +224,7 @@ class SHAPExplainer:
     ):
         """Generate SHAP summary plot."""
         shap_values = self.explainer.shap_values(data)
-
-        if isinstance(shap_values, list):
-            shap_values = shap_values[1]
+        shap_values = self._select_output(shap_values)
 
         plt.figure(figsize=(10, 8))
         shap.summary_plot(
@@ -372,7 +384,9 @@ class FeatureImportanceAnalyzer:
         if hasattr(self.model, 'feature_importances_'):
             importance = self.model.feature_importances_
         elif hasattr(self.model, 'coef_'):
-            importance = np.abs(self.model.coef_).flatten()
+            importance = np.abs(self.model.coef_)
+            if importance.ndim > 1:
+                importance = importance.mean(axis=0)
         else:
             raise ValueError("Model doesn't have intrinsic feature importance")
 
@@ -510,7 +524,7 @@ class PartialDependenceAnalyzer:
             kind='average'
         )
 
-        return result['values'][0], result['average'][0]
+        return result['grid_values'][0], result['average'][0]
 
     def compute_2d_pdp(
         self,
@@ -536,8 +550,8 @@ class PartialDependenceAnalyzer:
         )
 
         return (
-            result['values'][0],
-            result['values'][1],
+            result['grid_values'][0],
+            result['grid_values'][1],
             result['average'][0]
         )
 
@@ -577,7 +591,8 @@ class PartialDependenceAnalyzer:
         self,
         X: np.ndarray,
         feature1: str,
-        feature2: str
+        feature2: str,
+        grid_resolution: int = 25
     ) -> float:
         """
         Measure interaction strength between two features.
@@ -585,11 +600,17 @@ class PartialDependenceAnalyzer:
         Uses H-statistic: proportion of variance explained by interaction.
         """
         # Compute individual PDPs
-        vals1, pdp1 = self.compute_pdp(X, feature1)
-        vals2, pdp2 = self.compute_pdp(X, feature2)
+        vals1, pdp1 = self.compute_pdp(
+            X, feature1, grid_resolution=grid_resolution
+        )
+        vals2, pdp2 = self.compute_pdp(
+            X, feature2, grid_resolution=grid_resolution
+        )
 
         # Compute 2D PDP
-        _, _, pdp_2d = self.compute_2d_pdp(X, feature1, feature2)
+        _, _, pdp_2d = self.compute_2d_pdp(
+            X, feature1, feature2, grid_resolution=grid_resolution
+        )
 
         # Compute interaction effect
         # Interaction = PDP(x1,x2) - PDP(x1) - PDP(x2)
@@ -635,11 +656,10 @@ async def get_explanation(request: ExplanationRequest):
     """Get explanation for a prediction."""
     import numpy as np
 
-    # Convert features to array
-    feature_names = list(request.features.keys())
-    feature_values = np.array([request.features[f] for f in feature_names])
-
     if request.method == "shap":
+        feature_values = np.array([
+            request.features[f] for f in shap_explainer.feature_names
+        ])
         exp = shap_explainer.explain_prediction(feature_values, top_k=request.top_k)
 
         top_factors = [
@@ -663,6 +683,9 @@ async def get_explanation(request: ExplanationRequest):
         )
 
     elif request.method == "lime":
+        feature_values = np.array([
+            request.features[f] for f in lime_explainer.feature_names
+        ])
         exp = lime_explainer.explain(feature_values, num_features=request.top_k)
 
         top_factors = [
