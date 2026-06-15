@@ -86,19 +86,20 @@ fn main() {
 }
 ```
 
-### Capturing by Value (FnOnce)
+### Capturing by Value (move)
 
-Using the `move` keyword forces the closure to take ownership of captured variables.
+Using the `move` keyword forces the closure to capture values by copying or moving them into the closure. A `move` closure is only limited to `FnOnce` if it moves captured values out of its body when called.
 
 ```rust
 fn main() {
     let data = vec![1, 2, 3, 4, 5];
 
-    // move keyword transfers ownership to the closure
+    // move keyword transfers ownership of the vector to the closure
     let print_data = move || {
         println!("Data: {:?}", data);
     };
 
+    print_data();
     print_data();
 
     // This would error: data has been moved
@@ -109,7 +110,7 @@ fn main() {
 fn thread_example() {
     let message = String::from("Hello from thread");
 
-    // Threads require 'static lifetime, so we must move owned data
+    // thread::spawn requires a 'static closure, so move owned data into it
     let handle = std::thread::spawn(move || {
         println!("{}", message);
     });
@@ -120,12 +121,12 @@ fn thread_example() {
 
 ## The Fn Traits
 
-Rust has three traits that define how closures capture their environment:
+Rust has three traits that define how closures can be called based on how they use captured values:
 
 ```rust
-// FnOnce: Takes ownership, can only be called once
-// FnMut: Takes mutable reference, can be called multiple times
-// Fn: Takes immutable reference, can be called multiple times
+// FnOnce: Can be called at least once; calling consumes the closure
+// FnMut: Can be called multiple times with mutable access to the closure
+// Fn: Can be called multiple times with shared access to the closure
 
 fn call_once<F>(f: F)
 where
@@ -148,7 +149,7 @@ where
     F: Fn(),
 {
     f();
-    f(); // Can call multiple times, even concurrently
+    f(); // Can call multiple times
 }
 
 fn main() {
