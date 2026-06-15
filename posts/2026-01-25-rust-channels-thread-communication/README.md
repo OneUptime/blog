@@ -518,4 +518,4 @@ Key patterns:
 - Pipelines for staged data processing
 - Request-response for bidirectional communication
 
-Channels are the preferred way to share data between threads in Rust. They enforce ownership rules at compile time, preventing data races without runtime overhead.
+Channels are an idiomatic way to share data between threads in Rust. They work with Rust's ownership rules to prevent data races, while channel operations still use runtime synchronization.
