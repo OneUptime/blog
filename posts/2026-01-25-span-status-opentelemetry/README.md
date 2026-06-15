@@ -18,7 +18,7 @@ OpenTelemetry defines three status codes:
 
 | Code | Name | When to Use |
 |------|------|-------------|
-| 0 | UNSET | Default, let the system decide based on span data |
+| 0 | UNSET | Default, no error recorded |
 | 1 | OK | Operation completed successfully (explicit success) |
 | 2 | ERROR | Operation failed |
 
@@ -27,8 +27,8 @@ stateDiagram-v2
     [*] --> UNSET: Span created
     UNSET --> OK: Explicit success
     UNSET --> ERROR: Failure occurred
-    OK --> ERROR: Cannot transition
-    ERROR --> OK: Cannot transition
+    OK --> OK: Further status changes ignored
+    ERROR --> OK: Explicit success overrides error
 ```
 
 ## Basic Status Setting
@@ -107,9 +107,9 @@ async function fetchData(url) {
 
   try {
     const response = await fetch(url);
-    span.setAttribute('http.status_code', response.status);
+    span.setAttribute('http.response.status_code', response.status);
 
-    // Leave status UNSET - let the backend interpret based on http.status_code
+    // Leave status UNSET - let the backend interpret based on http.response.status_code
     // The observability backend can apply its own rules for what constitutes an error
 
     return response.json();
@@ -196,14 +196,14 @@ async function processPayment(payment) {
 
 ## HTTP Status Code Mapping
 
-For HTTP spans, map status codes appropriately:
+For HTTP server spans, map status codes appropriately:
 
 ```javascript
 // http-status-mapping.js
 const { SpanStatusCode } = require('@opentelemetry/api');
 
 function setHttpSpanStatus(span, httpStatusCode) {
-  span.setAttribute('http.status_code', httpStatusCode);
+  span.setAttribute('http.response.status_code', httpStatusCode);
 
   // Only set ERROR for 5xx server errors
   // 4xx are client errors, not server errors
@@ -226,14 +226,16 @@ function responseHandler(req, res, span) {
 }
 ```
 
-### Alternative: Treating 4xx as Errors
+For HTTP client spans, OpenTelemetry semantic conventions recommend setting `ERROR` for 4xx responses unless you have application context showing the response is expected.
+
+### Alternative: Treating 4xx Server Responses as Errors
 
 Some teams prefer treating 4xx as errors for their use case:
 
 ```javascript
 // strict-http-status.js
 function setStrictHttpStatus(span, httpStatusCode) {
-  span.setAttribute('http.status_code', httpStatusCode);
+  span.setAttribute('http.response.status_code', httpStatusCode);
 
   if (httpStatusCode >= 400) {
     span.setStatus({
@@ -257,7 +259,7 @@ tracer = trace.get_tracer("database")
 
 def execute_query(connection, query, params=None):
     with tracer.start_as_current_span("db.query") as span:
-        span.set_attribute("db.statement", sanitize_query(query))
+        span.set_attribute("db.query.text", sanitize_query(query))
 
         try:
             cursor = connection.cursor()
@@ -297,7 +299,7 @@ async function publishMessage(queue, message) {
   const span = tracer.startSpan('publish-message', {
     attributes: {
       'messaging.system': 'rabbitmq',
-      'messaging.destination': queue
+      'messaging.destination.name': queue
     }
   });
 
@@ -317,11 +319,11 @@ async function publishMessage(queue, message) {
   }
 }
 
-async function consumeMessage(queue, handler) {
+async function consumeMessage(queue, message, handler) {
   const span = tracer.startSpan('consume-message', {
     attributes: {
       'messaging.system': 'rabbitmq',
-      'messaging.destination': queue
+      'messaging.destination.name': queue
     }
   });
 
@@ -403,7 +405,7 @@ Understanding the difference:
 | Contains stack trace | No | Yes |
 | Visible in span list | Yes (status indicator) | Yes (event) |
 
-Always use both together for complete error information:
+When an exception caused the error, use both together for complete error information:
 
 ```javascript
 // complete-error-handling.js
@@ -429,11 +431,11 @@ try {
 
 ## Best Practices Summary
 
-1. **Always set ERROR on exceptions**: Do not leave failed operations with UNSET status.
+1. **Set ERROR on exceptions that make the operation fail**: Do not leave failed operations with UNSET status.
 
 2. **Include meaningful messages**: The status message should help identify the issue.
 
-3. **Be consistent with HTTP mapping**: Most teams treat 5xx as errors, 4xx as client errors (not server errors).
+3. **Be consistent with HTTP mapping**: OpenTelemetry leaves 4xx server spans unset by default and recommends `ERROR` for 4xx client spans unless application context says otherwise.
 
 4. **Record exceptions alongside ERROR status**: Status marks failure, exception provides details.
 
@@ -445,6 +447,6 @@ try {
 
 ## Summary
 
-Span status is a simple concept with nuanced application. UNSET lets the system decide, OK explicitly marks success, and ERROR marks failure. For HTTP operations, typically only 5xx responses warrant ERROR status. Always combine `setStatus(ERROR)` with `recordException()` for complete error information.
+Span status is a simple concept with nuanced application. UNSET means no error has been recorded, OK explicitly marks success, and ERROR marks failure. For HTTP server spans, typically only 5xx responses warrant ERROR status. When an exception caused the error, combine `setStatus(ERROR)` with `recordException()` for complete error information.
 
 Consistent status setting enables accurate error rate metrics, effective alerting, and faster debugging when issues occur.
