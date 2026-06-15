@@ -180,7 +180,7 @@ impl ContentRouter {
 
 ## Creating Handlers
 
-Handlers implement the `MessageHandler` trait. Here are two example handlers - one that logs messages and another that forwards them to an HTTP endpoint:
+Handlers implement the `MessageHandler` trait. Here is an example handler that logs messages:
 
 ```rust
 use std::sync::atomic::{AtomicUsize, Ordering};
