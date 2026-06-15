@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Boot, OAuth2, CORS, Security
 
-Description: A practical guide to securing your Spring Boot REST APIs using OAuth2 for authentication and properly configuring CORS for cross-origin requests.
+Description: A practical guide to securing your Spring Boot REST APIs using OAuth2 bearer tokens and properly configuring CORS for cross-origin requests.
 
 ---
 
-If you're building REST APIs with Spring Boot, security should be at the top of your priority list. Two of the most common security concerns are authentication (who is making the request?) and cross-origin resource sharing (where is the request coming from?). In this post, I'll walk you through implementing OAuth2 and CORS in a Spring Boot application with practical code examples.
+If you're building REST APIs with Spring Boot, security should be at the top of your priority list. Two of the most common security concerns are token-based access control (who is allowed to make the request?) and cross-origin resource sharing (where is the request coming from?). In this post, I'll walk you through implementing OAuth2 bearer token validation and CORS in a Spring Boot application with practical code examples.
 
 ## Why OAuth2 and CORS Matter
 
-OAuth2 has become the standard for API authentication. Rather than passing usernames and passwords with every request, clients obtain tokens that represent their authorization to access specific resources. This approach is more secure and more flexible than basic authentication.
+OAuth2 has become the standard framework for API authorization. Rather than passing usernames and passwords with every request, clients obtain tokens that represent their authorization to access specific resources. This approach is more secure and more flexible than basic authentication.
 
-CORS, on the other hand, is a browser security feature that blocks web pages from making requests to domains different from the one that served the page. While this protects users from malicious scripts, it also blocks legitimate requests from your frontend to your API if they're hosted on different domains. Proper CORS configuration lets you whitelist trusted origins.
+CORS, on the other hand, is a browser security feature that controls whether web pages can read responses from domains different from the one that served the page. While this protects users from malicious scripts, it also blocks legitimate frontend access to your API if they're hosted on different domains. Proper CORS configuration lets you whitelist trusted origins.
 
 ## Setting Up the Project
 
@@ -38,6 +38,18 @@ First, add the required dependencies to your `pom.xml`:
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+
+    <!-- Testing support -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.security</groupId>
+        <artifactId>spring-security-test</artifactId>
+        <scope>test</scope>
     </dependency>
 </dependencies>
 ```
@@ -231,6 +243,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
@@ -278,6 +292,18 @@ Browsers send OPTIONS requests (preflight) before actual requests to check if th
 Here's a simple test to verify your security setup works:
 
 ```java
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.web.servlet.MockMvc;
+
 @SpringBootTest
 @AutoConfigureMockMvc
 class SecurityConfigTest {
@@ -298,9 +324,8 @@ class SecurityConfigTest {
     }
 
     @Test
-    @WithMockUser
     void protectedEndpointShouldWorkWithAuth() throws Exception {
-        mockMvc.perform(get("/api/users/me"))
+        mockMvc.perform(get("/api/users/me").with(jwt()))
             .andExpect(status().isOk());
     }
 
