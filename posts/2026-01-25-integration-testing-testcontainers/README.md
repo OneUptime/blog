@@ -34,23 +34,31 @@ First, add Testcontainers to your project. Here is a Maven configuration for Jav
     <dependency>
         <groupId>org.testcontainers</groupId>
         <artifactId>testcontainers</artifactId>
-        <version>1.19.3</version>
+        <version>2.0.5</version>
         <scope>test</scope>
     </dependency>
 
     <!-- PostgreSQL module for database testing -->
     <dependency>
         <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-postgresql</artifactId>
+        <version>2.0.5</version>
+        <scope>test</scope>
+    </dependency>
+
+    <!-- PostgreSQL JDBC driver for DriverManager connections -->
+    <dependency>
+        <groupId>org.postgresql</groupId>
         <artifactId>postgresql</artifactId>
-        <version>1.19.3</version>
+        <version>42.7.11</version>
         <scope>test</scope>
     </dependency>
 
     <!-- JUnit 5 integration -->
     <dependency>
         <groupId>org.testcontainers</groupId>
-        <artifactId>junit-jupiter</artifactId>
-        <version>1.19.3</version>
+        <artifactId>testcontainers-junit-jupiter</artifactId>
+        <version>2.0.5</version>
         <scope>test</scope>
     </dependency>
 </dependencies>
@@ -59,7 +67,7 @@ First, add Testcontainers to your project. Here is a Maven configuration for Jav
 For Node.js projects:
 
 ```bash
-npm install --save-dev testcontainers
+npm install --save-dev @testcontainers/postgresql pg @types/pg
 ```
 
 ## PostgreSQL Integration Test
@@ -284,27 +292,37 @@ class OrderServiceIntegrationTest {
 For complex setups with multiple interdependent services, use Docker Compose:
 
 ```java
-import org.testcontainers.containers.DockerComposeContainer;
+import org.junit.jupiter.api.Test;
+import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
+import java.io.File;
+
+@Testcontainers
 class FullStackIntegrationTest {
 
     // Load entire stack from docker-compose file
     @Container
-    static DockerComposeContainer<?> environment =
-            new DockerComposeContainer<>(new File("src/test/resources/docker-compose-test.yml"))
-                    .withExposedService("postgres", 5432,
+    static ComposeContainer environment =
+            new ComposeContainer(
+                    DockerImageName.parse("docker:25.0.5"),
+                    new File("src/test/resources/docker-compose-test.yml")
+            )
+                    .withExposedService("postgres-1", 5432,
                             Wait.forListeningPort())
-                    .withExposedService("redis", 6379,
+                    .withExposedService("redis-1", 6379,
                             Wait.forListeningPort())
-                    .withExposedService("kafka", 9092,
+                    .withExposedService("kafka-1", 9092,
                             Wait.forListeningPort());
 
     @Test
     void shouldProcessOrderEndToEnd() {
         // Get service hosts and ports
-        String postgresHost = environment.getServiceHost("postgres", 5432);
-        int postgresPort = environment.getServicePort("postgres", 5432);
+        String postgresHost = environment.getServiceHost("postgres-1", 5432);
+        int postgresPort = environment.getServicePort("postgres-1", 5432);
 
         // Run full end-to-end test
         // ...
