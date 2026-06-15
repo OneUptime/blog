@@ -53,6 +53,7 @@ myapp/
     └── production/
         ├── kustomization.yaml
         ├── replica-patch.yaml
+        ├── resources-patch.yaml
         ├── ingress.yaml
         └── hpa.yaml
 ```
@@ -152,8 +153,10 @@ resources:
   - ../../base
 
 # Add common labels
-commonLabels:
-  environment: development
+labels:
+  - pairs:
+      environment: development
+    includeSelectors: true
 
 # Patch the deployment
 patches:
@@ -189,8 +192,10 @@ resources:
   - ingress.yaml
   - hpa.yaml
 
-commonLabels:
-  environment: production
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: true
 
 patches:
   - path: replica-patch.yaml
@@ -313,7 +318,7 @@ spec:
 
 ### Version Selection
 
-ArgoCD bundles Kustomize, but you can specify a version:
+ArgoCD bundles Kustomize, but you can specify a configured version:
 
 ```yaml
 spec:
@@ -415,8 +420,9 @@ patches:
       kind: Deployment
     patch: |
       - op: add
-        path: /metadata/annotations/last-applied
-        value: "2026-01-25"
+        path: /metadata/annotations
+        value:
+          last-applied: "2026-01-25"
 ```
 
 ## Components
@@ -433,11 +439,10 @@ patches:
       kind: Deployment
     patch: |
       - op: add
-        path: /spec/template/metadata/annotations/prometheus.io~1scrape
-        value: "true"
-      - op: add
-        path: /spec/template/metadata/annotations/prometheus.io~1port
-        value: "8080"
+        path: /spec/template/metadata/annotations
+        value:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8080"
 ```
 
 Use in overlays:
@@ -488,6 +493,8 @@ metadata:
   name: myapp
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
@@ -499,16 +506,16 @@ spec:
             cluster: https://prod.example.com
   template:
     metadata:
-      name: 'myapp-{{env}}'
+      name: 'myapp-{{.env}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/myapp.git
         targetRevision: HEAD
-        path: 'overlays/{{env}}'
+        path: 'overlays/{{.env}}'
       destination:
-        server: '{{cluster}}'
-        namespace: '{{env}}'
+        server: '{{.cluster}}'
+        namespace: '{{.env}}'
       syncPolicy:
         automated:
           prune: true
