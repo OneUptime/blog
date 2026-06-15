@@ -96,11 +96,19 @@ pub enum MetricType {
     Set,
 }
 
+// StatsD sets can contain arbitrary string values, while the other metric
+// types use numeric values.
+#[derive(Debug, Clone)]
+pub enum MetricValue {
+    Number(f64),
+    Text(String),
+}
+
 // Parsed metric with all components extracted
 #[derive(Debug, Clone)]
 pub struct Metric {
     pub name: String,
-    pub value: f64,
+    pub value: MetricValue,
     pub metric_type: MetricType,
     pub sample_rate: f64,
     pub tags: HashMap<String, String>,
@@ -124,9 +132,6 @@ impl Metric {
             return None;
         }
 
-        // Parse the numeric value
-        let value: f64 = parts[0].parse().ok()?;
-
         // Parse metric type from the type indicator
         let metric_type = match parts[1] {
             "c" => MetricType::Counter,
@@ -137,6 +142,12 @@ impl Metric {
             _ => return None,
         };
 
+        // Parse the value. Set values are strings; the other types are numeric.
+        let value = match metric_type {
+            MetricType::Set => MetricValue::Text(parts[0].to_string()),
+            _ => MetricValue::Number(parts[0].parse().ok()?),
+        };
+
         // Default sample rate is 1.0 (100% of samples)
         let mut sample_rate = 1.0;
         let mut tags = HashMap::new();
@@ -145,7 +156,11 @@ impl Metric {
         for part in parts.iter().skip(2) {
             if let Some(rate) = part.strip_prefix('@') {
                 // Sample rate like @0.5 means 50% sampling
-                sample_rate = rate.parse().unwrap_or(1.0);
+                sample_rate = rate
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|rate| *rate > 0.0 && *rate <= 1.0)
+                    .unwrap_or(1.0);
             } else if let Some(tag_str) = part.strip_prefix('#') {
                 // Tags formatted as key:value,key:value
                 for tag in tag_str.split(',') {
@@ -235,7 +250,7 @@ Raw metrics need aggregation before flushing. Counters sum up, gauges take the l
 // src/aggregator.rs
 use dashmap::DashMap;
 use std::sync::Arc;
-use crate::metric::{Metric, MetricType};
+use crate::metric::{Metric, MetricType, MetricValue};
 
 // Thread-safe aggregator using DashMap for lock-free concurrent access
 pub struct Aggregator {
@@ -261,12 +276,15 @@ impl Aggregator {
 
     // Record a metric into the appropriate aggregation bucket
     pub fn record(&self, metric: Metric) {
-        // Adjust value based on sample rate
-        // If sample_rate is 0.1, multiply by 10 to estimate true count
-        let adjusted_value = metric.value / metric.sample_rate;
-
         match metric.metric_type {
             MetricType::Counter => {
+                let MetricValue::Number(value) = metric.value else {
+                    return;
+                };
+                // Adjust value based on sample rate
+                // If sample_rate is 0.1, multiply by 10 to estimate true count
+                let adjusted_value = value / metric.sample_rate;
+
                 // Counters add to existing value
                 self.counters
                     .entry(metric.name)
@@ -274,19 +292,27 @@ impl Aggregator {
                     .or_insert(adjusted_value);
             }
             MetricType::Gauge => {
+                let MetricValue::Number(value) = metric.value else {
+                    return;
+                };
                 // Gauges replace the current value
-                self.gauges.insert(metric.name, metric.value);
+                self.gauges.insert(metric.name, value);
             }
             MetricType::Timer | MetricType::Histogram => {
+                let MetricValue::Number(value) = metric.value else {
+                    return;
+                };
                 // Timers collect all values for later analysis
                 self.timers
                     .entry(metric.name)
-                    .and_modify(|v| v.push(metric.value))
-                    .or_insert_with(|| vec![metric.value]);
+                    .and_modify(|v| v.push(value))
+                    .or_insert_with(|| vec![value]);
             }
             MetricType::Set => {
                 // Sets track unique string values
-                let value_str = metric.value.to_string();
+                let MetricValue::Text(value_str) = metric.value else {
+                    return;
+                };
                 self.sets
                     .entry(metric.name)
                     .and_modify(|s| { s.insert(value_str.clone()); })
