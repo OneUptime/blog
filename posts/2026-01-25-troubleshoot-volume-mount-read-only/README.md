@@ -47,8 +47,8 @@ kubectl describe pod myapp-pod -n production
 # Look for:
 # Warning  FailedMount  kubelet  MountVolume.SetUp failed: mount failed: exit status 32
 
-# Check dmesg on the node
-kubectl debug node/<node-name> -it --image=busybox -- dmesg | grep -i "read-only\|ext4\|xfs"
+# Check kernel logs on the node
+kubectl debug node/<node-name> -it --image=busybox --profile=sysadmin -- chroot /host dmesg | grep -Ei "read-only|ext4|xfs"
 ```
 
 ### Solution
@@ -101,7 +101,7 @@ kubectl exec myapp-pod -n production -- id
 
 ### Solution: Set FSGroup
 
-The fsGroup setting ensures the volume is writable by the pod's group:
+The fsGroup setting can make supported volumes writable by the pod's group:
 
 ```yaml
 apiVersion: v1
@@ -184,9 +184,9 @@ volumeMounts:
     readOnly: false  # Or omit this line entirely
 ```
 
-## Cause 4: PVC Access Mode
+## Cause 4: PVC Access Mode Mismatch
 
-The PersistentVolumeClaim might have ReadOnlyMany access mode.
+The PersistentVolumeClaim might request an access mode that does not match how the workload needs to use the volume. Access modes are used to match PVCs with PVs and, for `ReadWriteOncePod`, to constrain where a volume can be mounted. They do not enforce write protection after the storage is mounted, so `ReadOnlyMany` alone is not a reliable explanation for an in-pod read-only filesystem.
 
 ### Diagnosis
 
@@ -196,7 +196,7 @@ kubectl get pvc myapp-data -n production -o yaml | grep accessModes
 
 ### Solution
 
-Use ReadWriteOnce or ReadWriteMany:
+Use an access mode that matches the workload:
 
 ```yaml
 apiVersion: v1
@@ -206,18 +206,18 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce  # Single node read-write
-    # Or
-    - ReadWriteMany  # Multi-node read-write (requires compatible storage)
+    # Use ReadWriteMany instead for multi-node read-write storage.
+    # Use ReadWriteOncePod instead for CSI volumes that must be mounted by only one pod.
   resources:
     requests:
       storage: 10Gi
 ```
 
-Note: Changing access mode requires recreating the PVC (and possibly losing data).
+Note: Changing a PVC access mode usually requires recreating the PVC, and you must plan data migration or retention carefully.
 
 ## Cause 5: Volume Already Mounted
 
-Some storage types only allow single attachment. If another pod has it mounted, yours gets read-only.
+Some storage types only allow single-node attachment. If another pod on a different node has the volume attached, the new pod usually fails to attach or mount the volume instead of receiving a read-only mount.
 
 ### Diagnosis
 
@@ -231,7 +231,7 @@ kubectl get pv <pv-name> -o yaml | grep -A 5 status
 
 ### Solution
 
-Ensure only one pod uses the volume at a time, or use ReadWriteMany storage:
+Ensure only one node uses single-attach storage at a time, use `ReadWriteOncePod` when you need single-pod enforcement, or use ReadWriteMany storage:
 
 ```yaml
 # Use ReadWriteMany with NFS, CephFS, or similar
@@ -272,13 +272,14 @@ kubectl describe volumeattachment <attachment-name>
 # Restart CSI driver
 kubectl rollout restart daemonset <csi-driver> -n kube-system
 
-# Or delete and recreate the volume attachment
+# If an attachment is stale after a node or driver failure, investigate first,
+# then delete it only when you are sure the volume is no longer attached
 kubectl delete volumeattachment <attachment-name>
 ```
 
 ## Cause 7: Node Disk Pressure
 
-The node might be under disk pressure, causing mounts to go read-only.
+The node might be under disk pressure. Kubernetes responds to disk pressure by reclaiming node resources and evicting pods; disk pressure does not normally remount persistent volumes read-only, but it can cause write failures that are easy to confuse with volume problems.
 
 ### Diagnosis
 
@@ -294,7 +295,7 @@ kubectl describe node <node-name> | grep -A 5 Conditions
 
 ```bash
 # Clean up disk space on the node
-# Remove unused images
+# Remove unused images if your runtime and crictl version support safe pruning
 crictl rmi --prune
 
 # Check for large files
@@ -328,7 +329,8 @@ echo -e "\n=== Security Context ==="
 kubectl get pod $POD -n $NAMESPACE -o jsonpath='{.spec.securityContext}' | jq .
 
 echo -e "\n=== PVC Details ==="
-PVC=$(kubectl get pod $POD -n $NAMESPACE -o jsonpath='{.spec.volumes[0].persistentVolumeClaim.claimName}')
+VOLUME_NAME=$(kubectl get pod $POD -n $NAMESPACE -o json | jq -r --arg path "$MOUNT_PATH" '.spec.containers[].volumeMounts[]? | select(.mountPath == $path) | .name' | head -1)
+PVC=$(kubectl get pod $POD -n $NAMESPACE -o json | jq -r --arg volume "$VOLUME_NAME" '.spec.volumes[]? | select(.name == $volume) | .persistentVolumeClaim.claimName // empty')
 if [ -n "$PVC" ]; then
     kubectl get pvc $PVC -n $NAMESPACE
     echo ""
@@ -371,9 +373,9 @@ kubectl delete pod volume-test
 
 ## Best Practices
 
-1. **Always set fsGroup** when running as non-root
+1. **Set fsGroup for supported writable volumes** when running as non-root
 2. **Check accessModes** match your use case
-3. **Monitor node disk pressure** to prevent filesystem issues
+3. **Monitor node disk pressure** to prevent evictions and storage-related write failures
 4. **Use init containers** to fix permissions at startup
 5. **Test write access** before deploying stateful applications
 
@@ -389,4 +391,4 @@ securityContext:
 
 ---
 
-Read-only volume issues are usually caused by filesystem errors, security contexts, or incorrect access modes. Start by checking the mount options inside the pod, then work through the possible causes systematically. Most issues are fixed by setting the correct fsGroup or fixing the underlying filesystem.
+Read-only volume issues are usually caused by filesystem errors, security contexts, explicit read-only settings, or storage driver problems. Start by checking the mount options inside the pod, then work through the possible causes systematically. Many issues are fixed by setting the correct fsGroup for supported volumes or fixing the underlying filesystem.
