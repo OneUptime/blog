@@ -55,8 +55,6 @@ CMD ["node", "server.js"]
 ### Labels in Docker Compose
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapp/api:latest
@@ -101,8 +99,6 @@ docker rm $(docker ps -aq --filter "label=disposable=true")
 Traefik reads labels to automatically configure routing. This eliminates manual proxy configuration.
 
 ```yaml
-version: '3.8'
-
 services:
   traefik:
     image: traefik:v3.0
@@ -174,6 +170,7 @@ services:
     image: prom/prometheus:latest
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 ```
 
 ```yaml
@@ -188,9 +185,16 @@ scrape_configs:
         action: keep
         regex: true
 
-      # Use prometheus.io/port label for the target port
-      - source_labels: [__meta_docker_container_label_prometheus_io_port]
+      # Use the container network IP and prometheus.io/port label for the target address
+      - source_labels: [__meta_docker_network_ip, __meta_docker_container_label_prometheus_io_port]
+        separator: ':'
         target_label: __address__
+        regex: (.+):(.+)
+        replacement: ${1}:${2}
+
+      # Use prometheus.io/path label for the metrics path
+      - source_labels: [__meta_docker_container_label_prometheus_io_path]
+        target_label: __metrics_path__
         regex: (.+)
         replacement: ${1}
 ```
