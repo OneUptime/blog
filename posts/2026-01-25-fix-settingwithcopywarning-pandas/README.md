@@ -8,11 +8,11 @@ Description: Understand why SettingWithCopyWarning occurs in pandas and learn ho
 
 ---
 
-The `SettingWithCopyWarning` is one of the most common warnings pandas users encounter. It appears when you try to modify a DataFrame that might be a view of another DataFrame, leading to potentially unexpected behavior. This guide explains why it happens and how to fix it properly.
+The `SettingWithCopyWarning` is one of the most common warnings pandas 2.x users encounter. It appears when you try to modify a DataFrame that might be a view of another DataFrame, leading to potentially unexpected behavior. In pandas 3.0 and later, Copy-on-Write is the default behavior and `SettingWithCopyWarning` is removed, but the same `.loc` and `.copy()` patterns are still the right way to write predictable code. This guide explains why it happens and how to fix it properly.
 
 ## What Triggers the Warning
 
-The warning appears when pandas cannot determine whether you are modifying a copy or the original DataFrame.
+In pandas 2.x, the warning appears when pandas cannot determine whether you are modifying a copy or the original DataFrame.
 
 ```python
 import pandas as pd
@@ -264,7 +264,7 @@ pd.options.mode.chained_assignment = 'warn'  # Default
 
 ### Raising an Error Instead
 
-For stricter code, have pandas raise an exception instead of a warning.
+In pandas 2.x, have pandas raise an exception instead of a warning for stricter code.
 
 ```python
 import pandas as pd
@@ -292,14 +292,15 @@ with pd.option_context('mode.chained_assignment', None):
     pass
 ```
 
-## The Copy-on-Write Future
+## Copy-on-Write in Newer Pandas
 
-Pandas 2.0+ introduced Copy-on-Write (CoW) mode, which will become the default in future versions. This eliminates many of these issues.
+Pandas first introduced Copy-on-Write (CoW) mode in version 1.5.0, expanded support in pandas 2.x, and made it the default in pandas 3.0. This eliminates many of these issues.
 
 ```python
 import pandas as pd
 
-# Enable Copy-on-Write mode
+# Enable Copy-on-Write mode in pandas 2.x
+# In pandas 3.0+, this is already the default behavior
 pd.options.mode.copy_on_write = True
 
 df = pd.DataFrame({'A': [1, 2, 3]})
