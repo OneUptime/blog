@@ -27,11 +27,9 @@ cAdvisor (Container Advisor) provides container users with an understanding of r
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:latest
     container_name: cadvisor
     privileged: true
     ports:
@@ -58,6 +56,8 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+    extra_hosts:
+      - "host.docker.internal=host-gateway"
     restart: unless-stopped
     depends_on:
       - cadvisor
@@ -111,10 +111,8 @@ scrape_configs:
 Docker Engine can expose its own metrics. Enable this in the Docker daemon configuration.
 
 ```json
-// /etc/docker/daemon.json
 {
-  "metrics-addr": "0.0.0.0:9323",
-  "experimental": true
+  "metrics-addr": "0.0.0.0:9323"
 }
 ```
 
@@ -131,7 +129,7 @@ Add Docker Engine to Prometheus:
 scrape_configs:
   - job_name: 'docker'
     static_configs:
-      - targets: ['localhost:9323']
+      - targets: ['host.docker.internal:9323']
 ```
 
 ## Key Container Metrics
@@ -139,7 +137,7 @@ scrape_configs:
 ### CPU Metrics
 
 ```promql
-# CPU usage per container (percentage of total CPU)
+# CPU usage per container (percentage of one CPU core)
 sum(rate(container_cpu_usage_seconds_total{name!=""}[5m])) by (name) * 100
 
 # CPU usage by container (cores)
@@ -308,7 +306,7 @@ groups:
       # Container restart loop
       - alert: ContainerRestartLoop
         expr: |
-          increase(container_start_time_seconds{name!=""}[1h]) > 5
+          changes(container_start_time_seconds{name!=""}[1h]) > 5
         labels:
           severity: warning
         annotations:
