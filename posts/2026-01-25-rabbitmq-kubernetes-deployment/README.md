@@ -95,11 +95,8 @@ spec:
       disk_free_limit.absolute = 2GB
       collect_statistics_interval = 10000
 
-  # Enable management plugin
-  rabbitmq:
+    # Additional plugins
     additionalPlugins:
-      - rabbitmq_management
-      - rabbitmq_prometheus
       - rabbitmq_shovel
       - rabbitmq_shovel_management
 
@@ -206,7 +203,7 @@ extraConfiguration: |
 Install with values file:
 
 ```bash
-helm install rabbitmq bitnami/rabbitmq -f values.yaml -n messaging
+helm install rabbitmq bitnami/rabbitmq -f values.yaml -n messaging --create-namespace
 ```
 
 ## Method 3: Manual StatefulSet
@@ -232,14 +229,10 @@ data:
 
   rabbitmq.conf: |
     cluster_formation.peer_discovery_backend = k8s
-    cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
-    cluster_formation.k8s.address_type = hostname
-    cluster_formation.k8s.service_name = rabbitmq-headless
-    cluster_formation.k8s.hostname_suffix = .rabbitmq-headless.messaging.svc.cluster.local
     cluster_formation.node_cleanup.interval = 30
     cluster_formation.node_cleanup.only_log_warning = true
     cluster_partition_handling = pause_minority
-    queue_master_locator = min-masters
+    queue_leader_locator = balanced
     vm_memory_high_watermark.relative = 0.7
     disk_free_limit.absolute = 2GB
 
@@ -294,6 +287,8 @@ kind: Service
 metadata:
   name: rabbitmq-headless
   namespace: messaging
+  labels:
+    app: rabbitmq
 spec:
   clusterIP: None
   selector:
@@ -303,6 +298,8 @@ spec:
       port: 5672
     - name: management
       port: 15672
+    - name: prometheus
+      port: 15692
     - name: epmd
       port: 4369
     - name: clustering
@@ -313,6 +310,8 @@ kind: Service
 metadata:
   name: rabbitmq
   namespace: messaging
+  labels:
+    app: rabbitmq
 spec:
   type: LoadBalancer
   selector:
@@ -322,6 +321,8 @@ spec:
       port: 5672
     - name: management
       port: 15672
+    - name: prometheus
+      port: 15692
 
 ---
 # statefulset.yaml
@@ -354,12 +355,14 @@ spec:
 
       containers:
         - name: rabbitmq
-          image: rabbitmq:3.12-management
+          image: rabbitmq:4-management
           ports:
             - containerPort: 5672
               name: amqp
             - containerPort: 15672
               name: management
+            - containerPort: 15692
+              name: prometheus
             - containerPort: 4369
               name: epmd
             - containerPort: 25672
@@ -385,10 +388,12 @@ spec:
               value: rabbitmq-headless
             - name: K8S_HOSTNAME_SUFFIX
               value: .rabbitmq-headless.messaging.svc.cluster.local
-            - name: RABBITMQ_NODENAME
+            - name: MY_POD_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: RABBITMQ_NODENAME
+              value: rabbit@$(MY_POD_NAME).rabbitmq-headless.messaging.svc.cluster.local
             - name: RABBITMQ_USE_LONGNAME
               value: "true"
 
@@ -463,7 +468,7 @@ connection = pika.BlockingConnection(
     pika.ConnectionParameters(
         host='rabbitmq.messaging.svc.cluster.local',
         port=5672,
-        credentials=pika.PlainCredentials('admin', 'password')
+        credentials=pika.PlainCredentials('admin', 'changeme123')
     )
 )
 ```
