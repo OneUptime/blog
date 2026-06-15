@@ -8,7 +8,7 @@ Description: Learn how to set up primary-replica streaming replication in Postgr
 
 ---
 
-> Database downtime is expensive. A single primary database is a single point of failure. PostgreSQL streaming replication creates real-time copies of your database on standby servers, enabling automatic failover and read scaling. This guide walks you through setting up and managing a replicated PostgreSQL cluster.
+> Database downtime is expensive. A single primary database is a single point of failure. PostgreSQL streaming replication creates real-time copies of your database on standby servers, enabling managed failover and read scaling. This guide walks you through setting up and managing a replicated PostgreSQL cluster.
 
 ---
 
@@ -39,7 +39,7 @@ On the primary server, enable replication settings:
 ```bash
 # /etc/postgresql/15/main/postgresql.conf
 
-# Enable WAL archiving and replication
+# Configure WAL retention and replication
 
 wal_level = replica                    # Required for replication
 max_wal_senders = 5                    # Max number of replicas
@@ -75,8 +75,7 @@ host    replication     replicator      replica2.example.com   scram-sha-256
 -- Connect to primary as superuser
 CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'secure_password_here';
 
--- Grant necessary permissions
-GRANT pg_read_all_data TO replicator;  -- For pg_basebackup
+-- REPLICATION plus LOGIN is sufficient for pg_basebackup
 ```
 
 ### Step 4: Create Replication Slots
@@ -122,11 +121,18 @@ sudo -u postgres pg_basebackup \
     -h primary.example.com \
     -U replicator \
     -D /var/lib/postgresql/15/main \
-    -Fp \                              # Plain format
-    -Xs \                              # Stream WAL during backup
-    -P \                               # Show progress
-    -R \                               # Create standby.signal and connection info
-    -S replica1_slot                   # Use replication slot
+    -Fp \
+    -Xs \
+    -P \
+    -R \
+    -S replica1_slot
+
+# Options:
+# -Fp = Plain format
+# -Xs = Stream WAL during backup
+# -P  = Show progress
+# -R  = Create standby.signal and connection info
+# -S  = Use replication slot
 
 # This creates:
 # - Full copy of the database
@@ -293,6 +299,7 @@ sudo -u postgres pg_basebackup \
     -U replicator \
     -D /var/lib/postgresql/15/main \
     -Fp -Xs -P -R \
+    -C \
     -S old_primary_slot
 
 sudo systemctl start postgresql
@@ -302,7 +309,7 @@ sudo systemctl start postgresql
 
 ## Synchronous Replication
 
-For zero data loss, configure synchronous replication:
+To avoid losing acknowledged commits during failover, configure synchronous replication:
 
 ```bash
 # On primary - postgresql.conf
@@ -311,8 +318,10 @@ synchronous_standby_names = 'FIRST 1 (replica1, replica2)'
 # FIRST 1 = wait for at least 1 replica to confirm
 ```
 
+The names in `synchronous_standby_names` must match each standby's `application_name` in `primary_conninfo`, such as `application_name=replica1`.
+
 Trade-offs:
-- Pro: Zero data loss on failover
+- Pro: A commit is not acknowledged until the selected synchronous standby confirms it
 - Con: Write latency increases (must wait for replica confirmation)
 - Con: If all sync replicas fail, writes block
 
@@ -428,7 +437,7 @@ class ReadWritePool:
     def get_read_connection(self):
         """Get connection to random replica for reads"""
         replica_pool = random.choice(self.replica_pools)
-        return replica_pool.getconn()
+        return replica_pool, replica_pool.getconn()
 
     def execute_write(self, query, params=None):
         conn = self.get_write_connection()
@@ -440,19 +449,13 @@ class ReadWritePool:
             self.primary_pool.putconn(conn)
 
     def execute_read(self, query, params=None):
-        conn = self.get_read_connection()
+        replica_pool, conn = self.get_read_connection()
         try:
             with conn.cursor() as cur:
                 cur.execute(query, params)
                 return cur.fetchall()
         finally:
-            # Return to appropriate pool
-            for rp in self.replica_pools:
-                try:
-                    rp.putconn(conn)
-                    break
-                except:
-                    pass
+            replica_pool.putconn(conn)
 ```
 
 ---
