@@ -16,7 +16,7 @@ The `subprocess` module replaced older functions like `os.system()` and `os.pope
 
 ## Basic Command Execution with run()
 
-The `subprocess.run()` function is the recommended way to run commands in Python 3.5+.
+The `subprocess.run()` function is the recommended way to run commands in Python 3.5+. The `capture_output` and `text` arguments shown below require Python 3.7+.
 
 ```python
 import subprocess
@@ -432,7 +432,7 @@ def docker_exec(container, command):
 |--------|----------|-------|
 | `subprocess.run()` | Simple commands | Recommended for most cases |
 | `subprocess.Popen()` | Complex I/O, streaming | More control, more complex |
-| `os.system()` | Never | Deprecated, insecure |
+| `os.system()` | Avoid in new code | Older API; subprocess is recommended |
 | `os.popen()` | Never | Deprecated, use subprocess |
 
 ## Summary
