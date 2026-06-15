@@ -20,7 +20,7 @@ SonarQube scans code for:
 - **Code smells**: Maintainability issues, complexity, duplication
 - **Technical debt**: Estimated time to fix all issues
 
-It supports 30+ languages including Java, JavaScript, TypeScript, Python, Go, C#, and more.
+Language support depends on the SonarQube edition. SonarQube Server supports 30+ languages including Java, JavaScript, TypeScript, Python, Go, C#, and more.
 
 ## Architecture Overview
 
@@ -48,7 +48,7 @@ version: "3.8"
 
 services:
   sonarqube:
-    image: sonarqube:10-community
+    image: sonarqube:community
     container_name: sonarqube
     depends_on:
       - postgres
@@ -86,7 +86,7 @@ Start SonarQube:
 # Increase vm.max_map_count (required by Elasticsearch)
 sudo sysctl -w vm.max_map_count=524288
 
-docker-compose up -d
+docker compose up -d
 ```
 
 Access the dashboard at http://localhost:9000 (default credentials: admin/admin).
@@ -98,19 +98,19 @@ Access the dashboard at http://localhost:9000 (default credentials: admin/admin)
 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
 helm repo update
 
-# Install SonarQube
-helm install sonarqube sonarqube/sonarqube \
+# Install SonarQube Community Build
+helm upgrade --install sonarqube sonarqube/sonarqube \
   --namespace sonarqube \
   --create-namespace \
+  --set community.enabled=true \
   --set persistence.enabled=true \
-  --set postgresql.enabled=true \
   --set service.type=ClusterIP
 ```
 
 ## Configuring Your First Project
 
 1. Log into SonarQube and create a new project
-2. Generate a project token (Settings > Security > Generate Token)
+2. Generate a project token from your account's Security page
 3. Choose your analysis method (CI-based or local)
 
 ## Running the SonarScanner
@@ -124,9 +124,9 @@ Install the SonarScanner CLI:
 brew install sonar-scanner
 
 # Linux
-wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
-unzip sonar-scanner-cli-5.0.1.3006-linux.zip
-export PATH=$PATH:$PWD/sonar-scanner-5.0.1.3006-linux/bin
+wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-8.0.1.6346-linux-x64.zip
+unzip sonar-scanner-cli-8.0.1.6346-linux-x64.zip
+export PATH=$PATH:$PWD/sonar-scanner-8.0.1.6346-linux-x64/bin
 ```
 
 Create a `sonar-project.properties` file:
@@ -165,25 +165,26 @@ sonar-scanner -Dsonar.token=your_project_token
 ```xml
 <!-- pom.xml -->
 <properties>
-    <sonar.organization>my-org</sonar.organization>
     <sonar.host.url>http://localhost:9000</sonar.host.url>
 </properties>
 
 <build>
-    <plugins>
-        <plugin>
-            <groupId>org.sonarsource.scanner.maven</groupId>
-            <artifactId>sonar-maven-plugin</artifactId>
-            <version>3.10.0.2594</version>
-        </plugin>
-    </plugins>
+    <pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>5.5.0.6356</version>
+            </plugin>
+        </plugins>
+    </pluginManagement>
 </build>
 ```
 
 Run analysis:
 
 ```bash
-mvn clean verify sonar:sonar -Dsonar.token=your_project_token
+mvn clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.token=your_project_token
 ```
 
 ### For JavaScript/TypeScript with npm
@@ -191,10 +192,10 @@ mvn clean verify sonar:sonar -Dsonar.token=your_project_token
 ```json
 {
   "scripts": {
-    "sonar": "sonar-scanner"
+    "sonar": "node sonar-project.js"
   },
   "devDependencies": {
-    "sonarqube-scanner": "^3.3.0"
+    "@sonar/scan": "^4.3.6"
   }
 }
 ```
@@ -203,9 +204,9 @@ Create a scanner configuration:
 
 ```javascript
 // sonar-project.js
-const sonarqubeScanner = require('sonarqube-scanner');
+const scanner = require('@sonar/scan');
 
-sonarqubeScanner({
+scanner({
   serverUrl: 'http://localhost:9000',
   token: process.env.SONAR_TOKEN,
   options: {
@@ -241,14 +242,14 @@ jobs:
         with:
           fetch-depth: 0  # Full history for better analysis
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: 17
+          java-version: 21
           distribution: 'temurin'
 
       - name: Cache SonarQube packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
@@ -258,7 +259,7 @@ jobs:
         run: npm test -- --coverage
 
       - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@master
+        uses: sonarsource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -270,7 +271,7 @@ jobs:
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 
       - name: SonarQube Quality Gate check
-        uses: sonarsource/sonarqube-quality-gate-action@master
+        uses: sonarsource/sonarqube-quality-gate-action@v1.2.0
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -393,6 +394,8 @@ app.get('/file', (req, res) => {
 ```
 
 ## Branch Analysis and Pull Request Decoration
+
+Branch analysis and pull request analysis are available starting in SonarQube Developer Edition.
 
 Enable branch analysis for feature branches:
 
