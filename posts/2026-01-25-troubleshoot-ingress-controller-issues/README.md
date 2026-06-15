@@ -71,7 +71,7 @@ Common issues in logs:
 - "connection refused" - Backend pods are not listening on expected port
 - "upstream timed out" - Backend is too slow or unresponsive
 
-## Step 3: Validate Backend Service and Endpoints
+## Step 3: Validate Backend Service and EndpointSlices
 
 The Ingress routes to a Service, which needs healthy endpoints:
 
@@ -79,10 +79,10 @@ The Ingress routes to a Service, which needs healthy endpoints:
 # Check if the Service exists
 kubectl get svc my-app-svc -n production
 
-# Verify endpoints exist (pods are selected by the service)
-kubectl get endpoints my-app-svc -n production
+# Verify EndpointSlices exist (pods are selected by the service)
+kubectl get endpointslices -n production -l kubernetes.io/service-name=my-app-svc
 
-# If endpoints are empty, check pod labels match service selector
+# If EndpointSlices are empty, check pod labels match service selector
 kubectl describe svc my-app-svc -n production | grep Selector
 kubectl get pods -n production --show-labels
 ```
@@ -125,7 +125,7 @@ spec:
 kubectl get pods -n production -l app=my-app
 
 # Test connectivity from inside the cluster
-kubectl run debug --image=busybox -it --rm -- wget -qO- http://my-app-svc.production:80/health
+kubectl run debug --image=busybox -it --rm --restart=Never -- wget -qO- http://my-app-svc.production:80/health
 
 # Check if the port configuration is correct
 kubectl describe pod my-app-xyz -n production | grep -A5 Ports
@@ -146,7 +146,7 @@ Common 502 causes:
 
 ```bash
 # Check endpoint health
-kubectl get endpoints my-app-svc -n production
+kubectl get endpointslices -n production -l kubernetes.io/service-name=my-app-svc
 
 # If using NGINX, check upstream status
 kubectl exec -n ingress-nginx <controller-pod> -- cat /etc/nginx/nginx.conf | grep -A10 upstream
@@ -283,6 +283,9 @@ spec:
   type: ExternalName
   # Reference service in another namespace
   externalName: api-svc.api-namespace.svc.cluster.local
+  ports:
+    - port: 80
+      targetPort: 80
 ```
 
 ## Step 9: Check NGINX Configuration
@@ -311,6 +314,8 @@ kind: Ingress
 metadata:
   name: my-app-ingress
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+
     # Rewrite path before forwarding
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 
@@ -322,8 +327,10 @@ metadata:
     # Increase body size limit (default is 1MB)
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
 
-    # Enable WebSocket support
+    # Use HTTP/1.1 for backends that require it
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+
+    # Route the same request URI to the same upstream when possible
     nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
 spec:
   rules:
@@ -349,14 +356,14 @@ kubectl get pods -n ingress-nginx
 # 2. Is the Ingress resource valid?
 kubectl describe ingress my-app-ingress -n production
 
-# 3. Does the Service have endpoints?
-kubectl get endpoints my-app-svc -n production
+# 3. Does the Service have EndpointSlices?
+kubectl get endpointslices -n production -l kubernetes.io/service-name=my-app-svc
 
 # 4. Are backend pods ready?
 kubectl get pods -n production -l app=my-app
 
 # 5. Can you reach the service from inside the cluster?
-kubectl run debug --image=busybox -it --rm -- wget -qO- http://my-app-svc.production:80
+kubectl run debug --image=busybox -it --rm --restart=Never -- wget -qO- http://my-app-svc.production:80
 
 # 6. Check Ingress controller logs
 kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx --tail=50
