@@ -25,9 +25,11 @@ FluentValidation offers several advantages over the built-in Data Annotations:
 First, install the NuGet packages:
 
 ```bash
-dotnet add package FluentValidation
-dotnet add package FluentValidation.AspNetCore
+dotnet package add FluentValidation
+dotnet package add FluentValidation.DependencyInjectionExtensions
 ```
+
+If you're using the .NET 9 SDK or earlier, use `dotnet add package` instead of `dotnet package add`.
 
 ## Basic Validator Setup
 
@@ -90,15 +92,11 @@ In your `Program.cs`, register the validators:
 
 ```csharp
 using FluentValidation;
-using FluentValidation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Register all validators from the assembly
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUserRequestValidator>();
-
-// Enable automatic validation in the MVC pipeline
-builder.Services.AddFluentValidationAutoValidation();
 
 builder.Services.AddControllers();
 
@@ -210,7 +208,9 @@ public class OrderValidator : AbstractValidator<OrderRequest>
 
         // Quantity must be positive, and if bulk order, minimum 10
         RuleFor(x => x.Quantity)
-            .GreaterThan(0).WithMessage("Quantity must be greater than zero")
+            .GreaterThan(0).WithMessage("Quantity must be greater than zero");
+
+        RuleFor(x => x.Quantity)
             .GreaterThanOrEqualTo(10).WithMessage("Bulk orders require minimum 10 items")
             .When(x => x.IsBulkOrder);
     }
@@ -408,33 +408,25 @@ public class UserService
 
 ## Custom Error Response Format
 
-Customize how validation errors are returned from your API:
+When you validate manually in an API endpoint or service, you can shape the validation errors before returning a response:
 
 ```csharp
-// Program.cs
-builder.Services.AddControllers()
-    .ConfigureApiBehaviorOptions(options =>
+var validationResult = await _validator.ValidateAsync(request);
+
+if (!validationResult.IsValid)
+{
+    var response = new
     {
-        options.InvalidModelStateResponseFactory = context =>
+        Success = false,
+        Errors = validationResult.Errors.Select(error => new
         {
-            var errors = context.ModelState
-                .Where(e => e.Value.Errors.Count > 0)
-                .SelectMany(e => e.Value.Errors.Select(error => new
-                {
-                    Field = e.Key,
-                    Message = error.ErrorMessage
-                }))
-                .ToList();
+            Field = error.PropertyName,
+            Message = error.ErrorMessage
+        })
+    };
 
-            var response = new
-            {
-                Success = false,
-                Errors = errors
-            };
-
-            return new BadRequestObjectResult(response);
-        };
-    });
+    return new BadRequestObjectResult(response);
+}
 ```
 
 ## Unit Testing Validators
