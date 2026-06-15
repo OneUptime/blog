@@ -65,10 +65,10 @@ df = pd.read_csv(StringIO(csv_data), parse_dates=['hire_date'])
 
 print(df.dtypes)
 # Output:
-# name                 object
+# name                    str
 # age                   int64
 # salary                int64
-# hire_date    datetime64[ns]
+# hire_date    datetime64[us]
 # dtype: object
 ```
 
@@ -102,7 +102,7 @@ Date-related issues are common. Pandas provides excellent date generation tools.
 import pandas as pd
 
 # Generate a date range with specific frequency
-# 'D' for daily, 'H' for hourly, 'M' for month end, etc.
+# 'D' for daily, 'h' for hourly, 'ME' for month end, etc.
 dates = pd.date_range(start='2024-01-01', periods=10, freq='D')
 
 df = pd.DataFrame({
@@ -112,12 +112,12 @@ df = pd.DataFrame({
 
 # For timezone-aware examples
 df_tz = pd.DataFrame({
-    'timestamp': pd.date_range('2024-01-01', periods=5, freq='H', tz='UTC'),
+    'timestamp': pd.date_range('2024-01-01', periods=5, freq='h', tz='UTC'),
     'value': [1.1, 2.2, 3.3, 4.4, 5.5]
 })
 
 print(df_tz.dtypes)
-# timestamp    datetime64[ns, UTC]
+# timestamp    datetime64[us, UTC]
 # value                    float64
 ```
 
@@ -127,16 +127,13 @@ Many pandas bugs involve MultiIndex DataFrames. Here is how to create them clean
 
 ```python
 import pandas as pd
-import numpy as np
 
-# Create a MultiIndex from product of arrays
+# Create a MultiIndex from the product of iterables
 # This generates all combinations of the provided values
-arrays = [
-    ['Store_A', 'Store_A', 'Store_B', 'Store_B'],
-    ['2024-Q1', '2024-Q2', '2024-Q1', '2024-Q2']
-]
+stores = ['Store_A', 'Store_B']
+quarters = ['2024-Q1', '2024-Q2']
 
-index = pd.MultiIndex.from_arrays(arrays, names=['store', 'quarter'])
+index = pd.MultiIndex.from_product([stores, quarters], names=['store', 'quarter'])
 
 df = pd.DataFrame({
     'revenue': [100, 120, 80, 95],
@@ -254,8 +251,8 @@ import pandas as pd
 from io import StringIO
 
 csv_data = """id,value,flag
-1,100,true
-2,200,false"""
+1,100,enabled
+2,200,disabled"""
 
 df = pd.read_csv(StringIO(csv_data))
 
@@ -264,7 +261,7 @@ df = pd.read_csv(StringIO(csv_data))
 print(df.dtypes)
 # id        int64
 # value     int64
-# flag     object  # Note: 'true' is a string, not boolean!
+# flag        str  # Note: 'enabled' is a string, not boolean!
 
 # Memory usage can reveal issues with large data
 print(df.memory_usage(deep=True))
@@ -336,24 +333,27 @@ df = pd.DataFrame({'value': [1, 2, 3]})
 result = df.value.apply(lambda x: x / 0)  # ZeroDivisionError
 ```
 
-## Using pd.util.testing
+## Using NumPy for Test Data
 
-Pandas includes testing utilities that can help create sample data.
+NumPy and pandas constructors can help create sample data without relying on pandas' private testing helpers.
 
 ```python
 import pandas as pd
-import pandas._testing as tm
+import numpy as np
 
 # Create a random DataFrame with specified shape
 # Useful for quick examples when exact values do not matter
-df = tm.makeDataFrame()  # 30 rows, 4 columns of random floats
+rng = np.random.default_rng(42)
+df = pd.DataFrame(rng.standard_normal((30, 4)), columns=list("ABCD"))
 print(df.head())
 
 # Create DataFrame with missing values
-df_with_na = tm.makeMissingDataframe()
+df_with_na = df.mask(rng.random(df.shape) < 0.2)
 
 # Create time series DataFrame
-ts_df = tm.makeTimeDataFrame()
+ts_df = pd.DataFrame({
+    'value': rng.standard_normal(30)
+}, index=pd.date_range('2024-01-01', periods=30, freq='D'))
 ```
 
 ## Summary
