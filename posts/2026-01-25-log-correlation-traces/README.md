@@ -52,7 +52,7 @@ Configure your logger to automatically include trace context:
 // Logger with automatic trace context injection
 
 import winston from 'winston';
-import { trace, context, SpanContext } from '@opentelemetry/api';
+import { trace } from '@opentelemetry/api';
 
 // Custom format that injects trace context
 const traceContextFormat = winston.format((info) => {
@@ -62,13 +62,7 @@ const traceContextFormat = winston.format((info) => {
     const spanContext = span.spanContext();
     info.trace_id = spanContext.traceId;
     info.span_id = spanContext.spanId;
-    info.trace_flags = spanContext.traceFlags;
-
-    // Include parent span if available
-    const parentSpan = trace.getSpan(context.active());
-    if (parentSpan && parentSpan !== span) {
-      info.parent_span_id = parentSpan.spanContext().spanId;
-    }
+    info.trace_flags = spanContext.traceFlags.toString(16).padStart(2, '0');
   }
 
   return info;
@@ -117,39 +111,44 @@ Set up OpenTelemetry with log correlation:
 // OpenTelemetry setup with log correlation
 
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION
+} from '@opentelemetry/semantic-conventions';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
-import { WinstonInstrumentation } from '@opentelemetry/instrumentation-winston';
+
+const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
 
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/traces'
+  url: `${otlpEndpoint}/v1/traces`
 });
 
 const logExporter = new OTLPLogExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/logs'
+  url: `${otlpEndpoint}/v1/logs`
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME,
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION,
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'unknown',
+    [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || 'unknown',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development'
   }),
-  spanProcessor: new BatchSpanProcessor(traceExporter),
-  logRecordProcessor: new BatchLogRecordProcessor(logExporter),
+  spanProcessors: [new BatchSpanProcessor(traceExporter)],
+  logRecordProcessors: [new BatchLogRecordProcessor(logExporter)],
   instrumentations: [
     getNodeAutoInstrumentations({
-      '@opentelemetry/instrumentation-fs': { enabled: false }
-    }),
-    new WinstonInstrumentation({
-      // Automatically inject trace context into Winston logs
-      logHook: (span, record) => {
-        record['resource.service.name'] = process.env.SERVICE_NAME;
+      '@opentelemetry/instrumentation-fs': { enabled: false },
+      '@opentelemetry/instrumentation-winston': {
+        // Automatically inject trace context into Winston logs
+        logHook: (span, record) => {
+          record['resource.service.name'] = process.env.SERVICE_NAME || 'unknown';
+        }
       }
     })
   ]
@@ -181,6 +180,7 @@ Implement correlation in Python applications:
 
 import logging
 import json
+import os
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -197,8 +197,8 @@ otlp_exporter = OTLPSpanExporter(
 )
 tracer_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 
-# Instrument logging to automatically add trace context
-LoggingInstrumentor().instrument(set_logging_format=True)
+# Register logging instrumentation without changing the JSON log format
+LoggingInstrumentor().instrument()
 
 
 class TraceContextFilter(logging.Filter):
@@ -289,7 +289,8 @@ Ensure trace context flows between services:
 // HTTP client with trace context propagation
 
 import { trace, context, propagation, SpanKind } from '@opentelemetry/api';
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import axios, { AxiosHeaders, AxiosInstance, AxiosRequestConfig } from 'axios';
+import { logger } from './logger';
 
 class TracedHttpClient {
   private client: AxiosInstance;
@@ -307,10 +308,10 @@ class TracedHttpClient {
         const headers: Record<string, string> = {};
         propagation.inject(context.active(), headers);
 
-        config.headers = {
-          ...config.headers,
-          ...headers
-        };
+        config.headers = AxiosHeaders.from(config.headers);
+        Object.entries(headers).forEach(([key, value]) => {
+          config.headers.set(key, value);
+        });
 
         // Log the outgoing request with trace context
         logger.debug('Outgoing HTTP request', {
@@ -514,6 +515,7 @@ apiVersion: 1
 datasources:
   - name: Loki
     type: loki
+    uid: loki
     access: proxy
     url: http://loki:3100
     jsonData:
@@ -531,14 +533,13 @@ datasources:
 
   - name: Tempo
     type: tempo
+    uid: tempo
     access: proxy
     url: http://tempo:3200
     jsonData:
-      tracesToLogs:
+      tracesToLogsV2:
         datasourceUid: loki
-        tags: ['service.name']
-        mappedTags: [{ key: 'service.name', value: 'service' }]
-        mapTagNamesEnabled: true
+        tags: [{ key: 'service.name', value: 'service' }]
         spanStartTimeShift: '-1h'
         spanEndTimeShift: '1h'
         filterByTraceID: true
@@ -554,6 +555,9 @@ Common issues and solutions:
 ```typescript
 // correlation/debug.ts
 // Debug utilities for correlation issues
+
+import { trace } from '@opentelemetry/api';
+import { Request, Response, NextFunction } from 'express';
 
 class CorrelationDebugger {
   // Check if trace context is present
