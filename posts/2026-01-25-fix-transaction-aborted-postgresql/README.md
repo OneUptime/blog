@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix 'current transaction is aborted' erro
 
 ---
 
-The error "current transaction is aborted, commands ignored until end of transaction block" is one of the most confusing PostgreSQL errors for developers new to the database. It means that an earlier command in your transaction failed, and PostgreSQL is refusing to execute any more commands until you explicitly end the transaction. This guide explains why this happens and how to handle it properly.
+The error "current transaction is aborted, commands ignored until end of transaction block" is one of the most confusing PostgreSQL errors for developers new to the database. It means that an earlier command in your transaction failed, and PostgreSQL is refusing to execute any more commands until you explicitly end or recover the transaction. This guide explains why this happens and how to handle it properly.
 
 ---
 
@@ -23,12 +23,12 @@ ERROR: current transaction is aborted, commands ignored until end of transaction
 It means:
 1. You are in a transaction block (BEGIN was issued)
 2. A previous command in this transaction failed
-3. PostgreSQL is now ignoring all commands until you ROLLBACK or COMMIT
+3. PostgreSQL is now ignoring most commands until you ROLLBACK, roll back to a SAVEPOINT, or end the transaction
 
 ```sql
 -- Example of how this happens
 BEGIN;
-INSERT INTO users (email) VALUES ('invalid');  -- This fails (constraint violation)
+INSERT INTO users (email) VALUES ('invalid');  -- This fails, for example because of a CHECK constraint
 SELECT * FROM users;  -- This returns the "transaction aborted" error
 -- All subsequent commands also fail with the same error
 ```
@@ -44,7 +44,8 @@ stateDiagram-v2
     [*] --> Active: BEGIN
     Active --> Active: Successful command
     Active --> Aborted: Failed command
-    Aborted --> Aborted: Any command (ignored)
+    Aborted --> Aborted: Most commands (ignored)
+    Aborted --> Active: ROLLBACK TO SAVEPOINT
     Active --> [*]: COMMIT
     Aborted --> [*]: ROLLBACK
 ```
@@ -65,7 +66,7 @@ SELECT * FROM users;  -- "transaction aborted" error
 ROLLBACK;
 ```
 
-### 2. Syntax Errors in Prepared Statements
+### 2. Missing Relations or SQL Errors
 
 ```sql
 BEGIN;
@@ -266,24 +267,25 @@ COMMIT;
 ```python
 from django.db import transaction, IntegrityError
 
-# Method 1: Atomic decorator
-@transaction.atomic
+# Method 1: Catch errors outside the atomic block
 def create_user(email):
     try:
-        User.objects.create(email=email)
+        with transaction.atomic():
+            User.objects.create(email=email)
     except IntegrityError:
         # Transaction is automatically rolled back
         return None
 
 # Method 2: Savepoints
 def bulk_create_users(emails):
-    for email in emails:
-        try:
-            with transaction.atomic():  # Creates savepoint
-                User.objects.create(email=email)
-        except IntegrityError:
-            # Only this user's insert is rolled back
-            continue
+    with transaction.atomic():  # Outer transaction
+        for email in emails:
+            try:
+                with transaction.atomic():  # Creates savepoint
+                    User.objects.create(email=email)
+            except IntegrityError:
+                # Only this user's insert is rolled back
+                continue
 ```
 
 ### SQLAlchemy
@@ -309,19 +311,18 @@ except IntegrityError:
 session = Session()
 try:
     # Outer transaction
-    session.begin_nested()  # Creates savepoint
+    with session.begin():
+        try:
+            with session.begin_nested():  # Creates savepoint
+                user = User(email="test@example.com")
+                session.add(user)
+        except IntegrityError:
+            # Only the savepoint is rolled back
+            pass
 
-    try:
-        user = User(email="test@example.com")
-        session.add(user)
-        session.commit()  # Releases savepoint
-    except IntegrityError:
-        session.rollback()  # Rollback to savepoint only
-
-    # Outer transaction still active
-    log = Log(message="processed")
-    session.add(log)
-    session.commit()
+        # Outer transaction still active
+        log = Log(message="processed")
+        session.add(log)
 
 except Exception:
     session.rollback()
@@ -437,20 +438,15 @@ statement_timeout = 30000  # milliseconds
 
 ## Detecting Aborted Transactions
 
-```sql
--- Check transaction status
-SELECT
-    pg_is_in_recovery() AS in_recovery,
-    txid_current_if_assigned() AS current_txid;
+You cannot reliably detect an already-aborted transaction by running another SQL query in the same transaction, because that query will be rejected too. Check the transaction state in your database driver, or watch for PostgreSQL SQLSTATE `25P02` (`in_failed_sql_transaction`).
 
--- In PL/pgSQL
-DO $$
-BEGIN
-    RAISE NOTICE 'Transaction ID: %', txid_current();
-EXCEPTION
-    WHEN OTHERS THEN
-        RAISE NOTICE 'Error state: %', SQLSTATE;
-END $$;
+```python
+from psycopg2 import extensions
+
+status = conn.get_transaction_status()
+
+if status == extensions.TRANSACTION_STATUS_INERROR:
+    conn.rollback()
 ```
 
 ---
