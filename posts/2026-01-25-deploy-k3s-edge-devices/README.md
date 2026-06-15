@@ -16,10 +16,10 @@ Edge computing brings compute power closer to data sources, reducing latency and
 
 ## Why K3s for Edge?
 
-Traditional Kubernetes requires significant resources. A standard control plane node needs at least 2 CPUs and 2GB RAM. K3s dramatically reduces these requirements:
+Traditional Kubernetes requires significant resources. A K3s server node still needs at least 2 CPU cores and 2GB RAM, but K3s dramatically reduces the footprint for edge clusters and agent nodes:
 
 - Single binary under 100MB
-- Runs on devices with 512MB RAM
+- Agents can run on devices with 512MB RAM
 - Supports ARM64 and ARMv7 architectures
 - Uses SQLite instead of etcd by default
 - Includes containerd as the default runtime
@@ -32,8 +32,8 @@ Traditional Kubernetes requires significant resources. A standard control plane 
 Before deploying K3s, ensure your edge device meets these requirements:
 
 - Linux-based OS (Ubuntu, Debian, Raspberry Pi OS)
-- At least 512MB RAM (1GB recommended)
-- At least 200MB disk space
+- At least 2GB RAM for a server node, or 512MB RAM for an agent node
+- Sufficient disk space for K3s, container images, and workloads (SSD recommended)
 - SSH access for remote management
 - Network connectivity between nodes
 
@@ -101,7 +101,7 @@ kubelet-arg:
 
 # Set custom node labels for edge identification
 node-label:
-  - "node.kubernetes.io/edge=true"
+  - "edge.oneuptime.com/enabled=true"
   - "topology.kubernetes.io/zone=edge-zone-1"
 
 # Enable cluster-init for embedded etcd (optional, for HA)
@@ -170,8 +170,8 @@ node-name: edge-worker-01
 
 # Labels for workload scheduling
 node-label:
-  - "node.kubernetes.io/edge=true"
-  - "edge.device/type=raspberry-pi"
+  - "edge.oneuptime.com/enabled=true"
+  - "edge.oneuptime.com/device-type=raspberry-pi"
 
 # Kubelet arguments for resource-constrained devices
 kubelet-arg:
@@ -226,11 +226,14 @@ Edge devices may have intermittent connectivity. Prepare for offline operation:
 # Download the K3s binary
 wget https://github.com/k3s-io/k3s/releases/download/v1.28.4+k3s1/k3s
 
+# Download the K3s install script
+curl -Lo install.sh https://get.k3s.io
+
 # Download the airgap images tarball
 wget https://github.com/k3s-io/k3s/releases/download/v1.28.4+k3s1/k3s-airgap-images-arm64.tar.gz
 
 # Transfer files to the edge device
-scp k3s k3s-airgap-images-arm64.tar.gz pi@edge-device:/tmp/
+scp k3s install.sh k3s-airgap-images-arm64.tar.gz pi@edge-device:/tmp/
 ```
 
 On the edge device:
@@ -239,16 +242,17 @@ On the edge device:
 # Install K3s binary
 sudo mv /tmp/k3s /usr/local/bin/
 sudo chmod +x /usr/local/bin/k3s
+chmod +x /tmp/install.sh
 
 # Create the images directory
 sudo mkdir -p /var/lib/rancher/k3s/agent/images/
 
-# Extract airgap images
-sudo tar -xzf /tmp/k3s-airgap-images-arm64.tar.gz \
-  -C /var/lib/rancher/k3s/agent/images/
+# Copy the airgap image archive into the images directory
+sudo cp /tmp/k3s-airgap-images-arm64.tar.gz \
+  /var/lib/rancher/k3s/agent/images/k3s-airgap-images-arm64.tar.gz
 
 # Install K3s (it will use local images)
-curl -sfL https://get.k3s.io | INSTALL_K3S_SKIP_DOWNLOAD=true sh -
+INSTALL_K3S_SKIP_DOWNLOAD=true /tmp/install.sh
 ```
 
 ---
@@ -279,11 +283,11 @@ spec:
     spec:
       # Schedule only on edge nodes
       nodeSelector:
-        node.kubernetes.io/edge: "true"
+        edge.oneuptime.com/enabled: "true"
 
       # Tolerate edge-specific taints
       tolerations:
-        - key: "edge.device/resource-limited"
+        - key: "edge.oneuptime.com/resource-limited"
           operator: "Exists"
           effect: "NoSchedule"
 
@@ -408,16 +412,20 @@ metadata:
   namespace: system-upgrade
 spec:
   concurrency: 1
+  cordon: true
   channel: https://update.k3s.io/v1-release/channels/stable
   nodeSelector:
     matchExpressions:
-      - key: node.kubernetes.io/edge
+      - key: edge.oneuptime.com/enabled
         operator: Exists
+  serviceAccountName: system-upgrade
   tolerations:
     - operator: Exists
   drain:
     force: true
     skipWaitForDeleteTimeout: 60
+  upgrade:
+    image: rancher/k3s-upgrade
 ```
 
 ---
@@ -456,7 +464,7 @@ sudo k3s kubectl logs <pod-name>
 K3s makes Kubernetes viable for edge computing scenarios where resources are limited. By using a single binary, SQLite storage, and optimized components, it brings container orchestration to devices like Raspberry Pi without sacrificing Kubernetes compatibility.
 
 Key takeaways:
-- K3s runs on devices with as little as 512MB RAM
+- K3s agents can run on devices with as little as 512MB RAM
 - Configuration files simplify management across edge fleets
 - Offline installation enables air-gapped deployments
 - Resource limits are critical for stable edge operation
