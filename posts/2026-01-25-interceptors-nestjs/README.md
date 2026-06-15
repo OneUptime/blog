@@ -303,8 +303,12 @@ export class TimeoutInterceptor implements NestInterceptor {
     );
   }
 }
+```
 
-// Custom decorator for configurable timeout
+Custom decorator for configurable timeout:
+
+```typescript
+// timeout.decorator.ts
 import { SetMetadata } from '@nestjs/common';
 
 export const TIMEOUT_KEY = 'timeout';
@@ -364,7 +368,7 @@ import {
   ExecutionContext,
   CallHandler,
 } from '@nestjs/common';
-import { Observable } from 'rxjs';
+import { Observable, throwError } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 
 interface RequestMetric {
@@ -393,7 +397,7 @@ export class MetricsInterceptor implements NestInterceptor {
         // Record failed requests too
         response.statusCode = error.status || 500;
         this.recordMetric(request, response, startTime);
-        throw error;
+        return throwError(() => error);
       }),
     );
   }
@@ -527,8 +531,11 @@ export class ErrorFormatInterceptor implements NestInterceptor {
   private getErrorCode(error: any): string {
     if (error instanceof HttpException) {
       const response = error.getResponse();
-      if (typeof response === 'object' && 'error' in response) {
-        return (response as any).error.replace(/\s+/g, '_').toUpperCase();
+      if (response && typeof response === 'object' && 'error' in response) {
+        const errorText = (response as any).error;
+        if (typeof errorText === 'string') {
+          return errorText.replace(/\s+/g, '_').toUpperCase();
+        }
       }
     }
     return 'INTERNAL_ERROR';
@@ -540,9 +547,14 @@ export class ErrorFormatInterceptor implements NestInterceptor {
       if (typeof response === 'string') {
         return response;
       }
-      if (typeof response === 'object' && 'message' in response) {
+      if (response && typeof response === 'object' && 'message' in response) {
         const message = (response as any).message;
-        return Array.isArray(message) ? message.join(', ') : message;
+        if (Array.isArray(message)) {
+          return message.join(', ');
+        }
+        if (typeof message === 'string') {
+          return message;
+        }
       }
     }
     return error.message || 'An unexpected error occurred';
@@ -625,7 +637,7 @@ export class UsersController {
     return [];
   }
 
-  // Skip the logging interceptor for this route
+  // Mark this route so a ConditionalInterceptor subclass can skip it
   @Get('health')
   @ExcludeInterceptor('LoggingInterceptor')
   healthCheck() {
@@ -642,6 +654,10 @@ Order matters when using multiple interceptors. They execute in the order they a
 // app.module.ts
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ErrorFormatInterceptor } from './interceptors/error-format.interceptor';
+import { LoggingInterceptor } from './interceptors/logging.interceptor';
+import { MetricsInterceptor } from './interceptors/metrics.interceptor';
+import { TransformInterceptor } from './interceptors/transform.interceptor';
 
 @Module({
   providers: [
