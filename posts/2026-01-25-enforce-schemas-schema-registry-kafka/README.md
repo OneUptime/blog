@@ -30,7 +30,7 @@ sequenceDiagram
     Note right of C: Crash! Field names changed,<br/>types changed
 ```
 
-Schema Registry prevents this by validating messages against registered schemas before they reach Kafka.
+Schema Registry prevents this when producers use Schema Registry-aware serializers: the serializer checks the record against the registered schema before sending it to Kafka.
 
 ## Setting Up Schema Registry
 
@@ -43,7 +43,7 @@ docker run -d \
   --name schema-registry \
   -p 8081:8081 \
   -e SCHEMA_REGISTRY_HOST_NAME=schema-registry \
-  -e SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=kafka1:9092,kafka2:9092 \
+  -e SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=PLAINTEXT://kafka1:9092,PLAINTEXT://kafka2:9092 \
   -e SCHEMA_REGISTRY_LISTENERS=http://0.0.0.0:8081 \
   confluentinc/cp-schema-registry:7.5.0
 ```
@@ -57,18 +57,18 @@ services:
     image: confluentinc/cp-schema-registry:7.5.0
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry-1
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka1:9092,kafka2:9092
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka1:9092,PLAINTEXT://kafka2:9092
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-      SCHEMA_REGISTRY_MASTER_ELIGIBILITY: "true"
+      SCHEMA_REGISTRY_LEADER_ELIGIBILITY: "true"
       SCHEMA_REGISTRY_SCHEMA_REGISTRY_GROUP_ID: schema-registry-cluster
 
   schema-registry-2:
     image: confluentinc/cp-schema-registry:7.5.0
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry-2
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka1:9092,kafka2:9092
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka1:9092,PLAINTEXT://kafka2:9092
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-      SCHEMA_REGISTRY_MASTER_ELIGIBILITY: "true"
+      SCHEMA_REGISTRY_LEADER_ELIGIBILITY: "true"
       SCHEMA_REGISTRY_SCHEMA_REGISTRY_GROUP_ID: schema-registry-cluster
 ```
 
@@ -140,6 +140,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.common.serialization.StringSerializer;
 import java.util.Properties;
 
 public class AvroProducerExample {
@@ -148,8 +149,8 @@ public class AvroProducerExample {
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka:9092");
 
-        // Use Avro serializers
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class);
+        // Use a String serializer for keys and Avro serializer for values
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class);
 
         // Schema Registry URL
@@ -207,6 +208,7 @@ import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
@@ -217,9 +219,10 @@ public class AvroConsumerExample {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka:9092");
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "user-processor");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
-        // Use Avro deserializers
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaAvroDeserializer.class);
+        // Use a String deserializer for keys and Avro deserializer for values
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaAvroDeserializer.class);
 
         // Schema Registry URL
@@ -273,7 +276,7 @@ curl http://localhost:8081/config/users-value
 | Compatibility | Description | Safe Changes |
 |---------------|-------------|--------------|
 | `BACKWARD` | New schema can read old data | Add optional fields, remove fields |
-| `FORWARD` | Old schema can read new data | Remove optional fields, add fields |
+| `FORWARD` | Old schema can read new data | Add fields, remove fields that had defaults |
 | `FULL` | Both backward and forward | Add/remove optional fields only |
 | `NONE` | No compatibility checks | Any change (dangerous) |
 
@@ -288,7 +291,7 @@ Before deploying schema changes, test compatibility:
 curl -X POST http://localhost:8081/compatibility/subjects/users-value/versions/latest \
   -H "Content-Type: application/vnd.schemaregistry.v1+json" \
   -d '{
-    "schema": "{\"type\":\"record\",\"name\":\"User\",\"fields\":[{\"name\":\"user_id\",\"type\":\"long\"},{\"name\":\"email\",\"type\":\"string\"},{\"name\":\"phone\",\"type\":[\"null\",\"string\"],\"default\":null}]}"
+    "schema": "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"com.example.events\",\"fields\":[{\"name\":\"user_id\",\"type\":\"long\"},{\"name\":\"email\",\"type\":\"string\"},{\"name\":\"phone\",\"type\":[\"null\",\"string\"],\"default\":null}]}"
   }'
 
 # Response: {"is_compatible": true} or {"is_compatible": false}
@@ -307,7 +310,19 @@ Here is a safe schema evolution that adds an optional field:
     {"name": "user_id", "type": "long"},
     {"name": "email", "type": "string"},
     {"name": "created_at", "type": {"type": "long", "logicalType": "timestamp-millis"}},
-    {"name": "profile", "type": ["null", "Profile"], "default": null},
+    {
+      "name": "profile",
+      "type": ["null", {
+        "type": "record",
+        "name": "Profile",
+        "fields": [
+          {"name": "first_name", "type": "string"},
+          {"name": "last_name", "type": "string"},
+          {"name": "age", "type": ["null", "int"], "default": null}
+        ]
+      }],
+      "default": null
+    },
     {
       "name": "phone_number",
       "type": ["null", "string"],
@@ -319,8 +334,9 @@ Here is a safe schema evolution that adds an optional field:
 ```
 
 This change is backward compatible because:
-- Old consumers ignore the new field
 - New consumers get `null` when reading old messages without the field
+
+It is also forward compatible because old consumers ignore the new field when reading new messages.
 
 ## Managing Schemas via REST API
 
