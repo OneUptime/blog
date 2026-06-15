@@ -14,9 +14,10 @@ Messages fail. Consumers crash, business logic rejects invalid data, and timeout
 
 A dead letter exchange is a normal RabbitMQ exchange where messages go when they cannot be delivered or processed. Messages become "dead letters" when:
 
-- A consumer rejects the message with `requeue=false`
+- A consumer rejects or negatively acknowledges the message with `requeue=false`
 - The message TTL expires
 - The queue reaches its maximum length
+- A quorum queue message exceeds its delivery limit
 
 ```mermaid
 flowchart LR
@@ -271,7 +272,7 @@ Overflow behaviors:
 
 ## Implementing Retry Logic
 
-Instead of losing failed messages, retry them with exponential backoff.
+Instead of losing failed messages, retry them after a delay. You can extend this pattern with multiple retry queues for exponential backoff.
 
 ```mermaid
 flowchart LR
@@ -325,9 +326,16 @@ def setup_retry_queues(channel):
     channel.queue_bind(exchange='dead', queue='dead_letters', routing_key='dead')
 
 def process_with_retry(channel, method, properties, body):
-    # Track retry count in headers
+    # Track retry count from RabbitMQ's dead-letter history
     headers = properties.headers or {}
-    retry_count = headers.get('x-retry-count', 0)
+    x_death = headers.get('x-death', [])
+    retry_count = 0
+
+    for death in x_death:
+        if death.get('queue') == 'work' and death.get('reason') == 'rejected':
+            retry_count = death.get('count', 0)
+            break
+
     max_retries = 3
 
     try:
@@ -345,7 +353,7 @@ def process_with_retry(channel, method, properties, body):
         print(f"Failed: {e}")
 
         if retry_count < max_retries:
-            # Increment retry count and reject to retry queue
+            # Reject to retry queue; RabbitMQ updates x-death on dead-lettering
             print(f"Scheduling retry {retry_count + 1}/{max_retries}")
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
         else:
@@ -356,7 +364,7 @@ def process_with_retry(channel, method, properties, body):
                 routing_key='dead',
                 body=body,
                 properties=pika.BasicProperties(
-                    headers={'x-retry-count': retry_count, 'x-error': str(e)}
+                    headers={**headers, 'x-error': str(e)}
                 )
             )
             channel.basic_ack(delivery_tag=method.delivery_tag)
