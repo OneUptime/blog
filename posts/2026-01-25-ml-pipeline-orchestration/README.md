@@ -52,10 +52,8 @@ flowchart TD
 # dags/ml_training_pipeline.py
 
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-from airflow.utils.task_group import TaskGroup
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 
 # Default arguments for all tasks
 default_args = {
@@ -74,7 +72,7 @@ dag = DAG(
     'ml_training_pipeline',
     default_args=default_args,
     description='Daily model training pipeline',
-    schedule_interval='0 2 * * *',  # Run at 2 AM daily
+    schedule='0 2 * * *',  # Run at 2 AM daily
     start_date=datetime(2026, 1, 1),
     catchup=False,  # Don't backfill
     max_active_runs=1,  # Only one run at a time
@@ -83,12 +81,10 @@ dag = DAG(
 
 def extract_data(**context):
     """Extract data from source systems."""
-    from datetime import datetime
-    import pandas as pd
 
-    # Get execution date for partitioning
-    execution_date = context['execution_date']
-    date_str = execution_date.strftime('%Y-%m-%d')
+    # Get logical date for partitioning
+    logical_date = context['logical_date']
+    date_str = logical_date.strftime('%Y-%m-%d')
 
     # Extract data
     print(f"Extracting data for {date_str}")
@@ -101,7 +97,7 @@ def extract_data(**context):
 
 def validate_data(**context):
     """Validate extracted data quality."""
-    import great_expectations as ge
+    import pandas as pd
 
     # Get data path from upstream
     data_path = context['ti'].xcom_pull(
@@ -110,17 +106,17 @@ def validate_data(**context):
     )
 
     # Run validation
-    df = ge.read_parquet(data_path)
+    df = pd.read_parquet(data_path)
 
-    # Define expectations
-    results = df.expect_column_to_exist('customer_id')
-    results = df.expect_column_values_to_not_be_null('customer_id')
-    results = df.expect_column_values_to_be_between(
-        'amount', min_value=0, max_value=1000000
-    )
-
-    if not results.success:
-        raise ValueError("Data validation failed")
+    # Define validation checks
+    if 'customer_id' not in df.columns:
+        raise ValueError("Data validation failed: customer_id is missing")
+    if df['customer_id'].isna().any():
+        raise ValueError("Data validation failed: customer_id contains nulls")
+    if 'amount' not in df.columns:
+        raise ValueError("Data validation failed: amount is missing")
+    if not df['amount'].between(0, 1000000).all():
+        raise ValueError("Data validation failed: amount is out of range")
 
     return True
 
@@ -243,14 +239,20 @@ with dag:
 
 ```python
 # dags/complex_pipeline.py
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from datetime import datetime
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.python import PythonOperator
 from airflow.utils.task_group import TaskGroup
-from airflow.operators.dummy import DummyOperator
+from airflow.providers.standard.operators.empty import EmptyOperator
 
-with DAG('complex_ml_pipeline', ...) as dag:
+with DAG(
+    'complex_ml_pipeline',
+    schedule='0 2 * * *',
+    start_date=datetime(2026, 1, 1),
+    catchup=False,
+) as dag:
 
-    start = DummyOperator(task_id='start')
+    start = EmptyOperator(task_id='start')
 
     # Data preparation group
     with TaskGroup('data_preparation') as data_prep:
@@ -310,7 +312,7 @@ with DAG('complex_ml_pipeline', ...) as dag:
 
         [train_xgboost, train_lightgbm] >> select_best
 
-    end = DummyOperator(task_id='end')
+    end = EmptyOperator(task_id='end')
 
     # Main flow
     start >> data_prep >> feature_eng >> training >> end
@@ -325,7 +327,7 @@ Prefect offers a more Pythonic approach with better error handling.
 from prefect import flow, task
 from prefect.tasks import task_input_hash
 from datetime import timedelta
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 @task(
     retries=3,
@@ -345,14 +347,12 @@ def extract_data(date: str) -> str:
 @task(retries=2)
 def validate_data(data_path: str) -> bool:
     """Validate data quality."""
-    import great_expectations as ge
+    import pandas as pd
 
-    df = ge.read_parquet(data_path)
+    df = pd.read_parquet(data_path)
 
     # Validation checks
-    results = df.expect_column_to_exist('customer_id')
-
-    if not results.success:
+    if 'customer_id' not in df.columns:
         raise ValueError(f"Validation failed for {data_path}")
 
     return True
@@ -417,9 +417,9 @@ def register_model(run_id: str, model_name: str) -> str:
 
 @flow(name="ML Training Pipeline")
 def ml_training_pipeline(
-    date: str,
+    date: Optional[str] = None,
     model_name: str = "fraud_detector",
-    hyperparams: Dict[str, Any] = None
+    hyperparams: Optional[Dict[str, Any]] = None
 ):
     """
     Main ML training pipeline.
@@ -427,6 +427,10 @@ def ml_training_pipeline(
     Orchestrates data extraction, feature engineering,
     training, evaluation, and registration.
     """
+    if date is None:
+        from datetime import datetime, timezone
+        date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
     if hyperparams is None:
         hyperparams = {
             'learning_rate': 0.01,
@@ -450,22 +454,17 @@ def ml_training_pipeline(
 
 # Deployment configuration
 if __name__ == "__main__":
-    from prefect.deployments import Deployment
-    from prefect.server.schemas.schedules import CronSchedule
-
-    deployment = Deployment.build_from_flow(
-        flow=ml_training_pipeline,
+    ml_training_pipeline.deploy(
         name="daily-training",
-        schedule=CronSchedule(cron="0 2 * * *"),
+        cron="0 2 * * *",
         parameters={
-            "date": "{{ execution_date.strftime('%Y-%m-%d') }}",
             "model_name": "fraud_detector"
         },
         work_pool_name="ml-pool",
+        image="registry.example.com/ml-training:latest",
+        push=False,
         tags=["ml", "training", "production"]
     )
-
-    deployment.apply()
 ```
 
 ### Dynamic Pipelines with Prefect
@@ -597,7 +596,7 @@ def on_failure_callback(context):
     :red_circle: Task Failed
     DAG: {task_instance.dag_id}
     Task: {task_instance.task_id}
-    Execution Date: {context['execution_date']}
+    Logical Date: {context['logical_date']}
     Error: {str(exception)}
     Log URL: {task_instance.log_url}
     """
