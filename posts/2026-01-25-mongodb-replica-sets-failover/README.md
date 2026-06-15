@@ -31,11 +31,11 @@ flowchart TB
     style S2 fill:#2196F3
 ```
 
-When the primary fails, the secondaries hold an election. The secondary with the most recent data and highest priority becomes the new primary. This happens automatically, typically within 10-12 seconds.
+When the primary fails, the secondaries hold an election. An eligible, sufficiently up-to-date secondary becomes the new primary, with priority influencing which member is preferred. This happens automatically, typically within 10-12 seconds.
 
 ## Setting Up a Three-Node Replica Set
 
-For this example, we'll set up a replica set across three servers. In production, always use an odd number of members to ensure clear election outcomes.
+For this example, we'll set up a replica set across three servers. In production, use an odd number of voting members to ensure clear election outcomes.
 
 ### Step 1: Configure Each MongoDB Instance
 
@@ -87,10 +87,12 @@ sudo systemctl enable mongod
 
 Connect to one of the servers and initialize the replica set:
 
-```javascript
-// Connect to mongo1
+```bash
+# Connect to mongo1
 mongosh "mongodb://mongo1.example.com:27017"
+```
 
+```javascript
 // Initialize the replica set
 rs.initiate({
   _id: "rs0",
@@ -103,6 +105,27 @@ rs.initiate({
 ```
 
 The server with priority 2 will be preferred as primary during elections.
+
+Because `security.keyFile` enables access control, create application users before connecting from your application:
+
+```javascript
+use admin
+
+db.createUser({
+  user: "adminUser",
+  pwd: passwordPrompt(),
+  roles: [
+    { role: "userAdminAnyDatabase", db: "admin" },
+    { role: "clusterAdmin", db: "admin" }
+  ]
+});
+
+db.createUser({
+  user: "appUser",
+  pwd: passwordPrompt(),
+  roles: [{ role: "readWrite", db: "myapp" }]
+});
+```
 
 ### Step 5: Verify the Replica Set Status
 
@@ -144,7 +167,7 @@ Update your connection string to include all replica set members:
 // Node.js with MongoDB driver
 const { MongoClient } = require('mongodb');
 
-const uri = "mongodb://mongo1.example.com:27017,mongo2.example.com:27017,mongo3.example.com:27017/?replicaSet=rs0";
+const uri = "mongodb://appUser:<password>@mongo1.example.com:27017,mongo2.example.com:27017,mongo3.example.com:27017/myapp?replicaSet=rs0&authSource=admin";
 
 const client = new MongoClient(uri, {
   // The driver will automatically discover the primary
@@ -182,10 +205,12 @@ When the primary becomes unavailable, the remaining members hold an election.
 
 You can manually trigger a failover to test your application's resilience:
 
-```javascript
-// Connect to the current primary
-mongosh "mongodb://mongo1.example.com:27017"
+```bash
+# Connect to the current primary with an administrative user
+mongosh "mongodb://adminUser:<password>@mongo1.example.com:27017/admin?replicaSet=rs0"
+```
 
+```javascript
 // Force the primary to step down
 // This triggers an election among secondaries
 rs.stepDown();
@@ -277,16 +302,16 @@ Control where your application reads data from:
 
 ```javascript
 // Read from primary only (default)
-const cursor = collection.find({}).readPreference('primary');
+const primaryCursor = collection.find({}).withReadPreference('primary');
 
 // Read from secondaries to reduce load on primary
-const cursor = collection.find({}).readPreference('secondary');
+const secondaryCursor = collection.find({}).withReadPreference('secondary');
 
 // Read from nearest member by network latency
-const cursor = collection.find({}).readPreference('nearest');
+const nearestCursor = collection.find({}).withReadPreference('nearest');
 
 // Prefer primary but use secondary if unavailable
-const cursor = collection.find({}).readPreference('primaryPreferred');
+const primaryPreferredCursor = collection.find({}).withReadPreference('primaryPreferred');
 ```
 
 Choose based on your consistency requirements. Reading from secondaries may return stale data.
@@ -316,10 +341,11 @@ await collection.insertOne(
 ```javascript
 // health-check.js
 const status = rs.status();
+const primary = status.members.find(member => member.stateStr === 'PRIMARY');
 
 status.members.forEach(member => {
-  const lag = member.optimeDate
-    ? (status.members[0].optimeDate - member.optimeDate) / 1000
+  const lag = primary?.optimeDate && member.optimeDate
+    ? (primary.optimeDate - member.optimeDate) / 1000
     : 0;
 
   console.log(`${member.name}: ${member.stateStr}`);
@@ -341,7 +367,7 @@ const oplog = db.getSiblingDB('local').oplog.rs;
 const first = oplog.find().sort({ $natural: 1 }).limit(1).next();
 const last = oplog.find().sort({ $natural: -1 }).limit(1).next();
 
-const oplogHours = (last.ts.getTime() - first.ts.getTime()) / 3600;
+const oplogHours = (last.ts.getHighBits() - first.ts.getHighBits()) / 3600;
 console.log(`Oplog window: ${oplogHours.toFixed(2)} hours`);
 ```
 
@@ -361,7 +387,7 @@ If the primary is isolated, it steps down. The majority partition elects a new p
 # If a member falls too far behind, it needs a full resync
 # Stop the member and remove its data
 sudo systemctl stop mongod
-rm -rf /var/lib/mongodb/*
+sudo rm -rf /var/lib/mongodb/*
 
 # Start it again - it will perform initial sync
 sudo systemctl start mongod
