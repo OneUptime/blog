@@ -63,9 +63,11 @@ Install and configure the Google Cloud CLI:
 ```bash
 # Install gcloud CLI (Debian/Ubuntu)
 
+sudo apt-get update
+sudo apt-get install ca-certificates gnupg curl
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
 echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
-curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
-sudo apt update && sudo apt install google-cloud-cli
+sudo apt-get update && sudo apt-get install google-cloud-cli
 
 # Authenticate
 gcloud auth login
@@ -103,12 +105,12 @@ gsutil pap set enforced gs://company-backups-prod
 Options explained:
 - `-l`: Location (region or multi-region)
 - `-c`: Storage class (standard, nearline, coldline, archive)
-- `-b on`: Enable object versioning
+- `-b on`: Enable uniform bucket-level access
 - `--pap enforced`: Public access prevention
 
 ## Storage Classes
 
-| Class | Minimum Storage Duration | Use Case | Price (per GB/month) |
+| Class | Minimum Storage Duration | Use Case | Example US regional price (per GB/month) |
 |-------|-------------------------|----------|---------------------|
 | Standard | None | Frequent access | $0.020 |
 | Nearline | 30 days | Monthly access | $0.010 |
@@ -119,7 +121,7 @@ Set storage class on upload:
 
 ```bash
 # Upload with specific storage class
-gsutil -o "GSUtil:default_storage_class=nearline" cp backup.tar.gz gs://company-backups-prod/
+gsutil cp -s nearline backup.tar.gz gs://company-backups-prod/
 
 # Change storage class of existing object
 gsutil rewrite -s coldline gs://company-backups-prod/old-backup.tar.gz
@@ -431,7 +433,10 @@ gcloud logging sinks create gcs-backup-audit \
 gcloud alpha monitoring policies create \
     --display-name="GCS Backup Failures" \
     --condition-display-name="Upload Failures" \
-    --condition-filter='resource.type="gcs_bucket" AND metric.type="storage.googleapis.com/api/request_count" AND metric.label.response_code!="OK"' \
+    --condition-filter='resource.type="gcs_bucket" AND metric.type="storage.googleapis.com/api/request_count" AND metric.labels.response_code!="OK"' \
+    --if='> 0' \
+    --duration=60s \
+    --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_SUM"}' \
     --notification-channels="projects/my-project/notificationChannels/123"
 ```
 
@@ -455,7 +460,7 @@ restic forget --keep-daily 7 --keep-weekly 4 --prune
 ```bash
 velero install \
     --provider gcp \
-    --plugins velero/velero-plugin-for-gcp:v1.9.0 \
+    --plugins velero/velero-plugin-for-gcp:v1.13.0 \
     --bucket company-backups-prod \
     --secret-file ./credentials-velero
 ```
