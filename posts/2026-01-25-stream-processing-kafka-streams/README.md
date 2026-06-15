@@ -34,10 +34,10 @@ graph TB
         S2[(State Store)]
     end
 
-    IT -->|P0, P1| T1
-    IT -->|P0, P1| T2
-    IT -->|P2, P3| T3
-    IT -->|P2, P3| T4
+    IT -->|P0| T1
+    IT -->|P1| T2
+    IT -->|P2| T3
+    IT -->|P3| T4
 
     T1 --> S1
     T2 --> S1
@@ -53,7 +53,7 @@ graph TB
     T4 --> OT
 ```
 
-Each partition becomes a task. State stores are backed by changelog topics for fault tolerance.
+For a simple topology reading one input topic, each input partition is assigned to a stream task. State stores are backed by changelog topics for fault tolerance.
 
 ## Basic Stream Processing Setup
 
@@ -113,6 +113,12 @@ public class BasicStreamApp {
 Stateless operations process each record independently without remembering previous records.
 
 ```java
+import org.apache.kafka.streams.KeyValue;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.kstream.Branched;
+import org.apache.kafka.streams.kstream.KStream;
+import java.util.List;
+
 StreamsBuilder builder = new StreamsBuilder();
 KStream<String, String> input = builder.stream("raw-events");
 
@@ -144,16 +150,19 @@ KStream<String, String> expanded = transformed.flatMapValues(
     }
 );
 
-// Branch: Split stream based on conditions
-KStream<String, String>[] branches = expanded.branch(
-    (key, value) -> value.contains("\"priority\":\"high\""),
-    (key, value) -> value.contains("\"priority\":\"medium\""),
-    (key, value) -> true // Default branch
-);
-
-branches[0].to("high-priority-events");
-branches[1].to("medium-priority-events");
-branches[2].to("low-priority-events");
+// Split: Route records based on conditions
+expanded.split()
+    .branch(
+        (key, value) -> value.contains("\"priority\":\"high\""),
+        Branched.withConsumer(branch -> branch.to("high-priority-events"))
+    )
+    .branch(
+        (key, value) -> value.contains("\"priority\":\"medium\""),
+        Branched.withConsumer(branch -> branch.to("medium-priority-events"))
+    )
+    .defaultBranch(
+        Branched.withConsumer(branch -> branch.to("low-priority-events"))
+    );
 ```
 
 ## Stateful Aggregations
@@ -161,8 +170,11 @@ branches[2].to("low-priority-events");
 Stateful operations maintain state across records, enabling aggregations and joins.
 
 ```java
+import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.kstream.*;
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.common.utils.Bytes;
+import org.apache.kafka.streams.state.KeyValueStore;
 
 StreamsBuilder builder = new StreamsBuilder();
 
@@ -213,11 +225,17 @@ orderCounts.toStream().to("customer-order-counts");
 Window operations group records by time, enabling time-based analytics.
 
 ```java
+import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.KeyValue;
+import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.kstream.*;
 import java.time.Duration;
 
 StreamsBuilder builder = new StreamsBuilder();
-KStream<String, Long> pageViews = builder.stream("page-views");
+KStream<String, Long> pageViews = builder.stream(
+    "page-views",
+    Consumed.with(Serdes.String(), Serdes.Long())
+);
 
 // Tumbling window: Fixed, non-overlapping windows
 TimeWindowedKStream<String, Long> tumblingWindowed = pageViews
@@ -365,40 +383,67 @@ range.close();
 
 // Full scan (use carefully)
 KeyValueIterator<String, Double> all = customerTotals.all();
+all.close();
 ```
 
 ## Error Handling
 
-Configure how to handle deserialization and processing errors:
+Configure how to handle deserialization, processing, and production errors:
 
 ```java
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.errors.DefaultProductionExceptionHandler;
+import org.apache.kafka.streams.errors.ErrorHandlerContext;
+import org.apache.kafka.streams.errors.LogAndContinueExceptionHandler;
+import org.apache.kafka.streams.errors.ProcessingExceptionHandler;
+import java.util.List;
+
 // Deserialization error handler
 props.put(
-    StreamsConfig.DEFAULT_DESERIALIZATION_EXCEPTION_HANDLER_CLASS_CONFIG,
+    StreamsConfig.DESERIALIZATION_EXCEPTION_HANDLER_CLASS_CONFIG,
     LogAndContinueExceptionHandler.class
 );
 
-// Production error handler (custom)
+// Processing error handler (custom)
 props.put(
-    StreamsConfig.DEFAULT_PRODUCTION_EXCEPTION_HANDLER_CLASS_CONFIG,
-    CustomProductionExceptionHandler.class
+    StreamsConfig.PROCESSING_EXCEPTION_HANDLER_CLASS_CONFIG,
+    CustomProcessingExceptionHandler.class
+);
+
+// Production error handler
+props.put(
+    StreamsConfig.PRODUCTION_EXCEPTION_HANDLER_CLASS_CONFIG,
+    DefaultProductionExceptionHandler.class
 );
 
 // Custom handler example
-public class CustomProductionExceptionHandler implements ProductionExceptionHandler {
+public class CustomProcessingExceptionHandler implements ProcessingExceptionHandler {
     @Override
-    public ProductionExceptionHandlerResponse handle(
-            ProducerRecord<byte[], byte[]> record,
+    public ProcessingExceptionHandler.Response handleError(
+            ErrorHandlerContext context,
+            org.apache.kafka.streams.processor.api.Record<?, ?> record,
             Exception exception) {
 
         // Log the error
-        log.error("Failed to produce record to {}: {}", record.topic(), exception.getMessage());
+        log.error("Failed to process record at {}-{}-{}: {}",
+            context.topic(),
+            context.partition(),
+            context.offset(),
+            exception.getMessage()
+        );
 
-        // Send to dead letter topic
-        sendToDeadLetter(record, exception);
+        // Send the original record bytes to a dead letter topic
+        ProducerRecord<byte[], byte[]> dlqRecord = new ProducerRecord<>(
+            "processing-dlq",
+            null,
+            context.timestamp(),
+            context.sourceRawKey(),
+            context.sourceRawValue()
+        );
 
-        // Continue processing (FAIL would stop the application)
-        return ProductionExceptionHandlerResponse.CONTINUE;
+        // Resume processing (fail() would stop the application)
+        return ProcessingExceptionHandler.Response.resume(List.of(dlqRecord));
     }
 }
 ```
