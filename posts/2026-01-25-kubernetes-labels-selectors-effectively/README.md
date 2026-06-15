@@ -103,7 +103,7 @@ kubectl get pods -l environment=production,team=platform
 
 ### Set-Based Selectors
 
-Use `in`, `notin`, and `exists` operators:
+Use `in`, `notin`, existence (`key`), and non-existence (`!key`) selectors:
 
 ```bash
 # Select pods where environment is production OR staging
@@ -172,9 +172,9 @@ The relationship between these resources:
 
 ```mermaid
 flowchart TD
-    S[Service: api-server] -->|selector: app=api-server| P1[Pod 1]
-    S -->|selector: app=api-server| P2[Pod 2]
-    S -->|selector: app=api-server| P3[Pod 3]
+    S[Service: api-server] -->|selector: app=api-server, environment=production| P1[Pod 1]
+    S -->|selector: app=api-server, environment=production| P2[Pod 2]
+    S -->|selector: app=api-server, environment=production| P3[Pod 3]
     D[Deployment] -->|manages| RS[ReplicaSet]
     RS -->|creates| P1
     RS -->|creates| P2
@@ -186,7 +186,7 @@ flowchart TD
 Labels enable sophisticated deployment strategies:
 
 ```yaml
-# Stable deployment serving 90% of traffic
+# Stable deployment receiving roughly 90% of traffic
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -208,7 +208,7 @@ spec:
         - name: api
           image: myapi:1.5.0
 ---
-# Canary deployment serving 10% of traffic
+# Canary deployment receiving roughly 10% of traffic
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -231,7 +231,7 @@ spec:
           image: myapi:1.6.0
 ---
 # Service selects ALL pods with app=api-server
-# Traffic is distributed across both stable and canary
+# Traffic is distributed across both stable and canary endpoints
 apiVersion: v1
 kind: Service
 metadata:
@@ -266,7 +266,7 @@ spec:
     - Egress
 
   ingress:
-    # Allow traffic from pods labeled role=frontend
+    # Allow traffic from pods labeled role=frontend in the same namespace
     - from:
         - podSelector:
             matchLabels:
@@ -275,7 +275,7 @@ spec:
         - port: 8080
 
   egress:
-    # Allow traffic to pods labeled app=database
+    # Allow traffic to pods labeled app=database in the same namespace
     - to:
         - podSelector:
             matchLabels:
@@ -358,13 +358,13 @@ metadata:
     # CORRECT: Use lowercase, dashes, and underscores
     team: platform-team
 
-# WRONG: Changing selector labels on existing Deployment
-# This creates orphaned ReplicaSets
+# WRONG: Changing selector labels on an existing apps/v1 Deployment
+# The API rejects selector changes after the Deployment is created
 spec:
   selector:
     matchLabels:
       app: api-server
-      # Adding this to an existing deployment causes problems
+      # Adding this to an existing deployment selector is not allowed
       # version: v2
 
 # WRONG: Mismatched labels between Service and Pods
@@ -387,10 +387,10 @@ metadata:
 
 Labels have specific format requirements:
 
-- Keys must be 63 characters or less
-- Keys can have an optional prefix (up to 253 characters)
-- Values must be 63 characters or less
-- Both must start and end with alphanumeric characters
+- The name part of a key must be 63 characters or less
+- Keys can have an optional DNS subdomain prefix (up to 253 characters), followed by `/`
+- Values must be 63 characters or less and may be empty
+- Non-empty key names and values must start and end with alphanumeric characters
 - Allowed characters: alphanumeric, `-`, `_`, `.`
 
 ```bash
