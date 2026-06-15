@@ -126,39 +126,53 @@ fn main() {
 
 ## Solution 2: Use Generics with Different Bounds
 
-When your implementations have different bounds, they do not conflict.
+Different bounds can help when they make the implementing types distinct. Rust does not generally treat two marker traits as mutually exclusive just because you only implement one of them for each current type.
 
 ```rust
 trait Process {
     fn process(&self) -> String;
 }
 
-// These do not conflict because the bounds are mutually exclusive
-// (in practice, you need marker traits or other distinguishing features)
+struct Numeric;
+struct Textual;
+struct Value<T, Kind> {
+    value: T,
+    _kind: std::marker::PhantomData<Kind>,
+}
 
-trait Numeric {}
-trait Textual {}
-
-impl Numeric for i32 {}
-impl Numeric for f64 {}
-impl Textual for String {}
-impl Textual for &str {}
-
-impl<T: Numeric + std::fmt::Display> Process for T {
-    fn process(&self) -> String {
-        format!("Numeric: {}", self)
+impl<T> Value<T, Numeric> {
+    fn numeric(value: T) -> Self {
+        Self {
+            value,
+            _kind: std::marker::PhantomData,
+        }
     }
 }
 
-impl<T: Textual + AsRef<str>> Process for T {
+impl<T> Value<T, Textual> {
+    fn textual(value: T) -> Self {
+        Self {
+            value,
+            _kind: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T: std::fmt::Display> Process for Value<T, Numeric> {
     fn process(&self) -> String {
-        format!("Textual: {}", self.as_ref())
+        format!("Numeric: {}", self.value)
+    }
+}
+
+impl<T: AsRef<str>> Process for Value<T, Textual> {
+    fn process(&self) -> String {
+        format!("Textual: {}", self.value.as_ref())
     }
 }
 
 fn main() {
-    let num = 42i32;
-    let text = String::from("hello");
+    let num = Value::numeric(42i32);
+    let text = Value::textual(String::from("hello"));
 
     println!("{}", num.process());
     println!("{}", text.process());
@@ -203,7 +217,7 @@ Note: Specialization is not stable and should not be used in production code tha
 
 ## Solution 4: Use Associated Types
 
-Associated types can help avoid conflicts by making implementations more specific.
+Associated types can help avoid awkward generic parameters by letting each implementation choose its own output type.
 
 ```rust
 trait Converter {
@@ -211,7 +225,7 @@ trait Converter {
     fn convert(&self) -> Self::Output;
 }
 
-// Different output types prevent conflicts
+// Each implementing type chooses its own output type
 impl Converter for i32 {
     type Output = String;
     fn convert(&self) -> Self::Output {
@@ -240,7 +254,7 @@ fn main() {
 
 ## Solution 5: Trait Objects and Dynamic Dispatch
 
-When static dispatch causes conflicts, trait objects provide flexibility.
+When a design does not need one trait implementation directly on each input type, trait objects provide flexibility by moving the behavior into separate handler types.
 
 ```rust
 trait Handler {
