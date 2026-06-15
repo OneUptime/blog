@@ -134,8 +134,7 @@ func bufDialer(context.Context, string) (net.Conn, error) {
 }
 
 func getTestClient(t *testing.T) (pb.UserServiceClient, func()) {
-    ctx := context.Background()
-    conn, err := grpc.DialContext(ctx, "bufnet",
+    conn, err := grpc.NewClient("passthrough:///bufnet",
         grpc.WithContextDialer(bufDialer),
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
@@ -146,6 +145,33 @@ func getTestClient(t *testing.T) (pb.UserServiceClient, func()) {
     client := pb.NewUserServiceClient(conn)
 
     return client, func() { conn.Close() }
+}
+
+func getTestClientWithServer(t *testing.T, server *grpc.Server) (pb.UserServiceClient, func()) {
+    testLis := bufconn.Listen(bufSize)
+
+    go func() {
+        if err := server.Serve(testLis); err != nil {
+            return
+        }
+    }()
+
+    conn, err := grpc.NewClient("passthrough:///bufnet",
+        grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+            return testLis.Dial()
+        }),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+    )
+    if err != nil {
+        t.Fatalf("Failed to dial bufnet: %v", err)
+    }
+
+    client := pb.NewUserServiceClient(conn)
+
+    return client, func() {
+        conn.Close()
+        testLis.Close()
+    }
 }
 ```
 
@@ -274,6 +300,7 @@ package user
 
 import (
     "context"
+    "fmt"
     "io"
     "testing"
     "time"
@@ -443,7 +470,6 @@ describe('UserService gRPC Tests', () => {
                 (err) => {
                     if (err) reject(err);
                     else {
-                        server.start();
                         resolve();
                     }
                 }
@@ -665,7 +691,7 @@ func TestLoadPerformance(t *testing.T) {
     // Assert performance thresholds
     assert.Less(t, report.Average.Milliseconds(), int64(50))
     assert.Less(t, report.Latencies.P99.Milliseconds(), int64(200))
-    assert.Zero(t, report.ErrorDist)
+    assert.Empty(t, report.ErrorDist)
 }
 ```
 
@@ -686,7 +712,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.25'
 
       - name: Install protoc
         run: |
