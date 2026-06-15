@@ -50,38 +50,38 @@ Resource attributes describe the entity producing telemetry. These should be set
 
 ```javascript
 // resource.js
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-  SEMRESATTRS_SERVICE_INSTANCE_ID,
-  SEMRESATTRS_DEPLOYMENT_ENVIRONMENT,
-  SEMRESATTRS_HOST_NAME,
-  SEMRESATTRS_PROCESS_PID,
-  SEMRESATTRS_PROCESS_RUNTIME_NAME,
-  SEMRESATTRS_PROCESS_RUNTIME_VERSION
-} = require('@opentelemetry/semantic-conventions');
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_HOST_NAME,
+  ATTR_PROCESS_PID,
+  ATTR_PROCESS_RUNTIME_NAME,
+  ATTR_PROCESS_RUNTIME_VERSION,
+  ATTR_SERVICE_INSTANCE_ID,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION
+} = require('@opentelemetry/semantic-conventions/incubating');
 const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 
 // Create resource with semantic convention attributes
 function createResource() {
-  return new Resource({
+  return resourceFromAttributes({
     // Service identification
-    [SEMRESATTRS_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'unknown-service',
-    [SEMRESATTRS_SERVICE_VERSION]: process.env.npm_package_version || '0.0.0',
-    [SEMRESATTRS_SERVICE_INSTANCE_ID]: process.env.POD_NAME || uuidv4(),
+    [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'unknown-service',
+    [ATTR_SERVICE_VERSION]: process.env.npm_package_version || '0.0.0',
+    [ATTR_SERVICE_INSTANCE_ID]: process.env.POD_NAME || uuidv4(),
 
     // Deployment context
-    [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: process.env.DEPLOY_ENV || 'development',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.DEPLOY_ENV || 'development',
 
     // Host information
-    [SEMRESATTRS_HOST_NAME]: os.hostname(),
+    [ATTR_HOST_NAME]: os.hostname(),
 
     // Process information
-    [SEMRESATTRS_PROCESS_PID]: process.pid,
-    [SEMRESATTRS_PROCESS_RUNTIME_NAME]: 'nodejs',
-    [SEMRESATTRS_PROCESS_RUNTIME_VERSION]: process.version,
+    [ATTR_PROCESS_PID]: process.pid,
+    [ATTR_PROCESS_RUNTIME_NAME]: 'nodejs',
+    [ATTR_PROCESS_RUNTIME_VERSION]: process.version,
 
     // Custom attributes (use namespacing)
     'mycompany.team': process.env.TEAM_NAME || 'platform',
@@ -100,7 +100,18 @@ import os
 import socket
 import uuid
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.semconv.resource import ResourceAttributes
+from opentelemetry.semconv.attributes.deployment_attributes import DEPLOYMENT_ENVIRONMENT_NAME
+from opentelemetry.semconv.attributes.host_attributes import HOST_NAME
+from opentelemetry.semconv.attributes.process_attributes import (
+    PROCESS_PID,
+    PROCESS_RUNTIME_NAME,
+    PROCESS_RUNTIME_VERSION,
+)
+from opentelemetry.semconv.attributes.service_attributes import (
+    SERVICE_INSTANCE_ID,
+    SERVICE_NAME,
+    SERVICE_VERSION,
+)
 
 def create_resource():
     """
@@ -109,20 +120,20 @@ def create_resource():
     """
     return Resource.create({
         # Service identification
-        ResourceAttributes.SERVICE_NAME: os.getenv("OTEL_SERVICE_NAME", "unknown-service"),
-        ResourceAttributes.SERVICE_VERSION: os.getenv("SERVICE_VERSION", "0.0.0"),
-        ResourceAttributes.SERVICE_INSTANCE_ID: os.getenv("POD_NAME", str(uuid.uuid4())),
+        SERVICE_NAME: os.getenv("OTEL_SERVICE_NAME", "unknown-service"),
+        SERVICE_VERSION: os.getenv("SERVICE_VERSION", "0.0.0"),
+        SERVICE_INSTANCE_ID: os.getenv("POD_NAME", str(uuid.uuid4())),
 
         # Deployment context
-        ResourceAttributes.DEPLOYMENT_ENVIRONMENT: os.getenv("DEPLOY_ENV", "development"),
+        DEPLOYMENT_ENVIRONMENT_NAME: os.getenv("DEPLOY_ENV", "development"),
 
         # Host information
-        ResourceAttributes.HOST_NAME: socket.gethostname(),
+        HOST_NAME: socket.gethostname(),
 
         # Process information
-        ResourceAttributes.PROCESS_PID: os.getpid(),
-        ResourceAttributes.PROCESS_RUNTIME_NAME: "python",
-        ResourceAttributes.PROCESS_RUNTIME_VERSION: os.sys.version.split()[0],
+        PROCESS_PID: os.getpid(),
+        PROCESS_RUNTIME_NAME: "python",
+        PROCESS_RUNTIME_VERSION: os.sys.version.split()[0],
 
         # Custom attributes with namespace
         "mycompany.team": os.getenv("TEAM_NAME", "platform"),
@@ -138,60 +149,64 @@ HTTP is one of the most common protocols to instrument. Use these attributes con
 
 ```javascript
 // http-server-instrumentation.js
-const { trace, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
+const { context, trace, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 const {
-  SEMATTRS_HTTP_METHOD,
-  SEMATTRS_HTTP_URL,
-  SEMATTRS_HTTP_TARGET,
-  SEMATTRS_HTTP_ROUTE,
-  SEMATTRS_HTTP_STATUS_CODE,
-  SEMATTRS_HTTP_REQUEST_CONTENT_LENGTH,
-  SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH,
-  SEMATTRS_HTTP_SCHEME,
-  SEMATTRS_NET_HOST_NAME,
-  SEMATTRS_NET_HOST_PORT,
-  SEMATTRS_HTTP_USER_AGENT,
-  SEMATTRS_HTTP_CLIENT_IP
-} = require('@opentelemetry/semantic-conventions');
+  ATTR_CLIENT_ADDRESS,
+  ATTR_HTTP_REQUEST_BODY_SIZE,
+  ATTR_HTTP_REQUEST_METHOD,
+  ATTR_HTTP_RESPONSE_BODY_SIZE,
+  ATTR_HTTP_RESPONSE_STATUS_CODE,
+  ATTR_HTTP_ROUTE,
+  ATTR_SERVER_ADDRESS,
+  ATTR_SERVER_PORT,
+  ATTR_URL_PATH,
+  ATTR_URL_QUERY,
+  ATTR_URL_SCHEME,
+  ATTR_USER_AGENT_ORIGINAL
+} = require('@opentelemetry/semantic-conventions/incubating');
 
 const tracer = trace.getTracer('http-server');
 
 function instrumentedHandler(req, res, next) {
-  const span = tracer.startSpan(`${req.method} ${req.route?.path || req.path}`, {
+  const spanName = req.route?.path ? `${req.method} ${req.route.path}` : req.method;
+  const span = tracer.startSpan(spanName, {
     kind: SpanKind.SERVER,
     attributes: {
       // Required attributes
-      [SEMATTRS_HTTP_METHOD]: req.method,
-      [SEMATTRS_HTTP_SCHEME]: req.protocol,
-      [SEMATTRS_HTTP_TARGET]: req.originalUrl,
+      [ATTR_HTTP_REQUEST_METHOD]: req.method,
+      [ATTR_URL_SCHEME]: req.protocol,
+      [ATTR_URL_PATH]: req.path,
 
       // Recommended attributes
-      [SEMATTRS_HTTP_ROUTE]: req.route?.path,
-      [SEMATTRS_NET_HOST_NAME]: req.hostname,
-      [SEMATTRS_NET_HOST_PORT]: req.socket.localPort,
-      [SEMATTRS_HTTP_USER_AGENT]: req.get('user-agent'),
-      [SEMATTRS_HTTP_CLIENT_IP]: req.ip,
-      [SEMATTRS_HTTP_REQUEST_CONTENT_LENGTH]: req.get('content-length')
+      [ATTR_HTTP_ROUTE]: req.route?.path,
+      [ATTR_URL_QUERY]: req.query ? new URLSearchParams(req.query).toString() : undefined,
+      [ATTR_SERVER_ADDRESS]: req.hostname,
+      [ATTR_SERVER_PORT]: req.socket.localPort,
+      [ATTR_USER_AGENT_ORIGINAL]: req.get('user-agent'),
+      [ATTR_CLIENT_ADDRESS]: req.ip,
+      [ATTR_HTTP_REQUEST_BODY_SIZE]: Number(req.get('content-length')) || undefined
     }
   });
 
   // Capture response attributes
   res.on('finish', () => {
-    span.setAttribute(SEMATTRS_HTTP_STATUS_CODE, res.statusCode);
-    span.setAttribute(SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH, res.get('content-length'));
+    span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, res.statusCode);
+    const responseLength = Number(res.get('content-length'));
+    if (!Number.isNaN(responseLength)) {
+      span.setAttribute(ATTR_HTTP_RESPONSE_BODY_SIZE, responseLength);
+    }
 
     // Set span status based on HTTP status code
-    if (res.statusCode >= 400) {
+    if (res.statusCode >= 500) {
       span.setStatus({
-        code: SpanStatusCode.ERROR,
-        message: `HTTP ${res.statusCode}`
+        code: SpanStatusCode.ERROR
       });
     }
 
     span.end();
   });
 
-  next();
+  context.with(trace.setSpan(context.active(), span), next);
 }
 ```
 
@@ -202,7 +217,12 @@ function instrumentedHandler(req, res, next) {
 import requests
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.semconv.attributes.http_attributes import (
+    HTTP_REQUEST_METHOD,
+    HTTP_RESPONSE_STATUS_CODE,
+)
+from opentelemetry.semconv.attributes.server_attributes import SERVER_ADDRESS, SERVER_PORT
+from opentelemetry.semconv.attributes.url_attributes import URL_FULL, URL_SCHEME
 
 tracer = trace.get_tracer("http-client")
 
@@ -214,28 +234,25 @@ def make_request(method, url, **kwargs):
     parsed = urlparse(url)
 
     with tracer.start_as_current_span(
-        f"{method} {parsed.path}",
+        method,
         kind=SpanKind.CLIENT,
         attributes={
             # Required attributes
-            SpanAttributes.HTTP_METHOD: method,
-            SpanAttributes.HTTP_URL: url,
+            HTTP_REQUEST_METHOD: method,
+            URL_FULL: url,
 
             # Recommended attributes
-            SpanAttributes.HTTP_SCHEME: parsed.scheme,
-            SpanAttributes.NET_PEER_NAME: parsed.hostname,
-            SpanAttributes.NET_PEER_PORT: parsed.port or (443 if parsed.scheme == "https" else 80),
+            URL_SCHEME: parsed.scheme,
+            SERVER_ADDRESS: parsed.hostname,
+            SERVER_PORT: parsed.port or (443 if parsed.scheme == "https" else 80),
         }
     ) as span:
         try:
             response = requests.request(method, url, **kwargs)
 
             # Add response attributes
-            span.set_attribute(SpanAttributes.HTTP_STATUS_CODE, response.status_code)
-            span.set_attribute(
-                SpanAttributes.HTTP_RESPONSE_CONTENT_LENGTH,
-                len(response.content)
-            )
+            span.set_attribute(HTTP_RESPONSE_STATUS_CODE, response.status_code)
+            span.set_attribute("http.response.body.size", len(response.content))
 
             # Set status based on response code
             if response.status_code >= 400:
@@ -257,44 +274,44 @@ Database operations have their own semantic conventions.
 // database-instrumentation.js
 const { trace, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 const {
-  SEMATTRS_DB_SYSTEM,
-  SEMATTRS_DB_NAME,
-  SEMATTRS_DB_USER,
-  SEMATTRS_DB_STATEMENT,
-  SEMATTRS_DB_OPERATION,
-  SEMATTRS_NET_PEER_NAME,
-  SEMATTRS_NET_PEER_PORT
-} = require('@opentelemetry/semantic-conventions');
+  ATTR_DB_NAMESPACE,
+  ATTR_DB_OPERATION_NAME,
+  ATTR_DB_QUERY_TEXT,
+  ATTR_DB_RESPONSE_RETURNED_ROWS,
+  ATTR_DB_SYSTEM_NAME,
+  ATTR_SERVER_ADDRESS,
+  ATTR_SERVER_PORT
+} = require('@opentelemetry/semantic-conventions/incubating');
 
 const tracer = trace.getTracer('database');
 
-async function executeQuery(pool, query, params = []) {
-  // Extract operation from query (SELECT, INSERT, UPDATE, DELETE)
-  const operation = query.trim().split(/\s+/)[0].toUpperCase();
+async function executeQuery(pool, query, params = [], operationName) {
+  // Prefer an operation name from the database client or call site.
+  // This fallback is only for simple single-statement examples.
+  const operation = operationName || query.trim().split(/\s+/)[0].toUpperCase();
 
   const span = tracer.startSpan(`${operation} ${pool.config.database}`, {
     kind: SpanKind.CLIENT,
     attributes: {
       // Database system identification
-      [SEMATTRS_DB_SYSTEM]: 'postgresql',
-      [SEMATTRS_DB_NAME]: pool.config.database,
-      [SEMATTRS_DB_USER]: pool.config.user,
+      [ATTR_DB_SYSTEM_NAME]: 'postgresql',
+      [ATTR_DB_NAMESPACE]: pool.config.database,
 
       // Operation details
-      [SEMATTRS_DB_OPERATION]: operation,
+      [ATTR_DB_OPERATION_NAME]: operation,
       // Only include statement if not sensitive
       // Be careful not to log passwords or PII
-      [SEMATTRS_DB_STATEMENT]: sanitizeQuery(query),
+      [ATTR_DB_QUERY_TEXT]: sanitizeQuery(query),
 
       // Network information
-      [SEMATTRS_NET_PEER_NAME]: pool.config.host,
-      [SEMATTRS_NET_PEER_PORT]: pool.config.port
+      [ATTR_SERVER_ADDRESS]: pool.config.host,
+      [ATTR_SERVER_PORT]: pool.config.port
     }
   });
 
   try {
     const result = await pool.query(query, params);
-    span.setAttribute('db.rows_affected', result.rowCount);
+    span.setAttribute(ATTR_DB_RESPONSE_RETURNED_ROWS, result.rowCount);
     return result;
   } catch (error) {
     span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
@@ -318,35 +335,50 @@ For message queues like Kafka, RabbitMQ, or SQS:
 
 ```python
 # messaging_instrumentation.py
+import uuid
+import pika
 from opentelemetry import trace
+from opentelemetry.propagate import extract, inject
 from opentelemetry.trace import SpanKind, Status, StatusCode
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.semconv.attributes.messaging_attributes import (
+    MESSAGING_DESTINATION_NAME,
+    MESSAGING_MESSAGE_BODY_SIZE,
+    MESSAGING_MESSAGE_CONVERSATION_ID,
+    MESSAGING_MESSAGE_ID,
+    MESSAGING_OPERATION_NAME,
+    MESSAGING_OPERATION_TYPE,
+    MESSAGING_SYSTEM,
+)
 
 tracer = trace.get_tracer("messaging")
+
+def generate_message_id():
+    return str(uuid.uuid4())
 
 def publish_message(channel, queue_name, message, correlation_id=None):
     """
     Publish a message with proper semantic conventions.
     """
     with tracer.start_as_current_span(
-        f"{queue_name} send",
+        f"send {queue_name}",
         kind=SpanKind.PRODUCER,
         attributes={
             # Messaging system
-            SpanAttributes.MESSAGING_SYSTEM: "rabbitmq",
-            SpanAttributes.MESSAGING_DESTINATION: queue_name,
-            SpanAttributes.MESSAGING_DESTINATION_KIND: "queue",
+            MESSAGING_SYSTEM: "rabbitmq",
+            MESSAGING_DESTINATION_NAME: queue_name,
 
             # Message details
-            SpanAttributes.MESSAGING_MESSAGE_PAYLOAD_SIZE_BYTES: len(message),
-            SpanAttributes.MESSAGING_OPERATION: "send",
+            MESSAGING_MESSAGE_BODY_SIZE: len(message),
+            MESSAGING_OPERATION_NAME: "send",
+            MESSAGING_OPERATION_TYPE: "send",
 
             # Optional correlation
-            SpanAttributes.MESSAGING_CONVERSATION_ID: correlation_id,
+            MESSAGING_MESSAGE_CONVERSATION_ID: correlation_id,
         }
     ) as span:
         # Inject trace context into message headers for propagation
-        headers = inject_context_to_headers({})
+        headers = {}
+        inject(headers)
 
         try:
             channel.basic_publish(
@@ -355,7 +387,7 @@ def publish_message(channel, queue_name, message, correlation_id=None):
                 body=message,
                 properties=pika.BasicProperties(headers=headers)
             )
-            span.set_attribute(SpanAttributes.MESSAGING_MESSAGE_ID, generate_message_id())
+            span.set_attribute(MESSAGING_MESSAGE_ID, generate_message_id())
         except Exception as e:
             span.set_status(Status(StatusCode.ERROR, str(e)))
             span.record_exception(e)
@@ -367,18 +399,18 @@ def consume_message(channel, method, properties, body):
     Process a consumed message with proper semantic conventions.
     """
     # Extract trace context from message headers
-    ctx = extract_context_from_headers(properties.headers or {})
+    ctx = extract(properties.headers or {})
 
     with tracer.start_as_current_span(
-        f"{method.routing_key} receive",
+        f"process {method.routing_key}",
         context=ctx,
         kind=SpanKind.CONSUMER,
         attributes={
-            SpanAttributes.MESSAGING_SYSTEM: "rabbitmq",
-            SpanAttributes.MESSAGING_DESTINATION: method.routing_key,
-            SpanAttributes.MESSAGING_DESTINATION_KIND: "queue",
-            SpanAttributes.MESSAGING_MESSAGE_PAYLOAD_SIZE_BYTES: len(body),
-            SpanAttributes.MESSAGING_OPERATION: "receive",
+            MESSAGING_SYSTEM: "rabbitmq",
+            MESSAGING_DESTINATION_NAME: method.routing_key,
+            MESSAGING_MESSAGE_BODY_SIZE: len(body),
+            MESSAGING_OPERATION_NAME: "process",
+            MESSAGING_OPERATION_TYPE: "process",
         }
     ) as span:
         try:
@@ -436,29 +468,48 @@ Use the OpenTelemetry Collector to validate and enforce conventions:
 
 ```yaml
 # collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 processors:
-  # Transform non-standard attributes to standard ones
-  attributes:
+  # Transform non-standard resource attributes to standard ones
+  resource:
     actions:
       # Rename legacy attributes to semantic conventions
-      - key: service
-        action: delete
       - key: service.name
         from_attribute: service
         action: upsert
-
-      - key: statusCode
+      - key: service
         action: delete
+
+  # Transform non-standard span attributes to standard ones
+  attributes:
+    actions:
       - key: http.response.status_code
         from_attribute: statusCode
         action: upsert
+      - key: statusCode
+        action: delete
 
   # Filter spans missing required attributes
   filter:
+    error_mode: ignore
+    trace_conditions:
+      - 'resource.attributes["service.name"] == nil'
+      - 'span.attributes["http.request.method"] == nil and span.kind == SPAN_KIND_SERVER'
+
+exporters:
+  debug:
+
+service:
+  pipelines:
     traces:
-      span:
-        - 'attributes["service.name"] == nil'
-        - 'attributes["http.method"] == nil and kind == SPAN_KIND_SERVER'
+      receivers: [otlp]
+      processors: [resource, attributes, filter]
+      exporters: [debug]
 ```
 
 ## Reference Table
@@ -467,14 +518,14 @@ processors:
 |--------|-----------|---------|
 | Service | service.name | "payment-api" |
 | Service | service.version | "1.2.3" |
-| HTTP | http.method | "POST" |
+| HTTP | http.request.method | "POST" |
 | HTTP | http.route | "/api/orders/{id}" |
 | HTTP | http.response.status_code | 200 |
-| Database | db.system | "postgresql" |
-| Database | db.name | "orders_db" |
-| Database | db.operation | "SELECT" |
+| Database | db.system.name | "postgresql" |
+| Database | db.namespace | "orders_db" |
+| Database | db.operation.name | "SELECT" |
 | Messaging | messaging.system | "kafka" |
-| Messaging | messaging.destination | "order-events" |
+| Messaging | messaging.destination.name | "order-events" |
 
 ## Summary
 
