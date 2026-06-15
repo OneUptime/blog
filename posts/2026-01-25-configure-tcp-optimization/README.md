@@ -8,7 +8,7 @@ Description: Learn how to configure TCP optimization for better network performa
 
 ---
 
-TCP is the workhorse of the internet, but its default settings are conservative. They work for dial-up connections from the 1990s but leave performance on the table for modern high-bandwidth networks. A properly tuned TCP stack can double your throughput and halve your latency.
+TCP is the workhorse of the internet, and its default settings are designed to work safely across many environments. They can still leave performance on the table for modern high-bandwidth networks. A properly tuned TCP stack can significantly improve throughput and latency for the right workload.
 
 This guide covers practical TCP optimization techniques for Linux servers.
 
@@ -45,7 +45,7 @@ sequenceDiagram
 
 ### Understanding TCP Buffers
 
-TCP buffers determine how much data can be in flight before waiting for acknowledgment. The bandwidth-delay product (BDP) tells you the optimal buffer size:
+TCP buffers help determine how much data can be in flight before waiting for acknowledgment. The bandwidth-delay product (BDP) tells you the buffer size needed to fill a path:
 
 ```text
 BDP = Bandwidth (bytes/sec) * RTT (seconds)
@@ -136,7 +136,7 @@ sysctl net.ipv4.tcp_congestion_control
 |-----------|----------|-----------------|
 | cubic | General purpose | Default on Linux, loss-based |
 | bbr | High latency links | Bandwidth-based, lower latency |
-| bbr2 | High loss networks | Improved fairness over BBR |
+| bbr2 | High loss networks | Improved fairness over BBR, if available in your kernel |
 | reno | Compatibility | Conservative, widely supported |
 
 ### Enable BBR
@@ -149,7 +149,7 @@ BBR (Bottleneck Bandwidth and Round-trip propagation time) provides better throu
 # Use BBR congestion control
 net.ipv4.tcp_congestion_control = bbr
 
-# Use fair queuing (required for BBR)
+# Use fair queuing (recommended for BBR pacing)
 net.core.default_qdisc = fq
 ```
 
@@ -169,8 +169,7 @@ def create_bbr_socket():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     # Set congestion control algorithm (Linux only)
-    TCP_CONGESTION = 13
-    sock.setsockopt(socket.IPPROTO_TCP, TCP_CONGESTION, b'bbr')
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, b'bbr')
 
     return sock
 ```
@@ -179,7 +178,7 @@ def create_bbr_socket():
 
 ### TCP Fast Open
 
-TCP Fast Open allows data to be sent in the SYN packet, saving one round trip:
+TCP Fast Open allows eligible data to be sent in the SYN packet, saving up to one round trip for applications that can tolerate TFO's replay caveats:
 
 ```bash
 # /etc/sysctl.conf
@@ -199,8 +198,7 @@ def create_tfo_server(host, port):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     # Enable TCP Fast Open (queue length of 5)
-    TCP_FASTOPEN = 23
-    sock.setsockopt(socket.IPPROTO_TCP, TCP_FASTOPEN, 5)
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_FASTOPEN, 5)
 
     sock.bind((host, port))
     sock.listen(128)
@@ -216,8 +214,7 @@ def connect_with_tfo(host, port, data):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     # Connect and send data in one syscall
-    MSG_FASTOPEN = 0x20000000
-    sock.sendto(data, MSG_FASTOPEN, (host, port))
+    sock.sendto(data, socket.MSG_FASTOPEN, (host, port))
 
     return sock
 ```
@@ -246,7 +243,7 @@ net.ipv4.tcp_synack_retries = 3
 ```bash
 # /etc/sysctl.conf
 
-# Enable TCP keepalive
+# TCP keepalive timings for sockets that enable SO_KEEPALIVE
 net.ipv4.tcp_keepalive_time = 600    # 10 minutes before first probe
 net.ipv4.tcp_keepalive_intvl = 60    # 1 minute between probes
 net.ipv4.tcp_keepalive_probes = 5    # 5 probes before giving up
@@ -276,10 +273,10 @@ def create_keepalive_socket():
 ```bash
 # /etc/sysctl.conf
 
-# Allow reusing sockets in TIME_WAIT state
+# Allow reusing TIME_WAIT sockets for new outgoing connections when safe
 net.ipv4.tcp_tw_reuse = 1
 
-# Reduce TIME_WAIT timeout
+# Reduce timeout for orphaned FIN_WAIT_2 sockets
 net.ipv4.tcp_fin_timeout = 15
 ```
 
@@ -317,8 +314,7 @@ Send ACKs immediately instead of delaying:
 import socket
 
 def enable_quickack(sock):
-    TCP_QUICKACK = 12
-    sock.setsockopt(socket.IPPROTO_TCP, TCP_QUICKACK, 1)
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_QUICKACK, 1)
 ```
 
 ## Monitoring TCP Performance
@@ -373,7 +369,7 @@ sysctl net.ipv4.tcp_wmem
 
 echo ""
 echo "Connections in TIME_WAIT:"
-ss -s | grep TIME-WAIT
+ss -s | grep -i timewait
 ```
 
 ### Benchmark TCP Throughput
@@ -421,6 +417,8 @@ net.ipv4.tcp_keepalive_probes = 5
 
 # TIME_WAIT
 net.ipv4.tcp_tw_reuse = 1
+
+# Orphaned FIN_WAIT_2 timeout
 net.ipv4.tcp_fin_timeout = 15
 
 # Security
