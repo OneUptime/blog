@@ -47,11 +47,12 @@ flowchart LR
 ```javascript
 const express = require('express');
 const compression = require('compression');
+const zlib = require('zlib');
 
 const app = express();
 
-// Basic compression - gzip by default
-app.use(compression());
+// Basic compression - negotiates Brotli, gzip, or deflate
+// app.use(compression());
 
 // Advanced compression configuration
 app.use(compression({
@@ -80,10 +81,11 @@ app.use(compression({
     return compression.filter(req, res);
   },
 
-  // Brotli options (requires Node.js 11.7+)
+  // Brotli options (requires Node.js 11.7+ or 10.16+)
   brotli: {
-    enabled: true,
-    zlib: {}
+    params: {
+      [zlib.constants.BROTLI_PARAM_QUALITY]: 4
+    }
   }
 }));
 
@@ -139,9 +141,8 @@ function smartCompression(options = {}) {
   const gzipLevel = options.gzipLevel || 6;
 
   return (req, res, next) => {
-    const acceptEncoding = req.headers['accept-encoding'] || '';
+    const encoding = req.acceptsEncodings('br', 'gzip');
     const originalSend = res.send.bind(res);
-    const originalJson = res.json.bind(res);
 
     const compressAndSend = (body) => {
       // Skip small responses
@@ -157,7 +158,7 @@ function smartCompression(options = {}) {
       }
 
       // Choose compression algorithm
-      if (acceptEncoding.includes('br')) {
+      if (encoding === 'br') {
         // Use Brotli
         zlib.brotliCompress(
           Buffer.from(body),
@@ -172,7 +173,7 @@ function smartCompression(options = {}) {
             res.end(compressed);
           }
         );
-      } else if (acceptEncoding.includes('gzip')) {
+      } else if (encoding === 'gzip') {
         // Use gzip
         zlib.gzip(
           Buffer.from(body),
@@ -225,6 +226,7 @@ from flask import Flask, jsonify, request
 from flask_compress import Compress
 import gzip
 import io
+import json
 
 app = Flask(__name__)
 
@@ -253,15 +255,15 @@ def get_data():
 
 
 # Manual compression for fine-grained control
-def compress_response(data, accept_encoding):
+def compress_response(data, encoding):
     """Manually compress response based on Accept-Encoding."""
     json_data = jsonify(data).get_data(as_text=True)
 
-    if 'br' in accept_encoding:
+    if encoding == 'br':
         import brotli
         compressed = brotli.compress(json_data.encode('utf-8'), quality=4)
         return compressed, 'br'
-    elif 'gzip' in accept_encoding:
+    elif encoding == 'gzip':
         buf = io.BytesIO()
         with gzip.GzipFile(fileobj=buf, mode='wb', compresslevel=6) as f:
             f.write(json_data.encode('utf-8'))
@@ -273,9 +275,9 @@ def compress_response(data, accept_encoding):
 @app.route('/api/large-data')
 def get_large_data():
     data = generate_very_large_dataset()
-    accept_encoding = request.headers.get('Accept-Encoding', '')
+    encoding = request.accept_encodings.best_match(['br', 'gzip'])
 
-    compressed_data, encoding = compress_response(data, accept_encoding)
+    compressed_data, encoding = compress_response(data, encoding)
 
     response = app.make_response(compressed_data)
     response.headers['Content-Type'] = 'application/json'
@@ -373,20 +375,9 @@ http {
         # Serve pre-compressed static files
         location /static/ {
             alias /var/www/static/;
-
-            # Try .br, then .gz, then original
-            try_files $uri$brotli_suffix $uri$gzip_suffix $uri =404;
-
-            # Set correct Content-Encoding
-            location ~ \.br$ {
-                add_header Content-Encoding br;
-                add_header Vary Accept-Encoding;
-            }
-
-            location ~ \.gz$ {
-                add_header Content-Encoding gzip;
-                add_header Vary Accept-Encoding;
-            }
+            gzip_static on;
+            brotli_static on;
+            add_header Vary Accept-Encoding;
         }
     }
 }
