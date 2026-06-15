@@ -95,7 +95,6 @@ keyUsage = critical, digitalSignature, cRLSign, keyCertSign
 
 [server_cert]
 basicConstraints = CA:FALSE
-nsCertType = server
 subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid,issuer
 keyUsage = critical, digitalSignature, keyEncipherment
@@ -103,7 +102,6 @@ extendedKeyUsage = serverAuth
 
 [client_cert]
 basicConstraints = CA:FALSE
-nsCertType = client
 subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid,issuer
 keyUsage = critical, digitalSignature
@@ -153,7 +151,6 @@ openssl req -new \
 # Create extensions file for SAN
 cat > ${SERVICE_NAME}.ext << EOF
 basicConstraints = CA:FALSE
-nsCertType = server, client
 subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid,issuer
 keyUsage = critical, digitalSignature, keyEncipherment
@@ -193,7 +190,7 @@ rm ${SERVICE_NAME}.csr ${SERVICE_NAME}.ext
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for deployment
 kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=120s
@@ -294,9 +291,9 @@ import (
     "crypto/tls"
     "crypto/x509"
     "fmt"
-    "io/ioutil"
     "log"
     "net/http"
+    "os"
 )
 
 func main() {
@@ -307,7 +304,7 @@ func main() {
     }
 
     // Load CA certificate for client verification
-    caCert, err := ioutil.ReadFile("ca.crt")
+    caCert, err := os.ReadFile("ca.crt")
     if err != nil {
         log.Fatalf("Failed to load CA certificate: %v", err)
     }
@@ -354,9 +351,10 @@ import (
     "crypto/tls"
     "crypto/x509"
     "fmt"
-    "io/ioutil"
+    "io"
     "log"
     "net/http"
+    "os"
 )
 
 func main() {
@@ -367,7 +365,7 @@ func main() {
     }
 
     // Load CA certificate for server verification
-    caCert, err := ioutil.ReadFile("ca.crt")
+    caCert, err := os.ReadFile("ca.crt")
     if err != nil {
         log.Fatalf("Failed to load CA certificate: %v", err)
     }
@@ -396,7 +394,7 @@ func main() {
     }
     defer resp.Body.Close()
 
-    body, _ := ioutil.ReadAll(resp.Body)
+    body, _ := io.ReadAll(resp.Body)
     fmt.Printf("Response: %s\n", body)
 }
 ```
@@ -406,18 +404,14 @@ func main() {
 ```python
 # mtls_server.py
 import ssl
-from flask import Flask, request
+from flask import Flask
 
 app = Flask(__name__)
 
 @app.route('/')
 def hello():
-    # Access client certificate info
-    client_cert = request.environ.get('peercert')
-    if client_cert:
-        subject = dict(x[0] for x in client_cert['subject'])
-        return f"Hello {subject.get('commonName', 'Unknown')}!"
-    return "No client certificate"
+    # A request reaches this handler only after the TLS layer verifies the client certificate.
+    return "Hello mTLS client!"
 
 if __name__ == '__main__':
     # Configure SSL context
@@ -432,9 +426,8 @@ if __name__ == '__main__':
 ```python
 # mtls_client.py
 import requests
-import ssl
 
-# Create custom SSL context
+# Configure client certificate and CA bundle
 session = requests.Session()
 session.cert = ('client.crt', 'client.key')
 session.verify = 'ca.crt'
@@ -449,7 +442,8 @@ print(response.text)
 # /etc/nginx/sites-available/mtls.conf
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     # Server certificate
@@ -597,7 +591,7 @@ curl -v --cacert ca.crt --cert client.crt --key client.key $SERVER
 echo -e "\n=== Test with invalid client certificate (should fail) ==="
 curl -v --cacert ca.crt --cert invalid.crt --key invalid.key $SERVER 2>&1 | grep -E "(SSL|error)"
 
-echo -e "\n=== Verify certificate details ==="
+echo -e "\n=== Verify server certificate details ==="
 openssl s_client -connect api.example.com:8443 \
     -cert client.crt -key client.key -CAfile ca.crt \
     </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer
