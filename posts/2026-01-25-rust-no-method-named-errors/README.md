@@ -12,13 +12,13 @@ The "no method named X found" error is common when learning Rust. It occurs when
 
 ## Understanding the Error
 
-Rust requires traits to be in scope before you can use their methods. Even if a type implements a trait, you cannot call the trait's methods without importing it first.
+For trait methods, Rust method lookup considers visible traits, including traits in scope, traits in the prelude, and trait bounds on generic types. Even if a type implements a trait, you cannot call that trait's methods unless the trait is visible to the current code.
 
 ```rust
 fn main() {
     let data = vec![1, 2, 3];
 
-    // This works - iter() is inherent to Vec
+    // This works - Vec derefs to a slice, and slices have iter()
     let _iter = data.iter();
 
     // But what about methods from traits?
@@ -36,20 +36,22 @@ fn main() {
 The most frequent cause is forgetting to import a trait.
 
 ```rust
-// Problem: Read trait not imported
 use std::fs::File;
 
 fn main() {
     let mut file = File::open("test.txt").unwrap();
-    let mut buffer = Vec::new();
+    let mut buffer: Vec<u8> = Vec::new();
     // file.read_to_end(&mut buffer).unwrap(); // Error: no method named `read_to_end`
 }
+```
 
-// Solution: Import the Read trait
+Solution: import the `Read` trait.
+
+```rust
 use std::fs::File;
 use std::io::Read;  // Add this import
 
-fn main_fixed() {
+fn main() {
     let mut file = File::open("test.txt").unwrap();
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).unwrap();  // Now it works
@@ -64,17 +66,17 @@ Sometimes the type you have is not what you expect.
 fn main() {
     let numbers = vec![1, 2, 3];
 
-    // iter() returns an iterator, not a slice
-    let iter = numbers.iter();
+    // filter() returns an iterator, not a slice
+    let iter = numbers.iter().filter(|x| **x > 1);
 
-    // Problem: Iterators do not have a len() method
+    // Problem: Iterator itself does not provide len()
     // let length = iter.len(); // Error!
 
     // Solution 1: Call len() on the original collection
     let length = numbers.len();
 
     // Solution 2: Use count() on iterator (consumes it)
-    let iter = numbers.iter();
+    let iter = numbers.iter().filter(|x| **x > 1);
     let count = iter.count();
 
     // Another common mistake: expecting slice methods on Vec
@@ -94,7 +96,7 @@ fn main() {
     let s = String::from("hello");
 
     // into_bytes() consumes the String (requires ownership)
-    // let bytes = (&s).into_bytes(); // Error: method not found for &String
+    // let bytes = (&s).into_bytes(); // Error: cannot move out of a shared reference
 
     // Solution: Call on owned value
     let bytes = s.into_bytes();
@@ -103,7 +105,7 @@ fn main() {
     // Or clone if you need to keep the original
     let s2 = String::from("world");
     let bytes2 = s2.clone().into_bytes();
-    println!("Original: {}", s2);  // Error: s2 moved... wait, we cloned!
+    println!("Original: {}, Bytes: {:?}", s2, bytes2);  // Works because we cloned
 }
 ```
 
@@ -122,7 +124,7 @@ tokio = { version = "1", features = ["full"] }  # Some methods need specific fea
 // Methods like tokio::spawn require the "rt" feature
 // Methods like tokio::time::sleep require the "time" feature
 
-#[tokio::main]  // Requires "macros" and "rt-multi-thread" features
+#[tokio::main]  // Requires "macros" and a runtime feature such as "rt-multi-thread"
 async fn main() {
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 }
@@ -139,20 +141,30 @@ struct Person {
     name: String,
 }
 
-// Without implementing the trait, Person has no greet method
 fn main() {
     let person = Person { name: String::from("Alice") };
     // person.greet(); // Error: no method named `greet` found
 }
+```
 
-// Solution: Implement the trait
+Solution: implement the trait.
+
+```rust
+trait Greetable {
+    fn greet(&self) -> String;
+}
+
+struct Person {
+    name: String,
+}
+
 impl Greetable for Person {
     fn greet(&self) -> String {
         format!("Hello, I'm {}", self.name)
     }
 }
 
-fn main_fixed() {
+fn main() {
     let person = Person { name: String::from("Alice") };
     println!("{}", person.greet());  // Now it works
 }
@@ -248,7 +260,8 @@ fn debug_type<T>(_: &T) {
 }
 
 fn main() {
-    let x = vec![1, 2, 3].iter();
+    let values = vec![1, 2, 3];
+    let x = values.iter();
     debug_type(&x);  // Prints the actual type
 }
 ```
