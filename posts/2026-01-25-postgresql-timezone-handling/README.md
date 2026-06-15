@@ -88,7 +88,7 @@ CREATE TABLE audit_log (
     action VARCHAR(100) NOT NULL,
     performed_by VARCHAR(50),
     performed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    -- CURRENT_TIMESTAMP returns TIMESTAMPTZ in UTC
+    -- CURRENT_TIMESTAMP returns TIMESTAMPTZ; PostgreSQL stores it in UTC
     details JSONB
 );
 
@@ -152,7 +152,7 @@ FROM events_aware;
 PostgreSQL has multiple timezone settings that affect behavior.
 
 ```sql
--- View the server's default timezone
+-- View the current session timezone
 SHOW timezone;
 
 -- View available timezones
@@ -213,6 +213,8 @@ FROM generate_series(
 -- 2026-03-08 01:00:00
 -- 2026-03-08 03:00:00  -- 2:00 AM doesn't exist (clocks jump forward)
 -- 2026-03-08 04:00:00
+-- 2026-03-08 05:00:00
+-- 2026-03-08 06:00:00
 ```
 
 ## Application-Level Best Practices
@@ -224,10 +226,13 @@ Design your application to work correctly with timezones.
 CREATE TABLE user_profiles (
     user_id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE,
-    timezone VARCHAR(50) DEFAULT 'UTC',
-    CONSTRAINT valid_timezone CHECK (
-        timezone IN (SELECT name FROM pg_timezone_names)
-    )
+    timezone VARCHAR(50) DEFAULT 'UTC' NOT NULL
+);
+
+-- Validate timezone names in application logic or a trigger
+SELECT EXISTS (
+    SELECT 1 FROM pg_timezone_names
+    WHERE name = 'America/New_York'
 );
 
 -- Function to get events in user's local timezone
@@ -278,7 +283,7 @@ CREATE TABLE scheduled_tasks (
 );
 
 -- WRONG: Mixing timezone-aware and naive timestamps
-SELECT t1.event_time - t2.event_time  -- Undefined if types differ
+SELECT t1.event_time - t2.event_time  -- Depends on the session timezone
 FROM events_aware t1, events_naive t2;
 ```
 
