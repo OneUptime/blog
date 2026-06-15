@@ -116,9 +116,9 @@ fn main() {
 }
 ```
 
-## Solution 3: Use Underscore for Unused Fields
+## Solution 3: Use `_` for Unused Fields
 
-Prefix field bindings with underscore to indicate they are intentionally unused.
+Use the `_` wildcard to indicate fields are intentionally unused.
 
 ```rust
 struct Response {
@@ -298,7 +298,7 @@ struct Data {
 
 fn process_data(data: &mut Data) {
     // Borrow fields instead of moving
-    let Data { ref value, ref mut count } = data;
+    let Data { value, count } = data;
 
     println!("Value: {}", value);
     *count += 1;
@@ -415,7 +415,7 @@ The "pattern requires field" error ensures you handle all struct fields:
 
 - Include every field in destructuring patterns
 - Use `..` to explicitly ignore fields you do not need
-- Use `_` prefix for unused but acknowledged fields
+- Use `_` for unused but acknowledged fields
 - Use `field: new_name` to rename during destructuring
 - Apply these rules in `let`, `match`, and function parameters
 
