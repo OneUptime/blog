@@ -10,7 +10,9 @@ Description: A hands-on guide to building a Consul service discovery client in N
 
 > Service discovery is the backbone of any microservices architecture. Consul provides a reliable way to register services and discover them at runtime, eliminating hardcoded connection strings and enabling dynamic scaling.
 
-When services need to communicate in a distributed system, they need to find each other. This guide shows you how to build a production-ready Consul client in Node.js that handles registration, health checks, and service discovery.
+When services need to communicate in a distributed system, they need to find each other. This guide shows you how to build a practical Consul client in Node.js that handles registration, health checks, and service discovery.
+
+Note: The `consul` npm package used in this example is currently deprecated on npm. The API shown here is still useful for learning the Consul workflow, but for new production systems you should either call Consul's HTTP API directly with a maintained HTTP client or wrap these patterns in an internally supported client.
 
 ---
 
@@ -41,8 +43,8 @@ The typical workflow involves:
 First, install the required dependencies.
 
 ```bash
-npm install consul axios
-npm install -D @types/node typescript
+npm install consul axios express
+npm install -D @types/node @types/express typescript
 ```
 
 Now let's build a comprehensive Consul client.
@@ -74,8 +76,7 @@ class ConsulClient {
   constructor(config: { host: string; port: number }) {
     this.consul = new Consul({
       host: config.host,
-      port: config.port,
-      promisify: true
+      port: config.port
     });
   }
 
@@ -92,6 +93,7 @@ class ConsulClient {
       tags: service.tags || [],
       meta: service.meta || {},
       check: {
+        name: `${service.name} health check`,
         http: healthCheck.http,
         interval: healthCheck.interval,
         timeout: healthCheck.timeout,
@@ -163,7 +165,7 @@ class ConsulClient {
       options: {
         service: serviceName,
         passing: true
-      }
+      } as any
     });
 
     watch.on('change', (data: any) => {
@@ -398,7 +400,7 @@ class DiscoveryHttpClient {
     let lastError: Error | null = null;
 
     for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
-      const url = await this.registry.getServiceUrl(serviceName, config.url);
+      const url = await this.registry.getServiceUrl(serviceName, config.url ?? '');
 
       if (!url) {
         throw new Error(`No healthy instances found for service: ${serviceName}`);
@@ -593,8 +595,6 @@ Here is a Docker Compose configuration to test your setup locally.
 
 ```yaml
 # docker-compose.yml
-
-version: '3.8'
 
 services:
   consul:
