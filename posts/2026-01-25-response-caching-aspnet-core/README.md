@@ -41,6 +41,8 @@ The response caching middleware caches responses based on HTTP cache headers. St
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddControllers();
+
 // Add response caching services
 builder.Services.AddResponseCaching(options =>
 {
@@ -454,10 +456,12 @@ Use output caching in controllers:
 public class ProductsController : ControllerBase
 {
     private readonly IOutputCacheStore _cacheStore;
+    private readonly IProductService _productService;
 
-    public ProductsController(IOutputCacheStore cacheStore)
+    public ProductsController(IOutputCacheStore cacheStore, IProductService productService)
     {
         _cacheStore = cacheStore;
+        _productService = productService;
     }
 
     [HttpGet]
