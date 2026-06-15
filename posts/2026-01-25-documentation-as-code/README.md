@@ -53,9 +53,9 @@ project/
 MkDocs generates static documentation sites from Markdown. Install it:
 
 ```bash
-# Install MkDocs with Material theme
+# Install MkDocs with Material theme and configured plugins
 
-pip install mkdocs mkdocs-material
+pip install mkdocs mkdocs-material mkdocs-git-revision-date-localized-plugin
 ```
 
 Create `mkdocs.yml`:
@@ -157,6 +157,7 @@ Configure `docusaurus.config.ts`:
 ```typescript
 // docs/docusaurus.config.ts
 import type { Config } from '@docusaurus/types';
+import { themes as prismThemes } from 'prism-react-renderer';
 
 const config: Config = {
   title: 'Project Documentation',
@@ -206,8 +207,8 @@ const config: Config = {
       copyright: `Copyright ${new Date().getFullYear()}. Built with Docusaurus.`,
     },
     prism: {
-      theme: require('prism-react-renderer/themes/github'),
-      darkTheme: require('prism-react-renderer/themes/dracula'),
+      theme: prismThemes.github,
+      darkTheme: prismThemes.dracula,
     },
   },
 };
@@ -237,7 +238,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Lint Markdown
         uses: DavidAnson/markdownlint-cli2-action@v14
@@ -245,12 +246,12 @@ jobs:
           globs: 'docs/**/*.md'
 
       - name: Check spelling
-        uses: streetsidesoftware/cspell-action@v5
+        uses: streetsidesoftware/cspell-action@v8
         with:
           files: 'docs/**/*.md'
 
       - name: Check links
-        uses: lycheeverse/lychee-action@v1
+        uses: lycheeverse/lychee-action@v2
         with:
           args: --verbose docs/**/*.md
           fail: true
@@ -259,7 +260,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -274,8 +275,11 @@ jobs:
       - name: Build documentation
         run: mkdocs build --strict
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: site/
 
@@ -348,10 +352,15 @@ Generate API docs from source code:
 # mkdocs.yml
 plugins:
   - search
-  - render_swagger:
-      spec: api/openapi.yaml
+  - render_swagger
 
-# Or generate from code annotations
+# Then embed the OpenAPI file from a Markdown page with:
+# !!swagger api/openapi.yaml!!
+```
+
+Or generate from code annotations:
+
+```yaml
 # Python example with mkdocstrings
 plugins:
   - search
@@ -401,7 +410,7 @@ flowchart TD
 
 Structure your Markdown for clarity:
 
-```markdown
+````markdown
 # Feature Name
 
 Brief description of what this feature does and why you would use it.
@@ -416,12 +425,12 @@ Brief description of what this feature does and why you would use it.
 Get up and running in 5 minutes:
 
 ```bash
-## Install the package
+# Install the package
 npm install @org/package
 
-## Run the setup wizard
+# Run the setup wizard
 npx @org/package init
-```bash
+```
 
 ## Configuration
 
@@ -430,11 +439,11 @@ npx @org/package init
 Explanation of basic options...
 
 ```yaml
-## config.yaml
+# config.yaml
 setting: value
 nested:
   option: true
-```bash
+```
 
 ### Advanced Configuration
 
@@ -445,13 +454,13 @@ For complex scenarios...
 ### Example 1: Common Use Case
 
 ```python
-## Complete, runnable example
+# Complete, runnable example
 from package import Client
 
 client = Client(api_key="your-key")
 result = client.operation()
 print(result)
-```bash
+```
 
 ### Example 2: Edge Case
 
@@ -475,7 +484,7 @@ print(result)
 
 - [Related Feature](./related-feature.md)
 - [API Reference](./api/reference.md)
-```text
+````
 
 ## Versioned Documentation
 
@@ -493,6 +502,9 @@ plugins:
 Deploy versioned docs:
 
 ```bash
+# Install mike
+pip install mike
+
 # Deploy version 1.0
 mike deploy --push --update-aliases 1.0 latest
 
