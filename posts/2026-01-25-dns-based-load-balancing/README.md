@@ -97,32 +97,62 @@ done
 
 ## Weighted DNS Load Balancing
 
-When servers have different capacities, you want to send more traffic to powerful servers. Achieve this by adding more A records for higher-capacity servers:
+When servers have different capacities, you want to send more traffic to powerful servers. Plain BIND zone files do not provide true weighted round-robin by repeating the same A record; DNS records are treated as an RRset of distinct values. Use a DNS provider or DNS server feature that supports weighted records:
 
-```bash
-# /var/named/example.com.zone - Weighted distribution
-; High capacity server (weight 3) - appears 3 times
-app     IN  A       192.168.1.100
-app     IN  A       192.168.1.100
-app     IN  A       192.168.1.100
+```python
+# Route 53 weighted records - each record has a distinct SetIdentifier
+import boto3
 
-; Medium capacity server (weight 2) - appears 2 times
-app     IN  A       192.168.1.101
-app     IN  A       192.168.1.101
+route53 = boto3.client('route53')
+hosted_zone_id = 'Z1234567890ABC'
 
-; Low capacity server (weight 1) - appears 1 time
-app     IN  A       192.168.1.102
+route53.change_resource_record_sets(
+    HostedZoneId=hosted_zone_id,
+    ChangeBatch={
+        'Changes': [{
+            'Action': 'UPSERT',
+            'ResourceRecordSet': {
+                'Name': 'app.example.com',
+                'Type': 'A',
+                'SetIdentifier': 'high-capacity',
+                'Weight': 3,
+                'TTL': 60,
+                'ResourceRecords': [{'Value': '192.168.1.100'}],
+            }
+        }, {
+            'Action': 'UPSERT',
+            'ResourceRecordSet': {
+                'Name': 'app.example.com',
+                'Type': 'A',
+                'SetIdentifier': 'medium-capacity',
+                'Weight': 2,
+                'TTL': 60,
+                'ResourceRecords': [{'Value': '192.168.1.101'}],
+            }
+        }, {
+            'Action': 'UPSERT',
+            'ResourceRecordSet': {
+                'Name': 'app.example.com',
+                'Type': 'A',
+                'SetIdentifier': 'low-capacity',
+                'Weight': 1,
+                'TTL': 60,
+                'ResourceRecords': [{'Value': '192.168.1.102'}],
+            }
+        }]
+    }
+)
 ```
 
 This gives you approximately 50% of traffic to the high-capacity server, 33% to medium, and 17% to low.
 
 ## Health-Check-Aware DNS with PowerDNS
 
-Static DNS configurations continue returning unhealthy servers. PowerDNS with Lua scripting adds health awareness:
+Static DNS configurations continue returning unhealthy servers. PowerDNS with Lua scripting adds health awareness. This example assumes LuaSocket is installed and available to the Recursor Lua runtime:
 
 ```lua
--- /etc/pdns/healthcheck.lua
--- Lua script for PowerDNS to filter unhealthy backends
+-- /etc/pdns/recursor-healthcheck.lua
+-- Lua script for PowerDNS Recursor to filter unhealthy backends
 
 -- Backend servers and their health status
 local backends = {
@@ -131,11 +161,10 @@ local backends = {
     {ip = "192.168.1.12", healthy = true}
 }
 
--- Health check endpoint configuration
+-- TCP health check port
 local health_check_port = 8080
-local health_check_path = "/health"
 
--- Function to check backend health (called periodically)
+-- Function to check backend health
 function checkHealth(backend)
     local socket = require("socket")
     local tcp = socket.tcp()
@@ -145,6 +174,13 @@ function checkHealth(backend)
     tcp:close()
 
     return result == 1
+end
+
+-- Called periodically by PowerDNS Recursor
+function maintenance()
+    for _, backend in ipairs(backends) do
+        backend.healthy = checkHealth(backend)
+    end
 end
 
 -- Main preresolve function called for each query
@@ -180,12 +216,14 @@ end
 
 Configure PowerDNS to use the Lua script:
 
-```bash
-# /etc/pdns/pdns.conf
-launch=
-lua-dns-script=/etc/pdns/healthcheck.lua
-local-address=0.0.0.0
-local-port=53
+```yaml
+# /etc/pdns/recursor.yml
+recursor:
+  lua_dns_script: /etc/pdns/recursor-healthcheck.lua
+  lua_maintenance_interval: 10
+incoming:
+  listen:
+    - 0.0.0.0:53
 ```
 
 ## External Health Checker Script
@@ -389,7 +427,8 @@ def test_dns_caching():
 
     print("\nSystem resolver (uses cache):")
     for i in range(5):
-        # socket.gethostbyname uses system resolver with caching
+        # socket.gethostbyname uses the system resolver path, which may be cached
+        # by services such as nscd, systemd-resolved, or a local DNS forwarder
         ip = socket.gethostbyname('www.example.com')
         print(f"  Query {i+1}: {ip}")
         time.sleep(1)
