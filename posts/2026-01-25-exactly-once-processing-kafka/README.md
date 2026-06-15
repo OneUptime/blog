@@ -34,7 +34,7 @@ graph LR
 
 - **At-most-once**: Fast but lossy. Producer sends and moves on without confirmation.
 - **At-least-once**: Safe but duplicates possible. Producer retries until acknowledged.
-- **Exactly-once**: Each message is delivered and processed exactly one time.
+- **Exactly-once**: Each input record affects the Kafka output once in a properly configured read-process-write pipeline.
 
 ## Component 1: Idempotent Producers
 
@@ -86,10 +86,11 @@ Idempotent producers work within a single producer session. If the producer rest
 
 ## Component 2: Transactional Producers
 
-Transactions extend idempotence across producer restarts and multiple partitions. Messages are either all committed or none are visible to consumers.
+Transactions add atomic writes across producer sessions and multiple partitions. Messages are either all committed or none are visible to `read_committed` consumers.
 
 ```java
 import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.serialization.StringSerializer;
 import java.util.Properties;
 
@@ -145,9 +146,9 @@ public class TransactionalProducerExample {
 
 The `transactional.id` must be unique per producer instance but stable across restarts. Kafka uses it to fence zombie producers (instances that appear dead but are still running).
 
-## Component 3: Transactional Consumers
+## Component 3: Read-Committed Consumers
 
-Consumers must be configured to read only committed messages to participate in exactly-once processing.
+Consumers that read transactional output must be configured to read only committed transactional messages.
 
 ```java
 import org.apache.kafka.clients.consumer.*;
@@ -168,7 +169,7 @@ public class TransactionalConsumerExample {
         // Read only committed messages (critical for exactly-once)
         props.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
 
-        // Disable auto-commit (we commit as part of transactions)
+        // Disable auto-commit so the application controls offset commits
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
 
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
@@ -190,7 +191,7 @@ public class TransactionalConsumerExample {
 }
 ```
 
-With `isolation.level=read_committed`, the consumer skips messages from aborted transactions and only reads messages once their transaction is committed.
+With `isolation.level=read_committed`, the consumer filters messages from aborted transactions, withholds messages from open transactions, and still reads non-transactional messages normally.
 
 ## The Consume-Transform-Produce Pattern
 
@@ -289,7 +290,7 @@ The key method is `sendOffsetsToTransaction()`, which commits consumer offsets a
 
 ## Broker Configuration for EOS
 
-Enable transaction support on your Kafka brokers:
+Configure the internal transaction state topic for production durability:
 
 ```properties
 # server.properties
@@ -303,7 +304,7 @@ transaction.state.log.min.isr=2
 transaction.max.timeout.ms=900000
 transaction.abort.timed.out.transaction.cleanup.interval.ms=10000
 
-# Enable log compaction for transaction state topic
+# Log compaction must remain enabled for compacted internal topics
 log.cleaner.enable=true
 ```
 
@@ -325,7 +326,7 @@ props.put(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG, 120000);
 Use exactly-once semantics when:
 
 - Financial transactions where duplicates cause real harm
-- Event sourcing systems requiring perfect ordering
+- Event sourcing systems requiring duplicate-free Kafka outputs and partition-level ordering
 - Data pipelines where downstream systems cannot deduplicate
 - Regulatory compliance requires audit-perfect records
 
@@ -338,4 +339,4 @@ Skip exactly-once when:
 
 ---
 
-Kafka's exactly-once semantics combine idempotent producers, transactions, and read-committed consumers to eliminate duplicates and data loss. For the consume-transform-produce pattern, use `sendOffsetsToTransaction()` to atomically commit offsets with output messages. While EOS adds some latency, it provides the strongest guarantee for data integrity in streaming pipelines.
+Kafka's exactly-once semantics combine idempotent producers, transactions, and read-committed consumers to prevent duplicate Kafka outputs in read-process-write pipelines. For the consume-transform-produce pattern, use `sendOffsetsToTransaction()` to atomically commit offsets with output messages. While EOS adds some latency, it provides Kafka's strongest guarantee for data integrity in streaming pipelines.
