@@ -82,24 +82,19 @@ pub struct HealthCheck {
 pub struct ServiceInstance {
     #[serde(rename = "ID")]
     pub id: String,
-    #[serde(rename = "Node")]
-    pub node: String,
     #[serde(rename = "Address")]
-    pub address: String,
-    #[serde(rename = "ServiceID")]
-    pub service_id: String,
-    #[serde(rename = "ServiceName")]
-    pub service_name: String,
-    #[serde(rename = "ServiceAddress")]
     pub service_address: String,
-    #[serde(rename = "ServicePort")]
+    #[serde(rename = "Service")]
+    pub service_name: String,
+    #[serde(rename = "Port")]
     pub service_port: u16,
-    #[serde(rename = "ServiceTags")]
-    pub service_tags: Option<Vec<String>>,
+    #[serde(rename = "Tags")]
+    #[serde(default)]
+    pub service_tags: Vec<String>,
 }
 ```
 
-Note the `#[serde(rename = "...")]` attributes. Consul's API uses PascalCase field names, but Rust conventions favor snake_case. This mapping keeps our code idiomatic while maintaining API compatibility.
+Note the `#[serde(rename = "...")]` attributes. Consul's API uses capitalized JSON field names, but Rust conventions favor snake_case. This mapping keeps our code idiomatic while maintaining API compatibility.
 
 ## Building the Client
 
@@ -116,6 +111,8 @@ pub enum ConsulError {
     ServiceNotFound(String),
     #[error("Registration failed: {0}")]
     RegistrationFailed(String),
+    #[error("Deregistration failed: {0}")]
+    DeregistrationFailed(String),
 }
 
 pub struct ConsulClient {
@@ -161,8 +158,14 @@ impl ConsulClient {
             self.base_url, service_id
         );
 
-        self.http_client.put(&url).send().await?;
-        Ok(())
+        let response = self.http_client.put(&url).send().await?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let error_text = response.text().await.unwrap_or_default();
+            Err(ConsulError::DeregistrationFailed(error_text))
+        }
     }
 
     // Discover healthy instances of a service
@@ -190,6 +193,10 @@ impl ConsulClient {
                 serde_json::from_value(entry.get("Service")?.clone()).ok()
             })
             .collect();
+
+        if instances.is_empty() {
+            return Err(ConsulError::ServiceNotFound(service_name.to_string()));
+        }
 
         Ok(instances)
     }
