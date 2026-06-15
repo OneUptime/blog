@@ -17,7 +17,6 @@ By default, Compose creates a bridge network named `<project>_default`:
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -37,7 +36,7 @@ Services connect using their service names as hostnames:
 ```bash
 # From api container, reach database
 docker compose exec api ping database
-docker compose exec api curl http://database:5432
+docker compose exec api nc -zv database 5432
 ```
 
 ## Problem 1: Service Name Resolution Fails
@@ -110,7 +109,7 @@ docker compose up -d database
 **Hostname override:**
 
 ```yaml
-# CAREFUL: hostname overrides service name for DNS
+# CAREFUL: hostname sets the container's own hostname, not the service DNS name
 services:
   database:
     image: postgres:15
@@ -123,8 +122,8 @@ services:
 Service resolves but connections fail:
 
 ```bash
-docker compose exec api curl http://database:5432
-# curl: (7) Failed to connect to database port 5432: Connection refused
+docker compose exec api nc -zv database 5432
+# nc: connect to database port 5432 (tcp) failed: Connection refused
 ```
 
 ### Debug Connection Issues
@@ -219,7 +218,6 @@ docker network ls -q | xargs -I {} docker network inspect {} --format '{{.Name}}
 ### Specify Custom Subnet
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -273,10 +271,16 @@ services:
 **Network mode issues:**
 
 ```yaml
+# BROKEN: No network access at all
 services:
   api:
     image: myapp:latest
-    network_mode: bridge  # Use default bridge for internet access
+    network_mode: none
+
+# FIXED: Use Compose's default network or attach to a non-internal network
+services:
+  api:
+    image: myapp:latest
 ```
 
 ## Problem 5: Service-to-Service Latency
@@ -284,7 +288,7 @@ services:
 Connections work but are slow:
 
 ```bash
-docker compose exec api time curl http://database:5432
+docker compose exec api time nc -zv database 5432
 # real 0m5.003s  <- 5 second delay!
 ```
 
@@ -327,7 +331,6 @@ services:
 Create a debug container with networking tools:
 
 ```yaml
-version: '3.8'
 services:
   # ... your services ...
 
@@ -398,15 +401,16 @@ echo -e "\n=== Container Network Info ==="
 docker inspect $(docker compose ps -q $SERVICE) --format '{{json .NetworkSettings.Networks}}' | jq
 
 echo -e "\n=== All Services on Network ==="
-NETWORK=$(docker compose ps -q $SERVICE | xargs docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}')
-docker network inspect $NETWORK --format '{{range .Containers}}{{.Name}}: {{.IPv4Address}}{{"\n"}}{{end}}'
+NETWORKS=$(docker compose ps -q $SERVICE | xargs docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}')
+for NETWORK in $NETWORKS; do
+  echo "--- $NETWORK ---"
+  docker network inspect $NETWORK --format '{{range .Containers}}{{.Name}}: {{.IPv4Address}}{{"\n"}}{{end}}'
+done
 ```
 
 ## Network Configuration Best Practices
 
 ```yaml
-version: '3.8'
-
 services:
   frontend:
     image: nginx:alpine
