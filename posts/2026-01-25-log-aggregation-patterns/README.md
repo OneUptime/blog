@@ -64,7 +64,7 @@ interface DirectShipperConfig {
 class DirectLogShipper {
   private config: DirectShipperConfig;
   private buffer: LogEntry[] = [];
-  private flushTimer: NodeJS.Timer | null = null;
+  private flushTimer: NodeJS.Timeout | null = null;
 
   constructor(config: DirectShipperConfig) {
     this.config = config;
@@ -150,7 +150,7 @@ class DirectLogShipper {
 // Usage
 const shipper = new DirectLogShipper({
   endpoint: 'https://logs.example.com/v1/logs',
-  apiKey: process.env.LOG_API_KEY,
+  apiKey: process.env.LOG_API_KEY!,
   batchSize: 100,
   flushIntervalMs: 5000,
   maxRetries: 3
@@ -180,7 +180,13 @@ metadata:
   name: my-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         # Main application container
@@ -198,6 +204,8 @@ spec:
             - name: logs
               mountPath: /var/log/app
               readOnly: true
+            - name: fluent-bit-state
+              mountPath: /fluent-bit/state
             - name: fluent-bit-config
               mountPath: /fluent-bit/etc/
           resources:
@@ -208,12 +216,14 @@ spec:
       volumes:
         - name: logs
           emptyDir: {}
+        - name: fluent-bit-state
+          emptyDir: {}
         - name: fluent-bit-config
           configMap:
             name: fluent-bit-config
 ```
 
-FluentBit sidecar configuration:
+Fluent Bit sidecar configuration:
 
 ```ini
 # fluent-bit-config.conf
@@ -221,12 +231,15 @@ FluentBit sidecar configuration:
     Flush         5
     Daemon        Off
     Log_Level     info
+    Parsers_File  parsers.conf
 
 [INPUT]
     Name          tail
     Path          /var/log/app/*.log
     Parser        json
     Tag           app.*
+    DB            /fluent-bit/state/app-logs.db
+    Read_from_Head On
     Refresh_Interval 5
     Mem_Buf_Limit 5MB
 
@@ -253,6 +266,7 @@ Deploy agents at the node level with a central aggregator:
 
 interface AggregatorConfig {
   inputPort: number;
+  aggregatorId: string;
   outputBufferSize: number;
   outputs: OutputConfig[];
   filterRules: FilterRule[];
@@ -342,7 +356,7 @@ class LogAggregator {
 
     // Check tag match
     if (output.filter.tags) {
-      if (!output.filter.tags.some(tag => log.tag?.startsWith(tag))) {
+      if (!output.filter.tags.some(pattern => this.matchesTag(log.tag, pattern))) {
         return false;
       }
     }
@@ -356,6 +370,14 @@ class LogAggregator {
     }
 
     return true;
+  }
+
+  private matchesTag(tag: string | undefined, pattern: string): boolean {
+    if (!tag) return false;
+    if (pattern.endsWith('*')) {
+      return tag.startsWith(pattern.slice(0, -1));
+    }
+    return tag === pattern;
   }
 
   private async flushOutput(outputName: string): Promise<void> {
@@ -379,6 +401,7 @@ class LogAggregator {
 // Example configuration
 const aggregator = new LogAggregator({
   inputPort: 24224,
+  aggregatorId: 'aggregator-1',
   outputBufferSize: 1000,
   outputs: [
     {
@@ -422,7 +445,8 @@ Use a message queue for decoupling and reliability:
 // patterns/kafka-pipeline.ts
 // Kafka-based log pipeline
 
-import { Kafka, Producer, Consumer, EachMessagePayload } from 'kafkajs';
+import { Kafka, Producer, Consumer } from 'kafkajs';
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 // Producer: Send logs to Kafka
 class KafkaLogProducer {
@@ -431,15 +455,7 @@ class KafkaLogProducer {
 
   constructor(brokers: string[], topic: string) {
     const kafka = new Kafka({ brokers });
-    this.producer = kafka.producer({
-      // Ensure durability
-      acks: 'all',
-      // Batch for efficiency
-      batch: {
-        size: 16384,
-        lingerMs: 5
-      }
-    });
+    this.producer = kafka.producer();
     this.topic = topic;
   }
 
@@ -460,6 +476,8 @@ class KafkaLogProducer {
 
     await this.producer.send({
       topic: this.topic,
+      // Ensure durability
+      acks: -1,
       messages
     });
   }
@@ -495,6 +513,8 @@ class KafkaLogConsumer {
     await this.consumer.run({
       // Process messages in batches for efficiency
       eachBatch: async ({ batch, resolveOffset, heartbeat }) => {
+        if (batch.messages.length === 0) return;
+
         const logs: LogEntry[] = [];
 
         for (const message of batch.messages) {
@@ -555,13 +575,13 @@ class S3ArchiveProcessor implements LogProcessor {
 
     const compressed = await gzip(JSON.stringify(logs));
 
-    await this.s3.putObject({
+    await this.s3.send(new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
       Body: compressed,
       ContentEncoding: 'gzip',
       ContentType: 'application/json'
-    });
+    }));
   }
 }
 ```
@@ -693,6 +713,23 @@ class DiskBackedBuffer {
     const line = JSON.stringify(log) + '\n';
     this.diskWriter.write(line);
     this.diskSize += line.length;
+  }
+
+  private async readFromDisk(count: number): Promise<LogEntry[]> {
+    const content = await fs.promises.readFile(this.diskPath, 'utf8');
+    const lines = content.split('\n').filter(Boolean);
+    const selected = lines.slice(0, count);
+    const remaining = lines.slice(count);
+
+    await fs.promises.writeFile(
+      this.diskPath,
+      remaining.length > 0 ? `${remaining.join('\n')}\n` : ''
+    );
+
+    this.diskSize = Buffer.byteLength(
+      remaining.length > 0 ? `${remaining.join('\n')}\n` : ''
+    );
+    return selected.map(line => JSON.parse(line));
   }
 
   getStats(): BufferStats {
