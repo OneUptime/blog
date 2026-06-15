@@ -38,33 +38,32 @@ services:
 ### Reusing Simple Values
 
 ```yaml
-version: '3.8'
-
 # Define anchors for common values
-x-image-tag: &tag "v1.2.3"
+x-api-image: &api-image "myapp-api:v1.2.3"
+x-worker-image: &worker-image "myapp-worker:v1.2.3"
 x-memory-limit: &mem "256M"
 
 services:
   api:
-    image: myapp-api:*tag
+    image: *api-image
     deploy:
       resources:
         limits:
           memory: *mem
 
   worker:
-    image: myapp-worker:*tag
+    image: *worker-image
     deploy:
       resources:
         limits:
           memory: *mem
 ```
 
+Aliases replace a complete YAML node, so they cannot be embedded inside another string like `myapp-api:*tag`.
+
 ### Reusing Configuration Blocks
 
 ```yaml
-version: '3.8'
-
 # Common logging configuration
 x-logging: &default-logging
   driver: json-file
@@ -91,8 +90,6 @@ services:
 The merge key (`<<:`) combines an anchored mapping with additional properties:
 
 ```yaml
-version: '3.8'
-
 x-app-common: &app-common
   restart: unless-stopped
   networks:
@@ -127,6 +124,9 @@ services:
     <<: *app-common
     image: scheduler:latest
     command: ["./scheduler", "--interval=5m"]
+
+networks:
+  backend:
 ```
 
 ## Multiple Anchors and Overrides
@@ -134,8 +134,6 @@ services:
 Merge multiple anchors and override specific values:
 
 ```yaml
-version: '3.8'
-
 x-logging: &default-logging
   logging:
     driver: json-file
@@ -143,39 +141,35 @@ x-logging: &default-logging
       max-size: "10m"
 
 x-healthcheck: &default-healthcheck
-  healthcheck:
-    interval: 30s
-    timeout: 10s
-    retries: 3
+  interval: 30s
+  timeout: 10s
+  retries: 3
 
-x-deploy: &default-deploy
-  deploy:
-    resources:
-      limits:
-        cpus: '0.5'
-        memory: 256M
+x-deploy-limits: &default-deploy-limits
+  cpus: '0.5'
+  memory: 256M
 
 services:
   api:
-    <<: [*default-logging, *default-healthcheck, *default-deploy]
+    <<: *default-logging
     image: api:latest
     healthcheck:
+      <<: *default-healthcheck
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
     deploy:
       resources:
         limits:
+          <<: *default-deploy-limits
           memory: 512M  # Override memory limit
 ```
 
-Note: When merging multiple anchors, later ones override earlier ones for conflicting keys.
+Note: YAML merges are shallow. Explicit keys in the current mapping override merged keys, and when a merge sequence contains conflicting keys, earlier mappings in the sequence override later ones.
 
 ## Extension Fields
 
 Docker Compose ignores top-level keys starting with `x-`, making them perfect for anchor definitions:
 
 ```yaml
-version: '3.8'
-
 # Extension fields for common configurations
 x-environment: &common-env
   TZ: UTC
@@ -214,8 +208,6 @@ services:
 Reuse environment configurations across services:
 
 ```yaml
-version: '3.8'
-
 x-database-env: &db-env
   DB_HOST: database
   DB_PORT: "5432"
@@ -250,13 +242,12 @@ services:
 Reuse volume and network configurations:
 
 ```yaml
-version: '3.8'
-
 x-volume-config: &volume-common
   driver: local
-  driver_opts:
-    type: none
-    o: bind
+
+x-volume-driver-opts: &volume-driver-opts
+  type: none
+  o: bind
 
 x-network-config: &network-common
   driver: bridge
@@ -276,11 +267,13 @@ volumes:
   api-logs:
     <<: *volume-common
     driver_opts:
+      <<: *volume-driver-opts
       device: /data/api-logs
 
   worker-logs:
     <<: *volume-common
     driver_opts:
+      <<: *volume-driver-opts
       device: /data/worker-logs
 
 networks:
@@ -298,8 +291,6 @@ networks:
 Share build settings across services:
 
 ```yaml
-version: '3.8'
-
 x-build-common: &build-common
   context: .
   args:
@@ -329,8 +320,6 @@ services:
 Define reusable health check patterns:
 
 ```yaml
-version: '3.8'
-
 x-healthcheck-http: &healthcheck-http
   interval: 30s
   timeout: 10s
@@ -373,8 +362,6 @@ services:
 A production-ready compose file using anchors extensively:
 
 ```yaml
-version: '3.8'
-
 # Extension fields for common configurations
 x-logging: &default-logging
   driver: json-file
@@ -507,7 +494,7 @@ Always verify the merged result:
 # Show fully resolved configuration
 docker compose config
 
-# Show specific service
+# List services and inspect a specific service
 docker compose config --services
 docker compose config | yq '.services.api'
 
@@ -521,17 +508,17 @@ Be aware of YAML anchor limitations:
 
 ```yaml
 # Anchors are file-scoped - cannot reference across files
-# Use extends for cross-file reuse
+# Use extends, include, or multiple Compose files for cross-file reuse
 
-# Cannot anchor and alias in same mapping
 services:
   api: &api-service
     image: api:latest
   api-clone: *api-service  # This works
 
-  # But this does not work for overrides in same level:
-  api:
-    <<: *api-service  # Error if api-service defined in same services block
+  # Merge is shallow: nested mappings must be merged at the level you want to override
+  api-with-overrides:
+    <<: *api-service
+    image: api:v2
 ```
 
 ---
