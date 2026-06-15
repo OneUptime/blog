@@ -8,7 +8,7 @@ Description: Learn how to configure DNS caching to reduce latency and improve re
 
 ---
 
-Every network request starts with a DNS lookup. Your application resolves `api.example.com` to `192.0.2.1` before establishing a connection. Without caching, this lookup happens for every request, adding 10-100ms of latency each time. Proper DNS caching eliminates this overhead for subsequent requests.
+Before opening a new connection to a hostname, your application resolves `api.example.com` to `192.0.2.1`. Without caching or connection reuse, this lookup can happen repeatedly, adding 10-100ms of latency each time. Proper DNS caching eliminates this overhead for subsequent connections.
 
 This guide covers DNS caching configuration at the system, application, and infrastructure levels.
 
@@ -71,8 +71,8 @@ Configure caching in `/etc/systemd/resolved.conf`:
 # Use local cache
 Cache=yes
 
-# Cache size (default is 4096)
-CacheSize=8192
+# Cache size (systemd 261+, default is 4096)
+DNSCacheSize=8192
 
 # DNS servers
 DNS=8.8.8.8 8.8.4.4
@@ -165,8 +165,10 @@ sudo dscacheutil -cachedump -entries
 Node.js does not cache DNS lookups by default. Add caching:
 
 ```javascript
-const dns = require('dns');
-const { LRUCache } = require('lru-cache');
+import dns from 'node:dns';
+import https from 'node:https';
+import { LRUCache } from 'lru-cache';
+import CacheableLookup from 'cacheable-lookup';
 
 // Create DNS cache
 const dnsCache = new LRUCache({
@@ -211,9 +213,6 @@ dns.lookup = (hostname, options, callback) => {
   });
 };
 
-// Alternative: Use cacheable-lookup package
-const CacheableLookup = require('cacheable-lookup');
-
 const cacheable = new CacheableLookup({
   maxTtl: 300,        // 5 minutes
   errorTtl: 5,        // Cache errors for 5 seconds
@@ -221,8 +220,6 @@ const cacheable = new CacheableLookup({
 });
 
 // Use with http/https agents
-const https = require('https');
-
 const agent = new https.Agent({
   lookup: cacheable.lookup
 });
@@ -238,7 +235,6 @@ https.get('https://api.example.com/data', { agent }, (res) => {
 ```python
 import socket
 import time
-from functools import lru_cache
 from threading import Lock
 
 class DNSCache:
@@ -248,8 +244,8 @@ class DNSCache:
         self.cache = {}
         self.lock = Lock()
 
-    def lookup(self, hostname, port=None):
-        key = (hostname, port)
+    def lookup(self, hostname, port=None, family=0, type=0, proto=0, flags=0):
+        key = (hostname, port, family, type, proto, flags)
         now = time.time()
 
         with self.lock:
@@ -260,11 +256,13 @@ class DNSCache:
 
             # Perform actual lookup
             try:
-                result = socket.getaddrinfo(
+                result = _original_getaddrinfo(
                     hostname,
                     port,
-                    socket.AF_UNSPEC,
-                    socket.SOCK_STREAM
+                    family,
+                    type,
+                    proto,
+                    flags
                 )
                 self.cache[key] = (result, now)
 
@@ -302,7 +300,7 @@ def cached_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     # Only cache for certain types
     if family in (socket.AF_UNSPEC, socket.AF_INET, socket.AF_INET6):
         try:
-            return dns_cache.lookup(host, port)
+            return dns_cache.lookup(host, port, family, type, proto, flags)
         except Exception:
             pass
 
@@ -319,6 +317,7 @@ package main
 import (
     "context"
     "net"
+    "net/http"
     "sync"
     "time"
 )
@@ -375,22 +374,6 @@ func (c *DNSCache) LookupHost(ctx context.Context, host string) ([]string, error
     return addrs, nil
 }
 
-// Custom dialer with DNS caching
-func (c *DNSCache) Dialer() *net.Dialer {
-    return &net.Dialer{
-        Timeout:   30 * time.Second,
-        KeepAlive: 30 * time.Second,
-        Resolver: &net.Resolver{
-            PreferGo: true,
-            Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-                // Use system resolver but results will be cached
-                d := net.Dialer{}
-                return d.DialContext(ctx, network, address)
-            },
-        },
-    }
-}
-
 func main() {
     cache := NewDNSCache(5 * time.Minute)
 
@@ -417,6 +400,7 @@ func main() {
     }
 
     client := &http.Client{Transport: transport}
+    _ = client
     // Use client for requests
 }
 ```
