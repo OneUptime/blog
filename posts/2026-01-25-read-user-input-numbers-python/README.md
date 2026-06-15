@@ -20,7 +20,7 @@ When you read input with `input()`, you get a string regardless of what the user
 age = input("Enter your age: ")
 print(type(age))  # <class 'str'>
 
-# String concatenation, not addition
+# TypeError, not addition
 next_year = age + 1  # TypeError: can only concatenate str (not "int") to str
 ```
 
