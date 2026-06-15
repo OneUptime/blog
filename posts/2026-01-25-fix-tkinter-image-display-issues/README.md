@@ -22,19 +22,21 @@ def broken_example():
     """This code shows a blank window - the image disappears!"""
     root = tk.Tk()
 
-    # Load image
-    image = Image.open("photo.png")
-    photo = ImageTk.PhotoImage(image)
+    def add_image():
+        # Load image
+        image = Image.open("photo.png")
+        photo = ImageTk.PhotoImage(image)
 
-    # Create label with image
-    label = tk.Label(root, image=photo)
-    label.pack()
+        # Create label with image
+        label = tk.Label(root, image=photo)
+        label.pack()
+
+    add_image()
 
     root.mainloop()
 
-# The 'photo' variable goes out of scope when the function ends,
-
-# but before mainloop starts processing.
+# The 'photo' variable goes out of scope when add_image() returns,
+# before mainloop starts processing.
 # Python garbage collects the PhotoImage, leaving a blank label.
 ```
 
@@ -135,16 +137,16 @@ root.mainloop()
 
 ## Image Format Issues
 
-Tkinter's native PhotoImage only supports PNG and GIF. For other formats, use PIL/Pillow.
+Tkinter's native PhotoImage supports PGM, PPM, GIF, and PNG. For JPEG, BMP, TIFF, WebP, and many other common formats, use PIL/Pillow.
 
-### Native Tkinter (PNG/GIF Only)
+### Native Tkinter (PGM/PPM/GIF/PNG)
 
 ```python
 import tkinter as tk
 
 root = tk.Tk()
 
-# Native PhotoImage - PNG and GIF only
+# Native PhotoImage - PGM, PPM, GIF, and PNG
 photo = tk.PhotoImage(file="image.png")
 
 label = tk.Label(root, image=photo)
@@ -154,7 +156,7 @@ label.pack()
 root.mainloop()
 ```
 
-### Using PIL for All Formats
+### Using PIL for Many Common Formats
 
 ```python
 import tkinter as tk
@@ -162,7 +164,7 @@ from PIL import Image, ImageTk
 
 root = tk.Tk()
 
-# PIL supports JPEG, PNG, GIF, BMP, and many more
+# Pillow supports JPEG, PNG, GIF, BMP, and many more
 image = Image.open("photo.jpg")  # Works with JPEG!
 photo = ImageTk.PhotoImage(image)
 
@@ -454,7 +456,7 @@ if __name__ == "__main__":
 The key points for working with Tkinter images:
 
 1. **Always keep a reference** to PhotoImage objects to prevent garbage collection
-2. **Use PIL/Pillow** for formats beyond PNG and GIF
+2. **Use PIL/Pillow** for common formats beyond native PhotoImage support, such as JPEG
 3. **Store references** on the widget (`label.image = photo`) or in instance variables
 4. **Handle missing files** gracefully with fallback images
 5. **Update references** when changing images on existing widgets
