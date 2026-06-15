@@ -161,9 +161,9 @@ resource "aws_db_instance" "replica" {
 }
 ```
 
-## Conditional Blocks with Dynamic
+## Conditional Related Resources with Count
 
-Use `dynamic` blocks to conditionally include configuration blocks within a resource.
+Use `count` to conditionally create related configuration resources.
 
 ```hcl
 variable "enable_encryption" {
@@ -237,7 +237,7 @@ locals {
 
 # CloudFront distribution
 resource "aws_cloudfront_distribution" "main" {
-  count = var.features.cdn ? 1 : 0
+  for_each = { for k, v in local.enabled_features : k => v if k == "cdn" }
 
   origin {
     domain_name = aws_s3_bucket.static.bucket_regional_domain_name
@@ -275,7 +275,7 @@ resource "aws_cloudfront_distribution" "main" {
 
 # WAF Web ACL
 resource "aws_wafv2_web_acl" "main" {
-  count = var.features.waf ? 1 : 0
+  for_each = { for k, v in local.enabled_features : k => v if k == "waf" }
 
   name        = "main-web-acl"
   description = "Main WAF rules"
@@ -455,4 +455,4 @@ resource "aws_security_group_rule" "ssh" {
 
 ---
 
-Conditional resources let you build flexible configurations that adapt to different environments without maintaining separate codebases. Start simple with count-based conditionals, and reach for for_each and dynamic blocks when your logic grows more complex.
+Conditional resources let you build flexible configurations that adapt to different environments without maintaining separate codebases. Start simple with count-based conditionals, and reach for for_each when your logic grows more complex.
