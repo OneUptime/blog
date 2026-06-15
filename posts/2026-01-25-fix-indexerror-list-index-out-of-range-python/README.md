@@ -216,7 +216,7 @@ def first_n(lst, n):
     return lst[:n]
 
 def last_n(lst, n):
-    return lst[-n:] if lst else []
+    return lst[-n:] if n > 0 else []
 
 print(first_n([1, 2, 3], 10))  # [1, 2, 3]
 print(last_n([1, 2, 3], 10))   # [1, 2, 3]
@@ -296,7 +296,7 @@ class DataProcessor:
         """Extract column from 2D data safely."""
         result = []
         for row in rows:
-            if isinstance(row, (list, tuple)) and len(row) > col:
+            if isinstance(row, (list, tuple)) and -len(row) <= col < len(row):
                 result.append(row[col])
             else:
                 result.append(default)
