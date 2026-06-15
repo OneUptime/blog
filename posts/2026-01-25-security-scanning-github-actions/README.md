@@ -39,14 +39,17 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    # Run daily at 2 AM to catch new CVEs
+    # Run daily at 2 AM UTC to catch new CVEs
     - cron: '0 2 * * *'
 
 jobs:
   dependency-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # Required for uploading SARIF
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # npm audit for Node.js projects
       - name: Run npm audit
@@ -57,7 +60,7 @@ jobs:
 
       # Trivy for comprehensive dependency scanning
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'  # Filesystem scan
           scan-ref: '.'
@@ -68,7 +71,7 @@ jobs:
 
       # Upload results to GitHub Security tab
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
 ```
@@ -77,7 +80,7 @@ For Python projects, add pip-audit:
 
 ```yaml
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -99,39 +102,42 @@ Analyze your source code for security vulnerabilities, code smells, and potentia
       security-events: write  # Required for uploading SARIF
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # CodeQL for deep semantic analysis
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
-          languages: javascript, python  # Add your languages
-          queries: security-extended  # Include extended security queries
+          languages: javascript-typescript, python  # Add your languages
+          queries: +security-extended  # Include extended security queries
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@v4
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:javascript"
+        uses: github/codeql-action/analyze@v4
 ```
 
 For faster SAST with Semgrep:
 
 ```yaml
+      - name: Set up Python for Semgrep
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
       # Semgrep for pattern-based security scanning
       - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: >-
-            p/security-audit
-            p/secrets
-            p/owasp-top-ten
-          generateSarif: true
+        run: |
+          python -m pip install semgrep
+          semgrep scan \
+            --config p/security-audit \
+            --config p/secrets \
+            --config p/owasp-top-ten \
+            --sarif --output semgrep.sarif
 
       - name: Upload Semgrep results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep.sarif
 ```
@@ -144,19 +150,19 @@ Prevent secrets from being committed to your repository. This is critical for pr
   secret-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Full history for scanning all commits
 
       # Gitleaks for secret detection
       - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # TruffleHog for deeper secret scanning
       - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3.95.5
         with:
           path: ./
           base: ${{ github.event.repository.default_branch }}
@@ -170,7 +176,7 @@ Configure Gitleaks to ignore false positives:
 # .gitleaks.toml
 title = "Gitleaks config"
 
-[allowlist]
+[[allowlists]]
 description = "Allowlisted patterns"
 paths = [
     '''.*test.*''',
@@ -189,15 +195,18 @@ Scan your Docker images for vulnerabilities before pushing to registries.
 ```yaml
   container-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # Required for uploading SARIF
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build Docker image
         run: docker build -t myapp:${{ github.sha }} .
 
       # Trivy for container scanning
       - name: Scan container with Trivy
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'myapp:${{ github.sha }}'
           format: 'sarif'
@@ -206,13 +215,13 @@ Scan your Docker images for vulnerabilities before pushing to registries.
           vuln-type: 'os,library'
 
       - name: Upload container scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-container.sarif'
 
       # Grype as an alternative scanner
       - name: Scan with Grype
-        uses: anchore/scan-action@v3
+        uses: anchore/scan-action@v7.4.0
         id: grype
         with:
           image: 'myapp:${{ github.sha }}'
@@ -220,7 +229,7 @@ Scan your Docker images for vulnerabilities before pushing to registries.
           severity-cutoff: high
 
       - name: Upload Grype results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.grype.outputs.sarif }}
 ```
@@ -232,8 +241,11 @@ Scan your Terraform, CloudFormation, and Kubernetes manifests for misconfigurati
 ```yaml
   iac-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # Required for uploading SARIF
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Checkov for IaC scanning
       - name: Run Checkov
@@ -242,20 +254,21 @@ Scan your Terraform, CloudFormation, and Kubernetes manifests for misconfigurati
           directory: infrastructure/
           framework: terraform,kubernetes
           output_format: sarif
-          output_file_path: checkov-results.sarif
+          output_file_path: checkov-results.sarif,
           soft_fail: true
 
       - name: Upload Checkov results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: checkov-results.sarif
 
-      # tfsec for Terraform-specific scanning
-      - name: Run tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3
+      # Trivy for Terraform-specific scanning
+      - name: Run Trivy config scan
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          working_directory: infrastructure/terraform
-          soft_fail: true
+          scan-type: 'config'
+          scan-ref: 'infrastructure/terraform'
+          severity: 'CRITICAL,HIGH'
 ```
 
 ## License Compliance Scanning
@@ -266,16 +279,16 @@ Ensure your dependencies comply with your license policy.
   license-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # FOSSA for license analysis
       - name: Run FOSSA scan
-        uses: fossas/fossa-action@main
+        uses: fossas/fossa-action@v1.9.0
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
 
       - name: Run FOSSA test
-        uses: fossas/fossa-action@main
+        uses: fossas/fossa-action@v1.9.0
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
           run-tests: true
@@ -291,11 +304,6 @@ Create a summary job that aggregates all security findings:
     runs-on: ubuntu-latest
     if: always()  # Run even if some scans fail
     steps:
-      - name: Download all scan results
-        uses: actions/download-artifact@v4
-        with:
-          path: scan-results
-
       - name: Generate security summary
         run: |
           echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
@@ -326,13 +334,16 @@ name: Scheduled Security Scan
 
 on:
   schedule:
-    - cron: '0 6 * * 1'  # Every Monday at 6 AM
+    - cron: '0 6 * * 1'  # Every Monday at 6 AM UTC
 
 jobs:
   full-security-audit:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run comprehensive scan
         run: |
@@ -341,7 +352,7 @@ jobs:
           trivy fs --format json --output trivy.json . || true
 
       - name: Create issue for vulnerabilities
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
