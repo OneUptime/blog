@@ -48,7 +48,7 @@ CMS provides probabilistic guarantees:
 - **Width (w)**: Number of counters per row, controls error magnitude
 - **Depth (d)**: Number of rows/hash functions, controls error probability
 - Error bound: With probability (1 - delta), the estimate is at most (epsilon * N) above the true count
-- Where: w = ceil(e / epsilon) and d = ceil(ln(1/delta))
+- RedisBloom derives dimensions as: w = ceil(2 / epsilon) and d = ceil(log(delta) / log(0.5))
 
 ---
 
@@ -144,6 +144,7 @@ def get_page_views(redis_client, cms_key, page_urls):
 
 # Usage example
 cms_key = 'page_views_today'
+r.execute_command('CMS.INITBYPROB', cms_key, 0.001, 0.01)
 
 # Track some page views
 track_page_view(r, cms_key, '/home')
@@ -302,6 +303,8 @@ print(f"Remaining requests: {remaining}")
 Find trending items by comparing counts across time windows:
 
 ```python
+import time
+
 class TrendingDetector:
     """
     Detect trending items by comparing frequency across time windows.
@@ -419,11 +422,11 @@ def calculate_cms_size(error_rate, error_probability):
     """
     import math
 
-    # Width = ceil(e / error_rate) where e is Euler's number
-    width = math.ceil(math.e / error_rate)
+    # RedisBloom uses width = ceil(2 / error_rate)
+    width = math.ceil(2 / error_rate)
 
-    # Depth = ceil(ln(1 / error_probability))
-    depth = math.ceil(math.log(1 / error_probability))
+    # RedisBloom uses depth = ceil(log(error_probability) / log(0.5))
+    depth = math.ceil(math.log(error_probability) / math.log(0.5))
 
     # Memory: width * depth * 4 bytes (32-bit counters)
     memory_bytes = width * depth * 4
@@ -472,7 +475,7 @@ def get_cms_info(redis_client, cms_key):
 # Check CMS info
 info = get_cms_info(r, 'page_views_today')
 print("CMS Info:", info)
-# Output: {'width': 2720, 'depth': 7, 'count': 235}
+# Output: {'width': 2000, 'depth': 7, 'count': 240}
 ```
 
 ---
