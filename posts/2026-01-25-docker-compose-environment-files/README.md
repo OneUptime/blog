@@ -12,25 +12,31 @@ Environment variables in Docker Compose can come from multiple sources: shell en
 
 ## Environment Variable Precedence
 
-Docker Compose reads environment variables in a specific order. Later sources override earlier ones:
+Docker Compose has two related precedence rules: one for variables used to interpolate the Compose file, and one for the final environment variables inside a container.
 
 ```mermaid
 graph TD
-    A[Compose file inline] --> B[Final Value]
-    C[env_file directive] --> A
-    D[Shell environment] --> C
-    E[.env file] --> D
+    A[docker compose run -e] --> B[Final Container Value]
+    C[environment/env_file with interpolated values] --> B
+    D[environment attribute] --> C
+    E[env_file attribute] --> D
+    F[Image ENV] --> E
 
     style B fill:#90EE90
 ```
 
-1. Variables defined inline in `docker-compose.yml`
-2. Variables from files specified in `env_file`
-3. Variables passed from the shell environment
-4. Variables from `.env` file in the project directory
+For a container's environment, the highest-precedence sources are:
+
+1. Variables set with `docker compose run -e`
+2. Values set with `environment` or `env_file` when they are interpolated from your shell or an environment file
+3. Variables defined inline with the `environment` attribute
+4. Variables from files specified in `env_file`
+5. Variables set by the image's `ENV` instructions
+
+For interpolation in the Compose file itself, shell variables take precedence over values from `.env` files:
 
 ```bash
-# Shell variable takes precedence over .env file
+# Shell variable takes precedence over .env file during interpolation
 
 export DATABASE_URL="postgres://prod:secret@db:5432/app"
 docker compose up
@@ -42,23 +48,22 @@ docker compose up
 
 ## The Default .env File
 
-Docker Compose automatically reads a `.env` file in the same directory as your `docker-compose.yml`. This file sets default values for variable substitution in the Compose file itself.
+Docker Compose automatically reads a `.env` file in the project directory next to your Compose file. This file sets default values for variable substitution in the Compose file itself.
 
 ```bash
 # .env file
 POSTGRES_VERSION=15
-APP_PORT=3000
+POSTGRES_PORT=5432
 REDIS_PORT=6379
 ```
 
 ```yaml
 # docker-compose.yml using .env variables
-version: '3.8'
 services:
   database:
     image: postgres:${POSTGRES_VERSION}
     ports:
-      - "${APP_PORT}:5432"
+      - "${POSTGRES_PORT}:5432"
 
   cache:
     image: redis:7-alpine
@@ -74,7 +79,6 @@ The `env_file` directive loads variables into the container environment:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -123,7 +127,6 @@ project/
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
 services:
   api:
     image: myapp:${APP_VERSION:-latest}
@@ -146,7 +149,6 @@ ENVIRONMENT=production docker compose up -d
 Handle missing variables gracefully with default values:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:${APP_VERSION:-latest}
@@ -157,7 +159,7 @@ services:
       # Default to empty string
       - OPTIONAL_FLAG=${OPTIONAL_FLAG-}
 
-      # Error if not set (requires Compose 2.x)
+      # Error if not set
       - DATABASE_URL=${DATABASE_URL:?Database URL is required}
     ports:
       - "${PORT:-8080}:8080"
@@ -174,7 +176,6 @@ Environment files should not contain production secrets. Use Docker secrets or e
 
 ```yaml
 # docker-compose.yml for production
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -253,7 +254,6 @@ For complex projects, split configuration across multiple files:
 
 ```yaml
 # docker-compose.yml - Base configuration
-version: '3.8'
 services:
   api:
     image: myapp:${APP_VERSION:-latest}
@@ -302,14 +302,14 @@ LOG_PREFIX=${APP_NAME}-${APP_ENV}
 # Result: LOG_PREFIX=myapp-production
 ```
 
-However, interpolation only works in `.env` files used by Compose, not in `env_file` files loaded into containers. For container environment files, variables are taken literally:
+Docker Compose also applies interpolation to unquoted and double-quoted values in environment files loaded with `env_file`. This is a Compose CLI feature, so the same file will not be interpolated if you pass it directly to `docker run --env-file`:
 
 ```bash
 # .env.api (loaded via env_file)
-# This will NOT interpolate - container receives literal string
+# Docker Compose interpolates this to myapp-production
 LOG_PREFIX=${APP_NAME}-${APP_ENV}
 
-# Use explicit values instead
+# Use explicit values if the same file must also work with docker run --env-file
 LOG_PREFIX=myapp-production
 ```
 
@@ -359,7 +359,6 @@ myproject/
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
 services:
   api:
     build: .
