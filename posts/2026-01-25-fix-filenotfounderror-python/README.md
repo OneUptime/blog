@@ -13,6 +13,8 @@ The `FileNotFoundError` occurs when Python tries to access a file or directory t
 ## Understanding the Error
 
 ```python
+import os
+
 # FileNotFoundError occurs when:
 
 open("nonexistent.txt", "r")  # File doesn't exist
@@ -118,7 +120,7 @@ config = os.path.join("data", "config", "settings.json")
 
 # Never hardcode separators
 # Bad: "data\\config\\settings.json" (Windows only)
-# Bad: "data/config/settings.json" (might fail on Windows)
+# Less portable: "data/config/settings.json"
 ```
 
 ### 5. Missing Parent Directory
@@ -200,11 +202,11 @@ config = ensure_file("config.json", default_content='{"debug": false}')
 ```python
 from pathlib import Path
 import tempfile
-import shutil
 
 def write_file_atomic(filepath, content):
     """Write file atomically to prevent corruption."""
     path = Path(filepath)
+    path.parent.mkdir(parents=True, exist_ok=True)
 
     # Write to temporary file first
     with tempfile.NamedTemporaryFile(
@@ -215,8 +217,8 @@ def write_file_atomic(filepath, content):
         tmp.write(content)
         tmp_path = Path(tmp.name)
 
-    # Rename (atomic on most systems)
-    tmp_path.rename(path)
+    # Replace destination atomically on the same filesystem
+    tmp_path.replace(path)
 
 # Usage
 write_file_atomic("important.txt", "critical data")
@@ -232,7 +234,7 @@ class ConfigManager:
     """Manage configuration file with fallbacks."""
 
     def __init__(self, config_path, defaults=None):
-        self.path = Path(config_path)
+        self.path = Path(config_path).expanduser()
         self.defaults = defaults or {}
         self.config = self._load()
 
