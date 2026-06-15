@@ -197,15 +197,14 @@ stringData:
     }
 ```
 
-The ArgoCD pods need AWS credentials. Add environment variables or use IRSA:
+The ArgoCD application controller, ApplicationSet controller, and API server need AWS credentials. Use IRSA or EKS Pod Identity for those service accounts:
 
 ```yaml
-# argocd-repo-server deployment patch
-env:
-  - name: AWS_REGION
-    value: us-east-1
-  - name: AWS_ROLE_ARN
-    value: arn:aws:iam::123456789012:role/ArgoCD-Role
+# argocd-application-controller, argocd-applicationset-controller,
+# and argocd-server service accounts
+metadata:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/ArgoCD-Role
 ```
 
 ### GKE Authentication
@@ -285,8 +284,10 @@ spec:
     metadata:
       name: 'monitoring-{{name}}'
     spec:
+      project: default
       source:
         repoURL: https://github.com/myorg/monitoring.git
+        targetRevision: HEAD
         path: base
       destination:
         server: '{{server}}'
@@ -464,10 +465,11 @@ Automate token rotation:
 #!/bin/bash
 # rotate-cluster-tokens.sh
 
-for cluster in $(argocd cluster list -o name); do
+clusters=("production-us-east" "staging")
+
+for cluster in "${clusters[@]}"; do
   echo "Rotating token for $cluster"
-  argocd cluster rm "$cluster"
-  argocd cluster add "$cluster" --name "$cluster"
+  argocd cluster rotate-auth "$cluster"
 done
 ```
 
