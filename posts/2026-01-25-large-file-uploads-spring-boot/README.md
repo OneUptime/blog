@@ -16,7 +16,7 @@ Most developers discover the hard way that their file upload endpoint breaks whe
 
 ## The Problem with Default File Uploads
 
-Spring Boot's default multipart file handling loads the entire file into memory before your controller even sees it. For a 2GB file, that means your JVM needs 2GB of heap space just for that one request. Multiply that by concurrent uploads and you're looking at OutOfMemoryError exceptions.
+Spring Boot's default multipart file handling rejects files larger than 1MB and requests larger than 10MB unless you configure it. Uploaded file contents are stored either in memory or in temporary disk storage depending on the multipart threshold, so the bigger risk is accidentally calling APIs that read the whole file into memory or leaving the default size limits in place.
 
 Here's what happens with the typical approach:
 
@@ -24,7 +24,7 @@ Here's what happens with the typical approach:
 // This works for small files but fails for large ones
 @PostMapping("/upload")
 public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
-    // By the time we get here, the entire file is already in memory
+    // Avoid file.getBytes() for large files because it reads the entire file into memory
     file.transferTo(new File("/uploads/" + file.getOriginalFilename()));
     return ResponseEntity.ok("Uploaded");
 }
@@ -44,8 +44,9 @@ spring.servlet.multipart.max-file-size=10GB
 # Maximum request size (includes all files and form data)
 spring.servlet.multipart.max-request-size=10GB
 
-# Threshold after which files are written to disk instead of memory
-spring.servlet.multipart.file-size-threshold=2MB
+# Threshold after which files are written to disk instead of memory.
+# The Spring Boot default is 0, which writes uploaded file contents to disk immediately.
+spring.servlet.multipart.file-size-threshold=0
 
 # Temporary directory for file storage during upload
 spring.servlet.multipart.location=/tmp/uploads
@@ -54,13 +55,13 @@ spring.servlet.multipart.location=/tmp/uploads
 spring.servlet.multipart.resolve-lazily=true
 ```
 
-The key setting here is `file-size-threshold`. Files larger than 2MB will be written to a temporary file on disk instead of being held in memory. This single change prevents most memory issues.
+The size limits are what allow large requests through, while `file-size-threshold` controls when uploaded file contents spill to disk. Keeping it at `0` is a good default for large uploads because the servlet container can use temporary files instead of holding file contents in heap memory.
 
 ---
 
 ## Streaming File Uploads
 
-For true efficiency, skip the MultipartFile abstraction entirely and work with the raw input stream. This approach processes files in chunks without ever loading the whole thing into memory:
+For true efficiency, avoid APIs that materialize the whole file and work with an input stream. This still uses the servlet container's multipart parser, but your application processes the file in chunks instead of loading it all into memory:
 
 ```java
 // FileUploadController.java
@@ -86,7 +87,10 @@ public class FileUploadController {
                 .body(new UploadResponse(null, "No file provided"));
         }
 
-        String filename = extractFilename(filePart);
+        String filename = filePart.getSubmittedFileName();
+        if (filename == null || filename.isBlank()) {
+            filename = "unknown";
+        }
 
         // Stream directly to storage - never loads full file into memory
         try (InputStream inputStream = filePart.getInputStream()) {
@@ -95,16 +99,6 @@ public class FileUploadController {
         }
     }
 
-    private String extractFilename(Part part) {
-        String contentDisposition = part.getHeader("content-disposition");
-        for (String token : contentDisposition.split(";")) {
-            if (token.trim().startsWith("filename")) {
-                return token.substring(token.indexOf('=') + 1).trim()
-                    .replace("\"", "");
-            }
-        }
-        return "unknown";
-    }
 }
 ```
 
@@ -261,6 +255,9 @@ public class ChunkedUploadService {
         if (session == null) {
             throw new IllegalArgumentException("Unknown upload session");
         }
+        if (chunkIndex < 0 || chunkIndex >= session.totalChunks) {
+            throw new IllegalArgumentException("Invalid chunk index");
+        }
 
         // Save chunk to disk
         Path chunkPath = chunkDirectory.resolve(uploadId + "_" + chunkIndex);
@@ -281,9 +278,9 @@ public class ChunkedUploadService {
         String fileId = UUID.randomUUID().toString();
         String extension = getExtension(session.filename);
 
-        Path finalPath = chunkDirectory.getParent()
-            .resolve("uploads")
-            .resolve(fileId + extension);
+        Path uploadDirectory = chunkDirectory.getParent().resolve("uploads");
+        Files.createDirectories(uploadDirectory);
+        Path finalPath = uploadDirectory.resolve(fileId + extension);
 
         // Combine all chunks into final file
         try (OutputStream out = Files.newOutputStream(finalPath)) {
@@ -344,7 +341,8 @@ public class WebServerConfig {
     public WebServerFactoryCustomizer<TomcatServletWebServerFactory> customizer() {
         return factory -> factory.addConnectorCustomizers(connector -> {
             // 30 minutes for upload timeout
-            connector.setProperty("connectionTimeout", "1800000");
+            connector.setProperty("connectionUploadTimeout", "1800000");
+            connector.setProperty("disableUploadTimeout", "false");
         });
     }
 }
@@ -402,7 +400,7 @@ public class ProgressTrackingInputStream extends FilterInputStream {
     }
 
     private void reportProgress() {
-        int percent = (int) ((bytesRead * 100) / totalBytes);
+        int percent = totalBytes > 0 ? (int) ((bytesRead * 100) / totalBytes) : 100;
         listener.onProgress(bytesRead, totalBytes, percent);
     }
 
