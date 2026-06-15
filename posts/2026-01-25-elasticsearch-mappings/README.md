@@ -294,8 +294,10 @@ Supported date values:
 {"created_at": "2024-01-15"}
 {"created_at": "2024-01-15T10:30:00Z"}
 {"created_at": "2024-01-15T10:30:00.000Z"}
-{"created_at": 1705315800000}  # epoch milliseconds
+{"created_at": 1705315800000}
 ```
+
+The last example uses epoch milliseconds.
 
 ---
 
@@ -421,10 +423,31 @@ curl -X PUT "localhost:9200/logs" -H 'Content-Type: application/json' -d'
   "mappings": {
     "dynamic_templates": [
       {
-        "strings_as_keywords": {
+        "message_fields": {
           "match_mapping_type": "string",
+          "match": "*_message",
           "mapping": {
-            "type": "keyword"
+            "type": "text",
+            "analyzer": "english"
+          }
+        }
+      },
+      {
+        "timestamp_fields": {
+          "match_mapping_type": "string",
+          "match": "*_at",
+          "mapping": {
+            "type": "date",
+            "format": "strict_date_optional_time||epoch_millis"
+          }
+        }
+      },
+      {
+        "ip_fields": {
+          "match_mapping_type": "string",
+          "match": "*_ip",
+          "mapping": {
+            "type": "ip"
           }
         }
       },
@@ -437,28 +460,10 @@ curl -X PUT "localhost:9200/logs" -H 'Content-Type: application/json' -d'
         }
       },
       {
-        "message_fields": {
-          "match": "*_message",
+        "strings_as_keywords": {
+          "match_mapping_type": "string",
           "mapping": {
-            "type": "text",
-            "analyzer": "english"
-          }
-        }
-      },
-      {
-        "timestamp_fields": {
-          "match": "*_at",
-          "mapping": {
-            "type": "date",
-            "format": "strict_date_optional_time||epoch_millis"
-          }
-        }
-      },
-      {
-        "ip_fields": {
-          "match": "*_ip",
-          "mapping": {
-            "type": "ip"
+            "type": "keyword"
           }
         }
       }
@@ -539,12 +544,6 @@ curl -X PUT "localhost:9200/products/_mapping" -H 'Content-Type: application/jso
       "type": "double",
       "script": {
         "source": "emit(doc[\"price\"].value * 1.1)"
-      }
-    },
-    "full_name": {
-      "type": "keyword",
-      "script": {
-        "source": "emit(doc[\"first_name\"].value + \" \" + doc[\"last_name\"].value)"
       }
     },
     "day_of_week": {
@@ -691,14 +690,11 @@ class MappingManager:
     ) -> bool:
         """Create an index with explicit mapping"""
 
-        body = {
-            "mappings": mapping
-        }
-
-        if settings:
-            body["settings"] = settings
-
-        self.es.indices.create(index=index_name, body=body)
+        self.es.indices.create(
+            index=index_name,
+            mappings=mapping,
+            settings=settings
+        )
         return True
 
     def get_mapping(self, index_name: str) -> Dict[str, Any]:
@@ -715,10 +711,8 @@ class MappingManager:
 
         self.es.indices.put_mapping(
             index=index_name,
-            body={
-                "properties": {
-                    field_name: field_config
-                }
+            properties={
+                field_name: field_config
             }
         )
         return True
@@ -734,13 +728,11 @@ class MappingManager:
 
         self.es.indices.put_mapping(
             index=index_name,
-            body={
-                "runtime": {
-                    field_name: {
-                        "type": field_type,
-                        "script": {
-                            "source": script
-                        }
+            runtime={
+                field_name: {
+                    "type": field_type,
+                    "script": {
+                        "source": script
                     }
                 }
             }
