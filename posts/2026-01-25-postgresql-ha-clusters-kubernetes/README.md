@@ -56,11 +56,11 @@ First, install the operator using kubectl:
 ```bash
 # Install the operator
 
-kubectl apply -f \
-  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.22/releases/cnpg-1.22.0.yaml
+kubectl apply --server-side -f \
+  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.29/releases/cnpg-1.29.1.yaml
 
 # Verify the operator is running
-kubectl get deployment -n cnpg-system cnpg-controller-manager
+kubectl rollout status deployment -n cnpg-system cnpg-controller-manager
 ```
 
 Or use Helm for more configuration options:
@@ -71,7 +71,7 @@ helm repo add cnpg https://cloudnative-pg.github.io/charts
 helm repo update
 
 # Install with custom values
-helm install cnpg cnpg/cloudnative-pg \
+helm upgrade --install cnpg cnpg/cloudnative-pg \
   --namespace cnpg-system \
   --create-namespace \
   --set monitoring.podMonitorEnabled=true
@@ -92,7 +92,7 @@ spec:
   instances: 3
 
   # PostgreSQL version and configuration
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.14-202606050113-minimal-trixie
 
   postgresql:
     parameters:
@@ -126,7 +126,7 @@ spec:
 
   # Enable monitoring
   monitoring:
-    enablePodMonitor: true
+    disableDefaultQueries: false
 
   # Bootstrap from scratch or restore from backup
   bootstrap:
@@ -145,6 +145,7 @@ kubectl create namespace database
 
 kubectl create secret generic postgres-credentials \
   --namespace database \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=appuser \
   --from-literal=password=$(openssl rand -base64 24)
 ```
@@ -155,7 +156,7 @@ Apply the cluster definition:
 kubectl apply -f postgres-cluster.yaml
 
 # Watch the cluster come up
-kubectl get cluster -n database -w
+kubectl get clusters.postgresql.cnpg.io -n database -w
 
 # Check pod status
 kubectl get pods -n database -l cnpg.io/cluster=postgres-prod
@@ -168,7 +169,7 @@ CloudNativePG creates a primary-replica setup with automatic leader election:
 ```bash
 # Check which pod is the primary
 kubectl get pods -n database -l cnpg.io/cluster=postgres-prod \
-  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels.role}{"\n"}{end}'
+  -o custom-columns=NAME:.metadata.name,ROLE:.metadata.labels.cnpg\\.io/instanceRole
 ```
 
 The operator creates several services:
@@ -184,10 +185,41 @@ kubectl get svc -n database -l cnpg.io/cluster=postgres-prod
 
 ## Configuring Automatic Backups
 
-CloudNativePG supports backups to S3-compatible storage:
+CloudNativePG supports backups to S3-compatible storage through the Barman Cloud Plugin:
+
+```bash
+# Install the Barman Cloud Plugin after installing cert-manager
+kubectl apply -f \
+  https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.13.0/manifest.yaml
+
+kubectl rollout status deployment -n cnpg-system barman-cloud
+```
 
 ```yaml
 # postgres-cluster-with-backup.yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: postgres-prod-backups
+  namespace: database
+spec:
+  configuration:
+    destinationPath: s3://my-bucket/postgres-backups
+    s3Credentials:
+      accessKeyId:
+        name: backup-credentials
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: backup-credentials
+        key: SECRET_ACCESS_KEY
+    wal:
+      compression: gzip
+      maxParallel: 4
+    data:
+      compression: gzip
+      jobs: 4
+  retentionPolicy: "30d"
+---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -195,27 +227,18 @@ metadata:
   namespace: database
 spec:
   instances: 3
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.14-202606050113-minimal-trixie
 
   storage:
     size: 50Gi
     storageClass: fast-ssd
 
   # Backup configuration
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://my-bucket/postgres-backups
-      s3Credentials:
-        accessKeyId:
-          name: backup-credentials
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: backup-credentials
-          key: SECRET_ACCESS_KEY
-      wal:
-        compression: gzip
-        maxParallel: 4
-    retentionPolicy: "30d"
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: postgres-prod-backups
 ```
 
 Create scheduled backups:
@@ -228,10 +251,13 @@ metadata:
   name: postgres-prod-backup
   namespace: database
 spec:
-  schedule: "0 0 * * *"  # Daily at midnight
+  schedule: "0 0 0 * * *"  # Daily at midnight
   backupOwnerReference: self
   cluster:
     name: postgres-prod
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
 ```
 
 ## Testing Failover
@@ -241,7 +267,7 @@ Simulate a primary failure to verify automatic failover:
 ```bash
 # Identify the current primary
 PRIMARY=$(kubectl get pods -n database \
-  -l cnpg.io/cluster=postgres-prod,role=primary \
+  -l cnpg.io/cluster=postgres-prod,cnpg.io/instanceRole=primary \
   -o jsonpath='{.items[0].metadata.name}')
 
 echo "Current primary: $PRIMARY"
@@ -257,34 +283,9 @@ A replica will be promoted to primary within seconds. The old primary pod will r
 
 ## Connection Pooling with PgBouncer
 
-For high-connection workloads, enable the built-in PgBouncer:
+For high-connection workloads, create a PgBouncer pooler:
 
 ```yaml
-apiVersion: postgresql.cnpg.io/v1
-kind: Cluster
-metadata:
-  name: postgres-prod
-  namespace: database
-spec:
-  instances: 3
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
-
-  storage:
-    size: 50Gi
-
-  # Enable PgBouncer
-  managed:
-    services:
-      additional:
-        - selectorType: rw
-          serviceTemplate:
-            metadata:
-              name: postgres-prod-pooler
-            spec:
-              type: ClusterIP
-
-  # PgBouncer pooler configuration
----
 apiVersion: postgresql.cnpg.io/v1
 kind: Pooler
 metadata:
@@ -295,6 +296,9 @@ spec:
     name: postgres-prod
   instances: 2
   type: rw
+  serviceTemplate:
+    spec:
+      type: ClusterIP
   pgbouncer:
     poolMode: transaction
     parameters:
@@ -324,8 +328,8 @@ spec:
 Key metrics to watch:
 
 - `cnpg_pg_replication_lag` - Replica lag in seconds
-- `cnpg_pg_database_size_bytes` - Database size
-- `cnpg_pg_stat_activity_count` - Active connections
+- `cnpg_collector_pg_wal` - WAL segment count and size on disk
+- `cnpg_collector_wal_bytes` - WAL generated in bytes
 - `cnpg_backends_total` - Total backend processes
 
 ## Production Checklist
@@ -359,7 +363,7 @@ Before going to production, verify these items:
 
 ## Upgrading PostgreSQL
 
-To upgrade the PostgreSQL version:
+To apply a PostgreSQL minor image update:
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
@@ -369,13 +373,13 @@ metadata:
   namespace: database
 spec:
   # Change the image version
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.2
+  imageName: ghcr.io/cloudnative-pg/postgresql:<new-16.x-image-tag>
 
-  # The operator handles rolling updates
+  # The operator handles rolling updates for minor image updates
   primaryUpdateStrategy: unsupervised
 ```
 
-The operator performs a rolling update, upgrading replicas first, then promoting one replica before upgrading the old primary.
+The operator performs a rolling update. For major PostgreSQL version upgrades, follow CloudNativePG's PostgreSQL upgrade procedure instead of only changing the image tag.
 
 ---
 
