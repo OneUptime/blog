@@ -27,8 +27,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.35", features = ["full"] }  # Async runtime with all features
-tokio-tungstenite = "0.21"  # WebSocket implementation for Tokio
+tokio = { version = "1", features = ["full"] }  # Async runtime with all features
+tokio-tungstenite = "0.29"  # WebSocket implementation for Tokio
 futures-util = "0.3"  # Stream and sink utilities
 serde = { version = "1.0", features = ["derive"] }  # JSON serialization
 serde_json = "1.0"  # JSON parsing
@@ -118,7 +118,7 @@ type ClientSender = mpsc::UnboundedSender<Message>;
 pub struct ConnectionManager {
     // Map of client_id to their message channel
     connections: Arc<RwLock<HashMap<String, ClientSender>>>,
-    // Room memberships: room_name -> set of client_ids
+    // Room memberships: room_name -> list of client_ids
     rooms: Arc<RwLock<HashMap<String, Vec<String>>>>,
 }
 
@@ -299,7 +299,7 @@ async fn handle_message(manager: &ConnectionManager, client_id: &str, msg: Incom
                 content: msg.content.unwrap_or_default(),
             };
             let json = serde_json::to_string(&outgoing).unwrap();
-            manager.broadcast(Message::Text(json), Some(client_id)).await;
+            manager.broadcast(Message::text(json), Some(client_id)).await;
         }
         "join_room" => {
             if let Some(room) = msg.room {
@@ -314,7 +314,7 @@ async fn handle_message(manager: &ConnectionManager, client_id: &str, msg: Incom
                     content,
                 };
                 let json = serde_json::to_string(&outgoing).unwrap();
-                manager.broadcast_to_room(&room, Message::Text(json), Some(client_id)).await;
+                manager.broadcast_to_room(&room, Message::text(json), Some(client_id)).await;
             }
         }
         _ => {}
@@ -324,13 +324,13 @@ async fn handle_message(manager: &ConnectionManager, client_id: &str, msg: Incom
 
 ---
 
-## Main Server with Graceful Shutdown
+## Main Server with Shutdown Signal
 
-The main server ties everything together. It handles graceful shutdown so clients receive proper close frames when the server stops.
+The main server ties everything together. It listens for a shutdown signal so the server stops accepting new connections when it exits.
 
 ```rust
 // src/main.rs
-// Production WebSocket server with graceful shutdown
+// Production WebSocket server with shutdown signal handling
 mod connection_manager;
 mod client;
 
