@@ -16,14 +16,14 @@ In a single-process application, you can use threading locks or asyncio locks. B
 
 ## Understanding the Redlock Algorithm
 
-The Redlock algorithm works by acquiring locks across multiple independent Redis instances. The key insight is that if a majority of instances grant the lock, you can be confident that no other process has it.
+The Redlock algorithm works by acquiring locks across multiple independent Redis instances. The key insight is that if a majority of instances grant the lock quickly enough, you can be confident that no other process has it during the lock's validity window.
 
 Here is how the algorithm works:
 
 1. Get the current time in milliseconds
-2. Try to acquire the lock on all N Redis instances sequentially
-3. Calculate the elapsed time; the lock is valid only if acquired on majority (N/2 + 1) instances
-4. If the lock was acquired, the actual lock validity time is the initial TTL minus the elapsed time
+2. Try to acquire the lock on all N Redis instances, ideally in parallel or with short per-instance timeouts
+3. Calculate the elapsed time; the lock is valid only if acquired on majority (N/2 + 1) instances and the elapsed time is less than the TTL
+4. If the lock was acquired, the actual lock validity time is the initial TTL minus the elapsed time and clock drift allowance
 5. If the lock was not acquired, release it on all instances
 
 ```mermaid
@@ -54,7 +54,7 @@ First, install the required packages:
 pip install redis
 ```
 
-For production use, you will want at least 3 Redis instances running on different servers. For development, you can use a single instance to test the logic.
+For production use, you will want multiple independent Redis instances running on different servers; 5 instances is a common Redlock deployment, while 3 is the practical minimum for a majority. For development, you can use a single instance to test the basic lock logic.
 
 ---
 
@@ -142,9 +142,9 @@ class DistributedLock:
         self.lock_value = None
         return result == 1
 
-    def extend(self, additional_ms: int) -> bool:
+    def extend(self, ttl_ms: int) -> bool:
         """
-        Extend the lock TTL if we still own it.
+        Reset the lock TTL if we still own it.
         Useful for long-running operations.
         """
         if not self.lock_value:
@@ -164,7 +164,7 @@ class DistributedLock:
             1,
             self.lock_key,
             self.lock_value,
-            additional_ms
+            ttl_ms
         )
         return result == 1
 
@@ -214,6 +214,8 @@ class RedlockConfig:
     retry_delay_ms: int = 200
     # Clock drift factor (0.01 = 1%)
     clock_drift_factor: float = 0.01
+    # Short timeout for each Redis instance, in milliseconds
+    redis_timeout_ms: int = 50
 
 
 class Redlock:
@@ -226,14 +228,20 @@ class Redlock:
         self.config = config
         # Connect to all Redis instances
         self.clients = [
-            redis.from_url(url) for url in config.redis_urls
+            redis.from_url(
+                url,
+                socket_connect_timeout=config.redis_timeout_ms / 1000,
+                socket_timeout=config.redis_timeout_ms / 1000,
+                retry_on_timeout=False
+            )
+            for url in config.redis_urls
         ]
         # Quorum is majority of instances
         self.quorum = len(self.clients) // 2 + 1
 
     def _current_time_ms(self) -> int:
-        """Get current time in milliseconds."""
-        return int(time.time() * 1000)
+        """Get monotonic time in milliseconds for elapsed-time calculations."""
+        return int(time.monotonic() * 1000)
 
     def _calculate_drift(self, ttl_ms: int) -> int:
         """
@@ -335,10 +343,10 @@ class Redlock:
         self,
         lock_name: str,
         lock_value: str,
-        additional_ms: int
+        ttl_ms: int
     ) -> bool:
         """
-        Extend the lock TTL on all instances where we hold it.
+        Reset the lock TTL on all instances where we hold it.
         Returns True if extension succeeded on majority.
         """
         lock_key = f"lock:{lock_name}"
@@ -351,17 +359,23 @@ class Redlock:
         """
 
         extended_count = 0
+        start_time = self._current_time_ms()
+
         for client in self.clients:
             try:
                 result = client.eval(
-                    lua_script, 1, lock_key, lock_value, additional_ms
+                    lua_script, 1, lock_key, lock_value, ttl_ms
                 )
                 if result == 1:
                     extended_count += 1
             except redis.RedisError:
                 pass
 
-        return extended_count >= self.quorum
+        elapsed_time = self._current_time_ms() - start_time
+        drift = self._calculate_drift(ttl_ms)
+        validity_time = ttl_ms - elapsed_time - drift
+
+        return extended_count >= self.quorum and validity_time > 0
 ```
 
 ---
@@ -375,7 +389,7 @@ Wrap the Redlock in a context manager for easier use:
 # Context manager wrapper for Redlock
 
 from contextlib import contextmanager
-from typing import Generator
+from typing import Generator, List
 from redlock import Redlock, RedlockConfig
 
 class RedlockManager:
@@ -455,8 +469,9 @@ When an operation might run longer than the lock TTL, you need to extend the loc
 # Automatic lock extension for long-running operations
 
 import threading
-import time
-from typing import Callable, Any
+from typing import Optional
+from redlock import Redlock
+from redlock_context import LockAcquisitionError
 
 class AutoExtendingLock:
     """
@@ -475,9 +490,9 @@ class AutoExtendingLock:
         self.lock_name = lock_name
         self.ttl_ms = ttl_ms
         self.extend_interval_ms = extend_interval_ms
-        self.lock_value: str = None
+        self.lock_value: Optional[str] = None
         self._stop_extension = threading.Event()
-        self._extension_thread: threading.Thread = None
+        self._extension_thread: Optional[threading.Thread] = None
 
     def _extension_loop(self):
         """Background thread that periodically extends the lock."""
