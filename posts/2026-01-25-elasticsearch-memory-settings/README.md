@@ -10,7 +10,7 @@ Description: Learn how to optimize Elasticsearch memory settings for production,
 
 > Memory configuration is one of the most critical aspects of Elasticsearch performance. Incorrect settings lead to slow queries, out-of-memory crashes, and poor resource utilization. This guide shows you how to configure memory settings for optimal performance.
 
-Elasticsearch uses memory in two main ways: JVM heap for Java objects and Lucene, and off-heap memory for file system caches. Getting the balance right is essential.
+Elasticsearch uses memory in two main ways: JVM heap for Java objects and Elasticsearch caches, and off-heap memory for Lucene, network buffers, and the file system cache. Getting the balance right is essential.
 
 ---
 
@@ -20,6 +20,8 @@ Before starting, ensure you have:
 - Elasticsearch 8.x installed
 - Administrative access to server
 - Understanding of your workload characteristics
+
+Elasticsearch 8.x enables security automatically on first startup in most self-managed installs. The `curl` examples below omit authentication and TLS flags for readability; add your `--cacert`, `-u`, or API key options as needed for your cluster.
 
 ---
 
@@ -53,7 +55,7 @@ graph TB
 
 ### The 50% Rule
 
-Elasticsearch heap should be set to no more than 50% of available RAM, leaving the rest for the OS and Lucene file caches.
+By default, Elasticsearch 8.x automatically sizes the JVM heap based on node roles and available memory, which is recommended for most production environments. If you override the defaults, set the heap to no more than 50% of the memory available to the Elasticsearch node, leaving the rest for the OS, Lucene, and file system cache.
 
 ```bash
 # /etc/elasticsearch/jvm.options.d/heap.options
@@ -65,16 +67,16 @@ Elasticsearch heap should be set to no more than 50% of available RAM, leaving t
 -Xmx16g
 ```
 
-### The 31GB Limit
+### The Compressed Oops Limit
 
-Never set heap above 31GB. Beyond this threshold, JVM cannot use compressed ordinary object pointers (compressed oops), significantly increasing memory usage.
+Keep the heap below the JVM's compressed ordinary object pointers (compressed oops) threshold. The exact threshold varies by JVM and system; 26GB is safe on most systems and the threshold can be as large as about 30GB on some systems. Verify it in Elasticsearch logs or with `GET _nodes/_all/jvm`.
 
 ```bash
-# Good: Under 31GB threshold
--Xms30g
--Xmx30g
+# Good: Safely under the compressed oops threshold
+-Xms26g
+-Xmx26g
 
-# Bad: Over 31GB, loses compressed oops benefit
+# Risky: May lose compressed oops depending on the JVM and host
 -Xms32g
 -Xmx32g
 ```
@@ -86,12 +88,12 @@ Never set heap above 31GB. Beyond this threshold, JVM cannot use compressed ordi
 | 8 GB       | 4 GB            | 4 GB             |
 | 16 GB      | 8 GB            | 8 GB             |
 | 32 GB      | 16 GB           | 16 GB            |
-| 64 GB      | 31 GB           | 33 GB            |
-| 128 GB     | 31 GB           | 97 GB            |
+| 64 GB      | 26 GB           | 38 GB            |
+| 128 GB     | 26 GB           | 102 GB           |
 
 ---
 
-## Configuring Heap via Environment Variables
+## Configuring Heap
 
 ```bash
 # Option 1: Using jvm.options.d file (recommended)
@@ -99,13 +101,11 @@ Never set heap above 31GB. Beyond this threshold, JVM cannot use compressed ordi
 -Xms16g
 -Xmx16g
 
-# Option 2: Using ES_JAVA_OPTS environment variable
+# Option 2: Using ES_JAVA_OPTS environment variable (testing and development only)
 export ES_JAVA_OPTS="-Xms16g -Xmx16g"
 
-# Option 3: In systemd service file
-# /etc/systemd/system/elasticsearch.service.d/override.conf
-[Service]
-Environment="ES_JAVA_OPTS=-Xms16g -Xmx16g"
+# For RPM or Debian packages, set ES_JAVA_OPTS in the Elasticsearch
+# system configuration file only when you need a temporary override.
 ```
 
 ---
@@ -167,7 +167,7 @@ sudo swapoff -a
 echo "vm.swappiness=1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 
-# Alternative: Configure Elasticsearch to fail if swap is detected
+# Alternative: lock Elasticsearch memory so heap pages are not swapped
 # elasticsearch.yml
 bootstrap.memory_lock: true
 ```
@@ -176,7 +176,7 @@ bootstrap.memory_lock: true
 
 ## Field Data Cache
 
-Field data cache stores field values for sorting and aggregations on text fields. It can consume significant heap.
+Field data cache stores field values in heap for operations such as sorting and aggregations when field data is used. Text fields require `fielddata: true` before they can use field data, and keyword fields with `doc_values` are usually a better choice.
 
 ```yaml
 # /etc/elasticsearch/elasticsearch.yml
@@ -206,15 +206,16 @@ curl -X POST "localhost:9200/_cache/clear?fielddata=true"
 
 ## Query Cache
 
-The query cache stores query results for frequently executed queries.
+The query cache stores eligible filter-context query results on a per-segment basis for frequently executed queries. Term queries and queries outside filter context are not eligible for query cache.
 
 ```yaml
-# /etc/elasticsearch/elasticsearch.yml
+# index settings
 
-# Enable query cache (default is true)
+# Enable query cache for an index (default is true)
 index.queries.cache.enabled: true
 
-# Set query cache size
+# /etc/elasticsearch/elasticsearch.yml
+# Set node query cache size
 indices.queries.cache.size: 10%
 ```
 
@@ -232,7 +233,7 @@ curl -X GET "localhost:9200/_stats/query_cache?pretty"
 
 ## Request Cache
 
-The request cache stores complete search responses for aggregation-heavy requests.
+The shard request cache stores local shard-level search results. By default, it only caches search requests where `size` is `0`, which is why it is most useful for aggregation-heavy requests.
 
 ```yaml
 # /etc/elasticsearch/elasticsearch.yml
@@ -277,7 +278,7 @@ indices.memory.max_index_buffer_size: 512mb
 
 ## Circuit Breakers
 
-Circuit breakers prevent operations from consuming too much memory.
+Circuit breakers prevent many operations from consuming too much memory, but they do not track all memory usage and do not provide complete protection from out-of-memory errors.
 
 ```yaml
 # /etc/elasticsearch/elasticsearch.yml
@@ -326,20 +327,16 @@ curl -X GET "localhost:9200/_nodes/stats/breaker?pretty"
 
 ## Garbage Collection Configuration
 
-Configure GC for optimal performance:
+Elasticsearch 8.x uses G1 GC by default and ships with supported JVM defaults. In production, avoid changing GC tuning flags unless Elastic Support or careful testing points to a specific need. You can still customize GC logging for troubleshooting:
 
 ```bash
 # /etc/elasticsearch/jvm.options.d/gc.options
 
-# Use G1 GC (default in ES 8.x)
--XX:+UseG1GC
+# Disable the default logging config before adding your own
+-Xlog:disable
+-Xlog:all=warning:stderr:utctime,level,tags
 
-# G1 GC settings
--XX:G1HeapRegionSize=16m
--XX:InitiatingHeapOccupancyPercent=30
--XX:G1ReservePercent=25
-
-# GC logging (useful for troubleshooting)
+# GC logging to a custom file (useful for troubleshooting)
 -Xlog:gc*,gc+age=trace,safepoint:file=/var/log/elasticsearch/gc.log:utctime,pid,tags:filecount=32,filesize=64m
 ```
 
@@ -450,7 +447,11 @@ class MemoryMonitor:
     def get_field_data_by_field(self) -> Dict[str, int]:
         """Get field data usage by field name"""
 
-        stats = self.es.nodes.stats(metric=["indices"], index_metric=["fielddata"])
+        stats = self.es.nodes.stats(
+            metric=["indices"],
+            index_metric=["fielddata"],
+            fielddata_fields=["*"]
+        )
         field_usage = {}
 
         for node_id, node_data in stats["nodes"].items():
@@ -528,6 +529,7 @@ class MemoryMonitor:
 
 # Usage example
 if __name__ == "__main__":
+    # Add basic_auth, api_key, ca_certs, or cloud_id options if security is enabled.
     monitor = MemoryMonitor(["http://localhost:9200"])
 
     # Print comprehensive report
@@ -605,8 +607,9 @@ indices.breaker.fielddata.limit: 50%
 ## Best Practices
 
 **Heap Sizing:**
-- Never exceed 50% of available RAM
-- Never exceed 31GB
+- Use the Elasticsearch automatic heap sizing defaults unless you have a reason to override them
+- Never exceed 50% of memory available to the node
+- Stay below the compressed oops threshold; 26GB is safe on most systems
 - Set Xms equal to Xmx
 
 **Memory Lock:**
@@ -629,7 +632,7 @@ indices.breaker.fielddata.limit: 50%
 
 Memory configuration directly impacts Elasticsearch performance and stability. Key takeaways:
 
-- Set heap to 50% of RAM, max 31GB
+- Use automatic heap sizing by default, or set heap to 50% of node memory at most while staying below the compressed oops threshold
 - Enable memory lock and disable swap
 - Configure circuit breakers appropriately
 - Monitor memory usage continuously
