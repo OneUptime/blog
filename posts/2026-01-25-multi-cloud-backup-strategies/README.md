@@ -16,7 +16,7 @@ This guide covers implementing backup strategies that span multiple cloud provid
 
 Multi-cloud backups address risks that single-cloud approaches cannot:
 
-1. **Provider outages:** Major cloud failures affect all services in a region or provider
+1. **Provider outages:** Major cloud failures can affect many services in a region or provider
 2. **Account lockouts:** Billing issues or security incidents can lock you out entirely
 3. **Provider exit:** Business or technical decisions may require leaving a provider
 4. **Compliance requirements:** Some regulations require geographic or provider diversity
@@ -95,7 +95,7 @@ rclone config create azure-backups azureblob \
 
 # Configure Google Cloud Storage
 rclone config create gcs-backups gcs \
-    project_number=$GCP_PROJECT \
+    project_number=$GCP_PROJECT_NUMBER \
     service_account_file=/path/to/credentials.json
 
 # List configured remotes
@@ -150,7 +150,7 @@ For near-real-time replication, use event-driven approaches:
 # cross_cloud_replicator.py
 
 import boto3
-import json
+from urllib.parse import unquote_plus
 from azure.storage.blob import BlobServiceClient
 
 def lambda_handler(event, context):
@@ -164,7 +164,7 @@ def lambda_handler(event, context):
 
     for record in event['Records']:
         bucket = record['s3']['bucket']['name']
-        key = record['s3']['object']['key']
+        key = unquote_plus(record['s3']['object']['key'])
 
         print(f"Replicating {bucket}/{key} to Azure")
 
@@ -262,26 +262,37 @@ log "Multi-cloud backup completed successfully"
 Configure Velero for multiple backup locations:
 
 ```bash
-# Install Velero with multiple backup locations
+# Install Velero with the primary backup location
 velero install \
     --provider aws \
-    --plugins velero/velero-plugin-for-aws:v1.9.0 \
+    --plugins velero/velero-plugin-for-aws:v1.13.0 \
     --bucket primary-backups \
     --backup-location-config region=us-east-1 \
     --secret-file ./aws-credentials
+
+# Install provider plugins for additional backup locations
+velero plugin add velero/velero-plugin-for-microsoft-azure:v1.13.0
+velero plugin add velero/velero-plugin-for-gcp:v1.13.0
+
+# Create credentials for additional backup locations
+kubectl create secret generic -n velero azure-credentials \
+    --from-file=azure=./azure-credentials
+
+kubectl create secret generic -n velero gcs-credentials \
+    --from-file=gcp=./gcp-credentials
 
 # Add Azure backup location
 velero backup-location create azure-backup \
     --provider azure \
     --bucket backup-container \
     --config resourceGroup=backup-rg,storageAccount=backupstorage \
-    --credential=azure-credentials=cloud
+    --credential=azure-credentials=azure
 
 # Add GCS backup location
 velero backup-location create gcs-backup \
     --provider gcp \
     --bucket gcs-backups \
-    --credential=gcs-credentials=cloud
+    --credential=gcs-credentials=gcp
 ```
 
 Create backups to multiple locations:
@@ -330,6 +341,7 @@ SECONDARY_SOURCE="azure-backups:backup-container"
 TERTIARY_SOURCE="gcs-backups:company-backups"
 
 RESTORE_DIR="/tmp/restore-$(date +%s)"
+RESTORE_OK=0
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
@@ -385,6 +397,7 @@ for source in "$PRIMARY_SOURCE" "$SECONDARY_SOURCE" "$TERTIARY_SOURCE"; do
         if [ -n "$LATEST" ]; then
             if restore_from_source "$source" "$LATEST"; then
                 log "Successfully restored from $source"
+                RESTORE_OK=1
                 break
             fi
         fi
@@ -393,7 +406,7 @@ for source in "$PRIMARY_SOURCE" "$SECONDARY_SOURCE" "$TERTIARY_SOURCE"; do
     log "Source $source unavailable, trying next..."
 done
 
-if [ ! -d "$RESTORE_DIR" ] || [ -z "$(ls -A $RESTORE_DIR)" ]; then
+if [ "$RESTORE_OK" -ne 1 ]; then
     log "CRITICAL: All backup sources failed"
     exit 1
 fi
