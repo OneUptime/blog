@@ -105,11 +105,9 @@ db.products.createIndex({
 // Search with text query
 async function searchProducts(query) {
   return await db.products
-    .find(
-      { $text: { $search: query } },
-      { score: { $meta: "textScore" } }
-    )
+    .find({ $text: { $search: query } })
     .sort({ score: { $meta: "textScore" } })
+    .project({ score: { $meta: "textScore" } })
     .limit(10)
     .toArray();
 }
@@ -339,7 +337,7 @@ async function fullTextSearch(query, category, limit, skip) {
   if (category) filter.category = category;
 
   return await db.products
-    .find(filter, { score: { $meta: "textScore" } })
+    .find(filter)
     .sort({ score: { $meta: "textScore" } })
     .skip(skip)
     .limit(limit)
@@ -372,8 +370,8 @@ function onSearchInput(query) {
 const cache = new Map();
 const CACHE_TTL = 60000;  // 1 minute
 
-async function cachedAutocomplete(prefix) {
-  const cacheKey = prefix.toLowerCase();
+async function cachedAutocomplete(prefix, category = null) {
+  const cacheKey = `${category || 'all'}:${prefix.toLowerCase()}`;
 
   if (cache.has(cacheKey)) {
     const { results, timestamp } = cache.get(cacheKey);
@@ -382,7 +380,7 @@ async function cachedAutocomplete(prefix) {
     }
   }
 
-  const results = await autocomplete(prefix);
+  const results = await autocompleteSearch(prefix, category, 10);
   cache.set(cacheKey, { results, timestamp: Date.now() });
   return results;
 }
