@@ -53,6 +53,7 @@ helm install prometheus prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
   --create-namespace \
   --set prometheus.prometheusSpec.retention=15d \
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.accessModes[0]=ReadWriteOnce \
   --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=50Gi
 
 # Verify installation
@@ -64,48 +65,53 @@ kubectl get pods -n monitoring
 Prometheus automatically discovers targets in Kubernetes using service discovery:
 
 ```yaml
-# prometheus-additional-scrape-config.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: additional-scrape-configs
-  namespace: monitoring
-stringData:
-  additional-scrape-configs.yaml: |
-    # Scrape pods with prometheus.io/scrape annotation
-    - job_name: 'kubernetes-pods'
-      kubernetes_sd_configs:
-        - role: pod
-      relabel_configs:
-        # Only scrape pods with prometheus.io/scrape=true
-        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-          action: keep
-          regex: true
+# prometheus-additional-scrape-values.yaml
+prometheus:
+  prometheusSpec:
+    additionalScrapeConfigs:
+      # Scrape pods with prometheus.io/scrape annotation
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          # Only scrape pods with prometheus.io/scrape=true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
 
-        # Use custom path if prometheus.io/path is set
-        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
-          action: replace
-          target_label: __metrics_path__
-          regex: (.+)
+          # Use custom path if prometheus.io/path is set
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
 
-        # Use custom port if prometheus.io/port is set
-        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-          action: replace
-          regex: ([^:]+)(?::\d+)?;(\d+)
-          replacement: $1:$2
-          target_label: __address__
+          # Use custom port if prometheus.io/port is set
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
 
-        # Add pod labels as metric labels
-        - action: labelmap
-          regex: __meta_kubernetes_pod_label_(.+)
+          # Add pod labels as metric labels
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
 
-        # Add namespace and pod name labels
-        - source_labels: [__meta_kubernetes_namespace]
-          action: replace
-          target_label: namespace
-        - source_labels: [__meta_kubernetes_pod_name]
-          action: replace
-          target_label: pod
+          # Add namespace and pod name labels
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+```
+
+Apply with Helm:
+
+```bash
+helm upgrade prometheus prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --reuse-values \
+  -f prometheus-additional-scrape-values.yaml
 ```
 
 ## Annotating Applications for Scraping
@@ -134,7 +140,7 @@ spec:
         # Metrics endpoint path
         prometheus.io/path: "/metrics"
         # Metrics endpoint port
-        prometheus.io/port: "8080"
+        prometheus.io/port: "9090"
     spec:
       containers:
         - name: api
@@ -235,7 +241,12 @@ spec:
         # Alert on high memory usage
         - alert: ContainerHighMemory
           expr: |
-            (container_memory_usage_bytes / container_spec_memory_limit_bytes) > 0.9
+            (
+              container_memory_usage_bytes{container!="",container!="POD"} /
+              container_spec_memory_limit_bytes{container!="",container!="POD"}
+            ) > 0.9
+            and
+            container_spec_memory_limit_bytes{container!="",container!="POD"} > 0
           for: 5m
           labels:
             severity: warning
@@ -284,14 +295,14 @@ stringData:
 
       routes:
         # Critical alerts go to PagerDuty
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'pagerduty-critical'
           continue: true
 
         # All alerts also go to Slack
-        - match_re:
-            severity: warning|critical
+        - matchers:
+            - severity=~"warning|critical"
           receiver: 'slack-notifications'
 
     receivers:
