@@ -85,6 +85,7 @@ Extract common request metadata like IP address, user agent, and request ID:
 ```typescript
 // decorators/request-metadata.decorator.ts
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 
 export interface RequestMetadata {
   ip: string;
@@ -100,7 +101,7 @@ export const RequestMeta = createParamDecorator(
     const metadata: RequestMetadata = {
       ip: request.ip || request.headers['x-forwarded-for'] || 'unknown',
       userAgent: request.headers['user-agent'] || 'unknown',
-      requestId: request.headers['x-request-id'] || crypto.randomUUID(),
+      requestId: request.headers['x-request-id'] || randomUUID(),
       timestamp: new Date(),
     };
 
@@ -230,6 +231,7 @@ export function Retry(options: RetryOptions = {}) {
     backoff = 2,
     retryOn = () => true
   } = options;
+  const maxAttempts = Math.max(1, attempts);
 
   return function (
     target: any,
@@ -241,21 +243,25 @@ export function Retry(options: RetryOptions = {}) {
     descriptor.value = async function (...args: any[]) {
       let lastError: Error;
 
-      for (let attempt = 1; attempt <= attempts; attempt++) {
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
           return await originalMethod.apply(this, args);
         } catch (error) {
+          if (!(error instanceof Error)) {
+            throw error;
+          }
+
           lastError = error;
 
           // Check if we should retry this error
-          if (!retryOn(error) || attempt === attempts) {
+          if (!retryOn(error) || attempt === maxAttempts) {
             throw error;
           }
 
           // Calculate delay with exponential backoff
           const waitTime = delay * Math.pow(backoff, attempt - 1);
           console.log(
-            `${propertyKey} failed (attempt ${attempt}/${attempts}), retrying in ${waitTime}ms`
+            `${propertyKey} failed (attempt ${attempt}/${maxAttempts}), retrying in ${waitTime}ms`
           );
 
           await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -320,7 +326,7 @@ Apply authentication and authorization to all routes:
 
 ```typescript
 // decorators/secure-controller.decorator.ts
-import { applyDecorators, Controller, UseGuards } from '@nestjs/common';
+import { applyDecorators, Controller, SetMetadata, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
@@ -376,6 +382,14 @@ export function PublicEndpoint(summary: string) {
 }
 
 // decorators/authenticated-endpoint.decorator.ts
+import { applyDecorators, SetMetadata } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiForbiddenResponse,
+  ApiOperation,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
+
 export function AuthenticatedEndpoint(summary: string, roles?: string[]) {
   const decorators = [
     ApiOperation({ summary }),
@@ -432,6 +446,7 @@ import {
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { User } from '../users/user.entity';
 
 @ValidatorConstraint({ async: true })
 @Injectable()
@@ -477,6 +492,24 @@ export class CreateUserDto {
   @IsUnique('username', { message: 'Username is taken' })
   username: string;
 }
+```
+
+Register `IsUniqueConstraint` as a provider in a NestJS module, and configure class-validator to use Nest's dependency injection container:
+
+```typescript
+// main.ts
+import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import { useContainer } from 'class-validator';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  useContainer(app.select(AppModule), { fallbackOnErrors: true });
+  app.useGlobalPipes(new ValidationPipe());
+  await app.listen(process.env.PORT ?? 3000);
+}
+bootstrap();
 ```
 
 ## Summary
