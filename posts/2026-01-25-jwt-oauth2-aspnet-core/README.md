@@ -34,7 +34,7 @@ sequenceDiagram
 Install the required package:
 
 ```bash
-dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
+dotnet package add Microsoft.AspNetCore.Authentication.JwtBearer
 ```
 
 Configure JWT authentication in your application:
@@ -423,6 +423,7 @@ builder.Services.AddAuthorization(options =>
 });
 
 // Register authorization handler
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuthorizationHandler, TenantAccessHandler>();
 ```
 
@@ -465,24 +466,28 @@ public class TenantAccessHandler : AuthorizationHandler<TenantAccessRequirement>
 Add OAuth2 authentication with providers like Google and GitHub:
 
 ```bash
-dotnet add package Microsoft.AspNetCore.Authentication.Google
-dotnet add package AspNet.Security.OAuth.GitHub
+dotnet package add Microsoft.AspNetCore.Authentication.Google
+dotnet package add AspNet.Security.OAuth.GitHub
 ```
 
 Configure external authentication:
 
 ```csharp
 // Program.cs
+using Microsoft.AspNetCore.Authentication.Cookies;
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 })
+.AddCookie("External")
 .AddJwtBearer(options => { /* JWT configuration */ })
 .AddGoogle(options =>
 {
     options.ClientId = builder.Configuration["OAuth:Google:ClientId"]!;
     options.ClientSecret = builder.Configuration["OAuth:Google:ClientSecret"]!;
+    options.SignInScheme = "External";
     options.Scope.Add("profile");
     options.Scope.Add("email");
 })
@@ -490,6 +495,7 @@ builder.Services.AddAuthentication(options =>
 {
     options.ClientId = builder.Configuration["OAuth:GitHub:ClientId"]!;
     options.ClientSecret = builder.Configuration["OAuth:GitHub:ClientSecret"]!;
+    options.SignInScheme = "External";
     options.Scope.Add("user:email");
 });
 ```
@@ -530,7 +536,7 @@ public class OAuthController : ControllerBase
     [HttpGet("google/callback")]
     public async Task<IActionResult> GoogleCallback([FromQuery] string returnUrl = "/")
     {
-        var result = await HttpContext.AuthenticateAsync("Google");
+        var result = await HttpContext.AuthenticateAsync("External");
 
         if (!result.Succeeded)
         {
@@ -557,6 +563,8 @@ public class OAuthController : ControllerBase
 
         await _refreshTokenRepository.SaveAsync(user.Id, refreshToken);
 
+        await HttpContext.SignOutAsync("External");
+
         // Redirect with tokens (in production, use a more secure method)
         return Redirect($"{returnUrl}?access_token={accessToken}&refresh_token={refreshToken.Token}");
     }
@@ -575,7 +583,7 @@ public class OAuthController : ControllerBase
     [HttpGet("github/callback")]
     public async Task<IActionResult> GitHubCallback([FromQuery] string returnUrl = "/")
     {
-        var result = await HttpContext.AuthenticateAsync("GitHub");
+        var result = await HttpContext.AuthenticateAsync("External");
 
         if (!result.Succeeded)
         {
@@ -598,6 +606,8 @@ public class OAuthController : ControllerBase
         var refreshToken = _tokenService.GenerateRefreshToken();
 
         await _refreshTokenRepository.SaveAsync(user.Id, refreshToken);
+
+        await HttpContext.SignOutAsync("External");
 
         return Redirect($"{returnUrl}?access_token={accessToken}&refresh_token={refreshToken.Token}");
     }
@@ -677,7 +687,7 @@ public static class JwtSecurityBestPractices
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey))
                 };
 
-                // Secure cookie options for refresh tokens
+                // If you store access tokens in secure HttpOnly cookies, read them here
                 options.Events = new JwtBearerEvents
                 {
                     OnMessageReceived = context =>
