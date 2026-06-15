@@ -137,7 +137,8 @@ Secure WebSocket connections use the `wss://` protocol. Configure SSL terminatio
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name ws.example.com;
 
     ssl_certificate /etc/ssl/certs/ws.example.com.crt;
@@ -172,9 +173,14 @@ server {
 
 ## Socket.IO Configuration
 
-Socket.IO uses both WebSocket and HTTP long-polling as transports. Configure Nginx to handle both:
+Socket.IO commonly uses WebSocket and HTTP long-polling as transports. Configure Nginx to handle both:
 
 ```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
 upstream socketio_backend {
     # Socket.IO requires sticky sessions for HTTP polling
     ip_hash;
@@ -193,7 +199,7 @@ server {
 
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
 
         # Socket.IO specific settings
         proxy_buffering off;
@@ -222,7 +228,7 @@ Note the `ip_hash` directive. Socket.IO may use HTTP long-polling before upgradi
 
 ## Load Balancing WebSocket Connections
 
-When load balancing WebSocket connections, use `ip_hash` or a sticky session method:
+When load balancing WebSocket connections that share backend session state with related HTTP requests, use `ip_hash` or another sticky session method:
 
 ```nginx
 upstream websocket_servers {
@@ -252,7 +258,7 @@ server {
 }
 ```
 
-Without sticky sessions, a client might establish a WebSocket with one server but have subsequent HTTP requests routed to another server.
+Without sticky sessions, a client might establish a WebSocket with one server but have related HTTP requests routed to another server.
 
 ## Complete Production Configuration
 
@@ -281,7 +287,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name realtime.example.com;
 
     # SSL configuration
