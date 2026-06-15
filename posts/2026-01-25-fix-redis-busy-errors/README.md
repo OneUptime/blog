@@ -18,7 +18,7 @@ The "BUSY Redis is busy" error occurs when Redis is executing a Lua script that 
 BUSY Redis is busy running a script. You can only call SCRIPT KILL or SHUTDOWN NOSAVE.
 ```
 
-This error appears because Redis has a built-in protection mechanism. When a script runs longer than the `lua-time-limit` configuration (default: 5000 milliseconds), Redis starts rejecting new commands with this error.
+This error appears because Redis has a built-in protection mechanism. When a script runs longer than the `busy-reply-threshold` configuration (default: 5000 milliseconds), Redis starts rejecting normal commands with this error.
 
 ## Root Causes
 
@@ -51,11 +51,10 @@ local all_members = redis.call('ZRANGE', 'leaderboard', 0, -1, 'WITHSCORES')
 A bug in your script logic can cause an infinite loop.
 
 ```lua
--- Bad: Condition never becomes false
 local count = 0
 while true do
     count = count + 1
-    if count > some_uninitialized_variable then
+    if count < 0 then
         break
     end
 end
@@ -138,7 +137,7 @@ If you need more time for legitimate operations:
 
 ```bash
 # In redis.conf or via CONFIG SET
-CONFIG SET lua-time-limit 10000
+CONFIG SET busy-reply-threshold 10000
 ```
 
 This increases the timeout to 10 seconds. However, this is just masking the problem, not solving it.
@@ -149,7 +148,6 @@ Pre-load scripts to reduce parsing overhead:
 
 ```python
 import redis
-import hashlib
 
 r = redis.Redis()
 
@@ -173,7 +171,7 @@ Add timeout handling in your application:
 
 ```python
 import redis
-from redis.exceptions import BusyLoadingError
+import time
 
 r = redis.Redis(socket_timeout=10)
 
@@ -226,7 +224,7 @@ replica = redis.Redis(host='redis-replica', port=6379)
 
 # Heavy read operations go to replica
 def get_analytics_data():
-    return replica.evalsha(analytics_script_sha, 0)
+    return replica.evalsha_ro(analytics_script_sha, 0)
 ```
 
 ### Implement Circuit Breakers
@@ -234,8 +232,8 @@ def get_analytics_data():
 Prevent cascading failures when Redis is busy:
 
 ```python
-from functools import wraps
 import time
+import redis
 
 class CircuitBreaker:
     def __init__(self, failure_threshold=5, reset_timeout=30):
@@ -273,16 +271,16 @@ result = breaker.call(r.evalsha, script_sha, 1, 'key', 'value')
 
 ## Debugging Scripts
 
-When you need to find which script is causing problems:
+When you need to investigate script problems:
 
 ```bash
-# List all cached scripts
-redis-cli DEBUG SLEEP 0
+# Check whether a known script SHA is cached
+redis-cli SCRIPT EXISTS <sha1>
 
-# Get info about currently running script
-redis-cli INFO
+# Review completed slow script executions
+redis-cli SLOWLOG GET 10
 
-# Check the clients section for blocked clients
+# Check connected clients
 redis-cli CLIENT LIST
 ```
 
