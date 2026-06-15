@@ -198,12 +198,11 @@ class LocalEmbeddingService:
         self.config = config or LocalEmbeddingConfig()
 
         # Load model
-        self.model = SentenceTransformer(self.config.model_name)
+        self.model = SentenceTransformer(
+            self.config.model_name,
+            device=self.config.device
+        )
         self.model.max_seq_length = self.config.max_seq_length
-
-        # Move to device
-        if self.config.device == "cuda" and torch.cuda.is_available():
-            self.model = self.model.to("cuda")
 
         self._lock = threading.Lock()
 
@@ -412,11 +411,15 @@ class EmbeddingCache:
 
 ```python
 # embeddings/api.py
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List
 import time
-from prometheus_client import Counter, Histogram, generate_latest
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+
+from embeddings.cache import EmbeddingCache
+from embeddings.local_service import LocalEmbeddingService
+from embeddings.openai_client import OpenAIEmbeddingClient
 
 app = FastAPI(title="Embedding Service")
 
@@ -519,7 +522,7 @@ async def embed(request: EmbedRequest):
 @app.get("/metrics")
 async def metrics():
     """Prometheus metrics endpoint."""
-    return generate_latest()
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 @app.get("/health")
 async def health():
@@ -533,9 +536,13 @@ async def health():
 # embeddings/batch_pipeline.py
 import asyncio
 from asyncio import Queue
+from contextlib import asynccontextmanager
 from typing import List, Callable, Awaitable
 from dataclasses import dataclass
 import time
+from fastapi import FastAPI, HTTPException
+
+from embeddings.openai_client import OpenAIEmbeddingClient
 
 @dataclass
 class BatchRequest:
@@ -620,14 +627,15 @@ class BatchingEmbeddingService:
                         request.future.set_exception(e)
 
 # Usage with FastAPI
-batching_service = None
+openai_client = OpenAIEmbeddingClient()
+batching_service: BatchingEmbeddingService | None = None
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global batching_service
 
     async def embed_batch(texts: List[str]) -> List[List[float]]:
-        results = openai_client.embed_batch(texts)
+        results = await asyncio.to_thread(openai_client.embed_batch, texts)
         return [r.embedding for r in results]
 
     batching_service = BatchingEmbeddingService(
@@ -636,10 +644,19 @@ async def startup():
         max_wait_ms=50
     )
     await batching_service.start()
+    try:
+        yield
+    finally:
+        await batching_service.stop()
+
+app = FastAPI(lifespan=lifespan)
 
 @app.post("/embed/single")
 async def embed_single(text: str):
     """Embed single text (batched internally)."""
+    if batching_service is None:
+        raise HTTPException(status_code=503, detail="Batching service is not ready")
+
     embedding = await batching_service.embed(text)
     return {"embedding": embedding}
 ```
