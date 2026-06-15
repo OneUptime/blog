@@ -61,13 +61,13 @@ Feast is a popular open-source feature store. Let us set it up and define featur
 # feature_repo/feature_definitions.py
 
 from datetime import timedelta
-from feast import Entity, Feature, FeatureView, FileSource, ValueType
-from feast.types import Float32, Int64, String
+from feast import Entity, FeatureView, Field, FileSource, PushSource
+from feast.types import Float32, Int64
 
 # Define entities (primary keys for feature lookup)
 customer = Entity(
-    name="customer_id",
-    value_type=ValueType.INT64,
+    name="customer",
+    join_keys=["customer_id"],
     description="Unique customer identifier"
 )
 
@@ -81,14 +81,14 @@ customer_transactions_source = FileSource(
 # Define feature view (a group of related features)
 customer_transaction_features = FeatureView(
     name="customer_transaction_features",
-    entities=["customer_id"],
+    entities=[customer],
     ttl=timedelta(days=90),  # Feature freshness requirement
-    features=[
-        Feature(name="total_transactions_30d", dtype=Float32),
-        Feature(name="avg_transaction_amount_30d", dtype=Float32),
-        Feature(name="max_transaction_amount_30d", dtype=Float32),
-        Feature(name="transaction_count_7d", dtype=Int64),
-        Feature(name="unique_merchants_30d", dtype=Int64),
+    schema=[
+        Field(name="total_transactions_30d", dtype=Int64),
+        Field(name="avg_transaction_amount_30d", dtype=Float32),
+        Field(name="max_transaction_amount_30d", dtype=Float32),
+        Field(name="transaction_count_7d", dtype=Int64),
+        Field(name="unique_merchants_30d", dtype=Int64),
     ],
     online=True,  # Enable online serving
     source=customer_transactions_source,
@@ -101,17 +101,22 @@ customer_realtime_source = FileSource(
     timestamp_field="event_timestamp"
 )
 
+customer_realtime_push_source = PushSource(
+    name="customer_realtime_push_source",
+    batch_source=customer_realtime_source,
+)
+
 customer_realtime_features = FeatureView(
     name="customer_realtime_features",
-    entities=["customer_id"],
+    entities=[customer],
     ttl=timedelta(hours=1),  # Short TTL for real-time features
-    features=[
-        Feature(name="transactions_last_hour", dtype=Int64),
-        Feature(name="amount_last_hour", dtype=Float32),
-        Feature(name="failed_transactions_last_hour", dtype=Int64),
+    schema=[
+        Field(name="transactions_last_hour", dtype=Int64),
+        Field(name="amount_last_hour", dtype=Float32),
+        Field(name="failed_transactions_last_hour", dtype=Int64),
     ],
     online=True,
-    source=customer_realtime_source,
+    source=customer_realtime_push_source,
     tags={"team": "fraud", "version": "v1"}
 )
 ```
@@ -184,20 +189,26 @@ class CustomerFeatureBuilder:
             valid_transactions,
             as_of_date,
             days=30
-        )
+        ).rename(columns={
+            'transaction_count': 'total_transactions_30d',
+            'avg_transaction_amount': 'avg_transaction_amount_30d',
+            'max_transaction_amount': 'max_transaction_amount_30d',
+            'unique_merchants': 'unique_merchants_30d',
+        })
 
         features_7d = self._calculate_window_features(
             valid_transactions,
             as_of_date,
             days=7
-        )
+        ).rename(columns={
+            'transaction_count': 'transaction_count_7d',
+        })
 
-        # Merge features
+        # Merge features and keep the columns registered in Feast
         features = features_30d.merge(
-            features_7d,
+            features_7d[['customer_id', 'transaction_count_7d']],
             on='customer_id',
-            how='outer',
-            suffixes=('_30d', '_7d')
+            how='outer'
         )
 
         # Add timestamp for Feast
@@ -220,20 +231,12 @@ class CustomerFeatureBuilder:
             (df['timestamp'] <= as_of_date)
         ]
 
-        features = window_df.groupby('customer_id').agg({
-            'amount': ['sum', 'mean', 'max', 'count'],
-            'merchant_id': 'nunique'
-        }).reset_index()
-
-        # Flatten column names
-        features.columns = [
-            'customer_id',
-            f'total_transactions',
-            f'avg_transaction_amount',
-            f'max_transaction_amount',
-            f'transaction_count',
-            f'unique_merchants'
-        ]
+        features = window_df.groupby('customer_id').agg(
+            transaction_count=('amount', 'count'),
+            avg_transaction_amount=('amount', 'mean'),
+            max_transaction_amount=('amount', 'max'),
+            unique_merchants=('merchant_id', 'nunique')
+        ).reset_index()
 
         return features
 
@@ -262,24 +265,27 @@ For real-time features, use a streaming pipeline.
 ```python
 # pipelines/streaming_features.py
 from kafka import KafkaConsumer
+from feast import FeatureStore
+from feast.data_source import PushMode
 import redis
 import json
 from datetime import datetime, timedelta
-from collections import defaultdict
-import threading
+import pandas as pd
 
 class StreamingFeatureProcessor:
     """
     Process transaction events in real-time and update features.
 
-    Maintains sliding window aggregations in Redis.
+    Maintains sliding window aggregations in Redis and pushes the
+    resulting feature values through Feast.
     """
 
     def __init__(
         self,
         kafka_bootstrap: str,
         redis_host: str,
-        redis_port: int = 6379
+        redis_port: int = 6379,
+        repo_path: str = "feature_repo"
     ):
         self.consumer = KafkaConsumer(
             'transactions',
@@ -287,9 +293,8 @@ class StreamingFeatureProcessor:
             value_deserializer=lambda m: json.loads(m.decode('utf-8'))
         )
         self.redis = redis.Redis(host=redis_host, port=redis_port)
-
-        # Window configuration
-        self.window_duration = timedelta(hours=1)
+        self.store = FeatureStore(repo_path=repo_path)
+        self.aggregator = SlidingWindowAggregator(self.redis)
 
     def process_event(self, event: dict):
         """
@@ -302,26 +307,22 @@ class StreamingFeatureProcessor:
         success = event.get('success', True)
         timestamp = datetime.fromisoformat(event['timestamp'])
 
-        # Key for this customer's hourly features
-        feature_key = f"customer:{customer_id}:realtime"
+        self.aggregator.add_transaction(customer_id, amount, success, timestamp)
+        aggregates = self.aggregator.get_window_aggregates(customer_id)
 
-        # Use Redis pipeline for atomic updates
-        pipe = self.redis.pipeline()
+        feature_row = pd.DataFrame([{
+            "customer_id": customer_id,
+            "event_timestamp": timestamp,
+            **aggregates,
+        }])
 
-        # Increment transaction count
-        pipe.hincrby(feature_key, 'transactions_last_hour', 1)
-
-        # Add to amount total
-        pipe.hincrbyfloat(feature_key, 'amount_last_hour', amount)
-
-        # Track failed transactions
-        if not success:
-            pipe.hincrby(feature_key, 'failed_transactions_last_hour', 1)
-
-        # Set TTL to auto-expire old data
-        pipe.expire(feature_key, int(self.window_duration.total_seconds()))
-
-        pipe.execute()
+        # Push through Feast so get_online_features can read the values from
+        # the configured Redis online store.
+        self.store.push(
+            "customer_realtime_push_source",
+            feature_row,
+            to=PushMode.ONLINE,
+        )
 
     def run(self):
         """Start consuming events."""
@@ -352,14 +353,24 @@ class SlidingWindowAggregator:
         hour_key = timestamp.strftime("%Y%m%d%H")
         return f"customer:{customer_id}:bucket:{hour_key}:{bucket}"
 
-    def add_transaction(self, customer_id: str, amount: float):
+    def add_transaction(
+        self,
+        customer_id: str,
+        amount: float,
+        success: bool = True,
+        timestamp: datetime = None
+    ):
         """Add a transaction to the current bucket."""
-        now = datetime.now()
-        bucket_key = self._get_bucket_key(customer_id, now)
+        if timestamp is None:
+            timestamp = datetime.now()
+
+        bucket_key = self._get_bucket_key(customer_id, timestamp)
 
         pipe = self.redis.pipeline()
         pipe.hincrby(bucket_key, 'count', 1)
         pipe.hincrbyfloat(bucket_key, 'amount', amount)
+        if not success:
+            pipe.hincrby(bucket_key, 'failed_count', 1)
         pipe.expire(bucket_key, self.window_minutes * 60 + 60)  # Extra buffer
         pipe.execute()
 
@@ -368,6 +379,7 @@ class SlidingWindowAggregator:
         now = datetime.now()
         total_count = 0
         total_amount = 0.0
+        failed_count = 0
 
         # Iterate through all buckets in the window
         for minutes_ago in range(0, self.window_minutes, self.bucket_minutes):
@@ -378,10 +390,12 @@ class SlidingWindowAggregator:
             if values:
                 total_count += int(values.get(b'count', 0))
                 total_amount += float(values.get(b'amount', 0))
+                failed_count += int(values.get(b'failed_count', 0))
 
         return {
             'transactions_last_hour': total_count,
-            'amount_last_hour': total_amount
+            'amount_last_hour': total_amount,
+            'failed_transactions_last_hour': failed_count
         }
 ```
 
@@ -497,7 +511,7 @@ def predict_fraud(customer_id: int, transaction_amount: float) -> float:
 # training/get_training_data.py
 from feast import FeatureStore
 import pandas as pd
-from datetime import datetime
+from typing import List
 
 def get_training_dataset(
     entity_df: pd.DataFrame,
@@ -554,8 +568,7 @@ def build_fraud_training_data():
 
 ```python
 # validation/feature_validator.py
-from great_expectations.core import ExpectationSuite
-import great_expectations as ge
+from typing import Any, Dict, List
 
 class FeatureValidator:
     """
