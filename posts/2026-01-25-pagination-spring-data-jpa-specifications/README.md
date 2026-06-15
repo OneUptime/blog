@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, Spring Data JPA, Pagination, Specification, Query
 
-Description: Learn how to combine Spring Data JPA Specifications with pagination to build flexible, type-safe queries that scale.
+Description: Learn how to combine Spring Data JPA Specifications with pagination to build flexible, composable queries that scale.
 
 ---
 
@@ -192,7 +192,7 @@ public Page<Order> searchOrders(OrderSearchRequest request) {
 }
 
 private Sort buildSort(String sortBy, String direction) {
-    // Whitelist allowed sort fields to prevent injection
+    // Whitelist allowed sort fields to avoid invalid or internal properties
     Set<String> allowedFields = Set.of("createdAt", "orderNumber", "total", "status");
 
     String field = allowedFields.contains(sortBy) ? sortBy : "createdAt";
@@ -204,7 +204,7 @@ private Sort buildSort(String sortBy, String direction) {
 }
 ```
 
-Always validate sort fields against a whitelist. Accepting arbitrary field names opens the door to errors or information disclosure.
+Always validate sort fields against a whitelist. Accepting arbitrary field names opens the door to invalid property paths or information disclosure.
 
 ## Joins and Related Entities
 
@@ -258,7 +258,13 @@ Pageable pageable = PageRequest.of(page, safeSize, sort);
 **Consider count query cost.** The `Page` response requires a count query, which can be expensive on large tables. If you only need "has more" information, use `Slice` instead:
 
 ```java
-Slice<Order> searchOrders(Specification<Order> spec, Pageable pageable);
+public Slice<Order> searchOrderSlice(OrderSearchRequest request) {
+    Specification<Order> spec = buildSpecification(request);
+    Sort sort = buildSort(request.getSortBy(), request.getSortDirection());
+    Pageable pageable = PageRequest.of(request.getPage(), request.getSize(), sort);
+
+    return orderRepository.findBy(spec, query -> query.slice(pageable));
+}
 ```
 
 Slices skip the count and just fetch one extra row to determine if more results exist.
