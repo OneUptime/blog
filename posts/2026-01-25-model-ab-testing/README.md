@@ -150,9 +150,8 @@ For faster convergence, use Thompson Sampling to automatically shift traffic tow
 ```python
 # routing/bandit_router.py
 import numpy as np
-from scipy import stats
 from dataclasses import dataclass
-from typing import Dict
+from typing import Any, Dict
 
 @dataclass
 class BanditArm:
@@ -218,7 +217,7 @@ class ThompsonSamplingRouter:
             name: {
                 "successes": arm.successes,
                 "failures": arm.failures,
-                "estimated_rate": arm.successes / (arm.successes + arm.failures + 1),
+                "estimated_rate": arm.alpha / (arm.alpha + arm.beta),
                 "traffic_share": self._calculate_traffic_share(arm)
             }
             for name, arm in self.arms.items()
@@ -658,7 +657,9 @@ Putting it all together in a prediction service.
 
 ```python
 # service/prediction_service.py
-from fastapi import FastAPI, Request
+from datetime import datetime
+
+from fastapi import FastAPI
 from pydantic import BaseModel
 import uuid
 
