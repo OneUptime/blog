@@ -20,7 +20,7 @@ sequenceDiagram
 
     K->>P: Delete Pod
     P->>P: Set to "Terminating"
-    P->>P: Remove from Service Endpoints
+    P->>P: Mark terminating / not ready in EndpointSlices
     K->>C: Execute preStop hook
     Note over C: preStop runs
     K->>C: Send SIGTERM
@@ -89,7 +89,13 @@ kind: Deployment
 metadata:
   name: stateless-api
 spec:
+  selector:
+    matchLabels:
+      app: stateless-api
   template:
+    metadata:
+      labels:
+        app: stateless-api
     spec:
       terminationGracePeriodSeconds: 10  # Faster termination
       containers:
@@ -128,14 +134,15 @@ function shutdown(signal) {
         process.exit(0);
     });
 
-    // Close existing connections after they complete
-    for (const conn of connections) {
-        conn.end();
-    }
+    // Close idle keep-alive connections on Node.js versions that support it
+    server.closeIdleConnections?.();
 
     // Force close after timeout
     setTimeout(() => {
         console.log('Forcing shutdown');
+        for (const conn of connections) {
+            conn.destroy();
+        }
         process.exit(1);
     }, 25000);  // 25s, less than Kubernetes grace period
 }
@@ -240,11 +247,11 @@ func main() {
 
 ## Using preStop Hooks
 
-preStop hooks run before SIGTERM is sent, giving you time to prepare.
+preStop hooks run before SIGTERM is sent, giving you time to prepare. The preStop hook time counts against `terminationGracePeriodSeconds`.
 
 ### Sleep to Allow Endpoint Removal
 
-Endpoints are removed asynchronously. A small delay prevents traffic to terminating pods:
+EndpointSlice updates are asynchronous, and terminating endpoints are marked not ready before they are removed. A small delay helps prevent traffic to terminating pods:
 
 ```yaml
 apiVersion: apps/v1
@@ -252,7 +259,13 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       terminationGracePeriodSeconds: 45
       containers:
@@ -325,7 +338,7 @@ sequenceDiagram
     participant Pod
 
     Note over Pod: Pod termination starts
-    Pod->>EP: Remove from endpoints
+    Pod->>EP: Mark terminating / not ready
     Note over LB: Still routing traffic (stale cache)
     LB->>Pod: Request arrives
     Note over Pod: Receives SIGTERM
@@ -368,7 +381,7 @@ spec:
 Never rely on SIGKILL for normal shutdown:
 
 ```yaml
-# Bad: No SIGTERM handling, waits full grace period
+# Bad: App ignores SIGTERM, waits full grace period
 terminationGracePeriodSeconds: 30
 # Pod takes 30s to terminate every time
 
