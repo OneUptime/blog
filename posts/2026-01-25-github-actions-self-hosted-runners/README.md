@@ -44,11 +44,11 @@ Navigate to Settings > Actions > Runners > New self-hosted runner in your reposi
 mkdir actions-runner && cd actions-runner
 
 # Download the runner package (Linux x64 example)
-curl -o actions-runner-linux-x64-2.311.0.tar.gz -L \
-  https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
+curl -o actions-runner-linux-x64-2.335.1.tar.gz -L \
+  https://github.com/actions/runner/releases/download/v2.335.1/actions-runner-linux-x64-2.335.1.tar.gz
 
 # Extract the package
-tar xzf ./actions-runner-linux-x64-2.311.0.tar.gz
+tar xzf ./actions-runner-linux-x64-2.335.1.tar.gz
 
 # Configure the runner with your repository
 # Replace TOKEN with the token from GitHub UI
@@ -137,7 +137,7 @@ The `runs-on` array requires all labels to match. A runner with labels `[self-ho
 
 ## Runner Groups
 
-Organize runners into groups for access control (requires GitHub Enterprise or organization):
+Organize runners into groups for access control (requires organization or enterprise runners):
 
 ```yaml
 jobs:
@@ -209,35 +209,28 @@ For dynamic workloads, autoscale runners based on job queue depth.
 
 Install the Actions Runner Controller on your Kubernetes cluster:
 
-```yaml
-# runner-deployment.yaml
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: RunnerDeployment
-metadata:
-  name: example-runners
-spec:
-  replicas: 2
-  template:
-    spec:
-      repository: your-org/your-repo
-      labels:
-        - linux
-        - x64
-        - k8s
----
-apiVersion: actions.summerwind.dev/v1alpha1
-kind: HorizontalRunnerAutoscaler
-metadata:
-  name: example-autoscaler
-spec:
-  scaleTargetRef:
-    name: example-runners
-  minReplicas: 1
-  maxReplicas: 10
-  metrics:
-    - type: TotalNumberOfQueuedAndInProgressWorkflowRuns
-      repositoryNames:
-        - your-org/your-repo
+```bash
+# Install the ARC controller
+NAMESPACE="arc-systems"
+helm install arc \
+  --namespace "${NAMESPACE}" \
+  --create-namespace \
+  oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set-controller
+
+# Configure a runner scale set
+INSTALLATION_NAME="arc-runner-set"
+NAMESPACE="arc-runners"
+GITHUB_CONFIG_URL="https://github.com/your-org/your-repo"
+GITHUB_PAT="<PAT>"
+
+helm install "${INSTALLATION_NAME}" \
+  --namespace "${NAMESPACE}" \
+  --create-namespace \
+  --set githubConfigUrl="${GITHUB_CONFIG_URL}" \
+  --set githubConfigSecret.github_token="${GITHUB_PAT}" \
+  --set minRunners=1 \
+  --set maxRunners=10 \
+  oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set
 ```
 
 ### Using AWS Auto Scaling
@@ -251,7 +244,7 @@ set -e
 
 # Install runner
 mkdir /home/ec2-user/actions-runner && cd /home/ec2-user/actions-runner
-curl -o runner.tar.gz -L https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
+curl -o runner.tar.gz -L https://github.com/actions/runner/releases/download/v2.335.1/actions-runner-linux-x64-2.335.1.tar.gz
 tar xzf runner.tar.gz
 
 # Get registration token from your API
@@ -322,7 +315,7 @@ tar xzf runner.tar.gz --overwrite
 sudo ./svc.sh start
 ```
 
-## Docker-in-Docker Setup
+## Docker Setup
 
 Many workflows need Docker. Configure your runner to support it:
 
@@ -330,7 +323,7 @@ Many workflows need Docker. Configure your runner to support it:
 # Install Docker on the runner machine
 curl -fsSL https://get.docker.com | sh
 
-# Add the runner user to the docker group
+# Add the runner user to the docker group, then restart the runner session
 sudo usermod -aG docker github-runner
 
 # For rootless Docker (more secure)
@@ -361,8 +354,8 @@ jobs:
 Check the runner status and logs:
 
 ```bash
-# Check if runner is connected
-./run.sh --check
+# Check runner network connectivity
+./config.sh --check --url https://github.com/your-org/your-repo --pat YOUR_PAT
 
 # View detailed logs
 journalctl -u actions.runner.your-org.runner-name -n 100
@@ -402,9 +395,9 @@ Ensure proper ownership:
 # Fix permissions on runner directory
 sudo chown -R github-runner:github-runner /home/github-runner/actions-runner
 
-# For Docker socket access
-sudo chmod 666 /var/run/docker.sock
-# Or better: use rootless Docker
+# For Docker socket access, add the runner user to the docker group
+sudo usermod -aG docker github-runner
+# Or use rootless Docker
 ```
 
 ---
