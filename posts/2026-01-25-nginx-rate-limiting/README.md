@@ -270,7 +270,8 @@ http {
 # /etc/nginx/conf.d/api.conf
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     ssl_certificate /etc/ssl/certs/api.example.com.crt;
@@ -355,7 +356,7 @@ Enable the stub status module for connection monitoring:
 
 ```nginx
 location /nginx_status {
-    stub_status on;
+    stub_status;
     allow 127.0.0.1;
     deny all;
 }
