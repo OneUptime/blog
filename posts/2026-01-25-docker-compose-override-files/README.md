@@ -14,17 +14,15 @@ Docker Compose override files let you layer configurations on top of your base `
 
 When you run `docker compose up`, Docker Compose automatically looks for two files in order:
 
-1. `docker-compose.yml` (the base file)
-2. `docker-compose.override.yml` (optional override file)
+1. `compose.yaml` (or the legacy `docker-compose.yml`) as the base file
+2. `compose.override.yaml` (or the legacy `docker-compose.override.yml`) as the optional override file
 
-If both exist, Compose merges them together. Values in the override file take precedence, and arrays (like volumes or ports) get combined.
+If both exist, Compose merges them together. Values in the override file take precedence, and list-like fields are appended or merged according to their Compose-specific rules.
 
 ```yaml
 # docker-compose.yml - Base configuration for all environments
 
 # This file defines the core service structure
-version: '3.8'
-
 services:
   web:
     image: nginx:alpine
@@ -39,11 +37,9 @@ services:
 ```yaml
 # docker-compose.override.yml - Development overrides
 # Automatically loaded when running 'docker compose up'
-version: '3.8'
-
 services:
   web:
-    # Override the base port mapping for local development
+    # Add a local development port mapping
     ports:
       - "8080:80"
     # Add live reload capability with read-write mount
@@ -55,7 +51,7 @@ services:
       - DEBUG=true
 ```
 
-The merged result uses port 8080, read-write volumes, and development environment variables.
+The merged result includes both port mappings (`80:80` and `8080:80`), uses the read-write volume mount, and applies the development environment variables.
 
 ## Explicit File Selection with -f Flag
 
@@ -85,8 +81,6 @@ Your base file runs the built application, but development needs source code mou
 
 ```yaml
 # docker-compose.yml - Production-ready base
-version: '3.8'
-
 services:
   api:
     image: myapp/api:latest
@@ -102,8 +96,6 @@ services:
 
 ```yaml
 # docker-compose.override.yml - Development overrides
-version: '3.8'
-
 services:
   api:
     # Mount source code for live changes
@@ -129,12 +121,10 @@ Development runs without limits, but production needs memory and CPU constraints
 
 ```yaml
 # docker-compose.prod.yml - Production resource constraints
-version: '3.8'
-
 services:
   api:
     # Remove volume mounts present in development
-    volumes: []
+    volumes: !reset []
     # Add resource limits for production stability
     deploy:
       resources:
@@ -164,8 +154,6 @@ Keep debugging services separate from production definitions.
 
 ```yaml
 # docker-compose.debug.yml - Debug services and tools
-version: '3.8'
-
 services:
   api:
     # Enable Node.js debugging
@@ -268,8 +256,6 @@ REDIS_URL=redis://prod-redis:6379
 
 ```yaml
 # docker-compose.yml - Uses variable interpolation
-version: '3.8'
-
 services:
   db:
     image: postgres:${POSTGRES_VERSION:-15}
@@ -306,22 +292,22 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
 
 **Forgetting Override Auto-Loading**: The `docker-compose.override.yml` file loads automatically. If you accidentally leave development settings in this file on a production server, those settings will apply. For production deployments, either remove the override file or use explicit `-f` flags.
 
-**Array Accumulation**: Ports and volumes accumulate rather than replace. If your base file exposes port 80 and your override also exposes port 80 with different host mappings, you will get a port conflict.
+**Array Accumulation**: Ports accumulate when the host port, container port, protocol, or IP differ. If your base file and override both publish the same host port, you will get a port conflict.
 
 ```yaml
 # This causes "port already allocated" errors
-# Base: ports: ["8080:80"]
-# Override: ports: ["80:80"]
+# Base: ports: ["80:80"]
+# Override: ports: ["80:8080"]
 # Result: both port mappings attempted
 ```
 
-**Empty Array Override**: To clear an array from the base file, use an empty array in the override.
+**Resetting Values**: To clear a value from the base file, use the Compose `!reset` tag in the override.
 
 ```yaml
 # Clear all volumes from base configuration
 services:
   app:
-    volumes: []
+    volumes: !reset []
 ```
 
 ---
