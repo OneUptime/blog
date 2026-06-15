@@ -123,8 +123,11 @@ module.exports = {
 // Ensure ES modules for tree shaking
 // package.json
 {
-  "sideEffects": false,
-  // Or specify files with side effects
+  "sideEffects": false
+}
+
+// Or specify files with side effects
+{
   "sideEffects": [
     "*.css",
     "./src/polyfills.js"
@@ -134,20 +137,25 @@ module.exports = {
 // Import only what you need
 // BAD: imports entire library
 import _ from 'lodash';
-const result = _.get(obj, 'path');
 
 // GOOD: imports only needed function
 import get from 'lodash/get';
-const result = get(obj, 'path');
 
 // Or use lodash-es for better tree shaking
-import { get } from 'lodash-es';
+import { get as getFromLodashEs } from 'lodash-es';
+
+const badResult = _.get(obj, 'path');
+const goodResult = get(obj, 'path');
+const esModuleResult = getFromLodashEs(obj, 'path');
 ```
 
 ### Code Splitting
 
-```javascript
+```jsx
 // Dynamic imports for route-based splitting
+import React, { Suspense } from 'react';
+import { Link, Route, Routes } from 'react-router-dom';
+
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 const Settings = React.lazy(() => import('./pages/Settings'));
 
@@ -248,7 +256,7 @@ module.exports = {
 | Format | Best For | Browser Support |
 |--------|----------|-----------------|
 | WebP | Photos, complex images | All modern |
-| AVIF | Best compression | Chromium, Firefox |
+| AVIF | Best compression | Modern Chromium, Firefox, Safari |
 | SVG | Icons, logos, illustrations | All |
 | PNG | Transparency needed | All |
 | JPEG | Photos (fallback) | All |
@@ -260,6 +268,7 @@ module.exports = {
 const sharp = require('sharp');
 const glob = require('glob');
 const path = require('path');
+const fs = require('fs/promises');
 
 async function optimizeImages(inputDir, outputDir) {
   const images = glob.sync(`${inputDir}/**/*.{jpg,jpeg,png}`);
@@ -268,6 +277,8 @@ async function optimizeImages(inputDir, outputDir) {
     const filename = path.basename(imagePath, path.extname(imagePath));
     const relativePath = path.relative(inputDir, path.dirname(imagePath));
     const outDir = path.join(outputDir, relativePath);
+
+    await fs.mkdir(outDir, { recursive: true });
 
     // Create WebP version
     await sharp(imagePath)
@@ -288,9 +299,19 @@ async function optimizeImages(inputDir, outputDir) {
     const sizes = [320, 640, 960, 1280, 1920];
     for (const width of sizes) {
       await sharp(imagePath)
-        .resize(width, null, { withoutEnlargement: true })
+        .resize({ width, withoutEnlargement: true })
+        .avif({ quality: 65 })
+        .toFile(path.join(outDir, `${filename}-${width}w.avif`));
+
+      await sharp(imagePath)
+        .resize({ width, withoutEnlargement: true })
         .webp({ quality: 80 })
         .toFile(path.join(outDir, `${filename}-${width}w.webp`));
+
+      await sharp(imagePath)
+        .resize({ width, withoutEnlargement: true })
+        .jpeg({ quality: 85, progressive: true })
+        .toFile(path.join(outDir, `${filename}-${width}w.jpg`));
     }
 
     console.log(`Processed: ${imagePath}`);
@@ -353,10 +374,12 @@ optimizeImages('./src/images', './dist/images');
 
 ### Lazy Loading
 
-```javascript
-// Native lazy loading (modern browsers)
+```html
+<!-- Native lazy loading (modern browsers) -->
 <img src="image.jpg" loading="lazy" alt="Description">
+```
 
+```javascript
 // Intersection Observer fallback
 class LazyLoader {
   constructor() {
@@ -392,10 +415,12 @@ new LazyLoader();
 
 ### Font Loading Strategy
 
-```css
-/* Preload critical fonts */
+```html
+<!-- Preload critical fonts -->
 <link rel="preload" href="/fonts/main.woff2" as="font" type="font/woff2" crossorigin>
+```
 
+```css
 /* Define fonts with swap display */
 @font-face {
   font-family: 'MainFont';
@@ -427,24 +452,20 @@ pyftsubset font.ttf \
 # nginx.conf
 location ~* \.(js|css)$ {
     # Long cache with content hash in filename
-    expires 1y;
-    add_header Cache-Control "public, immutable";
+    add_header Cache-Control "public, max-age=31536000, immutable";
 }
 
 location ~* \.(jpg|jpeg|png|gif|webp|avif|svg|ico)$ {
-    expires 1y;
-    add_header Cache-Control "public, immutable";
+    add_header Cache-Control "public, max-age=31536000, immutable";
 }
 
 location ~* \.(woff|woff2|ttf|otf|eot)$ {
-    expires 1y;
-    add_header Cache-Control "public, immutable";
+    add_header Cache-Control "public, max-age=31536000, immutable";
 }
 
 location ~* \.html$ {
     # Short cache for HTML, always revalidate
-    expires 5m;
-    add_header Cache-Control "public, must-revalidate";
+    add_header Cache-Control "public, max-age=300, must-revalidate";
 }
 ```
 
@@ -465,44 +486,64 @@ output: {
 
 ```yaml
 # cloudfront-distribution.yaml
-Distribution:
-  DistributionConfig:
-    Origins:
-      - DomainName: !GetAtt S3Bucket.DomainName
-        S3OriginConfig:
-          OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOAI}"
+Resources:
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt S3Bucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOAI}"
+          - Id: APIOrigin
+            DomainName: api.example.com
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
 
-    DefaultCacheBehavior:
-      TargetOriginId: S3Origin
-      ViewerProtocolPolicy: redirect-to-https
-      CachePolicyId: !Ref CachePolicy
-      Compress: true
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: !Ref LongCachePolicy
+          Compress: true
 
-    CacheBehaviors:
-      # Static assets - long cache
-      - PathPattern: /static/*
-        TargetOriginId: S3Origin
-        CachePolicyId: !Ref LongCachePolicy
-        Compress: true
+        CacheBehaviors:
+          # Static assets - long cache
+          - PathPattern: /static/*
+            TargetOriginId: S3Origin
+            ViewerProtocolPolicy: redirect-to-https
+            CachePolicyId: !Ref LongCachePolicy
+            Compress: true
 
-      # API - no cache
-      - PathPattern: /api/*
-        TargetOriginId: APIOrigin
-        CachePolicyId: !Ref NoCachePolicy
+          # API - no cache
+          - PathPattern: /api/*
+            TargetOriginId: APIOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # AWS managed CachingDisabled
 
-    CustomErrorResponses:
-      - ErrorCode: 404
-        ResponseCode: 200
-        ResponsePagePath: /index.html
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
 
-CachePolicy:
-  CachePolicyConfig:
-    DefaultTTL: 86400      # 1 day
-    MaxTTL: 31536000       # 1 year
-    MinTTL: 1
-    ParametersInCacheKeyAndForwardedToOrigin:
-      EnableAcceptEncodingBrotli: true
-      EnableAcceptEncodingGzip: true
+  LongCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: StaticAssetsLongCache
+        DefaultTTL: 86400      # 1 day
+        MaxTTL: 31536000       # 1 year
+        MinTTL: 1
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingBrotli: true
+          EnableAcceptEncodingGzip: true
+          CookiesConfig:
+            CookieBehavior: none
+          HeadersConfig:
+            HeaderBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
 ```
 
 ## Measuring Optimization Impact
@@ -520,11 +561,11 @@ const observer = new PerformanceObserver((list) => {
 observer.observe({ entryTypes: ['resource'] });
 
 // Measure Core Web Vitals
-import { getLCP, getFID, getCLS } from 'web-vitals';
+import { onLCP, onINP, onCLS } from 'web-vitals';
 
-getLCP(console.log);
-getFID(console.log);
-getCLS(console.log);
+onLCP(console.log);
+onINP(console.log);
+onCLS(console.log);
 ```
 
 ## Summary
