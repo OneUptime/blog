@@ -14,7 +14,7 @@ The "NOAUTH Authentication required" or "ERR invalid password" errors indicate t
 
 Redis supports two authentication mechanisms:
 
-1. **Legacy AUTH** (Redis < 6.0) - Single password for all clients
+1. **Password authentication** (`requirepass`, or the default user in Redis 6.0+) - Single password for clients using the default user
 2. **ACL system** (Redis 6.0+) - Username/password with granular permissions
 
 ```bash
@@ -120,24 +120,13 @@ const redis = new Redis('redis://:password@redis-host:6379');
 **Java (Jedis):**
 
 ```java
+import redis.clients.jedis.RedisClient;
+
 // With password
-JedisPool pool = new JedisPool(
-    new JedisPoolConfig(),
-    "redis-host",
-    6379,
-    2000,  // timeout
-    "your-secure-password"
-);
+RedisClient passwordClient = new RedisClient("redis://:your-secure-password@redis-host:6379");
 
 // With username and password (Redis 6+)
-JedisPool pool = new JedisPool(
-    new JedisPoolConfig(),
-    "redis-host",
-    6379,
-    2000,
-    "your-username",
-    "your-secure-password"
-);
+RedisClient aclClient = new RedisClient("redis://your-username:your-secure-password@redis-host:6379");
 ```
 
 ### 2. Wrong Password
@@ -174,7 +163,7 @@ With Redis 6+ ACLs, the username must exist:
 redis-cli ACL LIST
 
 # Create a new user
-redis-cli ACL SETUSER myapp on >mypassword ~* +@all
+redis-cli ACL SETUSER myapp on '>mypassword' '~*' +@all
 
 # Verify user can authenticate
 redis-cli --user myapp --pass mypassword PING
@@ -189,28 +178,23 @@ The user exists but lacks required permissions:
 redis-cli ACL GETUSER myapp
 
 # Grant full access (development only)
-redis-cli ACL SETUSER myapp on >password ~* +@all
+redis-cli ACL SETUSER myapp on '>password' '~*' +@all
 
 # Grant specific permissions (production)
-redis-cli ACL SETUSER myapp on >password ~cache:* +get +set +del +expire
+redis-cli ACL SETUSER myapp on '>password' '~cache:*' +get +set +del +expire
 
 # Grant read-only access
-redis-cli ACL SETUSER readonly on >readpass ~* +@read
+redis-cli ACL SETUSER readonly on '>readpass' '~*' +@read
 ```
 
 ### 5. SSL/TLS Certificate Issues
 
-When using TLS, authentication can fail due to certificate problems:
+When using TLS, connection failures can look like authentication problems if the client cannot complete certificate verification:
 
 ```python
 import redis
-import ssl
 
 # Python with SSL
-ssl_context = ssl.create_default_context()
-ssl_context.check_hostname = True
-ssl_context.verify_mode = ssl.CERT_REQUIRED
-
 r = redis.Redis(
     host='redis-host',
     port=6379,
@@ -239,7 +223,7 @@ const redis = new Redis({
 
 ## Setting Up Authentication Properly
 
-### Legacy Password Authentication (Redis < 6.0)
+### Password Authentication (Default User)
 
 ```bash
 # Set password in redis.conf
@@ -262,9 +246,9 @@ user app on >apppassword ~app:* +@all -@dangerous
 user readonly on >readpassword ~* +@read
 
 # Or create at runtime
-redis-cli ACL SETUSER admin on >adminpassword ~* +@all
+redis-cli ACL SETUSER admin on '>adminpassword' '~*' +@all
 
-# Save ACL to file
+# Save ACL to file (requires aclfile to be configured)
 redis-cli ACL SAVE
 
 # Load ACL from file
@@ -276,16 +260,12 @@ redis-cli ACL LOAD
 Create `/etc/redis/users.acl`:
 
 ```text
-# Admin user with full access
-user admin on >super-secret-admin-pass ~* &* +@all
+user admin on >super-secret-admin-pass ~* +@all
 
-# Application user with limited access
 user webapp on >webapp-password ~cache:* ~session:* +get +set +del +expire +ttl
 
-# Read-only monitoring user
 user monitoring on >mon-password ~* +info +client +slowlog +latency
 
-# Disable default user
 user default off
 ```
 
@@ -304,16 +284,16 @@ version: '3.8'
 services:
   redis:
     image: redis:7-alpine
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    command: sh -c 'redis-server --requirepass "$$REDIS_PASSWORD"'
     environment:
-      - REDIS_PASSWORD=your-secure-password
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     ports:
       - "6379:6379"
 
   app:
     build: .
     environment:
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
     depends_on:
       - redis
 ```
