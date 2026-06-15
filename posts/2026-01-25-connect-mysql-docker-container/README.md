@@ -71,8 +71,6 @@ Docker Compose simplifies multi-container setups by automatically creating netwo
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   mysql:
     image: mysql:8.0
