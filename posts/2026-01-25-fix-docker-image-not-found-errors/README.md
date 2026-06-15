@@ -65,7 +65,7 @@ docker pull --platform linux/arm64 myimage:tag
 
 ## Step 2: Check Registry Authentication
 
-Private registries and rate-limited public registries require authentication.
+Private registries require authentication, and authenticated pulls can also help with Docker Hub rate limits.
 
 ```bash
 # Check if you're logged in to Docker Hub
@@ -76,7 +76,7 @@ docker login
 
 # Login to other registries
 docker login ghcr.io          # GitHub Container Registry
-docker login gcr.io           # Google Container Registry
+docker login registry.example.com
 docker login <account>.dkr.ecr.<region>.amazonaws.com  # AWS ECR
 
 # Verify credentials work by pulling a known image
@@ -85,7 +85,7 @@ docker pull hello-world
 
 ### Docker Hub Rate Limits
 
-Anonymous pulls from Docker Hub are rate-limited. You may get "not found" when actually hitting rate limits.
+Anonymous pulls from Docker Hub are rate-limited. When you hit the limit, Docker Hub returns a rate-limit error instead of a missing-image error.
 
 ```bash
 # Check your current rate limit status
@@ -97,7 +97,7 @@ curl -s -H "Authorization: Bearer $TOKEN" -I "https://registry-1.docker.io/v2/li
 # ratelimit-remaining: 95;w=21600
 ```
 
-If rate limited, authenticate to get higher limits or wait for the window to reset.
+If rate limited, authenticate with an account that has enough pull allowance or wait for the window to reset.
 
 ## Step 3: Verify Registry Connectivity
 
@@ -117,19 +117,16 @@ nslookup registry-1.docker.io
 echo $HTTP_PROXY
 echo $HTTPS_PROXY
 
-# Configure Docker to use proxy if needed
-# Edit ~/.docker/config.json or /etc/docker/daemon.json
+# Configure the Docker daemon to use a proxy for image pulls if needed
+# Edit /etc/docker/daemon.json, or use Docker Desktop settings on Docker Desktop
 ```
 
 ```json
-// ~/.docker/config.json - User-level proxy configuration
 {
   "proxies": {
-    "default": {
-      "httpProxy": "http://proxy.example.com:8080",
-      "httpsProxy": "http://proxy.example.com:8080",
-      "noProxy": "localhost,127.0.0.1,.internal.company.com"
-    }
+    "http-proxy": "http://proxy.example.com:8080",
+    "https-proxy": "http://proxy.example.com:8080",
+    "no-proxy": "localhost,127.0.0.1,.internal.company.com"
   }
 }
 ```
@@ -155,10 +152,10 @@ ECR tokens expire after 12 hours and require special handling.
 ```bash
 # Get ECR login token (AWS CLI v2)
 aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+  docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 # Then pull the image
-docker pull 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:latest
+docker pull 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest
 ```
 
 ### Google Container Registry / Artifact Registry
