@@ -286,7 +286,7 @@ async function processPayment(paymentData) {
 Transactions have a default 60-second lifetime:
 
 ```javascript
-// Increase transaction timeout
+// Set a timeout for the commit operation
 session.startTransaction({
   maxCommitTimeMS: 120000  // 2 minutes
 });
@@ -294,8 +294,8 @@ session.startTransaction({
 
 ### Size Limits
 
-- Maximum 16MB total size of transaction operations
-- Maximum 1000 documents modified in a single transaction
+- Each oplog entry in the transaction must fit within the 16MB BSON document size limit
+- Keep the number of documents modified in a transaction small to avoid long runtimes and cache pressure
 
 ### Performance Impact
 
