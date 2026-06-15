@@ -15,7 +15,7 @@ Security contexts define privilege and access control settings for Pods and cont
 Security contexts can be set at two levels:
 
 - **Pod-level**: Applies to all containers in the Pod and also affects volumes
-- **Container-level**: Applies to a specific container and overrides Pod-level settings
+- **Container-level**: Applies to a specific container and overrides equivalent Pod-level settings
 
 ```mermaid
 flowchart TD
@@ -108,7 +108,7 @@ spec:
     runAsUser: 10001
     runAsGroup: 10001
     # This enforces the non-root requirement
-    # Container will fail to start if image tries to run as root
+    # Container will fail to start if the effective UID is root
     runAsNonRoot: true
 
   containers:
@@ -228,7 +228,7 @@ spec:
 
 ## Filesystem Group Settings
 
-The `fsGroup` setting ensures that volumes are owned by a specific group:
+The `fsGroup` setting lets Kubernetes apply group ownership to supported volume types:
 
 ```yaml
 # fsgroup-example.yaml
