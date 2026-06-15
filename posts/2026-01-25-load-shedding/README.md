@@ -48,7 +48,7 @@ Without load shedding, an overloaded system enters a death spiral. Load shedding
 
 import asyncio
 import time
-from typing import Callable, Any, Optional
+from typing import Optional
 from dataclasses import dataclass
 from enum import Enum
 import logging
@@ -133,7 +133,8 @@ class LoadShedder:
 
 
 # FastAPI middleware
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 app = FastAPI()
@@ -150,9 +151,9 @@ class LoadSheddingMiddleware(BaseHTTPMiddleware):
 
         # Check if we should shed
         if await shedder.should_shed(priority):
-            raise HTTPException(
+            return JSONResponse(
                 status_code=503,
-                detail="Service temporarily overloaded",
+                content={"detail": "Service temporarily overloaded"},
                 headers={"Retry-After": "5"}
             )
 
@@ -178,7 +179,7 @@ class LoadSheddingMiddleware(BaseHTTPMiddleware):
 
         # Check header
         priority_header = request.headers.get('X-Request-Priority', 'normal')
-        return Priority[priority_header.upper()] if priority_header else Priority.NORMAL
+        return Priority.__members__.get(priority_header.upper(), Priority.NORMAL)
 
 app.add_middleware(LoadSheddingMiddleware)
 ```
@@ -191,8 +192,9 @@ app.add_middleware(LoadSheddingMiddleware)
 # cpu_shedding.py
 import psutil
 import asyncio
-from typing import Optional
-import time
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 class CPUBasedShedder:
     """Shed load based on CPU utilization"""
@@ -212,6 +214,7 @@ class CPUBasedShedder:
     async def start(self):
         """Start background CPU monitoring"""
         self._running = True
+        psutil.cpu_percent(interval=None)  # Prime the non-blocking sampler
         asyncio.create_task(self._monitor_loop())
 
     async def stop(self):
@@ -243,9 +246,15 @@ class CPUBasedShedder:
 # Usage
 cpu_shedder = CPUBasedShedder(cpu_threshold=0.85)
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     await cpu_shedder.start()
+    try:
+        yield
+    finally:
+        await cpu_shedder.stop()
+
+app = FastAPI(lifespan=lifespan)
 
 @app.middleware("http")
 async def cpu_shed_middleware(request: Request, call_next):
@@ -272,7 +281,8 @@ import random
 from dataclasses import dataclass
 from typing import Deque
 from collections import deque
-import statistics
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 @dataclass
 class AdaptiveConfig:
@@ -348,6 +358,7 @@ class AdaptiveLoadShedder:
 
 # Usage
 shedder = AdaptiveLoadShedder(AdaptiveConfig(target_latency_ms=100))
+app = FastAPI()
 
 @app.middleware("http")
 async def adaptive_middleware(request: Request, call_next):
@@ -380,7 +391,13 @@ metadata:
   name: api-server
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
       - name: api
@@ -408,6 +425,7 @@ spec:
 ```python
 # health_endpoint.py
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 import psutil
 
 app = FastAPI()
@@ -416,6 +434,10 @@ app = FastAPI()
 CPU_THRESHOLD = 0.85
 MEMORY_THRESHOLD = 0.90
 QUEUE_THRESHOLD = 500
+
+def get_request_queue_size() -> int:
+    # Replace with your application's queue/backlog metric.
+    return 0
 
 @app.get("/health/ready")
 async def readiness():
@@ -440,10 +462,11 @@ async def readiness():
         )
 
     # Check application queue
-    if request_queue.size() > QUEUE_THRESHOLD:
+    queue_size = get_request_queue_size()
+    if queue_size > QUEUE_THRESHOLD:
         return JSONResponse(
             status_code=503,
-            content={"status": "overloaded", "reason": "queue", "value": request_queue.size()}
+            content={"status": "overloaded", "reason": "queue", "value": queue_size}
         )
 
     return {"status": "ready"}
@@ -499,7 +522,7 @@ class CircuitBreaker:
             # Check if timeout has passed
             if time.time() - self.last_failure_time > self.config.timeout:
                 self.state = CircuitState.HALF_OPEN
-                self.half_open_requests = 0
+                self.half_open_requests = 1
                 return True
             return False
 
@@ -569,6 +592,9 @@ async def query_database(query: str):
 
 ```python
 # shedding_metrics.py
+import time
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from prometheus_client import Counter, Gauge, Histogram
 
 # Metrics
@@ -603,14 +629,19 @@ latency_histogram = Histogram(
 # Update metrics in middleware
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
-    if shedder.should_shed():
+    if await shedder.should_shed(Priority.NORMAL):
         requests_total.labels(status='shed').inc()
-        shed_reason.labels(reason=shedder.shed_reason).inc()
-        raise HTTPException(status_code=503)
+        shed_reason.labels(reason='overload').inc()
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Service temporarily overloaded"},
+            headers={"Retry-After": "5"}
+        )
 
     requests_total.labels(status='accepted').inc()
-    queue_depth.set(shedder.queue_size)
-    accept_rate.set(shedder.accept_rate)
+    stats = shedder.get_stats()
+    queue_depth.set(stats['queue_size'])
+    accept_rate.set(1.0 - stats['shed_ratio'])
 
     start = time.perf_counter()
     response = await call_next(request)
