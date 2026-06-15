@@ -47,7 +47,7 @@ Documents are distributed based on value ranges. Documents with similar shard ke
 // Range sharding on timestamp
 // Documents close in time are stored together
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("65a7f4d32f3b8c4d5e6f7890"),
   createdAt: ISODate("2026-01-15"),  // Shard key
   data: "..."
 }
@@ -69,7 +69,7 @@ MongoDB hashes the shard key value and distributes based on the hash. This sprea
 // Hash sharding on userId
 // Users are spread randomly across shards
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("65a7f4d32f3b8c4d5e6f7891"),
   userId: "user_12345",  // Shard key (hashed)
   data: "..."
 }
@@ -99,9 +99,7 @@ mongod --configsvr --replSet configReplSet --port 27019 \
 Initialize the config replica set:
 
 ```javascript
-// Connect to one config server
-mongosh "mongodb://config1.example.com:27019"
-
+// Run after connecting to config1.example.com:27019 with mongosh
 rs.initiate({
   _id: "configReplSet",
   configsvr: true,
@@ -126,9 +124,7 @@ mongod --shardsvr --replSet shard1 --port 27018 \
 Initialize each shard replica set:
 
 ```javascript
-// Connect to shard 1 primary
-mongosh "mongodb://shard1a.example.com:27018"
-
+// Run after connecting to shard1a.example.com:27018 with mongosh
 rs.initiate({
   _id: "shard1",
   members: [
@@ -153,10 +149,7 @@ mongos --configdb configReplSet/config1.example.com:27019,config2.example.com:27
 Connect to a mongos router and add the shards:
 
 ```javascript
-// Connect to mongos
-mongosh "mongodb://router1.example.com:27017"
-
-// Add shards
+// Run after connecting to router1.example.com:27017 with mongosh
 sh.addShard("shard1/shard1a.example.com:27018,shard1b.example.com:27018,shard1c.example.com:27018");
 sh.addShard("shard2/shard2a.example.com:27018,shard2b.example.com:27018,shard2c.example.com:27018");
 sh.addShard("shard3/shard3a.example.com:27018,shard3b.example.com:27018,shard3c.example.com:27018");
@@ -174,7 +167,7 @@ sh.status();
 sh.enableSharding("myapp");
 
 // Create a hashed index on the shard key
-db.users.createIndex({ "userId": "hashed" });
+db.getSiblingDB("myapp").users.createIndex({ "userId": "hashed" });
 
 // Shard the collection using hash sharding
 sh.shardCollection("myapp.users", { "userId": "hashed" });
@@ -187,7 +180,7 @@ sh.shardCollection("myapp.users", { "userId": "hashed" });
 sh.enableSharding("analytics");
 
 // Create a regular index on the shard key
-db.events.createIndex({ "timestamp": 1 });
+db.getSiblingDB("analytics").events.createIndex({ "timestamp": 1 });
 
 // Shard the collection using range sharding
 sh.shardCollection("analytics.events", { "timestamp": 1 });
@@ -195,7 +188,7 @@ sh.shardCollection("analytics.events", { "timestamp": 1 });
 
 ## Choosing the Right Shard Key
 
-The shard key is the most important decision in sharding. You cannot change it later without recreating the collection.
+The shard key is the most important decision in sharding. MongoDB 5.0 and later can change a shard key with resharding, and you can refine a shard key by adding suffix fields, but both operations require planning and operational care.
 
 ### Good Shard Key Characteristics
 
@@ -240,11 +233,11 @@ sh.enableSharding("saas");
 
 // Compound shard key: tenant + hashed user ID
 // This groups tenant data while distributing users within tenant
-db.users.createIndex({ "tenantId": 1, "userId": "hashed" });
+db.getSiblingDB("saas").users.createIndex({ "tenantId": 1, "userId": "hashed" });
 sh.shardCollection("saas.users", { "tenantId": 1, "userId": "hashed" });
 
 // For logs: tenant + time range
-db.logs.createIndex({ "tenantId": 1, "timestamp": 1 });
+db.getSiblingDB("saas").logs.createIndex({ "tenantId": 1, "timestamp": 1 });
 sh.shardCollection("saas.logs", { "tenantId": 1, "timestamp": 1 });
 ```
 
@@ -254,7 +247,7 @@ sh.shardCollection("saas.logs", { "tenantId": 1, "timestamp": 1 });
 
 ```javascript
 // View shard distribution
-db.users.getShardDistribution();
+db.getSiblingDB("myapp").users.getShardDistribution();
 
 // Output shows chunks and data per shard
 // Look for imbalances
@@ -265,21 +258,22 @@ db.users.getShardDistribution();
 ```javascript
 // See all chunks for a collection
 use config
-db.chunks.find({ ns: "myapp.users" }).forEach(chunk => {
+const collection = db.collections.findOne({ _id: "myapp.users" });
+db.chunks.find({ uuid: collection.uuid }).forEach(chunk => {
   print(`Shard: ${chunk.shard}, Range: ${JSON.stringify(chunk.min)} to ${JSON.stringify(chunk.max)}`);
 });
 ```
 
 ### Manual Chunk Splitting
 
-MongoDB automatically splits chunks, but you can do it manually:
+MongoDB usually creates, splits, and distributes ranges automatically, but you can split ranges manually:
 
 ```javascript
 // Split a chunk at a specific value
-sh.splitAt("myapp.users", { "userId": "user_50000" });
+sh.splitAt("analytics.events", { "timestamp": ISODate("2026-02-01") });
 
 // Split a chunk in half
-sh.splitFind("myapp.users", { "userId": "user_50000" });
+sh.splitFind("analytics.events", { "timestamp": ISODate("2026-02-01") });
 ```
 
 ### Balancer Management
@@ -295,7 +289,7 @@ sh.startBalancer();
 sh.stopBalancer();
 
 // Set balancer window (run only during off-peak)
-db.settings.update(
+db.getSiblingDB("config").settings.updateOne(
   { _id: "balancer" },
   { $set: { activeWindow: { start: "02:00", stop: "06:00" } } },
   { upsert: true }
@@ -307,20 +301,24 @@ db.settings.update(
 Zone sharding lets you control where data lives, useful for compliance or latency.
 
 ```javascript
+// Shard the collection on the field used for zone ranges
+db.getSiblingDB("myapp").customers.createIndex({ "region": 1 });
+sh.shardCollection("myapp.customers", { "region": 1 });
+
 // Add zones to shards
 sh.addShardToZone("shard1", "US");
 sh.addShardToZone("shard2", "EU");
 
 // Define zone ranges
 sh.updateZoneKeyRange(
-  "myapp.users",
-  { "region": "us-east" },
-  { "region": "us-west\uffff" },
+  "myapp.customers",
+  { "region": "us-" },
+  { "region": "us-\uffff" },
   "US"
 );
 
 sh.updateZoneKeyRange(
-  "myapp.users",
+  "myapp.customers",
   { "region": "eu-west" },
   { "region": "eu-west\uffff" },
   "EU"
@@ -345,7 +343,7 @@ const client = new MongoClient(uri, {
 
 1. **Sharding too early**: Sharding adds complexity. Start with replica set and shard when needed.
 
-2. **Wrong shard key**: Cannot be changed. Test with production-like data before committing.
+2. **Wrong shard key**: Can be changed in modern MongoDB, but resharding is an operationally significant process. Test with production-like data before committing.
 
 3. **Ignoring the balancer**: Monitor balancer operations and schedule during low traffic.
 
@@ -353,4 +351,4 @@ const client = new MongoClient(uri, {
 
 ---
 
-Sharding is powerful but complex. Choose hash sharding when you need even write distribution and do not need range queries. Choose range sharding when your queries naturally span ranges. Most importantly, pick your shard key carefully because changing it later requires recreating the entire collection.
+Sharding is powerful but complex. Choose hash sharding when you need even write distribution and do not need range queries. Choose range sharding when your queries naturally span ranges. Most importantly, pick your shard key carefully because changing it later is a major operational change.
