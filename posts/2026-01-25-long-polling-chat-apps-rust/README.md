@@ -150,15 +150,16 @@ pub async fn poll_messages(
     State(state): State<Arc<ChatState>>,
     Query(query): Query<PollQuery>,
 ) -> Json<PollResponse> {
+    // Subscribe before checking existing messages so we don't miss a message
+    // that arrives between the check and waiting on the channel.
+    let mut receiver = state.subscribe();
+
     // First, check if there are already new messages
     let existing = state.get_messages_since(query.last_id.as_deref()).await;
 
     if !existing.is_empty() {
         return Json(PollResponse { messages: existing });
     }
-
-    // No new messages - subscribe and wait
-    let mut receiver = state.subscribe();
 
     // Wait up to 30 seconds for a new message
     let poll_timeout = Duration::from_secs(30);
