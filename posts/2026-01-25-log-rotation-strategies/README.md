@@ -16,11 +16,11 @@ Every production system generates logs. Web servers, databases, applications, an
 
 ## Why Log Rotation Matters
 
-Consider a web server handling 1,000 requests per minute. If each request generates 500 bytes of logs, you produce 30KB per second, 2.5GB per day, or 75GB per month from a single server. Multiply this across a fleet of servers and you quickly understand why log rotation is essential.
+Consider a web server handling 1,000 requests per minute. If each request generates 500 bytes of logs, you produce about 8KB per second, 720MB per day, or 21GB per month from a single server. Multiply this across a fleet of servers and you quickly understand why log rotation is essential.
 
 Beyond disk space, unrotated logs cause:
 
-- **Performance degradation**: Large files are slow to write and search
+- **Performance degradation**: Large files are slow to search and process
 - **Failed writes**: Full disks cause application errors
 - **Compliance violations**: Retaining logs too long or not long enough
 - **Debugging difficulties**: Searching through massive files takes forever
@@ -29,7 +29,7 @@ Beyond disk space, unrotated logs cause:
 
 ## Configuring Logrotate on Linux
 
-Logrotate is the standard tool for log rotation on Linux systems. It runs daily via cron and processes configuration files to rotate logs.
+Logrotate is the standard tool for log rotation on Linux systems. It typically runs on a schedule via cron or a systemd timer and processes configuration files to rotate logs.
 
 ### Basic Configuration
 
@@ -65,6 +65,9 @@ Logrotate is the standard tool for log rotation on Linux systems. It runs daily 
     dateext
     dateformat -%Y%m%d
 
+    # Run postrotate once for the wildcard group
+    sharedscripts
+
     # Run these commands after rotation
     postrotate
         # Signal application to reopen log files
@@ -93,7 +96,7 @@ Logrotate is the standard tool for log rotation on Linux systems. It runs daily 
 
     create 0640 appuser appgroup
 
-    # Can combine with maxage to delete old files
+    # Can combine with maxage to delete rotated files when rotation runs
     maxage 30
 }
 ```
@@ -142,10 +145,10 @@ Logrotate is the standard tool for log rotation on Linux systems. It runs daily 
     delaycompress
     missingok
     notifempty
-    create 0600 root root
 
     # Copy and truncate instead of moving
-    # Ensures no gap in audit logging
+    # Avoids requiring the process to reopen the file,
+    # but a small number of entries can be lost between copy and truncate
     copytruncate
 }
 ```
@@ -237,8 +240,7 @@ def setup_logger(name, log_dir='/var/log/myapp'):
 
     # Formatter for all handlers
     formatter = logging.Formatter(
-        '{"timestamp": "%(asctime)s", "level": "%(levelname)s", '
-        '"logger": "%(name)s", "message": "%(message)s"}'
+        '%(asctime)s %(levelname)s %(name)s %(message)s'
     )
 
     # Size-based rotation for high-volume logs
@@ -252,10 +254,10 @@ def setup_logger(name, log_dir='/var/log/myapp'):
     size_handler.setLevel(logging.INFO)
     size_handler.setFormatter(formatter)
 
-    # Time-based rotation for audit logs
+    # Time-based rotation for daily logs
     # Rotates at midnight, keeps 365 days
     time_handler = TimedRotatingFileHandler(
-        filename=os.path.join(log_dir, 'audit.log'),
+        filename=os.path.join(log_dir, 'daily.log'),
         when='midnight',
         interval=1,
         backupCount=365,
