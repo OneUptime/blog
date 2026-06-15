@@ -23,7 +23,7 @@ sequenceDiagram
 
     D->>R: GET /v2/
     R->>D: 401 Unauthorized
-    D->>A: POST /token
+    D->>A: GET /token
     A->>D: Bearer token
     D->>R: GET /v2/image/manifests/tag
     R->>D: Manifest with layer digests
@@ -280,6 +280,9 @@ docker pull nginx:alpine
 # Pull stuck on specific layer
 # The layer digest is shown in output
 
+# Get a token for the repository you are checking
+TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/nginx:pull" | jq -r .token)
+
 # Verify layer exists
 curl -sI -H "Authorization: Bearer $TOKEN" \
   https://registry-1.docker.io/v2/library/nginx/blobs/sha256:xxx
@@ -331,26 +334,32 @@ gcloud artifacts repositories describe REPO --location=us --format="get(iamPolic
 # debug-pull.sh - Diagnose Docker pull issues
 
 IMAGE=${1:-nginx:alpine}
-REGISTRY=$(echo $IMAGE | cut -d'/' -f1)
+FIRST_PART=${IMAGE%%/*}
 
-if [[ "$REGISTRY" == *"."* ]]; then
+if [[ "$IMAGE" == */* && ( "$FIRST_PART" == *"."* || "$FIRST_PART" == *":"* || "$FIRST_PART" == "localhost" ) ]]; then
+  REGISTRY="$FIRST_PART"
   REGISTRY_URL="https://$REGISTRY"
 else
   REGISTRY_URL="https://registry-1.docker.io"
   REGISTRY="registry-1.docker.io"
+fi
+TLS_HOST=${REGISTRY%%:*}
+TLS_PORT=${REGISTRY##*:}
+if [[ "$TLS_PORT" == "$REGISTRY" ]]; then
+  TLS_PORT=443
 fi
 
 echo "=== Debugging pull for: $IMAGE ==="
 echo "=== Registry: $REGISTRY ==="
 
 echo -e "\n=== DNS Resolution ==="
-nslookup $REGISTRY || echo "DNS failed"
+nslookup "$TLS_HOST" || echo "DNS failed"
 
 echo -e "\n=== Connectivity Test ==="
 curl -sI --connect-timeout 10 "$REGISTRY_URL/v2/" | head -5
 
 echo -e "\n=== TLS Certificate ==="
-echo | openssl s_client -connect $REGISTRY:443 -servername $REGISTRY 2>/dev/null | openssl x509 -noout -dates
+echo | openssl s_client -connect "$TLS_HOST:$TLS_PORT" -servername "$TLS_HOST" 2>/dev/null | openssl x509 -noout -dates
 
 echo -e "\n=== Authentication Status ==="
 if [ -f ~/.docker/config.json ]; then
