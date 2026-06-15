@@ -8,7 +8,7 @@ Description: Learn how to set up Restic for efficient, encrypted application bac
 
 ---
 
-Restic is a backup program that does one thing exceptionally well: it creates encrypted, deduplicated backups fast. Unlike traditional tools that copy entire files on each run, Restic splits data into content-defined chunks and only stores unique chunks. This makes incremental backups nearly instantaneous, even for large datasets.
+Restic is a backup program that does one thing exceptionally well: it creates encrypted, deduplicated backups fast. Unlike traditional tools that copy entire files on each run, Restic splits data into content-defined chunks and only stores unique chunks. This can make incremental backups much faster, even for large datasets.
 
 This guide covers installing Restic, initializing repositories, backing up applications, automating schedules, and restoring data when things go wrong.
 
@@ -21,7 +21,7 @@ Several features make Restic stand out:
 3. **Multiple backends:** Supports local directories, SFTP, S3, Azure Blob, GCS, and REST servers.
 4. **Cross-platform:** Runs on Linux, macOS, Windows, and BSD.
 
-The tradeoff is that Restic requires a running process to manage backups. It does not integrate directly with databases or application APIs. You handle pre-backup scripts yourself.
+The tradeoff is that Restic needs to be run or scheduled to manage backups. It does not integrate directly with databases or application APIs. You handle pre-backup scripts yourself.
 
 ## Installing Restic
 
@@ -35,21 +35,25 @@ sudo apt update && sudo apt install restic
 # Install on macOS
 brew install restic
 
-# Install on RHEL/CentOS/Fedora
+# Install on Fedora
+sudo dnf install restic
+
+# Install on RHEL/CentOS Stream
+sudo dnf install epel-release
 sudo dnf install restic
 
 # Or download the latest binary directly
-wget https://github.com/restic/restic/releases/download/v0.16.4/restic_0.16.4_linux_amd64.bz2
-bunzip2 restic_0.16.4_linux_amd64.bz2
-chmod +x restic_0.16.4_linux_amd64
-sudo mv restic_0.16.4_linux_amd64 /usr/local/bin/restic
+wget https://github.com/restic/restic/releases/download/v0.19.0/restic_0.19.0_linux_amd64.bz2
+bunzip2 restic_0.19.0_linux_amd64.bz2
+chmod +x restic_0.19.0_linux_amd64
+sudo mv restic_0.19.0_linux_amd64 /usr/local/bin/restic
 ```
 
 Verify installation:
 
 ```bash
 restic version
-# restic 0.16.4 compiled with go1.21.5 on linux/amd64
+# restic 0.19.0 compiled with go1.25.0 on linux/amd64
 ```
 
 ## Initializing a Backup Repository
@@ -72,7 +76,7 @@ For remote storage backends:
 
 ```bash
 # Initialize repository on S3
-export RESTIC_REPOSITORY=s3:s3.amazonaws.com/my-backup-bucket/app-backups
+export RESTIC_REPOSITORY=s3:s3.us-east-1.amazonaws.com/my-backup-bucket/app-backups
 export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
 export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 export RESTIC_PASSWORD="your-secure-password"
@@ -120,7 +124,7 @@ Dirs:          156 new,     0 changed,     0 unmodified
 Added to the repo: 234.567 MiB
 
 processed 1284 files, 891.234 MiB in 0:12
-snapshot 5f6g7h8i saved
+snapshot 5f6a7b8c saved
 ```
 
 ## Backup Flow
@@ -132,7 +136,7 @@ flowchart TD
     C -->|No| D[Encrypt Chunk]
     C -->|Yes| E[Reference Existing]
     D --> F[Upload to Repository]
-    E --> G[Update Snapshot Index]
+    E --> G[Write Index and Snapshot]
     F --> G
     G --> H[Snapshot Complete]
 ```
@@ -149,7 +153,7 @@ Real applications need preparation before backup. Here is how to handle common s
 
 set -euo pipefail
 
-export RESTIC_REPOSITORY=s3:s3.amazonaws.com/backups/postgres
+export RESTIC_REPOSITORY=s3:s3.us-east-1.amazonaws.com/backups/postgres
 export RESTIC_PASSWORD_FILE=/etc/restic/password
 export AWS_ACCESS_KEY_ID=$(cat /etc/restic/aws-key)
 export AWS_SECRET_ACCESS_KEY=$(cat /etc/restic/aws-secret)
@@ -210,6 +214,7 @@ APP_DIR=/var/www/myapp
 
 # Stop the application to ensure consistency
 systemctl stop myapp
+trap 'systemctl start myapp' EXIT
 
 # Run the backup
 restic backup "$APP_DIR" \
@@ -217,9 +222,6 @@ restic backup "$APP_DIR" \
   --exclude="$APP_DIR/logs/*" \
   --exclude="$APP_DIR/cache/*" \
   --tag webapp
-
-# Restart the application
-systemctl start myapp
 
 echo "Backup completed at $(date)"
 ```
@@ -287,7 +289,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=root
-Environment="RESTIC_REPOSITORY=s3:s3.amazonaws.com/backups/server"
+Environment="RESTIC_REPOSITORY=s3:s3.us-east-1.amazonaws.com/backups/server"
 Environment="RESTIC_PASSWORD_FILE=/etc/restic/password"
 Environment="AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"
 Environment="AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
