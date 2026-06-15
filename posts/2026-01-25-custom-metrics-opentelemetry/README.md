@@ -45,25 +45,53 @@ flowchart LR
 
 ```javascript
 // metrics.js
-const { MeterProvider, PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
+const { metrics } = require('@opentelemetry/api');
+const {
+  AggregationType,
+  InstrumentType,
+  MeterProvider,
+  PeriodicExportingMetricReader
+} = require('@opentelemetry/sdk-metrics');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION
+} = require('@opentelemetry/semantic-conventions');
 
 // Create resource
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'order-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0'
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'order-service',
+  [ATTR_SERVICE_VERSION]: '1.0.0'
 });
 
 // Configure exporter
+const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
 const exporter = new OTLPMetricExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/metrics'
+  url: `${otlpEndpoint.replace(/\/$/, '')}/v1/metrics`
 });
 
 // Create meter provider
 const meterProvider = new MeterProvider({
   resource,
+  views: [
+    {
+      instrumentName: 'payment_processing_duration',
+      instrumentType: InstrumentType.HISTOGRAM,
+      aggregation: {
+        type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+        options: { boundaries: [10, 25, 50, 100, 250, 500, 1000, 2500, 5000] }
+      }
+    },
+    {
+      instrumentName: 'http_response_size',
+      instrumentType: InstrumentType.HISTOGRAM,
+      aggregation: {
+        type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+        options: { boundaries: [100, 1000, 10000, 100000, 1000000] }
+      }
+    }
+  ],
   readers: [
     new PeriodicExportingMetricReader({
       exporter,
@@ -73,7 +101,8 @@ const meterProvider = new MeterProvider({
 });
 
 // Get a meter for creating instruments
-const meter = meterProvider.getMeter('order-service-metrics', '1.0.0');
+metrics.setGlobalMeterProvider(meterProvider);
+const meter = metrics.getMeter('order-service-metrics', '1.0.0');
 
 module.exports = { meter, meterProvider };
 ```
@@ -178,20 +207,13 @@ const { meter } = require('./metrics');
 // Create histogram for payment processing duration
 const paymentDurationHistogram = meter.createHistogram('payment_processing_duration', {
   description: 'Time taken to process payments',
-  unit: 'ms',
-  // Define explicit bucket boundaries
-  advice: {
-    explicitBucketBoundaries: [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
-  }
+  unit: 'ms'
 });
 
 // Create histogram for response sizes
 const responseSizeHistogram = meter.createHistogram('http_response_size', {
   description: 'Size of HTTP responses',
-  unit: 'bytes',
-  advice: {
-    explicitBucketBoundaries: [100, 1000, 10000, 100000, 1000000]
-  }
+  unit: 'By'
 });
 
 async function processPayment(payment) {
@@ -236,11 +258,11 @@ from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+from opentelemetry.sdk.resources import Resource
 
 # Create resource
 resource = Resource.create({
-    SERVICE_NAME: os.getenv("OTEL_SERVICE_NAME", "order-service")
+    "service.name": os.getenv("OTEL_SERVICE_NAME", "order-service")
 })
 
 # Configure exporter
@@ -279,6 +301,12 @@ order_value_counter = meter.create_counter(
     unit="cents"
 )
 
+order_error_counter = meter.create_counter(
+    name="orders_errors_total",
+    description="Total number of failed order attempts",
+    unit="1"
+)
+
 def record_order(order):
     """
     Record metrics for a completed order.
@@ -302,12 +330,6 @@ def record_order_error(order_type, region, error_type):
     """
     Record a failed order attempt.
     """
-    order_error_counter = meter.create_counter(
-        name="orders_errors_total",
-        description="Total number of failed order attempts",
-        unit="1"
-    )
-
     order_error_counter.add(1, {
         "order.type": order_type,
         "order.region": region,
@@ -320,7 +342,8 @@ def record_order_error(order_type, region, error_type):
 ```python
 # queue_metrics.py
 from metrics import meter
-from typing import Callable
+from typing import Callable, Iterable
+from opentelemetry.metrics import CallbackOptions, Observation
 
 # Store reference to queue for observable callback
 _queue_getter: Callable[[], int] = lambda: 0
@@ -333,12 +356,12 @@ def set_queue_getter(getter: Callable[[], int]):
     global _queue_getter
     _queue_getter = getter
 
-def _observe_queue_depth(options):
+def _observe_queue_depth(options: CallbackOptions) -> Iterable[Observation]:
     """
     Callback function called periodically to observe queue depth.
     """
     depth = _queue_getter()
-    options.observe(depth, {
+    yield Observation(depth, {
         "queue.name": "order-processing",
         "queue.priority": "normal"
     })
@@ -379,7 +402,8 @@ from metrics import meter
 payment_duration = meter.create_histogram(
     name="payment_processing_duration",
     description="Time taken to process payments",
-    unit="ms"
+    unit="ms",
+    explicit_bucket_boundaries_advisory=[10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
 )
 
 @contextmanager
@@ -499,6 +523,8 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
 
 processors:
   batch:
@@ -508,7 +534,9 @@ processors:
 exporters:
   otlphttp:
     endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
+      "Content-Type": "application/json"
       "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
 
 service:
