@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Nginx, HTTP/2, Performance, SSL, Web Server
 
-Description: Learn how to enable and configure HTTP/2 in Nginx for improved performance through multiplexing, header compression, and server push capabilities.
+Description: Learn how to enable and configure HTTP/2 in Nginx for improved performance through multiplexing, header compression, and binary framing.
 
 ---
 
-HTTP/2 brings significant performance improvements over HTTP/1.1 through multiplexing, header compression, and binary framing. Nginx supports HTTP/2 out of the box, requiring minimal configuration changes to enable. This guide covers enabling HTTP/2, understanding its benefits, and tuning Nginx for optimal HTTP/2 performance.
+HTTP/2 brings significant performance improvements over HTTP/1.1 through multiplexing, header compression, and binary framing. Nginx supports HTTP/2 through the `ngx_http_v2_module`, requiring minimal configuration changes to enable in most packaged builds. This guide covers enabling HTTP/2, understanding its benefits, and tuning Nginx for optimal HTTP/2 performance.
 
 ## HTTP/2 Benefits
 
@@ -20,17 +20,18 @@ HTTP/2 improves performance in several ways:
 | Header Compression | Reduces overhead for repeated headers |
 | Binary Protocol | More efficient parsing than text-based HTTP/1.1 |
 | Stream Prioritization | Important resources load first |
-| Server Push | Send resources before browser requests them |
+| Fewer Connections | Reduce connection overhead compared with HTTP/1.1 sharding |
 
 ## Enabling HTTP/2
 
-Add the `http2` parameter to your listen directive:
+Add the `http2 on;` directive to your HTTPS server block:
 
 ```nginx
 server {
     # Enable HTTP/2 with SSL
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;  # IPv6
+    listen 443 ssl;
+    listen [::]:443 ssl;  # IPv6
+    http2 on;
 
     server_name example.com www.example.com;
 
@@ -45,7 +46,7 @@ server {
 }
 ```
 
-Note: HTTP/2 in Nginx requires SSL/TLS. While the HTTP/2 spec allows unencrypted connections, browsers only support HTTP/2 over HTTPS.
+Note: Browser HTTP/2 traffic uses SSL/TLS. While HTTP/2 can also run without TLS as h2c, browsers only support HTTP/2 over HTTPS.
 
 ## Complete HTTP/2 Configuration
 
@@ -71,8 +72,9 @@ server {
 
 # HTTPS with HTTP/2
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com www.example.com;
 
     # SSL certificates
@@ -88,9 +90,6 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
     ssl_prefer_server_ciphers off;
-
-    # HTTP/2 settings
-    http2_push_preload on;  # Enable server push via Link headers
 
     # Security headers
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
@@ -116,29 +115,27 @@ server {
 }
 ```
 
-## HTTP/2 Server Push
+## Resource Preload
 
-Server push sends resources to the client before they are requested. Enable via Link headers:
+HTTP/2 server push was removed from Nginx in version 1.25.1. Use preload Link headers for critical resources instead:
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
-
-    # Enable server push from Link headers
-    http2_push_preload on;
 
     location / {
         proxy_pass http://backend;
 
-        # Add Link headers for resources to push
+        # Add Link headers for resources to preload
         add_header Link "</css/style.css>; rel=preload; as=style";
         add_header Link "</js/app.js>; rel=preload; as=script";
     }
 }
 ```
 
-Your application can also set Link headers to trigger push:
+Your application can also set Link headers:
 
 ```python
 # Python Flask example
@@ -149,25 +146,28 @@ def index():
     return response
 ```
 
-## HTTP/2 Push with nginx.conf Directives
+## Early Hints with nginx.conf Directives
 
-Push specific resources directly in Nginx:
+On Nginx 1.29.0 and newer, you can pass 103 Early Hints responses from upstreams to compatible clients:
 
 ```nginx
+map $http_sec_fetch_mode $early_hints {
+    navigate $http2$http3;
+}
+
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     location = / {
-        # Push CSS and JS when homepage is requested
-        http2_push /css/style.css;
-        http2_push /js/app.js;
-        http2_push /images/logo.png;
+        # Pass Early Hints from the backend for navigations over HTTP/2 or HTTP/3
+        early_hints $early_hints;
 
         proxy_pass http://backend;
     }
 
-    # Serve pushed resources
+    # Serve preloaded resources
     location /css/ {
         alias /var/www/css/;
     }
@@ -198,16 +198,16 @@ http {
     http2_body_preread_size 64k;
 
     # Timeout for idle connections
-    http2_idle_timeout 3m;
+    keepalive_timeout 3m;
 
     # Maximum number of requests per connection
-    http2_max_requests 1000;
+    keepalive_requests 1000;
 }
 ```
 
 ## ALPN Protocol Negotiation
 
-HTTP/2 uses ALPN (Application-Layer Protocol Negotiation) to upgrade connections. Verify your OpenSSL supports it:
+HTTP/2 uses ALPN (Application-Layer Protocol Negotiation) to negotiate the protocol during the TLS handshake. Verify your OpenSSL supports it:
 
 ```bash
 # Check OpenSSL version (needs 1.0.2+)
@@ -221,7 +221,7 @@ echo | openssl s_client -alpn h2 -connect example.com:443 2>/dev/null | grep ALP
 
 ## Backend Communication
 
-While clients connect via HTTP/2, Nginx typically speaks HTTP/1.1 to backends:
+While clients connect via HTTP/2, many Nginx deployments speak HTTP/1.1 to backends:
 
 ```nginx
 upstream backend {
@@ -230,20 +230,21 @@ upstream backend {
 }
 
 server {
-    listen 443 ssl http2;  # HTTP/2 from clients
+    listen 443 ssl;  # HTTP/2 from clients
+    http2 on;
     server_name example.com;
 
     location / {
         proxy_pass http://backend;
 
-        # HTTP/1.1 to backend (required for keepalive)
+        # HTTP/1.1 to backend (recommended for keepalive on older Nginx versions)
         proxy_http_version 1.1;
         proxy_set_header Connection "";
     }
 }
 ```
 
-This is normal and efficient. HTTP/2 benefits primarily apply to the client-to-proxy connection where latency matters most.
+This is normal and efficient. Newer Nginx versions can also proxy HTTP/2 to HTTP backends with `proxy_http_version 2`, but HTTP/2 benefits usually matter most on the client-to-proxy connection where latency is highest.
 
 ## gRPC over HTTP/2
 
@@ -255,7 +256,8 @@ upstream grpc_backend {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name grpc.example.com;
 
     ssl_certificate /etc/ssl/certs/grpc.example.com.crt;
@@ -320,9 +322,8 @@ sequenceDiagram
     Backend->>Nginx: 200 OK + HTML
     Nginx->>Browser: Stream 1: 200 + HTML
 
-    Note over Nginx,Browser: Server Push
-    Nginx->>Browser: PUSH_PROMISE (style.css)
-    Nginx->>Browser: Stream 2: style.css content
+    Browser->>Nginx: Stream 7: GET /logo.png
+    Nginx->>Browser: Stream 7: 200 + image content
 ```
 
 ## Performance Comparison
@@ -334,7 +335,7 @@ HTTP/2 improves performance significantly for sites with many resources:
 | 6 requests | 6 connections or queued | 1 connection, parallel |
 | Repeated headers | Sent each request | Compressed/cached |
 | Resource priority | No control | Stream weights |
-| Critical CSS | Waits for request | Server push |
+| Critical CSS | Waits for request | Use preload or Early Hints |
 
 ## Migration Checklist
 
@@ -342,11 +343,11 @@ Before enabling HTTP/2:
 
 1. Ensure SSL/TLS is properly configured
 2. Verify OpenSSL version supports ALPN (1.0.2+)
-3. Update Nginx to version 1.9.5+ (1.25.1+ for HTTP/3)
+3. Update Nginx to version 1.25.1+ for the `http2 on;` syntax, or use the older `listen ... http2` syntax on Nginx 1.9.5 through 1.25.0
 4. Test with staging environment first
 5. Remove domain sharding (no longer needed)
-6. Consider server push for critical resources
+6. Use preload headers or Early Hints for critical resources
 
 ---
 
-HTTP/2 in Nginx requires just adding `http2` to your listen directive. The protocol's multiplexing eliminates the need for multiple connections, header compression reduces overhead, and server push lets you send resources proactively. Combined with proper SSL configuration, HTTP/2 delivers noticeable performance improvements with minimal configuration effort.
+HTTP/2 in Nginx requires just adding `http2 on;` to your server block. The protocol's multiplexing eliminates the need for multiple connections, and header compression reduces overhead. Combined with proper SSL configuration, HTTP/2 delivers noticeable performance improvements with minimal configuration effort.
