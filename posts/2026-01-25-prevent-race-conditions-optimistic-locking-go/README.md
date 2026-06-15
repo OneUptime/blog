@@ -163,7 +163,7 @@ func GetAccount(db *sql.DB, id int64) (*Account, error) {
 
 ## Using the Retry Logic
 
-Here's how to use the retry wrapper for a typical balance transfer scenario.
+Here's how to use the retry wrapper for a typical withdrawal scenario.
 
 ```go
 func main() {
@@ -224,7 +224,11 @@ func Transfer(db *sql.DB, fromID, toID int64, amount float64) error {
             return err
         }
 
-        if rows, _ := result.RowsAffected(); rows == 0 {
+        rows, err := result.RowsAffected()
+        if err != nil {
+            return fmt.Errorf("checking source update: %w", err)
+        }
+        if rows == 0 {
             return ErrConflict
         }
 
@@ -239,7 +243,11 @@ func Transfer(db *sql.DB, fromID, toID int64, amount float64) error {
             return err
         }
 
-        if rows, _ := result.RowsAffected(); rows == 0 {
+        rows, err = result.RowsAffected()
+        if err != nil {
+            return fmt.Errorf("checking destination update: %w", err)
+        }
+        if rows == 0 {
             return ErrConflict
         }
 
@@ -281,21 +289,21 @@ func GetAccountTx(tx *sql.Tx, id int64) (*Account, error) {
 
 ## Using GORM for Cleaner Code
 
-If you're using GORM, optimistic locking becomes even simpler. GORM has built-in support via the `gorm:"version"` tag.
+If you're using GORM, optimistic locking becomes even simpler with the official optimistic locking plugin.
 
 ```go
 import (
     "errors"
     "gorm.io/gorm"
-    "gorm.io/gorm/clause"
+    "gorm.io/plugin/optimisticlock"
 )
 
-// AccountGorm uses GORM's built-in optimistic locking
+// AccountGorm uses GORM's optimistic locking plugin
 type AccountGorm struct {
-    ID      int64   `gorm:"primaryKey"`
-    UserID  int64   `gorm:"not null"`
-    Balance float64 `gorm:"not null;default:0"`
-    Version int     `gorm:"not null;default:1"` // GORM auto-increments this
+    ID      int64                  `gorm:"primaryKey"`
+    UserID  int64                  `gorm:"not null"`
+    Balance float64                `gorm:"not null;default:0"`
+    Version optimisticlock.Version `gorm:"not null;default:1"`
 }
 
 func (AccountGorm) TableName() string {
@@ -311,14 +319,9 @@ func UpdateBalanceGorm(db *gorm.DB, accountID int64, newBalance float64) error {
         return err
     }
 
-    // Update with optimistic locking - GORM checks version automatically
-    account.Balance = newBalance
+    // Update with optimistic locking - the plugin checks and increments version
     result := db.Model(account).
-        Where("version = ?", account.Version).
-        Updates(map[string]interface{}{
-            "balance": newBalance,
-            "version": gorm.Expr("version + 1"),
-        })
+        Update("balance", newBalance)
 
     if result.Error != nil {
         return result.Error
