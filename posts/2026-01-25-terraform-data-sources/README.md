@@ -12,7 +12,7 @@ Data sources in Terraform let you fetch information from your cloud provider or 
 
 ## Why Data Sources Matter
 
-Hardcoding values like AMI IDs, subnet IDs, or security group names creates maintenance nightmares. When infrastructure changes, you have to hunt through code updating references. Data sources solve this by querying the actual state of your infrastructure at plan and apply time.
+Hardcoding values like AMI IDs, subnet IDs, or security group names creates maintenance nightmares. When infrastructure changes, you have to hunt through code updating references. Data sources solve this by querying the actual state of your infrastructure during planning, or during apply when the data depends on values that are not known until apply.
 
 ```mermaid
 flowchart LR
@@ -164,7 +164,7 @@ resource "aws_lambda_function" "processor" {
   function_name = "data-processor"
   role          = data.aws_iam_role.lambda_execution.arn
   handler       = "index.handler"
-  runtime       = "nodejs18.x"
+  runtime       = "nodejs22.x"
   filename      = "function.zip"
 }
 ```
@@ -208,7 +208,7 @@ resource "azurerm_linux_virtual_machine" "api" {
 
   admin_ssh_key {
     username   = "adminuser"
-    public_key = file("~/.ssh/id_rsa.pub")
+    public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
   }
 
   os_disk {
@@ -354,17 +354,19 @@ output "subnet_cidrs" {
 
 ## Error Handling
 
-Data sources fail if they cannot find the requested resource. Handle this with lifecycle conditions or by checking if optional resources exist.
+Data sources that expect a single match fail if they cannot find the requested resource. For optional lookups, use a data source that returns a collection and check whether the collection is empty.
 
 ```hcl
-# Check if a resource exists before using it
-data "aws_secretsmanager_secret" "api_key" {
-  name = "production/api-key"
+# Query matching secrets without failing if none match
+data "aws_secretsmanager_secrets" "api_key" {
+  filter {
+    name   = "name"
+    values = ["production/api-key"]
+  }
 }
 
-# Use try() for optional values
 locals {
-  api_key_arn = try(data.aws_secretsmanager_secret.api_key.arn, null)
+  api_key_arn = length(data.aws_secretsmanager_secrets.api_key.arns) == 1 ? data.aws_secretsmanager_secrets.api_key.arns[0] : null
 }
 ```
 
