@@ -49,7 +49,7 @@ PROXY TCP4 203.0.113.50 10.0.0.1 56789 80\r\n
 **Version 2 (Binary):**
 - More efficient parsing
 - Supports additional metadata (TLS info, unique connection ID)
-- Fixed-size header for faster processing
+- Fixed 16-byte header prefix with a length field for faster processing
 
 ## HAProxy as Proxy Protocol Source
 
@@ -287,7 +287,7 @@ class ProxyInfo:
     client_port: int
     server_ip: str
     server_port: int
-    protocol: str  # TCP4, TCP6, UNKNOWN
+    protocol: str  # TCP4, TCP6, UDP4, UDP6, UNKNOWN, LOCAL
 
 def parse_proxy_protocol_v1(data: bytes) -> Tuple[Optional[ProxyInfo], bytes]:
     """Parse Proxy Protocol v1 (text format)"""
@@ -305,6 +305,9 @@ def parse_proxy_protocol_v1(data: bytes) -> Tuple[Optional[ProxyInfo], bytes]:
     remaining = data[header_end + 2:]
 
     parts = header.split(' ')
+    if len(parts) == 2 and parts[1] == 'UNKNOWN':
+        return ProxyInfo('', 0, '', 0, 'UNKNOWN'), remaining
+
     if len(parts) != 6:
         return None, data
 
@@ -329,7 +332,7 @@ def parse_proxy_protocol_v2(data: bytes) -> Tuple[Optional[ProxyInfo], bytes]:
     if len(data) < 16:
         return None, data
 
-    # Parse header
+    # Parse fixed 16-byte header
     ver_cmd = data[12]
     family_protocol = data[13]
     length = struct.unpack('!H', data[14:16])[0]
@@ -341,10 +344,6 @@ def parse_proxy_protocol_v2(data: bytes) -> Tuple[Optional[ProxyInfo], bytes]:
     if version != 2:
         return None, data
 
-    # Extract address family and protocol
-    family = (family_protocol & 0xF0) >> 4
-    protocol = family_protocol & 0x0F
-
     header_length = 16 + length
     if len(data) < header_length:
         return None, data
@@ -352,13 +351,27 @@ def parse_proxy_protocol_v2(data: bytes) -> Tuple[Optional[ProxyInfo], bytes]:
     remaining = data[header_length:]
     address_data = data[16:header_length]
 
+    # LOCAL commands must ignore the address information in the header
+    if command == 0:
+        return ProxyInfo('', 0, '', 0, 'LOCAL'), remaining
+    if command != 1:
+        return None, data
+
+    # Extract address family and protocol
+    family = (family_protocol & 0xF0) >> 4
+    protocol = family_protocol & 0x0F
+
     # Parse addresses based on family
     if family == 1:  # AF_INET (IPv4)
+        if len(address_data) < 12:
+            return None, data
         src_ip = socket.inet_ntoa(address_data[0:4])
         dst_ip = socket.inet_ntoa(address_data[4:8])
         src_port, dst_port = struct.unpack('!HH', address_data[8:12])
         proto_str = 'TCP4' if protocol == 1 else 'UDP4'
     elif family == 2:  # AF_INET6 (IPv6)
+        if len(address_data) < 36:
+            return None, data
         src_ip = socket.inet_ntop(socket.AF_INET6, address_data[0:16])
         dst_ip = socket.inet_ntop(socket.AF_INET6, address_data[16:32])
         src_port, dst_port = struct.unpack('!HH', address_data[32:36])
@@ -431,7 +444,6 @@ import (
     "bufio"
     "fmt"
     "net"
-    "strings"
 
     proxyproto "github.com/pires/go-proxyproto"
 )
@@ -446,14 +458,8 @@ func main() {
     // Wrap with Proxy Protocol listener
     proxyListener := &proxyproto.Listener{
         Listener: listener,
-        // Optional: Validate source of Proxy Protocol
-        Policy: func(upstream net.Addr) (proxyproto.Policy, error) {
-            // Only accept Proxy Protocol from trusted proxies
-            if strings.HasPrefix(upstream.String(), "10.0.") {
-                return proxyproto.REQUIRE, nil
-            }
-            return proxyproto.REJECT, nil
-        },
+        // Optional: Only trust Proxy Protocol headers from trusted proxies
+        ConnPolicy: proxyproto.ConnMustStrictWhiteListPolicy([]string{"10.0.0.0/8"}),
     }
 
     fmt.Println("Server listening on :8080 with Proxy Protocol support")
@@ -492,8 +498,8 @@ Proxy Protocol must be handled carefully:
 ```nginx
 # nginx-security.conf - Secure Proxy Protocol configuration
 
-# Only accept Proxy Protocol from trusted load balancers
-geo $proxy_protocol_allowed {
+# Only trust Proxy Protocol data from trusted load balancers
+geo $realip_remote_addr $proxy_protocol_allowed {
     default         0;
     10.0.0.0/8      1;  # Internal network
     172.16.0.0/12   1;  # Internal network
