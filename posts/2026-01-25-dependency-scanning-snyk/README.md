@@ -46,8 +46,8 @@ sudo mv snyk /usr/local/bin/
 
 # Authenticate
 snyk auth
-# Opens browser for authentication, or use:
-snyk auth YOUR_API_TOKEN
+# Opens browser for OAuth authentication, or use an API token:
+snyk auth --auth-type=token YOUR_API_TOKEN
 ```
 
 ## Scanning Dependencies
@@ -80,10 +80,10 @@ snyk test
 cd my-python-project
 snyk test --file=requirements.txt
 
-# For pipenv projects
+# For pipenv projects (requires Pipfile.lock)
 snyk test --file=Pipfile
 
-# For poetry projects
+# For poetry projects (requires poetry.lock)
 snyk test --file=pyproject.toml
 ```
 
@@ -193,13 +193,13 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          args: --severity-threshold=high
+          args: --severity-threshold=high --sarif-file-output=snyk.sarif
           # Fail the build on high/critical vulnerabilities
           command: test
 
       - name: Upload Snyk results to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v2
-        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        if: success() || failure()
         with:
           sarif_file: snyk.sarif
 
@@ -233,7 +233,6 @@ snyk-dependency-scan:
   stage: security
   image: snyk/snyk:node
   script:
-    - snyk auth $SNYK_TOKEN
     - snyk test --severity-threshold=high
   allow_failure: false
   only:
@@ -249,7 +248,6 @@ snyk-container-scan:
     DOCKER_HOST: tcp://docker:2375
   script:
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
-    - snyk auth $SNYK_TOKEN
     - snyk container test $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA --severity-threshold=high
   only:
     - merge_requests
@@ -263,11 +261,12 @@ snyk-container-scan:
 Snyk can open pull requests automatically to fix vulnerabilities:
 
 ```bash
-# Generate fix commands
-snyk fix
+# Show upgrade and patch advice in CLI output
+snyk test
 
-# Apply fixes interactively
-snyk wizard
+# Apply Snyk patches listed in .snyk for npm projects
+npm install --save-dev @snyk/protect
+npx snyk-protect
 ```
 
 ### Manual Remediation
@@ -278,7 +277,7 @@ For vulnerabilities without automatic fixes:
 # Get detailed information about a vulnerability
 snyk test --json | jq '.vulnerabilities[] | select(.severity == "critical")'
 
-# Check if an upgrade path exists
+# Show all vulnerable dependency paths
 snyk test --show-vulnerable-paths=all
 ```
 
@@ -301,13 +300,13 @@ ignore:
   SNYK-JS-LODASH-1018905:
     - '*':
         reason: 'Not exploitable in our usage context'
-        expires: '2025-06-01T00:00:00.000Z'
+        expires: '2027-06-01T00:00:00.000Z'
 
   # Ignore vulnerabilities in test dependencies
   SNYK-JS-MINIMIST-559764:
     - 'jest > jest-cli > minimist':
         reason: 'Only used in test environment'
-        expires: '2025-12-31T00:00:00.000Z'
+        expires: '2027-12-31T00:00:00.000Z'
 
 patch: {}
 ```
@@ -379,8 +378,8 @@ snyk test --severity-threshold=low
 Snyk also detects problematic licenses:
 
 ```bash
-# Check for license issues
-snyk test --license
+# Check for vulnerability and license issues
+snyk test
 
 # Fail on GPL licenses (example policy)
 # Configure in Snyk dashboard under Organization Settings > License Policies
