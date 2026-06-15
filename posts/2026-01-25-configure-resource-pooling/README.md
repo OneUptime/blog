@@ -119,7 +119,7 @@ const pool = new Pool({
 
   // Pool sizing
   max: 20,                // Maximum connections in pool
-  min: 5,                 // Minimum connections to maintain
+  min: 5,                 // Minimum idle clients to retain after creation
 
   // Timeouts
   connectionTimeoutMillis: 30000,  // Wait 30s for connection
@@ -234,7 +234,7 @@ def get_pool_status():
         'checked_in': engine.pool.checkedin(),
         'checked_out': engine.pool.checkedout(),
         'overflow': engine.pool.overflow(),
-        'invalid': engine.pool.invalidated()
+        'status': engine.pool.status()
     }
 ```
 
@@ -270,16 +270,13 @@ def create_session():
     session.mount("http://", adapter)
     session.mount("https://", adapter)
 
-    # Default timeout for all requests
-    session.timeout = (5, 30)  # (connect timeout, read timeout)
-
     return session
 
 # Global session (reuse across requests)
 http_session = create_session()
 
 def fetch_data(url):
-    response = http_session.get(url)
+    response = http_session.get(url, timeout=(5, 30))  # (connect timeout, read timeout)
     response.raise_for_status()
     return response.json()
 ```
@@ -323,10 +320,16 @@ const apiClient = axios.create({
   }
 });
 
-// Add response interceptor for monitoring
+// Add interceptors for monitoring
+apiClient.interceptors.request.use((config) => {
+  config.metadata = { startTime: Date.now() };
+  return config;
+});
+
 apiClient.interceptors.response.use(
   (response) => {
-    console.log(`Request to ${response.config.url} completed in ${response.duration}ms`);
+    const duration = Date.now() - response.config.metadata.startTime;
+    console.log(`Request to ${response.config.url} completed in ${duration}ms`);
     return response;
   },
   (error) => {
@@ -436,7 +439,7 @@ io_bound_pool = ThreadPoolExecutor(
     thread_name_prefix='io-worker'
 )
 
-# For CPU-bound tasks, match CPU count
+# For CPU-bound tasks that release the GIL, match CPU count
 cpu_bound_pool = ThreadPoolExecutor(
     max_workers=cpu_count,
     thread_name_prefix='cpu-worker'
@@ -501,7 +504,7 @@ class ObjectPool(Generic[T]):
 
         self.pool = Queue(maxsize=max_size)
         self.size = 0
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.timestamps = {}
 
         # Pre-populate minimum objects
