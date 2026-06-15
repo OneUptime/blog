@@ -10,7 +10,7 @@ Description: Learn how to implement cursor-based pagination in Go to handle mill
 
 Pagination seems like a solved problem until your table hits a few million rows. The classic `LIMIT 50 OFFSET 10000` approach works fine in development, but in production it quietly becomes a performance killer. Every time you bump that offset, the database has to scan and discard all the rows before it. At offset 100,000, you are asking the database to read 100,050 rows just to return 50.
 
-Cursor-based pagination (also called keyset pagination) sidesteps this entirely. Instead of telling the database "skip N rows," you tell it "give me rows after this specific point." The result is consistent O(1) performance regardless of how deep into the dataset you are.
+Cursor-based pagination (also called keyset pagination) sidesteps this entirely. Instead of telling the database "skip N rows," you tell it "give me rows after this specific point." With the right index, the work stays bounded by an index seek and the number of rows you return, instead of growing with the page number.
 
 ## The Problem with Offset Pagination
 
@@ -25,7 +25,7 @@ LIMIT 50 OFFSET 10000;
 
 This query looks harmless, but the database engine has to:
 
-1. Sort all matching rows by `created_at`
+1. Produce rows in `created_at` order, either by sorting or scanning a matching index
 2. Scan through 10,050 rows
 3. Discard the first 10,000
 4. Return 50
@@ -46,7 +46,7 @@ ORDER BY created_at DESC
 LIMIT 50;
 ```
 
-This query uses an index scan starting exactly where you need it. No scanning and discarding. The performance is the same whether you are on page 1 or page 10,000.
+With a matching index, this query can use an index scan starting near where you need it. There is no large offset to scan and discard. The performance depends mostly on the page size, not on whether you are on page 1 or page 10,000.
 
 ## Implementing Cursor Pagination in Go
 
@@ -84,7 +84,7 @@ type ArticlePage struct {
 
 ### Encoding and Decoding Cursors
 
-The cursor should be opaque to clients. We encode the actual value (timestamp and ID for tie-breaking) into a base64 string. This prevents clients from manipulating it and keeps our implementation flexible.
+The cursor should be opaque to clients. We encode the actual value (timestamp and ID for tie-breaking) into a base64 string. This keeps clients from depending on the internal format and keeps our implementation flexible. If tampering matters for your API, sign or encrypt the cursor as well.
 
 ```go
 // Cursor holds the pagination position
@@ -273,7 +273,7 @@ If multiple rows share the same `created_at` value, using the timestamp alone ca
 Cursor pagination is not a universal replacement for offset pagination. Here are the trade-offs:
 
 **Advantages:**
-- Constant-time performance at any depth
+- Performance does not grow with page depth when the query can use the cursor index
 - Stable results even with concurrent inserts
 - Works well with real-time feeds and infinite scroll
 
@@ -290,4 +290,4 @@ If you absolutely need a total count, run it as a separate cached query. Do not 
 
 ---
 
-**Bottom line:** Offset pagination is fine for small datasets and admin dashboards. But the moment your table grows past a few hundred thousand rows and users start paginating deep into the results, cursor pagination is the only approach that scales. The implementation is straightforward, and the performance difference is dramatic.
+**Bottom line:** Offset pagination is fine for small datasets and admin dashboards. But the moment your table grows past a few hundred thousand rows and users start paginating deep into the results, cursor pagination is usually the better scaling approach. The implementation is straightforward, and the performance difference can be dramatic.
