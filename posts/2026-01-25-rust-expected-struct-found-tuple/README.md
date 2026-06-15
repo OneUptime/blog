@@ -69,8 +69,8 @@ fn main() {
 struct Meters(f64);
 
 fn main() {
-    // Error: expected tuple, found struct
-    // let distance = Meters { 0: 42.0 };
+    // Error: tuple struct has no named field `value`
+    // let distance = Meters { value: 42.0 };
 
     // Correct: use parentheses
     let distance = Meters(42.0);
