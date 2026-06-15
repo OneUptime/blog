@@ -152,11 +152,13 @@ fn main() {
 
     println!("Count: {}", counter.get());
 
-    // Multiple immutable borrows OK
-    let borrow1 = counter.value.borrow();
-    let borrow2 = counter.value.borrow();
-    println!("{} {}", *borrow1, *borrow2);
-    // Borrows dropped here
+    {
+        // Multiple immutable borrows OK
+        let borrow1 = counter.value.borrow();
+        let borrow2 = counter.value.borrow();
+        println!("{} {}", *borrow1, *borrow2);
+        // Borrows dropped at the end of this scope
+    }
 
     // Can now mutably borrow
     *counter.value.borrow_mut() = 100;
@@ -334,9 +336,9 @@ fn main() {
 }
 ```
 
-## Cell: Copy Types Only
+## Cell: Simple Interior Mutability
 
-Cell provides interior mutability for Copy types without borrowing.
+Cell provides interior mutability without runtime borrow checking. It is often used for Copy types because `get()` returns a copy without borrowing.
 
 ```rust
 use std::cell::Cell;
@@ -391,7 +393,7 @@ Do you need multiple owners?
 Do you need interior mutability?
 ├── No → Use &mut or ownership
 └── Yes → Is it single-threaded?
-    ├── Yes → Is T: Copy?
+    ├── Yes → Is T: Copy and simple get/set is enough?
     │   ├── Yes → Cell<T>
     │   └── No → RefCell<T>
     └── No → Need multiple readers?
