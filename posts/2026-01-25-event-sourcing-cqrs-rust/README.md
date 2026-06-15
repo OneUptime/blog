@@ -8,7 +8,7 @@ Description: A practical guide to implementing event sourcing and CQRS patterns 
 
 ---
 
-Event sourcing flips traditional database design on its head. Instead of storing current state, you store a sequence of events that led to that state. Combined with CQRS (Command Query Responsibility Segregation), this pattern gives you an immutable audit log, temporal queries, and the ability to rebuild your entire system state from scratch. Rust's type system makes it particularly well-suited for these patterns - the compiler catches invalid state transitions before they reach production.
+Event sourcing flips traditional database design on its head. Instead of storing current state, you store a sequence of events that led to that state. Combined with CQRS (Command Query Responsibility Segregation), this pattern gives you an immutable audit log, temporal queries, and the ability to rebuild your entire system state from scratch. Rust's type system makes it particularly well-suited for these patterns - events, commands, and errors become explicit types, and the aggregate code catches invalid state transitions before they reach production.
 
 ## Why Event Sourcing and CQRS?
 
@@ -60,7 +60,7 @@ pub enum BankAccountEvent {
 // They are named in imperative form
 #[derive(Debug)]
 pub enum BankAccountCommand {
-    OpenAccount { owner_name: String },
+    OpenAccount { account_id: Uuid, owner_name: String },
     Deposit { amount: u64 },
     Withdraw { amount: u64 },
     CloseAccount { reason: String },
@@ -77,6 +77,8 @@ pub enum BankAccountError {
     NonZeroBalance { balance: u64 },
     #[error("Account already exists")]
     AccountAlreadyExists,
+    #[error("Account is not open")]
+    AccountNotOpened,
 }
 ```
 
@@ -129,12 +131,15 @@ impl BankAccount {
         command: BankAccountCommand,
     ) -> Result<Vec<BankAccountEvent>, BankAccountError> {
         match command {
-            BankAccountCommand::OpenAccount { owner_name } => {
+            BankAccountCommand::OpenAccount {
+                account_id,
+                owner_name,
+            } => {
                 if self.id.is_some() {
                     return Err(BankAccountError::AccountAlreadyExists);
                 }
                 Ok(vec![BankAccountEvent::AccountOpened {
-                    account_id: Uuid::new_v4(),
+                    account_id,
                     owner_name,
                     opened_at: Utc::now(),
                 }])
@@ -143,6 +148,9 @@ impl BankAccount {
             BankAccountCommand::Deposit { amount } => {
                 if self.is_closed {
                     return Err(BankAccountError::AccountClosed);
+                }
+                if self.id.is_none() {
+                    return Err(BankAccountError::AccountNotOpened);
                 }
                 Ok(vec![BankAccountEvent::MoneyDeposited {
                     amount,
@@ -154,6 +162,9 @@ impl BankAccount {
             BankAccountCommand::Withdraw { amount } => {
                 if self.is_closed {
                     return Err(BankAccountError::AccountClosed);
+                }
+                if self.id.is_none() {
+                    return Err(BankAccountError::AccountNotOpened);
                 }
                 if self.balance < amount {
                     return Err(BankAccountError::InsufficientFunds {
@@ -171,6 +182,9 @@ impl BankAccount {
             BankAccountCommand::CloseAccount { reason } => {
                 if self.is_closed {
                     return Err(BankAccountError::AccountClosed);
+                }
+                if self.id.is_none() {
+                    return Err(BankAccountError::AccountNotOpened);
                 }
                 if self.balance > 0 {
                     return Err(BankAccountError::NonZeroBalance {
@@ -435,6 +449,7 @@ fn main() {
     repo.execute(
         account_id,
         BankAccountCommand::OpenAccount {
+            account_id,
             owner_name: "Alice".to_string(),
         },
     ).unwrap();
@@ -466,6 +481,6 @@ Before deploying event-sourced systems, consider these practical concerns.
 
 ## Summary
 
-Event sourcing with CQRS gives you an immutable audit log, the ability to replay history, and optimized read models. Rust's type system helps enforce valid state transitions at compile time. The pattern adds complexity, so use it where the benefits matter: financial systems, collaborative applications, or anywhere you need a complete history of changes.
+Event sourcing with CQRS gives you an immutable audit log, the ability to replay history, and optimized read models. Rust's type system helps make valid state transitions explicit in commands, events, and errors. The pattern adds complexity, so use it where the benefits matter: financial systems, collaborative applications, or anywhere you need a complete history of changes.
 
 Start simple with in-memory stores, get the domain model right, then swap in production-grade persistence. The separation between commands and queries makes this migration straightforward.
