@@ -46,7 +46,7 @@ redis-cli -p 7000 CLUSTER NODES
 
 ### 1. Missing Slot Coverage
 
-The cluster requires all 16384 slots to be assigned to healthy masters:
+With full coverage enabled, the cluster requires all 16384 slots to be assigned to healthy masters:
 
 ```bash
 # Check which slots are not covered
@@ -67,9 +67,9 @@ Fix missing slots:
 redis-cli --cluster fix localhost:7000
 
 # Option 2: Manually assign slots to a node
-redis-cli -p 7000 CLUSTER ADDSLOTS 5461 5462 5463...
+redis-cli -p 7000 CLUSTER ADDSLOTS $(seq 5461 10922)
 
-# Option 3: Reshard slots from another node
+# Option 3: Reshard slots that are still assigned to another node
 redis-cli --cluster reshard localhost:7000 \
     --cluster-from <source-node-id> \
     --cluster-to <target-node-id> \
@@ -90,8 +90,8 @@ redis-cli -p 7000 CLUSTER NODES | grep fail
 # Add new node
 redis-cli --cluster add-node new-host:7006 existing-host:7000
 
-# Assign slots (if the old master is gone)
-redis-cli --cluster reshard localhost:7000
+# Assign the lost slots to the new node (if data loss is acceptable)
+redis-cli -p 7006 CLUSTER ADDSLOTS $(seq 5461 10922)
 ```
 
 ### 3. Quorum Lost
@@ -145,7 +145,6 @@ nc -zv localhost 17001
 
 ```python
 import redis
-from redis.cluster import RedisCluster
 import time
 
 def diagnose_cluster(host, port):
@@ -180,11 +179,11 @@ def diagnose_cluster(host, port):
         for node_id, node_info in nodes.items():
             if 'master' in node_info.get('flags', '') and 'fail' not in node_info.get('flags', ''):
                 for slot_range in node_info.get('slots', []):
-                    if isinstance(slot_range, list):
-                        for s in range(slot_range[0], slot_range[1] + 1):
+                    if len(slot_range) == 2:
+                        for s in range(int(slot_range[0]), int(slot_range[1]) + 1):
                             covered.add(s)
                     else:
-                        covered.add(slot_range)
+                        covered.add(int(slot_range[0]))
 
         uncovered = set(range(16384)) - covered
         if uncovered:
@@ -228,7 +227,7 @@ def attempt_recovery(host, port):
         print("\nManual intervention required:")
         print("  1. Check if failed nodes can be restarted")
         print("  2. Run: redis-cli --cluster fix localhost:7000")
-        print("  3. If data loss acceptable: reshard slots to healthy nodes")
+        print("  3. If data loss acceptable: assign or reshard slots to healthy nodes")
         return False
 
 # Usage
@@ -287,9 +286,9 @@ flowchart TD
 
 | Cause | Solution |
 |-------|----------|
-| Missing slot coverage | Run cluster fix or reshard |
+| Missing slot coverage | Run cluster fix or assign uncovered slots |
 | Master failed, has replica | Wait for auto-failover |
-| Master failed, no replica | Add node and reshard |
+| Master failed, no replica | Add node and assign lost slots |
 | Quorum lost | Restart nodes or force failover |
 | Network partition | Fix network, wait for healing |
 
