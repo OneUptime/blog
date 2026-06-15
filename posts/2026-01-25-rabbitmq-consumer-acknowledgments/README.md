@@ -312,7 +312,7 @@ def process_message(channel, method, properties, body):
 
 ## Acknowledgment Timeout
 
-RabbitMQ 3.8+ supports consumer acknowledgment timeout. If a consumer holds a message too long without acknowledging, the connection is closed.
+RabbitMQ supports consumer acknowledgment timeout. If a consumer holds a message too long without acknowledging, the channel is closed and unacknowledged deliveries on that channel are requeued.
 
 Configure in `rabbitmq.conf`:
 
@@ -321,7 +321,7 @@ Configure in `rabbitmq.conf`:
 consumer_timeout = 1800000
 ```
 
-Or per-queue:
+Or per-queue in RabbitMQ 3.12+:
 
 ```python
 channel.queue_declare(
@@ -341,15 +341,16 @@ Prefetch count limits how many unacknowledged messages a consumer can have:
 # Process one message at a time
 channel.basic_qos(prefetch_count=1)
 
-# Process up to 10 messages concurrently
+# Keep up to 10 messages in flight
 channel.basic_qos(prefetch_count=10)
 
-# Global prefetch for all consumers on this channel
+# Shared prefetch limit for all consumers on this channel
+# Note: global prefetch is deprecated in RabbitMQ 4.0+
 channel.basic_qos(prefetch_count=100, global_qos=True)
 ```
 
 Guidelines:
-- `prefetch_count=1`: Fair distribution, ordered processing
+- `prefetch_count=1`: Fairer distribution, one-at-a-time processing per consumer
 - `prefetch_count=10-100`: Better throughput, less strict ordering
 - Higher values: Bulk processing, async consumers
 
