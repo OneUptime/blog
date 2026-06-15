@@ -32,7 +32,7 @@ Add these dependencies to `Cargo.toml`:
 
 ```toml
 [dependencies]
-cron = "0.12"
+cron = "0.16"
 chrono = "0.4"
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
@@ -42,23 +42,24 @@ The `cron` crate handles parsing and evaluating cron expressions. `chrono` provi
 
 ## Understanding Cron Expressions
 
-A cron expression consists of five fields (or six if you include seconds):
+A cron expression for the `cron` crate consists of six fields, with seconds first (or seven if you include the optional year):
 
 ```text
-┌───────── minute (0 - 59)
-│ ┌───────── hour (0 - 23)
-│ │ ┌───────── day of month (1 - 31)
-│ │ │ ┌───────── month (1 - 12)
-│ │ │ │ ┌───────── day of week (0 - 6)
-│ │ │ │ │
-* * * * *
+┌───────── second (0 - 59)
+│ ┌───────── minute (0 - 59)
+│ │ ┌───────── hour (0 - 23)
+│ │ │ ┌───────── day of month (1 - 31)
+│ │ │ │ ┌───────── month (1 - 12)
+│ │ │ │ │ ┌───────── day of week (0 - 6)
+│ │ │ │ │ │
+* * * * * *
 ```
 
 Common examples:
-- `0 * * * *` - Every hour at minute 0
-- `*/15 * * * *` - Every 15 minutes
-- `0 9 * * 1-5` - 9 AM on weekdays
-- `0 0 1 * *` - First day of every month at midnight
+- `0 0 * * * *` - Every hour at minute 0
+- `0 */15 * * * *` - Every 15 minutes
+- `0 0 9 * * 1-5 *` - 9 AM on weekdays
+- `0 0 0 1 * * *` - First day of every month at midnight
 
 ## Defining the Task Structure
 
@@ -242,7 +243,7 @@ impl Scheduler {
             if let Some(handler) = handlers.get(&task_id) {
                 let handler = Arc::clone(handler);
 
-                // Spawn task execution in a separate thread to avoid blocking
+                // Spawn task execution concurrently to avoid blocking the scheduler loop
                 tokio::spawn(async move {
                     handler();
                 });
@@ -334,7 +335,7 @@ async fn main() {
     // Run every minute
     scheduler.add_task(
         "heartbeat",
-        "* * * * *",  // Every minute
+        "0 * * * * *",  // Every minute
         move || {
             let count = counter_clone.fetch_add(1, Ordering::SeqCst);
             println!("[{}] Heartbeat #{}", Utc::now().format("%H:%M:%S"), count + 1);
@@ -344,7 +345,7 @@ async fn main() {
     // Run at the top of every hour
     scheduler.add_task(
         "hourly-report",
-        "0 * * * *",  // At minute 0 of every hour
+        "0 0 * * * *",  // At minute 0 of every hour
         || {
             println!("[{}] Generating hourly report...", Utc::now().format("%H:%M:%S"));
         },
@@ -353,7 +354,7 @@ async fn main() {
     // Run every 5 minutes
     scheduler.add_task(
         "cache-cleanup",
-        "*/5 * * * *",  // Every 5 minutes
+        "0 */5 * * * *",  // Every 5 minutes
         || {
             println!("[{}] Cleaning up cache...", Utc::now().format("%H:%M:%S"));
         },
@@ -435,7 +436,7 @@ When deploying a cron-based scheduler in production, keep these points in mind:
 
 2. **Missed job handling** - Decide whether to run missed jobs (if the server was down) or skip them. Store the last run time persistently.
 
-3. **Timezone awareness** - Always be explicit about timezones. The `cron` crate works with UTC by default.
+3. **Timezone awareness** - Always be explicit about timezones. In this guide, calls to `upcoming(Utc)` evaluate schedules in UTC.
 
 4. **Monitoring** - Track task execution times, failures, and queue depth. Alert on tasks that run too long or fail repeatedly.
 
