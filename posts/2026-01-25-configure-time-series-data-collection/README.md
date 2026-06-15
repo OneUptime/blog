@@ -56,7 +56,7 @@ graph LR
 # Time-series data model for IoT
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 from enum import Enum
 
@@ -77,27 +77,43 @@ class TimeSeriesPoint:
     def to_line_protocol(self) -> str:
         """Convert to InfluxDB line protocol"""
         # measurement,tag1=value1,tag2=value2 field1=value1,field2=value2 timestamp
+        def escape_key(value: str) -> str:
+            return str(value).replace("\\", "\\\\").replace(" ", "\\ ").replace(",", "\\,").replace("=", "\\=")
+
+        def escape_measurement(value: str) -> str:
+            return str(value).replace("\\", "\\\\").replace(" ", "\\ ").replace(",", "\\,")
+
+        def format_field_value(value: Any) -> str:
+            if isinstance(value, str):
+                escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+                return f'"{escaped}"'
+            if isinstance(value, bool):
+                return "true" if value else "false"
+            if isinstance(value, int):
+                return f"{value}i"
+            return str(value)
 
         # Tags
-        tag_str = ",".join(f"{k}={v}" for k, v in sorted(self.tags.items()))
+        tag_str = ",".join(
+            f"{escape_key(k)}={escape_key(v)}"
+            for k, v in sorted(self.tags.items())
+        )
         if tag_str:
             tag_str = "," + tag_str
 
         # Fields
-        field_items = [f"value={self.value}"]
+        field_items = [f"value={format_field_value(self.value)}"]
         for k, v in self.fields.items():
-            if isinstance(v, str):
-                field_items.append(f'{k}="{v}"')
-            elif isinstance(v, bool):
-                field_items.append(f"{k}={'true' if v else 'false'}")
-            else:
-                field_items.append(f"{k}={v}")
+            field_items.append(f"{escape_key(k)}={format_field_value(v)}")
         field_str = ",".join(field_items)
 
         # Timestamp in nanoseconds
-        ts_ns = int(self.timestamp.timestamp() * 1e9)
+        timestamp = self.timestamp
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        ts_ns = int(timestamp.timestamp() * 1_000_000_000)
 
-        return f"{self.measurement}{tag_str} {field_str} {ts_ns}"
+        return f"{escape_measurement(self.measurement)}{tag_str} {field_str} {ts_ns}"
 
 
 @dataclass
@@ -201,7 +217,11 @@ class MetricBuffer:
             return True
 
         if self.oldest_point:
-            age = (datetime.utcnow() - self.oldest_point).total_seconds()
+            now = datetime.now(timezone.utc)
+            oldest = self.oldest_point
+            if oldest.tzinfo is None:
+                oldest = oldest.replace(tzinfo=timezone.utc)
+            age = (now - oldest).total_seconds()
             if age >= self.max_age_seconds:
                 return True
 
@@ -225,14 +245,19 @@ class MetricBuffer:
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
+import json
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 class TimeSeriesDB:
     """InfluxDB client for time-series storage"""
+
+    _ALLOWED_AGGREGATIONS = {"count", "first", "last", "max", "mean", "min", "sum"}
+    _WINDOW_RE = re.compile(r"^[1-9][0-9]*(ns|us|ms|s|m|h|d|w)$")
 
     def __init__(
         self,
@@ -246,6 +271,13 @@ class TimeSeriesDB:
         self.bucket = bucket
         self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
         self.query_api = self.client.query_api()
+
+    def _flux_time(self, value: datetime) -> str:
+        """Format a datetime as a Flux RFC3339 timestamp"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        value = value.astimezone(timezone.utc)
+        return value.isoformat().replace("+00:00", "Z")
 
     def write_point(self, point: 'TimeSeriesPoint'):
         """Write single point"""
@@ -295,24 +327,28 @@ class TimeSeriesDB:
         window: str = "1m"
     ) -> List[Dict]:
         """Query time-series data"""
-        end = end or datetime.utcnow()
+        end = end or datetime.now(timezone.utc)
 
         # Build Flux query
         query = f'''
-            from(bucket: "{self.bucket}")
-                |> range(start: {start.isoformat()}Z, stop: {end.isoformat()}Z)
-                |> filter(fn: (r) => r["_measurement"] == "{measurement}")
+            from(bucket: {json.dumps(self.bucket)})
+                |> range(start: {self._flux_time(start)}, stop: {self._flux_time(end)})
+                |> filter(fn: (r) => r["_measurement"] == {json.dumps(measurement)})
         '''
 
         # Add tag filters
         if tags:
             for key, value in tags.items():
                 query += f'''
-                |> filter(fn: (r) => r["{key}"] == "{value}")
+                |> filter(fn: (r) => r[{json.dumps(key)}] == {json.dumps(value)})
                 '''
 
         # Add aggregation
         if aggregation:
+            if aggregation not in self._ALLOWED_AGGREGATIONS:
+                raise ValueError(f"Unsupported aggregation: {aggregation}")
+            if not self._WINDOW_RE.match(window):
+                raise ValueError(f"Unsupported window: {window}")
             query += f'''
                 |> aggregateWindow(every: {window}, fn: {aggregation}, createEmpty: false)
             '''
@@ -341,10 +377,10 @@ class TimeSeriesDB:
     ) -> Optional[Dict]:
         """Get latest value for a device"""
         query = f'''
-            from(bucket: "{self.bucket}")
+            from(bucket: {json.dumps(self.bucket)})
                 |> range(start: -1h)
-                |> filter(fn: (r) => r["_measurement"] == "{measurement}")
-                |> filter(fn: (r) => r["device_id"] == "{device_id}")
+                |> filter(fn: (r) => r["_measurement"] == {json.dumps(measurement)})
+                |> filter(fn: (r) => r["device_id"] == {json.dumps(device_id)})
                 |> last()
         '''
 
@@ -365,10 +401,13 @@ class TimeSeriesDB:
         hours: int = 24
     ) -> Dict:
         """Get summary statistics for a device"""
+        if hours <= 0:
+            raise ValueError("hours must be positive")
+
         query = f'''
-            from(bucket: "{self.bucket}")
+            from(bucket: {json.dumps(self.bucket)})
                 |> range(start: -{hours}h)
-                |> filter(fn: (r) => r["device_id"] == "{device_id}")
+                |> filter(fn: (r) => r["device_id"] == {json.dumps(device_id)})
                 |> group(columns: ["_measurement"])
                 |> reduce(
                     fn: (r, accumulator) => ({{
@@ -412,12 +451,16 @@ class TimeSeriesDB:
 # TimescaleDB for time-series storage
 
 import asyncpg
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 import json
+import re
 
 class TimescaleDB:
     """TimescaleDB client for time-series storage"""
+
+    _ALLOWED_AGGREGATIONS = {"avg", "count", "max", "min", "sum"}
+    _BUCKET_RE = re.compile(r"^[1-9][0-9]* (microseconds?|milliseconds?|seconds?|minutes?|hours?|days?|weeks?)$")
 
     def __init__(self, connection_string: str):
         self.connection_string = connection_string
@@ -501,7 +544,7 @@ class TimescaleDB:
         async with self.pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO device_metrics (time, device_id, metric_name, value, tags)
-                VALUES ($1, $2, $3, $4, $5)
+                VALUES ($1, $2, $3, $4, $5::jsonb)
             """,
                 point.timestamp,
                 point.tags.get("device_id"),
@@ -515,7 +558,7 @@ class TimescaleDB:
         async with self.pool.acquire() as conn:
             await conn.executemany("""
                 INSERT INTO device_metrics (time, device_id, metric_name, value, tags)
-                VALUES ($1, $2, $3, $4, $5)
+                VALUES ($1, $2, $3, $4, $5::jsonb)
             """, [
                 (
                     p.timestamp,
@@ -537,23 +580,28 @@ class TimescaleDB:
         bucket: str = "1 minute"
     ) -> List[Dict]:
         """Query time-series data"""
-        start = start or datetime.utcnow() - timedelta(hours=1)
-        end = end or datetime.utcnow()
+        start = start or datetime.now(timezone.utc) - timedelta(hours=1)
+        end = end or datetime.now(timezone.utc)
 
         if aggregation:
+            if aggregation not in self._ALLOWED_AGGREGATIONS:
+                raise ValueError(f"Unsupported aggregation: {aggregation}")
+            if not self._BUCKET_RE.match(bucket):
+                raise ValueError(f"Unsupported bucket interval: {bucket}")
+
             query = f"""
                 SELECT
-                    time_bucket('{bucket}', time) as bucket,
+                    time_bucket($4::interval, time) as bucket,
                     device_id,
                     {aggregation}(value) as value
                 FROM device_metrics
                 WHERE metric_name = $1
                 AND time >= $2 AND time <= $3
-                {'AND device_id = $4' if device_id else ''}
+                {'AND device_id = $5' if device_id else ''}
                 GROUP BY bucket, device_id
                 ORDER BY bucket DESC
             """
-            params = [metric_name, start, end]
+            params = [metric_name, start, end, bucket]
             if device_id:
                 params.append(device_id)
         else:
@@ -601,29 +649,50 @@ class TimescaleDB:
 # Time-series data collection service
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List, Dict, Optional
-from datetime import datetime
-import asyncio
+from pydantic import BaseModel, Field
+from typing import List, Dict, Optional, Protocol
+from datetime import datetime, timezone
+
+from data_model import TimeSeriesPoint
 
 app = FastAPI(title="Time-Series Collection Service")
 
-# Initialize storage
-db = None  # Initialize with InfluxDB or TimescaleDB
+class AsyncTimeSeriesStorage(Protocol):
+    async def write_batch(self, points: List[TimeSeriesPoint]) -> None:
+        ...
+
+    async def query(
+        self,
+        metric_name: str,
+        device_id: Optional[str] = None,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+        aggregation: Optional[str] = None
+    ) -> List[Dict]:
+        ...
+
+# Initialize with an async storage implementation, such as TimescaleDB.
+db: Optional[AsyncTimeSeriesStorage] = None
 
 class MetricPayload(BaseModel):
     device_id: str
     timestamp: Optional[datetime] = None
     metrics: Dict[str, float]
-    tags: Dict[str, str] = {}
+    tags: Dict[str, str] = Field(default_factory=dict)
 
 class BatchPayload(BaseModel):
     points: List[MetricPayload]
 
+def get_db() -> AsyncTimeSeriesStorage:
+    if db is None:
+        raise HTTPException(status_code=503, detail="Time-series storage is not configured")
+    return db
+
 @app.post("/api/collect")
 async def collect_metrics(payload: MetricPayload):
     """Collect metrics from device"""
-    timestamp = payload.timestamp or datetime.utcnow()
+    storage = get_db()
+    timestamp = payload.timestamp or datetime.now(timezone.utc)
 
     points = []
     for metric_name, value in payload.metrics.items():
@@ -635,17 +704,18 @@ async def collect_metrics(payload: MetricPayload):
         )
         points.append(point)
 
-    await db.write_batch(points)
+    await storage.write_batch(points)
 
     return {"status": "ok", "points_written": len(points)}
 
 @app.post("/api/collect/batch")
 async def collect_batch(payload: BatchPayload):
     """Collect batch of metrics"""
+    storage = get_db()
     points = []
 
     for item in payload.points:
-        timestamp = item.timestamp or datetime.utcnow()
+        timestamp = item.timestamp or datetime.now(timezone.utc)
         for metric_name, value in item.metrics.items():
             point = TimeSeriesPoint(
                 measurement=metric_name,
@@ -655,7 +725,7 @@ async def collect_batch(payload: BatchPayload):
             )
             points.append(point)
 
-    await db.write_batch(points)
+    await storage.write_batch(points)
 
     return {"status": "ok", "points_written": len(points)}
 
@@ -668,7 +738,8 @@ async def query_metrics(
     aggregation: Optional[str] = None
 ):
     """Query time-series data"""
-    results = await db.query(
+    storage = get_db()
+    results = await storage.query(
         metric_name=metric_name,
         device_id=device_id,
         start=start,
