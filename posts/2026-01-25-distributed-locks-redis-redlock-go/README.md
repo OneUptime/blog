@@ -21,7 +21,7 @@ The Redlock algorithm addresses this by requiring a majority of independent Redi
 The algorithm works as follows:
 
 1. Get the current time in milliseconds
-2. Try to acquire the lock on all N Redis instances sequentially, using the same key and random value
+2. Try to acquire the lock on all N Redis instances in parallel, using the same key and random value and a per-instance timeout that is small compared to the lock TTL
 3. Calculate the time elapsed to acquire locks. If you acquired locks on a majority (N/2 + 1) of instances and the total time is less than the lock TTL, the lock is valid
 4. If the lock was acquired, the effective lock validity time is the initial TTL minus the elapsed time
 5. If the lock was not acquired (fewer than majority or elapsed time exceeded TTL), unlock all instances
@@ -32,7 +32,7 @@ First, let's set up the Go module and dependencies:
 
 ```bash
 go mod init distributed-lock-example
-go get github.com/go-redis/redis/v9
+go get github.com/redis/go-redis/v9
 ```
 
 ## Basic Redlock Implementation
@@ -47,6 +47,7 @@ import (
     "crypto/rand"
     "encoding/hex"
     "errors"
+    "math/big"
     "sync"
     "time"
 
@@ -72,17 +73,19 @@ type Redlock struct {
     quorum      int
     retryCount  int
     retryDelay  time.Duration
+    instanceTimeout time.Duration
     driftFactor float64
 }
 
 // NewRedlock creates a new Redlock instance with the given Redis clients
-// You should use at least 3 independent Redis instances for production
+// You should use at least 5 independent Redis instances for production
 func NewRedlock(clients []*redis.Client) *Redlock {
     return &Redlock{
         clients:     clients,
         quorum:      len(clients)/2 + 1,
         retryCount:  3,
         retryDelay:  200 * time.Millisecond,
+        instanceTimeout: 50 * time.Millisecond,
         driftFactor: 0.01, // 1% clock drift
     }
 }
@@ -98,6 +101,19 @@ func generateValue() (string, error) {
     return hex.EncodeToString(b), nil
 }
 
+func randInt63n(max int64) int64 {
+    if max <= 0 {
+        return 0
+    }
+
+    n, err := rand.Int(rand.Reader, big.NewInt(max))
+    if err != nil {
+        return 0
+    }
+
+    return n.Int64()
+}
+
 // Acquire tries to obtain a distributed lock with the given TTL
 func (r *Redlock) Acquire(ctx context.Context, key string, ttl time.Duration) (*Lock, error) {
     value, err := generateValue()
@@ -110,7 +126,7 @@ func (r *Redlock) Acquire(ctx context.Context, key string, ttl time.Duration) (*
             select {
             case <-ctx.Done():
                 return nil, ctx.Err()
-            case <-time.After(r.retryDelay):
+            case <-time.After(r.retryDelay + time.Duration(randInt63n(int64(r.retryDelay)))):
             }
         }
 
@@ -178,7 +194,10 @@ func (r *Redlock) acquireSingle(ctx context.Context, client *redis.Client, key, 
     // SET key value NX PX ttl
     // NX - only set if key does not exist
     // PX - set expiry in milliseconds
-    result, err := client.SetNX(ctx, key, value, ttl).Result()
+    timeoutCtx, cancel := context.WithTimeout(ctx, r.instanceTimeout)
+    defer cancel()
+
+    result, err := client.SetNX(timeoutCtx, key, value, ttl).Result()
     return err == nil && result
 }
 
@@ -220,6 +239,8 @@ func (r *Redlock) Extend(ctx context.Context, lock *Lock, ttl time.Duration) err
         return ErrLockNotHeld
     }
 
+    startTime := time.Now()
+
     // Lua script to extend only if we still hold the lock
     script := `
         if redis.call("GET", KEYS[1]) == ARGV[1] then
@@ -248,8 +269,12 @@ func (r *Redlock) Extend(ctx context.Context, lock *Lock, ttl time.Duration) err
 
     wg.Wait()
 
-    if successCount >= r.quorum {
-        lock.expiry = time.Now().Add(ttl)
+    elapsed := time.Since(startTime)
+    drift := time.Duration(float64(ttl) * r.driftFactor)
+    validityTime := ttl - elapsed - drift
+
+    if successCount >= r.quorum && validityTime > 0 {
+        lock.expiry = time.Now().Add(validityTime)
         return nil
     }
 
@@ -355,7 +380,7 @@ func NewAutoExtendingLock(ctx context.Context, rl *redlock.Redlock, key string, 
 func (al *AutoExtendingLock) extendLoop(ttl time.Duration) {
     defer close(al.done)
 
-    // Extend at half the TTL interval to ensure we never lose the lock
+    // Extend at half the TTL interval to reduce the chance of losing the lock
     ticker := time.NewTicker(ttl / 2)
     defer ticker.Stop()
 
@@ -387,7 +412,7 @@ func (al *AutoExtendingLock) Release() error {
 func processLongRunningTask() error {
     ctx := context.Background()
 
-    lock, err := NewAutoExtendingLock(ctx, redlock, "long-task:123", 5*time.Second)
+    lock, err := NewAutoExtendingLock(ctx, rl, "long-task:123", 5*time.Second)
     if err != nil {
         return err
     }
@@ -441,7 +466,7 @@ func (fr *FencedRedlock) Acquire(ctx context.Context, key string, ttl time.Durat
 }
 
 // Your storage system should check the token
-func updateWithFencing(ctx context.Context, db *sql.DB, token uint64, data string) error {
+func updateWithFencing(ctx context.Context, db *sql.DB, resourceID string, token uint64, data string) error {
     result, err := db.ExecContext(ctx, `
         UPDATE resources
         SET data = $1, fence_token = $2
@@ -516,10 +541,19 @@ func TestConcurrentLockAcquisition(t *testing.T) {
         go func() {
             defer wg.Done()
             for j := 0; j < iterations; j++ {
-                ctx := context.Background()
-                lock, err := rl.Acquire(ctx, "test-counter", time.Second)
-                if err != nil {
-                    continue
+                var lock *Lock
+
+                for {
+                    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+                    var err error
+                    lock, err = rl.Acquire(ctx, "test-counter", time.Second)
+                    cancel()
+
+                    if err == nil {
+                        break
+                    }
+
+                    time.Sleep(5 * time.Millisecond)
                 }
 
                 // Critical section - increment counter
@@ -527,7 +561,7 @@ func TestConcurrentLockAcquisition(t *testing.T) {
                 time.Sleep(time.Millisecond) // Simulate work
                 atomic.StoreInt64(&counter, current+1)
 
-                rl.Release(ctx, lock)
+                rl.Release(context.Background(), lock)
             }
         }()
     }
