@@ -126,17 +126,19 @@ result = redis_with_loading_retry(lambda: r.get('mykey'))
 
 ```python
 import redis
+from redis.backoff import ExponentialBackoff
+from redis.exceptions import BusyLoadingError
+from redis.retry import Retry
 
-# Configure pool to handle loading state
-pool = redis.ConnectionPool(
+# Configure retries and health checks to handle loading state
+r = redis.Redis(
     host='redis-host',
     port=6379,
     max_connections=10,
     health_check_interval=30,
-    retry_on_timeout=True
+    retry=Retry(ExponentialBackoff(), 3),
+    retry_on_error=[BusyLoadingError]
 )
-
-r = redis.Redis(connection_pool=pool)
 ```
 
 ### 3. Wait for Ready Before Routing Traffic
@@ -153,8 +155,9 @@ spec:
     readinessProbe:
       exec:
         command:
-        - redis-cli
-        - ping
+        - sh
+        - -c
+        - redis-cli PING | grep -q '^PONG$'
       initialDelaySeconds: 5
       periodSeconds: 5
       timeoutSeconds: 3
@@ -189,20 +192,18 @@ redis-cli CONFIG GET save
 redis-cli CONFIG GET appendonly
 
 # RDB-only (faster loading)
-save 900 1
-save 300 10
-save 60 10000
-appendonly no
+redis-cli CONFIG SET save "900 1 300 10 60 10000"
+redis-cli CONFIG SET appendonly no
 
 # AOF-only (potentially slower loading)
-save ""
-appendonly yes
-appendfsync everysec
+redis-cli CONFIG SET save ""
+redis-cli CONFIG SET appendonly yes
+redis-cli CONFIG SET appendfsync everysec
 
-# Both (RDB used for loading, AOF for durability)
-save 900 1
-appendonly yes
-aof-use-rdb-preamble yes
+# AOF with an RDB preamble (AOF is loaded; the rewritten base is RDB-formatted)
+redis-cli CONFIG SET save "900 1"
+redis-cli CONFIG SET appendonly yes
+redis-cli CONFIG SET aof-use-rdb-preamble yes
 ```
 
 ### 2. Use RDB Preamble for AOF
@@ -214,16 +215,16 @@ Redis 4.0+ can use an RDB preamble in AOF files, combining fast loading with AOF
 aof-use-rdb-preamble yes
 ```
 
-This writes the initial data as RDB (fast to load) and appends new commands as AOF.
+This writes the rewritten AOF base as RDB (fast to load) and appends new commands as AOF.
 
 ### 3. Optimize Disk I/O
 
-Loading is disk-bound. Faster storage means faster loading:
+Loading is often disk I/O-bound. Faster storage can mean faster loading:
 
 ```bash
 # Move RDB/AOF to faster storage (SSD or NVMe)
-# In redis.conf
-dir /fast-ssd/redis-data
+# In redis.conf:
+# dir /fast-ssd/redis-data
 
 # Check current disk I/O
 iostat -x 1
@@ -241,15 +242,15 @@ redis-cli INFO memory
 redis-cli --bigkeys
 
 # Set appropriate maxmemory and eviction policy
-CONFIG SET maxmemory 4gb
-CONFIG SET maxmemory-policy allkeys-lru
+redis-cli CONFIG SET maxmemory 4gb
+redis-cli CONFIG SET maxmemory-policy allkeys-lru
 ```
 
 ## High Availability Solutions
 
 ### 1. Redis Sentinel for Automatic Failover
 
-With Sentinel, a replica can serve requests while the primary is loading:
+With Sentinel, a replica can be promoted if the primary stays unavailable while loading:
 
 ```bash
 # sentinel.conf
@@ -270,7 +271,7 @@ from redis.cluster import RedisCluster
 rc = RedisCluster(
     host='redis-node-1',
     port=6379,
-    skip_full_coverage_check=True  # Allow partial cluster availability
+    require_full_coverage=False  # Allow the client to initialize with partial slot coverage
 )
 ```
 
@@ -287,8 +288,9 @@ NODES=("redis-1" "redis-2" "redis-3")
 for node in "${NODES[@]}"; do
     echo "Restarting $node..."
 
-    # Trigger failover if this is primary
-    redis-cli -h $node CLUSTER FAILOVER TAKEOVER
+    # If this node is a primary, run failover on one of its replicas first
+    replica="${node}-replica"
+    redis-cli -h "$replica" CLUSTER FAILOVER
 
     # Wait for failover
     sleep 10
@@ -318,6 +320,10 @@ done
 Design your application to function (with reduced features) when Redis is unavailable:
 
 ```python
+import time
+
+from redis.exceptions import BusyLoadingError
+
 class CacheWithFallback:
     """Cache that falls back gracefully during Redis loading."""
 
@@ -363,6 +369,9 @@ class CacheWithFallback:
 Direct reads to replicas while primary is loading:
 
 ```python
+import redis
+from redis.exceptions import BusyLoadingError, ConnectionError
+
 class RedisWithReplicas:
     """Redis client with read replica support."""
 
@@ -394,12 +403,11 @@ class RedisWithReplicas:
 
 ### Regular RDB Snapshots
 
-More frequent snapshots mean smaller AOF replay:
+If you rely on RDB, regular snapshots keep a recent compact dump available:
 
 ```bash
-# In redis.conf - snapshot more often
-save 300 1    # Every 5 minutes if at least 1 change
-save 60 100   # Every minute if at least 100 changes
+# Snapshot more often
+redis-cli CONFIG SET save "300 1 60 100"
 ```
 
 ### AOF Rewrites
@@ -414,8 +422,8 @@ redis-cli INFO persistence | grep aof
 redis-cli BGREWRITEAOF
 
 # Configure automatic rewrite
-auto-aof-rewrite-percentage 100
-auto-aof-rewrite-min-size 64mb
+redis-cli CONFIG SET auto-aof-rewrite-percentage 100
+redis-cli CONFIG SET auto-aof-rewrite-min-size 64mb
 ```
 
 ---
