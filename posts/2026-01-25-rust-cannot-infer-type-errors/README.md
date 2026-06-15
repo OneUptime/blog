@@ -21,8 +21,8 @@ fn main() {
     let y = 3.14;       // f64 (default float type)
     let z = "hello";    // &str
 
-    // Type is inferred from usage
-    let mut vec = Vec::new();  // Error: cannot infer type
+    // Type is inferred from later usage
+    let mut vec = Vec::new();
     vec.push(1);               // Now compiler knows it is Vec<i32>
 
     // This works because the push call tells the compiler the type
@@ -133,8 +133,9 @@ fn main() {
     // Solution 1: Type annotation
     let value: String = Default::default();
 
-    // Solution 2: Turbofish
+    // Solution 2: Use the type's default function
     let value = String::default();
+    // Or use fully qualified syntax
     let value = <Vec<i32>>::default();
 
     // Works in struct initialization
@@ -224,9 +225,9 @@ fn main() {
     let mut map = HashMap::<_, i32>::new();  // Key type inferred from usage
     map.insert("key", 42);  // Now key type is &str
 
-    // Result and Option with partial inference
+    // Result with partial inference
     let result: Result<_, String> = Ok(42);   // Ok type is i32
-    let result: Result<i32, _> = Ok(42);      // Same effect, different style
+    let result: Result<i32, _> = Err("error"); // Error type is &str
 
     // When you have multiple type parameters
     fn convert<T, R>(value: T) -> R
