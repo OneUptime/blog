@@ -28,7 +28,7 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -59,8 +59,6 @@ docker compose config
 You can extend services within the same Compose file:
 
 ```yaml
-version: '3.8'
-
 services:
   app-base:
     image: myapp:latest
@@ -146,6 +144,7 @@ These properties merge with the extending service:
 # base.yml
 services:
   base:
+    image: busybox
     environment:
       - VAR1=value1
       - VAR2=value2
@@ -167,20 +166,23 @@ services:
       version: "1.0"    # Added to labels
     volumes:
       - data:/app/data  # Added to volumes
+
+volumes:
+  logs:
+  data:
 ```
 
 ### Replaced Properties
 
-These properties are completely replaced, not merged:
+Scalar properties are completely replaced, not merged:
 
 ```yaml
 # base.yml
 services:
   base:
+    image: node:18-alpine
     command: ["npm", "start"]
     entrypoint: ["/docker-entrypoint.sh"]
-    ports:
-      - "8080:8080"
 
 # docker-compose.yml
 services:
@@ -189,30 +191,34 @@ services:
       file: base.yml
       service: base
     command: ["npm", "run", "dev"]  # Replaces command entirely
-    ports:
-      - "3000:3000"  # Replaces ports entirely
 ```
 
-## Properties That Cannot Be Extended
+## Referenced Resources Must Be Declared
 
-Some properties are not inherited through extends:
+When an extended service refers to other resources, Compose does not import those resources automatically. Make sure the extending Compose file declares referenced resources such as:
 
-- `links`
-- `volumes_from`
-- `depends_on`
-- `networks` (in some versions)
+- services used by `depends_on`, `links`, or `volumes_from`
+- top-level `volumes`
+- top-level `networks`
+- top-level `configs` and `secrets`
 
 ```yaml
-# These must be defined in each extending service
+# The backend network and database service must exist in this Compose model
 services:
   api:
     extends:
       file: common.yml
       service: base
     depends_on:
-      - database    # Must define here, not inherited
+      - database
     networks:
-      - backend     # Must define here, not inherited
+      - backend
+
+  database:
+    image: postgres:15
+
+networks:
+  backend:
 ```
 
 ## Environment-Specific Configurations
@@ -267,6 +273,9 @@ services:
       - POSTGRES_PASSWORD=devpassword
     ports:
       - "5432:5432"  # Expose for local tools
+
+volumes:
+  db-data:
 ```
 
 ```yaml
@@ -296,6 +305,9 @@ services:
     secrets:
       - db_password
     # No port exposure in production
+
+volumes:
+  db-data:
 
 secrets:
   api_key:
@@ -395,7 +407,7 @@ View the fully merged configuration:
 # Show resolved configuration
 docker compose config
 
-# Show specific service
+# List services and inspect a service block
 docker compose config --services
 docker compose config | grep -A 50 "api:"
 
@@ -485,9 +497,9 @@ services:
 
 ## Limitations and Alternatives
 
-Extends has limitations in Docker Compose v3:
+Extends has limitations to keep in mind:
 
-1. Networks and volumes cannot be extended
+1. Referenced services, networks, volumes, configs, and secrets are not imported automatically
 2. Some properties are replaced, not merged
 3. Deep nesting can become hard to debug
 
