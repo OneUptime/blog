@@ -8,11 +8,11 @@ Description: Learn how to deploy PyTorch models with TorchServe, including model
 
 ---
 
-PyTorch is excellent for research and experimentation, but deploying PyTorch models to production requires additional tooling. TorchServe is the official model serving solution from PyTorch, designed to handle the complexity of production deployments while staying close to the PyTorch ecosystem.
+PyTorch is excellent for research and experimentation, but deploying PyTorch models requires additional tooling. TorchServe was created as PyTorch's model serving tool and stays close to the PyTorch ecosystem, but the project is now in limited maintenance, with no planned updates, bug fixes, new features, or security patches.
 
 ## Why TorchServe?
 
-TorchServe provides production-ready model serving with:
+TorchServe provides model serving features such as:
 
 - Easy model packaging with Model Archive (MAR)
 - Built-in support for common model types
@@ -27,13 +27,13 @@ TorchServe provides production-ready model serving with:
 Install TorchServe and its dependencies:
 
 ```bash
-# Install Java 11 (required)
+# Install Java 17 (required)
 
 # On Ubuntu:
-sudo apt-get install openjdk-11-jdk
+sudo apt-get install openjdk-17-jdk
 
 # On macOS:
-brew install openjdk@11
+brew install openjdk@17
 
 # Install TorchServe and model archiver
 pip install torchserve torch-model-archiver torch-workflow-archiver
@@ -168,10 +168,19 @@ class ClassifierHandler(BaseHandler):
             # Parse JSON if needed
             if isinstance(input_data, (bytes, bytearray)):
                 input_data = json.loads(input_data.decode("utf-8"))
+            elif isinstance(input_data, str):
+                input_data = json.loads(input_data)
 
-            # Convert to tensor
-            tensor = torch.tensor(input_data["features"], dtype=torch.float32)
-            preprocessed.append(tensor)
+            # Convert one item or a JSON array of items to tensors
+            if isinstance(input_data, list) and input_data and isinstance(input_data[0], dict):
+                items = input_data
+            else:
+                items = [input_data]
+
+            for item in items:
+                features = item["features"] if isinstance(item, dict) else item
+                tensor = torch.tensor(features, dtype=torch.float32)
+                preprocessed.append(tensor)
 
         # Stack into batch
         return torch.stack(preprocessed).to(self.device)
@@ -229,16 +238,31 @@ Create a configuration file and start the server:
 inference_address=http://0.0.0.0:8080
 management_address=http://0.0.0.0:8081
 metrics_address=http://0.0.0.0:8082
-model_store=/home/model-server/model-store
-load_models=all
+model_store=model_store
+load_models=classifier.mar
 number_of_netty_threads=4
 job_queue_size=100
 default_workers_per_model=1
 
-# Enable batching
-enable_batch=true
-batch_size=32
-max_batch_delay=100
+# Enable Prometheus metrics and local development API calls
+metrics_mode=prometheus
+disable_token_authorization=true
+enable_model_api=true
+
+# Configure batching for the classifier model
+models={\
+  "classifier": {\
+    "1.0": {\
+      "defaultVersion": true,\
+      "marName": "classifier.mar",\
+      "minWorkers": 1,\
+      "maxWorkers": 1,\
+      "batchSize": 32,\
+      "maxBatchDelay": 100,\
+      "responseTimeout": 120\
+    }\
+  }\
+}
 
 # GPU settings (if available)
 number_of_gpu=1
@@ -253,7 +277,6 @@ Start the server:
 # Start TorchServe with configuration
 torchserve --start \
     --model-store model_store \
-    --models classifier=classifier.mar \
     --ts-config config.properties
 
 # Check server status
@@ -342,7 +365,6 @@ EXPOSE 8080 8081 8082
 CMD ["torchserve", \
      "--start", \
      "--model-store", "/home/model-server/model-store", \
-     "--models", "classifier=classifier.mar", \
      "--foreground"]
 ```
 
@@ -455,19 +477,21 @@ Key metrics to monitor:
 
 ```promql
 # Request count by model
-ts_inference_requests_total{model_name="classifier"}
+rate(ts_inference_requests_total{model_name="classifier"}[5m])
 
-# Inference latency
-histogram_quantile(0.95, ts_inference_latency_ms_bucket{model_name="classifier"})
+# Average inference latency in milliseconds
+rate(ts_inference_latency_microseconds{model_name="classifier"}[5m])
+  / rate(ts_inference_requests_total{model_name="classifier"}[5m]) / 1000
 
-# Queue time
-histogram_quantile(0.95, ts_queue_latency_ms_bucket{model_name="classifier"})
+# Average queue latency in milliseconds
+rate(ts_queue_latency_microseconds{model_name="classifier"}[5m])
+  / rate(ts_inference_requests_total{model_name="classifier"}[5m]) / 1000
 
-# GPU memory usage
-ts_gpu_memory_used_bytes
+# GPU memory usage in megabytes
+GPUMemoryUsed
 
-# Worker count
-ts_model_workers{model_name="classifier"}
+# Backend prediction time
+PredictionTime{ModelName="classifier"}
 ```
 
 ## Optimizing Performance
@@ -496,11 +520,11 @@ model.save("model_optimized.pt")
 # In your handler
 def inference(self, data):
     with torch.no_grad():
-        with torch.cuda.amp.autocast():
+        with torch.amp.autocast("cuda", enabled=data.is_cuda):
             outputs = self.model(data)
     return outputs
 ```
 
 ---
 
-TorchServe brings production-grade serving to PyTorch models without requiring you to rewrite your model code. Start with the built-in handlers, then customize as your requirements grow. The management API makes it easy to update models without restarting the server, enabling true continuous deployment of ML models.
+TorchServe brings serving features to PyTorch models without requiring you to rewrite your model code. Start with the built-in handlers, then customize as your requirements grow. The management API makes it easy to update models without restarting the server, enabling true continuous deployment of ML models.
