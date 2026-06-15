@@ -49,25 +49,42 @@ mkdir -p certs && cd certs
 # This CA will sign both server and client certificates
 openssl genrsa -out ca.key 4096
 openssl req -new -x509 -days 365 -key ca.key -out ca.crt \
-    -subj "/CN=MyCA/O=MyOrganization"
+    -subj "/CN=MyCA/O=MyOrganization" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign"
 
 # Generate server private key and certificate signing request
 openssl genrsa -out server.key 4096
 openssl req -new -key server.key -out server.csr \
     -subj "/CN=localhost/O=MyOrganization"
 
+# Add required server certificate extensions
+cat > server.ext <<EOF
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=DNS:localhost,IP:127.0.0.1
+EOF
+
 # Sign server certificate with CA
 openssl x509 -req -days 365 -in server.csr -CA ca.crt -CAkey ca.key \
-    -CAcreateserial -out server.crt
+    -CAcreateserial -out server.crt -extfile server.ext
 
 # Generate client private key and certificate signing request
 openssl genrsa -out client.key 4096
 openssl req -new -key client.key -out client.csr \
     -subj "/CN=client-service/O=MyOrganization"
 
+# Add required client certificate extensions
+cat > client.ext <<EOF
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature
+extendedKeyUsage=clientAuth
+EOF
+
 # Sign client certificate with CA
 openssl x509 -req -days 365 -in client.csr -CA ca.crt -CAkey ca.key \
-    -CAcreateserial -out client.crt
+    -CAcreateserial -out client.crt -extfile client.ext
 ```
 
 ## Creating Java Keystores
@@ -213,7 +230,8 @@ When your Spring Boot application needs to call other services using mTLS, confi
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
-import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactoryBuilder;
+import org.apache.hc.client5.http.ssl.ClientTlsStrategyBuilder;
+import org.apache.hc.core5.http.ssl.TLS;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
@@ -269,10 +287,11 @@ public class RestTemplateConfig {
         CloseableHttpClient httpClient = HttpClients.custom()
             .setConnectionManager(
                 PoolingHttpClientConnectionManagerBuilder.create()
-                    .setSSLSocketFactory(
-                        SSLConnectionSocketFactoryBuilder.create()
+                    .setTlsSocketStrategy(
+                        ClientTlsStrategyBuilder.create()
                             .setSslContext(sslContext)
-                            .build()
+                            .setTlsVersions(TLS.V_1_3)
+                            .buildClassic()
                     )
                     .build()
             )
@@ -461,7 +480,7 @@ When deploying mTLS in production, consider these practices:
 
 1. **Certificate Rotation**: Implement automated certificate rotation before expiry. Short-lived certificates (30-90 days) reduce the impact of compromised certificates.
 
-2. **Certificate Revocation**: Use CRLs or OCSP to check certificate validity. Configure Spring Boot to verify revocation status.
+2. **Certificate Revocation**: Use CRLs or OCSP to check certificate validity. Configure revocation checking in JSSE, a custom trust manager, or your TLS termination layer.
 
 3. **Secure Password Storage**: Never hardcode keystore passwords. Use environment variables or secret management tools like HashiCorp Vault.
 
