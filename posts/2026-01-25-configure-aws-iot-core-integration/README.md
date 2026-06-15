@@ -63,6 +63,7 @@ Before starting:
 - AWS CLI configured with credentials
 - Terraform (optional, for infrastructure as code)
 - OpenSSL for certificate generation
+- Python 3.8+ and the AWS IoT Device SDK for Python v2 (`python3 -m pip install awsiotsdk`) for the Python examples
 
 ---
 
@@ -218,7 +219,12 @@ cat > sensor-policy.json << 'EOF'
     {
       "Effect": "Allow",
       "Action": "iot:Connect",
-      "Resource": "arn:aws:iot:us-east-1:123456789012:client/${iot:Connection.Thing.ThingName}"
+      "Resource": "arn:aws:iot:us-east-1:123456789012:client/${iot:Connection.Thing.ThingName}",
+      "Condition": {
+        "Bool": {
+          "iot:Connection.Thing.IsAttached": "true"
+        }
+      }
     },
     {
       "Effect": "Allow",
@@ -244,10 +250,36 @@ cat > sensor-policy.json << 'EOF'
     {
       "Effect": "Allow",
       "Action": [
-        "iot:GetThingShadow",
-        "iot:UpdateThingShadow"
+        "iot:Publish"
       ],
-      "Resource": "arn:aws:iot:us-east-1:123456789012:thing/${iot:Connection.Thing.ThingName}"
+      "Resource": [
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Subscribe",
+      "Resource": [
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/accepted",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/rejected",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/accepted",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/rejected",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/delta",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/documents"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Receive",
+      "Resource": [
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/accepted",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/rejected",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/accepted",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/rejected",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/delta",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/documents"
+      ]
     }
   ]
 }
@@ -280,6 +312,11 @@ resource "aws_iot_policy" "sensor_policy" {
         Effect   = "Allow"
         Action   = "iot:Connect"
         Resource = "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:client/$${iot:Connection.Thing.ThingName}"
+        Condition = {
+          Bool = {
+            "iot:Connection.Thing.IsAttached" = "true"
+          }
+        }
       },
       {
         Effect = "Allow"
@@ -305,10 +342,36 @@ resource "aws_iot_policy" "sensor_policy" {
       {
         Effect = "Allow"
         Action = [
-          "iot:GetThingShadow",
-          "iot:UpdateThingShadow"
+          "iot:Publish"
         ]
-        Resource = "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:thing/$${iot:Connection.Thing.ThingName}"
+        Resource = [
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/get",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = "iot:Subscribe"
+        Resource = [
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/get/accepted",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/get/rejected",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update/accepted",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update/rejected",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update/delta",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update/documents"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = "iot:Receive"
+        Resource = [
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/get/accepted",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/get/rejected",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update/accepted",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update/rejected",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update/delta",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update/documents"
+        ]
       }
     ]
   })
@@ -337,8 +400,10 @@ Device Shadow maintains state for offline devices.
 # shadow_client.py
 # AWS IoT Device Shadow client
 
-from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTShadowClient
-import json
+from awsiot import iotshadow, mqtt5_client_builder
+from awscrt import mqtt5, mqtt_request_response
+from concurrent.futures import Future
+import awsiot
 import time
 
 # Configuration
@@ -347,83 +412,102 @@ THING_NAME = "sensor-001"
 ROOT_CA = "./AmazonRootCA1.pem"
 CERT_FILE = "./device.cert.pem"
 KEY_FILE = "./device.private.key"
+TIMEOUT = 30
 
 # Shadow callback functions
-def shadow_update_callback(payload, response_status, token):
-    """Called when shadow update completes"""
-    if response_status == "accepted":
-        print(f"Shadow update accepted: {token}")
-    else:
-        print(f"Shadow update {response_status}: {payload}")
+def shadow_updated_callback(event):
+    """Called when a shadow update document is received"""
+    print(f"Shadow updated: {event}")
 
-def shadow_get_callback(payload, response_status, token):
-    """Called when shadow get completes"""
-    if response_status == "accepted":
-        shadow_doc = json.loads(payload)
-        print(f"Current shadow state: {json.dumps(shadow_doc, indent=2)}")
-    else:
-        print(f"Shadow get {response_status}")
-
-def shadow_delta_callback(payload, response_status, token):
+def shadow_delta_callback(event):
     """Called when there is a delta between desired and reported state"""
-    delta = json.loads(payload)
-    print(f"Shadow delta received: {delta}")
+    print(f"Shadow delta received: {event}")
 
     # Extract desired state changes
-    if "state" in delta:
-        state = delta["state"]
+    state = event.state or {}
 
-        # Apply changes to device
-        if "sample_interval" in state:
-            new_interval = state["sample_interval"]
-            print(f"Updating sample interval to: {new_interval}")
-            apply_configuration(sample_interval=new_interval)
+    # Apply changes to device
+    if "sample_interval" in state:
+        new_interval = state["sample_interval"]
+        print(f"Updating sample interval to: {new_interval}")
+        apply_configuration(sample_interval=new_interval)
 
-        # Report updated state
-        report_state(state)
+    # Report updated state
+    report_state(shadow_client, state)
 
 def apply_configuration(**kwargs):
     """Apply configuration changes to device"""
     # Implementation depends on your device
     print(f"Applying configuration: {kwargs}")
 
-def report_state(state):
+def report_state(client, state):
     """Report current state to shadow"""
-    shadow_handler.shadowUpdate(
-        json.dumps({"state": {"reported": state}}),
-        shadow_update_callback,
-        5
+    request = iotshadow.UpdateShadowRequest(
+        thing_name=THING_NAME,
+        state=iotshadow.ShadowState(reported=state)
     )
+    response = client.update_shadow(request).result(TIMEOUT)
+    print(f"Shadow update accepted: {response}")
 
 def main():
-    global shadow_handler
+    global shadow_client
 
-    # Create shadow client
-    shadow_client = AWSIoTMQTTShadowClient(THING_NAME)
-    shadow_client.configureEndpoint(IOT_ENDPOINT, 8883)
-    shadow_client.configureCredentials(ROOT_CA, KEY_FILE, CERT_FILE)
+    connected = Future()
+    stopped = Future()
 
-    # Configure connection
-    shadow_client.configureAutoReconnectBackoffTime(1, 32, 20)
-    shadow_client.configureConnectDisconnectTimeout(10)
-    shadow_client.configureMQTTOperationTimeout(5)
+    def on_connection_success(event):
+        connected.set_result(True)
+
+    def on_connection_failure(event):
+        connected.set_exception(Exception(f"Failed to connect: {event.exception}"))
+
+    def on_stopped(event):
+        stopped.set_result(True)
+
+    # Create MQTT5 client using mutual TLS
+    mqtt5_client = mqtt5_client_builder.mtls_from_path(
+        endpoint=IOT_ENDPOINT,
+        port=8883,
+        cert_filepath=CERT_FILE,
+        pri_key_filepath=KEY_FILE,
+        ca_filepath=ROOT_CA,
+        client_id=THING_NAME,
+        on_lifecycle_connection_success=on_connection_success,
+        on_lifecycle_connection_failure=on_connection_failure,
+        on_lifecycle_stopped=on_stopped
+    )
+
+    rr_options = mqtt_request_response.ClientOptions(
+        max_request_response_subscriptions=2,
+        max_streaming_subscriptions=2,
+        operation_timeout_in_seconds=TIMEOUT
+    )
+    shadow_client = iotshadow.IotShadowClientV2(mqtt5_client, rr_options)
 
     # Connect
     print(f"Connecting to {IOT_ENDPOINT}...")
-    shadow_client.connect()
+    mqtt5_client.start()
+    connected.result(TIMEOUT)
     print("Connected")
 
-    # Create shadow handler
-    shadow_handler = shadow_client.createShadowHandlerWithName(
-        THING_NAME,
-        True  # isPersistentSubscribe
+    # Register shadow callbacks
+    updated_stream = shadow_client.create_shadow_updated_stream(
+        iotshadow.ShadowUpdatedSubscriptionRequest(thing_name=THING_NAME),
+        awsiot.ServiceStreamOptions(shadow_updated_callback)
     )
+    updated_stream.open()
 
-    # Register delta callback
-    shadow_handler.shadowRegisterDeltaCallback(shadow_delta_callback)
+    delta_stream = shadow_client.create_shadow_delta_updated_stream(
+        iotshadow.ShadowDeltaUpdatedSubscriptionRequest(thing_name=THING_NAME),
+        awsiot.ServiceStreamOptions(shadow_delta_callback)
+    )
+    delta_stream.open()
 
     # Get current shadow state
-    shadow_handler.shadowGet(shadow_get_callback, 5)
+    response = shadow_client.get_shadow(
+        iotshadow.GetShadowRequest(thing_name=THING_NAME)
+    ).result(TIMEOUT)
+    print(f"Current shadow state: {response}")
 
     # Main loop - report state periodically
     try:
@@ -436,23 +520,14 @@ def main():
             }
 
             # Update shadow with reported state
-            shadow_doc = {
-                "state": {
-                    "reported": current_state
-                }
-            }
-
-            shadow_handler.shadowUpdate(
-                json.dumps(shadow_doc),
-                shadow_update_callback,
-                5
-            )
+            report_state(shadow_client, current_state)
 
             time.sleep(60)
 
     except KeyboardInterrupt:
         print("Disconnecting...")
-        shadow_client.disconnect()
+        mqtt5_client.stop()
+        stopped.result(TIMEOUT)
 
 def read_temperature():
     """Read temperature from sensor"""
@@ -591,6 +666,11 @@ resource "aws_iam_role_policy" "iot_cloudwatch_policy" {
   })
 }
 
+variable "anomaly_handler_lambda_arn" {
+  description = "ARN of the Lambda function that handles anomaly events"
+  type        = string
+}
+
 # Rule to trigger Lambda for anomaly detection
 resource "aws_iot_topic_rule" "anomaly_detection" {
   name        = "AnomalyDetection"
@@ -600,7 +680,7 @@ resource "aws_iot_topic_rule" "anomaly_detection" {
   sql_version = "2016-03-23"
 
   lambda {
-    function_arn = aws_lambda_function.anomaly_handler.arn
+    function_arn = var.anomaly_handler_lambda_arn
   }
 }
 ```
@@ -613,7 +693,9 @@ resource "aws_iot_topic_rule" "anomaly_detection" {
 # device_client.py
 # Complete AWS IoT device client
 
-from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
+from awsiot import mqtt5_client_builder
+from awscrt import mqtt5
+from concurrent.futures import Future
 import json
 import time
 import logging
@@ -628,16 +710,18 @@ THING_NAME = "sensor-001"
 ROOT_CA = "./AmazonRootCA1.pem"
 CERT_FILE = "./device.cert.pem"
 KEY_FILE = "./device.private.key"
+TIMEOUT = 30
 
 # Topics
 TELEMETRY_TOPIC = f"sensors/{THING_NAME}/temperature"
 COMMAND_TOPIC = f"commands/{THING_NAME}/#"
 
-def command_callback(client, userdata, message):
+def command_callback(publish_received_data):
     """Handle incoming commands"""
-    logger.info(f"Received command on {message.topic}")
+    publish_packet = publish_received_data.publish_packet
+    logger.info(f"Received command on {publish_packet.topic}")
     try:
-        command = json.loads(message.payload.decode())
+        command = json.loads(publish_packet.payload.decode())
         logger.info(f"Command payload: {command}")
 
         # Process command
@@ -660,25 +744,46 @@ def handle_config_update(config):
     # Implement config update logic
 
 def main():
-    # Create MQTT client
-    mqtt_client = AWSIoTMQTTClient(THING_NAME)
-    mqtt_client.configureEndpoint(IOT_ENDPOINT, 8883)
-    mqtt_client.configureCredentials(ROOT_CA, KEY_FILE, CERT_FILE)
+    connected = Future()
+    stopped = Future()
 
-    # Configure connection settings
-    mqtt_client.configureAutoReconnectBackoffTime(1, 32, 20)
-    mqtt_client.configureOfflinePublishQueueing(-1)  # Infinite queue
-    mqtt_client.configureDrainingFrequency(2)  # 2 Hz
-    mqtt_client.configureConnectDisconnectTimeout(10)
-    mqtt_client.configureMQTTOperationTimeout(5)
+    def on_connection_success(event):
+        connected.set_result(True)
+
+    def on_connection_failure(event):
+        connected.set_exception(Exception(f"Failed to connect: {event.exception}"))
+
+    def on_stopped(event):
+        stopped.set_result(True)
+
+    # Create MQTT5 client using mutual TLS
+    mqtt_client = mqtt5_client_builder.mtls_from_path(
+        endpoint=IOT_ENDPOINT,
+        port=8883,
+        cert_filepath=CERT_FILE,
+        pri_key_filepath=KEY_FILE,
+        ca_filepath=ROOT_CA,
+        client_id=THING_NAME,
+        on_publish_received=command_callback,
+        on_lifecycle_connection_success=on_connection_success,
+        on_lifecycle_connection_failure=on_connection_failure,
+        on_lifecycle_stopped=on_stopped
+    )
 
     # Connect
     logger.info(f"Connecting to {IOT_ENDPOINT}...")
-    mqtt_client.connect()
+    mqtt_client.start()
+    connected.result(TIMEOUT)
     logger.info("Connected")
 
     # Subscribe to command topic
-    mqtt_client.subscribe(COMMAND_TOPIC, 1, command_callback)
+    subscribe_future = mqtt_client.subscribe(mqtt5.SubscribePacket(
+        subscriptions=[mqtt5.Subscription(
+            topic_filter=COMMAND_TOPIC,
+            qos=mqtt5.QoS.AT_LEAST_ONCE
+        )]
+    ))
+    subscribe_future.result(TIMEOUT)
     logger.info(f"Subscribed to {COMMAND_TOPIC}")
 
     # Main telemetry loop
@@ -693,7 +798,12 @@ def main():
             }
 
             # Publish telemetry
-            mqtt_client.publish(TELEMETRY_TOPIC, json.dumps(payload), 1)
+            publish_future = mqtt_client.publish(mqtt5.PublishPacket(
+                topic=TELEMETRY_TOPIC,
+                payload=json.dumps(payload),
+                qos=mqtt5.QoS.AT_LEAST_ONCE
+            ))
+            publish_future.result(TIMEOUT)
             logger.info(f"Published: {payload}")
 
             time.sleep(30)
@@ -701,7 +811,8 @@ def main():
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
-        mqtt_client.disconnect()
+        mqtt_client.stop()
+        stopped.result(TIMEOUT)
 
 def read_temperature():
     import random
