@@ -8,13 +8,13 @@ Description: Learn how to implement tail-based sampling in OpenTelemetry to keep
 
 ---
 
-Distributed tracing generates massive amounts of data. At scale, storing and analyzing every trace becomes prohibitively expensive. Head-based sampling, where you decide to sample before the trace completes, misses important events that happen later in the request lifecycle. Tail-based sampling solves this by making sampling decisions after the entire trace is available.
+Distributed tracing generates massive amounts of data. At scale, storing and analyzing every trace becomes prohibitively expensive. Head-based sampling, where you decide to sample before the trace completes, misses important events that happen later in the request lifecycle. Tail-based sampling solves this by making sampling decisions after collecting all or most of the spans for a trace.
 
 ## Head-Based vs Tail-Based Sampling
 
 Head-based sampling makes decisions at trace creation time. You might sample 10% of traces randomly. The problem is that the most interesting traces, those with errors or high latency, represent far less than 10% of traffic. Random sampling misses them.
 
-Tail-based sampling waits until the trace completes, then examines its contents to decide whether to keep it. This lets you keep 100% of error traces while sampling routine successful requests at a much lower rate.
+Tail-based sampling waits until the collector's configured decision window, then examines the trace contents it has received to decide whether to keep it. This lets you keep 100% of error traces while sampling routine successful requests at a much lower rate, provided the relevant spans arrive before the sampling decision.
 
 ```mermaid
 flowchart TD
@@ -27,7 +27,7 @@ flowchart TD
 
     subgraph Tail-Based
         A2[Request Start] --> B2[Collect All Spans]
-        B2 --> C2{Trace Complete}
+        B2 --> C2{Decision Window Ends}
         C2 --> D2{Has Error?}
         D2 -->|Yes| E2[Keep 100%]
         D2 -->|No| F2{High Latency?}
@@ -149,7 +149,7 @@ Filter based on numeric attributes:
 
 ### Rate Limiting Policy
 
-Cap the number of traces per second:
+Cap sampled throughput by spans per second:
 
 ```yaml
 - name: rate-limit
@@ -160,7 +160,7 @@ Cap the number of traces per second:
 
 ### Composite Policy
 
-Combine multiple conditions with AND logic:
+Combine multiple policies with ordering and rate allocation:
 
 ```yaml
 - name: critical-slow-errors
@@ -276,12 +276,12 @@ Tail sampling requires all spans from a trace to reach the same collector instan
 
 ### Option 1: Load Balancer Exporter
 
-Use the `loadbalancing` exporter to route spans by trace ID:
+Use the `load_balancing` exporter to route spans by trace ID:
 
 ```yaml
 # Agent collector config
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         timeout: 1s
@@ -312,19 +312,20 @@ exporters:
   kafka:
     brokers:
       - kafka:9092
-    topic: traces
-    encoding: otlp_proto
-    producer:
-      # Use trace ID as partition key
-      partition_strategy: trace_id
+    traces:
+      topic: traces
+      encoding: otlp_proto
+    # Use trace ID as the Kafka record key
+    partition_traces_by_id: true
 
 # Gateway reads from Kafka
 receivers:
   kafka:
     brokers:
       - kafka:9092
-    topic: traces
-    encoding: otlp_proto
+    traces:
+      topics: [traces]
+      encoding: otlp_proto
 ```
 
 ## Monitoring Tail Sampling
@@ -339,19 +340,19 @@ service:
 ```
 
 Key metrics to watch:
-- `otelcol_processor_tail_sampling_count_traces_sampled` - Traces kept per policy
-- `otelcol_processor_tail_sampling_count_traces_dropped` - Traces discarded
-- `otelcol_processor_tail_sampling_global_count_traces_sampled` - Total sampled
-- `otelcol_processor_tail_sampling_sampling_decision_latency` - Decision time
-- `otelcol_processor_tail_sampling_sampling_trace_dropped_too_early` - Spans arriving after decision
+- `otelcol_processor_tail_sampling_count_traces_sampled` - Per-policy sampled, not sampled, and dropped decisions
+- `otelcol_processor_tail_sampling_global_count_traces_sampled` - Global sampled, not sampled, and dropped decisions
+- `otelcol_processor_tail_sampling_sampling_decision_timer_latency` - Decision timer processing time
+- `otelcol_processor_tail_sampling_sampling_trace_dropped_too_early` - Traces dropped before the configured wait time
+- `otelcol_processor_tail_sampling_sampling_late_span_age` - Age of spans that arrive after a sampling decision
 
-High values in `trace_dropped_too_early` indicate your `decision_wait` is too short.
+High values in `trace_dropped_too_early` usually indicate the collector is holding more traces than `num_traces` allows. Increase `num_traces` or reduce `decision_wait`, then check memory usage.
 
 ## Common Pitfalls
 
 ### Decision Wait Too Short
 
-If spans arrive after the sampling decision, they get dropped. Increase `decision_wait` but balance against memory usage.
+If important spans arrive after the sampling decision, the policy may make a decision without seeing them. Increase `decision_wait` when late spans are common, but balance that against memory usage.
 
 ### Missing Critical Policies
 
@@ -408,7 +409,8 @@ processors:
               type: string_attribute
               string_attribute:
                 key: http.route
-                values: ["/checkout/*"]
+                values: ["^/checkout/.*"]
+                enabled_regex_matching: true
             - name: is-slow
               type: latency
               latency:
