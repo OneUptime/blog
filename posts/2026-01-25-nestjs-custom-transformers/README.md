@@ -35,7 +35,7 @@ import { PipeTransform, Injectable, ArgumentMetadata } from '@nestjs/common';
 export class TrimStringsPipe implements PipeTransform {
   // The transform method receives the value and metadata about it
   transform(value: any, metadata: ArgumentMetadata) {
-    // Only transform the body of POST/PUT requests
+    // Only transform request body values
     if (metadata.type !== 'body') {
       return value;
     }
@@ -98,7 +98,7 @@ bootstrap();
 
 ## Transforming Dates
 
-Date handling is notoriously tricky. Users send ISO strings, Unix timestamps, and localized formats. This transformer normalizes them all:
+Date handling is notoriously tricky. Users send ISO strings, Unix timestamps, and other formats that JavaScript's `Date` parser may or may not accept consistently. This transformer normalizes common inputs:
 
 ```typescript
 // pipes/transform-dates.pipe.ts
@@ -151,12 +151,14 @@ export class TransformDatesPipe implements PipeTransform {
 
     // Unix timestamp in seconds
     if (typeof value === 'number' && value < 9999999999) {
-      return new Date(value * 1000);
+      const parsed = new Date(value * 1000);
+      return isNaN(parsed.getTime()) ? null : parsed;
     }
 
     // Unix timestamp in milliseconds
     if (typeof value === 'number') {
-      return new Date(value);
+      const parsed = new Date(value);
+      return isNaN(parsed.getTime()) ? null : parsed;
     }
 
     // ISO string or other parseable format
@@ -180,8 +182,16 @@ import { Transform, Type } from 'class-transformer';
 import { IsString, IsEmail, IsDate, IsOptional, ValidateNested } from 'class-validator';
 
 // Helper function for normalizing emails
-function normalizeEmail(email: string): string {
+function normalizeEmail(email: unknown): unknown {
+  if (typeof email !== 'string') {
+    return email;
+  }
+
   const [localPart, domain] = email.toLowerCase().split('@');
+  if (!localPart || !domain) {
+    return email.toLowerCase();
+  }
+
   // Remove dots from Gmail addresses (they are ignored)
   if (domain === 'gmail.com') {
     return `${localPart.replace(/\./g, '')}@${domain}`;
@@ -217,6 +227,7 @@ export class CreateUserDto {
   @Transform(({ value }) => {
     // Normalize phone to E.164 format
     if (!value) return null;
+    if (typeof value !== 'string') return value;
     const digits = value.replace(/\D/g, '');
     if (digits.length === 10) return `+1${digits}`;
     if (digits.length === 11 && digits[0] === '1') return `+${digits}`;
@@ -368,7 +379,8 @@ import { PipeTransform, Injectable, ArgumentMetadata } from '@nestjs/common';
 import { TrimStringsPipe } from './trim-strings.pipe';
 import { TransformDatesPipe } from './transform-dates.pipe';
 
-// A sanitizer that removes potential XSS content
+// Simplified example only. For production XSS protection, use a vetted HTML
+// sanitizer such as DOMPurify or sanitize-html instead of regex replacements.
 const sanitizeHtml = (str: string): string => {
   return str
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
