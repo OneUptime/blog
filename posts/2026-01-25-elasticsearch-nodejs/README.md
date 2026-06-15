@@ -65,50 +65,52 @@ async function createProductIndex() {
     // Create index with mappings
     await client.indices.create({
         index: indexName,
-        body: {
-            settings: {
-                number_of_shards: 1,
-                number_of_replicas: 1,
-                analysis: {
-                    analyzer: {
-                        autocomplete: {
-                            type: 'custom',
-                            tokenizer: 'standard',
-                            filter: ['lowercase', 'autocomplete_filter']
-                        }
-                    },
-                    filter: {
-                        autocomplete_filter: {
-                            type: 'edge_ngram',
-                            min_gram: 1,
-                            max_gram: 20
-                        }
+        settings: {
+            number_of_shards: 1,
+            number_of_replicas: 1,
+            max_ngram_diff: 19,
+            analysis: {
+                analyzer: {
+                    autocomplete: {
+                        type: 'custom',
+                        tokenizer: 'standard',
+                        filter: ['lowercase', 'autocomplete_filter']
+                    }
+                },
+                filter: {
+                    autocomplete_filter: {
+                        type: 'edge_ngram',
+                        min_gram: 1,
+                        max_gram: 20
                     }
                 }
-            },
-            mappings: {
-                properties: {
-                    name: {
-                        type: 'text',
-                        analyzer: 'standard',
-                        fields: {
-                            autocomplete: {
-                                type: 'text',
-                                analyzer: 'autocomplete',
-                                search_analyzer: 'standard'
-                            },
-                            keyword: {
-                                type: 'keyword'
-                            }
+            }
+        },
+        mappings: {
+            properties: {
+                name: {
+                    type: 'text',
+                    analyzer: 'standard',
+                    fields: {
+                        autocomplete: {
+                            type: 'text',
+                            analyzer: 'autocomplete',
+                            search_analyzer: 'standard'
+                        },
+                        keyword: {
+                            type: 'keyword'
                         }
-                    },
-                    description: { type: 'text' },
-                    category: { type: 'keyword' },
-                    price: { type: 'float' },
-                    stock: { type: 'integer' },
-                    tags: { type: 'keyword' },
-                    createdAt: { type: 'date' }
-                }
+                    }
+                },
+                name_suggest: {
+                    type: 'completion'
+                },
+                description: { type: 'text' },
+                category: { type: 'keyword' },
+                price: { type: 'float' },
+                stock: { type: 'integer' },
+                tags: { type: 'keyword' },
+                createdAt: { type: 'date' }
             }
         }
     });
@@ -127,8 +129,9 @@ async function indexProduct(product) {
     const result = await client.index({
         index: 'products',
         id: product.id.toString(),  // Use your database ID
-        body: {
+        document: {
             name: product.name,
+            name_suggest: product.name,
             description: product.description,
             category: product.category,
             price: product.price,
@@ -143,10 +146,11 @@ async function indexProduct(product) {
 
 // Bulk index multiple documents
 async function bulkIndexProducts(products) {
-    const body = products.flatMap(product => [
+    const operations = products.flatMap(product => [
         { index: { _index: 'products', _id: product.id.toString() } },
         {
             name: product.name,
+            name_suggest: product.name,
             description: product.description,
             category: product.category,
             price: product.price,
@@ -156,7 +160,7 @@ async function bulkIndexProducts(products) {
         }
     ]);
 
-    const result = await client.bulk({ body, refresh: true });
+    const result = await client.bulk({ operations, refresh: true });
 
     if (result.errors) {
         const erroredDocs = result.items.filter(item => item.index.error);
@@ -200,15 +204,13 @@ async function searchProducts(query, options = {}) {
 
     const result = await client.search({
         index: 'products',
-        body: {
-            from,
-            size: limit,
-            query: {
-                multi_match: {
-                    query,
-                    fields: ['name^3', 'description', 'tags^2'],  // Boost name and tags
-                    fuzziness: 'AUTO'  // Allow typos
-                }
+        from,
+        size: limit,
+        query: {
+            multi_match: {
+                query,
+                fields: ['name^3', 'description', 'tags^2'],  // Boost name and tags
+                fuzziness: 'AUTO'  // Allow typos
             }
         }
     });
@@ -287,17 +289,15 @@ async function advancedSearch(searchParams) {
 
     const result = await client.search({
         index: 'products',
-        body: {
-            from: (page - 1) * limit,
-            size: limit,
-            query: {
-                bool: {
-                    must: must.length > 0 ? must : [{ match_all: {} }],
-                    filter
-                }
-            },
-            sort
-        }
+        from: (page - 1) * limit,
+        size: limit,
+        query: {
+            bool: {
+                must: must.length > 0 ? must : [{ match_all: {} }],
+                filter
+            }
+        },
+        sort
     });
 
     return {
@@ -323,18 +323,16 @@ async function advancedSearch(searchParams) {
 async function autocomplete(query, limit = 10) {
     const result = await client.search({
         index: 'products',
-        body: {
-            size: limit,
-            query: {
-                match: {
-                    'name.autocomplete': {
-                        query,
-                        operator: 'and'
-                    }
+        size: limit,
+        query: {
+            match: {
+                'name.autocomplete': {
+                    query,
+                    operator: 'and'
                 }
-            },
-            _source: ['name']
-        }
+            }
+        },
+        _source: ['name']
     });
 
     return result.hits.hits.map(hit => hit._source.name);
@@ -344,17 +342,15 @@ async function autocomplete(query, limit = 10) {
 async function autocompleteSuggest(query) {
     const result = await client.search({
         index: 'products',
-        body: {
-            suggest: {
-                product_suggest: {
-                    prefix: query,
-                    completion: {
-                        field: 'name_suggest',
-                        fuzzy: {
-                            fuzziness: 'AUTO'
-                        },
-                        size: 10
-                    }
+        suggest: {
+            product_suggest: {
+                prefix: query,
+                completion: {
+                    field: 'name_suggest',
+                    fuzzy: {
+                        fuzziness: 'AUTO'
+                    },
+                    size: 10
                 }
             }
         }
@@ -372,39 +368,37 @@ Get counts for filtering:
 async function searchWithFacets(query, filters = {}) {
     const result = await client.search({
         index: 'products',
-        body: {
-            size: 20,
-            query: {
-                bool: {
-                    must: query ? [{
-                        multi_match: { query, fields: ['name', 'description'] }
-                    }] : [{ match_all: {} }],
-                    filter: Object.entries(filters).map(([field, value]) => ({
-                        term: { [field]: value }
-                    }))
+        size: 20,
+        query: {
+            bool: {
+                must: query ? [{
+                    multi_match: { query, fields: ['name', 'description'] }
+                }] : [{ match_all: {} }],
+                filter: Object.entries(filters).map(([field, value]) => ({
+                    term: { [field]: value }
+                }))
+            }
+        },
+        aggregations: {
+            categories: {
+                terms: { field: 'category', size: 20 }
+            },
+            price_ranges: {
+                range: {
+                    field: 'price',
+                    ranges: [
+                        { to: 50, key: 'Under $50' },
+                        { from: 50, to: 100, key: '$50-$100' },
+                        { from: 100, to: 200, key: '$100-$200' },
+                        { from: 200, key: 'Over $200' }
+                    ]
                 }
             },
-            aggs: {
-                categories: {
-                    terms: { field: 'category', size: 20 }
-                },
-                price_ranges: {
-                    range: {
-                        field: 'price',
-                        ranges: [
-                            { to: 50, key: 'Under $50' },
-                            { from: 50, to: 100, key: '$50-$100' },
-                            { from: 100, to: 200, key: '$100-$200' },
-                            { from: 200, key: 'Over $200' }
-                        ]
-                    }
-                },
-                tags: {
-                    terms: { field: 'tags', size: 30 }
-                },
-                avg_price: {
-                    avg: { field: 'price' }
-                }
+            tags: {
+                terms: { field: 'tags', size: 30 }
+            },
+            avg_price: {
+                avg: { field: 'price' }
             }
         }
     });
@@ -436,15 +430,14 @@ async function onProductUpdated(product) {
     await client.update({
         index: 'products',
         id: product.id.toString(),
-        body: {
-            doc: {
-                name: product.name,
-                description: product.description,
-                category: product.category,
-                price: product.price,
-                stock: product.stock,
-                tags: product.tags
-            }
+        doc: {
+            name: product.name,
+            name_suggest: product.name,
+            description: product.description,
+            category: product.category,
+            price: product.price,
+            stock: product.stock,
+            tags: product.tags
         }
     });
 }
