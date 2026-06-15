@@ -16,7 +16,7 @@ This guide explains why this error happens, shows common scenarios where it appe
 
 ## Understanding the Error
 
-The error occurs when Python tries to iterate over something that is None. Python can only iterate over objects that implement the iterator protocol (lists, tuples, strings, dictionaries, etc.). None is not iterable.
+The error occurs when Python tries to iterate over something that is None. Python can only iterate over objects that can provide an iterator (lists, tuples, strings, dictionaries, etc.). None is not iterable.
 
 ```python
 # This causes the error
@@ -192,8 +192,8 @@ import re
 text = "Hello World"
 match = re.search(r'\d+', text)  # No digits in text, returns None
 
-# This crashes
-for group in match.groups():  # TypeError: 'NoneType' object is not iterable
+# This crashes because match is None
+for group in match.groups():  # AttributeError: 'NoneType' object has no attribute 'groups'
     print(group)
 
 # Solution: Check if match exists
@@ -364,4 +364,3 @@ By following these patterns, you can eliminate this common error from your Pytho
 ---
 
 *Tired of debugging Python errors in production? [OneUptime](https://oneuptime.com) provides error tracking and alerting to catch issues before they affect users.*
-
