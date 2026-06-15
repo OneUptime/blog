@@ -8,7 +8,7 @@ Description: Learn how to use RabbitMQ Shovel plugin for reliable message routin
 
 ---
 
-RabbitMQ Shovel is a plugin that moves messages from one place to another. It can connect queues within the same broker, across different brokers, or between entirely separate RabbitMQ clusters. Unlike federation which is bidirectional and policy-based, Shovel gives you explicit point-to-point message movement with fine-grained control.
+RabbitMQ Shovel is a plugin that moves messages from one place to another. It can connect queues within the same broker, across different brokers, or between entirely separate RabbitMQ clusters. Unlike federation, which uses upstreams and policies and can form bidirectional or N-directional topologies, Shovel gives you explicit unidirectional point-to-point message movement with fine-grained control.
 
 ## When to Use Shovel
 
@@ -59,15 +59,12 @@ rabbitmq-plugins list | grep shovel
 
 ## Configuring Static Shovels
 
-Static shovels are defined in the RabbitMQ configuration file and start automatically.
+Static shovels are defined in RabbitMQ's `advanced.config` file and start automatically.
 
 ### Basic Shovel Configuration
 
 ```erlang
-%% /etc/rabbitmq/rabbitmq.conf (new format)
-%% or /etc/rabbitmq/advanced.config (classic format)
-
-%% advanced.config example
+%% /etc/rabbitmq/advanced.config
 [
   {rabbitmq_shovel, [
     {shovels, [
@@ -103,22 +100,14 @@ Static shovels are defined in the RabbitMQ configuration file and start automati
 ].
 ```
 
-### Using rabbitmq.conf Format
+### Using Dynamic Shovels from rabbitmq.conf
+
+Static shovels cannot be defined directly in `rabbitmq.conf`. If you prefer `rabbitmq.conf`, import a definitions file that contains a dynamic shovel:
 
 ```ini
 # /etc/rabbitmq/rabbitmq.conf
-
-# Define a shovel named 'my_shovel'
-shovel.my_shovel.source.uri = amqp://user:pass@source-broker:5672
-shovel.my_shovel.source.queue = source_queue
-shovel.my_shovel.source.prefetch_count = 100
-
-shovel.my_shovel.destination.uri = amqp://user:pass@dest-broker:5672
-shovel.my_shovel.destination.exchange = dest_exchange
-shovel.my_shovel.destination.routing_key = migrated
-
-shovel.my_shovel.ack_mode = on-confirm
-shovel.my_shovel.reconnect_delay = 5
+definitions.import_backend = local_filesystem
+definitions.local.path = /etc/rabbitmq/definitions.json
 ```
 
 ## Configuring Dynamic Shovels
@@ -136,9 +125,9 @@ rabbitmqctl set_parameter shovel my-shovel \
     "dest-protocol": "amqp091",
     "dest-uri": "amqp://user:pass@dest:5672",
     "dest-exchange": "dest_exchange",
-    "dest-routing-key": "migrated",
+    "dest-exchange-key": "migrated",
     "ack-mode": "on-confirm",
-    "prefetch-count": 100}'
+    "src-prefetch-count": 100}'
 
 # List all shovels
 rabbitmqctl list_parameters -p / | grep shovel
@@ -152,13 +141,13 @@ rabbitmqctl clear_parameter shovel my-shovel
 ```python
 import requests
 from requests.auth import HTTPBasicAuth
-import json
+from urllib.parse import quote
 
 def create_shovel(host, vhost, name, config, user, password):
     """Create a dynamic shovel via the Management API"""
 
     # URL encode vhost
-    vhost_encoded = vhost.replace('/', '%2f')
+    vhost_encoded = quote(vhost, safe='')
 
     url = f"http://{host}:15672/api/parameters/shovel/{vhost_encoded}/{name}"
 
@@ -187,9 +176,9 @@ shovel_config = {
     "dest-protocol": "amqp091",
     "dest-uri": "amqp://user:pass@dest-broker:5672",
     "dest-exchange": "orders",
-    "dest-routing-key": "migrated",
+    "dest-exchange-key": "migrated",
     "ack-mode": "on-confirm",
-    "prefetch-count": 100,
+    "src-prefetch-count": 100,
     "reconnect-delay": 5
 }
 
@@ -233,9 +222,9 @@ const shovelConfig = {
     'dest-protocol': 'amqp091',
     'dest-uri': 'amqp://user:pass@dest:5672',
     'dest-exchange': 'dest_exchange',
-    'dest-routing-key': 'migrated',
+    'dest-exchange-key': 'migrated',
     'ack-mode': 'on-confirm',
-    'prefetch-count': 100
+    'src-prefetch-count': 100
 };
 
 createShovel('localhost', '/', 'my-shovel', shovelConfig, 'admin', 'password');
@@ -302,8 +291,8 @@ shovel_config = {
     "dest-protocol": "amqp091",
     "dest-uri": "amqp://user:pass@new-broker:5672",
     "dest-exchange": "orders_v2",
-    "dest-routing-key": "order.migrated.legacy",
-    "add-forward-headers": True,  # Add x-shovelled header
+    "dest-exchange-key": "order.migrated.legacy",
+    "dest-add-forward-headers": True,  # Add x-shovelled header
     "ack-mode": "on-confirm"
 }
 ```
@@ -327,8 +316,8 @@ for region, uri in sources:
         "dest-protocol": "amqp091",
         "dest-uri": "amqp://user:pass@central-rabbit:5672",
         "dest-exchange": "aggregated_events",
-        "dest-routing-key": f"event.{region}",
-        "add-forward-headers": True,
+        "dest-exchange-key": f"event.{region}",
+        "dest-add-forward-headers": True,
         "ack-mode": "on-confirm"
     }
 
@@ -356,7 +345,7 @@ migration_config = {
     "dest-uri": "amqp://user:pass@new-broker:5672",
     "dest-queue": "migrated_data",
     "ack-mode": "on-confirm",
-    "prefetch-count": 1000
+    "src-prefetch-count": 1000
 }
 ```
 
@@ -452,8 +441,8 @@ monitor_shovels('localhost', 'admin', 'password', send_alert)
 Check connectivity and credentials:
 
 ```bash
-# Test source connection
-rabbitmqctl eval 'net_adm:ping('"'"'rabbit@source-broker'"'"').'
+# Test AMQP port reachability
+nc -vz source-broker 5672
 
 # Check shovel logs
 grep -i shovel /var/log/rabbitmq/rabbit@*.log
@@ -478,7 +467,7 @@ Increase prefetch count for higher throughput:
 ```python
 config = {
     # ... other config
-    "prefetch-count": 1000,  # Increase from default
+    "src-prefetch-count": 1000,  # Increase from default
 }
 ```
 
