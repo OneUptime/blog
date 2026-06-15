@@ -290,11 +290,11 @@ C = range(10)
 total = len(A) * len(B) * len(C)
 print(f"Total combinations: {total}")
 
-# For very large products, iterate instead of converting to list
-# This uses constant memory
+# For very large products, iterate instead of converting to list.
+# product() stores the input pools, but not every output tuple.
 for combo in product(A, B, C):
     # Process one at a time
-    if should_stop(combo):
+    if combo == (5, 5, 5):
         break
 ```
 
@@ -377,7 +377,7 @@ valid_combos = list(filter(is_valid_combo, product(sizes, colors)))
 
 | Function | Description | Example |
 |----------|-------------|---------|
-| `product(A, B)` | All pairs (with repetition) | AB -> (a,a), (a,b), (b,a), (b,b) |
+| `product(A, repeat=2)` | All pairs (with repetition) | AB -> (a,a), (a,b), (b,a), (b,b) |
 | `permutations(A, 2)` | Ordered arrangements (no repeat) | AB -> (a,b), (b,a) |
 | `combinations(A, 2)` | Unordered selections (no repeat) | ABC -> (a,b), (a,c), (b,c) |
 | `combinations_with_replacement(A, 2)` | Unordered with repeat | AB -> (a,a), (a,b), (b,b) |
