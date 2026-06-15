@@ -66,7 +66,7 @@ Token Bucket Filter (tbf) is the simplest rate limiter:
 
 INTERFACE="eth0"
 RATE="10mbit"
-BURST="32kbit"
+BURST="32kb"
 LATENCY="50ms"
 
 # Remove any existing qdisc
@@ -278,7 +278,7 @@ class RateLimitedSender:
             chunk = data[i:i + chunk_size]
             # Wait for tokens before sending
             self.bucket.consume(len(chunk))
-            socket.send(chunk)
+            socket.sendall(chunk)
 
 # Usage example
 sender = RateLimitedSender(rate_mbps=10)  # 10 Mbps limit
@@ -309,31 +309,21 @@ spec:
           memory: "256Mi"
 ```
 
-For more control, use Cilium's bandwidth manager:
+For more scalable pod-level shaping, enable Cilium's bandwidth manager and use the same pod annotations:
 
 ```yaml
-# cilium-bandwidth-policy.yaml
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
+# cilium-bandwidth-pod.yaml
+apiVersion: v1
+kind: Pod
 metadata:
-  name: bandwidth-policy
+  name: cilium-bandwidth-limited-app
+  annotations:
+    kubernetes.io/egress-bandwidth: "50M"
+    kubernetes.io/ingress-bandwidth: "20M"
 spec:
-  endpointSelector:
-    matchLabels:
-      app: bulk-processor
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            app: storage
-      toPorts:
-        - ports:
-            - port: "9000"
-              protocol: TCP
-          rules:
-            http:
-              - method: "PUT"
-                headers:
-                  - 'X-Rate-Limit: 50mbps'
+  containers:
+    - name: app
+      image: myapp:latest
 ```
 
 ## Traffic Shaping with NGINX
