@@ -197,19 +197,19 @@ curl -X GET "localhost:9200/_cat/recovery?v&active_only=true"
 
 ```bash
 # Download the exporter
-wget https://github.com/prometheus-community/elasticsearch_exporter/releases/download/v1.6.0/elasticsearch_exporter-1.6.0.linux-amd64.tar.gz
-tar xzf elasticsearch_exporter-1.6.0.linux-amd64.tar.gz
-cd elasticsearch_exporter-1.6.0.linux-amd64
+wget https://github.com/prometheus-community/elasticsearch_exporter/releases/download/v1.10.0/elasticsearch_exporter-1.10.0.linux-amd64.tar.gz
+tar xzf elasticsearch_exporter-1.10.0.linux-amd64.tar.gz
+cd elasticsearch_exporter-1.10.0.linux-amd64
 
 # Run with authentication
 ./elasticsearch_exporter \
-  --es.uri=https://localhost:9200 \
+  --es.uri=https://elastic:your_password@localhost:9200 \
   --es.all \
   --es.indices \
   --es.indices_settings \
   --es.shards \
-  --es.snapshots \
-  --es.cluster_settings \
+  --collector.snapshots \
+  --collector.clustersettings \
   --es.ssl-skip-verify \
   --es.ca=/path/to/ca.crt \
   --web.listen-address=:9114
@@ -263,8 +263,9 @@ elasticsearch_cluster_health_status{color="green"} * 1 +
 elasticsearch_cluster_health_status{color="yellow"} * 2 +
 elasticsearch_cluster_health_status{color="red"} * 3
 
-# Active shards percentage
-elasticsearch_cluster_health_active_shards_percent
+# Active shards percentage (active vs unassigned shards)
+100 * elasticsearch_cluster_health_active_shards /
+(elasticsearch_cluster_health_active_shards + elasticsearch_cluster_health_unassigned_shards)
 
 # Unassigned shards
 elasticsearch_cluster_health_unassigned_shards
@@ -275,7 +276,7 @@ elasticsearch_cluster_health_unassigned_shards
 ```promql
 # Heap usage percentage
 elasticsearch_jvm_memory_used_bytes{area="heap"} /
-elasticsearch_jvm_memory_max_bytes{area="heap"} * 100
+elasticsearch_jvm_memory_max_bytes * 100
 
 # Non-heap usage
 elasticsearch_jvm_memory_used_bytes{area="non-heap"}
@@ -294,7 +295,7 @@ rate(elasticsearch_jvm_gc_collection_seconds_sum[5m]) * 100
 rate(elasticsearch_indices_search_query_total[5m])
 
 # Search latency (average)
-rate(elasticsearch_indices_search_query_time_seconds_total[5m]) /
+rate(elasticsearch_indices_search_query_time_seconds[5m]) /
 rate(elasticsearch_indices_search_query_total[5m])
 
 # Rejected searches
@@ -323,7 +324,7 @@ Here's a comprehensive monitoring service:
 
 ```python
 from elasticsearch import Elasticsearch
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 from dataclasses import dataclass
 from datetime import datetime
 import time
@@ -403,41 +404,24 @@ class ElasticsearchMonitor:
     def get_index_health(self, pattern: str = "*") -> List[IndexHealth]:
         """Get health status for indices"""
 
-        indices = self.es.cat.indices(index=pattern, format="json")
+        health = self.es.cluster.health(index=pattern, level="indices", expand_wildcards="open")
+        stats = self.es.indices.stats(index=pattern, metric=["docs", "store"], expand_wildcards="open")
+        settings = self.es.indices.get_settings(index=pattern, expand_wildcards="open")
         results = []
 
-        for idx in indices:
+        for name, index_stats in stats["indices"].items():
+            index_settings = settings[name]["settings"]["index"]
+
             results.append(IndexHealth(
-                name=idx["index"],
-                status=idx["health"],
-                primary_shards=int(idx["pri"]),
-                replica_shards=int(idx["rep"]),
-                docs_count=int(idx.get("docs.count", 0) or 0),
-                store_size_bytes=self._parse_size(idx.get("store.size", "0"))
+                name=name,
+                status=health["indices"][name]["status"],
+                primary_shards=int(index_settings["number_of_shards"]),
+                replica_shards=int(index_settings["number_of_replicas"]),
+                docs_count=index_stats["total"]["docs"]["count"],
+                store_size_bytes=index_stats["total"]["store"]["size_in_bytes"]
             ))
 
         return sorted(results, key=lambda x: x.store_size_bytes, reverse=True)
-
-    def _parse_size(self, size_str: str) -> int:
-        """Parse size string to bytes"""
-
-        if not size_str:
-            return 0
-
-        multipliers = {
-            "b": 1,
-            "kb": 1024,
-            "mb": 1024 ** 2,
-            "gb": 1024 ** 3,
-            "tb": 1024 ** 4
-        }
-
-        size_str = size_str.lower()
-        for suffix, multiplier in multipliers.items():
-            if size_str.endswith(suffix):
-                return int(float(size_str[:-len(suffix)]) * multiplier)
-
-        return int(float(size_str))
 
     def get_search_stats(self) -> Dict[str, Any]:
         """Get search performance statistics"""
@@ -586,7 +570,7 @@ class ElasticsearchMonitor:
     def watch(
         self,
         interval_seconds: int = 30,
-        alert_callback: callable = None
+        alert_callback: Optional[Callable[[List[str]], None]] = None
     ) -> None:
         """Continuously monitor and alert on issues"""
 
@@ -674,7 +658,7 @@ groups:
           description: "Cluster {{ $labels.cluster }} has unassigned replica shards"
 
       - alert: ElasticsearchHeapHigh
-        expr: elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"} > 0.85
+        expr: elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes > 0.85
         for: 5m
         labels:
           severity: warning
