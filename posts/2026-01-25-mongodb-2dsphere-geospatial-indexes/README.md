@@ -185,7 +185,7 @@ async function findPlacesWithDistance(db, longitude, latitude, category) {
         },
         distanceField: "distance",      // Field name for calculated distance
         maxDistance: 5000,              // 5km max
-        spherical: true,                // Use spherical geometry (required for 2dsphere)
+        spherical: true,                // Use spherical geometry explicitly
         query: { category: category }   // Additional filter criteria
       }
     },
@@ -422,7 +422,7 @@ initDB().then(() => {
 
 ```javascript
 // Use compound indexes for filtered geospatial queries
-// The geospatial field should come first
+// 2dsphere keys can be combined with regular fields in compound indexes
 await places.createIndex({
   location: '2dsphere',
   category: 1,
