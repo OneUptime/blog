@@ -121,7 +121,7 @@ using Microsoft.FeatureManagement.Mvc;
 [Route("api/[controller]")]
 public class ReportsController : ControllerBase
 {
-    // This entire controller is gated behind the BetaFeatures flag
+    // This action is gated behind the BetaFeatures flag
     [FeatureGate("BetaFeatures")]
     [HttpGet("advanced")]
     public IActionResult GetAdvancedReports()
@@ -161,7 +161,7 @@ Roll out features gradually using the built-in `Percentage` filter:
 }
 ```
 
-This enables the feature for approximately 25% of requests. The percentage is determined consistently using a hash, so the same user sees consistent behavior within a session.
+This enables the feature for approximately 25% of evaluations. Use the targeting filter when you need user-based rollout behavior that stays consistent for a user.
 
 ## Time-Based Feature Windows
 
@@ -185,18 +185,15 @@ Enable features during specific time windows:
 }
 ```
 
-Register the time window filter:
-
-```csharp
-builder.Services.AddFeatureManagement()
-    .AddFeatureFilter<TimeWindowFilter>();
-```
+The time window filter is registered automatically when you call `AddFeatureManagement()`.
 
 ## Building Custom Feature Filters
 
 Create custom filters for complex targeting scenarios, such as enabling features for specific user groups:
 
 ```csharp
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.FeatureManagement;
 
 // Define the filter settings
@@ -435,7 +432,7 @@ builder.Configuration.AddAzureAppConfiguration(options =>
            .UseFeatureFlags(featureOptions =>
            {
                // Refresh feature flags every 30 seconds
-               featureOptions.CacheExpirationInterval = TimeSpan.FromSeconds(30);
+               featureOptions.SetRefreshInterval(TimeSpan.FromSeconds(30));
            });
 });
 
