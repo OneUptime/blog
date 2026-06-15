@@ -12,7 +12,7 @@ Few Kubernetes errors cause more frustration than `CrashLoopBackOff`. Your pod s
 
 ## What is CrashLoopBackOff?
 
-CrashLoopBackOff is not an error itself but a state. It indicates that a container in your pod is repeatedly crashing and Kubernetes is backing off before attempting another restart. The backoff period starts at 10 seconds and doubles with each failure, capping at 5 minutes.
+CrashLoopBackOff is not an error itself but a state. It indicates that a container in your pod is repeatedly crashing and Kubernetes is backing off before attempting another restart. By default, the backoff period starts at 10 seconds and doubles with each failure, capping at 5 minutes.
 
 ```mermaid
 flowchart LR
@@ -216,8 +216,8 @@ Kubernetes 1.25+ includes an ephemeral debug container feature:
 # Attach a debug container to a running (or crashing) pod
 kubectl debug myapp-7d4b8c9f6-x2j9k -it --image=busybox:1.35 --target=myapp
 
-# This creates a new container in the same pod that shares
-# the process namespace, so you can see what the main container is doing
+# This creates a new container in the same pod and targets
+# the main container's process namespace, if the container runtime supports it
 ```
 
 ## Quick Diagnostic Script
