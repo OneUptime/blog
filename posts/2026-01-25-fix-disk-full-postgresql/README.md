@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix disk full errors in PostgreSQL. This 
 
 ---
 
-A disk full error in PostgreSQL can bring your entire application to a halt. When the disk runs out of space, PostgreSQL cannot write WAL (Write-Ahead Log) files, process transactions, or even allow new connections. This guide will help you recover from disk full situations and prevent them from happening again.
+A disk full error in PostgreSQL can bring your entire application to a halt. When the disk runs out of space, PostgreSQL cannot write WAL (Write-Ahead Log) files, process transactions reliably, and may reject new connections or shut down with a PANIC. This guide will help you recover from disk full situations and prevent them from happening again.
 
 ---
 
@@ -25,7 +25,7 @@ PANIC: could not write to file "pg_wal/xlogtemp.12345": No space left on device
 FATAL: could not open file "pg_notify/0000": No space left on device
 ```
 
-These errors indicate that PostgreSQL cannot write to disk, which can cause transactions to fail, data corruption, or complete server shutdown.
+These errors indicate that PostgreSQL cannot write to disk, which can cause transactions to fail or trigger a complete server shutdown until space is available again.
 
 ---
 
@@ -46,7 +46,7 @@ du -sh /var/lib/postgresql/14/main/* | sort -h
 # Common space hogs:
 # - pg_wal/ (WAL files)
 # - base/ (table data)
-# - pg_log/ (log files)
+# - log/ or pg_log/ (log files, depending on version/configuration)
 ```
 
 ### Step 2: Remove Old Log Files
@@ -59,35 +59,33 @@ find /var/lib/postgresql/14/main/log -name "*.log" -mtime +7 -delete
 find /var/log/postgresql -name "*.log" -mtime +7 -delete
 ```
 
-### Step 3: Force Checkpoint and Remove Old WAL Files
+### Step 3: Force Checkpoint and Investigate WAL Growth
 
 ```sql
 -- If you can still connect, force a checkpoint
 CHECKPOINT;
 
--- This tells PostgreSQL it can recycle WAL files
+-- This can let PostgreSQL recycle or remove WAL files that are no longer needed
 ```
 
 ```bash
-# If PostgreSQL is running but you cannot connect,
-# you can manually remove old WAL files
-# WARNING: Only remove files that are clearly old and NOT needed for replication
+# Never manually remove files from pg_wal while trying to recover space.
+# PostgreSQL needs WAL for crash recovery, archiving, and replication.
 
-# Check which WAL file is current
-ls -la /var/lib/postgresql/14/main/pg_wal/ | tail -10
+# Check WAL directory growth
+du -sh /var/lib/postgresql/14/main/pg_wal/
 
-# The filename format is 000000010000000000000001
-# Only remove files with numbers much lower than the latest
+# Then check for failed archiving, replication slot lag, or high wal_keep_size.
 ```
 
 ### Step 4: Clear Temporary Files
 
 ```bash
-# Remove temporary files
-rm -f /var/lib/postgresql/14/main/pgsql_tmp/*
+# Remove stale temporary files only when PostgreSQL is stopped
+find /var/lib/postgresql/14/main/base -path "*/pgsql_tmp/*" -type f -delete
 
-# Remove old backup files if any
-rm -f /var/lib/postgresql/14/main/backup_label.old
+# Do not remove backup_label unless you are recovering from a failed exclusive backup
+# and you understand the backup/recovery implications.
 ```
 
 ---
@@ -137,7 +135,7 @@ REINDEX INDEX idx_name;
 -- Rebuild all indexes in a table
 REINDEX TABLE my_table;
 
--- Concurrently (PostgreSQL 12+, does not lock)
+-- Concurrently (PostgreSQL 12+, avoids blocking normal reads and writes)
 REINDEX INDEX CONCURRENTLY idx_name;
 ```
 
@@ -246,16 +244,16 @@ ls /var/lib/postgresql/14/main/pg_wal/ | wc -l
 ```ini
 # postgresql.conf
 
-# Limit WAL directory size
-max_wal_size = 2GB      # Maximum WAL size before checkpoint
+# Set the soft WAL limit for automatic checkpoints
+max_wal_size = 2GB      # Soft maximum WAL size before checkpoint
 min_wal_size = 1GB      # Minimum to keep
 
-# More frequent checkpoints = fewer WAL files
+# More frequent checkpoints can allow WAL recycling sooner, but increase I/O
 checkpoint_timeout = 10min
 
 # For servers without replication, reduce WAL retention
-wal_keep_size = 1GB     # PostgreSQL 13+
-# wal_keep_segments = 64  # PostgreSQL 12 and earlier
+wal_keep_size = 0       # PostgreSQL 13+
+# wal_keep_segments = 0  # PostgreSQL 12 and earlier
 ```
 
 ### Configure Autovacuum
@@ -282,7 +280,7 @@ autovacuum_naptime = 30s
 # Rotate logs to prevent buildup
 log_rotation_age = 1d           # New log file daily
 log_rotation_size = 100MB       # Or when reaching 100MB
-log_truncate_on_rotation = on   # Overwrite old logs
+log_truncate_on_rotation = on   # Overwrite same-named logs on time-based rotation
 
 # Or use system logrotate
 ```
@@ -395,17 +393,17 @@ sudo systemctl stop postgresql
 # Remove old logs
 sudo rm /var/log/postgresql/*.log.gz
 
-# Remove backup files
-sudo rm /var/lib/postgresql/14/main/backup_label*
+# Do not remove backup_label* unless you are recovering from a failed exclusive backup
+# and you understand the backup/recovery implications.
 
-# 3. If still not enough space, temporarily move pg_wal
-# WARNING: Risk of data loss if not done carefully!
-# Only move WAL files that are clearly old
+# 3. If still not enough space, add/mount more storage or move non-PostgreSQL files.
+# Do not delete or move files in pg_wal.
 
 # 4. Start PostgreSQL
 sudo systemctl start postgresql
 
-# 5. Immediately run VACUUM
+# 5. Immediately reclaim space where possible
+# VACUUM FULL needs extra free disk space while it rewrites tables.
 psql -U postgres -c "VACUUM FULL;"
 
 # 6. Add more disk space or implement proper cleanup
