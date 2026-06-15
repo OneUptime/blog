@@ -79,6 +79,7 @@ except KeyError:
 print(f"Age: {age}")
 
 # Catch specific key
+data = {}
 try:
     value = data["missing_key"]
 except KeyError as e:
@@ -170,8 +171,6 @@ except KeyError:
 ### Processing API Responses
 
 ```python
-import requests
-
 def get_user_info(api_response):
     """Safely extract user info from API response."""
     # API response might be missing fields
@@ -284,7 +283,7 @@ class UserDict(TypedDict, total=False):
     age: Optional[int]
 
 def process_user(user: UserDict) -> str:
-    # Type checker knows these keys exist
+    # Type checker knows the expected key names and value types
     name = user.get("name", "Anonymous")
     age = user.get("age")
     return f"{name}, age {age if age else 'unknown'}"
