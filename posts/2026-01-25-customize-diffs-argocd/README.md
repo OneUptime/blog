@@ -12,13 +12,12 @@ ArgoCD shows your application as OutOfSync even though nothing has changed. The 
 
 ## Understanding ArgoCD Diffs
 
-ArgoCD compares three states to determine sync status:
+ArgoCD compares the desired state from Git with the live state in the cluster to determine sync status:
 
 ```mermaid
 flowchart TB
     Git[Git State] --> Compare[Diff Engine]
     Live[Live State] --> Compare
-    Last[Last Applied] --> Compare
     Compare --> Status{Sync Status}
     Status --> |"Match"| Synced[Synced]
     Status --> |"Differ"| OutOfSync[OutOfSync]
@@ -161,19 +160,17 @@ ignoreDifferences:
       - /webhooks/0/clientConfig/caBundle
 ```
 
-### Helm Release Metadata
+### Helm Generated Values
 
-Helm adds metadata that changes on each sync:
+Helm charts can use template functions that generate different values each time manifests are rendered:
 
 ```yaml
 ignoreDifferences:
-  - group: "*"
-    kind: "*"
+  - group: ""
+    kind: Secret
+    name: myapp-generated-secret
     jsonPointers:
-      - /metadata/annotations/meta.helm.sh~1release-name
-      - /metadata/annotations/meta.helm.sh~1release-namespace
-    jqPathExpressions:
-      - '.metadata.labels | select(. != null) | with_entries(select(.key | startswith("app.kubernetes.io/")))'
+      - /data/password
 ```
 
 ### Operator-Managed Status
@@ -190,27 +187,27 @@ ignoreDifferences:
 
 ### Generated Names
 
-Resources with generateName have unpredictable names:
+Resources created with generateName have unpredictable names and cannot be selected with a name wildcard in ignoreDifferences:
 
 ```yaml
 ignoreDifferences:
   - group: ""
     kind: Secret
-    name: myapp-token-*
+    name: myapp-token
     jsonPointers:
       - /data
 ```
 
-### Kustomize Annotations
+Use a deterministic resource name when ArgoCD manages the resource. The `name` field in `ignoreDifferences` matches a specific resource name, not a wildcard pattern.
 
-Kustomize adds hashes for change detection:
+### Kustomize Generated Resources
+
+Kustomize can add hash suffixes to generated ConfigMaps and Secrets. Mark generated resources as extraneous so they do not affect sync status:
 
 ```yaml
-ignoreDifferences:
-  - group: "*"
-    kind: "*"
-    jqPathExpressions:
-      - '.metadata.annotations | to_entries | map(select(.key | contains("kustomize")))'
+generatorOptions:
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
 ```
 
 ## System-Level Configuration
@@ -254,11 +251,7 @@ data:
   # Ignore aggregated ClusterRoles
   resource.compareoptions: |
     ignoreAggregatedRoles: true
-
-  # Ignore resource status for all resources
-  resource.customizations.ignoreResourceUpdates.all: |
-    jsonPointers:
-      - /status
+    ignoreResourceStatusField: all
 ```
 
 ### Respect Resource Policies
@@ -273,11 +266,11 @@ metadata:
 spec:
   syncPolicy:
     syncOptions:
-      # Respect ignore annotations on resources
+      # Respect spec.ignoreDifferences during sync
       - RespectIgnoreDifferences=true
 ```
 
-Add annotations to specific resources:
+Add annotations to specific generated resources that should not affect sync status:
 
 ```yaml
 apiVersion: v1
@@ -285,7 +278,7 @@ kind: ConfigMap
 metadata:
   name: myconfig
   annotations:
-    # Ignore this specific field during diff
+    # Ignore this extraneous resource in sync status
     argocd.argoproj.io/compare-options: IgnoreExtraneous
 ```
 
@@ -408,7 +401,7 @@ kubectl get deployment myapp -o jsonpath='{.spec.replicas}'
 argocd app diff myapp
 
 # Use the admin settings tool to test ignore-differences rules
-argocd admin settings resource-overrides ignore-differences ./resource.yaml --argocd-config-path ./argocd-cm.yaml
+argocd admin settings resource-overrides ignore-differences ./resource.yaml --argocd-cm-path ./argocd-cm.yaml
 ```
 
 ### JQ Expression Not Working
