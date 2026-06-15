@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix PersistentVolumeClaim binding failure
 
 ---
 
-When you create a PersistentVolumeClaim (PVC) in Kubernetes and it stays in the `Pending` state, your pods cannot start. The error "PersistentVolumeClaim is not bound" blocks deployments until you fix the underlying storage issue. This guide walks through the causes and solutions.
+When you create a PersistentVolumeClaim (PVC) in Kubernetes and it stays in the `Pending` state, pods that use the claim cannot start unless the claim is waiting for its first consumer. The error "PersistentVolumeClaim is not bound" blocks deployments until you fix the underlying storage issue. This guide walks through the causes and solutions.
 
 ## Understanding PVC Binding
 
@@ -16,9 +16,9 @@ A PVC requests storage, and Kubernetes tries to match it with an available Persi
 
 ```mermaid
 flowchart TD
-    A[PVC Created] --> B{StorageClass specified?}
+    A[PVC Created] --> B{StorageClass specified or defaulted?}
     B -->|Yes| C{Provisioner available?}
-    B -->|No| D{Matching PV exists?}
+    B -->|No| D{Matching classless PV exists?}
     C -->|Yes| E[Dynamic Provisioning]
     C -->|No| F[Pending - No Provisioner]
     D -->|Yes| G[Bound to existing PV]
@@ -61,7 +61,7 @@ kubectl get storageclass
 # Example output
 # NAME                 PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE      AGE
 # standard (default)   rancher.io/local-path   Delete          WaitForFirstConsumer   30d
-# fast-ssd             kubernetes.io/gce-pd    Delete          Immediate              30d
+# fast-ssd             pd.csi.storage.gke.io   Delete          Immediate              30d
 ```
 
 If your PVC references a non-existent StorageClass, create one or update the PVC:
@@ -164,7 +164,7 @@ Solutions:
 
 ### Fix 1: Create a Default StorageClass
 
-If no default StorageClass exists, PVCs without an explicit class stay Pending:
+If no default StorageClass exists and no matching classless PV is available, PVCs without an explicit class stay Pending:
 
 ```yaml
 # Make an existing StorageClass the default
@@ -174,9 +174,9 @@ metadata:
   name: standard
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"  # Add this annotation
-provisioner: kubernetes.io/gce-pd
+provisioner: pd.csi.storage.gke.io
 parameters:
-  type: pd-standard
+  type: pd-balanced
 ```
 
 Or patch an existing class:
@@ -202,7 +202,7 @@ spec:
   accessModes:
     - ReadWriteOnce  # Must match PVC
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: standard  # Must match PVC or be empty
+  storageClassName: standard  # Must match PVC; use "" for a classless PVC
   hostPath:
     path: /mnt/data  # Local path on node (not for production)
 ```
