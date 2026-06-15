@@ -118,13 +118,14 @@ def run_server():
 # Example with requests library (Python HTTP client)
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.connection import HTTPConnection
 
 class KeepAliveAdapter(HTTPAdapter):
     """HTTP adapter with custom keep-alive settings"""
 
     def init_poolmanager(self, *args, **kwargs):
         # Configure connection pool keep-alive
-        kwargs['socket_options'] = [
+        kwargs['socket_options'] = HTTPConnection.default_socket_options + [
             (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1),
             (socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60),
             (socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10),
@@ -142,19 +143,21 @@ session.mount('https://', KeepAliveAdapter())
 
 ```go
 // tcp_keepalive.go - TCP keep-alive configuration in Go
-package main
+package keepalive
 
 import (
+    "context"
     "net"
+    "net/http"
     "time"
 )
 
 func createKeepAliveListener(addr string) (net.Listener, error) {
     config := &net.ListenConfig{
-        KeepAlive: 60 * time.Second, // Keep-alive interval
+        KeepAlive: 60 * time.Second, // Keep-alive period for accepted connections
     }
 
-    return config.Listen(nil, "tcp", addr)
+    return config.Listen(context.Background(), "tcp", addr)
 }
 
 func setKeepAlive(conn *net.TCPConn) error {
@@ -413,6 +416,8 @@ def return_connection(conn):
 
 ```python
 # redis_keepalive.py - Redis connection with keep-alive
+import socket
+
 import redis
 
 # Connection with TCP keep-alive
@@ -424,9 +429,9 @@ client = redis.Redis(
     socket_keepalive=True,
     socket_keepalive_options={
         # Linux-specific options
-        1: 60,   # TCP_KEEPIDLE
-        2: 10,   # TCP_KEEPINTVL
-        3: 6,    # TCP_KEEPCNT
+        socket.TCP_KEEPIDLE: 60,
+        socket.TCP_KEEPINTVL: 10,
+        socket.TCP_KEEPCNT: 6,
     },
     # Connection pool keep-alive
     health_check_interval=30,
@@ -439,7 +444,11 @@ pool = redis.ConnectionPool(
     db=0,
     max_connections=50,
     socket_keepalive=True,
-    socket_keepalive_options={1: 60, 2: 10, 3: 6},
+    socket_keepalive_options={
+        socket.TCP_KEEPIDLE: 60,
+        socket.TCP_KEEPINTVL: 10,
+        socket.TCP_KEEPCNT: 6,
+    },
 )
 
 client_with_pool = redis.Redis(connection_pool=pool)
@@ -546,9 +555,11 @@ Check connection reuse in NGINX:
 ```bash
 # Monitor NGINX upstream connections
 # Check for connection reuse vs new connections
-tail -f /var/log/nginx/access.log | \
-    awk '{print $NF}' | \
-    sort | uniq -c | sort -rn
+# Add a log format that includes connection reuse counters:
+# log_format keepalive '$remote_addr "$request" conn=$connection reqs=$connection_requests';
+# access_log /var/log/nginx/keepalive.log keepalive;
+tail -f /var/log/nginx/keepalive.log | \
+    awk -F'reqs=' '{split($2, a, " "); print "requests on this connection:", a[1]}'
 
 # Check upstream keepalive status
 curl -s http://localhost/nginx_status
