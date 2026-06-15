@@ -166,7 +166,7 @@ Organize your tests with page objects:
 
 ```typescript
 // pages/LoginPage.ts
-import { Page, Locator } from '@playwright/test';
+import { Page, Locator, expect } from '@playwright/test';
 
 export class LoginPage {
   readonly page: Page;
@@ -392,9 +392,6 @@ test.describe('Visual Regression', () => {
   test('home page matches snapshot', async ({ page }) => {
     await page.goto('/');
 
-    // Wait for animations to complete
-    await page.waitForLoadState('networkidle');
-
     // Compare full page screenshot
     await expect(page).toHaveScreenshot('home-page.png', {
       fullPage: true,
@@ -431,12 +428,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -449,7 +446,7 @@ jobs:
         run: npx playwright test
 
       - name: Upload test report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report
