@@ -55,12 +55,16 @@ The `useClones` option is important:
 
 ```javascript
 // With useClones: true (default, safer)
-const user = cache.get('user');
-user.name = 'Changed';  // Does NOT affect cached value
+const clonedCache = new NodeCache({ useClones: true });
+clonedCache.set('user', { name: 'Original' });
+const clonedUser = clonedCache.get('user');
+clonedUser.name = 'Changed';  // Does NOT affect cached value
 
 // With useClones: false (faster, but be careful)
-const user = cache.get('user');
-user.name = 'Changed';  // DOES affect cached value
+const referenceCache = new NodeCache({ useClones: false });
+referenceCache.set('user', { name: 'Original' });
+const referencedUser = referenceCache.get('user');
+referencedUser.name = 'Changed';  // DOES affect cached value
 ```
 
 ## Common Usage Patterns
@@ -132,9 +136,9 @@ cache.del(['key1', 'key2', 'key3']);
 ### TTL Management
 
 ```javascript
-// Get remaining TTL for a key
+// Get the expiration time for a key
 const ttl = cache.getTtl('key');
-// Returns timestamp when key expires, or undefined if key does not exist
+// Returns a timestamp when key expires, 0 if it has no TTL, or undefined if it does not exist
 
 // Check if TTL is valid
 if (ttl && ttl > Date.now()) {
@@ -146,7 +150,10 @@ if (ttl && ttl > Date.now()) {
 cache.ttl('key', 3600);  // Reset to 1 hour
 
 // Remove TTL (key never expires)
-cache.ttl('key', 0);
+const value = cache.get('key');
+if (value !== undefined) {
+    cache.set('key', value, 0);
+}
 ```
 
 ## Event Handling
@@ -190,7 +197,7 @@ function cacheMiddleware(duration) {
         const key = `__express__${req.originalUrl}`;
         const cachedResponse = cache.get(key);
 
-        if (cachedResponse) {
+        if (cachedResponse !== undefined) {
             res.set('X-Cache', 'HIT');
             return res.json(cachedResponse);
         }
@@ -383,4 +390,4 @@ But consider Redis when you need:
 
 ## Summary
 
-node-cache provides simple, fast in-memory caching for Node.js applications. It handles TTL and automatic cleanup, works well for single-server deployments, and requires no external dependencies. Use the get-or-set pattern for clean code, leverage events for cache monitoring, and wrap it in a service class for consistent usage throughout your application.
+node-cache provides simple, fast in-memory caching for Node.js applications. It handles TTL and automatic cleanup, works well for single-server deployments, and requires no external cache service. Use the get-or-set pattern for clean code, leverage events for cache monitoring, and wrap it in a service class for consistent usage throughout your application.
