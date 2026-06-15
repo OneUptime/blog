@@ -36,6 +36,7 @@ curl -X PUT "localhost:9200/orders" -H 'Content-Type: application/json' -d'
       "product_name": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
       "price": { "type": "float" },
       "quantity": { "type": "integer" },
+      "line_total": { "type": "float" },
       "order_date": { "type": "date" },
       "status": { "type": "keyword" },
       "shipping_country": { "type": "keyword" }
@@ -44,23 +45,23 @@ curl -X PUT "localhost:9200/orders" -H 'Content-Type: application/json' -d'
 }'
 
 # Index sample orders
-curl -X POST "localhost:9200/orders/_bulk" -H 'Content-Type: application/json' -d'
+curl -X POST "localhost:9200/orders/_bulk?refresh=true" -H 'Content-Type: application/x-ndjson' -d'
 {"index": {}}
-{"order_id": "ORD001", "customer_id": "C001", "product_category": "Electronics", "product_name": "iPhone 15", "price": 999.0, "quantity": 1, "order_date": "2024-01-15", "status": "delivered", "shipping_country": "USA"}
+{"order_id": "ORD001", "customer_id": "C001", "product_category": "Electronics", "product_name": "iPhone 15", "price": 999.0, "quantity": 1, "line_total": 999.0, "order_date": "2024-01-15", "status": "delivered", "shipping_country": "USA"}
 {"index": {}}
-{"order_id": "ORD002", "customer_id": "C002", "product_category": "Electronics", "product_name": "MacBook Pro", "price": 2499.0, "quantity": 1, "order_date": "2024-01-16", "status": "delivered", "shipping_country": "UK"}
+{"order_id": "ORD002", "customer_id": "C002", "product_category": "Electronics", "product_name": "MacBook Pro", "price": 2499.0, "quantity": 1, "line_total": 2499.0, "order_date": "2024-01-16", "status": "delivered", "shipping_country": "UK"}
 {"index": {}}
-{"order_id": "ORD003", "customer_id": "C001", "product_category": "Clothing", "product_name": "Winter Jacket", "price": 149.0, "quantity": 2, "order_date": "2024-01-17", "status": "shipped", "shipping_country": "USA"}
+{"order_id": "ORD003", "customer_id": "C001", "product_category": "Clothing", "product_name": "Winter Jacket", "price": 149.0, "quantity": 2, "line_total": 298.0, "order_date": "2024-01-17", "status": "shipped", "shipping_country": "USA"}
 {"index": {}}
-{"order_id": "ORD004", "customer_id": "C003", "product_category": "Electronics", "product_name": "AirPods Pro", "price": 249.0, "quantity": 1, "order_date": "2024-01-18", "status": "processing", "shipping_country": "Canada"}
+{"order_id": "ORD004", "customer_id": "C003", "product_category": "Electronics", "product_name": "AirPods Pro", "price": 249.0, "quantity": 1, "line_total": 249.0, "order_date": "2024-01-18", "status": "processing", "shipping_country": "Canada"}
 {"index": {}}
-{"order_id": "ORD005", "customer_id": "C004", "product_category": "Books", "product_name": "Python Cookbook", "price": 49.0, "quantity": 3, "order_date": "2024-01-19", "status": "delivered", "shipping_country": "USA"}
+{"order_id": "ORD005", "customer_id": "C004", "product_category": "Books", "product_name": "Python Cookbook", "price": 49.0, "quantity": 3, "line_total": 147.0, "order_date": "2024-01-19", "status": "delivered", "shipping_country": "USA"}
 {"index": {}}
-{"order_id": "ORD006", "customer_id": "C002", "product_category": "Electronics", "product_name": "Samsung TV", "price": 1299.0, "quantity": 1, "order_date": "2024-01-20", "status": "shipped", "shipping_country": "UK"}
+{"order_id": "ORD006", "customer_id": "C002", "product_category": "Electronics", "product_name": "Samsung TV", "price": 1299.0, "quantity": 1, "line_total": 1299.0, "order_date": "2024-01-20", "status": "shipped", "shipping_country": "UK"}
 {"index": {}}
-{"order_id": "ORD007", "customer_id": "C005", "product_category": "Clothing", "product_name": "Running Shoes", "price": 129.0, "quantity": 1, "order_date": "2024-01-21", "status": "delivered", "shipping_country": "Germany"}
+{"order_id": "ORD007", "customer_id": "C005", "product_category": "Clothing", "product_name": "Running Shoes", "price": 129.0, "quantity": 1, "line_total": 129.0, "order_date": "2024-01-21", "status": "delivered", "shipping_country": "Germany"}
 {"index": {}}
-{"order_id": "ORD008", "customer_id": "C001", "product_category": "Books", "product_name": "Elasticsearch Guide", "price": 59.0, "quantity": 1, "order_date": "2024-01-22", "status": "delivered", "shipping_country": "USA"}
+{"order_id": "ORD008", "customer_id": "C001", "product_category": "Books", "product_name": "Elasticsearch Guide", "price": 59.0, "quantity": 1, "line_total": 59.0, "order_date": "2024-01-22", "status": "delivered", "shipping_country": "USA"}
 '
 ```
 
@@ -86,7 +87,7 @@ graph TB
 
     subgraph "Pipeline Aggregations"
         P1[derivative]
-        P2[moving_avg]
+        P2[moving_fn]
         P3[cumulative_sum]
         P4[bucket_sort]
     end
@@ -108,7 +109,7 @@ curl -X GET "localhost:9200/orders/_search?pretty" -H 'Content-Type: application
       "avg": { "field": "price" }
     },
     "total_revenue": {
-      "sum": { "field": "price" }
+      "sum": { "field": "line_total" }
     },
     "min_price": {
       "min": { "field": "price" }
@@ -210,7 +211,7 @@ curl -X GET "localhost:9200/orders/_search?pretty" -H 'Content-Type: application
   }
 }'
 
-# Show "other" bucket for excluded terms
+# Show count/error metadata for terms that did not make the top buckets
 curl -X GET "localhost:9200/orders/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "size": 0,
@@ -362,7 +363,7 @@ curl -X GET "localhost:9200/orders/_search?pretty" -H 'Content-Type: application
       },
       "aggs": {
         "total_revenue": {
-          "sum": { "field": "price" }
+          "sum": { "field": "line_total" }
         },
         "avg_price": {
           "avg": { "field": "price" }
@@ -392,7 +393,7 @@ curl -X GET "localhost:9200/orders/_search?pretty" -H 'Content-Type: application
           },
           "aggs": {
             "revenue": {
-              "sum": { "field": "price" }
+              "sum": { "field": "line_total" }
             }
           }
         }
@@ -447,7 +448,7 @@ curl -X GET "localhost:9200/orders/_search?pretty" -H 'Content-Type: application
       },
       "aggs": {
         "daily_revenue": {
-          "sum": { "field": "price" }
+          "sum": { "field": "line_total" }
         },
         "cumulative_revenue": {
           "cumulative_sum": {
@@ -497,7 +498,7 @@ curl -X GET "localhost:9200/orders/_search?pretty" -H 'Content-Type: application
       },
       "aggs": {
         "total_revenue": {
-          "sum": { "field": "price" }
+          "sum": { "field": "line_total" }
         },
         "revenue_bucket_sort": {
           "bucket_sort": {
@@ -524,7 +525,7 @@ curl -X GET "localhost:9200/orders/_search?pretty" -H 'Content-Type: application
       },
       "aggs": {
         "daily_revenue": {
-          "sum": { "field": "price" }
+          "sum": { "field": "line_total" }
         },
         "revenue_change": {
           "derivative": {
@@ -560,7 +561,7 @@ curl -X GET "localhost:9200/orders/_search?pretty" -H 'Content-Type: application
       },
       "aggs": {
         "revenue": {
-          "sum": { "field": "price" }
+          "sum": { "field": "line_total" }
         }
       }
     }
@@ -623,7 +624,6 @@ Here's a complete analytics service using aggregations:
 from elasticsearch import Elasticsearch
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 
 @dataclass
 class CategoryMetrics:
@@ -669,15 +669,15 @@ class AnalyticsService:
                         "size": 50
                     },
                     "aggs": {
-                        "total_revenue": {"sum": {"field": "price"}},
-                        "avg_order_value": {"avg": {"field": "price"}},
+                        "total_revenue": {"sum": {"field": "line_total"}},
+                        "avg_order_value": {"avg": {"field": "line_total"}},
                         "order_count": {"value_count": {"field": "order_id"}}
                     }
                 }
             }
         }
 
-        response = self.es.search(index=self.index, body=body)
+        response = self.es.search(index=self.index, **body)
 
         results = []
         for bucket in response["aggregations"]["categories"]["buckets"]:
@@ -698,7 +698,7 @@ class AnalyticsService:
         """Get revenue over time with optional cumulative sum"""
 
         aggs = {
-            "revenue": {"sum": {"field": "price"}}
+            "revenue": {"sum": {"field": "line_total"}}
         }
 
         if include_cumulative:
@@ -720,7 +720,7 @@ class AnalyticsService:
             }
         }
 
-        response = self.es.search(index=self.index, body=body)
+        response = self.es.search(index=self.index, **body)
 
         results = []
         for bucket in response["aggregations"]["over_time"]["buckets"]:
@@ -746,9 +746,9 @@ class AnalyticsService:
                         "size": 100
                     },
                     "aggs": {
-                        "total_spent": {"sum": {"field": "price"}},
+                        "total_spent": {"sum": {"field": "line_total"}},
                         "order_count": {"value_count": {"field": "order_id"}},
-                        "avg_order": {"avg": {"field": "price"}},
+                        "avg_order": {"avg": {"field": "line_total"}},
                         "top_sort": {
                             "bucket_sort": {
                                 "sort": [{"total_spent": {"order": "desc"}}],
@@ -760,7 +760,7 @@ class AnalyticsService:
             }
         }
 
-        response = self.es.search(index=self.index, body=body)
+        response = self.es.search(index=self.index, **body)
 
         results = []
         for bucket in response["aggregations"]["customers"]["buckets"]:
@@ -785,15 +785,15 @@ class AnalyticsService:
                         "size": 50
                     },
                     "aggs": {
-                        "revenue": {"sum": {"field": "price"}},
+                        "revenue": {"sum": {"field": "line_total"}},
                         "orders": {"value_count": {"field": "order_id"}},
-                        "avg_order": {"avg": {"field": "price"}}
+                        "avg_order": {"avg": {"field": "line_total"}}
                     }
                 }
             }
         }
 
-        response = self.es.search(index=self.index, body=body)
+        response = self.es.search(index=self.index, **body)
 
         results = {}
         for bucket in response["aggregations"]["countries"]["buckets"]:
@@ -824,7 +824,7 @@ class AnalyticsService:
             }
         }
 
-        response = self.es.search(index=self.index, body=body)
+        response = self.es.search(index=self.index, **body)
 
         return {
             status: data["doc_count"]
@@ -852,7 +852,7 @@ class AnalyticsService:
             }
         }
 
-        response = self.es.search(index=self.index, body=body)
+        response = self.es.search(index=self.index, **body)
 
         return {
             bucket["key"]: bucket["doc_count"]
@@ -863,7 +863,7 @@ class AnalyticsService:
 # Usage example
 if __name__ == "__main__":
     analytics = AnalyticsService(
-        hosts=["localhost:9200"],
+        hosts=["http://localhost:9200"],
         index_name="orders"
     )
 
@@ -905,7 +905,7 @@ if __name__ == "__main__":
 
 **Memory:**
 - Avoid deep nesting of aggregations
-- Use `bucket_sort` instead of large `size` values
+- Use `bucket_sort` to sort and truncate buckets after the parent aggregation has selected them
 - Consider using `composite` aggregation for pagination
 
 ---
