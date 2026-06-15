@@ -87,9 +87,11 @@ GRANT USAGE ON SCHEMA public TO backup_user;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO backup_user;
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO backup_user;
 
--- Ensure future tables are also accessible
+-- Ensure future tables and sequences created by the current role are also accessible
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT SELECT ON TABLES TO backup_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT ON SEQUENCES TO backup_user;
 ```
 
 ## Passwordless Authentication
@@ -103,6 +105,7 @@ Use a `.pgpass` file for secure, passwordless backup connections.
 cat > ~/.pgpass << 'EOF'
 localhost:5432:myapp:backup_user:secure_password
 localhost:5432:*:backup_user:secure_password
+localhost:5432:*:postgres:postgres_password
 EOF
 
 # Secure the file (required by PostgreSQL)
@@ -124,13 +127,14 @@ BACKUP_DIR="/var/backups/postgresql"
 PGHOST="${PGHOST:-localhost}"
 PGPORT="${PGPORT:-5432}"
 PGUSER="${PGUSER:-backup_user}"
+PGGLOBALUSER="${PGGLOBALUSER:-postgres}"
 RETENTION_DAYS=30
 LOG_FILE="/var/log/postgresql/backup.log"
 ALERT_EMAIL="dba@example.com"
 
 # Get list of databases (excluding templates)
-DATABASES=$(psql -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -d postgres -t -c \
-    "SELECT datname FROM pg_database WHERE datistemplate = false AND datname != 'postgres';")
+mapfile -t DATABASES < <(psql -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -d postgres -At -c \
+    "SELECT datname FROM pg_database WHERE datistemplate = false AND datname != 'postgres' ORDER BY datname;")
 
 # Logging function
 log() {
@@ -141,7 +145,7 @@ log() {
 send_alert() {
     local subject="$1"
     local message="$2"
-    echo "${message}" | mail -s "[PostgreSQL Backup] ${subject}" "${ALERT_EMAIL}" 2>/dev/null || true
+    printf '%b\n' "${message}" | mail -s "[PostgreSQL Backup] ${subject}" "${ALERT_EMAIL}" 2>/dev/null || true
 }
 
 # Create backup directory
@@ -154,8 +158,7 @@ log "Starting backup to ${DAILY_DIR}"
 BACKUP_SUCCESS=true
 BACKUP_SUMMARY=""
 
-for DB in ${DATABASES}; do
-    DB=$(echo "${DB}" | xargs)  # Trim whitespace
+for DB in "${DATABASES[@]}"; do
     [ -z "${DB}" ] && continue
 
     BACKUP_FILE="${DAILY_DIR}/${DB}.dump"
@@ -197,12 +200,17 @@ done
 # Also backup global objects (roles, tablespaces)
 log "Backing up global objects"
 GLOBALS_FILE="${DAILY_DIR}/globals.sql"
-pg_dumpall \
+if pg_dumpall \
     -h "${PGHOST}" \
     -p "${PGPORT}" \
-    -U "${PGUSER}" \
+    -U "${PGGLOBALUSER}" \
     --globals-only \
-    -f "${GLOBALS_FILE}" 2>> "${LOG_FILE}"
+    -f "${GLOBALS_FILE}" 2>> "${LOG_FILE}"; then
+    log "SUCCESS: Global objects backed up"
+else
+    log "FAILED: Global objects backup failed"
+    BACKUP_SUCCESS=false
+fi
 
 # Calculate total backup size
 TOTAL_SIZE=$(du -sh "${DAILY_DIR}" | cut -f1)
@@ -210,7 +218,7 @@ log "Total backup size: ${TOTAL_SIZE}"
 
 # Clean up old backups
 log "Cleaning up backups older than ${RETENTION_DAYS} days"
-find "${BACKUP_DIR}" -maxdepth 1 -type d -mtime +${RETENTION_DAYS} -exec rm -rf {} \;
+find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d -mtime +${RETENTION_DAYS} -exec rm -rf {} \;
 
 # Send notification
 if [ "${BACKUP_SUCCESS}" = true ]; then
@@ -257,12 +265,17 @@ echo "Parallel backup completed with ${JOBS} workers"
 
 BACKUP_DIR="/var/backups/postgresql"
 S3_BUCKET="s3://my-company-backups/postgresql"
-TIMESTAMP=$(date +%Y%m%d)
+LATEST_BACKUP=$(find "${BACKUP_DIR}" -maxdepth 1 -type d -name "$(date +%Y%m%d)_*" | sort | tail -n 1)
 
-# Sync today's backup to S3
+if [ -z "${LATEST_BACKUP}" ]; then
+    echo "No backup found for today" >&2
+    exit 1
+fi
+
+# Sync the latest backup from today to S3
 aws s3 sync \
-    "${BACKUP_DIR}/${TIMESTAMP}" \
-    "${S3_BUCKET}/${TIMESTAMP}/" \
+    "${LATEST_BACKUP}" \
+    "${S3_BUCKET}/$(basename "${LATEST_BACKUP}")/" \
     --storage-class STANDARD_IA
 
 # Apply S3 lifecycle policy for retention
@@ -277,12 +290,17 @@ aws s3 sync \
 
 BACKUP_DIR="/var/backups/postgresql"
 GCS_BUCKET="gs://my-company-backups/postgresql"
-TIMESTAMP=$(date +%Y%m%d)
+LATEST_BACKUP=$(find "${BACKUP_DIR}" -maxdepth 1 -type d -name "$(date +%Y%m%d)_*" | sort | tail -n 1)
+
+if [ -z "${LATEST_BACKUP}" ]; then
+    echo "No backup found for today" >&2
+    exit 1
+fi
 
 # Upload using gsutil
 gsutil -m cp -r \
-    "${BACKUP_DIR}/${TIMESTAMP}" \
-    "${GCS_BUCKET}/${TIMESTAMP}/"
+    "${LATEST_BACKUP}" \
+    "${GCS_BUCKET}/$(basename "${LATEST_BACKUP}")/"
 ```
 
 ## Scheduling with Cron
