@@ -187,9 +187,9 @@ async function checkReplicaSetHealth(client) {
     } else if (member.stateStr === 'SECONDARY') {
       healthySecondaries++;
       const primary = status.members.find(m => m.stateStr === 'PRIMARY');
-      if (primary && member.optime && primary.optime) {
+      if (primary && member.optimeDate && primary.optimeDate) {
         memberHealth.lagSeconds =
-          (primary.optime.ts.getTime() - member.optime.ts.getTime()) / 1000;
+          (primary.optimeDate.getTime() - member.optimeDate.getTime()) / 1000;
       }
     }
 
@@ -390,7 +390,7 @@ mongodump --host mongo-backup.example.com:27017 \
 
 # Restore to specific point in time
 mongorestore --oplogReplay \
-  --oplogLimit="Timestamp(1234567890, 1)" \
+  --oplogLimit="1234567890:1" \
   /backup/pitr_20240125
 ```
 
