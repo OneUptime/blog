@@ -69,6 +69,7 @@ HAProxy provides built-in draining capabilities:
 global
     maxconn 50000
     log /dev/log local0
+    stats socket /var/run/haproxy.sock mode 660 level admin
 
 defaults
     mode http
@@ -77,8 +78,7 @@ defaults
     timeout server 30s
     timeout http-keep-alive 10s
 
-    # Connection draining timeout
-    # Requests have this long to complete after server is marked DOWN
+    # Timeout for half-closed server-side connections
     timeout server-fin 30s
 
 frontend http_front
@@ -140,7 +140,7 @@ echo "Server $SERVER is now in maintenance mode"
 
 ## NGINX Connection Draining
 
-NGINX Plus has built-in draining; open-source NGINX requires a different approach:
+NGINX Plus, and NGINX Open Source 1.29.6 or later, have built-in draining. Older open-source NGINX requires a different approach:
 
 ```nginx
 # /etc/nginx/nginx.conf
@@ -175,22 +175,23 @@ server {
 }
 ```
 
-For draining without NGINX Plus, use zero weight approach:
+For older open-source NGINX versions, mark the server down in the upstream configuration and reload NGINX gracefully:
 
 ```bash
 #!/bin/bash
-# nginx-drain.sh - Drain NGINX backend server by setting weight to zero
+# nginx-drain.sh - Drain NGINX backend server by marking it down
 
 SERVER_IP="10.0.1.10"
+UPSTREAM_CONF="/etc/nginx/conf.d/upstream.conf"
 DRAIN_WAIT=60
 
-# Create temporary config that sets weight to 0
-# This stops new connections but keeps existing ones
+# Update the existing upstream config to mark the server down.
+# New workers stop routing to it; old workers finish existing requests.
 
-cat > /etc/nginx/conf.d/upstream-override.conf << EOF
+cat > "$UPSTREAM_CONF" << EOF
 upstream backend {
     least_conn;
-    server 10.0.1.10:8080 weight=0;  # Draining - no new connections
+    server 10.0.1.10:8080 down;  # Draining - no new requests
     server 10.0.1.11:8080 weight=1;
     server 10.0.1.12:8080 weight=1;
     keepalive 32;
@@ -200,7 +201,7 @@ EOF
 # Reload NGINX to apply
 nginx -t && nginx -s reload
 
-echo "Server $SERVER_IP set to weight=0, waiting $DRAIN_WAIT seconds for drain"
+echo "Server $SERVER_IP marked down, waiting $DRAIN_WAIT seconds for drain"
 sleep $DRAIN_WAIT
 
 echo "Drain period complete"
@@ -224,11 +225,6 @@ def configure_draining(target_group_arn: str, draining_seconds: int):
             {
                 'Key': 'deregistration_delay.timeout_seconds',
                 'Value': str(draining_seconds)
-            },
-            {
-                # Optional: Enable connection termination after delay
-                'Key': 'deregistration_delay.connection_termination.enabled',
-                'Value': 'true'
             }
         ]
     )
@@ -329,9 +325,7 @@ spec:
                   - -c
                   - |
                     echo "Starting graceful shutdown"
-                    # Signal app to stop accepting new connections
-                    kill -SIGTERM 1
-                    # Wait for in-flight requests (adjust based on your app)
+                    # Wait for endpoint and load balancer updates to propagate
                     sleep 30
                     echo "PreStop complete"
 ```
@@ -344,7 +338,7 @@ import signal
 import sys
 import time
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 class AppState:
     def __init__(self):
@@ -412,7 +406,7 @@ if __name__ == '__main__':
     signal.signal(signal.SIGTERM, graceful_shutdown)
     signal.signal(signal.SIGINT, graceful_shutdown)
 
-    server = HTTPServer(('0.0.0.0', 8080), RequestHandler)
+    server = ThreadingHTTPServer(('0.0.0.0', 8080), RequestHandler)
     print("Server starting on port 8080")
     server.serve_forever()
 ```
