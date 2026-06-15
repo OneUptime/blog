@@ -100,10 +100,14 @@ async function withPipeline() {
   return Date.now() - start;
 }
 
-// Compare performance
-const withoutTime = await withoutPipeline();
-const withTime = await withPipeline();
-console.log(`Without: ${withoutTime}ms, With: ${withTime}ms`);
+async function main() {
+  // Compare performance
+  const withoutTime = await withoutPipeline();
+  const withTime = await withPipeline();
+  console.log(`Without: ${withoutTime}ms, With: ${withTime}ms`);
+}
+
+main().catch(console.error);
 ```
 
 ### Java (Jedis)
@@ -168,7 +172,8 @@ pipe.incrby('balance:bob', 30)
 results = pipe.execute()
 
 # All commands execute atomically
-# If any fails, all are rolled back
+# If a command has a syntax or queuing error, the transaction is discarded.
+# Runtime errors are returned for that command, but other queued commands still run.
 
 # Non-transactional pipeline (just batching)
 pipe = r.pipeline(transaction=False)
@@ -322,7 +327,7 @@ from redis.exceptions import ResponseError
 def safe_pipeline_execute(pipe):
     """Execute pipeline with error handling."""
     try:
-        results = pipe.execute()
+        results = pipe.execute(raise_on_error=False)
     except redis.exceptions.ConnectionError:
         raise
 
@@ -340,6 +345,7 @@ def safe_pipeline_execute(pipe):
     return results
 
 # Usage
+r.set('string_value', 'not-a-number')
 pipe = r.pipeline()
 pipe.set('valid', 'value')
 pipe.incr('string_value')  # Will fail if string_value is not a number
@@ -407,7 +413,7 @@ results = mp.execute()
 ### 3. Use Pipeline Context Manager
 
 ```python
-# Automatic execution and cleanup
+# Automatic cleanup
 with r.pipeline() as pipe:
     pipe.set('key1', 'value1')
     pipe.set('key2', 'value2')
