@@ -90,7 +90,7 @@ router.get('/users', async (req, res) => {
 
 1. **Performance degrades**: `OFFSET 10000` still scans 10,000 rows
 2. **Inconsistent results**: If data changes between requests, items can be skipped or duplicated
-3. **No random access**: Jumping to page 500 is slow
+3. **Slow random access**: Jumping to page 500 is slow
 
 ## Cursor-Based Pagination
 
@@ -107,7 +107,7 @@ router.get('/users', async (req, res) => {
     let query = User.find();
 
     if (cursor) {
-        // Decode cursor (base64 encoded ID or timestamp)
+        // Decode cursor (base64 encoded ID)
         const decodedCursor = Buffer.from(cursor, 'base64').toString('utf-8');
         query = query.where('_id').lt(decodedCursor);
     }
@@ -144,7 +144,7 @@ When ordering by a field other than ID:
 
 ```javascript
 router.get('/posts', async (req, res) => {
-    const limit = Math.min(100, parseInt(req.query.limit) || 10);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
     const cursor = req.query.cursor;
 
     let query = {};
@@ -238,11 +238,27 @@ class Paginator {
         if (cursor) {
             const decoded = this.decodeCursor(cursor);
             const operator = sortOrder === -1 ? '$lt' : '$gt';
-            cursorQuery[sortField] = { [operator]: decoded };
+            const cursorCondition = sortField === '_id'
+                ? { _id: { [operator]: decoded.value } }
+                : {
+                    $or: [
+                        { [sortField]: { [operator]: decoded.value } },
+                        {
+                            [sortField]: decoded.value,
+                            _id: { [operator]: decoded.id }
+                        }
+                    ]
+                };
+
+            cursorQuery = { $and: [query, cursorCondition] };
         }
 
+        const sort = sortField === '_id'
+            ? { _id: sortOrder }
+            : { [sortField]: sortOrder, _id: sortOrder };
+
         const data = await model.find(cursorQuery)
-            .sort({ [sortField]: sortOrder })
+            .sort(sort)
             .limit(limit + 1)
             .select(options.select)
             .populate(options.populate);
@@ -250,9 +266,7 @@ class Paginator {
         const hasMore = data.length > limit;
         if (hasMore) data.pop();
 
-        const nextCursor = hasMore
-            ? this.encodeCursor(data[data.length - 1][sortField])
-            : null;
+        const nextCursor = hasMore ? this.encodeCursor(data[data.length - 1], sortField) : null;
 
         return {
             data,
@@ -264,13 +278,17 @@ class Paginator {
         };
     }
 
-    encodeCursor(value) {
+    encodeCursor(doc, sortField) {
+        const value = doc[sortField];
         const str = value instanceof Date ? value.toISOString() : String(value);
-        return Buffer.from(str).toString('base64');
+        return Buffer.from(JSON.stringify({
+            value: str,
+            id: doc._id.toString()
+        })).toString('base64');
     }
 
     decodeCursor(cursor) {
-        return Buffer.from(cursor, 'base64').toString('utf-8');
+        return JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8'));
     }
 }
 
@@ -362,8 +380,8 @@ Some APIs use headers instead of response body:
 
 ```javascript
 router.get('/items', async (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 10));
 
     const { data, pagination } = await paginator.paginate(Item, {}, { page, limit });
 
@@ -375,8 +393,9 @@ router.get('/items', async (req, res) => {
         'X-Total-Pages': pagination.pages
     });
 
-    // Link header (RFC 5988)
+    // Link header (RFC 8288)
     const baseUrl = `${req.protocol}://${req.get('host')}${req.baseUrl}${req.path}`;
+    const lastPage = Math.max(1, pagination.pages);
     const links = [];
 
     if (pagination.hasPrev) {
@@ -386,7 +405,7 @@ router.get('/items', async (req, res) => {
         links.push(`<${baseUrl}?page=${page + 1}&limit=${limit}>; rel="next"`);
     }
     links.push(`<${baseUrl}?page=1&limit=${limit}>; rel="first"`);
-    links.push(`<${baseUrl}?page=${pagination.pages}&limit=${limit}>; rel="last"`);
+    links.push(`<${baseUrl}?page=${lastPage}&limit=${limit}>; rel="last"`);
 
     res.set('Link', links.join(', '));
 
