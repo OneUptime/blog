@@ -103,6 +103,8 @@ COPY large_table FROM '/path/to/data.csv' WITH (FORMAT csv);
 ALTER TABLE large_table ENABLE TRIGGER ALL;
 ```
 
+Disabling internally generated constraint triggers, such as foreign key triggers, requires superuser privileges. Use `DISABLE TRIGGER USER` if you only want to disable user-defined triggers.
+
 ### 3. Use Unlogged Tables for Intermediate Data
 
 Unlogged tables skip WAL writes, making them much faster but not crash-safe:
@@ -123,16 +125,19 @@ WHERE email IS NOT NULL;
 DROP TABLE staging_customers;
 ```
 
-### 4. Adjust WAL Settings for Loading
+### 4. Adjust Durability and Checkpoint Settings for Loading
 
-Temporarily reduce WAL overhead:
+Temporarily reduce commit wait time and checkpoint pressure:
 
 ```sql
--- Increase checkpoint distance (apply to session or system)
-SET checkpoint_timeout = '30min';
-SET max_wal_size = '10GB';
+-- checkpoint_timeout and max_wal_size must be set in postgresql.conf,
+-- with ALTER SYSTEM, or on the server command line, then reloaded/restarted
+-- as required by the setting.
+ALTER SYSTEM SET checkpoint_timeout = '30min';
+ALTER SYSTEM SET max_wal_size = '10GB';
+SELECT pg_reload_conf();
 
--- Reduce WAL level for this session
+-- Avoid waiting for WAL flush on commit in this session
 SET synchronous_commit = off;
 
 -- Load data
@@ -163,8 +168,8 @@ COPY itself is single-threaded, but you can parallelize by splitting data.
 ### Split File Approach
 
 ```bash
-# Split a large CSV into chunks (skip header handling for simplicity)
-split -l 1000000 large_file.csv chunk_
+# Split a large CSV into chunks after removing the header
+tail -n +2 large_file.csv | split -l 1000000 - chunk_
 
 # Load chunks in parallel
 for f in chunk_*; do
@@ -219,21 +224,15 @@ pg_bulkload -d mydb -i /path/to/data.csv -O customers
 
 ## Handling Errors During Load
 
-### Log Errors to a Separate Table (PostgreSQL 17+)
+### Skip Bad Rows (PostgreSQL 17+)
 
 ```sql
--- Create error logging table
-CREATE TABLE import_errors (
-    error_time TIMESTAMP DEFAULT now(),
-    table_name TEXT,
-    row_data TEXT,
-    error_message TEXT
-);
-
--- Load with error handling
+-- Skip rows with data type conversion errors and emit detailed NOTICE messages
 COPY customers FROM '/path/to/data.csv'
-WITH (FORMAT csv, ON_ERROR log, LOG_VERBOSITY verbose);
+WITH (FORMAT csv, ON_ERROR ignore, LOG_VERBOSITY verbose);
 ```
+
+`ON_ERROR ignore` skips rows with input conversion errors for text and CSV `COPY FROM`. It does not write rejected rows to an error table.
 
 ### Pre-Validate Data Before Loading
 
@@ -290,13 +289,14 @@ PostgreSQL 14+ shows COPY progress:
 ```sql
 -- In another session, monitor the COPY operation
 SELECT
-    relname,
-    command,
-    type,
-    bytes_processed,
-    bytes_total,
-    tuples_processed
-FROM pg_stat_progress_copy;
+    c.relname,
+    p.command,
+    p.type,
+    p.bytes_processed,
+    p.bytes_total,
+    p.tuples_processed
+FROM pg_stat_progress_copy p
+LEFT JOIN pg_class c ON c.oid = p.relid;
 ```
 
 ## Complete Loading Script
@@ -310,26 +310,29 @@ Here is a production-ready script for loading large datasets:
 DB_NAME="mydb"
 TABLE_NAME="customers"
 DATA_FILE="/path/to/customers.csv"
+INDEX_FILE=$(mktemp)
+trap 'rm -f "$INDEX_FILE"' EXIT
 
 echo "Starting bulk load at $(date)"
 
 # Step 1: Save and drop indexes
-psql -d $DB_NAME -c "
-    SELECT indexdef INTO TEMP TABLE saved_indexes
-    FROM pg_indexes WHERE tablename = '$TABLE_NAME';
-"
-
-psql -d $DB_NAME -c "
-    SELECT 'DROP INDEX ' || indexname || ';'
+psql -d "$DB_NAME" -At -c "
+    SELECT indexdef || ';'
     FROM pg_indexes
     WHERE tablename = '$TABLE_NAME' AND indexname NOT LIKE '%_pkey'
-" -t | psql -d $DB_NAME
+" > "$INDEX_FILE"
+
+psql -d "$DB_NAME" -At -c "
+    SELECT format('DROP INDEX %I.%I;', schemaname, indexname)
+    FROM pg_indexes
+    WHERE tablename = '$TABLE_NAME' AND indexname NOT LIKE '%_pkey'
+" | psql -d "$DB_NAME"
 
 # Step 2: Disable triggers
-psql -d $DB_NAME -c "ALTER TABLE $TABLE_NAME DISABLE TRIGGER ALL;"
+psql -d "$DB_NAME" -c "ALTER TABLE $TABLE_NAME DISABLE TRIGGER ALL;"
 
 # Step 3: Tune settings and load
-psql -d $DB_NAME << EOF
+psql -d "$DB_NAME" << EOF
 SET synchronous_commit = off;
 SET maintenance_work_mem = '2GB';
 \timing on
@@ -338,16 +341,14 @@ COPY $TABLE_NAME FROM '$DATA_FILE' WITH (FORMAT csv, HEADER true);
 EOF
 
 # Step 4: Re-enable triggers
-psql -d $DB_NAME -c "ALTER TABLE $TABLE_NAME ENABLE TRIGGER ALL;"
+psql -d "$DB_NAME" -c "ALTER TABLE $TABLE_NAME ENABLE TRIGGER ALL;"
 
 # Step 5: Recreate indexes
 echo "Recreating indexes..."
-psql -d $DB_NAME -c "
-    SELECT indexdef FROM saved_indexes
-" -t | psql -d $DB_NAME
+psql -d "$DB_NAME" -f "$INDEX_FILE"
 
 # Step 6: Update statistics
-psql -d $DB_NAME -c "ANALYZE $TABLE_NAME;"
+psql -d "$DB_NAME" -c "ANALYZE $TABLE_NAME;"
 
 echo "Bulk load completed at $(date)"
 ```
