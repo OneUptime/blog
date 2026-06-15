@@ -54,6 +54,13 @@ mkdir -p "${BACKUP_DIR}"
 
 echo "Starting Redis backup at ${TIMESTAMP}"
 
+# Get current LASTSAVE timestamp before triggering BGSAVE
+if [ -n "${REDIS_PASSWORD}" ]; then
+    LASTSAVE_BEFORE=$(redis-cli -h "${REDIS_HOST}" -p "${REDIS_PORT}" -a "${REDIS_PASSWORD}" LASTSAVE)
+else
+    LASTSAVE_BEFORE=$(redis-cli -h "${REDIS_HOST}" -p "${REDIS_PORT}" LASTSAVE)
+fi
+
 # Trigger Redis background save
 if [ -n "${REDIS_PASSWORD}" ]; then
     redis-cli -h "${REDIS_HOST}" -p "${REDIS_PORT}" -a "${REDIS_PASSWORD}" BGSAVE
@@ -70,10 +77,8 @@ while true; do
         LASTSAVE=$(redis-cli -h "${REDIS_HOST}" -p "${REDIS_PORT}" LASTSAVE)
     fi
 
-    CURRENT_TIME=$(date +%s)
-
-    # LASTSAVE should be within last 60 seconds
-    if [ $((CURRENT_TIME - LASTSAVE)) -lt 60 ]; then
+    # LASTSAVE changes only after a successful save
+    if [ "${LASTSAVE}" -gt "${LASTSAVE_BEFORE}" ]; then
         echo "BGSAVE completed"
         break
     fi
@@ -115,7 +120,7 @@ echo "Backup completed: s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_NAME}.rdb.gz"
 #!/usr/bin/env python3
 """
 redis_backup.py - Encrypted Redis backup to S3
-Supports: compression, encryption, checksums, and notifications
+Supports: compression, encryption, and checksums
 """
 
 import os
