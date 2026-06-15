@@ -14,7 +14,7 @@ This approach works well for applications like monitoring tools that need custom
 
 ## How Go Plugins Work
 
-A Go plugin is a shared object file (`.so`) compiled with `-buildmode=plugin`. The main application loads this file at runtime and accesses exported symbols - functions and variables with uppercase names. Both the plugin and the main application must be compiled with the same Go version on the same platform.
+A Go plugin is a shared object file (`.so`) compiled from a `main` package with `-buildmode=plugin`. The main application loads this file at runtime and accesses exported symbols - functions and variables with uppercase names. Both the plugin and the main application must be compiled with the same Go toolchain version, build tags, relevant build flags, environment settings, and common dependency source on the same platform.
 
 Here's the basic flow:
 
@@ -31,6 +31,8 @@ Start by defining what plugins can do. A clean interface is critical - it become
 // plugin_contract.go - This file is shared with plugin authors
 package contract
 
+import "context"
+
 // Plugin defines what every plugin must implement.
 // Keep this interface focused and stable - changes break all plugins.
 type Plugin interface {
@@ -45,7 +47,7 @@ type Plugin interface {
     // The context allows cancellation, data is plugin-specific input.
     Execute(ctx context.Context, data interface{}) (interface{}, error)
 
-    // Shutdown is called before the plugin unloads.
+    // Shutdown is called before the application exits or stops using the plugin.
     // Use this for cleanup - closing connections, flushing buffers, etc.
     Shutdown() error
 }
@@ -368,7 +370,7 @@ func main() {
 
 **Platform Limitations**: Plugins only work on Linux, FreeBSD, and macOS. They don't work on Windows. If you need cross-platform support, consider alternatives like HashiCorp's go-plugin (uses RPC) or embedded scripting languages.
 
-**No Unloading**: Once loaded, a plugin stays in memory until the process exits. You can't hot-reload plugins without restarting the application. Design your plugin lifecycle around this constraint.
+**No Unloading**: Once loaded, a plugin stays in memory until the process exits. You can't unload or replace an already opened plugin at the same path; design hot-reload around new plugin filenames or restart the application.
 
 **Symbol Naming**: The symbol name is case-sensitive. `pluginInstance` and `PluginInstance` are different. Stick to a documented convention.
 
