@@ -117,7 +117,7 @@ Renovate offers more advanced features than Dependabot:
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:base",
+    "config:recommended",
     ":semanticCommits",
     ":preserveSemverRanges",
     "group:recommended",
@@ -137,19 +137,19 @@ Renovate offers more advanced features than Dependabot:
     },
     {
       "description": "Group ESLint ecosystem updates",
-      "matchPackagePatterns": ["^eslint", "^@typescript-eslint"],
+      "matchPackageNames": ["/^eslint/", "/^@typescript-eslint/"],
       "groupName": "eslint",
       "groupSlug": "eslint"
     },
     {
       "description": "Group testing library updates",
-      "matchPackagePatterns": ["^@testing-library", "^jest", "^vitest"],
+      "matchPackageNames": ["/^@testing-library/", "/^jest/", "/^vitest/"],
       "groupName": "testing",
       "groupSlug": "testing"
     },
     {
       "description": "Group TypeScript updates",
-      "matchPackagePatterns": ["^typescript", "^@types/"],
+      "matchPackageNames": ["/^typescript/", "/^@types//"],
       "groupName": "typescript",
       "groupSlug": "typescript"
     },
@@ -178,7 +178,7 @@ Renovate offers more advanced features than Dependabot:
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["^Dockerfile$"],
+      "managerFilePatterns": ["/^Dockerfile$/"],
       "matchStrings": [
         "ENV NODE_VERSION=(?<currentValue>.*?)\\n"
       ],
@@ -196,7 +196,7 @@ Automatically merge low-risk updates:
 ```json
 // renovate.json auto-merge settings
 {
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
 
   "packageRules": [
     {
@@ -229,24 +229,26 @@ Automatically merge low-risk updates:
 }
 ```
 
-Configure GitHub to allow auto-merge:
+For Dependabot PRs, configure GitHub to allow auto-merge:
 
 ```yaml
 # .github/workflows/auto-merge.yml
 name: Auto Merge Dependencies
 
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+on: pull_request_target
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]' || github.actor == 'renovate[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
       - name: Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -270,7 +272,7 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
-    # Only for security updates
+    # Allows more regular version update PRs
     open-pull-requests-limit: 20
 
 # Security alerts are separate from regular updates
@@ -285,18 +287,8 @@ Renovate security configuration:
     "enabled": true,
     "labels": ["security", "priority:high"],
     "assignees": ["security-team"],
-    "schedule": ["at any time"]
-  },
-
-  "packageRules": [
-    {
-      "description": "Immediate security updates",
-      "matchUpdateTypes": ["patch"],
-      "isVulnerabilityAlert": true,
-      "automerge": true,
-      "schedule": ["at any time"]
-    }
-  ]
+    "automerge": true
+  }
 }
 ```
 
@@ -371,13 +363,12 @@ Reduce PR noise by grouping related updates:
   "packageRules": [
     {
       "groupName": "AWS SDK",
-      "matchPackagePatterns": ["^@aws-sdk/", "^aws-"],
+      "matchPackageNames": ["/^@aws-sdk//", "/^aws-/"],
       "schedule": ["before 6am on monday"]
     },
     {
       "groupName": "React ecosystem",
-      "matchPackageNames": ["react", "react-dom"],
-      "matchPackagePatterns": ["^@types/react"]
+      "matchPackageNames": ["react", "react-dom", "/^@types/react/"]
     },
     {
       "groupName": "All non-major dev dependencies",
@@ -413,8 +404,7 @@ Major version updates need special attention:
     {
       "description": "Delay major updates to allow community testing",
       "matchUpdateTypes": ["major"],
-      "minimumReleaseAge": "14 days",
-      "stabilityDays": 14
+      "minimumReleaseAge": "14 days"
     }
   ],
 
@@ -435,25 +425,25 @@ Handle dependencies across multiple packages:
 ```json
 // renovate.json for monorepo
 {
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
 
   "ignorePaths": ["**/node_modules/**"],
 
   "packageRules": [
     {
       "description": "Update root dependencies",
-      "matchPaths": ["package.json"],
+      "matchFileNames": ["package.json"],
       "groupName": "root dependencies"
     },
     {
       "description": "Update shared library dependencies together",
-      "matchPaths": ["packages/shared/**"],
+      "matchFileNames": ["packages/shared/**"],
       "groupName": "shared library"
     },
     {
       "description": "Update all workspace dependencies together",
       "matchManagers": ["npm"],
-      "matchPackagePatterns": ["^@myorg/"],
+      "matchPackageNames": ["/^@myorg//"],
       "groupName": "workspace packages"
     }
   ]
