@@ -38,8 +38,8 @@ Add Bucket4j to your Spring Boot project:
 <!-- pom.xml -->
 <dependency>
     <groupId>com.bucket4j</groupId>
-    <artifactId>bucket4j-core</artifactId>
-    <version>8.7.0</version>
+    <artifactId>bucket4j_jdk17-core</artifactId>
+    <version>8.19.0</version>
 </dependency>
 ```
 
@@ -47,7 +47,7 @@ For Gradle users:
 
 ```groovy
 // build.gradle
-implementation 'com.bucket4j:bucket4j-core:8.7.0'
+implementation 'com.bucket4j:bucket4j_jdk17-core:8.19.0'
 ```
 
 ---
@@ -62,7 +62,6 @@ package com.example.ratelimit;
 
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Refill;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -78,7 +77,10 @@ public class RateLimiterService {
     // Create a bucket with the default rate limit configuration
     private Bucket createNewBucket() {
         // Allow 100 requests per minute
-        Bandwidth limit = Bandwidth.classic(100, Refill.greedy(100, Duration.ofMinutes(1)));
+        Bandwidth limit = Bandwidth.builder()
+                .capacity(100)
+                .refillGreedy(100, Duration.ofMinutes(1))
+                .build();
         return Bucket.builder()
                 .addLimit(limit)
                 .build();
@@ -149,13 +151,15 @@ public class RateLimitInterceptor implements HandlerInterceptor {
         }
 
         // Request rejected - return 429 with retry information
-        long waitTimeSeconds = probe.getNanosToWaitForRefill() / 1_000_000_000;
+        long waitTimeSeconds = (long) Math.ceil(
+                probe.getNanosToWaitForRefill() / 1_000_000_000.0
+        );
 
         response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+        response.setContentType("application/json");
         response.addHeader("X-Rate-Limit-Remaining", "0");
         response.addHeader("Retry-After", String.valueOf(waitTimeSeconds));
         response.getWriter().write("{\"error\": \"Rate limit exceeded\"}");
-        response.setContentType("application/json");
 
         return false;
     }
@@ -209,10 +213,16 @@ One powerful feature of Bucket4j is supporting multiple limits on a single bucke
 // MultiBandwidthRateLimiter.java
 private Bucket createBucketWithMultipleLimits() {
     // Allow burst of 20 requests
-    Bandwidth burstLimit = Bandwidth.classic(20, Refill.greedy(20, Duration.ofSeconds(1)));
+    Bandwidth burstLimit = Bandwidth.builder()
+            .capacity(20)
+            .refillGreedy(20, Duration.ofSeconds(1))
+            .build();
 
     // But sustained rate is 100 per minute
-    Bandwidth sustainedLimit = Bandwidth.classic(100, Refill.greedy(100, Duration.ofMinutes(1)));
+    Bandwidth sustainedLimit = Bandwidth.builder()
+            .capacity(100)
+            .refillGreedy(100, Duration.ofMinutes(1))
+            .build();
 
     // Both limits must be satisfied for a request to proceed
     return Bucket.builder()
@@ -222,7 +232,7 @@ private Bucket createBucketWithMultipleLimits() {
 }
 ```
 
-This configuration allows clients to make 20 requests in a quick burst, but they cannot exceed 100 requests over any one-minute period.
+This configuration allows clients to make 20 requests in a quick burst, but they cannot average more than 100 requests per minute over time.
 
 ---
 
@@ -236,7 +246,6 @@ package com.example.ratelimit;
 
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Refill;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -266,10 +275,10 @@ public class TieredRateLimiterService {
     }
 
     private Bucket createBucket(PricingPlan plan) {
-        Bandwidth limit = Bandwidth.classic(
-                plan.getRequestsPerMinute(),
-                Refill.greedy(plan.getRequestsPerMinute(), Duration.ofMinutes(1))
-        );
+        Bandwidth limit = Bandwidth.builder()
+                .capacity(plan.getRequestsPerMinute())
+                .refillGreedy(plan.getRequestsPerMinute(), Duration.ofMinutes(1))
+                .build();
         return Bucket.builder().addLimit(limit).build();
     }
 
@@ -288,18 +297,19 @@ public class TieredRateLimiterService {
 
 ## Distributed Rate Limiting with Redis
 
-For applications running multiple instances, you need a shared rate limit store. Bucket4j integrates with Redis through the Spring Data Redis:
+For applications running multiple instances, you need a shared rate limit store. Bucket4j integrates with Redis through clients such as Lettuce:
 
 ```xml
 <!-- pom.xml - additional dependencies -->
 <dependency>
     <groupId>com.bucket4j</groupId>
-    <artifactId>bucket4j-redis</artifactId>
-    <version>8.7.0</version>
+    <artifactId>bucket4j_jdk17-redis-common</artifactId>
+    <version>8.19.0</version>
 </dependency>
 <dependency>
-    <groupId>io.lettuce</groupId>
-    <artifactId>lettuce-core</artifactId>
+    <groupId>com.bucket4j</groupId>
+    <artifactId>bucket4j_jdk17-lettuce</artifactId>
+    <version>8.19.0</version>
 </dependency>
 ```
 
@@ -309,10 +319,9 @@ package com.example.ratelimit;
 
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.BucketConfiguration;
-import io.github.bucket4j.Refill;
 import io.github.bucket4j.distributed.ExpirationAfterWriteStrategy;
 import io.github.bucket4j.distributed.proxy.ProxyManager;
-import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
+import io.github.bucket4j.redis.lettuce.Bucket4jLettuce;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.codec.ByteArrayCodec;
@@ -337,8 +346,8 @@ public class DistributedRateLimiterService {
                 redisClient.connect(RedisCodec.of(StringCodec.UTF8, ByteArrayCodec.INSTANCE));
 
         // Create the proxy manager with expiration strategy
-        proxyManager = LettuceBasedProxyManager.builderFor(connection)
-                .withExpirationStrategy(
+        proxyManager = Bucket4jLettuce.casBasedBuilder(connection)
+                .expirationAfterWrite(
                         ExpirationAfterWriteStrategy.basedOnTimeForRefillingBucketUpToMax(
                                 Duration.ofMinutes(5)
                         )
@@ -348,17 +357,16 @@ public class DistributedRateLimiterService {
 
     private Supplier<BucketConfiguration> getConfigurationSupplier(int requestsPerMinute) {
         return () -> BucketConfiguration.builder()
-                .addLimit(Bandwidth.classic(
-                        requestsPerMinute,
-                        Refill.greedy(requestsPerMinute, Duration.ofMinutes(1))
-                ))
+                .addLimit(Bandwidth.builder()
+                        .capacity(requestsPerMinute)
+                        .refillGreedy(requestsPerMinute, Duration.ofMinutes(1))
+                        .build())
                 .build();
     }
 
     public boolean tryConsume(String key, int requestsPerMinute) {
         return proxyManager
-                .builder()
-                .build(key, getConfigurationSupplier(requestsPerMinute))
+                .getProxy(key, getConfigurationSupplier(requestsPerMinute))
                 .tryConsume(1);
     }
 }
@@ -393,7 +401,6 @@ package com.example.ratelimit;
 
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Refill;
 import jakarta.servlet.http.HttpServletRequest;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -425,11 +432,11 @@ public class RateLimitAspect {
         String key = joinPoint.getSignature().toShortString() + ":" + request.getRemoteAddr();
 
         Bucket bucket = buckets.computeIfAbsent(key, k -> {
-            Bandwidth limit = Bandwidth.classic(
-                    rateLimit.requests(),
-                    Refill.greedy(rateLimit.requests(),
+            Bandwidth limit = Bandwidth.builder()
+                    .capacity(rateLimit.requests())
+                    .refillGreedy(rateLimit.requests(),
                             Duration.ofMinutes(rateLimit.durationMinutes()))
-            );
+                    .build();
             return Bucket.builder().addLimit(limit).build();
         });
 
