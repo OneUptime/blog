@@ -157,7 +157,7 @@ CREATE INDEX idx_events_created_brin ON events
 -- Check index size comparison
 SELECT
     indexname,
-    pg_size_pretty(pg_relation_size(indexname::regclass)) AS size
+    pg_size_pretty(pg_relation_size(format('%I.%I', schemaname, indexname)::regclass)) AS size
 FROM pg_indexes
 WHERE tablename = 'events';
 ```
@@ -182,6 +182,7 @@ FROM sales
 GROUP BY sale_date, product_id;
 
 -- Create indexes on the materialized view
+CREATE UNIQUE INDEX ON daily_sales_summary (sale_date, product_id);
 CREATE INDEX ON daily_sales_summary (sale_date);
 CREATE INDEX ON daily_sales_summary (product_id);
 
@@ -189,11 +190,7 @@ CREATE INDEX ON daily_sales_summary (product_id);
 REFRESH MATERIALIZED VIEW CONCURRENTLY daily_sales_summary;
 ```
 
-The CONCURRENTLY option allows reads during refresh but requires a unique index:
-
-```sql
-CREATE UNIQUE INDEX ON daily_sales_summary (sale_date, product_id);
-```
+The CONCURRENTLY option allows reads during refresh but requires a unique index.
 
 ## Columnar Storage with Citus
 
@@ -202,6 +199,7 @@ For true columnar storage, the Citus extension provides a columnar table access 
 ```sql
 -- Install the extension (requires Citus)
 CREATE EXTENSION IF NOT EXISTS citus;
+CREATE EXTENSION IF NOT EXISTS citus_columnar;
 
 -- Create a columnar table
 CREATE TABLE events_columnar (
@@ -361,7 +359,7 @@ ALTER SYSTEM SET jit = on;
 SELECT pg_reload_conf();
 ```
 
-Remember to restart PostgreSQL for settings that require it (like shared_buffers).
+Remember to restart PostgreSQL for settings that require it (like shared_buffers and max_worker_processes).
 
 ## When to Consider Alternatives
 
