@@ -88,6 +88,12 @@ public class OrderEventProducer {
     // Key by orderId to guarantee ordering for each order
     // All events for the same order go to the same partition
     public CompletableFuture<SendResult<String, OrderEvent>> publish(OrderEvent event) {
+        Instant eventTime = switch (event) {
+            case OrderCreated e -> e.createdAt();
+            case OrderShipped e -> e.shippedAt();
+            case OrderCancelled e -> e.cancelledAt();
+        };
+
         ProducerRecord<String, OrderEvent> record = new ProducerRecord<>(
             TOPIC,
             event.orderId(),  // Partition key ensures ordering per aggregate
@@ -97,7 +103,7 @@ public class OrderEventProducer {
         // Add metadata headers for debugging and tracing
         record.headers()
             .add("event-type", event.getClass().getSimpleName().getBytes())
-            .add("event-time", event.createdAt().toString().getBytes());
+            .add("event-time", eventTime.toString().getBytes());
 
         return kafkaTemplate.send(record);
     }
@@ -133,7 +139,7 @@ public class Order {
 
     // Each event type modifies state in a specific way
     // This method must be deterministic - same events always produce same state
-    private void apply(OrderEvent event) {
+    public void apply(OrderEvent event) {
         switch (event) {
             case OrderCreated e -> {
                 this.orderId = e.orderId();
@@ -158,6 +164,20 @@ public class Order {
         }
         return new OrderShipped(orderId, trackingNumber, carrier, Instant.now());
     }
+
+    public String getOrderId() {
+        return orderId;
+    }
+
+    public Order copy() {
+        Order copy = new Order();
+        copy.orderId = this.orderId;
+        copy.status = this.status;
+        copy.items = new ArrayList<>(this.items);
+        copy.totalAmount = this.totalAmount;
+        copy.trackingNumber = this.trackingNumber;
+        return copy;
+    }
 }
 ```
 
@@ -179,15 +199,16 @@ public class OrderRepository {
         TopicPartition partition = findPartitionForKey(orderId);
         consumer.assign(List.of(partition));
         consumer.seekToBeginning(List.of(partition));
+        long endOffset = consumer.endOffsets(List.of(partition)).get(partition);
 
         List<OrderEvent> events = new ArrayList<>();
 
         // Read all events, filtering by orderId
-        while (true) {
+        while (consumer.position(partition) < endOffset) {
             ConsumerRecords<String, OrderEvent> records =
                 consumer.poll(Duration.ofMillis(100));
 
-            if (records.isEmpty()) break;
+            if (records.isEmpty()) continue;
 
             for (ConsumerRecord<String, OrderEvent> record : records) {
                 if (record.key().equals(orderId)) {
@@ -238,7 +259,7 @@ public class OrderSnapshotService {
         if (snapshot != null) {
             // Start reading after the snapshot offset
             events = readEventsAfterOffset(orderId, snapshot.lastEventOffset(), consumer);
-            Order order = snapshot.state();
+            Order order = snapshot.state().copy();
 
             // Apply only the events after the snapshot
             for (OrderEvent event : events) {
@@ -274,7 +295,7 @@ public class OrderSearchProjection {
 
     // Consumer builds a denormalized search index
     @KafkaListener(topics = "order-events", groupId = "order-search-projection")
-    public void onEvent(OrderEvent event) {
+    public void onEvent(OrderEvent event) throws IOException {
         switch (event) {
             case OrderCreated e -> {
                 // Index new order for search
@@ -298,14 +319,16 @@ public class OrderSearchProjection {
                     .doc(Map.of(
                         "status", "SHIPPED",
                         "trackingNumber", e.trackingNumber()
-                    ))
+                    )),
+                    Map.class
                 );
             }
             case OrderCancelled e -> {
                 esClient.update(u -> u
                     .index("orders")
                     .id(e.orderId())
-                    .doc(Map.of("status", "CANCELLED"))
+                    .doc(Map.of("status", "CANCELLED")),
+                    Map.class
                 );
             }
         }
@@ -325,9 +348,23 @@ Events are forever. Plan for schema changes from day one.
   "fields": [
     {"name": "orderId", "type": "string"},
     {"name": "customerId", "type": "string"},
-    {"name": "totalAmount", "type": "double"},
+    {
+      "name": "totalAmount",
+      "type": {
+        "type": "bytes",
+        "logicalType": "decimal",
+        "precision": 12,
+        "scale": 2
+      }
+    },
     {"name": "currency", "type": "string", "default": "USD"},
-    {"name": "createdAt", "type": "long", "logicalType": "timestamp-millis"}
+    {
+      "name": "createdAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    }
   ]
 }
 ```
@@ -358,7 +395,7 @@ kafka-topics.sh --create \
 Key settings:
 - `retention.ms=-1`: Keep events forever
 - `cleanup.policy=delete`: Do not compact (we need full history)
-- `min.insync.replicas=2`: Durability guarantee
+- `min.insync.replicas=2`: Require at least two in-sync replicas when producers use `acks=all`
 
 ---
 
