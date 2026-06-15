@@ -28,13 +28,13 @@ These attributes appear on every span, metric, and log from that service, making
 
 Resource Detection in the Collector
 
-The OpenTelemetry Collector can detect resources automatically using the `resourcedetection` processor.
+The OpenTelemetry Collector can detect resources automatically using the `resource_detection` processor.
 
 ### Basic Configuration
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors:
       - env
       - system
@@ -44,11 +44,11 @@ processors:
 
 ### Available Detectors
 
-The `resourcedetection` processor supports multiple detection sources:
+The `resource_detection` processor supports multiple detection sources:
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     detectors:
       # Read from environment variables
       - env
@@ -59,8 +59,8 @@ processors:
       # Docker container metadata
       - docker
 
-      # Kubernetes metadata
-      - k8s_node
+      # Kubernetes API metadata
+      - k8s_api
 
       # AWS EC2 and ECS
       - ec2
@@ -85,7 +85,7 @@ processors:
 
 ```yaml
 processors:
-  resourcedetection/aws:
+  resource_detection/aws:
     detectors: [env, ec2, ecs]
     timeout: 5s
     override: false
@@ -104,7 +104,7 @@ processors:
           enabled: true
         aws.ecs.task.arn:
           enabled: true
-        aws.ecs.container.arn:
+        aws.ecs.task.family:
           enabled: true
 ```
 
@@ -122,17 +122,15 @@ Detected attributes include:
 
 ```yaml
 processors:
-  resourcedetection/gcp:
+  resource_detection/gcp:
     detectors: [env, gcp]
     timeout: 5s
 
     gcp:
       resource_attributes:
-        gcp.project_id:
+        gcp.gce.instance.name:
           enabled: true
-        gcp.instance_id:
-          enabled: true
-        gcp.zone:
+        gcp.gce.instance.hostname:
           enabled: true
 ```
 
@@ -141,14 +139,14 @@ Detected attributes include:
 - `cloud.platform: gcp_compute_engine`
 - `cloud.region: us-central1`
 - `cloud.availability_zone: us-central1-a`
-- `gcp.project_id: my-project`
+- `cloud.account.id: my-project`
 - `host.id: 1234567890`
 
 **Azure Detection**
 
 ```yaml
 processors:
-  resourcedetection/azure:
+  resource_detection/azure:
     detectors: [env, azure]
     timeout: 5s
 
@@ -164,17 +162,18 @@ processors:
 
 ### Kubernetes Detection
 
-For Kubernetes environments, combine container and node detection:
+For Kubernetes environments, use Kubernetes API node detection:
 
 ```yaml
 processors:
-  resourcedetection/k8s:
-    detectors: [env, k8s_node]
+  resource_detection/k8s:
+    detectors: [env, k8s_api]
     timeout: 5s
 
-    k8s_node:
+    k8s_api:
       # Authentication context
       auth_type: serviceAccount
+      node_from_env_var: K8S_NODE_NAME
       # Or use kubeconfig
       # auth_type: kubeConfig
       # context: my-cluster
@@ -230,7 +229,7 @@ The system detector collects host-level information:
 
 ```yaml
 processors:
-  resourcedetection/system:
+  resource_detection/system:
     detectors: [system]
 
     system:
@@ -258,14 +257,14 @@ Read resource attributes from environment variables:
 
 ```yaml
 processors:
-  resourcedetection/env:
+  resource_detection/env:
     detectors: [env]
 ```
 
 This reads from `OTEL_RESOURCE_ATTRIBUTES`:
 
 ```bash
-export OTEL_RESOURCE_ATTRIBUTES="service.name=checkout-service,deployment.environment=production,service.version=1.2.3"
+export OTEL_RESOURCE_ATTRIBUTES="service.name=checkout-service,deployment.environment.name=production,service.version=1.2.3"
 ```
 
 Resource Detection in SDKs
@@ -276,24 +275,27 @@ Application SDKs can also perform resource detection, running before telemetry r
 
 ```javascript
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
 const {
   envDetector,
   hostDetector,
   osDetector,
   processDetector,
+  resourceFromAttributes,
 } = require('@opentelemetry/resources');
+const {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 const { awsEc2Detector } = require('@opentelemetry/resource-detector-aws');
 const { containerDetector } = require('@opentelemetry/resource-detector-container');
 
 // Create resource with manual and detected attributes
-const resource = Resource.default()
-  .merge(new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'checkout-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.APP_VERSION || '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.ENVIRONMENT || 'development',
-  }));
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'checkout-service',
+  [ATTR_SERVICE_VERSION]: process.env.APP_VERSION || '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.ENVIRONMENT || 'development',
+});
 
 const sdk = new NodeSDK({
   resource,
@@ -321,14 +323,14 @@ from opentelemetry.sdk.resources import (
     ProcessResourceDetector,
     OTELResourceDetector,
 )
-from opentelemetry.resourcedetector.aws import AwsEc2ResourceDetector
+from opentelemetry.sdk.extension.aws.resource.ec2 import AwsEc2ResourceDetector
 
 # Manual resource attributes
 
 manual_resource = Resource.create({
     "service.name": "checkout-service",
     "service.version": "1.2.3",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 # Combine with detected resources
@@ -339,7 +341,7 @@ detected_resource = get_aggregated_resources([
 ])
 
 # Merge resources (manual takes precedence)
-resource = manual_resource.merge(detected_resource)
+resource = detected_resource.merge(manual_resource)
 
 # Create tracer provider with resource
 provider = TracerProvider(resource=resource)
@@ -354,13 +356,11 @@ package main
 import (
     "context"
 
-    "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/sdk/resource"
-    "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 
     // Resource detectors
-    "go.opentelemetry.io/contrib/detectors/aws/ec2"
+    "go.opentelemetry.io/contrib/detectors/aws/ec2/v2"
     "go.opentelemetry.io/contrib/detectors/gcp"
 )
 
@@ -371,7 +371,7 @@ func initResource(ctx context.Context) (*resource.Resource, error) {
         resource.WithAttributes(
             semconv.ServiceName("checkout-service"),
             semconv.ServiceVersion("1.2.3"),
-            semconv.DeploymentEnvironment("production"),
+            semconv.DeploymentEnvironmentName("production"),
         ),
         // Enable automatic detection
         resource.WithFromEnv(),
@@ -395,29 +395,27 @@ func initResource(ctx context.Context) (*resource.Resource, error) {
 ### Java Resource Detection
 
 ```java
-import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.resources.Resource;
-import io.opentelemetry.sdk.trace.SdkTracerProvider;
-import io.opentelemetry.semconv.resource.attributes.ResourceAttributes;
-import io.opentelemetry.sdk.autoconfigure.spi.ResourceProvider;
 import io.opentelemetry.contrib.aws.resource.Ec2Resource;
-import io.opentelemetry.contrib.gcp.resource.GCPResource;
+import io.opentelemetry.contrib.gcp.resource.GcpResource;
+import io.opentelemetry.semconv.ServiceAttributes;
 
 public class ResourceConfig {
     public static Resource createResource() {
         // Manual attributes
         Resource manual = Resource.builder()
-            .put(ResourceAttributes.SERVICE_NAME, "checkout-service")
-            .put(ResourceAttributes.SERVICE_VERSION, "1.2.3")
-            .put(ResourceAttributes.DEPLOYMENT_ENVIRONMENT, "production")
+            .put(ServiceAttributes.SERVICE_NAME, "checkout-service")
+            .put(AttributeKey.stringKey("service.version"), "1.2.3")
+            .put(AttributeKey.stringKey("deployment.environment.name"), "production")
             .build();
 
         // Merge with detected resources
         Resource detected = Resource.getDefault()
             .merge(Ec2Resource.get())     // AWS EC2 detection
-            .merge(GCPResource.get());    // GCP detection
+            .merge(GcpResource.create()); // GCP detection
 
-        return manual.merge(detected);
+        return detected.merge(manual);
     }
 }
 ```
@@ -444,18 +442,20 @@ flowchart LR
 
 **SDK Configuration** (runs in application):
 ```javascript
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'checkout-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.2.3',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'checkout-service',
+  [ATTR_SERVICE_VERSION]: '1.2.3',
 });
 ```
 
 **Collector Configuration** (enriches data):
 ```yaml
 processors:
-  resourcedetection:
-    detectors: [env, ec2, ecs, gcp, azure, k8s_node]
+  resource_detection:
+    detectors: [env, ec2, ecs, gcp, azure, k8s_api]
     override: false  # Don't override SDK-set values
+    k8s_api:
+      node_from_env_var: K8S_NODE_NAME
 
   k8sattributes:
     extract:
@@ -467,7 +467,7 @@ processors:
 service:
   pipelines:
     traces:
-      processors: [resourcedetection, k8sattributes, batch]
+      processors: [resource_detection, k8sattributes, batch]
 ```
 
 ## Complete Production Example
@@ -486,7 +486,7 @@ processors:
     check_interval: 5s
     limit_mib: 2048
 
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, ec2, ecs]
     timeout: 5s
     override: false
@@ -542,7 +542,7 @@ service:
       receivers: [otlp]
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - k8sattributes
         - resource
         - batch
@@ -564,7 +564,7 @@ Set `override: false` to prevent collector detection from overwriting SDK-set va
 
 ```yaml
 processors:
-  resourcedetection:
+  resource_detection:
     override: false
 ```
 
@@ -581,7 +581,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection]
+      processors: [resource_detection]
       exporters: [debug]
 ```
 
