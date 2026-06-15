@@ -16,7 +16,7 @@ StatefulSets provide guarantees that Deployments cannot offer:
 
 1. **Stable Network Identity**: Each pod gets a predictable hostname like `web-0`, `web-1`, `web-2`
 2. **Ordered Deployment and Scaling**: Pods are created sequentially (0, then 1, then 2)
-3. **Ordered Termination**: Pods are deleted in reverse order (2, then 1, then 0)
+3. **Ordered Termination During Scale Down**: Pods are deleted in reverse order when scaling down (2, then 1, then 0)
 4. **Stable Storage**: Each pod gets its own PersistentVolumeClaim that follows it across rescheduling
 
 ```mermaid
@@ -151,6 +151,8 @@ spec:
   volumeClaimTemplates:
     - metadata:
         name: data
+        labels:
+          app: postgres
       spec:
         accessModes:
           - ReadWriteOnce
@@ -177,11 +179,11 @@ You can test DNS resolution from within the cluster:
 
 ```bash
 # Create a test pod
-kubectl run dns-test --image=busybox --rm -it --restart=Never -- \
+kubectl run dns-test -n database --image=busybox --rm -it --restart=Never --command -- \
   nslookup postgres-0.postgres.database.svc.cluster.local
 
 # Short form also works within the same namespace
-kubectl run dns-test --image=busybox --rm -it --restart=Never -- \
+kubectl run dns-test -n database --image=busybox --rm -it --restart=Never --command -- \
   nslookup postgres-0.postgres
 ```
 
@@ -243,7 +245,7 @@ Control how pods are created and deleted:
 
 ### OrderedReady (Default)
 
-Pods are created in order (0, 1, 2) and deleted in reverse order (2, 1, 0). Each pod must be Running and Ready before the next one starts.
+Pods are created in order (0, 1, 2) and terminated in reverse order during scale down (2, 1, 0). Each pod must be Running and Ready before the next one starts.
 
 ```yaml
 spec:
@@ -274,7 +276,7 @@ kubectl get pods -n database -l app=postgres -w
 
 ## Handling Persistent Volume Claims
 
-PVCs are not deleted when you scale down or delete a StatefulSet. This is intentional to prevent data loss.
+By default, PVCs are not deleted when you scale down or delete a StatefulSet. This is intentional to prevent data loss.
 
 ### View PVCs
 
@@ -298,7 +300,7 @@ kubectl delete statefulset postgres -n database
 kubectl delete pvc -n database -l app=postgres
 ```
 
-### PVC Retention Policy (Kubernetes 1.27+)
+### PVC Retention Policy (stable in Kubernetes 1.32+)
 
 Configure automatic PVC cleanup:
 
@@ -313,7 +315,7 @@ spec:
 
 ## Real-World Example: Redis Cluster
 
-Here is a production-ready Redis cluster StatefulSet:
+Here is a StatefulSet for Redis nodes that can be initialized as a Redis Cluster:
 
 ```yaml
 apiVersion: apps/v1
@@ -323,7 +325,7 @@ metadata:
   namespace: cache
 spec:
   serviceName: redis
-  replicas: 6  # 3 masters + 3 replicas
+  replicas: 6  # Enough nodes for 3 masters + 3 replicas after cluster initialization
   selector:
     matchLabels:
       app: redis
@@ -364,6 +366,8 @@ spec:
   volumeClaimTemplates:
     - metadata:
         name: data
+        labels:
+          app: redis
       spec:
         accessModes: ["ReadWriteOnce"]
         storageClassName: fast-ssd
