@@ -28,7 +28,7 @@ sequenceDiagram
     S->>C: Response 2
     C->>S: Request 3
     S->>C: Response 3
-    Note over C,S: Total: 6 round trips
+    Note over C,S: Total: 3 round trips
 
     Note over C,S: With Pipelining
     C->>S: Request 1
@@ -37,7 +37,7 @@ sequenceDiagram
     S->>C: Response 1
     S->>C: Response 2
     S->>C: Response 3
-    Note over C,S: Total: ~1 round trip
+    Note over C,S: Total: ~1 round trip after connection setup
 ```
 
 Benefits of pipelining:
@@ -49,7 +49,7 @@ Benefits of pipelining:
 
 ## HTTP/2 Multiplexing
 
-HTTP/2 provides built-in request pipelining through multiplexing. Multiple requests can be sent over a single connection without head-of-line blocking.
+HTTP/2 provides built-in request multiplexing. Multiple requests can be sent over a single connection without HTTP/1.1-style application-layer head-of-line blocking, though TCP-level head-of-line blocking can still occur.
 
 ### Enabling HTTP/2 in Python
 
@@ -65,7 +65,7 @@ class HTTP2Client:
     """HTTP/2 client with multiplexing for parallel requests"""
 
     def __init__(self, base_url: str, max_connections: int = 100):
-        # httpx supports HTTP/2 natively
+        # httpx supports HTTP/2 when installed with httpx[http2]
         self.client = httpx.AsyncClient(
             base_url=base_url,
             http2=True,  # Enable HTTP/2
@@ -159,7 +159,13 @@ class HTTP2Client {
 
       let data = '';
       req.on('data', chunk => data += chunk);
-      req.on('end', () => resolve(JSON.parse(data)));
+      req.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (error) {
+          reject(error);
+        }
+      });
       req.on('error', reject);
 
       req.end();
@@ -200,7 +206,7 @@ main();
 
 ```go
 // http2_client.go
-package main
+package pipeline
 
 import (
     "crypto/tls"
@@ -460,7 +466,7 @@ main();
 
 ---
 
-## Database Query Pipelining
+## Database Request Batching
 
 ### PostgreSQL Asynchronous Queries
 
@@ -471,7 +477,7 @@ import asyncio
 from typing import List, Tuple, Any
 
 class AsyncPostgresClient:
-    """PostgreSQL client with query pipelining"""
+    """PostgreSQL client with concurrent query execution"""
 
     def __init__(self, dsn: str):
         self.dsn = dsn
@@ -495,17 +501,13 @@ class AsyncPostgresClient:
         return results
 
     async def query_pipeline(self, queries: List[Tuple[str, tuple]]) -> List[Any]:
-        """Execute queries concurrently (pipelined)"""
-        async with self.pool.acquire() as conn:
-            # Prepare statements
-            prepared = []
-            for query, params in queries:
-                stmt = await conn.prepare(query)
-                prepared.append((stmt, params))
+        """Execute independent queries concurrently using pool connections"""
+        async def run_query(query: str, params: tuple):
+            async with self.pool.acquire() as conn:
+                return await conn.fetch(query, *params)
 
-            # Execute all concurrently
-            tasks = [stmt.fetch(*params) for stmt, params in prepared]
-            return await asyncio.gather(*tasks)
+        tasks = [run_query(query, params) for query, params in queries]
+        return await asyncio.gather(*tasks)
 
     async def multi_table_fetch(self, user_id: int) -> dict:
         """Fetch from multiple tables concurrently"""
@@ -601,6 +603,7 @@ async def process_items(client, items):
 ```python
 # pipeline_metrics.py
 from prometheus_client import Histogram, Counter
+import redis.asyncio as redis
 import time
 from functools import wraps
 
@@ -647,10 +650,14 @@ def monitored_pipeline(operation: str):
 # Usage
 @monitored_pipeline('redis_set')
 async def pipeline_set(items):
-    pipe = redis.pipeline()
+    redis_client = redis.from_url("redis://localhost:6379")
+    pipe = redis_client.pipeline(transaction=False)
     for key, value in items:
         pipe.set(key, value)
-    return await pipe.execute()
+    try:
+        return await pipe.execute()
+    finally:
+        await redis_client.aclose()
 ```
 
 ---
@@ -661,7 +668,7 @@ async def pipeline_set(items):
 |----------|------------------|----------------|
 | HTTP/2 | Multiplexing | 100-1000 concurrent streams |
 | Redis | Pipeline commands | 1000-10000 commands |
-| PostgreSQL | Async queries | 10-100 concurrent queries |
+| PostgreSQL | Async queries with a connection pool | 10-100 concurrent queries |
 | gRPC | Streaming | Based on message size |
 
 ---
@@ -688,7 +695,7 @@ Request pipelining is a powerful technique for improving throughput:
 
 1. **Use HTTP/2**: Built-in multiplexing for web requests
 2. **Pipeline Redis commands**: Massive speedup for batch operations
-3. **Parallel database queries**: Fetch from multiple tables concurrently
+3. **Parallel database queries**: Fetch from multiple tables concurrently using pool connections
 4. **Monitor batch sizes**: Track pipeline efficiency
 5. **Choose appropriate batch sizes**: Balance throughput vs memory
 
