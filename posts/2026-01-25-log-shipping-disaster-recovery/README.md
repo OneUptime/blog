@@ -46,7 +46,7 @@ flowchart TD
 
 | Strategy | RTO | RPO | Cost |
 |----------|-----|-----|------|
-| Hot standby | Seconds | Zero | High |
+| Hot standby | Seconds | Zero with synchronous replication; seconds with async replication | High |
 | Warm standby | Minutes | Minutes | Medium |
 | Cold backup | Hours | Hours | Low |
 | Archive only | Days | 24 hours | Very low |
@@ -65,12 +65,12 @@ interface ReplicationConfig {
   primary: ClusterConfig;
   secondary: ClusterConfig;
   syncMode: 'async' | 'semi-sync' | 'sync';
-  maxLagSeconds: number;
+  maxLagOperations: number;
 }
 
 class HotStandbyReplicator {
   private config: ReplicationConfig;
-  private replicationLag: number = 0;
+  private replicationLagOperations: number = 0;
   private isHealthy: boolean = true;
 
   constructor(config: ReplicationConfig) {
@@ -142,11 +142,11 @@ class HotStandbyReplicator {
         const primarySeq = await this.config.primary.client.getLatestSequence();
         const secondarySeq = await this.config.secondary.client.getLatestSequence();
 
-        this.replicationLag = primarySeq - secondarySeq;
-        this.isHealthy = this.replicationLag <= this.config.maxLagSeconds;
+        this.replicationLagOperations = primarySeq - secondarySeq;
+        this.isHealthy = this.replicationLagOperations <= this.config.maxLagOperations;
 
         if (!this.isHealthy) {
-          console.warn(`Replication lag: ${this.replicationLag}s exceeds threshold`);
+          console.warn(`Replication lag: ${this.replicationLagOperations} operations exceeds threshold`);
         }
       } catch (error) {
         console.error('Health check failed:', error);
@@ -158,7 +158,7 @@ class HotStandbyReplicator {
   getStatus(): ReplicationStatus {
     return {
       healthy: this.isHealthy,
-      lagSeconds: this.replicationLag,
+      lagOperations: this.replicationLagOperations,
       mode: this.config.syncMode
     };
   }
@@ -174,12 +174,10 @@ const elasticsearchCCR = {
   createFollowIndex: async (leader: string, follower: string) => {
     await esClient.ccr.follow({
       index: follower,
-      body: {
-        remote_cluster: 'dr-cluster',
-        leader_index: leader,
-        settings: {
-          'index.number_of_replicas': 1
-        }
+      remote_cluster: 'dr-cluster',
+      leader_index: leader,
+      settings: {
+        'index.number_of_replicas': 1
       }
     });
   },
@@ -193,8 +191,12 @@ const elasticsearchCCR = {
   promoteFollower: async (follower: string) => {
     // Pause following
     await esClient.ccr.pauseFollow({ index: follower });
+    // Close the follower before unfollowing
+    await esClient.indices.close({ index: follower });
     // Unfollow to make writable
     await esClient.ccr.unfollow({ index: follower });
+    // Reopen as a regular writable index
+    await esClient.indices.open({ index: follower });
   }
 };
 ```
@@ -234,6 +236,7 @@ class WarmStandbyShipper {
 
     while (this.running) {
       try {
+        await this.drainBuffer();
         await this.shipBatch();
         await this.sleep(this.config.shipIntervalSeconds * 1000);
       } catch (error) {
@@ -349,11 +352,11 @@ interface BackupConfig {
 
 class ColdBackupManager {
   private config: BackupConfig;
-  private s3: AWS.S3;
+  private s3: S3Client;
 
   constructor(config: BackupConfig) {
     this.config = config;
-    this.s3 = new AWS.S3({ region: config.destination.region });
+    this.s3 = new S3Client({ region: config.destination.region });
   }
 
   async runBackup(): Promise<BackupResult> {
@@ -366,8 +369,11 @@ class ColdBackupManager {
       // Create snapshot of source
       const snapshot = await this.createSnapshot(backupId);
 
-      // Upload to S3
-      await this.uploadSnapshot(snapshot, backupId);
+      // Upload file-based backups to S3. Elasticsearch snapshots are already
+      // written to the configured snapshot repository.
+      if (!snapshot.storedInRepository) {
+        await this.uploadSnapshot(snapshot, backupId);
+      }
 
       // Record backup metadata
       await this.recordBackup(backupId, timestamp, snapshot.size);
@@ -394,20 +400,19 @@ class ColdBackupManager {
   private async createSnapshot(backupId: string): Promise<Snapshot> {
     // For Elasticsearch
     if (this.config.source.type === 'elasticsearch') {
-      const response = await esClient.snapshot.create({
+      await esClient.snapshot.create({
         repository: 'backup-repo',
         snapshot: backupId,
         wait_for_completion: true,
-        body: {
-          indices: 'logs-*',
-          include_global_state: false
-        }
+        indices: 'logs-*',
+        include_global_state: false
       });
 
       return {
         id: backupId,
-        location: response.body.snapshot.snapshot,
-        size: response.body.snapshot.total_shards
+        location: `backup-repo/${backupId}`,
+        size: 0,
+        storedInRepository: true
       };
     }
 
@@ -430,12 +435,12 @@ class ColdBackupManager {
     // Compress and upload
     const compressed = await this.compress(snapshot.location);
 
-    await this.s3.upload({
+    await this.s3.send(new PutObjectCommand({
       Bucket: this.config.destination.bucket,
       Key: key,
       Body: compressed,
       StorageClass: 'STANDARD_IA'
-    }).promise();
+    }));
 
     console.log(`Uploaded backup to s3://${this.config.destination.bucket}/${key}`);
   }
@@ -461,12 +466,12 @@ class ColdBackupManager {
     }
 
     if (toDelete.length > 0) {
-      await this.s3.deleteObjects({
+      await this.s3.send(new DeleteObjectsCommand({
         Bucket: this.config.destination.bucket,
         Delete: {
           Objects: toDelete.map(Key => ({ Key }))
         }
-      }).promise();
+      }));
 
       console.log(`Deleted ${toDelete.length} expired backups`);
     }
@@ -475,17 +480,34 @@ class ColdBackupManager {
   async restore(backupId: string, targetDate?: Date): Promise<RestoreResult> {
     console.log(`Restoring backup: ${backupId}`);
 
+    if (this.config.source.type === 'elasticsearch') {
+      await esClient.snapshot.restore({
+        repository: 'backup-repo',
+        snapshot: backupId,
+        wait_for_completion: true,
+        indices: 'logs-*',
+        include_global_state: false
+      });
+
+      return {
+        success: true,
+        backupId,
+        restoredAt: new Date()
+      };
+    }
+
     // Download from S3
     const key = `${this.config.destination.prefix}/${backupId}.tar.gz`;
 
-    const download = await this.s3.getObject({
+    const download = await this.s3.send(new GetObjectCommand({
       Bucket: this.config.destination.bucket,
       Key: key
-    }).promise();
+    }));
 
     // Decompress
     const tempPath = `/tmp/restore-${backupId}`;
-    await this.decompress(download.Body as Buffer, tempPath);
+    const body = await this.streamToBuffer(download.Body as NodeJS.ReadableStream);
+    await this.decompress(body, tempPath);
 
     // Restore to source
     await this.config.source.importFromFile(tempPath);
@@ -522,6 +544,18 @@ class ColdBackupManager {
 
       output.on('finish', resolve);
       output.on('error', reject);
+    });
+  }
+
+  private async streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+
+      stream.on('data', chunk => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+      stream.on('error', reject);
     });
   }
 }
@@ -592,6 +626,7 @@ class FailoverManager {
       return { success: false, reason: 'Failover already in progress' };
     }
 
+    const startedAt = Date.now();
     this.failoverInProgress = true;
     console.log('Initiating failover to secondary');
 
@@ -617,7 +652,8 @@ class FailoverManager {
       return {
         success: true,
         newPrimary: 'secondary',
-        timestamp: new Date()
+        timestamp: new Date(),
+        duration: Date.now() - startedAt
       };
     } catch (error) {
       console.error('Failover failed:', error);
@@ -636,6 +672,7 @@ class FailoverManager {
     }
 
     console.log('Initiating failback to primary');
+    const startedAt = Date.now();
 
     try {
       // Step 1: Verify primary is healthy
@@ -658,7 +695,8 @@ class FailoverManager {
       return {
         success: true,
         newPrimary: 'primary',
-        timestamp: new Date()
+        timestamp: new Date(),
+        duration: Date.now() - startedAt
       };
     } catch (error) {
       console.error('Failback failed:', error);
@@ -676,9 +714,16 @@ class FailoverManager {
     for (const index of indices) {
       if (index.index.startsWith('logs-')) {
         // Unfollow to make writable
+        await this.config.secondary.client.ccr.pauseFollow({ index: index.index });
+        await this.config.secondary.client.indices.close({ index: index.index });
         await this.config.secondary.client.ccr.unfollow({ index: index.index });
+        await this.config.secondary.client.indices.open({ index: index.index });
       }
     }
+  }
+
+  getCurrentPrimary(): 'primary' | 'secondary' {
+    return this.currentPrimary;
   }
 
   private async updateRouting(target: ClusterConfig): Promise<void> {
