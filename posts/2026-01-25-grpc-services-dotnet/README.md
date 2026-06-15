@@ -8,13 +8,13 @@ Description: Learn how to build high-performance gRPC services in .NET.
 
 ---
 
-gRPC is a high-performance RPC framework that uses HTTP/2 for transport and Protocol Buffers for serialization. It is particularly well-suited for microservices communication where performance matters. Unlike REST APIs that serialize to JSON, gRPC uses binary serialization which results in smaller message sizes and faster processing.
+gRPC is a high-performance RPC framework that uses HTTP/2 for transport and Protocol Buffers for serialization. It is particularly well-suited for microservices communication where performance matters. Unlike REST APIs that commonly serialize to JSON, gRPC uses binary serialization which can result in smaller message sizes and faster processing.
 
 ## Why gRPC?
 
 Before diving into implementation, here's why you might choose gRPC:
 
-- **Performance**: Binary serialization is faster than JSON
+- **Performance**: Binary serialization is often faster than JSON
 - **Strongly typed contracts**: Proto files define the API contract
 - **HTTP/2 features**: Multiplexing, header compression, bidirectional streaming
 - **Code generation**: Client and server code generated from proto files
@@ -29,10 +29,17 @@ dotnet new grpc -n ProductService
 cd ProductService
 ```
 
-This creates a project with the necessary packages already configured. For existing projects, add:
+This creates a project with the necessary packages already configured. The optional reflection example later requires an additional package:
+
+```bash
+dotnet add package Grpc.AspNetCore.Server.Reflection
+```
+
+For existing projects, add:
 
 ```bash
 dotnet add package Grpc.AspNetCore
+dotnet add package Grpc.AspNetCore.Server.Reflection
 ```
 
 ## Defining the Service with Protocol Buffers
@@ -338,6 +345,8 @@ builder.Services.AddGrpc(options =>
     options.MaxSendMessageSize = 16 * 1024 * 1024;
 });
 
+builder.Services.AddGrpcReflection();
+
 // Register repository
 builder.Services.AddSingleton<IProductRepository, InMemoryProductRepository>();
 
@@ -347,7 +356,10 @@ var app = builder.Build();
 app.MapGrpcService<ProductCatalogService>();
 
 // Optional: Add gRPC reflection for tools like grpcurl
-app.MapGrpcReflectionService();
+if (app.Environment.IsDevelopment())
+{
+    app.MapGrpcReflectionService();
+}
 
 app.Run();
 ```
@@ -359,9 +371,9 @@ Create a client project and add the proto file:
 ```xml
 <!-- Client.csproj -->
 <ItemGroup>
-  <PackageReference Include="Grpc.Net.Client" Version="2.59.0" />
-  <PackageReference Include="Google.Protobuf" Version="3.25.0" />
-  <PackageReference Include="Grpc.Tools" Version="2.59.0" PrivateAssets="All" />
+  <PackageReference Include="Grpc.Net.Client" Version="2.80.0" />
+  <PackageReference Include="Google.Protobuf" Version="3.35.1" />
+  <PackageReference Include="Grpc.Tools" Version="2.81.1" PrivateAssets="All" />
 </ItemGroup>
 
 <ItemGroup>
@@ -373,6 +385,7 @@ Implement the client:
 
 ```csharp
 // ProductServiceClient.cs
+using System.Runtime.CompilerServices;
 using Grpc.Core;
 using Grpc.Net.Client;
 using ProductService;
@@ -563,6 +576,10 @@ Interceptors let you add cross-cutting concerns like logging and authentication:
 
 ```csharp
 // Server interceptor
+using System.Diagnostics;
+using Grpc.Core;
+using Grpc.Core.Interceptors;
+
 public class LoggingInterceptor : Interceptor
 {
     private readonly ILogger<LoggingInterceptor> _logger;
