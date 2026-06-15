@@ -18,7 +18,7 @@ Python's built-in `logging` module provides a flexible framework for emitting lo
 # - No severity levels
 # - Hard to turn off in production
 # - No timestamps or context
-# - Goes to stdout only
+# - Defaults to stdout
 
 print("Processing started")
 print("Error: something went wrong")
