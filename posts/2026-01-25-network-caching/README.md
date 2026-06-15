@@ -109,7 +109,7 @@ def account_balance():
 | `s-maxage=N` | Fresh for N seconds in shared caches |
 | `no-cache` | Must revalidate before use |
 | `no-store` | Never store |
-| `must-revalidate` | Use stale only if cannot revalidate |
+| `must-revalidate` | Must validate before reusing stale content |
 | `stale-while-revalidate=N` | Serve stale while refreshing for N seconds |
 | `immutable` | Content will never change |
 
@@ -204,6 +204,13 @@ Varnish provides sophisticated HTTP caching:
 # default.vcl - Varnish cache configuration
 vcl 4.1;
 
+import std;
+
+acl purge_acl {
+    "localhost";
+    "10.0.0.0"/8;
+}
+
 backend default {
     .host = "127.0.0.1";
     .port = "8080";
@@ -213,18 +220,20 @@ backend default {
 }
 
 sub vcl_recv {
+    # Purge cache
+    if (req.method == "PURGE") {
+        if (!client.ip ~ purge_acl) {
+            return (synth(405, "Not allowed"));
+        }
+        return (purge);
+    }
+
     # Normalize request
     set req.url = std.querysort(req.url);
 
     # Remove tracking parameters from cache key
     set req.url = regsuball(req.url, "([\?&])utm_[^&]+", "\1");
     set req.url = regsuball(req.url, "([\?&])fbclid=[^&]+", "\1");
-
-    # Strip cookies for static assets
-    if (req.url ~ "^/static/") {
-        unset req.http.Cookie;
-        return (hash);
-    }
 
     # Pass authenticated requests to backend
     if (req.http.Authorization) {
@@ -234,6 +243,12 @@ sub vcl_recv {
     # Cache GET and HEAD only
     if (req.method != "GET" && req.method != "HEAD") {
         return (pass);
+    }
+
+    # Strip cookies for static assets
+    if (req.url ~ "^/static/") {
+        unset req.http.Cookie;
+        return (hash);
     }
 
     # Check cache
@@ -285,21 +300,6 @@ sub vcl_hash {
 
     return (lookup);
 }
-
-# Purge cache
-sub vcl_recv {
-    if (req.method == "PURGE") {
-        if (!client.ip ~ purge_acl) {
-            return (synth(405, "Not allowed"));
-        }
-        return (purge);
-    }
-}
-
-acl purge_acl {
-    "localhost";
-    "10.0.0.0"/8;
-}
 ```
 
 ## CDN Caching with CloudFront
@@ -307,10 +307,11 @@ acl purge_acl {
 ```python
 # cloudfront_setup.py - Configure CloudFront caching
 import boto3
+import time
 
 cloudfront = boto3.client('cloudfront')
 
-def create_distribution(origin_domain: str, bucket_name: str):
+def create_distribution(origin_domain: str):
     """Create CloudFront distribution with caching policies"""
 
     distribution_config = {
