@@ -100,6 +100,7 @@ ENTRYPOINT python app.py
 CMD --port 8080
 
 # Actually runs: /bin/sh -c "python app.py"
+# CMD and docker run arguments are ignored with shell-form ENTRYPOINT
 # Shell is PID 1, not your application
 # Signals not forwarded to application by default
 # Shell expansion works: $ENV_VAR
@@ -153,6 +154,9 @@ exec "$@"
 ```dockerfile
 FROM python:3.11-slim
 
+RUN apt-get update && apt-get install -y --no-install-recommends netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
@@ -204,7 +208,7 @@ FROM node:20-slim
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY . .
 
@@ -237,7 +241,7 @@ Accept configuration through arguments.
 ```dockerfile
 FROM nginx:alpine
 
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx.conf.template /etc/nginx/nginx.conf.template
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
