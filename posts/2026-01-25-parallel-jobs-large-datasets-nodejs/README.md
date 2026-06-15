@@ -63,14 +63,11 @@ async function fetchUserData(userIds: string[]): Promise<User[]> {
 }
 ```
 
-## Batch Processing with Streams
+## Batch Processing with Async Iterables
 
 For truly large datasets, we need to stream data rather than load it all at once. This pattern reads from a database cursor or file stream and processes items in controlled batches.
 
 ```typescript
-import { Readable, Transform } from 'stream';
-import { pipeline } from 'stream/promises';
-
 // Configuration for batch processing
 interface BatchConfig {
   batchSize: number;       // Items per batch
@@ -79,7 +76,7 @@ interface BatchConfig {
 }
 
 // Process items in batches with controlled concurrency
-// Uses Node.js streams to handle memory efficiently
+// Uses async iteration to avoid loading the entire input at once
 async function processBatches<T, R>(
   source: AsyncIterable<T>,
   processor: (batch: T[]) => Promise<R[]>,
@@ -91,7 +88,26 @@ async function processBatches<T, R>(
   let processed = 0;
 
   let batch: T[] = [];
-  const pendingBatches: Promise<void>[] = [];
+  const pendingBatches = new Set<Promise<void>>();
+
+  const enqueueBatch = async (items: T[]): Promise<void> => {
+    const batchPromise = limiter.execute(async () => {
+      const batchResults = await processor(items);
+      results.push(...batchResults);
+      processed += items.length;
+      onProgress?.(processed);
+    });
+
+    pendingBatches.add(batchPromise);
+    batchPromise.then(
+      () => pendingBatches.delete(batchPromise),
+      () => pendingBatches.delete(batchPromise)
+    );
+
+    if (pendingBatches.size >= concurrency) {
+      await Promise.race(pendingBatches);
+    }
+  };
 
   for await (const item of source) {
     batch.push(item);
@@ -99,28 +115,13 @@ async function processBatches<T, R>(
     if (batch.length >= batchSize) {
       const currentBatch = batch;
       batch = [];
-
-      // Process batch with concurrency control
-      const batchPromise = limiter.execute(async () => {
-        const batchResults = await processor(currentBatch);
-        results.push(...batchResults);
-        processed += currentBatch.length;
-        onProgress?.(processed);
-      });
-
-      pendingBatches.push(batchPromise);
+      await enqueueBatch(currentBatch);
     }
   }
 
   // Process remaining items
   if (batch.length > 0) {
-    const finalBatch = limiter.execute(async () => {
-      const batchResults = await processor(batch);
-      results.push(...batchResults);
-      processed += batch.length;
-      onProgress?.(processed);
-    });
-    pendingBatches.push(finalBatch);
+    await enqueueBatch(batch);
   }
 
   await Promise.all(pendingBatches);
@@ -135,7 +136,7 @@ When processing database records, use cursors to stream results instead of loadi
 ```typescript
 // Stream records from PostgreSQL using a cursor
 // Memory usage stays constant regardless of dataset size
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 import Cursor from 'pg-cursor';
 
 async function* streamFromDatabase<T>(
@@ -145,17 +146,11 @@ async function* streamFromDatabase<T>(
   batchSize: number = 1000
 ): AsyncGenerator<T> {
   const client = await pool.connect();
+  const cursor = client.query(new Cursor(query, params));
 
   try {
-    const cursor = client.query(new Cursor(query, params));
-
     while (true) {
-      const rows = await new Promise<T[]>((resolve, reject) => {
-        cursor.read(batchSize, (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows);
-        });
-      });
+      const rows = await cursor.read(batchSize) as T[];
 
       if (rows.length === 0) break;
 
@@ -163,9 +158,8 @@ async function* streamFromDatabase<T>(
         yield row;
       }
     }
-
-    cursor.close();
   } finally {
+    await cursor.close();
     client.release();
   }
 }
@@ -224,6 +218,11 @@ class WorkerPool<T, R> {
     reject: (error: Error) => void;
   }> = [];
   private availableWorkers: Worker[] = [];
+  private activeTasks: Map<Worker, {
+    task: WorkerTask<T>;
+    resolve: (result: R) => void;
+    reject: (error: Error) => void;
+  }> = new Map();
 
   constructor(
     private workerPath: string,
@@ -239,17 +238,16 @@ class WorkerPool<T, R> {
     const worker = new Worker(this.workerPath);
 
     worker.on('message', (result: WorkerResult<R>) => {
-      // Find and resolve the pending task
-      const taskIndex = this.taskQueue.findIndex(t => t.task.id === result.id);
+      // Resolve the task assigned to this worker
+      const activeTask = this.activeTasks.get(worker);
 
-      if (taskIndex !== -1) {
-        const { resolve, reject } = this.taskQueue[taskIndex];
-        this.taskQueue.splice(taskIndex, 1);
+      if (activeTask && activeTask.task.id === result.id) {
+        this.activeTasks.delete(worker);
 
         if (result.error) {
-          reject(new Error(result.error));
+          activeTask.reject(new Error(result.error));
         } else {
-          resolve(result.result!);
+          activeTask.resolve(result.result!);
         }
       }
 
@@ -260,6 +258,15 @@ class WorkerPool<T, R> {
 
     worker.on('error', (error) => {
       console.error('Worker error:', error);
+
+      const activeTask = this.activeTasks.get(worker);
+      if (activeTask) {
+        activeTask.reject(error);
+        this.activeTasks.delete(worker);
+      }
+
+      this.availableWorkers = this.availableWorkers.filter(w => w !== worker);
+
       // Replace failed worker
       const index = this.workers.indexOf(worker);
       if (index !== -1) {
@@ -275,7 +282,9 @@ class WorkerPool<T, R> {
   private processQueue(): void {
     while (this.availableWorkers.length > 0 && this.taskQueue.length > 0) {
       const worker = this.availableWorkers.pop()!;
-      const { task } = this.taskQueue[0]; // Keep in queue until complete
+      const queuedTask = this.taskQueue.shift()!;
+      this.activeTasks.set(worker, queuedTask);
+      const { task } = queuedTask;
       worker.postMessage(task);
     }
   }
@@ -303,6 +312,7 @@ class WorkerPool<T, R> {
     await Promise.all(this.workers.map(w => w.terminate()));
     this.workers = [];
     this.availableWorkers = [];
+    this.activeTasks.clear();
   }
 }
 ```
@@ -609,8 +619,9 @@ async function* readLinesFromFile(filePath: string): AsyncGenerator<string> {
   }
 }
 
-// Process CSV file with batching
-async function processLargeCsv(
+// Process a simple comma-delimited file with batching
+// For RFC 4180 CSV with quoted fields, use a streaming CSV parser instead
+async function processLargeDelimitedFile(
   filePath: string,
   processor: (rows: Record<string, string>[]) => Promise<void>
 ): Promise<void> {
@@ -721,7 +732,7 @@ function sleep(ms: number): Promise<void> {
 | Pattern | Use Case | Key Benefit |
 |---------|----------|-------------|
 | Concurrency limiter | I/O-bound operations | Prevents overwhelming external services |
-| Batch streaming | Database records | Constant memory usage |
+| Batch streaming | Database records | Avoids loading all input records |
 | Worker threads | CPU-bound tasks | Utilizes multiple cores |
 | Checkpointing | Long-running jobs | Resumable after failures |
 | Pipeline stages | Complex transformations | Modularity and parallel stages |
