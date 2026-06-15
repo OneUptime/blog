@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, SQL, Sequence, Primary Key, SERIAL, Database Administration
 
-Description: Learn how to reset and synchronize primary key sequences in PostgreSQL after data imports, deletions, or migrations. This guide covers SERIAL columns, identity columns, and manual sequence management.
+Description: Learn how to reset and synchronize primary key sequences in PostgreSQL after data imports, reloads, or migrations. This guide covers SERIAL columns, identity columns, and manual sequence management.
 
 ---
 
-PostgreSQL uses sequences to generate auto-incrementing primary key values. When you import data with explicit IDs or delete records, the sequence can become out of sync with the actual data. This leads to duplicate key errors on the next insert. Understanding how to reset sequences is essential for database maintenance.
+PostgreSQL uses sequences to generate auto-incrementing primary key values. When you import data with explicit IDs or reset and reload data, the sequence can become out of sync with the actual data. This leads to duplicate key errors on the next insert. Understanding how to reset sequences is essential for database maintenance.
 
 ## Understanding PostgreSQL Sequences
 
@@ -41,7 +41,7 @@ Before resetting, check the current state of your sequence and data.
 SELECT currval('users_id_seq');
 -- Note: currval only works after nextval has been called in the session
 
--- Get the next value that will be returned (without incrementing)
+-- Get the last value stored by the sequence
 SELECT last_value FROM users_id_seq;
 
 -- Get the maximum id currently in the table
@@ -60,13 +60,13 @@ FROM users_id_seq;
 The most common operation is syncing the sequence with the maximum existing ID.
 
 ```sql
--- Method 1: setval with max(id) + 0
+-- Method 1: setval with max(id)
 -- Sets sequence so next call returns max(id) + 1
-SELECT setval('users_id_seq', COALESCE((SELECT MAX(id) FROM users), 0));
+SELECT setval('users_id_seq', (SELECT MAX(id) FROM users));
 
 -- Method 2: setval with explicit next value
 -- The third parameter 'false' means the next nextval() returns this value
-SELECT setval('users_id_seq', COALESCE((SELECT MAX(id) FROM users), 1), true);
+SELECT setval('users_id_seq', COALESCE((SELECT MAX(id) FROM users), 0) + 1, false);
 
 -- Method 3: setval to return specific next value
 -- If max(id) is 100, this makes next insert get id = 101
@@ -100,8 +100,6 @@ CREATE OR REPLACE FUNCTION reset_all_sequences(schema_name TEXT DEFAULT 'public'
 RETURNS TABLE(sequence_name TEXT, new_value BIGINT) AS $$
 DECLARE
     seq_record RECORD;
-    table_name TEXT;
-    column_name TEXT;
     max_val BIGINT;
 BEGIN
     -- Loop through all sequences in the schema
@@ -117,23 +115,32 @@ BEGIN
         JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
         WHERE s.relkind = 'S'
             AND n.nspname = schema_name
+            AND d.deptype IN ('a', 'i')
     LOOP
         -- Get max value from the table
         EXECUTE format(
-            'SELECT COALESCE(MAX(%I), 0) FROM %I.%I',
+            'SELECT MAX(%I)::BIGINT FROM %I.%I',
             seq_record.col_name,
             schema_name,
             seq_record.tab_name
         ) INTO max_val;
 
         -- Reset the sequence
-        EXECUTE format(
-            'SELECT setval(%L, $1)',
-            schema_name || '.' || seq_record.seq_name
-        ) USING max_val;
+        IF max_val IS NULL THEN
+            EXECUTE format(
+                'SELECT setval(%L, 1, false)',
+                schema_name || '.' || seq_record.seq_name
+            );
+            new_value := 1;
+        ELSE
+            EXECUTE format(
+                'SELECT setval(%L, $1, true)',
+                schema_name || '.' || seq_record.seq_name
+            ) USING max_val;
+            new_value := max_val;
+        END IF;
 
         sequence_name := seq_record.seq_name;
-        new_value := max_val;
         RETURN NEXT;
     END LOOP;
 END;
@@ -175,13 +182,14 @@ SELECT setval(
 When you see "duplicate key value violates unique constraint", the sequence is behind the data.
 
 ```sql
--- Scenario: Imported data with explicit IDs
+-- Scenario: Existing table already has rows with IDs 1-99,
+-- then imported data with explicit IDs
 INSERT INTO users (id, username, email) VALUES
     (100, 'alice', 'alice@example.com'),
     (101, 'bob', 'bob@example.com'),
     (102, 'charlie', 'charlie@example.com');
 
--- Next auto-insert fails because sequence is at 1
+-- Next auto-insert fails because sequence is still at 99
 INSERT INTO users (username, email) VALUES ('dave', 'dave@example.com');
 -- ERROR: duplicate key value violates unique constraint "users_pkey"
 
@@ -289,8 +297,8 @@ Adopt practices that minimize sequence synchronization problems.
 -- Use COPY with sequence sync for bulk imports
 BEGIN;
 
--- Temporarily disable trigger that uses sequence
-ALTER TABLE users DISABLE TRIGGER ALL;
+-- Temporarily disable user-defined triggers if needed
+ALTER TABLE users DISABLE TRIGGER USER;
 
 -- Import data with explicit IDs
 COPY users (id, username, email) FROM '/path/to/data.csv' CSV;
@@ -299,7 +307,7 @@ COPY users (id, username, email) FROM '/path/to/data.csv' CSV;
 SELECT setval('users_id_seq', (SELECT MAX(id) FROM users));
 
 -- Re-enable triggers
-ALTER TABLE users ENABLE TRIGGER ALL;
+ALTER TABLE users ENABLE TRIGGER USER;
 
 COMMIT;
 ```
