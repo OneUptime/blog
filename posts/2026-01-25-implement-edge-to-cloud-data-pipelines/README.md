@@ -118,7 +118,7 @@ class DataCollector:
                     record = DataRecord(
                         record_id=str(uuid.uuid4()),
                         device_id=self.device_id,
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(timezone.utc),
                         data_type=source_name,
                         payload=item
                     )
@@ -183,7 +183,7 @@ def collect_system_metrics() -> List[Dict]:
 
 from typing import Callable, Dict, Any, List
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timezone
 
 def add_metadata(metadata: Dict[str, str]) -> Callable:
     """Add static metadata to records"""
@@ -312,18 +312,20 @@ class BatchProcessor:
             compressed = gzip.compress(json_data, compresslevel=6)
         elif self.compression == "lz4":
             compressed = lz4.frame.compress(json_data)
-        else:
+        elif self.compression == "none":
             compressed = json_data
+        else:
+            raise ValueError(f"Unsupported compression: {self.compression}")
 
         # Calculate checksum
         checksum = hashlib.sha256(compressed).hexdigest()
 
-        batch_id = f"{self.device_id}-{datetime.utcnow().timestamp()}"
+        batch_id = f"{self.device_id}-{datetime.now(timezone.utc).timestamp()}"
 
         return DataBatch(
             batch_id=batch_id,
             device_id=self.device_id,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             record_count=len(records),
             compressed_data=compressed,
             compression=self.compression,
@@ -368,8 +370,10 @@ class BatchProcessor:
             decompressed = gzip.decompress(batch.compressed_data)
         elif batch.compression == "lz4":
             decompressed = lz4.frame.decompress(batch.compressed_data)
-        else:
+        elif batch.compression == "none":
             decompressed = batch.compressed_data
+        else:
+            raise ValueError(f"Unsupported compression: {batch.compression}")
 
         return json.loads(decompressed.decode('utf-8'))
 ```
@@ -385,7 +389,7 @@ class BatchProcessor:
 import asyncio
 import aiohttp
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Callable, List
 from enum import Enum
 import logging
@@ -411,7 +415,7 @@ class DeliveryAttempt:
 class PersistentDeliveryQueue:
     """SQLite-backed delivery queue for reliability"""
 
-    def __init__(self, db_path: str = "/data/delivery_queue.db"):
+    def __init__(self, db_path: str = "delivery_queue.db"):
         self.db_path = db_path
         self._init_db()
 
@@ -452,17 +456,17 @@ class PersistentDeliveryQueue:
         conn.commit()
         conn.close()
 
-    def get_pending(self, limit: int = 10) -> List[dict]:
+    def get_pending(self, limit: int = 10, max_attempts: int = 10) -> List[dict]:
         """Get pending batches for delivery"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.execute("""
             SELECT * FROM delivery_queue
-            WHERE status IN ('pending', 'failed')
-            AND attempts < 10
+            WHERE status IN ('pending', 'failed', 'sending')
+            AND attempts < ?
             ORDER BY created_at ASC
             LIMIT ?
-        """, (limit,))
+        """, (max_attempts, limit))
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
@@ -474,7 +478,7 @@ class PersistentDeliveryQueue:
             UPDATE delivery_queue
             SET status = 'sending', last_attempt = ?, attempts = attempts + 1
             WHERE batch_id = ?
-        """, (datetime.utcnow().isoformat(), batch_id))
+        """, (datetime.now(timezone.utc).isoformat(), batch_id))
         conn.commit()
         conn.close()
 
@@ -485,7 +489,7 @@ class PersistentDeliveryQueue:
             UPDATE delivery_queue
             SET status = 'delivered', delivered_at = ?
             WHERE batch_id = ?
-        """, (datetime.utcnow().isoformat(), batch_id))
+        """, (datetime.now(timezone.utc).isoformat(), batch_id))
         conn.commit()
         conn.close()
 
@@ -502,7 +506,7 @@ class PersistentDeliveryQueue:
 
     def cleanup_delivered(self, older_than_hours: int = 24):
         """Remove old delivered batches"""
-        cutoff = (datetime.utcnow() - timedelta(hours=older_than_hours)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=older_than_hours)).isoformat()
         conn = sqlite3.connect(self.db_path)
         conn.execute("""
             DELETE FROM delivery_queue
@@ -537,9 +541,20 @@ class DataDeliveryService:
         self.queue.enqueue(batch)
 
         # Attempt delivery
-        return await self._attempt_delivery(batch.batch_id, batch.compressed_data)
+        return await self._attempt_delivery(
+            batch.batch_id,
+            batch.compressed_data,
+            batch.compression,
+            batch.checksum
+        )
 
-    async def _attempt_delivery(self, batch_id: str, data: bytes) -> bool:
+    async def _attempt_delivery(
+        self,
+        batch_id: str,
+        data: bytes,
+        compression: str,
+        checksum: str
+    ) -> bool:
         """Attempt to deliver a batch"""
         self.queue.mark_sending(batch_id)
 
@@ -550,9 +565,10 @@ class DataDeliveryService:
                     data=data,
                     headers={
                         "Content-Type": "application/octet-stream",
-                        "Content-Encoding": "gzip",
                         "X-API-Key": self.api_key,
-                        "X-Batch-ID": batch_id
+                        "X-Batch-ID": batch_id,
+                        "X-Compression": compression,
+                        "X-Checksum": checksum
                     },
                     timeout=aiohttp.ClientTimeout(total=60)
                 ) as response:
@@ -572,7 +588,7 @@ class DataDeliveryService:
 
     async def process_queue(self):
         """Process pending deliveries"""
-        pending = self.queue.get_pending(limit=10)
+        pending = self.queue.get_pending(limit=10, max_attempts=self.max_retries)
 
         for batch_info in pending:
             batch_id = batch_info['batch_id']
@@ -583,12 +599,17 @@ class DataDeliveryService:
 
             if batch_info['last_attempt']:
                 last_attempt = datetime.fromisoformat(batch_info['last_attempt'])
-                time_since = (datetime.utcnow() - last_attempt).total_seconds()
+                time_since = (datetime.now(timezone.utc) - last_attempt).total_seconds()
                 if time_since < delay:
                     continue  # Not ready for retry
 
             # Attempt delivery
-            await self._attempt_delivery(batch_id, batch_info['batch_data'])
+            await self._attempt_delivery(
+                batch_id,
+                batch_info['batch_data'],
+                batch_info['compression'],
+                batch_info['checksum']
+            )
 
     async def run_delivery_loop(self, interval: int = 10):
         """Run continuous delivery loop"""
@@ -612,9 +633,10 @@ class DataDeliveryService:
 from fastapi import FastAPI, HTTPException, Header, Request
 from typing import Optional
 import gzip
+import lz4.frame
 import json
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 
 app = FastAPI(title="Data Ingestion Service")
@@ -627,7 +649,8 @@ async def ingest_data(
     request: Request,
     x_api_key: str = Header(...),
     x_batch_id: str = Header(...),
-    content_encoding: Optional[str] = Header(None)
+    x_compression: str = Header("none"),
+    x_checksum: Optional[str] = Header(None)
 ):
     """Ingest data batch from edge device"""
 
@@ -642,13 +665,23 @@ async def ingest_data(
     # Read and decompress data
     raw_data = await request.body()
 
-    if content_encoding == "gzip":
+    if x_checksum and hashlib.sha256(raw_data).hexdigest() != x_checksum:
+        raise HTTPException(status_code=400, detail="Checksum mismatch")
+
+    if x_compression == "gzip":
         try:
             data = gzip.decompress(raw_data)
         except Exception as e:
             raise HTTPException(status_code=400, detail="Invalid gzip data")
-    else:
+    elif x_compression == "lz4":
+        try:
+            data = lz4.frame.decompress(raw_data)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="Invalid lz4 data")
+    elif x_compression == "none":
         data = raw_data
+    else:
+        raise HTTPException(status_code=415, detail="Unsupported compression")
 
     # Parse JSON
     try:
@@ -667,7 +700,7 @@ async def ingest_data(
 
     # Mark batch as processed
     ingested_batches[x_batch_id] = {
-        "received_at": datetime.utcnow().isoformat(),
+        "received_at": datetime.now(timezone.utc).isoformat(),
         "record_count": len(validated_records)
     }
 
@@ -749,9 +782,7 @@ async def main():
             records = collector.get_batch(100)
             batch = batch_processor.create_batch(records)
 
-            success = await delivery.deliver(batch)
-            if not success:
-                collector.return_batch(records)
+            await delivery.deliver(batch)
 
         await asyncio.sleep(10)
 
