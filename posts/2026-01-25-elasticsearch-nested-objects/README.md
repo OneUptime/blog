@@ -111,6 +111,7 @@ curl -X PUT "localhost:9200/products_nested" -H 'Content-Type: application/json'
 {
   "mappings": {
     "properties": {
+      "product_id": { "type": "keyword" },
       "name": { "type": "text" },
       "reviews": {
         "type": "nested",
@@ -128,6 +129,7 @@ curl -X PUT "localhost:9200/products_nested" -H 'Content-Type: application/json'
 # Index a product with reviews
 curl -X POST "localhost:9200/products_nested/_doc/1" -H 'Content-Type: application/json' -d'
 {
+  "product_id": "P001",
   "name": "Awesome Laptop",
   "reviews": [
     { "author": "Alice", "rating": 5, "comment": "Love it!", "date": "2024-01-10" },
@@ -370,7 +372,7 @@ curl -X GET "localhost:9200/products_nested/_search?pretty" -H 'Content-Type: ap
               "aggs": {
                 "unique_products": {
                   "cardinality": {
-                    "field": "_id"
+                    "field": "product_id"
                   }
                 }
               }
@@ -419,7 +421,7 @@ curl -X PUT "localhost:9200/orders" -H 'Content-Type: application/json' -d'
 }'
 
 # Index sample orders
-curl -X POST "localhost:9200/orders/_bulk" -H 'Content-Type: application/json' -d'
+curl -X POST "localhost:9200/orders/_bulk" -H 'Content-Type: application/x-ndjson' --data-binary '
 {"index": {"_id": "1"}}
 {"order_id": "ORD-001", "customer": {"id": "C001", "name": "John Doe"}, "order_date": "2024-01-15", "status": "shipped", "items": [{"product_id": "P001", "product_name": "iPhone 15", "category": "Electronics", "quantity": 1, "unit_price": 999, "total_price": 999}, {"product_id": "P002", "product_name": "AirPods Pro", "category": "Electronics", "quantity": 2, "unit_price": 249, "total_price": 498}], "order_total": 1497}
 {"index": {"_id": "2"}}
@@ -520,10 +522,8 @@ class NestedQueryBuilder:
 
         self.es.indices.create(
             index=index_name,
-            body={
-                "mappings": {
-                    "properties": properties
-                }
+            mappings={
+                "properties": properties
             }
         )
         return True
@@ -630,7 +630,7 @@ class NestedQueryBuilder:
         if additional_query:
             must_clauses.append(additional_query)
 
-        body = {
+        search_kwargs = {
             "query": {
                 "bool": {
                     "must": must_clauses
@@ -641,14 +641,14 @@ class NestedQueryBuilder:
 
         # Add aggregations
         if nested_aggs:
-            body["aggs"] = {}
+            search_kwargs["aggs"] = {}
             for name, config in nested_aggs.items():
-                body["aggs"][name] = self.nested_aggregation(
+                search_kwargs["aggs"][name] = self.nested_aggregation(
                     config["path"],
                     config["aggs"]
                 )
 
-        return self.es.search(index=index, body=body)
+        return self.es.search(index=index, **search_kwargs)
 
 
 class OrderRepository:
@@ -718,23 +718,21 @@ class OrderRepository:
 
         response = self.es.search(
             index=self.index,
-            body={
-                "size": 0,
-                "aggs": {
-                    "items": {
-                        "nested": {
-                            "path": "items"
-                        },
-                        "aggs": {
-                            "by_category": {
-                                "terms": {
-                                    "field": "items.category",
-                                    "size": 50
-                                },
-                                "aggs": {
-                                    "revenue": {
-                                        "sum": {"field": "items.total_price"}
-                                    }
+            size=0,
+            aggs={
+                "items": {
+                    "nested": {
+                        "path": "items"
+                    },
+                    "aggs": {
+                        "by_category": {
+                            "terms": {
+                                "field": "items.category",
+                                "size": 50
+                            },
+                            "aggs": {
+                                "revenue": {
+                                    "sum": {"field": "items.total_price"}
                                 }
                             }
                         }
@@ -756,25 +754,23 @@ class OrderRepository:
 
         response = self.es.search(
             index=self.index,
-            body={
-                "size": 0,
-                "query": {
-                    "term": {"customer.id": customer_id}
-                },
-                "aggs": {
-                    "items": {
-                        "nested": {
-                            "path": "items"
-                        },
-                        "aggs": {
-                            "by_category": {
-                                "terms": {
-                                    "field": "items.category"
-                                },
-                                "aggs": {
-                                    "spent": {
-                                        "sum": {"field": "items.total_price"}
-                                    }
+            size=0,
+            query={
+                "term": {"customer.id": customer_id}
+            },
+            aggs={
+                "items": {
+                    "nested": {
+                        "path": "items"
+                    },
+                    "aggs": {
+                        "by_category": {
+                            "terms": {
+                                "field": "items.category"
+                            },
+                            "aggs": {
+                                "spent": {
+                                    "sum": {"field": "items.total_price"}
                                 }
                             }
                         }
@@ -815,7 +811,7 @@ if __name__ == "__main__":
 **Nested Document Limits:**
 ```yaml
 # elasticsearch.yml - increase if needed
-index.mapping.nested_fields.limit: 50
+index.mapping.nested_fields.limit: 100
 index.mapping.nested_objects.limit: 10000
 ```
 
