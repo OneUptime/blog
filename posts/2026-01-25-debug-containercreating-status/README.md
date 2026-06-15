@@ -12,7 +12,7 @@ A pod stuck in `ContainerCreating` status is one of the most common Kubernetes p
 
 ## Understanding ContainerCreating
 
-When a pod shows `ContainerCreating`, Kubernetes is trying to:
+When a pod shows `ContainerCreating`, Kubernetes may be trying to:
 
 1. Pull the container image
 2. Set up networking
@@ -176,8 +176,8 @@ spec:
 **Volume already mounted elsewhere**:
 
 ```bash
-# Check if volume is used by another pod
-kubectl get pods --all-namespaces -o json | jq '.items[] | select(.spec.volumes[]?.persistentVolumeClaim.claimName=="<pvc-name>") | .metadata.name'
+# Check if the volume is used by another pod in the same namespace
+kubectl get pods -n <namespace> -o json | jq -r '.items[] | select(.spec.volumes[]?.persistentVolumeClaim.claimName=="<pvc-name>") | .metadata.name'
 ```
 
 **ConfigMap or Secret does not exist**:
@@ -228,7 +228,7 @@ ls /etc/cni/net.d/
 
 ```bash
 # Check IP allocations
-kubectl get pods -A -o wide | awk '{print $7}' | sort | uniq -c
+kubectl get pods -A -o custom-columns=IP:.status.podIP --no-headers | sort | uniq -c
 ```
 
 ## Common Cause 4: Resource Constraints
@@ -380,7 +380,7 @@ echo "=== Pod Status ==="
 kubectl get pod $POD -n $NAMESPACE -o wide
 
 echo -e "\n=== Pod Events ==="
-kubectl get events -n $NAMESPACE --field-selector involvedObject.name=$POD --sort-by='.lastTimestamp'
+kubectl get events -n $NAMESPACE --field-selector involvedObject.name=$POD --sort-by='.metadata.creationTimestamp'
 
 echo -e "\n=== Pod Description ==="
 kubectl describe pod $POD -n $NAMESPACE | tail -30
@@ -403,7 +403,7 @@ echo -e "\n=== Node Info ==="
 NODE=$(kubectl get pod $POD -n $NAMESPACE -o jsonpath='{.spec.nodeName}')
 if [ -n "$NODE" ]; then
     echo "Scheduled on: $NODE"
-    kubectl get node $NODE -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[-1].type,MEMORY_PRESSURE:.status.conditions[?(@.type==\"MemoryPressure\")].status,DISK_PRESSURE:.status.conditions[?(@.type==\"DiskPressure\")].status
+    kubectl get node $NODE -o custom-columns=NAME:.metadata.name,READY:.status.conditions[?(@.type==\"Ready\")].status,MEMORY_PRESSURE:.status.conditions[?(@.type==\"MemoryPressure\")].status,DISK_PRESSURE:.status.conditions[?(@.type==\"DiskPressure\")].status
 fi
 
 echo -e "\n=== Image Pull Secrets ==="
