@@ -15,7 +15,7 @@ Global mutable state is often discouraged in Rust because the ownership system m
 Rust's ownership rules prevent multiple mutable references to the same data. For global state, this creates a challenge: how do you allow mutation from different parts of your program without data races?
 
 ```rust
-// This won't compile - static mut is unsafe and discouraged
+// This compiles only because access is wrapped in unsafe
 static mut COUNTER: i32 = 0;
 
 fn increment() {
@@ -26,7 +26,7 @@ fn increment() {
 }
 ```
 
-The compiler rightfully rejects patterns that could lead to undefined behavior. Instead, we need synchronization primitives.
+The compiler requires `unsafe` for this pattern because unsynchronized global mutation can lead to undefined behavior. Instead, we need synchronization primitives.
 
 ## Using lazy_static for Initialization
 
@@ -78,7 +78,7 @@ The Mutex ensures only one thread can access the data at a time, preventing data
 
 ## Modern Approach with once_cell
 
-The `once_cell` crate offers a cleaner API that has been partially stabilized in the standard library. It provides `OnceCell` for single-threaded contexts and `Lazy` for convenient lazy initialization.
+The `once_cell` crate offers a cleaner API that has been partially stabilized in the standard library. It provides `unsync::OnceCell` for single-threaded contexts, `sync::OnceCell` for thread-safe one-time initialization, and `Lazy` for convenient lazy initialization.
 
 ```rust
 use once_cell::sync::Lazy;
@@ -234,7 +234,7 @@ fn cache_get(key: &str) -> Option<String> {
             .as_secs();
 
         // Check if entry has expired
-        if now - entry.created_at < entry.ttl_seconds {
+        if now.saturating_sub(entry.created_at) < entry.ttl_seconds {
             Some(entry.value.clone())
         } else {
             None
@@ -268,7 +268,7 @@ fn cache_stats() -> (usize, usize) {
 
     let total = cache.len();
     let valid = cache.values()
-        .filter(|e| now - e.created_at < e.ttl_seconds)
+        .filter(|e| now.saturating_sub(e.created_at) < e.ttl_seconds)
         .count();
 
     (total, valid)
@@ -343,7 +343,7 @@ fn reset_metrics() {
 When a thread panics while holding a lock, the lock becomes poisoned. Production code should handle this case.
 
 ```rust
-use std::sync::{OnceLock, Mutex, PoisonError};
+use std::sync::{OnceLock, Mutex};
 
 static DATA: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
 
