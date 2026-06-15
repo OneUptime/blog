@@ -41,16 +41,15 @@ edition = "2021"
 
 [dependencies]
 # HTTP server framework
-
-axum = "0.7"
+axum = "0.8"
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 # File system watcher
-notify = "6.1"
+notify = "8.2"
 # JSON serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-# Thread-safe reference counting
+# Atomic configuration swapping
 arc-swap = "1.6"
 # Logging
 tracing = "0.1"
@@ -228,21 +227,27 @@ pub async fn watch_config(state: Arc<AppState>) -> Result<(), Box<dyn std::error
 
     // Debounce timer - wait for file changes to settle
     let debounce_duration = Duration::from_millis(500);
-    let mut last_event = std::time::Instant::now();
 
     loop {
         tokio::select! {
             Some(_event) = rx.recv() => {
-                let now = std::time::Instant::now();
-                // Debounce: only reload if enough time has passed
-                if now.duration_since(last_event) > debounce_duration {
-                    last_event = now;
-                    // Small delay to let the file finish writing
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-
-                    if let Err(e) = state.reload() {
-                        tracing::error!("Failed to reload config: {}", e);
+                // Debounce: wait until no more events arrive for the debounce window
+                loop {
+                    tokio::time::sleep(debounce_duration).await;
+                    let mut drained_event = false;
+                    while rx.try_recv().is_ok() {
+                        drained_event = true;
                     }
+                    if !drained_event {
+                        break;
+                    }
+                }
+
+                // Small delay to let the file finish writing
+                tokio::time::sleep(Duration::from_millis(100)).await;
+
+                if let Err(e) = state.reload() {
+                    tracing::error!("Failed to reload config: {}", e);
                 }
             }
         }
@@ -336,7 +341,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/flags", get(get_all_flags))
-        .route("/flags/:flag_name", get(check_flag))
+        .route("/flags/{flag_name}", get(check_flag))
         .with_state(state)
 }
 ```
