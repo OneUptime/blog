@@ -64,7 +64,7 @@ async function getDisplayName(userId) {
 
 ## Batch Migration Script
 
-Run data migration in the background without locking the collection.
+Run data migration in the background without taking an exclusive collection lock.
 
 ```javascript
 // migrate-username-field.js
@@ -169,11 +169,22 @@ async function removeOldField() {
   let removed = 0;
 
   while (true) {
-    const result = await collection.updateMany(
-      { userName: { $exists: true } },
-      { $unset: { userName: "" } },
-      { limit: 1000 }
-    );
+    const batch = await collection
+      .find({ userName: { $exists: true } })
+      .project({ _id: 1 })
+      .limit(1000)
+      .toArray();
+
+    if (batch.length === 0) break;
+
+    const bulkOps = batch.map(doc => ({
+      updateOne: {
+        filter: { _id: doc._id },
+        update: { $unset: { userName: "" } }
+      }
+    }));
+
+    const result = await collection.bulkWrite(bulkOps, { ordered: false });
 
     if (result.modifiedCount === 0) break;
     removed += result.modifiedCount;
@@ -218,11 +229,22 @@ async function backfillPreferences() {
   let updated = 0;
 
   while (true) {
-    const result = await collection.updateMany(
-      { preferences: { $exists: false } },
-      { $set: { preferences: defaultPrefs } },
-      { limit: 1000 }
-    );
+    const batch = await collection
+      .find({ preferences: { $exists: false } })
+      .project({ _id: 1 })
+      .limit(1000)
+      .toArray();
+
+    if (batch.length === 0) break;
+
+    const bulkOps = batch.map(doc => ({
+      updateOne: {
+        filter: { _id: doc._id },
+        update: { $set: { preferences: defaultPrefs } }
+      }
+    }));
+
+    const result = await collection.bulkWrite(bulkOps, { ordered: false });
 
     if (result.modifiedCount === 0) break;
     updated += result.modifiedCount;
@@ -446,11 +468,14 @@ async function preMigrationCheck() {
   }
 
   // Check current operations
-  const currentOps = db.currentOp({ active: true, secs_running: { $gt: 60 } });
+  const currentOps = await db.getSiblingDB('admin').aggregate([
+    { $currentOp: { allUsers: true, localOps: true } },
+    { $match: { active: true, secs_running: { $gt: 60 } } }
+  ]).toArray();
   checks.push({
     name: 'Long Running Operations',
-    passed: currentOps.inprog.length === 0,
-    message: `${currentOps.inprog.length} operations running >60s`
+    passed: currentOps.length === 0,
+    message: `${currentOps.length} operations running >60s`
   });
 
   // Check disk space
