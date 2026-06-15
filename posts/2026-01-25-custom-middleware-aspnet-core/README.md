@@ -311,6 +311,12 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
+            if (context.Response.HasStarted)
+            {
+                _logger.LogWarning(ex, "The response has already started, so the exception response cannot be written");
+                throw;
+            }
+
             await HandleExceptionAsync(context, ex);
         }
     }
@@ -327,6 +333,7 @@ public class ExceptionHandlingMiddleware
             _ => (StatusCodes.Status500InternalServerError, "An error occurred")
         };
 
+        context.Response.Clear();
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
 
@@ -347,7 +354,7 @@ public class ExceptionHandlingMiddleware
 Middleware can modify requests and responses:
 
 ```csharp
-// ResponseCompressionMiddleware.cs - Example of response manipulation
+// JsonResponseWrapperMiddleware.cs - Example of response manipulation
 public class JsonResponseWrapperMiddleware
 {
     private readonly RequestDelegate _next;
@@ -365,32 +372,42 @@ public class JsonResponseWrapperMiddleware
         using var newBodyStream = new MemoryStream();
         context.Response.Body = newBodyStream;
 
-        await _next(context);
-
-        // Only wrap JSON responses
-        if (context.Response.ContentType?.Contains("application/json") == true)
+        try
         {
-            newBodyStream.Seek(0, SeekOrigin.Begin);
-            var originalContent = await new StreamReader(newBodyStream).ReadToEndAsync();
+            await _next(context);
 
-            // Wrap the response
-            var wrappedContent = JsonSerializer.Serialize(new
+            // Only wrap JSON responses
+            if (context.Response.ContentType?.Contains("application/json") == true)
             {
-                success = context.Response.StatusCode < 400,
-                data = JsonSerializer.Deserialize<object>(originalContent),
-                timestamp = DateTime.UtcNow
-            });
+                newBodyStream.Seek(0, SeekOrigin.Begin);
+                var originalContent = await new StreamReader(newBodyStream).ReadToEndAsync();
 
-            // Write the wrapped content
-            context.Response.Body = originalBodyStream;
-            context.Response.ContentLength = Encoding.UTF8.GetByteCount(wrappedContent);
-            await context.Response.WriteAsync(wrappedContent);
+                // Wrap the response
+                var wrappedContent = JsonSerializer.Serialize(new
+                {
+                    success = context.Response.StatusCode < 400,
+                    data = string.IsNullOrWhiteSpace(originalContent)
+                        ? null
+                        : JsonSerializer.Deserialize<object>(originalContent),
+                    timestamp = DateTime.UtcNow
+                });
+
+                // Write the wrapped content
+                context.Response.Body = originalBodyStream;
+                context.Response.ContentLength = Encoding.UTF8.GetByteCount(wrappedContent);
+                await context.Response.WriteAsync(wrappedContent);
+            }
+            else
+            {
+                // Copy unchanged content back
+                newBodyStream.Seek(0, SeekOrigin.Begin);
+                context.Response.Body = originalBodyStream;
+                await newBodyStream.CopyToAsync(originalBodyStream);
+            }
         }
-        else
+        finally
         {
-            // Copy unchanged content back
-            newBodyStream.Seek(0, SeekOrigin.Begin);
-            await newBodyStream.CopyToAsync(originalBodyStream);
+            context.Response.Body = originalBodyStream;
         }
     }
 }
