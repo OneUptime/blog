@@ -117,6 +117,21 @@ redis-sentinel /etc/redis/sentinel.conf
 ```yaml
 version: '3.8'
 
+x-sentinel-command: &sentinel-command |
+  sh -c 'cat > /tmp/sentinel.conf <<EOF
+  port 26379
+  bind 0.0.0.0
+  resolve-hostnames yes
+  announce-hostnames yes
+  sentinel monitor mymaster redis-master 6379 2
+  sentinel auth-pass mymaster $$REDIS_PASSWORD
+  sentinel down-after-milliseconds mymaster 5000
+  sentinel failover-timeout mymaster 60000
+  sentinel parallel-syncs mymaster 1
+  requirepass $$SENTINEL_PASSWORD
+  EOF
+  redis-sentinel /tmp/sentinel.conf'
+
 services:
   redis-master:
     image: redis:7-alpine
@@ -144,9 +159,10 @@ services:
 
   sentinel-1:
     image: redis:7-alpine
-    command: redis-sentinel /etc/redis/sentinel.conf
-    volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+    command: *sentinel-command
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SENTINEL_PASSWORD: ${SENTINEL_PASSWORD}
     depends_on:
       - redis-master
       - redis-replica-1
@@ -158,9 +174,10 @@ services:
 
   sentinel-2:
     image: redis:7-alpine
-    command: redis-sentinel /etc/redis/sentinel.conf
-    volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+    command: *sentinel-command
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SENTINEL_PASSWORD: ${SENTINEL_PASSWORD}
     depends_on:
       - redis-master
     ports:
@@ -170,9 +187,10 @@ services:
 
   sentinel-3:
     image: redis:7-alpine
-    command: redis-sentinel /etc/redis/sentinel.conf
-    volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+    command: *sentinel-command
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SENTINEL_PASSWORD: ${SENTINEL_PASSWORD}
     depends_on:
       - redis-master
     ports:
@@ -198,7 +216,7 @@ sentinel = Sentinel([
     ('sentinel-1', 26379),
     ('sentinel-2', 26379),
     ('sentinel-3', 26379)
-], socket_timeout=0.5, password='sentinel-password')
+], socket_timeout=0.5, sentinel_kwargs={'password': 'sentinel-password'})
 
 # Get connection to master for writes
 master = sentinel.master_for(
@@ -242,8 +260,8 @@ redis.on('error', (err) => {
   console.error('Redis error:', err);
 });
 
-redis.on('+failover-end', () => {
-  console.log('Failover completed');
+redis.on('ready', () => {
+  console.log('Redis connection ready');
 });
 
 // Usage
@@ -254,25 +272,33 @@ const value = await redis.get('key');
 ### Java (Jedis)
 
 ```java
-import redis.clients.jedis.JedisSentinelPool;
-import redis.clients.jedis.Jedis;
+import redis.clients.jedis.DefaultJedisClientConfig;
+import redis.clients.jedis.HostAndPort;
+import redis.clients.jedis.RedisSentinelClient;
 import java.util.HashSet;
 import java.util.Set;
 
-Set<String> sentinels = new HashSet<>();
-sentinels.add("sentinel-1:26379");
-sentinels.add("sentinel-2:26379");
-sentinels.add("sentinel-3:26379");
+Set<HostAndPort> sentinels = new HashSet<>();
+sentinels.add(new HostAndPort("sentinel-1", 26379));
+sentinels.add(new HostAndPort("sentinel-2", 26379));
+sentinels.add(new HostAndPort("sentinel-3", 26379));
 
-JedisSentinelPool pool = new JedisSentinelPool(
-    "mymaster",
-    sentinels,
-    "your-secure-password"
-);
+DefaultJedisClientConfig redisConfig = DefaultJedisClientConfig.builder()
+    .password("your-secure-password")
+    .build();
 
-try (Jedis jedis = pool.getResource()) {
-    jedis.set("key", "value");
-    String value = jedis.get("key");
+DefaultJedisClientConfig sentinelConfig = DefaultJedisClientConfig.builder()
+    .password("sentinel-password")
+    .build();
+
+try (RedisSentinelClient client = RedisSentinelClient.builder()
+    .masterName("mymaster")
+    .sentinels(sentinels)
+    .clientConfig(redisConfig)
+    .sentinelClientConfig(sentinelConfig)
+    .build()) {
+    client.set("key", "value");
+    String value = client.get("key");
 }
 ```
 
@@ -312,7 +338,7 @@ def monitor_sentinel_cluster():
         ('sentinel-1', 26379),
         ('sentinel-2', 26379),
         ('sentinel-3', 26379)
-    ], password='sentinel-password')
+    ], sentinel_kwargs={'password': 'sentinel-password'})
 
     while True:
         try:
@@ -327,7 +353,10 @@ def monitor_sentinel_cluster():
                 print(f"  - {replica[0]}:{replica[1]}")
 
             # Check master health
-            master_conn = sentinel.master_for('mymaster')
+            master_conn = sentinel.master_for(
+                'mymaster',
+                password='your-secure-password'
+            )
             info = master_conn.info('replication')
             print(f"Connected replicas: {info['connected_slaves']}")
 
@@ -345,6 +374,8 @@ monitor_sentinel_cluster()
 
 ```python
 import redis
+from redis.sentinel import Sentinel
+import time
 
 def failover_aware_client():
     """Redis client that handles failover gracefully."""
@@ -352,10 +383,13 @@ def failover_aware_client():
         ('sentinel-1', 26379),
         ('sentinel-2', 26379),
         ('sentinel-3', 26379)
-    ])
+    ], sentinel_kwargs={'password': 'sentinel-password'})
 
     def get_master():
-        return sentinel.master_for('mymaster')
+        return sentinel.master_for(
+            'mymaster',
+            password='your-secure-password'
+        )
 
     def execute_with_failover(func, *args, max_retries=3, **kwargs):
         """Execute command with failover handling."""
@@ -391,11 +425,15 @@ def failover_aware_client():
 ### Read/Write Splitting
 
 ```python
+import redis
+from redis.sentinel import Sentinel
+
 class ReadWriteRedis:
     """Redis client with read/write splitting."""
 
-    def __init__(self, sentinel_hosts, master_name, password=None):
-        self.sentinel = Sentinel(sentinel_hosts)
+    def __init__(self, sentinel_hosts, master_name, password=None, sentinel_password=None):
+        sentinel_kwargs = {'password': sentinel_password} if sentinel_password else None
+        self.sentinel = Sentinel(sentinel_hosts, sentinel_kwargs=sentinel_kwargs)
         self.master_name = master_name
         self.password = password
 
@@ -433,7 +471,8 @@ class ReadWriteRedis:
 rw_redis = ReadWriteRedis(
     sentinel_hosts=[('sentinel-1', 26379), ('sentinel-2', 26379)],
     master_name='mymaster',
-    password='your-password'
+    password='your-secure-password',
+    sentinel_password='sentinel-password'
 )
 
 rw_redis.write('user:123', 'data')
