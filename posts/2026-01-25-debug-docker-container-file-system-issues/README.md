@@ -40,10 +40,10 @@ docker system df -v
 docker ps -s --format "table {{.Names}}\t{{.Size}}"
 
 # Find largest volumes
-docker volume ls -q | xargs -I {} docker volume inspect {} --format '{{.Name}}: {{.Mountpoint}}' | \
-  while read line; do
-    name=$(echo $line | cut -d: -f1)
-    path=$(echo $line | cut -d: -f2)
+docker volume ls -q | while read -r volume; do
+    docker volume inspect "$volume" --format '{{.Name}}{{"\t"}}{{.Mountpoint}}'
+  done | \
+  while IFS=$'\t' read -r name path; do
     size=$(sudo du -sh "$path" 2>/dev/null | cut -f1)
     echo "$size $name"
   done | sort -hr | head -20
@@ -105,8 +105,8 @@ docker inspect mycontainer --format '{{.HostConfig.ReadonlyRootfs}}'
 docker exec mycontainer mount | grep -E "^/dev|overlay"
 
 # Check if specific volume is read-only
-docker inspect mycontainer --format '{{range .Mounts}}{{.Source}} -> {{.Destination}} ({{.Mode}}){{"\n"}}{{end}}'
-# Mode "ro" indicates read-only
+docker inspect mycontainer --format '{{range .Mounts}}{{.Source}} -> {{.Destination}} ({{if .RW}}rw{{else}}ro{{end}}){{"\n"}}{{end}}'
+# "ro" indicates read-only
 ```
 
 ### Fix Read-Only Mounts
