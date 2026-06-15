@@ -47,13 +47,13 @@ lsof -ti :3000 | xargs kill -9
 On Windows:
 
 ```cmd
-# Find the process
-netstat -ano | findstr :3000
+:: Find the process
+netstat -ano | findstr :3000 | findstr LISTENING
 
-# Output shows:
-# TCP    0.0.0.0:3000    0.0.0.0:0    LISTENING    12345
+:: Output shows:
+:: TCP    0.0.0.0:3000    0.0.0.0:0    LISTENING    12345
 
-# Kill by PID
+:: Kill by PID
 taskkill /PID 12345 /F
 ```
 
@@ -78,7 +78,7 @@ EADDRINUSE happens when:
 1. Another instance of your app is already running
 2. A different application uses that port
 3. A previous Node.js process did not shut down cleanly
-4. The port is reserved by the operating system
+4. The same app tries to listen on the same port twice
 
 ## Programmatic Solutions
 
@@ -87,7 +87,7 @@ EADDRINUSE happens when:
 ```javascript
 const express = require('express');
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number.parseInt(process.env.PORT, 10) || 3000;
 
 const server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
@@ -144,8 +144,8 @@ npm install get-port
 ```
 
 ```javascript
-const express = require('express');
-const getPort = require('get-port');
+import express from 'express';
+import getPort from 'get-port';
 
 const app = express();
 
@@ -167,18 +167,21 @@ Or check availability manually:
 const net = require('net');
 
 function isPortAvailable(port) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const server = net.createServer();
 
         server.once('error', (err) => {
             if (err.code === 'EADDRINUSE') {
                 resolve(false);
+            } else {
+                reject(err);
             }
         });
 
         server.once('listening', () => {
-            server.close();
-            resolve(true);
+            server.close(() => {
+                resolve(true);
+            });
         });
 
         server.listen(port);
@@ -230,7 +233,7 @@ process.on('SIGINT', () => {
 
 ### Using Nodemon with Auto-Restart
 
-Nodemon sometimes leaves zombie processes. Configure it properly:
+Nodemon can leave stale child processes if the app does not handle shutdown cleanly. Configure it properly:
 
 ```json
 {
@@ -323,13 +326,13 @@ When you hit EADDRINUSE:
 2. Find what is using the port: `lsof -i :3000`
 3. Check for Docker containers: `docker ps`
 4. Look for background PM2 processes: `pm2 list`
-5. Verify no zombie processes from previous crashes
+5. Verify no stale background processes from previous crashes
 
 ## Platform-Specific Notes
 
 ### macOS
 
-Sometimes macOS AirPlay uses port 5000. Check System Preferences > Sharing > AirPlay Receiver.
+Sometimes macOS AirPlay uses port 5000. Check System Settings > General > AirDrop & Handoff > AirPlay Receiver.
 
 ### Windows
 
@@ -341,11 +344,11 @@ netsh interface ipv4 show excludedportrange protocol=tcp
 
 ### Linux
 
-Ports below 1024 require root privileges:
+On many Linux systems, ports below 1024 require root privileges:
 
 ```bash
 # This fails without sudo
-node app.js  # if PORT=80
+PORT=80 node app.js
 
 # Fix: Use port above 1024 or run as root (not recommended)
 # Better: Use nginx/iptables to forward 80 to 3000
@@ -353,4 +356,4 @@ node app.js  # if PORT=80
 
 ## Summary
 
-EADDRINUSE means something else is using your port. Find and kill the blocking process, use a different port, or implement automatic port finding. For development, use proper process managers and graceful shutdown handlers to prevent zombie processes from holding ports.
+EADDRINUSE means something else is using your port. Find and kill the blocking process, use a different port, or implement automatic port finding. For development, use proper process managers and graceful shutdown handlers to prevent stale background processes from holding ports.
