@@ -76,7 +76,6 @@ fn main() {
 
 // Fix: use the actual type from the module
 use std::collections::HashMap;
-let map: HashMap<String, i32> = HashMap::new();
 
 // Also watch for this mistake
 mod my_module {
@@ -87,7 +86,10 @@ mod my_module {
 // let x: my_module = ...;
 
 // Fix: use the type inside the module
-let x: my_module::MyType = my_module::MyType;
+fn main() {
+    let map: HashMap<String, i32> = HashMap::new();
+    let x: my_module::MyType = my_module::MyType;
+}
 ```
 
 ## Cause 4: Generic Type Parameters
@@ -95,7 +97,7 @@ let x: my_module::MyType = my_module::MyType;
 Mixing up type parameters and values:
 
 ```rust
-// Error: expected type, found `5`
+// Error: expected one of `#`, `>`, `const`, identifier, or lifetime, found `5`
 // struct Bad<5> {
 //     data: i32,
 // }
@@ -119,9 +121,11 @@ fn main() {
 ## Cause 5: Trait Bounds Syntax
 
 ```rust
-// Error: expected type, found `+`
-// fn bad<T: Clone + Debug>(x: T) { }  // This is actually correct
+// This is correct:
+// fn good<T: Clone + Debug>(x: T) { }
+
 // The error happens with wrong syntax like:
+// Error: expected one of `(`, `+`, `,`, `::`, `<`, `=`, or `>`, found `Debug`
 // fn bad<T: Clone Debug>(x: T) { }  // Missing +
 
 // Correct syntax
@@ -156,7 +160,9 @@ fn my_function() -> i32 { 42 }
 // let x: my_function = ...;
 
 // Use fn pointer type instead
-let x: fn() -> i32 = my_function;
+fn main() {
+    let x: fn() -> i32 = my_function;
+}
 ```
 
 ## Cause 7: Associated Types
@@ -179,7 +185,7 @@ impl Container for IntContainer {
     }
 }
 
-// Error: expected type, found `IntContainer::Item`
+// Error: ambiguous associated type
 // let x: IntContainer::Item = 42;
 
 // Fix: use the associated type correctly
@@ -188,8 +194,10 @@ fn use_container<C: Container>(c: &C) -> C::Item {
 }
 
 // Or use concrete type
-let x: <IntContainer as Container>::Item = 42;
-let x: i32 = 42;  // Simpler when you know the concrete type
+fn main() {
+    let x: <IntContainer as Container>::Item = 42;
+    let x: i32 = 42;  // Simpler when you know the concrete type
+}
 ```
 
 ## Cause 8: Macro Expansion Issues
@@ -232,7 +240,9 @@ type Unit = ();
 // let x: (1, 2) = ...;
 
 // Fix: values go in expressions, not type annotations
-let x: (i32, i32) = (1, 2);
+fn main() {
+    let x: (i32, i32) = (1, 2);
+}
 ```
 
 ## Cause 10: impl Trait Position
@@ -256,7 +266,9 @@ fn takes_impl(iter: impl Iterator<Item = i32>) {
 // let x: impl Clone = 42;
 
 // Fix: use concrete type or generic
-let x: i32 = 42;
+fn main() {
+    let x: i32 = 42;
+}
 
 fn with_generic<T: Clone>(x: T) {
     let cloned: T = x.clone();
