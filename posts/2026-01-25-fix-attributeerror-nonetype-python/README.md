@@ -127,7 +127,7 @@ Some list methods modify the list in place and return `None`:
 # Problem: sort() returns None
 numbers = [3, 1, 4, 1, 5]
 sorted_numbers = numbers.sort()  # Returns None!
-print(sorted_numbers[0])  # AttributeError!
+sorted_numbers.append(2)  # AttributeError!
 
 # Solution: sort() modifies in place
 numbers = [3, 1, 4, 1, 5]
@@ -157,7 +157,7 @@ def load_config(filepath):
         return None  # Returns None on error
 
 config = load_config("missing_file.json")
-print(config["database"]["host"])  # AttributeError!
+print(config.get("database")["host"])  # AttributeError!
 
 # Solution: Validate return values
 config = load_config("missing_file.json")
@@ -168,7 +168,7 @@ print(config["database"]["host"])
 
 ## Defensive Coding Patterns
 
-### Using Optional Chaining with getattr()
+### Using Safe Attribute Access with getattr()
 
 ```python
 # Safe attribute access with default
@@ -186,6 +186,10 @@ print(name)  # "Anonymous"
 
 ```python
 # Create a null object that safely handles attribute access
+class User:
+    def __init__(self, name):
+        self.name = name
+
 class NullUser:
     name = "Anonymous"
     email = "no-email@example.com"
@@ -303,7 +307,7 @@ else:
 | Function returns None | Check return value before use |
 | dict.get() returns None | Provide default value or check |
 | regex returns no match | Check if match object exists |
-| List methods return None | Use returned value vs in-place |
+| List methods return None | Call in-place methods separately or use sorted() |
 | Chained access | Check each level or use try/except |
 
 The key to avoiding `AttributeError: NoneType` is defensive programming. Always consider whether a function might return `None`, and handle that case explicitly. Your future self will thank you.
