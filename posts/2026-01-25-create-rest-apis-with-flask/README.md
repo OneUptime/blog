@@ -55,7 +55,7 @@ if __name__ == '__main__':
 # api.py
 # Complete CRUD API for managing books
 from flask import Flask, jsonify, request, abort
-from datetime import datetime
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -122,7 +122,7 @@ def create_book():
         'author': data['author'],
         'genre': data.get('genre', 'Unknown'),
         'published_year': data.get('published_year'),
-        'created_at': datetime.utcnow().isoformat()
+        'created_at': datetime.now(timezone.utc).isoformat()
     }
 
     books[next_id] = book
@@ -159,7 +159,7 @@ def update_book(book_id):
         'genre': data.get('genre', 'Unknown'),
         'published_year': data.get('published_year'),
         'created_at': books[book_id]['created_at'],
-        'updated_at': datetime.utcnow().isoformat()
+        'updated_at': datetime.now(timezone.utc).isoformat()
     }
 
     return jsonify(books[book_id]), 200
@@ -181,7 +181,7 @@ def partial_update_book(book_id):
         if field in data:
             books[book_id][field] = data[field]
 
-    books[book_id]['updated_at'] = datetime.utcnow().isoformat()
+    books[book_id]['updated_at'] = datetime.now(timezone.utc).isoformat()
 
     return jsonify(books[book_id]), 200
 
@@ -206,7 +206,7 @@ def delete_book(book_id):
 ```python
 # error_handlers.py
 # Centralized error handling for the API
-from flask import jsonify
+from flask import jsonify, request
 from werkzeug.exceptions import HTTPException
 
 def register_error_handlers(app):
@@ -301,7 +301,7 @@ def create_user():
 # auth.py
 # JWT authentication for Flask API
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import request, jsonify, current_app
 
@@ -309,8 +309,8 @@ def create_token(user_id, secret_key, expires_hours=24):
     """Generate a JWT token for a user."""
     payload = {
         'user_id': user_id,
-        'exp': datetime.utcnow() + timedelta(hours=expires_hours),
-        'iat': datetime.utcnow()
+        'exp': datetime.now(timezone.utc) + timedelta(hours=expires_hours),
+        'iat': datetime.now(timezone.utc)
     }
     return jwt.encode(payload, secret_key, algorithm='HS256')
 
@@ -480,8 +480,8 @@ def configure_security(app):
         # Prevent MIME type sniffing
         response.headers['X-Content-Type-Options'] = 'nosniff'
 
-        # Enable XSS protection
-        response.headers['X-XSS-Protection'] = '1; mode=block'
+        # Restrict content loading for API responses
+        response.headers['Content-Security-Policy'] = "default-src 'none'; frame-ancestors 'none'"
 
         # Strict transport security (HTTPS only)
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
@@ -527,4 +527,3 @@ Flask's simplicity makes it easy to start, while its flexibility supports comple
 ---
 
 *Building Flask APIs? [OneUptime](https://oneuptime.com) provides API monitoring, uptime tracking, and alerting to keep your services running smoothly.*
-
