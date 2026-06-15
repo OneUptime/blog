@@ -47,7 +47,7 @@ groups:
   - name: sli_recording_rules
     interval: 30s
     rules:
-      # Total requests counter (excluding health checks)
+      # Total request rate (excluding health checks)
       - record: sli:http_requests:total
         expr: |
           sum by (service, environment) (
@@ -123,37 +123,82 @@ groups:
       - record: error_budget:availability:remaining
         expr: |
           1 - (
-            (1 - sli:availability:ratio) /
+            (
+              1 - (
+                sum_over_time(sli:http_requests:success[30d]) /
+                sum_over_time(sli:http_requests:total[30d])
+              )
+            ) /
+            on(service) group_left
             (1 - slo:availability:target)
           )
 
       - record: error_budget:latency:remaining
         expr: |
           1 - (
-            (1 - sli:latency:ratio) /
+            (
+              1 - (
+                sum_over_time(sli:latency:good_requests[30d]) /
+                sum_over_time(sli:latency:total_requests[30d])
+              )
+            ) /
+            on(service) group_left
             (1 - slo:latency:target)
           )
 
       # Error budget consumption rate over different windows
+      - record: error_budget:availability:burn_rate:5m
+        expr: |
+          (
+            1 - (
+              sum_over_time(sli:http_requests:success[5m]) /
+              sum_over_time(sli:http_requests:total[5m])
+            )
+          ) / (1 - 0.999)
+
+      - record: error_budget:availability:burn_rate:30m
+        expr: |
+          (
+            1 - (
+              sum_over_time(sli:http_requests:success[30m]) /
+              sum_over_time(sli:http_requests:total[30m])
+            )
+          ) / (1 - 0.999)
+
       - record: error_budget:availability:burn_rate:1h
         expr: |
-          1 - (
-            sum_over_time(sli:http_requests:success[1h]) /
-            sum_over_time(sli:http_requests:total[1h])
+          (
+            1 - (
+              sum_over_time(sli:http_requests:success[1h]) /
+              sum_over_time(sli:http_requests:total[1h])
+            )
           ) / (1 - 0.999)
 
       - record: error_budget:availability:burn_rate:6h
         expr: |
-          1 - (
-            sum_over_time(sli:http_requests:success[6h]) /
-            sum_over_time(sli:http_requests:total[6h])
+          (
+            1 - (
+              sum_over_time(sli:http_requests:success[6h]) /
+              sum_over_time(sli:http_requests:total[6h])
+            )
           ) / (1 - 0.999)
 
       - record: error_budget:availability:burn_rate:24h
         expr: |
-          1 - (
-            sum_over_time(sli:http_requests:success[1d]) /
-            sum_over_time(sli:http_requests:total[1d])
+          (
+            1 - (
+              sum_over_time(sli:http_requests:success[1d]) /
+              sum_over_time(sli:http_requests:total[1d])
+            )
+          ) / (1 - 0.999)
+
+      - record: error_budget:availability:burn_rate:3d
+        expr: |
+          (
+            1 - (
+              sum_over_time(sli:http_requests:success[3d]) /
+              sum_over_time(sli:http_requests:total[3d])
+            )
           ) / (1 - 0.999)
 ```
 
@@ -207,13 +252,13 @@ groups:
             is {{ $value | printf "%.1f" }}x sustainable.
 
       # Info: Slow burn - 10% of monthly budget in 3 days
-      # Burn rate of 1x is sustainable, 2x burns 10% in 3 days
+      # Burn rate of 1x consumes 10% in 3 days
       - alert: SLOSlowBurn
         expr: |
           (
-            error_budget:availability:burn_rate:24h > 2
+            error_budget:availability:burn_rate:3d > 1
             and
-            error_budget:availability:burn_rate:6h > 2
+            error_budget:availability:burn_rate:6h > 1
           )
         for: 1h
         labels:
@@ -295,6 +340,14 @@ sum_over_time(sli:http_requests:total[30d])
 100 * error_budget:availability:remaining
 
 # Error budget consumption over time (for trending)
+(
+  1 - (
+    sum_over_time(sli:http_requests:success[30d] offset 1d) /
+    sum_over_time(sli:http_requests:total[30d] offset 1d)
+  )
+) / (1 - 0.999)
+
+# Previous 30-day error ratio
 1 - (
   sum_over_time(sli:http_requests:success[30d] offset 1d) /
   sum_over_time(sli:http_requests:total[30d] offset 1d)
@@ -305,7 +358,7 @@ sum_over_time(sli:http_requests:total[30d])
 (error_budget:availability:remaining * 720) /
 error_budget:availability:burn_rate:1h
 
-# Availability by percentile over rolling windows
+# Availability over rolling windows
 # 30-day availability
 sum_over_time(sli:http_requests:success[30d]) /
 sum_over_time(sli:http_requests:total[30d])
