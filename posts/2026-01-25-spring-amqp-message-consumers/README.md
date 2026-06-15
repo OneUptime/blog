@@ -29,6 +29,12 @@ Add the Spring AMQP starter to your `pom.xml`:
         <artifactId>spring-boot-starter-amqp</artifactId>
     </dependency>
 
+    <!-- Required for listener retry configuration -->
+    <dependency>
+        <groupId>org.springframework.retry</groupId>
+        <artifactId>spring-retry</artifactId>
+    </dependency>
+
     <!-- JSON serialization for messages -->
     <dependency>
         <groupId>com.fasterxml.jackson.core</groupId>
@@ -62,7 +68,7 @@ spring:
         retry:
           enabled: true
           initial-interval: 1000  # 1 second initial retry delay
-          max-attempts: 3
+          max-retries: 3
           multiplier: 2.0  # Double the delay each retry
 ```
 
@@ -161,7 +167,7 @@ public class TypedOrderListener {
 
     private static final Logger log = LoggerFactory.getLogger(TypedOrderListener.class);
 
-    // Spring AMQP will automatically convert JSON to OrderMessage
+    // With the Jackson converter configured below, Spring AMQP will convert JSON to OrderMessage
     @RabbitListener(queues = "orders.typed")
     public void handleTypedOrder(OrderMessage order) {
         log.info("Received order {} for customer {} with amount {}",
@@ -350,8 +356,14 @@ public class ManualAckListener {
     }
 }
 
+```
+
+```java
+// RecoverableException.java
 // Custom exception for recoverable errors
-class RecoverableException extends Exception {
+package com.example.consumer;
+
+public class RecoverableException extends Exception {
     public RecoverableException(String message, Throwable cause) {
         super(message, cause);
     }
@@ -369,6 +381,7 @@ Spring AMQP provides built-in retry mechanisms. You can configure exponential ba
 // Configure retry behavior for message processing
 package com.example.consumer.config;
 
+import com.example.consumer.RecoverableException;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.listener.RabbitListenerContainerFactory;
