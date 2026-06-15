@@ -16,7 +16,7 @@ mise is a polyglot version manager written in Rust. It replaces asdf, nvm, pyenv
 
 - **Speed**: Written in Rust, mise is significantly faster than shell-based alternatives
 - **Simplicity**: One tool, one configuration file format
-- **Compatibility**: Reads existing `.nvmrc`, `.python-version`, and `.tool-versions` files
+- **Compatibility**: Can read existing `.nvmrc`, `.python-version`, and `.tool-versions` files
 - **Tasks**: Built-in task runner for project scripts
 - **Environment**: Manages environment variables alongside tool versions
 
@@ -75,7 +75,7 @@ mise install
 mise list
 
 # Use a specific tool version in the current session
-mise use node@20.11.0
+mise shell node@20.11.0
 
 # Run a command with specific versions active
 mise exec -- node --version
@@ -119,8 +119,8 @@ version = "1.7.0"
 [env]
 NODE_ENV = "development"
 DATABASE_URL = "postgresql://localhost/devdb"
-# Reference other env vars
-PATH = "./node_modules/.bin:{{env.PATH}}"
+# Add project binaries to PATH
+_.path = "./node_modules/.bin"
 
 # Load variables from a file
 _.file = ".env.local"
@@ -133,7 +133,7 @@ jobs = 4
 
 ## Compatibility with Existing Files
 
-mise reads version files from other tools:
+mise can read version files from other tools:
 
 ```bash
 # .nvmrc (nvm)
@@ -147,15 +147,14 @@ node 20.11.0
 python 3.11.7
 ```
 
-Configure reading order in `~/.config/mise/config.toml`:
+Configure compatibility in `~/.config/mise/config.toml`:
 
 ```toml
 # Global mise configuration
 
 [settings]
-# Look for these files in order
-legacy_version_file = true
-legacy_version_file_disable_tools = []
+# Enable language-specific version files such as .nvmrc and .python-version
+idiomatic_version_file_enable_tools = ["node", "python"]
 
 # Automatically install missing tools
 auto_install = true
@@ -219,7 +218,8 @@ depends = ["test", "lint"]
 [tasks.db]
 description = "Database operations"
 # Task with arguments
-run = "python scripts/db.py {{arg(name='command')}}"
+usage = 'arg "<command>" help="Database command to run"'
+run = "python scripts/db.py {{ usage.command }}"
 
 [tasks."db:migrate"]
 description = "Run database migrations"
@@ -247,7 +247,7 @@ mise run db migrate
 mise run lint test
 
 # Watch mode (re-run on file changes)
-mise watch -t test
+mise watch test
 ```
 
 ## Environment Management
@@ -268,11 +268,12 @@ DATABASE_NAME = "app_{{env.USER}}"
 # Load from files
 _.file = [".env", ".env.local"]
 
-# Templates with tool paths
-PATH = "{{env.HOME}}/.local/bin:{{env.PATH}}"
+# Add directories to PATH
+_.path = "{{env.HOME}}/.local/bin"
 
-# Secrets (prompted on first use)
-_.secret = ["API_KEY", "DATABASE_PASSWORD"]
+# Required secrets supplied by the environment or a later local config
+API_KEY = { required = true, redact = true }
+DATABASE_PASSWORD = { required = true, redact = true }
 ```
 
 Create environment-specific configurations:
@@ -387,7 +388,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
         with:
           install: true
 
@@ -428,8 +429,8 @@ mise use python@$(cat .python-version)
 # Keep the file or migrate
 mise install  # Reads existing .tool-versions
 
-# Generate .mise.toml from current environment
-mise current --toml > .mise.toml
+# Generate a mise config file interactively
+mise generate config .mise.toml
 ```
 
 ## Best Practices
