@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Priority Queue, Request Processing, Performance, Concurrency
 
-Description: Learn how to build a production-ready priority-based request queue in Go using heap data structures, goroutines, and channels to handle high-priority requests before low-priority ones.
+Description: Learn how to build a production-ready priority-based request queue in Go using heap data structures, synchronization primitives, and goroutines to handle high-priority requests before low-priority ones.
 
 ---
 
@@ -24,7 +24,7 @@ Priority queues let you define what matters and enforce that ordering at runtime
 
 ## The Heap Foundation
 
-Go's `container/heap` package provides the building blocks. A heap is a tree structure where parents always have higher priority than children. This gives us O(log n) insertions and O(log n) extractions of the highest-priority item.
+Go's `container/heap` package provides the building blocks. A heap is a tree structure where parents sort before their children according to the `Less` method. By defining `Less` so higher-priority requests sort first, we get O(log n) insertions and O(log n) extractions of the highest-priority item.
 
 ```go
 package priorityqueue
@@ -85,7 +85,7 @@ func (h *PriorityHeap) Pop() any {
 }
 ```
 
-The `Less` function defines our ordering. Higher priority numbers come first. When priorities match, older requests take precedence. This prevents starvation where high-priority requests continuously jump ahead of waiting low-priority ones.
+The `Less` function defines our ordering. Higher priority numbers come first. When priorities match, older requests take precedence. This preserves FIFO order within a priority level, but lower-priority requests can still starve if high-priority requests keep arriving.
 
 ## Thread-Safe Queue Wrapper
 
@@ -354,8 +354,13 @@ type QueueMetrics struct {
     QueueDepth int           // Current queue size
 }
 
+type InstrumentedQueue struct {
+    *Queue
+    metrics QueueMetrics
+}
+
 // Add instrumentation to your queue operations
-func (q *Queue) PushWithMetrics(req *Request) bool {
+func (q *InstrumentedQueue) PushWithMetrics(req *Request) bool {
     success := q.Push(req)
     if success {
         atomic.AddInt64(&q.metrics.Enqueued, 1)
