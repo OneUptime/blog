@@ -35,7 +35,7 @@ processors:
     # Maximum memory the collector should use (hard limit)
     limit_mib: 1800
 
-    # Start dropping data when memory exceeds (limit_mib - spike_limit_mib)
+    # Start refusing data when memory exceeds (limit_mib - spike_limit_mib)
     spike_limit_mib: 400
 
 service:
@@ -102,7 +102,7 @@ The processor follows this logic:
 flowchart TD
     A[Telemetry Arrives] --> B{Check Memory}
     B --> C{Memory > limit_mib?}
-    C -->|Yes| D[Force GC + Drop Data]
+    C -->|Yes| D[Force GC + Refuse Data]
     C -->|No| E{Memory > soft limit?}
     E -->|Yes| F[Refuse New Data]
     F --> G[Wait for Memory to Drop]
@@ -115,7 +115,7 @@ flowchart TD
 
 1. **Normal operation**: Memory below soft limit, data flows through
 2. **Soft limit exceeded**: New data refused until memory drops
-3. **Hard limit exceeded**: Garbage collection forced, data dropped if necessary
+3. **Hard limit exceeded**: Garbage collection forced, data refused until memory drops
 
 ## Calculating Memory Requirements
 
@@ -223,7 +223,14 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Key metrics:
@@ -232,8 +239,8 @@ Key metrics:
 |--------|-------------|
 | `otelcol_process_runtime_heap_alloc_bytes` | Current heap allocation |
 | `otelcol_process_runtime_total_alloc_bytes` | Total allocations over time |
-| `otelcol_processor_refused_spans` | Spans refused by memory limiter |
-| `otelcol_processor_accepted_spans` | Spans accepted |
+| `otelcol_receiver_refused_spans` | Spans that could not be pushed into the pipeline |
+| `otelcol_receiver_accepted_spans` | Spans accepted by receivers |
 
 Create alerts for:
 - Memory usage approaching limit
@@ -256,7 +263,7 @@ groups:
           description: "Memory usage is {{ humanize $value }}"
 
       - alert: CollectorRefusingData
-        expr: rate(otelcol_processor_refused_spans[5m]) > 0
+        expr: rate(otelcol_receiver_refused_spans[5m]) > 0
         for: 2m
         labels:
           severity: critical
@@ -326,7 +333,7 @@ processors:
     trace_statements:
       - context: span
         statements:
-          - truncate_all(attributes, 1024)
+          - truncate_all(span.attributes, 1024)
 ```
 
 ### 4. Tune Queue Sizes
@@ -337,7 +344,7 @@ Reduce queue sizes if memory is constrained:
 exporters:
   otlphttp:
     sending_queue:
-      queue_size: 2000  # Reduce from default 5000
+      queue_size: 2000  # Increase from the default 1000 only if memory allows
 ```
 
 ## Best Practices
@@ -354,7 +361,7 @@ exporters:
 
 6. **Test under load**: Verify configuration handles peak traffic
 
-7. **Use persistent queues**: For critical data, persist queues to disk:
+7. **Use persistent queues**: For critical data, persist queues to disk in distributions that include the file storage extension:
 
 ```yaml
 extensions:
@@ -431,7 +438,14 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 ## Conclusion
