@@ -32,6 +32,7 @@ Let's start with the data structures:
 package cache
 
 import (
+    "fmt"
     "hash/fnv"
     "sort"
     "sync"
