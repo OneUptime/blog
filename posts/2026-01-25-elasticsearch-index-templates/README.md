@@ -75,7 +75,7 @@ curl -X PUT "localhost:9200/_component_template/hot_settings" -H 'Content-Type: 
       "number_of_shards": 3,
       "number_of_replicas": 1,
       "refresh_interval": "5s",
-      "index.routing.allocation.require.data": "hot"
+      "index.routing.allocation.include._tier_preference": "data_hot"
     }
   }
 }'
@@ -88,7 +88,7 @@ curl -X PUT "localhost:9200/_component_template/warm_settings" -H 'Content-Type:
       "number_of_shards": 1,
       "number_of_replicas": 1,
       "refresh_interval": "30s",
-      "index.routing.allocation.require.data": "warm"
+      "index.routing.allocation.include._tier_preference": "data_warm"
     }
   }
 }'
@@ -178,7 +178,7 @@ Combine component templates into index templates:
 curl -X PUT "localhost:9200/_index_template/logs_template" -H 'Content-Type: application/json' -d'
 {
   "index_patterns": ["logs-*"],
-  "priority": 100,
+  "priority": 501,
   "composed_of": ["hot_settings", "log_mappings", "log_aliases"],
   "template": {
     "settings": {
@@ -196,7 +196,7 @@ curl -X PUT "localhost:9200/_index_template/logs_template" -H 'Content-Type: app
 curl -X PUT "localhost:9200/_index_template/metrics_template" -H 'Content-Type: application/json' -d'
 {
   "index_patterns": ["metrics-*"],
-  "priority": 100,
+  "priority": 501,
   "composed_of": ["hot_settings", "metric_mappings"],
   "template": {
     "aliases": {
@@ -220,7 +220,7 @@ When multiple templates match an index name, priority determines which one appli
 # General template with lower priority
 curl -X PUT "localhost:9200/_index_template/general_logs" -H 'Content-Type: application/json' -d'
 {
-  "index_patterns": ["logs-*"],
+  "index_patterns": ["app-logs-*"],
   "priority": 50,
   "template": {
     "settings": {
@@ -233,7 +233,7 @@ curl -X PUT "localhost:9200/_index_template/general_logs" -H 'Content-Type: appl
 # Specific template with higher priority
 curl -X PUT "localhost:9200/_index_template/production_logs" -H 'Content-Type: application/json' -d'
 {
-  "index_patterns": ["logs-prod-*"],
+  "index_patterns": ["app-logs-prod-*"],
   "priority": 200,
   "template": {
     "settings": {
@@ -243,8 +243,8 @@ curl -X PUT "localhost:9200/_index_template/production_logs" -H 'Content-Type: a
   }
 }'
 
-# Now logs-prod-api will use production_logs (priority 200)
-# And logs-dev-api will use general_logs (priority 50)
+# Now app-logs-prod-api will use production_logs (priority 200)
+# And app-logs-dev-api will use general_logs (priority 50)
 ```
 
 ---
@@ -327,21 +327,21 @@ curl -X PUT "localhost:9200/_index_template/dynamic_logs" -H 'Content-Type: appl
     "mappings": {
       "dynamic_templates": [
         {
-          "strings_as_keywords": {
-            "match_mapping_type": "string",
-            "mapping": {
-              "type": "keyword",
-              "ignore_above": 256
-            }
-          }
-        },
-        {
           "message_fields": {
             "match": "*_message",
             "match_mapping_type": "string",
             "mapping": {
               "type": "text",
               "analyzer": "standard"
+            }
+          }
+        },
+        {
+          "strings_as_keywords": {
+            "match_mapping_type": "string",
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 256
             }
           }
         },
@@ -401,7 +401,7 @@ curl -X PUT "localhost:9200/_component_template/tenant_base" -H 'Content-Type: a
   }
 }'
 
-# Per-tenant template with dynamic tenant alias
+# Per-tenant template
 curl -X PUT "localhost:9200/_index_template/tenant_data" -H 'Content-Type: application/json' -d'
 {
   "index_patterns": ["tenant-*-data"],
@@ -554,7 +554,7 @@ class TemplateManager:
 
         return {
             "index_templates": [t["name"] for t in index_templates.get("index_templates", [])],
-            "component_templates": list(component_templates.get("component_templates", {}).keys())
+            "component_templates": [t["name"] for t in component_templates.get("component_templates", [])]
         }
 
     def export_templates(self, output_file: str) -> bool:
@@ -589,6 +589,8 @@ class TemplateManager:
             }
             if "_meta" in ct["component_template"]:
                 body["_meta"] = ct["component_template"]["_meta"]
+            if "version" in ct["component_template"]:
+                body["version"] = ct["component_template"]["version"]
 
             self.es.cluster.put_component_template(name=name, body=body)
             counts["component_templates"] += 1
@@ -611,6 +613,8 @@ class TemplateManager:
                 body["data_stream"] = template["data_stream"]
             if "_meta" in template:
                 body["_meta"] = template["_meta"]
+            if "version" in template:
+                body["version"] = template["version"]
 
             self.es.indices.put_index_template(name=name, body=body)
             counts["index_templates"] += 1
@@ -677,7 +681,7 @@ class TemplateManager:
         results["template"] = self.create_index_template(
             name="application_logs",
             index_patterns=["logs-*"],
-            priority=100,
+            priority=501,
             composed_of=["log_settings", "log_mappings"],
             meta={
                 "description": "Template for application logs",
@@ -726,7 +730,7 @@ if __name__ == "__main__":
 - Document templates with `_meta` field
 
 **Priority Management:**
-- Use consistent priority ranges (e.g., 0-99 for defaults, 100-199 for standard, 200+ for specific)
+- Use consistent priority ranges (e.g., 0-99 for defaults, 100-199 for standard, 200+ for specific, and 501+ when intentionally overriding built-in templates)
 - Test priority resolution with `_simulate_index`
 
 **Versioning:**
