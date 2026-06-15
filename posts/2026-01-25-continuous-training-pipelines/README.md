@@ -58,7 +58,7 @@ flowchart TD
 # triggers/drift_trigger.py
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict
 from scipy import stats
 import numpy as np
 
@@ -137,7 +137,11 @@ class DriftTrigger:
         bins: int = 10
     ) -> float:
         """Calculate Population Stability Index."""
-        bin_edges = np.linspace(ref_mean - 3*ref_std, ref_mean + 3*ref_std, bins + 1)
+        bin_edges = np.concatenate([
+            [-np.inf],
+            np.linspace(ref_mean - 3*ref_std, ref_mean + 3*ref_std, bins + 1),
+            [np.inf]
+        ])
 
         expected = np.diff(stats.norm.cdf(bin_edges, ref_mean, ref_std))
         expected = np.clip(expected, 0.001, 1)
@@ -151,6 +155,9 @@ class DriftTrigger:
 
     def should_retrain(self, drift_results: Dict[str, DriftResult]) -> bool:
         """Determine if retraining should be triggered."""
+        if not drift_results:
+            return False
+
         drifted_features = [r for r in drift_results.values() if r.drift_detected]
 
         # Retrain if more than 20% of features drifted
@@ -195,7 +202,7 @@ class DriftMonitor:
 ```python
 # triggers/performance_trigger.py
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict
 from datetime import datetime, timedelta
 import sqlite3
 
@@ -246,7 +253,7 @@ class PerformanceTrigger:
                 (metric_name, cutoff)
             )
             result = cursor.fetchone()[0]
-            if result:
+            if result is not None:
                 metrics[metric_name] = result
 
         conn.close()
@@ -311,9 +318,7 @@ should_retrain, alerts = trigger.should_retrain()
 
 ```python
 # pipelines/ct_pipeline.py
-from prefect import flow, task
-from prefect.deployments import Deployment
-from prefect.server.schemas.schedules import CronSchedule
+from prefect import flow, serve, task
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -333,18 +338,24 @@ def fetch_training_data(
 @task(retries=2)
 def validate_data_quality(data_path: str) -> bool:
     """Validate data quality before training."""
-    import great_expectations as ge
+    import great_expectations as gx
+    import pandas as pd
 
     # Load and validate
-    df = ge.read_parquet(data_path)
+    df = pd.read_parquet(data_path)
+    context = gx.get_context()
+    data_source = context.data_sources.add_pandas("ct_pandas")
+    data_asset = data_source.add_dataframe_asset(name="training_data")
+    batch_definition = data_asset.add_batch_definition_whole_dataframe("latest")
+    batch = batch_definition.get_batch(batch_parameters={"dataframe": df})
 
     expectations = [
-        df.expect_table_row_count_to_be_between(min_value=10000),
-        df.expect_column_values_to_not_be_null('target'),
-        df.expect_column_values_to_be_between('amount', min_value=0)
+        gx.expectations.ExpectTableRowCountToBeBetween(min_value=10000),
+        gx.expectations.ExpectColumnValuesToNotBeNull(column='target'),
+        gx.expectations.ExpectColumnValuesToBeBetween(column='amount', min_value=0)
     ]
 
-    return all(e.success for e in expectations)
+    return all(batch.validate(expectation).success for expectation in expectations)
 
 @task
 def compute_features(data_path: str) -> str:
@@ -364,6 +375,7 @@ def train_model(
 ) -> str:
     """Train a new model version."""
     import mlflow
+    import mlflow.sklearn
 
     mlflow.set_experiment(f"{model_name}_ct")
 
@@ -372,23 +384,26 @@ def train_model(
 
         # Training
         print(f"Training {model_name} with {hyperparams}")
+        trained_model = None  # Replace with your fitted sklearn model
 
         # Log metrics
         metrics = {'accuracy': 0.95, 'f1': 0.92}
         mlflow.log_metrics(metrics)
 
         # Log model
-        mlflow.sklearn.log_model(
-            sk_model=None,  # Your trained model
-            artifact_path="model",
-            registered_model_name=f"{model_name}_candidate"
+        if trained_model is None:
+            raise ValueError("Replace trained_model with a fitted sklearn model before logging")
+
+        model_info = mlflow.sklearn.log_model(
+            sk_model=trained_model,
+            name="model"
         )
 
-    return run.info.run_id
+    return model_info.model_uri
 
 @task
 def evaluate_candidate(
-    candidate_run_id: str,
+    candidate_model_uri: str,
     champion_version: str,
     model_name: str,
     evaluation_data_path: str
@@ -402,10 +417,9 @@ def evaluate_candidate(
 
     # Load both models
     champion_uri = f"models:/{model_name}/{champion_version}"
-    candidate_uri = f"runs:/{candidate_run_id}/model"
 
     champion_model = mlflow.pyfunc.load_model(champion_uri)
-    candidate_model = mlflow.pyfunc.load_model(candidate_uri)
+    candidate_model = mlflow.pyfunc.load_model(candidate_model_uri)
 
     # Evaluate on same data
     # (Implementation details omitted for brevity)
@@ -420,7 +434,7 @@ def evaluate_candidate(
 
 @task
 def promote_candidate(
-    candidate_run_id: str,
+    candidate_model_uri: str,
     model_name: str,
     evaluation_results: Dict
 ) -> str:
@@ -435,18 +449,12 @@ def promote_candidate(
     client = MlflowClient()
 
     # Register candidate model
-    model_uri = f"runs:/{candidate_run_id}/model"
-    result = mlflow.register_model(model_uri, model_name)
+    result = mlflow.register_model(candidate_model_uri, model_name)
 
-    # Transition to production
-    client.transition_model_version_stage(
-        name=model_name,
-        version=result.version,
-        stage="Production",
-        archive_existing_versions=True
-    )
+    # Promote by moving the champion alias to the new version
+    client.set_registered_model_alias(model_name, "champion", result.version)
 
-    print(f"Promoted {model_name} v{result.version} to production")
+    print(f"Promoted {model_name} v{result.version} to champion")
 
     return result.version
 
@@ -464,6 +472,7 @@ def continuous_training_pipeline(
     and promotes if better.
     """
     from datetime import datetime, timedelta
+    from mlflow.exceptions import MlflowException
     from mlflow.tracking import MlflowClient
 
     # Default hyperparameters
@@ -483,8 +492,11 @@ def continuous_training_pipeline(
 
     # Get current production version
     client = MlflowClient()
-    versions = client.get_latest_versions(model_name, stages=["Production"])
-    champion_version = versions[0].version if versions else None
+    try:
+        champion = client.get_model_version_by_alias(model_name, "champion")
+        champion_version = champion.version
+    except MlflowException:
+        champion_version = None
 
     # Pipeline steps
     data_path = fetch_training_data(start_date, end_date)
@@ -494,25 +506,25 @@ def continuous_training_pipeline(
 
     feature_path = compute_features(data_path)
 
-    candidate_run_id = train_model(feature_path, hyperparams, model_name)
+    candidate_model_uri = train_model(feature_path, hyperparams, model_name)
 
     if champion_version:
         eval_results = evaluate_candidate(
-            candidate_run_id,
+            candidate_model_uri,
             champion_version,
             model_name,
             feature_path
         )
 
         new_version = promote_candidate(
-            candidate_run_id,
+            candidate_model_uri,
             model_name,
             eval_results
         )
     else:
         # No champion, just promote
         new_version = promote_candidate(
-            candidate_run_id,
+            candidate_model_uri,
             model_name,
             {'candidate_wins': True}
         )
@@ -526,10 +538,9 @@ def continuous_training_pipeline(
 # Create deployment with multiple triggers
 if __name__ == "__main__":
     # Scheduled retraining (weekly)
-    scheduled_deployment = Deployment.build_from_flow(
-        flow=continuous_training_pipeline,
+    scheduled_deployment = continuous_training_pipeline.to_deployment(
         name="weekly-retraining",
-        schedule=CronSchedule(cron="0 3 * * 0"),  # 3 AM every Sunday
+        cron="0 3 * * 0",  # 3 AM every Sunday
         parameters={
             "model_name": "fraud_detector",
             "trigger_reason": "scheduled"
@@ -538,8 +549,7 @@ if __name__ == "__main__":
     )
 
     # On-demand deployment (triggered by drift/performance monitors)
-    triggered_deployment = Deployment.build_from_flow(
-        flow=continuous_training_pipeline,
+    triggered_deployment = continuous_training_pipeline.to_deployment(
         name="triggered-retraining",
         parameters={
             "model_name": "fraud_detector",
@@ -548,8 +558,7 @@ if __name__ == "__main__":
         tags=["ct", "triggered"]
     )
 
-    scheduled_deployment.apply()
-    triggered_deployment.apply()
+    serve(scheduled_deployment, triggered_deployment)
 ```
 
 ## Champion-Challenger Evaluation

@@ -32,9 +32,9 @@ Trivy runs on Linux, macOS, and Windows. Here are the common installation method
 brew install trivy
 
 # Debian/Ubuntu
-sudo apt-get install wget apt-transport-https gnupg lsb-release
-wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+sudo apt-get install wget gnupg
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
 sudo apt-get update
 sudo apt-get install trivy
 
@@ -47,7 +47,7 @@ Verify the installation:
 
 ```bash
 trivy --version
-# Output: Version: 0.48.0
+# Output: Version: 0.71.1
 ```
 
 ## Scanning Container Images
@@ -89,7 +89,7 @@ Total: 45 (UNKNOWN: 0, LOW: 20, MEDIUM: 15, HIGH: 8, CRITICAL: 2)
 Trivy detects hardcoded secrets in images, catching credentials that developers accidentally baked in:
 
 ```bash
-# Enable secret scanning (disabled by default in some modes)
+# Explicitly scan for vulnerabilities and secrets
 trivy image --scanners vuln,secret myapp:v1.0
 
 # Scan a filesystem or Git repository for secrets
@@ -118,7 +118,7 @@ Trivy scans Kubernetes manifests, Terraform files, and Dockerfiles for misconfig
 trivy config ./k8s/
 
 # Scan Terraform files
-trivy config --config-policy ./policies ./terraform/
+trivy config --config-check ./policies --check-namespaces user ./terraform/
 
 # Scan a Dockerfile
 trivy config Dockerfile
@@ -133,13 +133,19 @@ kind: Deployment
 metadata:
   name: insecure-app
 spec:
+  selector:
+    matchLabels:
+      app: insecure-app
   template:
+    metadata:
+      labels:
+        app: insecure-app
     spec:
       containers:
         - name: app
           image: myapp:latest  # Warning: Using 'latest' tag
           securityContext:
-            runAsRoot: true     # Critical: Running as root
+            runAsUser: 0        # Critical: Running as root
             privileged: true    # Critical: Privileged container
 ```
 
@@ -164,6 +170,9 @@ on:
 jobs:
   trivy-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -172,17 +181,17 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'myapp:${{ github.sha }}'
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
-          # Fail the build if critical vulnerabilities found
+          # Fail the build if high or critical vulnerabilities are found
           exit-code: '1'
 
       - name: Upload Trivy scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -251,15 +260,18 @@ ignorefile: .trivyignore
 exit-code: 1
 
 # Scan for vulnerabilities and secrets
-scanners:
-  - vuln
-  - secret
-  - misconfig
+scan:
+  scanners:
+    - vuln
+    - secret
+    - misconfig
 
 # Database settings
 db:
-  repository: ghcr.io/aquasecurity/trivy-db
-  java-repository: ghcr.io/aquasecurity/trivy-java-db
+  repository:
+    - ghcr.io/aquasecurity/trivy-db:2
+  java-repository:
+    - ghcr.io/aquasecurity/trivy-java-db:1
 ```
 
 Create a `.trivyignore` file for accepted risks:
@@ -270,12 +282,12 @@ Create a `.trivyignore` file for accepted risks:
 CVE-2023-12345
 
 # Accepted: False positive, package not actually used
-CVE-2023-67890 exp:2024-06-01  # Expires June 1, 2024
+CVE-2023-67890 exp:2026-12-01  # Expires December 1, 2026
 ```
 
 ## Kubernetes Admission Control
 
-Use Trivy as part of an admission controller to block vulnerable images at deploy time:
+Use Trivy scan results as part of an admission-control policy to block vulnerable images at deploy time:
 
 ```mermaid
 flowchart LR
@@ -302,11 +314,11 @@ helm install trivy-operator aqua/trivy-operator \
 The operator creates VulnerabilityReport custom resources:
 
 ```bash
-# View vulnerability reports for all pods
+# View vulnerability reports across all namespaces
 kubectl get vulnerabilityreports -A
 
-# Get details for a specific workload
-kubectl describe vulnerabilityreport -n default deployment-nginx-container
+# Get details for a specific report
+kubectl describe vulnerabilityreport -n default <report-name>
 ```
 
 ## Best Practices
