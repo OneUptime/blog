@@ -304,7 +304,7 @@ macro_rules! hashmap {
 }
 
 fn main() {
-    let empty = hashmap!();
+    let empty: std::collections::HashMap<&str, i32> = hashmap!();
     let scores = hashmap! {
         "Alice" => 100,
         "Bob" => 85,
@@ -426,7 +426,7 @@ pub fn hello_macro_derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     let name = &ast.ident;
 
-    let gen = quote! {
+    let expanded = quote! {
         impl HelloMacro for #name {
             fn hello_macro() {
                 println!("Hello from {}!", stringify!(#name));
@@ -434,13 +434,15 @@ pub fn hello_macro_derive(input: TokenStream) -> TokenStream {
         }
     };
 
-    gen.into()
+    expanded.into()
 }
 ```
 
 ### Attribute Macros
 
 ```rust
+use proc_macro::TokenStream;
+
 #[proc_macro_attribute]
 pub fn route(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Transform the function based on the attribute
@@ -453,6 +455,8 @@ pub fn route(attr: TokenStream, item: TokenStream) -> TokenStream {
 ### Function-like Macros
 
 ```rust
+use proc_macro::TokenStream;
+
 #[proc_macro]
 pub fn sql(input: TokenStream) -> TokenStream {
     // Parse SQL and generate code
