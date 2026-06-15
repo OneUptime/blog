@@ -96,20 +96,24 @@ This is the most common fix for primary key conflicts.
 
 ```sql
 -- Reset sequence to the correct value
-SELECT setval('users_id_seq', (SELECT COALESCE(MAX(id), 0) FROM users), true);
+SELECT setval(
+    'users_id_seq',
+    COALESCE((SELECT MAX(id) FROM users), 1),
+    (SELECT MAX(id) IS NOT NULL FROM users)
+);
 
 -- Verify the fix
 SELECT
     last_value,
     (SELECT MAX(id) FROM users) as max_id
 FROM users_id_seq;
--- last_value and max_id should match
+-- For a non-empty table, last_value and max_id should match
 
 -- You can also use pg_get_serial_sequence to get the sequence name dynamically
 SELECT setval(
     pg_get_serial_sequence('users', 'id'),
-    (SELECT COALESCE(MAX(id), 0) FROM users),
-    true
+    COALESCE((SELECT MAX(id) FROM users), 1),
+    (SELECT MAX(id) IS NOT NULL FROM users)
 );
 ```
 
@@ -233,15 +237,20 @@ END $$;
 Since `COPY` does not support `ON CONFLICT` directly, use a staging table:
 
 ```sql
--- Create a temporary staging table
-CREATE TEMP TABLE users_staging (LIKE users INCLUDING ALL);
+-- Create a temporary staging table without unique constraints
+CREATE TEMP TABLE users_staging (
+    email VARCHAR(255),
+    name TEXT
+);
 
 -- Import data into staging table
 COPY users_staging (email, name) FROM '/path/to/users.csv' WITH CSV HEADER;
 
 -- Insert from staging, handling conflicts
 INSERT INTO users (email, name)
-SELECT email, name FROM users_staging
+SELECT DISTINCT ON (email) email, name
+FROM users_staging
+ORDER BY email
 ON CONFLICT (email) DO UPDATE SET
     name = EXCLUDED.name,
     updated_at = NOW();
@@ -297,7 +306,7 @@ CREATE TABLE users (
 
 -- Attempting to manually set ID will error unless OVERRIDING SYSTEM VALUE is used
 INSERT INTO users (id, email) VALUES (1, 'test@example.com');
--- ERROR: cannot insert into column "id"
+-- ERROR: cannot insert a non-DEFAULT value into column "id"
 ```
 
 ### 3. Implement Idempotent Operations
