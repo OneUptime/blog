@@ -37,7 +37,7 @@ When one document has exactly one related document.
 ```javascript
 // User with profile - embedded
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0000"),
   email: "user@example.com",
   password: "hashed_password",
   profile: {
@@ -65,15 +65,15 @@ When one document has exactly one related document.
 ```javascript
 // User document
 {
-  _id: ObjectId("user_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0001"),
   email: "user@example.com",
-  profileId: ObjectId("profile_1")  // Reference
+  profileId: ObjectId("64b64c0f0f0f0f0f0f0f0002")  // Reference
 }
 
 // Separate profile collection
 {
-  _id: ObjectId("profile_1"),
-  userId: ObjectId("user_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0002"),
+  userId: ObjectId("64b64c0f0f0f0f0f0f0f0001"),
   firstName: "John",
   lastName: "Doe",
   avatar: "https://..."
@@ -96,18 +96,18 @@ Best for small, bounded arrays that are accessed with the parent.
 ```javascript
 // Order with embedded items (few items per order)
 {
-  _id: ObjectId("order_1"),
-  customerId: ObjectId("customer_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0003"),
+  customerId: ObjectId("64b64c0f0f0f0f0f0f0f0004"),
   status: "shipped",
   items: [
     {
-      productId: ObjectId("prod_1"),
+      productId: ObjectId("64b64c0f0f0f0f0f0f0f0005"),
       name: "Widget",
       quantity: 2,
       price: 15.99
     },
     {
-      productId: ObjectId("prod_2"),
+      productId: ObjectId("64b64c0f0f0f0f0f0f0f0006"),
       name: "Gadget",
       quantity: 1,
       price: 29.99
@@ -135,20 +135,20 @@ Store references in the parent when you need to query children separately.
 ```javascript
 // Blog post with comment IDs
 {
-  _id: ObjectId("post_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0007"),
   title: "MongoDB Data Modeling",
   content: "...",
   commentIds: [
-    ObjectId("comment_1"),
-    ObjectId("comment_2"),
-    ObjectId("comment_3")
+    ObjectId("64b64c0f0f0f0f0f0f0f0008"),
+    ObjectId("64b64c0f0f0f0f0f0f0f0009"),
+    ObjectId("64b64c0f0f0f0f0f0f0f000a")
   ]
 }
 
 // Comments collection
 {
-  _id: ObjectId("comment_1"),
-  postId: ObjectId("post_1"),  // Back-reference for queries
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0008"),
+  postId: ObjectId("64b64c0f0f0f0f0f0f0f0007"),  // Back-reference for queries
   author: "Jane",
   text: "Great post!",
   createdAt: ISODate("2026-01-25T12:00:00Z")
@@ -159,7 +159,7 @@ Query with $lookup:
 
 ```javascript
 db.posts.aggregate([
-  { $match: { _id: ObjectId("post_1") } },
+  { $match: { _id: ObjectId("64b64c0f0f0f0f0f0f0f0007") } },
   {
     $lookup: {
       from: "comments",
@@ -178,7 +178,7 @@ Store reference to parent in each child. Best for unbounded relationships.
 ```javascript
 // Blog post (no comment references)
 {
-  _id: ObjectId("post_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0007"),
   title: "MongoDB Data Modeling",
   content: "...",
   commentCount: 1523  // Denormalized count
@@ -186,8 +186,8 @@ Store reference to parent in each child. Best for unbounded relationships.
 
 // Comments reference the post
 {
-  _id: ObjectId("comment_1"),
-  postId: ObjectId("post_1"),  // Parent reference
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0008"),
+  postId: ObjectId("64b64c0f0f0f0f0f0f0f0007"),  // Parent reference
   author: "Jane",
   text: "Great post!",
   createdAt: ISODate("2026-01-25T12:00:00Z")
@@ -197,7 +197,7 @@ Store reference to parent in each child. Best for unbounded relationships.
 db.comments.createIndex({ postId: 1, createdAt: -1 });
 
 // Get comments for a post
-db.comments.find({ postId: ObjectId("post_1") })
+db.comments.find({ postId: ObjectId("64b64c0f0f0f0f0f0f0f0007") })
   .sort({ createdAt: -1 })
   .limit(20);
 ```
@@ -216,22 +216,22 @@ Both sides can have multiple related documents.
 ```javascript
 // Student document
 {
-  _id: ObjectId("student_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f000b"),
   name: "Alice",
   enrolledCourseIds: [
-    ObjectId("course_1"),
-    ObjectId("course_2"),
-    ObjectId("course_3")
+    ObjectId("64b64c0f0f0f0f0f0f0f000d"),
+    ObjectId("64b64c0f0f0f0f0f0f0f000e"),
+    ObjectId("64b64c0f0f0f0f0f0f0f000f")
   ]
 }
 
 // Course document
 {
-  _id: ObjectId("course_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f000d"),
   title: "Introduction to MongoDB",
   enrolledStudentIds: [
-    ObjectId("student_1"),
-    ObjectId("student_2")
+    ObjectId("64b64c0f0f0f0f0f0f0f000b"),
+    ObjectId("64b64c0f0f0f0f0f0f0f000c")
   ]
 }
 ```
@@ -240,7 +240,7 @@ Query students in a course:
 
 ```javascript
 db.students.find({
-  enrolledCourseIds: ObjectId("course_1")
+  enrolledCourseIds: ObjectId("64b64c0f0f0f0f0f0f0f000d")
 });
 ```
 
@@ -248,7 +248,7 @@ Query courses for a student:
 
 ```javascript
 db.courses.find({
-  enrolledStudentIds: ObjectId("student_1")
+  enrolledStudentIds: ObjectId("64b64c0f0f0f0f0f0f0f000b")
 });
 ```
 
@@ -261,21 +261,21 @@ For relationships with metadata or very large cardinality:
 ```javascript
 // Students collection
 {
-  _id: ObjectId("student_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f000b"),
   name: "Alice"
 }
 
 // Courses collection
 {
-  _id: ObjectId("course_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f000d"),
   title: "Introduction to MongoDB"
 }
 
 // Enrollments junction collection
 {
-  _id: ObjectId("enrollment_1"),
-  studentId: ObjectId("student_1"),
-  courseId: ObjectId("course_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0010"),
+  studentId: ObjectId("64b64c0f0f0f0f0f0f0f000b"),
+  courseId: ObjectId("64b64c0f0f0f0f0f0f0f000d"),
   enrolledAt: ISODate("2026-01-15T00:00:00Z"),
   grade: "A",
   status: "completed"
@@ -291,7 +291,7 @@ Query with aggregation:
 ```javascript
 // Get student with all courses
 db.students.aggregate([
-  { $match: { _id: ObjectId("student_1") } },
+  { $match: { _id: ObjectId("64b64c0f0f0f0f0f0f0f000b") } },
   {
     $lookup: {
       from: "enrollments",
@@ -319,10 +319,10 @@ db.students.aggregate([
 // Order with denormalized product names and prices
 // (original product might change, but order should reflect purchase-time values)
 {
-  _id: ObjectId("order_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0003"),
   items: [
     {
-      productId: ObjectId("prod_1"),
+      productId: ObjectId("64b64c0f0f0f0f0f0f0f0005"),
       // Denormalized at purchase time
       name: "Widget Pro",
       price: 15.99,
@@ -337,7 +337,7 @@ db.students.aggregate([
 ```javascript
 // Maintain computed counts
 {
-  _id: ObjectId("post_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0007"),
   title: "MongoDB Guide",
   commentCount: 42,      // Updated when comments change
   likeCount: 128,        // Updated when likes change
@@ -354,7 +354,7 @@ db.posts.updateOne(
 );
 ```
 
-### Materialized Views
+### Precomputed Summaries
 
 Pre-compute complex aggregations:
 
@@ -365,9 +365,9 @@ db.orders.aggregate([
   { $group: { _id: null, totalSpent: { $sum: "$total" }, orderCount: { $sum: 1 } } }
 ]);
 
-// Better: Maintain materialized view
+// Better: Maintain precomputed summary fields
 {
-  _id: ObjectId("user_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0001"),
   email: "user@example.com",
   stats: {
     totalOrders: 47,
@@ -391,11 +391,11 @@ db.users.updateOne(
 ```javascript
 // Products collection
 {
-  _id: ObjectId("prod_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0005"),
   name: "Wireless Headphones",
   slug: "wireless-headphones",
   price: 79.99,
-  categoryIds: [ObjectId("cat_1"), ObjectId("cat_2")],  // Many-to-many
+  categoryIds: [ObjectId("64b64c0f0f0f0f0f0f0f0011"), ObjectId("64b64c0f0f0f0f0f0f0f0012")],  // Many-to-many
   inventory: {
     quantity: 150,
     warehouse: "us-east"
@@ -408,7 +408,7 @@ db.users.updateOne(
 
 // Categories collection (self-referential for hierarchy)
 {
-  _id: ObjectId("cat_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0011"),
   name: "Electronics",
   slug: "electronics",
   parentId: null,  // Root category
@@ -417,19 +417,19 @@ db.users.updateOne(
 }
 
 {
-  _id: ObjectId("cat_2"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0012"),
   name: "Audio",
   slug: "audio",
-  parentId: ObjectId("cat_1"),
+  parentId: ObjectId("64b64c0f0f0f0f0f0f0f0011"),
   path: ["electronics", "audio"],
   productCount: 324
 }
 
 // Orders collection
 {
-  _id: ObjectId("order_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0003"),
   orderNumber: "ORD-2026-001234",
-  customerId: ObjectId("user_1"),
+  customerId: ObjectId("64b64c0f0f0f0f0f0f0f0001"),
   status: "shipped",
 
   // Denormalized customer info at order time
@@ -444,7 +444,7 @@ db.users.updateOne(
   // Embedded items with denormalized product data
   items: [
     {
-      productId: ObjectId("prod_1"),
+      productId: ObjectId("64b64c0f0f0f0f0f0f0f0005"),
       sku: "WH-001",
       name: "Wireless Headphones",  // Snapshot at purchase
       price: 79.99,                  // Price at purchase
@@ -463,7 +463,7 @@ db.users.updateOne(
 
 // Users collection
 {
-  _id: ObjectId("user_1"),
+  _id: ObjectId("64b64c0f0f0f0f0f0f0f0001"),
   email: "john@example.com",
   profile: {
     firstName: "John",
