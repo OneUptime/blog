@@ -26,7 +26,7 @@ psql: error: could not connect to server: Connection refused
 FATAL: could not connect to server: Connection refused
 ```
 
-This error means the connection attempt was actively rejected. The server either is not running, is not listening on the expected address/port, or a firewall is blocking the connection.
+This error means the connection attempt was actively rejected. The server either is not running, is not listening on the expected address/port, or a firewall or network device is rejecting the connection.
 
 ---
 
@@ -39,7 +39,7 @@ flowchart TD
     B -->|Yes| D{Is it listening on correct port?}
     D -->|No| E[Check listen_addresses and port]
     D -->|Yes| F{Can you connect locally?}
-    F -->|No| G[Check pg_hba.conf]
+    F -->|No| G[Check pg_hba.conf or socket settings]
     F -->|Yes| H{Is firewall blocking?}
     H -->|Yes| I[Configure firewall rules]
     H -->|No| J[Check network/DNS issues]
@@ -168,7 +168,7 @@ SHOW port;
 
 ## Step 3: Configure pg_hba.conf (Host-Based Authentication)
 
-Even if PostgreSQL is listening, it may reject connections based on `pg_hba.conf` rules.
+Even if PostgreSQL is listening, authentication may still fail based on `pg_hba.conf` rules. These failures usually appear as PostgreSQL `FATAL` authentication errors rather than a raw TCP "connection refused" error, but they are a common next check once you confirm the server is reachable.
 
 ### Locate pg_hba.conf
 
@@ -264,7 +264,7 @@ sudo iptables -L -n | grep 5432
 sudo iptables -A INPUT -p tcp --dport 5432 -j ACCEPT
 
 # Save rules
-sudo iptables-save > /etc/iptables/rules.v4
+sudo sh -c 'iptables-save > /etc/iptables/rules.v4'
 ```
 
 ### AWS Security Groups
@@ -392,7 +392,7 @@ if [[ "$HOST" == "localhost" || "$HOST" == "127.0.0.1" ]]; then
 
     echo ""
     echo "4. Checking listening ports..."
-    ss -tlnp 2>/dev/null | grep 5432 || netstat -tlnp 2>/dev/null | grep 5432
+    ss -tlnp 2>/dev/null | grep ":$PORT" || netstat -tlnp 2>/dev/null | grep ":$PORT"
 fi
 
 echo ""
@@ -447,8 +447,8 @@ Connection refused errors in PostgreSQL usually stem from one of these issues:
 
 1. **PostgreSQL not running** - Start the service
 2. **Wrong listen_addresses** - Configure to listen on the correct interface
-3. **pg_hba.conf blocking** - Add appropriate access rules
-4. **Firewall blocking** - Open port 5432
+3. **pg_hba.conf authentication failures** - Add appropriate access rules
+4. **Firewall or network device rejecting connections** - Open port 5432
 5. **Wrong connection parameters** - Verify host, port, and credentials
 
 Work through the diagnostic steps systematically, and you will identify the root cause. Remember that production databases should have strict access controls, so only open access as needed.
