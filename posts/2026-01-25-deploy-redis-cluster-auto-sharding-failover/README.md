@@ -66,7 +66,7 @@ cluster-node-timeout 5000
 # Persistence settings
 appendonly yes
 appendfilename "appendonly-7001.aof"
-dir /var/lib/redis/7001
+dir /data
 
 # Memory management
 maxmemory 2gb
@@ -81,7 +81,7 @@ bind 0.0.0.0
 protected-mode no
 
 # Logging
-logfile /var/log/redis/redis-7001.log
+logfile ""
 loglevel notice
 ```
 
@@ -211,7 +211,7 @@ sleep 5
 
 # Create the cluster
 # --cluster-replicas 1 means each master gets one replica
-docker exec -it redis-node-1 redis-cli \
+docker exec redis-node-1 redis-cli \
   -a your-strong-password \
   --cluster create \
   172.28.0.11:7001 \
@@ -220,7 +220,8 @@ docker exec -it redis-node-1 redis-cli \
   172.28.0.14:7004 \
   172.28.0.15:7005 \
   172.28.0.16:7006 \
-  --cluster-replicas 1
+  --cluster-replicas 1 \
+  --cluster-yes
 
 echo "Cluster created successfully"
 ```
@@ -254,6 +255,7 @@ u1v2w3x4... 172.28.0.16:7006@17006 slave i9j0k1l2... 0 1234567894 3 connected
 ## Connecting from Node.js
 
 Use the ioredis library with cluster mode enabled. It automatically handles MOVED and ASK redirections.
+If your application runs outside the Docker network, use addresses that are reachable from the application or configure ioredis `natMap`, because Redis Cluster redirects clients to the node addresses advertised by the cluster.
 
 ```javascript
 // cluster-client.js
@@ -277,6 +279,7 @@ const cluster = new Redis.Cluster([
     return Math.min(times * 100, 3000);
   },
   // Enable read from replicas for read scaling
+  // Replica reads may lag behind recent writes because replication is asynchronous
   scaleReads: 'slave',
   // Maximum number of redirections to follow
   maxRedirections: 16,
@@ -338,7 +341,7 @@ async function transferCredits(fromUserId, toUserId, amount) {
   pipeline.decrby(`{credits}:${fromUserId}`, amount);
   pipeline.incrby(`{credits}:${toUserId}`, amount);
 
-  // Note: This only works if both keys are on the same node (same hash tag prefix)
+  // Note: This only works because both keys use the same hash tag: {credits}
   // For different users, you need distributed transaction handling
 
   const results = await pipeline.exec();
