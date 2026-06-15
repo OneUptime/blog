@@ -8,11 +8,11 @@ Description: Learn how to use locally built Docker images in Minikube without pu
 
 ---
 
-When developing with Minikube, you want to test local Docker images without pushing them to a remote registry. The problem is that Minikube runs its own Docker daemon, separate from your host. Images built on your host are invisible to Minikube. Here are several ways to solve this.
+When developing with Minikube, you want to test local Docker images without pushing them to a remote registry. The problem is that Minikube usually runs its own container runtime, separate from your host. Images built on your host are invisible to Minikube unless you use the `none` driver or explicitly load them into the cluster. Here are several ways to solve this.
 
 ## Understanding the Problem
 
-Minikube runs inside a VM or container with its own isolated Docker daemon. When you run `docker build` on your host, the image exists in your host's Docker, not Minikube's:
+Minikube runs inside a VM or container with its own isolated container runtime. With the default Docker runtime, when you run `docker build` on your host, the image exists in your host's Docker, not Minikube's:
 
 ```mermaid
 flowchart LR
@@ -104,7 +104,7 @@ minikube image load myapp:latest
 minikube image ls | grep myapp
 ```
 
-This copies the image from your host Docker to Minikube's Docker. It takes time for large images since the entire image transfers.
+This copies the image from your host Docker into Minikube's container runtime. It takes time for large images since the entire image transfers.
 
 ## Method 3: Build Inside Minikube
 
@@ -128,22 +128,22 @@ For a workflow closer to production, use Minikube's built-in registry:
 # Enable the registry addon
 minikube addons enable registry
 
-# Get the registry's cluster IP
+# Get the registry service
 kubectl get svc -n kube-system registry
 
-# On Linux, access via localhost:5000 (port-forwarded automatically)
-# On macOS/Windows, set up port forwarding
-kubectl port-forward --namespace kube-system svc/registry 5000:80 &
+# For a Linux/VM workflow, push to the registry exposed on the Minikube node.
+# Configure Docker and Minikube insecure registries for your Minikube IP range if required.
+REGISTRY="$(minikube ip):5000"
 ```
 
 Push images to the local registry:
 
 ```bash
 # Tag your image for the local registry
-docker tag myapp:latest localhost:5000/myapp:latest
+docker tag myapp:latest "$REGISTRY/myapp:latest"
 
 # Push to Minikube's registry
-docker push localhost:5000/myapp:latest
+docker push "$REGISTRY/myapp:latest"
 ```
 
 Use the registry image in your deployment:
@@ -152,7 +152,8 @@ Use the registry image in your deployment:
 spec:
   containers:
   - name: myapp
-    image: localhost:5000/myapp:latest
+    # Replace the IP with the output of: minikube ip
+    image: 192.168.49.2:5000/myapp:latest
     # Can use IfNotPresent or Always since it pulls from local registry
     imagePullPolicy: IfNotPresent
 ```
@@ -167,7 +168,7 @@ The `imagePullPolicy` setting determines whether Kubernetes tries to pull the im
 | `IfNotPresent` | Pull only if image not in local cache. |
 | `Always` | Always pull from registry. Default for `:latest` tag. |
 
-For local development with methods 1-3, always use `imagePullPolicy: Never`:
+For local development with methods 1-3, use `imagePullPolicy: Never` or `imagePullPolicy: IfNotPresent`. `Never` is strictest because Kubernetes will not try a remote registry if the local image is missing:
 
 ```yaml
 # Prevent Kubernetes from trying to pull your local image
