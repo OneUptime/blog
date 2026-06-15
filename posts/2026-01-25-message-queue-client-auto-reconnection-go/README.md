@@ -43,12 +43,14 @@ import (
 type Client struct {
     url           string
     conn          *amqp.Connection
-    channel       *amqp.Channel
+    publishCh     *amqp.Channel
+    consumeCh     *amqp.Channel
     done          chan struct{}
     notifyClose   chan *amqp.Error
     notifyConfirm chan amqp.Confirmation
     isConnected   bool
     mu            sync.RWMutex
+    publishMu     sync.Mutex
 }
 
 // NewClient creates a new client and establishes the initial connection
@@ -82,30 +84,41 @@ func (c *Client) connect() error {
         return err
     }
 
-    ch, err := conn.Channel()
+    publishCh, err := conn.Channel()
     if err != nil {
         conn.Close()
         return err
     }
 
-    // Enable publisher confirms for reliable publishing
-    if err := ch.Confirm(false); err != nil {
-        ch.Close()
+    consumeCh, err := conn.Channel()
+    if err != nil {
+        publishCh.Close()
         conn.Close()
         return err
     }
 
+    // Enable publisher confirms for reliable publishing
+    if err := publishCh.Confirm(false); err != nil {
+        consumeCh.Close()
+        publishCh.Close()
+        conn.Close()
+        return err
+    }
+
+    // Set up notification channels before publishing or consuming
+    notifyClose := make(chan *amqp.Error, 1)
+    notifyConfirm := make(chan amqp.Confirmation, 1)
+    conn.NotifyClose(notifyClose)
+    publishCh.NotifyPublish(notifyConfirm)
+
     c.mu.Lock()
     c.conn = conn
-    c.channel = ch
+    c.publishCh = publishCh
+    c.consumeCh = consumeCh
+    c.notifyClose = notifyClose
+    c.notifyConfirm = notifyConfirm
     c.isConnected = true
     c.mu.Unlock()
-
-    // Set up notification channels for connection closure
-    c.notifyClose = make(chan *amqp.Error, 1)
-    c.notifyConfirm = make(chan amqp.Confirmation, 1)
-    c.channel.NotifyClose(c.notifyClose)
-    c.channel.NotifyPublish(c.notifyConfirm)
 
     log.Println("Connected to RabbitMQ")
     return nil
@@ -179,14 +192,18 @@ Publishing must handle the case where the connection drops mid-publish. This imp
 // Publish sends a message to the specified exchange and routing key
 // It blocks until the message is confirmed or the context is cancelled
 func (c *Client) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
+    c.publishMu.Lock()
+    defer c.publishMu.Unlock()
+
     for {
         // Check if we're connected
         c.mu.RLock()
         connected := c.isConnected
-        ch := c.channel
+        ch := c.publishCh
+        confirms := c.notifyConfirm
         c.mu.RUnlock()
 
-        if !connected || ch == nil {
+        if !connected || ch == nil || confirms == nil {
             select {
             case <-ctx.Done():
                 return ctx.Err()
@@ -223,14 +240,15 @@ func (c *Client) Publish(ctx context.Context, exchange, routingKey string, body 
         select {
         case <-ctx.Done():
             return ctx.Err()
-        case confirm := <-c.notifyConfirm:
+        case confirm, ok := <-confirms:
+            if !ok {
+                // Channel closed before the publish was confirmed
+                continue
+            }
             if confirm.Ack {
                 return nil
             }
             log.Println("Message was nacked, retrying...")
-            continue
-        case <-c.notifyClose:
-            // Connection dropped, loop will retry after reconnect
             continue
         }
     }
@@ -248,6 +266,7 @@ type Consumer struct {
     queue     string
     handler   func([]byte) error
     done      chan struct{}
+    wg        sync.WaitGroup
 }
 
 // NewConsumer creates a consumer that automatically recovers from disconnections
@@ -262,7 +281,11 @@ func NewConsumer(client *Client, queue string, handler func([]byte) error) *Cons
 
 // Start begins consuming messages, automatically recovering from disconnections
 func (c *Consumer) Start() {
-    go c.consumeLoop()
+    c.wg.Add(1)
+    go func() {
+        defer c.wg.Done()
+        c.consumeLoop()
+    }()
 }
 
 func (c *Consumer) consumeLoop() {
@@ -276,7 +299,7 @@ func (c *Consumer) consumeLoop() {
         // Wait for connection
         c.client.mu.RLock()
         connected := c.client.isConnected
-        ch := c.client.channel
+        ch := c.client.consumeCh
         c.client.mu.RUnlock()
 
         if !connected || ch == nil {
@@ -350,6 +373,7 @@ func (c *Consumer) processMessages(msgs <-chan amqp.Delivery) {
 // Stop gracefully stops the consumer
 func (c *Consumer) Stop() {
     close(c.done)
+    c.wg.Wait()
 }
 ```
 
@@ -365,9 +389,15 @@ func (c *Client) Close() error {
     c.mu.Lock()
     defer c.mu.Unlock()
 
-    if c.channel != nil {
-        if err := c.channel.Close(); err != nil {
-            log.Printf("Error closing channel: %v", err)
+    if c.publishCh != nil {
+        if err := c.publishCh.Close(); err != nil {
+            log.Printf("Error closing publish channel: %v", err)
+        }
+    }
+
+    if c.consumeCh != nil {
+        if err := c.consumeCh.Close(); err != nil {
+            log.Printf("Error closing consume channel: %v", err)
         }
     }
 
@@ -393,11 +423,14 @@ package main
 import (
     "context"
     "encoding/json"
+    "fmt"
     "log"
     "os"
     "os/signal"
     "syscall"
     "time"
+
+    mqclient "your/module/mqclient"
 )
 
 type OrderEvent struct {
@@ -407,14 +440,14 @@ type OrderEvent struct {
 
 func main() {
     // Create the client
-    client, err := NewClient("amqp://guest:guest@localhost:5672/")
+    client, err := mqclient.NewClient("amqp://guest:guest@localhost:5672/")
     if err != nil {
         log.Fatalf("Failed to connect: %v", err)
     }
     defer client.Close()
 
     // Set up a consumer
-    consumer := NewConsumer(client, "orders", func(body []byte) error {
+    consumer := mqclient.NewConsumer(client, "orders", func(body []byte) error {
         var event OrderEvent
         if err := json.Unmarshal(body, &event); err != nil {
             return err
