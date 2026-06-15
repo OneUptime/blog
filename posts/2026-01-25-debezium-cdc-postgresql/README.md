@@ -23,7 +23,7 @@ CDC captures changes directly from the database's transaction log, providing:
 - Real-time updates (sub-second latency)
 - Complete change history (including deletes)
 - Minimal database load
-- Guaranteed ordering
+- Ordered events within each Kafka topic partition
 
 ## Architecture Overview
 
@@ -75,9 +75,16 @@ sudo systemctl restart postgresql
 CREATE USER debezium WITH REPLICATION LOGIN PASSWORD 'secure_password';
 
 -- Grant necessary permissions
+GRANT CREATE ON DATABASE myapp TO debezium;
 GRANT USAGE ON SCHEMA public TO debezium;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO debezium;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO debezium;
+```
+
+If you use `pgoutput` and want Debezium to create or update the publication automatically, the Debezium user also needs ownership of the captured tables. In production, many teams create the publication manually instead:
+
+```sql
+CREATE PUBLICATION debezium_pub FOR TABLE public.orders, public.customers;
 ```
 
 ### Configure pg_hba.conf
@@ -116,6 +123,7 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
     depends_on:
       - zookeeper
     ports:
@@ -123,13 +131,14 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   connect:
-    image: debezium/connect:2.4
+    image: quay.io/debezium/connect:3.5
     depends_on:
       - kafka
     ports:
@@ -168,7 +177,8 @@ curl -X POST http://localhost:8083/connectors \
       "table.include.list": "public.orders,public.customers",
       "plugin.name": "pgoutput",
       "slot.name": "debezium_slot",
-      "publication.name": "debezium_pub"
+      "publication.name": "debezium_pub",
+      "publication.autocreate.mode": "disabled"
     }
   }'
 ```
@@ -182,6 +192,7 @@ curl -X POST http://localhost:8083/connectors \
 | `plugin.name` | Decoding plugin: `pgoutput` (built-in) or `decoderbufs` |
 | `slot.name` | Name of the replication slot |
 | `publication.name` | PostgreSQL publication name |
+| `publication.autocreate.mode` | Whether Debezium creates the publication; use `disabled` when you create it manually |
 
 ### Verify Connector Status
 
@@ -224,7 +235,7 @@ A typical change event looks like this:
       "created_at": 1706198400000000
     },
     "source": {
-      "version": "2.4.0",
+      "version": "3.5.0",
       "connector": "postgresql",
       "name": "myapp",
       "ts_ms": 1706198400123,
@@ -294,7 +305,7 @@ for message in consumer:
 
 ### Filtering Events
 
-Only capture specific columns or filter by values:
+Only capture specific columns or filter by values. The Filter SMT requires Debezium's scripting SMT artifact and a JSR-223 engine such as Groovy on the Kafka Connect plugin path:
 
 ```json
 {
@@ -328,9 +339,9 @@ Control how initial data is captured:
 
 Snapshot modes:
 - `initial`: Snapshot existing data, then stream changes (default)
-- `never`: Only stream new changes
+- `no_data`: Do not snapshot; stream from an existing offset or from the replication slot creation point
 - `always`: Re-snapshot on every connector restart
-- `exported`: Consistent snapshot using transaction export
+- `initial_only`: Snapshot existing data, then stop without streaming new changes
 
 ### Heartbeat Events
 
@@ -397,12 +408,12 @@ For production, run multiple Kafka Connect workers:
 
 ```yaml
 connect-1:
-  image: debezium/connect:2.4
+  image: quay.io/debezium/connect:3.5
   environment:
     GROUP_ID: debezium-connect  # Same group ID
 
 connect-2:
-  image: debezium/connect:2.4
+  image: quay.io/debezium/connect:3.5
   environment:
     GROUP_ID: debezium-connect  # Same group ID
 ```
@@ -420,9 +431,9 @@ def process_event(event):
     shipping = order.get('shipping_method', 'standard')
 ```
 
-### Exactly-Once Semantics
+### Idempotent Processing
 
-For exactly-once processing, use Kafka transactions and idempotent consumers:
+For reliable processing, disable auto-commit and make your consumer idempotent:
 
 ```python
 consumer = KafkaConsumer(
@@ -436,6 +447,8 @@ for message in consumer:
     process_with_dedup(message.value, message.offset)
     consumer.commit()
 ```
+
+For end-to-end exactly-once behavior, combine Debezium's delivery guarantees with transactional Kafka producers or idempotent downstream writes.
 
 ## Summary
 
