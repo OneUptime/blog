@@ -274,8 +274,8 @@ public class UserService {
                 log.error("Database error fetching user {}", id, e);
                 return Mono.error(new ServiceException("Database unavailable"));
             })
-            // Fallback for any error
-            .onErrorReturn(new User("unknown", "Fallback User"));
+            // Fallback for service errors
+            .onErrorReturn(ServiceException.class, new User("unknown", "Fallback User"));
     }
 
     public Mono<User> createUserWithValidation(User user) {
@@ -304,7 +304,12 @@ WebFlux excels at streaming data to clients. Server-Sent Events let you push upd
 @RequestMapping("/api/events")
 public class EventStreamController {
 
+    private final UserRepository userRepository;
     private final Sinks.Many<Event> eventSink = Sinks.many().multicast().onBackpressureBuffer();
+
+    public EventStreamController(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
 
     // Clients subscribe to this endpoint
     @GetMapping(produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -342,7 +347,7 @@ class UserControllerTest {
     @Autowired
     private WebTestClient webTestClient;
 
-    @MockBean
+    @MockitoBean
     private UserRepository userRepository;
 
     @Test
