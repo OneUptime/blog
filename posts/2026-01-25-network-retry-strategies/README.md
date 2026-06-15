@@ -205,6 +205,10 @@ def classify_http_error(status_code: int, headers: dict = None) -> RetryDecision
 def classify_exception(exception: Exception) -> RetryDecision:
     """Determine if an exception should trigger retry"""
 
+    # SSL errors - usually configuration issues, not transient
+    if isinstance(exception, requests.exceptions.SSLError):
+        return RetryDecision.NO_RETRY
+
     # Connection errors - usually transient
     if isinstance(exception, requests.ConnectionError):
         return RetryDecision.RETRY_WITH_BACKOFF
@@ -212,10 +216,6 @@ def classify_exception(exception: Exception) -> RetryDecision:
     # Timeout - might be transient
     if isinstance(exception, requests.Timeout):
         return RetryDecision.RETRY
-
-    # SSL errors - usually configuration issues, not transient
-    if isinstance(exception, requests.exceptions.SSLError):
-        return RetryDecision.NO_RETRY
 
     # DNS resolution failures - might resolve
     if "Name or service not known" in str(exception):
@@ -233,6 +233,8 @@ A complete HTTP client with retry logic:
 import time
 import random
 import logging
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 import requests
@@ -288,6 +290,9 @@ class ResilientHTTPClient:
     def _should_retry(self, exception: Optional[Exception], response: Optional[requests.Response]) -> bool:
         """Determine if request should be retried"""
         if exception:
+            if isinstance(exception, requests.exceptions.SSLError):
+                return False
+
             # Retry on connection errors and timeouts
             if isinstance(exception, (requests.ConnectionError, requests.Timeout)):
                 return True
@@ -303,10 +308,17 @@ class ResilientHTTPClient:
         """Calculate retry delay, respecting Retry-After header"""
         # Check for Retry-After header
         if response and response.headers.get('Retry-After'):
+            retry_after = response.headers['Retry-After']
             try:
-                return float(response.headers['Retry-After'])
+                return max(0.0, float(retry_after))
             except ValueError:
-                pass
+                try:
+                    retry_time = parsedate_to_datetime(retry_after)
+                    if retry_time.tzinfo is None:
+                        retry_time = retry_time.replace(tzinfo=timezone.utc)
+                    return max(0.0, (retry_time - datetime.now(timezone.utc)).total_seconds())
+                except (TypeError, ValueError, IndexError, OverflowError):
+                    pass
 
         # Exponential backoff with full jitter
         delay = self.base_delay * (2 ** attempt)
@@ -501,6 +513,7 @@ Limit total retry impact on the system:
 ```python
 # retry_budget.py - Limit retries to prevent cascading failures
 import time
+import requests
 from threading import Lock
 from collections import deque
 
