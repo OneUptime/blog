@@ -94,7 +94,7 @@ SELECT * FROM orders WHERE customer_id = 42;
 
 Look for:
 - `Seq Scan` vs `Index Scan` vs `Bitmap Index Scan`
-- `rows=` (estimated) vs `actual time=` (actual rows)
+- `rows=` estimates vs `actual rows=` in `EXPLAIN ANALYZE`
 - Large discrepancies indicate statistics problems
 
 ## Method 1: Adjust Session-Level Cost Parameters
@@ -115,10 +115,10 @@ RESET enable_seqscan;
 Other relevant settings:
 
 ```sql
--- Disable specific scan types
-SET enable_seqscan = off;     -- Disable sequential scans
+-- Discourage specific scan types
+SET enable_seqscan = off;     -- Discourage sequential scans
 SET enable_indexscan = on;    -- Ensure index scans enabled
-SET enable_bitmapscan = off;  -- Disable bitmap scans
+SET enable_bitmapscan = off;  -- Discourage bitmap scans
 
 -- Adjust cost estimates
 SET random_page_cost = 1.1;   -- Reduce random I/O cost (SSDs)
@@ -159,12 +159,12 @@ EXPLAIN SELECT * FROM orders WHERE date(created_at) = '2026-01-25';
 ### Fix Implicit Type Casts
 
 ```sql
--- customer_id is INTEGER, but parameter is TEXT
-EXPLAIN SELECT * FROM orders WHERE customer_id = '42';
--- PostgreSQL may not use index due to type mismatch
+-- customer_id is INTEGER, but the column is cast to TEXT
+EXPLAIN SELECT * FROM orders WHERE customer_id::text = '42';
+-- PostgreSQL cannot use a normal integer index efficiently
 
--- Cast explicitly
-EXPLAIN SELECT * FROM orders WHERE customer_id = 42::integer;
+-- Cast the parameter instead
+EXPLAIN SELECT * FROM orders WHERE customer_id = '42'::integer;
 -- Or fix in application code
 ```
 
@@ -173,8 +173,8 @@ EXPLAIN SELECT * FROM orders WHERE customer_id = 42::integer;
 The `pg_hint_plan` extension adds Oracle-style hints:
 
 ```sql
--- Install the extension
-CREATE EXTENSION pg_hint_plan;
+-- After installing pg_hint_plan on the server, load it in the session
+LOAD 'pg_hint_plan';
 
 -- Force index scan with a hint
 SELECT /*+ IndexScan(orders idx_orders_customer) */ *
@@ -324,8 +324,8 @@ RESET enable_seqscan;
 Sometimes the planner is right and you are wrong:
 
 1. **Very small tables**: Sequential scan of 100 rows is faster than index lookup
-2. **High selectivity queries**: Returning 50% of rows, sequential scan wins
-3. **Correlated columns**: The planner may know something you do not
+2. **Low selectivity queries**: Returning 50% of rows, sequential scan wins
+3. **Column correlation and physical ordering**: Statistics and correlation can affect which plan is cheaper
 4. **Index maintenance overhead**: More indexes slow writes
 
 Trust the planner unless you have measured evidence it is wrong.
