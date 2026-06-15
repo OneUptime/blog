@@ -33,8 +33,31 @@ Start with the Spring Initializr or add these dependencies to your `pom.xml`:
         <artifactId>spring-boot-starter-data-jpa</artifactId>
     </dependency>
     <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-aop</artifactId>
+    </dependency>
+    <dependency>
         <groupId>org.springframework.retry</groupId>
         <artifactId>spring-retry</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>com.twilio.sdk</groupId>
+        <artifactId>twilio</artifactId>
+        <version>12.1.1</version>
+    </dependency>
+    <dependency>
+        <groupId>com.google.firebase</groupId>
+        <artifactId>firebase-admin</artifactId>
+        <version>9.9.0</version>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
     </dependency>
 </dependencies>
 ```
@@ -79,6 +102,9 @@ public enum NotificationType {
 public enum NotificationStatus {
     PENDING, SENT, FAILED, RETRY
 }
+
+public interface NotificationRepository extends JpaRepository<Notification, Long> {
+}
 ```
 
 ## Building the Notification Request DTO
@@ -120,6 +146,16 @@ public interface NotificationSender {
     // Send the notification, throw exception on failure
     void send(Notification notification) throws NotificationException;
 }
+
+public class NotificationException extends Exception {
+    public NotificationException(String message) {
+        super(message);
+    }
+
+    public NotificationException(String message, Throwable cause) {
+        super(message, cause);
+    }
+}
 ```
 
 ## Email Notification Sender
@@ -132,15 +168,12 @@ Email is the most common notification channel. Spring Boot makes it straightforw
 public class EmailNotificationSender implements NotificationSender {
 
     private final JavaMailSender mailSender;
-    private final TemplateEngine templateEngine;
 
     @Value("${notification.email.from}")
     private String fromAddress;
 
-    public EmailNotificationSender(JavaMailSender mailSender,
-                                   TemplateEngine templateEngine) {
+    public EmailNotificationSender(JavaMailSender mailSender) {
         this.mailSender = mailSender;
-        this.templateEngine = templateEngine;
     }
 
     @Override
@@ -161,7 +194,7 @@ public class EmailNotificationSender implements NotificationSender {
 
             mailSender.send(message);
 
-        } catch (MessagingException e) {
+        } catch (MessagingException | MailException e) {
             throw new NotificationException("Failed to send email", e);
         }
     }
@@ -260,22 +293,19 @@ public class PushNotificationSender implements NotificationSender {
 Now tie everything together. This service handles template processing, routing to the right sender, and retry logic:
 
 ```java
-// NotificationService.java
+// NotificationDispatcher.java
 @Service
-public class NotificationService {
+public class NotificationDispatcher {
 
-    private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
+    private static final Logger log = LoggerFactory.getLogger(NotificationDispatcher.class);
 
     private final NotificationRepository notificationRepository;
-    private final TemplateEngine templateEngine;
     private final Map<NotificationType, NotificationSender> senders;
 
     // Spring injects all NotificationSender implementations
-    public NotificationService(NotificationRepository notificationRepository,
-                               TemplateEngine templateEngine,
-                               List<NotificationSender> senderList) {
+    public NotificationDispatcher(NotificationRepository notificationRepository,
+                                  List<NotificationSender> senderList) {
         this.notificationRepository = notificationRepository;
-        this.templateEngine = templateEngine;
 
         // Build a map for quick lookup by type
         this.senders = senderList.stream()
@@ -285,33 +315,12 @@ public class NotificationService {
             ));
     }
 
-    @Async
-    public CompletableFuture<Notification> sendNotification(NotificationRequest request) {
-        // Process template to generate content
-        String content = processTemplate(request.getTemplateName(),
-                                         request.getTemplateVariables());
-
-        // Create notification record
-        Notification notification = new Notification();
-        notification.setType(request.getType());
-        notification.setRecipient(request.getRecipient());
-        notification.setSubject(request.getSubject());
-        notification.setContent(content);
-        notification.setStatus(NotificationStatus.PENDING);
-        notification.setCreatedAt(LocalDateTime.now());
-
-        notification = notificationRepository.save(notification);
-
-        // Send it
-        return sendWithRetry(notification);
-    }
-
     @Retryable(
-        value = NotificationException.class,
+        retryFor = NotificationException.class,
         maxAttempts = 3,
         backoff = @Backoff(delay = 1000, multiplier = 2)
     )
-    private CompletableFuture<Notification> sendWithRetry(Notification notification) {
+    public Notification sendWithRetry(Notification notification) throws NotificationException {
         NotificationSender sender = senders.get(notification.getType());
 
         if (sender == null) {
@@ -332,15 +341,56 @@ public class NotificationService {
             throw e;
         }
 
-        return CompletableFuture.completedFuture(notificationRepository.save(notification));
+        return notificationRepository.save(notification);
     }
 
     @Recover
-    public CompletableFuture<Notification> recoverFromFailure(NotificationException e,
-                                                              Notification notification) {
+    public Notification recoverFromFailure(NotificationException e,
+                                           Notification notification) {
         log.error("Notification permanently failed after retries: {}", notification.getId());
         notification.setStatus(NotificationStatus.FAILED);
-        return CompletableFuture.completedFuture(notificationRepository.save(notification));
+        return notificationRepository.save(notification);
+    }
+}
+
+// NotificationService.java
+@Service
+public class NotificationService {
+
+    private final NotificationRepository notificationRepository;
+    private final NotificationDispatcher notificationDispatcher;
+    private final TemplateEngine templateEngine;
+
+    public NotificationService(NotificationRepository notificationRepository,
+                               NotificationDispatcher notificationDispatcher,
+                               TemplateEngine templateEngine) {
+        this.notificationRepository = notificationRepository;
+        this.notificationDispatcher = notificationDispatcher;
+        this.templateEngine = templateEngine;
+    }
+
+    @Async
+    public CompletableFuture<Notification> sendNotification(NotificationRequest request) {
+        // Process template to generate content
+        String content = processTemplate(request.getTemplateName(),
+                                         request.getTemplateVariables());
+
+        // Create notification record
+        Notification notification = new Notification();
+        notification.setType(request.getType());
+        notification.setRecipient(request.getRecipient());
+        notification.setSubject(request.getSubject());
+        notification.setContent(content);
+        notification.setStatus(NotificationStatus.PENDING);
+        notification.setCreatedAt(LocalDateTime.now());
+
+        notification = notificationRepository.save(notification);
+
+        try {
+            return CompletableFuture.completedFuture(notificationDispatcher.sendWithRetry(notification));
+        } catch (NotificationException e) {
+            return CompletableFuture.failedFuture(e);
+        }
     }
 
     private String processTemplate(String templateName, Map<String, Object> variables) {
@@ -364,9 +414,12 @@ Expose the notification service through a simple API:
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final NotificationRepository notificationRepository;
 
-    public NotificationController(NotificationService notificationService) {
+    public NotificationController(NotificationService notificationService,
+                                  NotificationRepository notificationRepository) {
         this.notificationService = notificationService;
+        this.notificationRepository = notificationRepository;
     }
 
     @PostMapping
@@ -392,7 +445,26 @@ public class NotificationController {
 
 ## Configuration
 
-Add the necessary configuration in `application.yml`:
+Add the necessary configuration:
+
+```java
+@Configuration
+@EnableAsync
+@EnableRetry
+public class NotificationConfig {
+
+    @Bean
+    public FirebaseMessaging firebaseMessaging() throws IOException {
+        if (FirebaseApp.getApps().isEmpty()) {
+            FirebaseOptions options = FirebaseOptions.builder()
+                .setCredentials(GoogleCredentials.getApplicationDefault())
+                .build();
+            FirebaseApp.initializeApp(options);
+        }
+        return FirebaseMessaging.getInstance();
+    }
+}
+```
 
 ```yaml
 notification:
@@ -435,21 +507,26 @@ Create HTML templates in `src/main/resources/templates/`. Here is a sample welco
 
 ## Testing the Service
 
-Write integration tests to verify the notification flow:
+Write MVC tests to verify the API flow:
 
 ```java
-@SpringBootTest
-@AutoConfigureMockMvc
+@WebMvcTest(NotificationController.class)
 class NotificationControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
-    private JavaMailSender mailSender;
+    @MockitoBean
+    private NotificationService notificationService;
+
+    @MockitoBean
+    private NotificationRepository notificationRepository;
 
     @Test
     void shouldQueueEmailNotification() throws Exception {
+        when(notificationService.sendNotification(any(NotificationRequest.class)))
+            .thenReturn(CompletableFuture.completedFuture(new Notification()));
+
         String request = """
             {
                 "type": "EMAIL",
@@ -475,6 +552,13 @@ class NotificationControllerTest {
 ## Adding Message Queue Support
 
 For high-volume scenarios, consider adding a message queue. Here is how you might integrate with RabbitMQ:
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-amqp</artifactId>
+</dependency>
+```
 
 ```java
 // NotificationListener.java
