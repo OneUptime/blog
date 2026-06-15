@@ -12,7 +12,7 @@ Time series data has unique characteristics: it arrives sequentially, usually wi
 
 ## Understanding Time Series Collections
 
-Time series collections store data differently from regular collections. MongoDB groups documents by time and metadata, compresses them together, and creates internal indexes optimized for time-based queries.
+Time series collections store data differently from regular collections. MongoDB groups documents by time and metadata, compresses them together, and creates indexes optimized for time-based queries.
 
 ```mermaid
 flowchart TB
@@ -280,7 +280,7 @@ db.sensor_readings.aggregate([
 
 ## Secondary Indexes
 
-Time series collections automatically create an index on the time field. Add secondary indexes for common query patterns:
+In MongoDB 6.3 and later, time series collections automatically create a compound index on the `metaField` and `timeField` fields. Add secondary indexes for common query patterns:
 
 ```javascript
 // Index for filtering by device
@@ -321,6 +321,8 @@ db.runCommand({
 ```
 
 ### Manual Cleanup
+
+In MongoDB 7.0 and later, you can delete old time series measurements manually:
 
 ```javascript
 // Delete old data manually
@@ -373,7 +375,7 @@ db.app_metrics.aggregate([
       },
       requestCount: { $sum: 1 },
       avgLatency: { $avg: "$responseTimeMs" },
-      p95Latency: {
+      p95Latency: {  // MongoDB 7.0+
         $percentile: {
           input: "$responseTimeMs",
           p: [0.95],
@@ -410,9 +412,9 @@ function recordSensorData(deviceId, readings) {
     ts: new Date(),
     sensor: {
       deviceId: deviceId,
-      type: readings.type,
-      firmware: readings.firmware
+      type: readings.type
     },
+    firmware: readings.firmware,
     ...readings.values
   });
 }
