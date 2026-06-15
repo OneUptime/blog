@@ -43,6 +43,7 @@ nest new rbac-demo
 
 # Install required packages
 npm install @nestjs/passport passport passport-jwt @nestjs/jwt
+npm install @nestjs/config
 npm install bcrypt class-validator class-transformer
 npm install -D @types/passport-jwt @types/bcrypt
 ```
@@ -372,6 +373,32 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 Now for the main event: the custom guard that enforces permissions.
 
 ```typescript
+// src/auth/guards/jwt-auth.guard.ts
+import { ExecutionContext, Injectable } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { AuthGuard } from '@nestjs/passport';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  constructor(private reflector: Reflector) {
+    super();
+  }
+
+  canActivate(context: ExecutionContext) {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (isPublic) {
+      return true;
+    }
+
+    return super.canActivate(context);
+  }
+}
+
 // src/auth/guards/rbac.guard.ts
 import {
   Injectable,
@@ -471,6 +498,7 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
+  SetMetadata,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PermissionService } from '../permission.service';
@@ -487,7 +515,7 @@ export interface ResourceOwnerConfig {
 
 // Decorator to configure resource ownership check
 export const CheckResourceOwner = (config: ResourceOwnerConfig) =>
-  Reflect.metadata(RESOURCE_OWNER_KEY, config);
+  SetMetadata(RESOURCE_OWNER_KEY, config);
 
 @Injectable()
 export class ResourceOwnerGuard implements CanActivate {
@@ -558,6 +586,7 @@ import { UsersModule } from '../users/users.module';
 @Module({
   imports: [
     UsersModule,
+    ConfigModule.forRoot({ isGlobal: true }),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -604,6 +633,7 @@ import {
   Delete,
   Body,
   Param,
+  ForbiddenException,
 } from '@nestjs/common';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { RequireRoles } from '../auth/decorators/roles.decorator';
