@@ -44,9 +44,6 @@ Let's build a traffic router that can shift traffic between service versions.
 
 ```typescript
 // traffic-router.ts
-import express, { Request, Response, NextFunction } from 'express';
-import { createProxyMiddleware, Options } from 'http-proxy-middleware';
-
 interface ServiceVersion {
   name: string;
   url: string;
@@ -81,7 +78,7 @@ class TrafficRouter {
     if (this.stickySession && sessionId) {
       const cached = this.sessionMap.get(sessionId);
       if (cached) {
-        const service = this.services.find(s => s.name === cached && s.healthy);
+        const service = this.services.find(s => s.name === cached && s.healthy && s.weight > 0);
         if (service) {
           return service;
         }
@@ -201,11 +198,14 @@ Create an Express server that routes traffic based on weights.
 
 ```typescript
 // proxy-server.ts
+import { ServerResponse } from 'http';
 import express, { Request, Response, NextFunction } from 'express';
+import cookieParser from 'cookie-parser';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { TrafficRouter } from './traffic-router';
 
 const app = express();
+app.use(cookieParser());
 
 // Initialize traffic router
 const router = new TrafficRouter({
@@ -225,7 +225,8 @@ function getSessionId(req: Request): string | undefined {
 
   // Try to get from header
   const sessionHeader = req.headers['x-session-id'];
-  if (sessionHeader) return sessionHeader as string;
+  if (Array.isArray(sessionHeader)) return sessionHeader[0];
+  if (sessionHeader) return sessionHeader;
 
   // Fall back to IP address
   return req.ip;
@@ -252,25 +253,31 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
     target: service.url,
     changeOrigin: true,
     pathRewrite: { '^/api': '' },
-    onError: (err, req, res) => {
-      console.error(`Proxy error to ${service.name}:`, err);
-      // Mark service as unhealthy
-      service.healthy = false;
+    on: {
+      error: (err, req, res) => {
+        if (!(res instanceof ServerResponse)) {
+          return;
+        }
 
-      // Try to failover
-      const fallback = router.selectService();
-      if (fallback && fallback.name !== service.name) {
-        console.log(`Failing over to ${fallback.name}`);
-        // Retry with different service
-        createProxyMiddleware({
-          target: fallback.url,
-          changeOrigin: true
-        })(req, res, next);
-      } else {
-        (res as Response).status(502).json({
-          error: 'Bad Gateway',
-          message: 'All upstream services are unavailable'
-        });
+        console.error(`Proxy error to ${service.name}:`, err);
+        // Mark service as unhealthy
+        service.healthy = false;
+
+        // Try to failover
+        const fallback = router.selectService();
+        if (fallback && fallback.name !== service.name) {
+          console.log(`Failing over to ${fallback.name}`);
+          // Retry with different service
+          createProxyMiddleware({
+            target: fallback.url,
+            changeOrigin: true
+          })(req, res, next);
+        } else {
+          (res as Response).status(502).json({
+            error: 'Bad Gateway',
+            message: 'All upstream services are unavailable'
+          });
+        }
       }
     }
   });
@@ -493,7 +500,9 @@ const migration = new GradualMigration(router, {
 
 // Start migration
 app.post('/admin/migration/start', (req, res) => {
-  migration.start();
+  void migration.start().catch(error => {
+    console.error('Migration failed:', error);
+  });
   res.json({ message: 'Migration started', status: migration.getStatus() });
 });
 
