@@ -21,7 +21,7 @@ FastAPI supports multiple authentication patterns:
 | Pattern | Use Case | Complexity |
 |---------|----------|------------|
 | **API Keys** | Service-to-service communication | Low |
-| **JWT Tokens** | User authentication with sessions | Medium |
+| **JWT Tokens** | Stateless user authentication | Medium |
 | **OAuth2** | Third-party authentication | High |
 | **Custom Headers** | Internal microservices | Low |
 
@@ -37,7 +37,7 @@ FastAPI supports multiple authentication patterns:
 
 ## Basic JWT Authentication Middleware
 
-This implementation creates a complete JWT authentication system. The middleware validates tokens on protected routes and extracts user information for downstream handlers.
+This implementation creates a complete JWT authentication system. The dependency validates tokens on protected routes and extracts user information for downstream handlers.
 
 ```python
 # auth_middleware.py
@@ -45,7 +45,7 @@ This implementation creates a complete JWT authentication system. The middleware
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from pydantic import BaseModel
 
@@ -85,15 +85,16 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
 
     # Set expiration time
+    now = datetime.now(timezone.utc)
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = now + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     # Add standard JWT claims
     to_encode.update({
         "exp": expire,  # Expiration time
-        "iat": datetime.utcnow(),  # Issued at
+        "iat": now,  # Issued at
         "type": "access"  # Token type for validation
     })
 
@@ -117,6 +118,13 @@ def decode_token(token: str) -> TokenData:
     try:
         # Decode the token and verify signature
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+        # Validate token type to prevent using refresh tokens as access tokens
+        if payload.get("type") != "access":
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid token type"
+            )
 
         # Extract user data from payload
         user_id = payload.get("sub")  # Subject claim holds user ID
@@ -162,9 +170,9 @@ async def get_current_user(
 
 ---
 
-## Role-Based Access Control Middleware
+## Role-Based Access Control Dependencies
 
-This middleware extends basic authentication with role-based access control (RBAC). You can restrict endpoints to specific user roles.
+This dependency pattern extends basic authentication with role-based access control (RBAC). You can restrict endpoints to specific user roles.
 
 ```python
 # rbac_middleware.py
@@ -247,7 +255,7 @@ For service-to-service communication, API keys are simpler than JWT. This implem
 ```python
 # api_key_auth.py
 # API Key authentication for service-to-service communication
-from fastapi import Security, HTTPException, status
+from fastapi import Depends, Security, HTTPException, status
 from fastapi.security import APIKeyHeader
 from typing import Optional
 from enum import Enum
@@ -357,7 +365,7 @@ async def write_data(
 
 ## Custom Middleware for Request Logging
 
-This middleware logs all authenticated requests with user context, which is essential for audit trails and debugging.
+This middleware logs all requests with authentication context, which is useful for audit trails and debugging.
 
 ```python
 # logging_middleware.py
@@ -413,6 +421,7 @@ class AuthLoggingMiddleware(BaseHTTPMiddleware):
             "status_code": response.status_code,
             "duration_ms": round(duration_ms, 2),
             "auth_method": auth_method,
+            "auth_identifier": auth_identifier,
             "client_ip": request.client.host if request.client else "unknown",
             "user_agent": request.headers.get("User-Agent", "unknown")
         }
@@ -599,7 +608,7 @@ Building authentication middleware in FastAPI requires understanding:
 - **JWT tokens** for stateless user authentication
 - **API keys** for service-to-service communication
 - **RBAC** for fine-grained access control
-- **Middleware patterns** for request logging and validation
+- **Dependency patterns** for request validation and middleware patterns for request logging
 
 Start with simple JWT authentication and add complexity as needed. Always test your authentication logic thoroughly since security bugs are expensive to fix after deployment.
 
