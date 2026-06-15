@@ -31,14 +31,14 @@ Here is what we are building:
 func (s *Service) ProcessOrder(logger *Logger, requestID, userID string, orderID int) error {
     logger.Info("processing order", "request_id", requestID, "user_id", userID, "order_id", orderID)
     // Every function needs these parameters
-    return s.repo.Save(logger, requestID, userID, order)
+    return s.repo.Save(logger, requestID, userID, orderID)
 }
 
 // With context propagation - clean and automatic
 func (s *Service) ProcessOrder(ctx context.Context, orderID int) error {
-    log.FromContext(ctx).Info("processing order", "order_id", orderID)
+    logger.FromContext(ctx).Info("processing order", "order_id", orderID)
     // request_id and user_id are automatically included
-    return s.repo.Save(ctx, order)
+    return s.repo.Save(ctx, orderID)
 }
 ```
 
@@ -353,7 +353,7 @@ func RequestLogger(base *logger.Logger) func(http.Handler) http.Handler {
             w.Header().Set("X-Request-ID", requestID)
 
             // Wrap response writer to capture status code
-            wrapped := &statusWriter{ResponseWriter: w, status: 200}
+            wrapped := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 
             reqLogger.Info("request started")
 
@@ -373,10 +373,15 @@ func RequestLogger(base *logger.Logger) func(http.Handler) http.Handler {
 // statusWriter wraps ResponseWriter to capture the status code
 type statusWriter struct {
     http.ResponseWriter
-    status int
+    status      int
+    wroteHeader bool
 }
 
 func (w *statusWriter) WriteHeader(status int) {
+    if w.wroteHeader {
+        return
+    }
+    w.wroteHeader = true
     w.status = status
     w.ResponseWriter.WriteHeader(status)
 }
@@ -560,7 +565,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-Sample output when a request flows through:
+Sample output when a request flows through, with some request fields omitted for brevity:
 
 ```json
 {"timestamp":"2026-01-25T10:30:00.123Z","level":"info","message":"request started","fields":{"request_id":"abc-123","method":"POST","path":"/api/orders","service":"order-api"}}
