@@ -228,12 +228,10 @@ const { z } = require('zod');
 
 const envSchema = z.object({
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-    PORT: z.string().transform(Number).default('3000'),
-    DATABASE_URL: z.string().url(),
+    PORT: z.coerce.number().int().default(3000),
+    DATABASE_URL: z.url(),
     JWT_SECRET: z.string().min(32),
-    ENABLE_NEW_FEATURE: z.string()
-        .transform(val => val === 'true')
-        .default('false')
+    ENABLE_NEW_FEATURE: z.stringbool().default(false)
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -381,11 +379,11 @@ Pass environment variables to Docker containers:
 
 ```dockerfile
 # Dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 
 # Do not copy .env - pass at runtime
