@@ -26,7 +26,7 @@ fn count_words_naive(text: &str) -> HashMap<String, usize> {
             // Second lookup: get mutable reference
             *counts.get_mut(word).unwrap() += 1;
         } else {
-            // Third lookup: insert
+            // Second lookup: insert
             counts.insert(word.to_string(), 1);
         }
     }
@@ -35,7 +35,7 @@ fn count_words_naive(text: &str) -> HashMap<String, usize> {
 }
 ```
 
-This code works but performs up to three hash lookups per word. The Entry API reduces this to one.
+This code works but performs up to two hash lookups per word. The Entry API reduces this to one.
 
 ## The Entry API
 
