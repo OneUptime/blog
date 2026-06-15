@@ -70,6 +70,18 @@ Add Spring Cloud Vault to your project:
         <artifactId>spring-cloud-starter-vault-config</artifactId>
     </dependency>
     <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-vault-config-databases</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
@@ -85,8 +97,9 @@ Add Spring Cloud Vault to your project:
 First, store some secrets in Vault using the CLI:
 
 ```bash
-# Enable the KV secrets engine (version 2)
-vault secrets enable -path=secret kv-v2
+# The dev server already mounts KV v2 at secret/.
+# For a non-dev server, enable it if the mount does not exist:
+# vault secrets enable -path=secret kv-v2
 
 # Store application secrets
 vault kv put secret/myapp \
@@ -106,13 +119,17 @@ vault kv put secret/myapp/development \
 
 ### Application Configuration
 
-Configure Spring Cloud Vault in your bootstrap properties:
+Configure Spring Cloud Vault in your application properties:
 
 ```yaml
-# bootstrap.yml
+# application.yml
 spring:
   application:
     name: myapp
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:development}
+  config:
+    import: vault://
   cloud:
     vault:
       # Vault server address
@@ -124,7 +141,7 @@ spring:
       kv:
         enabled: true
         backend: secret
-        # Default context uses application name
+        # Application context uses spring.application.name; default-context is shared
         default-context: myapp
         # Profile-specific contexts
         profile-separator: '/'
@@ -207,6 +224,9 @@ vault policy write myapp-policy - <<EOF
 path "secret/data/myapp/*" {
   capabilities = ["read"]
 }
+path "secret/data/myapp" {
+  capabilities = ["read"]
+}
 path "database/creds/myapp-role" {
   capabilities = ["read"]
 }
@@ -229,8 +249,10 @@ vault write -f auth/approle/role/myapp-role/secret-id
 Configure AppRole authentication in Spring:
 
 ```yaml
-# bootstrap.yml
+# application.yml
 spring:
+  config:
+    import: vault://
   cloud:
     vault:
       uri: http://vault:8200
@@ -263,8 +285,10 @@ vault write auth/kubernetes/role/myapp \
 ```
 
 ```yaml
-# bootstrap.yml
+# application.yml
 spring:
+  config:
+    import: vault://
   cloud:
     vault:
       uri: http://vault.vault.svc:8200
@@ -309,8 +333,10 @@ vault write database/roles/myapp-role \
 Enable the database backend in Spring Cloud Vault:
 
 ```yaml
-# bootstrap.yml
+# application.yml
 spring:
+  config:
+    import: vault://
   cloud:
     vault:
       uri: http://vault:8200
@@ -346,6 +372,7 @@ Configure your application to handle credential refresh:
 package com.example.config;
 
 import org.springframework.cloud.context.config.annotation.RefreshScope;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import com.zaxxer.hikari.HikariDataSource;
@@ -398,6 +425,12 @@ vault policy write myapp-policy - <<EOF
 path "secret/data/myapp/*" {
   capabilities = ["read"]
 }
+path "secret/data/myapp" {
+  capabilities = ["read"]
+}
+path "database/creds/myapp-role" {
+  capabilities = ["read"]
+}
 path "transit/encrypt/myapp-key" {
   capabilities = ["update"]
 }
@@ -419,8 +452,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.vault.core.VaultOperations;
 import org.springframework.vault.support.Ciphertext;
 import org.springframework.vault.support.Plaintext;
+import org.springframework.vault.support.VaultTransitContext;
 
-import java.util.Base64;
+import java.nio.charset.StandardCharsets;
 
 @Service
 public class EncryptionService {
@@ -435,12 +469,9 @@ public class EncryptionService {
 
     // Encrypt sensitive data
     public String encrypt(String plaintext) {
-        // Convert to base64 as Vault expects base64-encoded plaintext
-        String base64 = Base64.getEncoder().encodeToString(plaintext.getBytes());
-
         Ciphertext ciphertext = vaultOperations
             .opsForTransit()
-            .encrypt(KEY_NAME, Plaintext.of(base64));
+            .encrypt(KEY_NAME, Plaintext.of(plaintext, StandardCharsets.UTF_8));
 
         return ciphertext.getCiphertext();
     }
@@ -451,22 +482,15 @@ public class EncryptionService {
             .opsForTransit()
             .decrypt(KEY_NAME, Ciphertext.of(ciphertext));
 
-        // Decode from base64
-        byte[] decoded = Base64.getDecoder().decode(plaintext.asString());
-        return new String(decoded);
+        return plaintext.asString(StandardCharsets.UTF_8);
     }
 
-    // Encrypt with context for additional security
+    // Encrypt with context for keys configured to use key derivation
     public String encryptWithContext(String data, String contextId) {
-        String base64 = Base64.getEncoder().encodeToString(data.getBytes());
-
         Ciphertext ciphertext = vaultOperations
             .opsForTransit()
-            .encrypt(KEY_NAME, Plaintext.of(base64).with(
-                org.springframework.vault.support.VaultTransitContext.builder()
-                    .context(contextId.getBytes())
-                    .build()
-            ));
+            .encrypt(KEY_NAME, Plaintext.of(data, StandardCharsets.UTF_8).with(
+                VaultTransitContext.fromContext(contextId.getBytes(StandardCharsets.UTF_8))));
 
         return ciphertext.getCiphertext();
     }
@@ -519,8 +543,10 @@ public class UserService {
 Spring Cloud Vault automatically renews leases for dynamic secrets:
 
 ```yaml
-# bootstrap.yml
+# application.yml
 spring:
+  config:
+    import: vault://
   cloud:
     vault:
       config:
@@ -587,13 +613,15 @@ public class LeaseManager {
 
 ## Production Configuration
 
-### High Availability Setup
+### Production Endpoint
 
-Configure multiple Vault servers for production:
+Configure a production Vault endpoint:
 
 ```yaml
-# bootstrap.yml
+# application.yml
 spring:
+  config:
+    import: vault://
   cloud:
     vault:
       # Primary Vault server
@@ -605,13 +633,6 @@ spring:
       # Connection settings for production
       connection-timeout: 5000
       read-timeout: 15000
-      # Retry configuration
-      retry:
-        enabled: true
-        max-attempts: 3
-        initial-interval: 1000
-        max-interval: 5000
-        multiplier: 1.5
 ```
 
 ### Health Checks
