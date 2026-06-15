@@ -22,7 +22,7 @@ Falco watches for activities that indicate compromise or policy violation:
 - Unexpected process execution
 - Secret access patterns in Kubernetes
 
-It achieves this by hooking into the Linux kernel via eBPF or a kernel module, giving it visibility into every system call.
+It achieves this by hooking into the Linux kernel via modern eBPF or a kernel module, giving it broad visibility into system call activity.
 
 ## Architecture Overview
 
@@ -30,7 +30,7 @@ It achieves this by hooking into the Linux kernel via eBPF or a kernel module, g
 flowchart TB
     subgraph Node
         A[Container Workloads] --> B[System Calls]
-        B --> C[eBPF Probe / Kernel Module]
+        B --> C[Modern eBPF Probe / Kernel Module]
         C --> D[Falco Engine]
         D --> E[Rules Evaluation]
     end
@@ -46,7 +46,7 @@ flowchart TB
 
 ## Installing Falco on Kubernetes
 
-The recommended deployment uses Helm with the eBPF driver (no kernel module needed):
+A common deployment uses Helm with the modern eBPF driver (no kernel module needed). The Falco Operator is the recommended Kubernetes-native deployment path, and the Helm chart remains fully supported:
 
 ```bash
 # Add the Falco Helm repository
@@ -54,11 +54,11 @@ The recommended deployment uses Helm with the eBPF driver (no kernel module need
 helm repo add falcosecurity https://falcosecurity.github.io/charts
 helm repo update
 
-# Install Falco with eBPF driver
+# Install Falco with the modern eBPF driver
 helm install falco falcosecurity/falco \
   --namespace falco \
   --create-namespace \
-  --set driver.kind=ebpf \
+  --set driver.kind=modern_ebpf \
   --set falcosidekick.enabled=true \
   --set falcosidekick.webui.enabled=true
 ```
@@ -76,7 +76,7 @@ kubectl get pods -n falco
 Check Falco logs for events:
 
 ```bash
-kubectl logs -n falco -l app.kubernetes.io/name=falco -f
+kubectl logs -n falco -l app.kubernetes.io/name=falco -c falco -f
 ```
 
 ## Understanding Falco Rules
@@ -191,22 +191,24 @@ Let's write rules for common security scenarios.
 
 ## Deploying Custom Rules
 
-Create a ConfigMap with your custom rules:
-
-```bash
-kubectl create configmap falco-custom-rules \
-  --from-file=custom-rules.yaml \
-  -n falco
-```
-
-Update the Helm deployment to include custom rules:
+Load your custom rules through the Helm chart's `customRules` value:
 
 ```bash
 helm upgrade falco falcosecurity/falco \
   --namespace falco \
-  --set driver.kind=ebpf \
+  --set driver.kind=modern_ebpf \
+  --set-file 'customRules.custom-rules\.yaml=custom-rules.yaml'
+```
+
+Keep Falcosidekick enabled when updating the deployment:
+
+```bash
+helm upgrade falco falcosecurity/falco \
+  --namespace falco \
+  --set driver.kind=modern_ebpf \
   --set falcosidekick.enabled=true \
-  --set "customRules.custom-rules\.yaml=configmap://falco/falco-custom-rules"
+  --set falcosidekick.webui.enabled=true \
+  --set-file 'customRules.custom-rules\.yaml=custom-rules.yaml'
 ```
 
 Alternatively, inline rules in values.yaml:
@@ -224,7 +226,7 @@ customRules:
 
 ## Configuring Alerts with Falcosidekick
 
-Falcosidekick routes Falco alerts to 50+ destinations. Configure outputs in the Helm values:
+Falcosidekick routes Falco alerts to 60+ destinations. Configure outputs in the Helm values:
 
 ```yaml
 # values.yaml for falcosidekick
@@ -243,7 +245,6 @@ falcosidekick:
     elasticsearch:
       hostport: "https://elasticsearch.example.com:9200"
       index: "falco"
-      type: "_doc"
 
     prometheus:
       extralabels: "env:production,team:security"
@@ -259,10 +260,14 @@ helm upgrade falco falcosecurity/falco \
 
 ## Kubernetes Audit Log Integration
 
-Falco can also consume Kubernetes audit logs to detect API-level threats:
+Falco can also consume Kubernetes audit logs through the `k8saudit` plugin to detect API-level threats:
 
 ```yaml
 # Example audit rule: detect secret access
+- list: allowed_service_accounts
+  items:
+    - system:serviceaccount:kube-system:replicaset-controller
+
 - rule: K8s Secret Get
   desc: Detect attempts to get secrets
   condition: >
@@ -278,7 +283,14 @@ Falco can also consume Kubernetes audit logs to detect API-level threats:
   tags: [k8s, secrets]
 ```
 
-Enable audit log webhook to Falco:
+Install Falco with the Kubernetes audit plugin enabled, then configure the API server audit webhook to send events to Falco:
+
+```bash
+helm upgrade falco falcosecurity/falco \
+  --namespace falco \
+  --set driver.kind=modern_ebpf \
+  --values=https://raw.githubusercontent.com/falcosecurity/charts/master/charts/falco/values-syscall-k8saudit.yaml
+```
 
 ```yaml
 # kube-apiserver audit webhook configuration
@@ -294,6 +306,8 @@ contexts:
       user: ""
     name: default-context
 current-context: default-context
+preferences: {}
+users: []
 ```
 
 ## Tuning and Reducing Noise
@@ -315,11 +329,11 @@ False positives make alerts useless. Tune rules by excluding known-good patterns
   priority: WARNING
 ```
 
-Use the Falco tuning mode to identify noisy rules:
+Use Falco metrics to identify noisy rules:
 
 ```bash
-# Run Falco with stats enabled
-falco --stats-interval 300 -r /etc/falco/falco_rules.yaml
+# Run Falco with metrics snapshots enabled
+falco -o metrics.enabled=true -o metrics.output_rule=true -o metrics.interval=5m -r /etc/falco/falco_rules.yaml
 ```
 
 ## Monitoring Falco Itself
@@ -328,18 +342,21 @@ Export Falco metrics to Prometheus:
 
 ```yaml
 # values.yaml
+metrics:
+  enabled: true
+  outputRule: true
+  interval: 30s
 falco:
-  metrics:
+  webserver:
     enabled: true
-    outputRule: true
-    outputInterval: 30s
+    prometheus_metrics_enabled: true
 ```
 
 Key metrics to monitor:
 
-- `falco_events_total`: Total events processed
-- `falco_rules_matches_total`: Matches per rule
-- `falco_kernel_drops_total`: Events dropped (indicates overload)
+- `falcosecurity_scap_n_evts_total`: Total kernel events processed
+- `falcosecurity_falco_rules_matches_total`: Matches per rule
+- `falcosecurity_scap_n_drops_total`: Events dropped (indicates overload)
 
 ---
 
