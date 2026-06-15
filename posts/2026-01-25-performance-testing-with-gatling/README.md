@@ -8,26 +8,13 @@ Description: A practical guide to performance testing with Gatling, covering sim
 
 ---
 
-Gatling is a performance testing tool built on Scala and Akka. It handles high loads efficiently and produces detailed HTML reports. While the DSL is Scala-based, you do not need deep Scala knowledge to write effective tests. The syntax reads like English and the documentation is excellent.
+Gatling is a performance testing tool that runs on the JVM and is implemented in Scala. It handles high loads efficiently and produces detailed HTML reports. While the examples below use the Scala DSL, you do not need deep Scala knowledge to write effective tests. The syntax reads like English and the documentation is excellent.
 
 ## Installing Gatling
 
-Download and extract Gatling:
+For these Scala examples, use Maven, Gradle, or sbt in your project:
 
-```bash
-# Download Gatling
-
-wget https://repo1.maven.org/maven2/io/gatling/highcharts/gatling-charts-highcharts-bundle/3.9.5/gatling-charts-highcharts-bundle-3.9.5-bundle.zip
-
-# Extract
-unzip gatling-charts-highcharts-bundle-3.9.5-bundle.zip
-
-# Add to PATH
-export GATLING_HOME=/path/to/gatling-charts-highcharts-bundle-3.9.5
-export PATH=$PATH:$GATLING_HOME/bin
-```
-
-Or use Maven/Gradle in your project:
+Use Maven in your project:
 
 ```xml
 <!-- pom.xml -->
@@ -35,17 +22,30 @@ Or use Maven/Gradle in your project:
   <dependency>
     <groupId>io.gatling.highcharts</groupId>
     <artifactId>gatling-charts-highcharts</artifactId>
-    <version>3.9.5</version>
+    <version>3.15.1</version>
     <scope>test</scope>
   </dependency>
 </dependencies>
 
 <build>
+  <testSourceDirectory>src/test/scala</testSourceDirectory>
   <plugins>
+    <plugin>
+      <groupId>net.alchim31.maven</groupId>
+      <artifactId>scala-maven-plugin</artifactId>
+      <version>4.9.10</version>
+      <executions>
+        <execution>
+          <goals>
+            <goal>testCompile</goal>
+          </goals>
+        </execution>
+      </executions>
+    </plugin>
     <plugin>
       <groupId>io.gatling</groupId>
       <artifactId>gatling-maven-plugin</artifactId>
-      <version>4.3.7</version>
+      <version>4.21.7</version>
     </plugin>
   </plugins>
 </build>
@@ -56,7 +56,7 @@ Or use Maven/Gradle in your project:
 Create a simulation file:
 
 ```scala
-// simulations/BasicSimulation.scala
+// src/test/scala/simulations/BasicSimulation.scala
 package simulations
 
 import io.gatling.core.Predef._
@@ -106,11 +106,11 @@ class BasicSimulation extends Simulation {
 Run the simulation:
 
 ```bash
-# Using Gatling standalone
-gatling.sh -s simulations.BasicSimulation
-
 # Using Maven
 mvn gatling:test -Dgatling.simulationClass=simulations.BasicSimulation
+
+# Using the Maven wrapper from a Gatling Maven project
+./mvnw gatling:test -Dgatling.simulationClass=simulations.BasicSimulation
 ```
 
 ## Injection Profiles
@@ -163,8 +163,8 @@ setUp(
     atOnceUsers(100),
     // Recovery
     constantUsersPerSec(20).during(2.minutes),
-    // Ramp down
-    rampUsers(0).during(30.seconds)
+    // Ramp the arrival rate down
+    rampUsersPerSec(20).to(0).during(30.seconds)
   )
 )
 ```
@@ -174,7 +174,7 @@ setUp(
 Complete API testing simulation:
 
 ```scala
-// simulations/ApiSimulation.scala
+// src/test/scala/simulations/ApiSimulation.scala
 package simulations
 
 import io.gatling.core.Predef._
@@ -255,7 +255,7 @@ class ApiSimulation extends Simulation {
 }
 ```
 
-CSV feeder file:
+CSV feeder file at `src/test/resources/users.csv`:
 
 ```csv
 userName,userEmail
@@ -284,7 +284,7 @@ class ChecksSimulation extends Simulation {
         .check(header("Content-Type").is("application/json"))
         // Body checks
         .check(bodyString.exists)
-        .check(bodyBytes.transform(_.length).gt(0))
+        .check(bodyLength.gt(0))
         // JSON checks
         .check(jsonPath("$").exists)
         .check(jsonPath("$[*].id").findAll.saveAs("productIds"))
@@ -447,8 +447,7 @@ Gatling generates HTML reports automatically:
 # Reports are in target/gatling/{simulation-name}-{timestamp}/
 # Open index.html in browser
 
-# Generate report from simulation.log
-gatling.sh -ro /path/to/simulation-folder
+# Reports are generated when the simulation completes
 ```
 
 The report includes:
