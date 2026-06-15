@@ -17,18 +17,17 @@ MLflow is an open-source platform that manages the entire ML lifecycle. It consi
 - **MLflow Tracking**: Records parameters, metrics, and artifacts from experiments
 - **MLflow Projects**: Packages ML code in a reusable format
 - **MLflow Models**: Deploys models to various serving platforms
-- **MLflow Registry**: Central model store with versioning and stage transitions
+- **MLflow Registry**: Central model store with versioning, aliases, metadata, and annotations
 
 This guide focuses on MLflow Tracking, which is where most teams start.
 
 ## Installing MLflow
 
-Install MLflow using pip. The base installation includes everything needed for local tracking.
+Install MLflow using pip. The base installation includes everything needed for local tracking. The examples below also use scikit-learn and matplotlib.
 
 ```bash
-# Install MLflow with all dependencies
-
-pip install mlflow
+# Install MLflow and the libraries used in this guide
+pip install mlflow scikit-learn matplotlib
 
 # Verify installation
 mlflow --version
@@ -88,8 +87,8 @@ with mlflow.start_run(run_name="random-forest-baseline"):
     mlflow.log_metric("accuracy", accuracy)
     mlflow.log_metric("f1_score", f1)
 
-    # Log the trained model as an artifact
-    mlflow.sklearn.log_model(model, "model")
+    # Log the trained model
+    mlflow.sklearn.log_model(model, name="model")
 
     print(f"Accuracy: {accuracy:.4f}, F1 Score: {f1:.4f}")
 ```
@@ -101,13 +100,13 @@ After running this script, refresh the MLflow UI to see your logged experiment.
 For team collaboration, run MLflow as a centralized server with a database backend and artifact storage.
 
 ```bash
-# Create a directory for artifacts
-mkdir -p /data/mlflow/artifacts
+# Install the database and artifact-store dependencies
+pip install mlflow psycopg2 boto3
 
 # Start MLflow server with PostgreSQL backend and S3 artifact storage
 mlflow server \
     --backend-store-uri postgresql://mlflow:password@localhost:5432/mlflow \
-    --default-artifact-root s3://my-bucket/mlflow-artifacts \
+    --artifacts-destination s3://my-bucket/mlflow-artifacts \
     --host 0.0.0.0 \
     --port 5000
 ```
@@ -147,7 +146,7 @@ spec:
     spec:
       containers:
         - name: mlflow
-          image: ghcr.io/mlflow/mlflow:2.10.0
+          image: ghcr.io/mlflow/mlflow:v3.13.0
           ports:
             - containerPort: 5000
           env:
@@ -171,16 +170,16 @@ spec:
                   name: mlflow-secrets
                   key: aws-secret-key
           command:
-            - mlflow
-            - server
-            - --backend-store-uri
-            - $(BACKEND_STORE_URI)
-            - --default-artifact-root
-            - s3://mlflow-artifacts/
-            - --host
-            - "0.0.0.0"
-            - --port
-            - "5000"
+            - /bin/sh
+            - -c
+          args:
+            - |
+              pip install psycopg2 boto3 &&
+              exec mlflow server \
+                --backend-store-uri "$BACKEND_STORE_URI" \
+                --artifacts-destination s3://mlflow-artifacts/ \
+                --host 0.0.0.0 \
+                --port 5000
           resources:
             requests:
               memory: "512Mi"
@@ -297,21 +296,30 @@ MLflow supports automatic logging for many ML frameworks. Enable it with a singl
 
 ```python
 import mlflow
+import mlflow.sklearn
+from sklearn.datasets import load_iris
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.model_selection import train_test_split
 
 # Enable auto-logging for scikit-learn
 mlflow.sklearn.autolog()
 
-# Enable auto-logging for PyTorch
-mlflow.pytorch.autolog()
+# Other integrations follow the same pattern after installing the corresponding package:
+# import mlflow.pytorch
+# mlflow.pytorch.autolog()
 
-# Enable auto-logging for TensorFlow/Keras
-mlflow.tensorflow.autolog()
+# import mlflow.tensorflow
+# mlflow.tensorflow.autolog()
 
-# Enable auto-logging for XGBoost
-mlflow.xgboost.autolog()
+# import mlflow.xgboost
+# mlflow.xgboost.autolog()
+
+iris = load_iris()
+X_train, X_test, y_train, y_test = train_test_split(
+    iris.data, iris.target, test_size=0.2, random_state=42
+)
 
 # Now train your model normally - MLflow logs everything automatically
-from sklearn.ensemble import GradientBoostingClassifier
 model = GradientBoostingClassifier(n_estimators=50)
 model.fit(X_train, y_train)
 # Parameters, metrics, and model are all logged automatically
