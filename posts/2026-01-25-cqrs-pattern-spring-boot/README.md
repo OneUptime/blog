@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, CQRS, Architecture, Event Sourcing
+Tags: Java, Spring Boot, CQRS, Architecture
 
 Description: A practical guide to implementing the Command Query Responsibility Segregation (CQRS) pattern in Spring Boot.
 
@@ -31,14 +31,20 @@ We'll organize the code to make the separation explicit:
 src/main/java/com/example/orders/
 ├── command/
 │   ├── CreateOrderCommand.java
+│   ├── ConfirmOrderCommand.java
 │   ├── OrderCommandHandler.java
 │   └── OrderWriteRepository.java
 ├── query/
 │   ├── OrderQueryService.java
 │   ├── OrderReadRepository.java
-│   └── OrderView.java
+│   ├── OrderView.java
+│   └── OrderViewProjection.java
 ├── domain/
-│   └── Order.java
+│   ├── Order.java
+│   └── OrderStatus.java
+├── events/
+│   ├── OrderCreatedEvent.java
+│   └── OrderConfirmedEvent.java
 └── api/
     └── OrderController.java
 ```
@@ -63,6 +69,8 @@ public class Order {
     private String productId;
     private Integer quantity;
     private BigDecimal totalPrice;
+
+    @Enumerated(EnumType.STRING)
     private OrderStatus status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -73,6 +81,13 @@ public class Order {
     // Factory method enforces business rules on creation
     public static Order create(String customerId, String productId,
                                Integer quantity, BigDecimal unitPrice) {
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be positive");
+        }
+        if (unitPrice == null || unitPrice.signum() < 0) {
+            throw new IllegalArgumentException("Unit price cannot be negative");
+        }
+
         Order order = new Order();
         order.customerId = customerId;
         order.productId = productId;
@@ -96,6 +111,16 @@ public class Order {
 }
 ```
 
+The order status is a simple enum. `EnumType.STRING` above keeps the database value stable if the enum declaration order changes:
+
+```java
+// domain/OrderStatus.java
+public enum OrderStatus {
+    PENDING,
+    CONFIRMED
+}
+```
+
 ## The Command Side
 
 Commands represent intentions to change state. Each command is a simple data class:
@@ -108,6 +133,27 @@ public record CreateOrderCommand(
     Integer quantity,
     BigDecimal unitPrice
 ) {}
+```
+
+The confirm command and events used by the handler are also small records:
+
+```java
+// command/ConfirmOrderCommand.java
+public record ConfirmOrderCommand(UUID orderId) {}
+
+// events/OrderCreatedEvent.java
+public record OrderCreatedEvent(
+    UUID orderId,
+    String customerId,
+    String productId,
+    Integer quantity,
+    BigDecimal totalPrice,
+    OrderStatus status,
+    LocalDateTime createdAt
+) {}
+
+// events/OrderConfirmedEvent.java
+public record OrderConfirmedEvent(UUID orderId) {}
 ```
 
 The command handler contains the business logic for processing commands:
@@ -146,7 +192,8 @@ public class OrderCommandHandler {
             order.getProductId(),
             order.getQuantity(),
             order.getTotalPrice(),
-            order.getStatus()
+            order.getStatus(),
+            order.getCreatedAt()
         ));
 
         return order.getId();
@@ -277,7 +324,7 @@ public class OrderViewProjection {
         view.setQuantity(event.quantity());
         view.setTotalPrice(event.totalPrice());
         view.setStatus(event.status().name());
-        view.setCreatedAt(LocalDateTime.now());
+        view.setCreatedAt(event.createdAt());
 
         readRepository.save(view);
     }
@@ -343,7 +390,7 @@ public class OrderController {
 
 ## Handling Eventual Consistency
 
-With CQRS, there's typically a delay between when a command completes and when the read model reflects the change. This is eventual consistency, and you need to account for it:
+With CQRS, there's often a delay between when a command completes and when the read model reflects the change, especially when projections are updated asynchronously or through a message broker. The in-process Spring event listener shown above is synchronous by default, so it runs in the publisher's thread. If you move projection updates to asynchronous listeners or external messaging, you need to account for eventual consistency:
 
 1. **Return IDs from commands** - so clients can poll for the created resource
 2. **Use optimistic UI updates** - show the expected result immediately, then reconcile
