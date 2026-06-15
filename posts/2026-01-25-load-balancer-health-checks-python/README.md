@@ -39,7 +39,7 @@ First, define the backend server data structure:
 ```python
 # models.py
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 from enum import Enum, auto
@@ -50,6 +50,7 @@ class ServerStatus(Enum):
     HEALTHY = auto()
     UNHEALTHY = auto()
     UNKNOWN = auto()
+    DRAINING = auto()
 
 
 @dataclass
@@ -69,6 +70,13 @@ class BackendServer:
     last_health_check: Optional[datetime] = None
     consecutive_failures: int = 0
     consecutive_successes: int = 0
+
+    def __post_init__(self) -> None:
+        """Validate server configuration"""
+        if self.weight <= 0:
+            raise ValueError("Server weight must be greater than 0")
+        if self.max_connections <= 0:
+            raise ValueError("max_connections must be greater than 0")
 
     @property
     def url(self) -> str:
@@ -105,9 +113,11 @@ The health checker monitors backend servers and updates their status:
 # health_checker.py
 import asyncio
 import aiohttp
-from typing import List, Callable, Awaitable
-from datetime import datetime
+from typing import List, Callable, Awaitable, Optional
+from datetime import UTC, datetime
 import logging
+
+from models import BackendServer, ServerStatus
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +140,7 @@ class HealthChecker:
         timeout: float = 3.0,
         healthy_threshold: int = 2,    # Successes to mark healthy
         unhealthy_threshold: int = 3,  # Failures to mark unhealthy
-        on_status_change: HealthCallback = None
+        on_status_change: Optional[HealthCallback] = None
     ):
         self.servers = servers
         self.check_interval = check_interval
@@ -140,8 +150,8 @@ class HealthChecker:
         self.on_status_change = on_status_change
 
         self._running = False
-        self._task: asyncio.Task = None
-        self._session: aiohttp.ClientSession = None
+        self._task: Optional[asyncio.Task] = None
+        self._session: Optional[aiohttp.ClientSession] = None
 
     async def start(self) -> None:
         """Start the health checker"""
@@ -189,7 +199,7 @@ class HealthChecker:
         try:
             async with self._session.get(server.health_url) as response:
                 healthy = response.status == 200
-                server.last_health_check = datetime.utcnow()
+                server.last_health_check = datetime.now(UTC)
 
                 if healthy:
                     server.consecutive_failures = 0
@@ -215,7 +225,7 @@ class HealthChecker:
         """Handle a failed health check"""
         server.consecutive_successes = 0
         server.consecutive_failures += 1
-        server.last_health_check = datetime.utcnow()
+        server.last_health_check = datetime.now(UTC)
 
         if server.consecutive_failures >= self.unhealthy_threshold:
             if server.status != ServerStatus.UNHEALTHY:
@@ -245,8 +255,10 @@ Implement different algorithms for server selection:
 # algorithms.py
 from abc import ABC, abstractmethod
 from typing import List, Optional
-import itertools
+import hashlib
 import random
+
+from models import BackendServer
 
 
 class LoadBalancingAlgorithm(ABC):
@@ -286,7 +298,7 @@ class WeightedRoundRobinAlgorithm(LoadBalancingAlgorithm):
 
     def __init__(self):
         self._current_weight = 0
-        self._index = 0
+        self._index = -1
 
     def select(self, servers: List[BackendServer]) -> Optional[BackendServer]:
         healthy = [s for s in servers if s.is_healthy]
@@ -294,7 +306,6 @@ class WeightedRoundRobinAlgorithm(LoadBalancingAlgorithm):
             return None
 
         # Find server using weighted selection
-        total_weight = sum(s.weight for s in healthy)
         max_weight = max(s.weight for s in healthy)
         gcd = self._gcd_list([s.weight for s in healthy])
 
@@ -377,8 +388,12 @@ class IPHashAlgorithm(LoadBalancingAlgorithm):
         if not healthy:
             return None
 
-        # Hash the IP to select a server
-        ip_hash = hash(self._client_ip)
+        # Hash the IP to select a server. Use a stable digest instead of
+        # Python's process-randomized hash().
+        ip_hash = int.from_bytes(
+            hashlib.sha256(self._client_ip.encode()).digest(),
+            "big"
+        )
         index = ip_hash % len(healthy)
         return healthy[index]
 ```
@@ -395,8 +410,19 @@ import asyncio
 import aiohttp
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
-from datetime import datetime
 import logging
+
+from algorithms import (
+    IPHashAlgorithm,
+    LeastConnectionsAlgorithm,
+    LoadBalancingAlgorithm,
+    RandomAlgorithm,
+    RoundRobinAlgorithm,
+    WeightedLeastConnectionsAlgorithm,
+    WeightedRoundRobinAlgorithm,
+)
+from health_checker import HealthChecker
+from models import BackendServer
 
 logger = logging.getLogger(__name__)
 
@@ -435,7 +461,7 @@ class LoadBalancer:
     def __init__(
         self,
         servers: List[BackendServer],
-        config: LoadBalancerConfig = None
+        config: Optional[LoadBalancerConfig] = None
     ):
         self.servers = servers
         self.config = config or LoadBalancerConfig()
@@ -456,7 +482,7 @@ class LoadBalancer:
             on_status_change=self._on_server_status_change
         )
 
-        self._session: aiohttp.ClientSession = None
+        self._session: Optional[aiohttp.ClientSession] = None
         self._request_count = 0
         self._error_count = 0
 
@@ -484,13 +510,17 @@ class LoadBalancer:
         status = "healthy" if healthy else "unhealthy"
         logger.info(f"Server {server.url} is now {status}")
 
-    def _select_server(self, client_ip: str = None) -> Optional[BackendServer]:
+    def _select_server(
+        self,
+        client_ip: Optional[str] = None,
+        servers: Optional[List[BackendServer]] = None
+    ) -> Optional[BackendServer]:
         """Select a backend server for the request"""
         # Set client IP for IP hash algorithm
         if isinstance(self._algorithm, IPHashAlgorithm) and client_ip:
             self._algorithm.set_client_ip(client_ip)
 
-        return self._algorithm.select(self.servers)
+        return self._algorithm.select(self.servers if servers is None else servers)
 
     async def forward_request(
         self,
@@ -511,12 +541,11 @@ class LoadBalancer:
         tried_servers = set()
 
         for attempt in range(self.config.max_retries + 1):
-            server = self._select_server(client_ip)
-
-            # Skip servers we have already tried
-            while server and server.url in tried_servers:
-                tried_servers.add(server.url)
-                server = self._select_server(client_ip)
+            available_servers = [
+                s for s in self.get_healthy_servers()
+                if s.url not in tried_servers
+            ]
+            server = self._select_server(client_ip, available_servers)
 
             if not server:
                 self._error_count += 1
@@ -607,7 +636,11 @@ Create an aiohttp server that uses the load balancer:
 ```python
 # server.py
 from aiohttp import web
+from typing import List, Optional
 import logging
+
+from load_balancer import LoadBalancer, LoadBalancerConfig
+from models import BackendServer
 
 logger = logging.getLogger(__name__)
 
@@ -660,7 +693,10 @@ class LoadBalancerServer:
         })
 
 
-def create_app(servers: List[BackendServer], config: LoadBalancerConfig = None) -> web.Application:
+def create_app(
+    servers: List[BackendServer],
+    config: Optional[LoadBalancerConfig] = None
+) -> web.Application:
     """Create the load balancer application"""
     lb = LoadBalancer(servers, config)
     server = LoadBalancerServer(lb)
@@ -715,6 +751,8 @@ Handle scenarios where backends are failing:
 from typing import Callable, Awaitable, Optional
 from dataclasses import dataclass
 
+from load_balancer import LoadBalancer
+
 
 @dataclass
 class FallbackConfig:
@@ -731,7 +769,7 @@ class DegradationHandler:
     def __init__(
         self,
         load_balancer: LoadBalancer,
-        config: FallbackConfig = None
+        config: Optional[FallbackConfig] = None
     ):
         self.lb = load_balancer
         self.config = config or FallbackConfig()
@@ -901,13 +939,15 @@ if healthy < 2:
 
 **4. Implement connection draining:**
 ```python
+from datetime import UTC, datetime
+
 async def drain_server(server: BackendServer, timeout: float = 30.0):
     """Drain connections before removing server"""
     server.status = ServerStatus.DRAINING
-    start = datetime.utcnow()
+    start = datetime.now(UTC)
 
     while server.active_connections > 0:
-        elapsed = (datetime.utcnow() - start).total_seconds()
+        elapsed = (datetime.now(UTC) - start).total_seconds()
         if elapsed > timeout:
             break
         await asyncio.sleep(1)
