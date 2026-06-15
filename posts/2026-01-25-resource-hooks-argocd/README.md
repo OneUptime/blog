@@ -18,9 +18,11 @@ ArgoCD hooks run at specific phases during the sync operation:
 flowchart LR
     subgraph Sync Lifecycle
         PreSync[PreSync] --> Sync[Sync]
-        Sync --> Skip[Skip]
         Sync --> PostSync[PostSync]
-        Sync --> SyncFail[SyncFail]
+        PreSync -. on failure .-> SyncFail[SyncFail]
+        Sync -. on failure .-> SyncFail
+        PostSync -. on failure .-> SyncFail
+        Skip[Skip]
     end
 
     PreSync --> |"Migrations, Backups"| PS1[Jobs]
@@ -34,7 +36,7 @@ flowchart LR
 | Sync | During main sync | Custom ordering |
 | PostSync | After successful sync | Notifications, smoke tests |
 | SyncFail | After failed sync | Alerts, cleanup |
-| Skip | Never runs (documentation) | Placeholder resources |
+| Skip | Manifest is skipped during sync | Placeholder resources |
 
 ## Creating a Basic Hook
 
@@ -345,6 +347,11 @@ spec:
                   }
                 }'
           env:
+            - name: PAGERDUTY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pagerduty-credentials
+                  key: url
             - name: PAGERDUTY_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -358,7 +365,7 @@ spec:
       restartPolicy: Never
 ```
 
-## Hook Weights
+## Sync Waves
 
 Control the order of hooks within the same phase:
 
