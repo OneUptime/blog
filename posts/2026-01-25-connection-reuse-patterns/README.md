@@ -25,7 +25,7 @@ sequenceDiagram
     C->>S: TCP SYN
     S->>C: TCP SYN-ACK
     C->>S: TCP ACK
-    C->>S: TLS Handshake (4 round trips)
+    C->>S: TLS Handshake (1-2 round trips)
     C->>S: HTTP Request 1
     S->>C: HTTP Response 1
     C->>S: TCP FIN
@@ -115,12 +115,11 @@ print(f"With session: {time.perf_counter() - start:.2f}s")
 # global_session.py
 import requests
 from requests.adapters import HTTPAdapter
-from contextlib import contextmanager
 from typing import Optional
 import threading
 
 class HTTPClient:
-    """Thread-safe HTTP client with connection pooling"""
+    """Shared HTTP client with connection pooling"""
 
     _instance: Optional['HTTPClient'] = None
     _lock = threading.Lock()
@@ -236,7 +235,7 @@ const httpAgent = new http.Agent({
   maxSockets: 100,           // Max sockets per host
   maxFreeSockets: 10,        // Max idle sockets to keep
   timeout: 60000,            // Socket timeout
-  keepAliveMsecs: 30000,     // Keep-alive probe interval
+  keepAliveMsecs: 30000,     // Initial delay for TCP keep-alive probes
 });
 
 const httpsAgent = new https.Agent({
@@ -263,17 +262,21 @@ function makeRequest(url) {
 }
 
 // Monitor agent stats
+function countAgentSockets(socketMap) {
+  return Object.values(socketMap).reduce((total, sockets) => total + sockets.length, 0);
+}
+
 function getAgentStats() {
   return {
     http: {
-      sockets: Object.keys(httpAgent.sockets).length,
-      freeSockets: Object.keys(httpAgent.freeSockets).length,
-      requests: Object.keys(httpAgent.requests).length,
+      sockets: countAgentSockets(httpAgent.sockets),
+      freeSockets: countAgentSockets(httpAgent.freeSockets),
+      requests: countAgentSockets(httpAgent.requests),
     },
     https: {
-      sockets: Object.keys(httpsAgent.sockets).length,
-      freeSockets: Object.keys(httpsAgent.freeSockets).length,
-      requests: Object.keys(httpsAgent.requests).length,
+      sockets: countAgentSockets(httpsAgent.sockets),
+      freeSockets: countAgentSockets(httpsAgent.freeSockets),
+      requests: countAgentSockets(httpsAgent.requests),
     }
   };
 }
@@ -444,9 +447,10 @@ func drainBody(resp *http.Response) {
 package main
 
 import (
+    "crypto/tls"
+    "net/http"
     "net/http/httptrace"
     "sync/atomic"
-    "time"
 )
 
 type ConnectionMetrics struct {
@@ -564,7 +568,7 @@ db = DatabasePool.get_instance()
 with db.connection() as conn:
     with conn.cursor() as cur:
         cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
-        return cur.fetchone()
+        user = cur.fetchone()
 ```
 
 ---
@@ -680,7 +684,7 @@ response = stub.MyMethod(request)  # Reuses channel
 
 | Protocol | Connection Reuse Method | Key Configuration |
 |----------|------------------------|-------------------|
-| HTTP/1.1 | Keep-Alive header | `Connection: keep-alive` |
+| HTTP/1.1 | Persistent connections | Reuse the client/agent; avoid `Connection: close` |
 | HTTP/2 | Multiplexing | Single connection per host |
 | PostgreSQL | Connection pool | `max_connections`, `min_connections` |
 | Redis | Connection pool | `max_connections` |
