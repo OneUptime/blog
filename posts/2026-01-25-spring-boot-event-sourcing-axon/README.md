@@ -51,6 +51,12 @@ Add Axon dependencies to your Spring Boot project.
         <groupId>org.axonframework</groupId>
         <artifactId>axon-spring-boot-starter</artifactId>
         <version>4.9.3</version>
+        <exclusions>
+            <exclusion>
+                <groupId>org.axonframework</groupId>
+                <artifactId>axon-server-connector</artifactId>
+            </exclusion>
+        </exclusions>
     </dependency>
 
     <!-- JPA for projections -->
@@ -63,6 +69,19 @@ Add Axon dependencies to your Spring Boot project.
         <groupId>com.h2database</groupId>
         <artifactId>h2</artifactId>
         <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+        <groupId>org.axonframework</groupId>
+        <artifactId>axon-test</artifactId>
+        <version>4.9.3</version>
+        <scope>test</scope>
+    </dependency>
+
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
     </dependency>
 </dependencies>
 ```
@@ -81,7 +100,9 @@ spring:
       ddl-auto: update
 
 axon:
-  # Use JPA-based event store (for production, consider Axon Server)
+  # Disable Axon Server so Spring Boot auto-configures an embedded JPA event store
+  axonserver:
+    enabled: false
   eventhandling:
     processors:
       # Process events asynchronously for better performance
@@ -96,6 +117,10 @@ Commands represent intentions to change state. Events represent facts that have 
 
 ```java
 // Commands - what we want to happen
+import org.axonframework.modelling.command.TargetAggregateIdentifier;
+
+import java.math.BigDecimal;
+
 public record CreateAccountCommand(
     @TargetAggregateIdentifier String accountId,
     String owner,
@@ -124,6 +149,9 @@ public record TransferMoneyCommand(
 
 ```java
 // Events - what actually happened
+import java.math.BigDecimal;
+import java.time.Instant;
+
 public record AccountCreatedEvent(
     String accountId,
     String owner,
@@ -307,6 +335,7 @@ public class AccountView {
 ```java
 // Repository for the projection
 import org.springframework.data.jpa.repository.JpaRepository;
+import java.math.BigDecimal;
 import java.util.List;
 
 public interface AccountViewRepository extends JpaRepository<AccountView, String> {
@@ -317,11 +346,13 @@ public interface AccountViewRepository extends JpaRepository<AccountView, String
 
 ```java
 // Event handlers that update the projection
+import org.axonframework.config.ProcessingGroup;
 import org.axonframework.eventhandling.EventHandler;
 import org.axonframework.queryhandling.QueryHandler;
 import org.springframework.stereotype.Component;
 
 @Component
+@ProcessingGroup("account-processor")
 public class AccountProjection {
 
     private final AccountViewRepository repository;
@@ -380,6 +411,8 @@ Queries should be simple, immutable objects that describe what data you need.
 
 ```java
 // Query objects
+import java.math.BigDecimal;
+
 public record FindAccountQuery(String accountId) {}
 
 public record FindAccountsByOwnerQuery(String owner) {}
@@ -475,6 +508,8 @@ import org.axonframework.spring.stereotype.Saga;
 import org.axonframework.commandhandling.gateway.CommandGateway;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.math.BigDecimal;
+
 @Saga
 public class MoneyTransferSaga {
 
@@ -494,7 +529,7 @@ public class MoneyTransferSaga {
         this.targetAccountId = event.targetAccountId();
         this.amount = event.amount();
 
-        // Associate saga with target account for deposit event
+        // Associate saga with the target account for queries or additional handlers
         SagaLifecycle.associateWith("targetAccountId", targetAccountId);
 
         // Withdraw from source account
@@ -545,9 +580,10 @@ public class MoneyTransferSaga {
 
 ## Event Upcasting for Schema Evolution
 
-When event schemas change, upcasters transform old events to new formats.
+When event schemas change, upcasters transform old events to new formats. This example works with XML payloads, such as events serialized with Axon's XStream serializer.
 
 ```java
+import org.axonframework.serialization.SimpleSerializedType;
 import org.axonframework.serialization.upcasting.event.IntermediateEventRepresentation;
 import org.axonframework.serialization.upcasting.event.SingleEventUpcaster;
 import org.dom4j.Document;
@@ -585,6 +621,10 @@ public class AccountCreatedEventUpcaster extends SingleEventUpcaster {
 Register the upcaster in configuration.
 
 ```java
+import org.axonframework.serialization.upcasting.event.EventUpcasterChain;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
 @Configuration
 public class AxonConfig {
 
@@ -638,6 +678,14 @@ import org.axonframework.test.aggregate.AggregateTestFixture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+
+import static org.axonframework.test.matchers.Matchers.andNoMore;
+import static org.axonframework.test.matchers.Matchers.exactSequenceOf;
+import static org.axonframework.test.matchers.Matchers.matches;
+import static org.axonframework.test.matchers.Matchers.payloadsMatching;
+
 class AccountAggregateTest {
 
     private AggregateTestFixture<AccountAggregate> fixture;
@@ -653,10 +701,14 @@ class AccountAggregateTest {
             .when(new CreateAccountCommand("acc-1", "John",
                 new BigDecimal("100")))
             .expectSuccessfulHandlerExecution()
-            .expectEvents(new AccountCreatedEvent(
-                "acc-1", "John", new BigDecimal("100"),
-                any(Instant.class)
-            ));
+            .expectEventsMatching(payloadsMatching(exactSequenceOf(
+                matches(event -> event instanceof AccountCreatedEvent created
+                    && created.accountId().equals("acc-1")
+                    && created.owner().equals("John")
+                    && created.initialBalance().equals(new BigDecimal("100"))
+                    && created.createdAt() != null),
+                andNoMore()
+            )));
     }
 
     @Test
@@ -666,10 +718,15 @@ class AccountAggregateTest {
             .when(new DepositMoneyCommand("acc-1",
                 new BigDecimal("50"), "tx-1"))
             .expectSuccessfulHandlerExecution()
-            .expectEvents(new MoneyDepositedEvent(
-                "acc-1", new BigDecimal("50"), new BigDecimal("150"),
-                "tx-1", any(Instant.class)
-            ));
+            .expectEventsMatching(payloadsMatching(exactSequenceOf(
+                matches(event -> event instanceof MoneyDepositedEvent deposited
+                    && deposited.accountId().equals("acc-1")
+                    && deposited.amount().equals(new BigDecimal("50"))
+                    && deposited.newBalance().equals(new BigDecimal("150"))
+                    && deposited.transactionId().equals("tx-1")
+                    && deposited.timestamp() != null),
+                andNoMore()
+            )));
     }
 
     @Test
