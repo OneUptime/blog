@@ -10,13 +10,13 @@ Description: Cursor-based pagination offers better performance and consistency t
 
 Pagination is one of those things that seems simple until you hit scale. Most developers start with offset-based pagination because it maps directly to SQL's `LIMIT` and `OFFSET`. But as your dataset grows into millions of rows, offset pagination starts to hurt. The database still has to scan through all the skipped rows, and users can see duplicate or missing items when data changes between requests.
 
-Cursor-based pagination solves both problems. Instead of saying "give me page 5," you say "give me the next 20 items after this specific record." The database uses an index seek instead of a scan, and the results stay consistent even when new records are inserted.
+Cursor-based pagination solves both problems. Instead of saying "give me page 5," you say "give me the next 20 items after this specific record." With the right index, the database can use an index range scan instead of scanning through skipped rows, and the results stay consistent even when new records are inserted.
 
 ## Why Cursor Pagination Beats Offset Pagination
 
 Consider a table with 10 million rows. With offset pagination, requesting page 5000 means the database has to skip 100,000 rows before returning your 20 results. That is slow, and it gets slower as users page deeper into the dataset.
 
-Cursor pagination flips this model. You provide a pointer to a specific record - typically an encoded combination of the sort field and a unique identifier - and the database jumps directly to that position. Performance stays constant whether you are on "page 1" or "page 5000."
+Cursor pagination flips this model. You provide a pointer to a specific record - typically an encoded combination of the sort field and a unique identifier - and the database can jump directly to that position. Performance stays much more stable whether you are on "page 1" or "page 5000."
 
 There is also a consistency benefit. If someone inserts a new record while a user is paginating, offset pagination can show the same record twice or skip records entirely. Cursor pagination anchors to a specific point in the dataset, so you get predictable results.
 
@@ -166,7 +166,7 @@ func (r *PostRepository) ListPosts(ctx context.Context, cursor *Cursor, limit in
 }
 ```
 
-Notice the tuple comparison `(created_at, id) < ($1, $2)`. This leverages the composite index we created earlier. PostgreSQL, MySQL 8.0+, and SQLite all support this row value comparison syntax.
+Notice the tuple comparison `(created_at, id) < ($1, $2)`. This can leverage the composite index we created earlier. PostgreSQL, MySQL 8.0+, and SQLite all support this row value comparison syntax, although the `$1` placeholder style shown here is PostgreSQL-specific. MySQL and SQLite drivers typically use `?` placeholders.
 
 We fetch `limit + 1` records to determine whether more pages exist without running a separate count query.
 
@@ -285,4 +285,4 @@ Admin dashboards and internal tools often work fine with offset pagination. Rese
 
 ---
 
-Cursor pagination takes more upfront work than tossing in a `LIMIT OFFSET`, but the payoff is real. Your queries stay fast at any depth, your results stay consistent when data changes, and your API scales gracefully as your dataset grows. The pattern shown here is battle-tested and works with PostgreSQL, MySQL, and SQLite with minimal changes.
+Cursor pagination takes more upfront work than tossing in a `LIMIT OFFSET`, but the payoff is real. Your queries stay fast at deep pages, your results stay consistent when data changes, and your API scales gracefully as your dataset grows. The pattern shown here is battle-tested and works with PostgreSQL, MySQL, and SQLite with minimal placeholder and syntax changes.
