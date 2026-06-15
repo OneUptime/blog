@@ -42,6 +42,7 @@ Required files:
 - CA certificate (`ca_certificate.pem`)
 - Server certificate (`server_certificate.pem`)
 - Server private key (`server_key.pem`)
+- Client certificate (`client_certificate.pem`) and key (`client_key.pem`) if you require mutual TLS
 
 ## Generating Self-Signed Certificates
 
@@ -89,6 +90,21 @@ openssl x509 -req -days 365 -in server_csr.pem \
     -CA ca_certificate.pem -CAkey ca_key.pem -CAcreateserial \
     -out server_certificate.pem -extfile server_extensions.cnf
 
+# Generate client key and certificate for mutual TLS
+openssl genrsa -out client_key.pem 4096
+openssl req -new -key client_key.pem -out client_csr.pem \
+    -subj "/CN=rabbitmq-client/O=MyOrg/C=US"
+
+cat > client_extensions.cnf << EOF
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature
+extendedKeyUsage = clientAuth
+EOF
+
+openssl x509 -req -days 365 -in client_csr.pem \
+    -CA ca_certificate.pem -CAkey ca_key.pem -CAcreateserial \
+    -out client_certificate.pem -extfile client_extensions.cnf
+
 # Set permissions
 chown rabbitmq:rabbitmq *.pem
 chmod 400 *_key.pem
@@ -125,16 +141,9 @@ ssl_options.fail_if_no_peer_cert = true
 ssl_options.versions.1 = tlsv1.3
 ssl_options.versions.2 = tlsv1.2
 
-# Strong cipher suites only
-ssl_options.ciphers.1 = TLS_AES_256_GCM_SHA384
-ssl_options.ciphers.2 = TLS_AES_128_GCM_SHA256
-ssl_options.ciphers.3 = TLS_CHACHA20_POLY1305_SHA256
-ssl_options.ciphers.4 = ECDHE-RSA-AES256-GCM-SHA384
-ssl_options.ciphers.5 = ECDHE-RSA-AES128-GCM-SHA256
-
-# Prefer server cipher order
-ssl_options.honor_cipher_order = true
-ssl_options.honor_ecc_order = true
+# If you restrict cipher suites, verify the exact list supported by your
+# Erlang/OpenSSL runtime with rabbitmq-diagnostics. TLS 1.3 and TLS 1.2 use
+# different cipher suite sets, so do not mix them in one restricted list.
 ```
 
 ### Enable TLS for Management UI
@@ -155,14 +164,14 @@ management.tcp.port = none
 ### Apply Configuration
 
 ```bash
-# Verify configuration syntax
-rabbitmqctl eval 'application:get_all_env(rabbit).'
-
-# Restart RabbitMQ
+# Restart RabbitMQ to load the configuration
 sudo systemctl restart rabbitmq-server
 
+# Check effective TLS settings
+sudo rabbitmqctl eval 'application:get_env(rabbit, ssl_options).'
+
 # Check TLS listener is active
-sudo rabbitmqctl status | grep -A5 "Listeners"
+sudo rabbitmq-diagnostics -s listeners
 ```
 
 ## Connecting with TLS
@@ -195,7 +204,7 @@ def connect_with_tls():
         port=5671,
         virtual_host='/',
         credentials=pika.PlainCredentials('user', 'password'),
-        ssl_options=pika.SSLOptions(ssl_context)
+        ssl_options=pika.SSLOptions(ssl_context, 'rabbitmq.example.com')
     )
 
     connection = pika.BlockingConnection(connection_params)
@@ -208,6 +217,7 @@ def connect_with_tls():
 connection, channel = connect_with_tls()
 
 # Publish a message
+channel.queue_declare(queue='test_queue')
 channel.basic_publish(
     exchange='',
     routing_key='test_queue',
@@ -306,6 +316,7 @@ public class TLSConnection {
         factory.setUsername("user");
         factory.setPassword("password");
         factory.useSslProtocol(sslContext);
+        factory.enableHostnameVerification();
 
         return factory.newConnection();
     }
@@ -355,8 +366,9 @@ Set the environment variable:
 
 ```bash
 # /etc/rabbitmq/rabbitmq-env.conf
-RABBITMQ_CTL_ERL_ARGS="-proto_dist inet_tls -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"
-RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-proto_dist inet_tls -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"
+ERL_SSL_PATH="/usr/lib64/erlang/lib/ssl-9.4/ebin"
+RABBITMQ_CTL_ERL_ARGS="-pa $ERL_SSL_PATH -proto_dist inet_tls -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"
+SERVER_ADDITIONAL_ERL_ARGS="-pa $ERL_SSL_PATH -proto_dist inet_tls -ssl_dist_optfile /etc/rabbitmq/inter_node_tls.config"
 ```
 
 ## Verifying TLS Configuration
@@ -389,7 +401,7 @@ nmap --script ssl-enum-ciphers -p 5671 rabbitmq.example.com
 
 ```bash
 # Check TLS listeners
-rabbitmqctl status | grep -A10 "SSL listeners"
+rabbitmq-diagnostics -s listeners
 
 # Check TLS settings
 rabbitmqctl eval 'application:get_env(rabbit, ssl_options).'
@@ -407,6 +419,7 @@ Instead of username/password, authenticate using client certificates.
 # Extract username from certificate CN
 auth_mechanisms.1 = EXTERNAL
 auth_mechanisms.2 = PLAIN
+ssl_cert_login_from = common_name
 
 # SSL peer verification settings
 ssl_options.verify = verify_peer
@@ -423,11 +436,11 @@ rabbitmq-plugins enable rabbitmq_auth_mechanism_ssl
 
 ```bash
 # Add user matching the certificate CN
-rabbitmqctl add_user "" ""  # Empty password
-rabbitmqctl set_permissions -p / "" ".*" ".*" ".*"
+rabbitmqctl add_user rabbitmq-client "unused-password"
+rabbitmqctl set_permissions -p / rabbitmq-client ".*" ".*" ".*"
 
-# Or use the certificate CN directly
-# The CN from the certificate becomes the username
+# The EXTERNAL mechanism ignores the password. The username must match
+# the value extracted from the client certificate.
 ```
 
 ### Connect with Certificate Auth
@@ -449,7 +462,7 @@ def connect_with_cert_auth():
     connection_params = pika.ConnectionParameters(
         host='rabbitmq.example.com',
         port=5671,
-        ssl_options=pika.SSLOptions(ssl_context),
+        ssl_options=pika.SSLOptions(ssl_context, 'rabbitmq.example.com'),
         credentials=pika.ExternalCredentials()  # Use EXTERNAL auth
     )
 
