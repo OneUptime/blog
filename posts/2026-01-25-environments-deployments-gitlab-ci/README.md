@@ -14,7 +14,7 @@ GitLab environments give you visibility into what's deployed where. They track d
 
 An environment represents a deployment target like staging or production. When a job deploys to an environment, GitLab records the deployment and links it to the commit that was deployed.
 
-Environments appear in your project's Operations menu, showing current deployments, history, and URLs for each target.
+Environments appear under Operate > Environments in your project, showing current deployments, history, and URLs for each target.
 
 ## Basic Environment Configuration
 
@@ -133,14 +133,14 @@ deploy-production:
     url: https://example.com
   # Require manual trigger
   when: manual
-  # Only allow from protected branches
+  # Only allow from main
   only:
     - main
   # Prevent accidental parallel deployments
   resource_group: production
 ```
 
-For more control, configure protected environments in GitLab settings. Navigate to Settings, then CI/CD, then Protected Environments. You can require approval from specific users or groups before deployment proceeds.
+For more control, configure protected environments in GitLab settings. Navigate to Settings, then CI/CD, then Protected Environments. On GitLab Premium or Ultimate, you can require approval from specific users or groups before deployment proceeds.
 
 ## Deployment Workflow
 
@@ -211,7 +211,7 @@ deploy-production:
     url: https://example.com
   rules:
     # Skip during deployment freeze
-    - if: $CI_DEPLOY_FREEZE != null
+    - if: '$CI_DEPLOY_FREEZE'
       when: never
     - if: $CI_COMMIT_BRANCH == "main"
       when: manual
@@ -223,7 +223,7 @@ Configure deployment freezes in Settings, then CI/CD, then Deploy Freezes. Speci
 
 GitLab tracks deployment history, making rollbacks straightforward.
 
-From the Environments page, click the re-deploy button on any previous deployment. GitLab creates a new deployment using the exact same artifact from the original.
+From the Environments page, open the deployment history and select a previous deployment to roll back to. GitLab redeploys a previous successful deployment when rollback is available.
 
 For programmatic rollbacks, use job artifacts.
 
@@ -257,14 +257,14 @@ rollback:
   stage: deploy
   script:
     # Fetch artifact from a previous pipeline
-    - 'curl --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${ROLLBACK_TO}/download?job=build" -o artifact.zip'
+    - 'curl --location --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${ROLLBACK_TO}/download?job=build" -o artifact.zip'
     - unzip artifact.zip
     - ./deploy.sh production
   environment:
     name: production
   when: manual
   variables:
-    ROLLBACK_TO: ""  # Set via trigger or manual input
+    ROLLBACK_TO: ""  # Set to a branch, tag, or merge request ref
 ```
 
 ## Kubernetes Deployments
@@ -279,17 +279,19 @@ deploy-staging:
     entrypoint: [""]
   script:
     # Use GitLab's Kubernetes agent
-    - kubectl config use-context my-project:staging-agent
+    - kubectl config use-context my-group/my-project:staging-agent
     - kubectl apply -f k8s/staging/
     - kubectl rollout status deployment/my-app -n staging
   environment:
     name: staging
     url: https://staging.example.com
     kubernetes:
-      namespace: staging
+      agent: my-group/my-project:staging-agent
+      dashboard:
+        namespace: staging
 ```
 
-The Kubernetes integration adds deployment status directly to merge requests and enables Auto DevOps features.
+The Kubernetes agent gives CI jobs a Kubernetes context and can connect environments to the Kubernetes dashboard in GitLab.
 
 ## Incremental Rollouts
 
