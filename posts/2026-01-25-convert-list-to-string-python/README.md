@@ -33,7 +33,7 @@ print(combined)  # 'HelloWorldfromPython'
 
 ### Important: join() Requires Strings
 
-The `join()` method only works with lists of strings.
+The `join()` method only works with iterables whose elements are strings.
 
 ```python
 numbers = [1, 2, 3, 4, 5]
@@ -108,7 +108,7 @@ def to_csv_line(values):
     quoted = []
     for v in values:
         s = str(v)
-        if ',' in s or '"' in s or '\n' in s:
+        if ',' in s or '"' in s or '\n' in s or '\r' in s:
             s = '"' + s.replace('"', '""') + '"'
         quoted.append(s)
     return ','.join(quoted)
