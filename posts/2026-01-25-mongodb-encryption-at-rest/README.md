@@ -12,7 +12,7 @@ Encryption at rest protects your MongoDB data when it is stored on disk. Even if
 
 ## How Encryption at Rest Works in MongoDB
 
-MongoDB Enterprise and MongoDB Atlas support native encryption at rest using the WiredTiger storage engine. The encryption happens at the storage layer, meaning all data files, journals, and indexes are encrypted transparently.
+MongoDB Enterprise supports native encryption at rest using the WiredTiger storage engine. MongoDB Atlas encrypts cluster storage and snapshot volumes at rest by default, and can add database-level encryption with customer-managed keys. For the self-managed encrypted storage engine, the encryption happens at the storage layer, meaning data files, journals, and indexes are encrypted transparently.
 
 ```mermaid
 graph TB
@@ -30,11 +30,11 @@ graph TB
 
 ## Encryption Methods Available
 
-MongoDB supports several key management approaches:
+MongoDB supports several key management approaches, depending on where you run it:
 
-1. **Local Keyfile**: Simplest setup, key stored in a file on disk
-2. **KMIP**: Integration with Key Management Interoperability Protocol servers
-3. **Cloud KMS**: AWS KMS, Azure Key Vault, or Google Cloud KMS
+1. **Local Keyfile**: Simplest self-managed setup, key stored in a file on disk
+2. **KMIP**: Self-managed integration with Key Management Interoperability Protocol servers
+3. **Cloud KMS**: Atlas customer-managed keys with AWS KMS, Azure Key Vault, or Google Cloud KMS
 
 ## Setting Up Local Keyfile Encryption
 
@@ -76,8 +76,6 @@ security:
   # Path to the local keyfile for encryption
   encryptionKeyFile: /etc/mongodb/encryption-keyfile
 
-  # Encryption key rotation interval (optional)
-  # encryptionKeyRotationIntervalSec: 86400
 ```
 
 Restart MongoDB to apply changes:
@@ -86,8 +84,8 @@ Restart MongoDB to apply changes:
 # Restart MongoDB service
 sudo systemctl restart mongod
 
-# Verify encryption is enabled
-mongosh --eval "db.serverStatus().wiredTiger.encryptionAtRest"
+# Verify MongoDB started with encryption enabled
+mongosh --eval "db.serverCmdLineOpts().parsed.security"
 ```
 
 ## Configuring KMIP Integration
@@ -123,50 +121,25 @@ security:
 
 ## AWS KMS Integration
 
-When running on AWS, integrate with AWS Key Management Service for managed encryption keys.
+When running in MongoDB Atlas on AWS, you can add customer-managed encryption keys with AWS KMS. Atlas manages the underlying cluster configuration; you do not configure AWS KMS by adding a `security.kms.aws` block to `mongod.conf` on a self-managed server.
 
-```yaml
-# /etc/mongod.conf
-# AWS KMS configuration
-
-security:
-  # Enable encryption at rest (MongoDB Enterprise only)
-  enableEncryption: true
-
-  # Cipher mode for encryption at rest
-  encryptionCipherMode: AES256-CBC
-
-  # AWS KMS configuration
-  kms:
-    aws:
-      # KMS key ARN
-      keyId: "arn:aws:kms:us-east-1:123456789:key/abc123-def456"
-      # AWS region
-      region: "us-east-1"
-      # Optional: specify credentials file
-      # accessKeyId and secretAccessKey can also be environment variables
-```
-
-Set up AWS credentials for MongoDB:
+Set up AWS KMS access for Atlas:
 
 ```bash
-# Option 1: Environment variables
-export AWS_ACCESS_KEY_ID="your-access-key"
-export AWS_SECRET_ACCESS_KEY="your-secret-key"
-
-# Option 2: IAM role (recommended for EC2 instances)
-# Attach an IAM role with KMS permissions to the EC2 instance
-
-# Required IAM permissions for the role
+# Create an AWS KMS key and grant Atlas the required KMS permissions.
+# In Atlas, enable Encryption at Rest using Customer Key Management
+# and provide the AWS IAM role or access credentials requested by Atlas.
+#
+# The IAM policy needs permissions such as:
 # {
 #   "Version": "2012-10-17",
 #   "Statement": [
 #     {
 #       "Effect": "Allow",
 #       "Action": [
+#         "kms:DescribeKey",
 #         "kms:Decrypt",
-#         "kms:Encrypt",
-#         "kms:GenerateDataKey"
+#         "kms:Encrypt"
 #       ],
 #       "Resource": "arn:aws:kms:us-east-1:123456789:key/abc123-def456"
 #     }
@@ -179,20 +152,23 @@ export AWS_SECRET_ACCESS_KEY="your-secret-key"
 After enabling encryption, verify it is working correctly.
 
 ```javascript
-// Connect to MongoDB and check encryption status
-const status = db.serverStatus();
+// Connect to MongoDB and check startup configuration
+const options = db.serverCmdLineOpts();
 
-// Check WiredTiger encryption settings
-print("Encryption at rest status:");
-printjson(status.wiredTiger.encryptionAtRest);
+// Check encryption settings passed to mongod
+print("Encryption at rest configuration:");
+printjson(options.parsed.security);
 
 // Expected output for enabled encryption:
 // {
-//   "cipher": "AES256-CBC",
-//   "enabled": true,
-//   "keySource": "kmip" // or "keyfile"
+//   "enableEncryption": true,
+//   "encryptionCipherMode": "AES256-CBC",
+//   "encryptionKeyFile": "/etc/mongodb/encryption-keyfile"
+//   // or "kmip": { ... }
 // }
 ```
+
+You can also check the MongoDB log for a successful encryption key manager initialization message.
 
 Verify data files are encrypted:
 
@@ -218,6 +194,7 @@ sudo systemctl stop mongod
 # Step 3: Generate encryption key (if using local keyfile)
 openssl rand -base64 32 > /etc/mongodb/encryption-keyfile
 chmod 600 /etc/mongodb/encryption-keyfile
+chown mongodb:mongodb /etc/mongodb/encryption-keyfile
 
 # Step 4: Update configuration with encryption settings
 # Edit /etc/mongod.conf as shown above
@@ -234,55 +211,60 @@ mongorestore --uri="mongodb://localhost:27017" /backup/pre-encryption
 
 ## Key Rotation
 
-Regular key rotation is a security best practice. MongoDB supports master key rotation without downtime.
+Regular key rotation is a security best practice. MongoDB supports KMIP master key rotation by rotating one replica set member at a time.
 
-```javascript
-// Rotate the encryption key (requires enterprise)
-// This re-encrypts the internal keystore with a new master key
-// Data files themselves use internal keys that remain unchanged
+```yaml
+# /etc/mongod.conf
+# Temporarily add this to one replica set member at a time for KMIP rotation
 
-// For KMIP:
-// 1. Generate new key in KMIP server
-// 2. Update MongoDB configuration with new key identifier
-// 3. Run key rotation command:
-
-db.adminCommand({
-  rotateMasterKey: 1
-});
-
-// Verify rotation succeeded
-db.adminCommand({ serverStatus: 1 }).wiredTiger.encryptionAtRest
+security:
+  enableEncryption: true
+  kmip:
+    rotateMasterKey: true
+    serverName: kmip.example.com
+    port: 5696
+    clientCertificateFile: /etc/mongodb/kmip-client.pem
+    serverCAFile: /etc/mongodb/kmip-ca.pem
+    # Optional: update keyIdentifier to an existing new KMIP key
+    # keyIdentifier: "mongodb-encryption-key-prod-v2"
 ```
 
-For automated key rotation:
+This re-encrypts the internal keystore with a new master key. The database keys are otherwise left unchanged, so MongoDB does not re-encrypt the entire data set.
+
+For KMIP master key rotation:
+
+1. Restart one secondary with `security.kmip.rotateMasterKey: true`
+2. After rotation succeeds, `mongod` exits
+3. Remove `security.kmip.rotateMasterKey` and restart the member normally
+4. Repeat for the remaining secondaries
+5. Step down the primary and rotate the old primary after it becomes a secondary
+
+Key rotation is not available for local key management. If your use case requires key rotation, use KMIP.
+
+For a rolling KMIP rotation helper:
 
 ```bash
 #!/bin/bash
-# key-rotation.sh
-# Automated key rotation script
-
-# Generate new keyfile
-NEW_KEY=$(openssl rand -base64 32)
-echo "$NEW_KEY" > /etc/mongodb/encryption-keyfile.new
-chmod 600 /etc/mongodb/encryption-keyfile.new
+# kmip-rotation.sh
+# Rolling KMIP master key rotation helper
 
 # Perform rolling rotation across replica set members
 # This is simplified - production scripts need more error handling
 
-for host in mongo1 mongo2 mongo3; do
+for host in mongo2 mongo3; do
   echo "Rotating key on $host"
 
-  # Copy new keyfile
-  scp /etc/mongodb/encryption-keyfile.new $host:/etc/mongodb/encryption-keyfile.new
+  # Add security.kmip.rotateMasterKey: true to this member's mongod.conf
+  ssh $host "sudo systemctl restart mongod"
 
-  # Trigger rotation
-  ssh $host "mongosh --eval 'db.adminCommand({rotateMasterKey: 1})'"
+  # mongod exits after successful rotation; remove rotateMasterKey and restart
+  ssh $host "sudo systemctl start mongod"
 
   # Wait for member to catch up
   sleep 30
 done
 
-echo "Key rotation complete"
+echo "Step down the primary, then rotate the old primary after it becomes secondary"
 ```
 
 ## Backup Considerations
@@ -338,7 +320,7 @@ benchmarkWrites(10000);
 
 **MongoDB fails to start after enabling encryption:**
 - Verify keyfile permissions (600, owned by mongodb user)
-- Check keyfile content is exactly 32 bytes base64 encoded
+- Check that the keyfile is base64 encoded and only readable by the owner of the `mongod` process
 - Review MongoDB logs: `journalctl -u mongod -n 100`
 
 **KMIP connection failures:**
@@ -353,4 +335,4 @@ benchmarkWrites(10000);
 
 ## Summary
 
-Encryption at rest is essential for protecting sensitive data. Start with local keyfile encryption for development, then move to KMIP or cloud KMS for production. Remember that encryption at rest protects data on disk but not data in transit or in memory. Combine with TLS encryption and proper access controls for comprehensive security.
+Encryption at rest is essential for protecting sensitive data. Start with local keyfile encryption for development, then move to KMIP for self-managed production deployments or Atlas cloud KMS for Atlas deployments. Remember that encryption at rest protects data on disk but not data in transit or in memory. Combine with TLS encryption and proper access controls for comprehensive security.
