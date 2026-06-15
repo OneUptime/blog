@@ -96,7 +96,8 @@ Here is a complete chat system using Redis Pub/Sub with Express and WebSocket:
 ```javascript
 const express = require('express');
 const { createServer } = require('http');
-const { WebSocketServer } = require('ws');
+const WebSocket = require('ws');
+const { WebSocketServer } = WebSocket;
 const Redis = require('ioredis');
 
 const app = express();
@@ -120,7 +121,7 @@ subscriber.on('pmessage', (pattern, channel, message) => {
 
     // Broadcast to all clients in the room
     for (const client of clients) {
-        if (client.readyState === 1) {  // WebSocket.OPEN
+        if (client.readyState === WebSocket.OPEN) {
             client.send(message);
         }
     }
@@ -246,7 +247,7 @@ flowchart TD
 const cluster = require('cluster');
 const numCPUs = require('os').cpus().length;
 
-if (cluster.isMaster) {
+if (cluster.isPrimary) {
     // Fork workers
     for (let i = 0; i < numCPUs; i++) {
         cluster.fork();
@@ -385,25 +386,17 @@ function createResilientSubscriber() {
             console.log(`Reconnecting in ${delay}ms...`);
             return delay;
         },
+        autoResubscribe: true,
         maxRetriesPerRequest: null  // Keep retrying
     });
-
-    // Track subscribed channels
-    const channels = new Set();
-    const patterns = new Set();
 
     subscriber.on('connect', () => {
         console.log('Connected to Redis');
     });
 
     subscriber.on('ready', () => {
-        // Resubscribe after reconnection
-        if (channels.size > 0) {
-            subscriber.subscribe(...channels);
-        }
-        if (patterns.size > 0) {
-            subscriber.psubscribe(...patterns);
-        }
+        // ioredis automatically resubscribes after reconnect by default
+        console.log('Redis subscriber ready');
     });
 
     subscriber.on('error', (err) => {
@@ -413,19 +406,6 @@ function createResilientSubscriber() {
     subscriber.on('close', () => {
         console.log('Connection closed');
     });
-
-    // Wrap subscribe to track channels
-    const originalSubscribe = subscriber.subscribe.bind(subscriber);
-    subscriber.subscribe = (...args) => {
-        args.forEach(ch => channels.add(ch));
-        return originalSubscribe(...args);
-    };
-
-    const originalPsubscribe = subscriber.psubscribe.bind(subscriber);
-    subscriber.psubscribe = (...args) => {
-        args.forEach(p => patterns.add(p));
-        return originalPsubscribe(...args);
-    };
 
     return subscriber;
 }
@@ -438,7 +418,7 @@ const subscriber = createResilientSubscriber();
 ```javascript
 const Redis = require('ioredis');
 
-// 1. Use connection pooling for publishers
+// 1. Use a shared Redis Cluster client when publishing through Redis Cluster
 const publisher = new Redis.Cluster([
     { host: 'redis-1', port: 6379 },
     { host: 'redis-2', port: 6379 },
@@ -477,10 +457,10 @@ class BatchPublisher {
 function publishWithSizeLimit(channel, data, maxSize = 1024 * 1024) {
     const message = JSON.stringify(data);
 
-    if (message.length > maxSize) {
+    if (Buffer.byteLength(message, 'utf8') > maxSize) {
         // Store large payloads separately
         const key = `message:${Date.now()}`;
-        publisher.setex(key, 60, message);
+        publisher.set(key, message, 'EX', 60);
         return publisher.publish(channel, JSON.stringify({ ref: key }));
     }
 
