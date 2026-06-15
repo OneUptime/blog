@@ -401,6 +401,7 @@ log "Reason: Scheduled DR test"
 log "Step 1: Updating status page"
 curl -X POST https://api.statuspage.io/v1/pages/xxx/incidents \
     -H "Authorization: OAuth $STATUSPAGE_TOKEN" \
+    -H "Content-Type: application/json" \
     -d '{
         "incident": {
             "name": "Scheduled DR Test - Brief Service Interruption",
@@ -426,7 +427,7 @@ while true; do
         --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
         --period 60 \
         --statistics Average \
-        --query 'Datapoints[0].Average' \
+        --query 'sort_by(Datapoints,&Timestamp)[-1].Average' \
         --output text)
 
     if [ "$LAG" = "0" ] || [ "$LAG" = "0.0" ]; then
@@ -481,8 +482,9 @@ log "=== FAILOVER COMPLETE ==="
 log "Total duration: $DURATION seconds"
 
 # Update status page
-curl -X PATCH https://api.statuspage.io/v1/pages/xxx/incidents/yyy \
+curl -X PUT https://api.statuspage.io/v1/pages/xxx/incidents/yyy \
     -H "Authorization: OAuth $STATUSPAGE_TOKEN" \
+    -H "Content-Type: application/json" \
     -d '{
         "incident": {
             "status": "resolved",
