@@ -21,7 +21,7 @@ ERROR: temporary file size exceeds temp_file_limit (1048576kB)
 ```
 
 It means:
-1. A query needed more memory than `work_mem` allows
+1. A query operation needed more memory than its memory limit, often `work_mem`
 2. The query started writing temporary files to disk
 3. The temporary files exceeded the `temp_file_limit`
 
@@ -85,16 +85,17 @@ ORDER BY some_column;
 ### Monitor Active Queries
 
 ```sql
--- Check for queries currently using temp files
+-- Find active queries that may be creating temp files
+-- pg_stat_activity does not expose per-query temp block counters
 SELECT
     pid,
     now() - query_start AS duration,
-    temp_blks_read,
-    temp_blks_written,
+    wait_event_type,
+    wait_event,
     query
 FROM pg_stat_activity
-WHERE temp_blks_written > 0
-AND state = 'active';
+WHERE state = 'active'
+ORDER BY query_start;
 ```
 
 ---
@@ -107,7 +108,7 @@ AND state = 'active';
 -- Increase limit for current session
 SET temp_file_limit = '10GB';
 
--- Or in postgresql.conf for all sessions
+-- Or in postgresql.conf for all processes
 -- temp_file_limit = 10GB
 
 -- Remove limit entirely (use with caution)
@@ -193,7 +194,7 @@ SET temp_tablespaces = 'temp_space';
 ```sql
 -- Instead of sorting entire table
 -- Bad:
-SELECT * FROM events ORDER BY event_time INTO OUTFILE '/tmp/events.csv';
+COPY (SELECT * FROM events ORDER BY event_time) TO '/tmp/events.csv' WITH CSV;
 
 -- Better: Process in batches
 DO $$
@@ -228,7 +229,7 @@ END $$;
 
 ```sql
 -- Problem: Sorting large result set
-EXPLAIN SELECT * FROM users ORDER BY name;
+EXPLAIN (ANALYZE, BUFFERS) SELECT * FROM users ORDER BY name;
 -- Sort Method: external merge Disk: 500MB
 
 -- Solution 1: Add index
@@ -264,7 +265,7 @@ RESET work_mem;
 -- Solution 2: Ensure join columns are indexed
 CREATE INDEX idx_orders_customer_id ON orders (customer_id);
 
--- Solution 3: Use LIMIT if you do not need all results
+-- Solution 3: Filter the input if you do not need all results
 SELECT o.*, c.*
 FROM orders o
 JOIN customers c ON o.customer_id = c.id
@@ -357,8 +358,8 @@ WHERE datname = current_database();
 
 ```ini
 # postgresql.conf
-work_mem = 64MB           # Per operation
-temp_file_limit = 5GB     # Per session
+work_mem = 64MB           # Base limit per operation
+temp_file_limit = 5GB     # Per process
 maintenance_work_mem = 1GB  # For VACUUM, CREATE INDEX
 ```
 
