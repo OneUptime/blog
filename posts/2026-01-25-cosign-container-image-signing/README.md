@@ -64,9 +64,9 @@ flowchart LR
 brew install cosign
 
 # Linux (download from GitHub)
-wget https://github.com/sigstore/cosign/releases/download/v2.2.2/cosign-linux-amd64
-chmod +x cosign-linux-amd64
+curl -O -L https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
 sudo mv cosign-linux-amd64 /usr/local/bin/cosign
+sudo chmod +x /usr/local/bin/cosign
 
 # Verify installation
 cosign version
@@ -95,8 +95,9 @@ docker push myregistry.io/myapp:v1.0
 # Sign the image (prompts for private key password)
 cosign sign --key cosign.key myregistry.io/myapp:v1.0
 
-# The signature is stored as a separate artifact in the registry
-# at myregistry.io/myapp:sha256-<digest>.sig
+# The signature is attached to the image in the registry
+# and can be inspected with:
+cosign tree myregistry.io/myapp:v1.0
 ```
 
 ### Verify a Signature
@@ -188,7 +189,7 @@ jobs:
           tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4.1.0
 
       - name: Sign the image (keyless)
         env:
@@ -201,7 +202,7 @@ jobs:
           cosign verify \
             --certificate-identity="https://github.com/${{ github.repository }}/.github/workflows/build-sign.yml@refs/heads/main" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
 ```
 
 ### GitLab CI
@@ -287,7 +288,7 @@ spec:
           attestors:
             - entries:
                 - keyless:
-                    subject: "https://github.com/myorg/*"
+                    subjectRegExp: "https://github\\.com/myorg/.+"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
@@ -332,14 +333,14 @@ kubectl label namespace production policy.sigstore.dev/include=true
 
 ## Storing Signatures in Transparency Log
 
-Cosign automatically records signatures in Rekor, Sigstore's transparency log:
+For keyless signing, Cosign records signing metadata and proof of inclusion in Sigstore's transparency log:
 
 ```bash
-# Search for signatures in Rekor
-rekor-cli search --email user@example.com
+# Search for entries in Rekor by artifact hash
+rekor-cli search --rekor_server https://rekor.sigstore.dev --sha sha256:<artifact-hash>
 
 # Get signature entry details
-rekor-cli get --uuid <entry-uuid>
+rekor-cli get --rekor_server https://rekor.sigstore.dev --uuid <entry-uuid>
 ```
 
 The transparency log provides:
@@ -349,7 +350,7 @@ The transparency log provides:
 
 ## Signing with Hardware Keys
 
-For high-security environments, sign with hardware security modules:
+For high-security environments, sign with hardware security modules. Security-key support requires a Cosign binary built with hardware-token support:
 
 ```bash
 # Sign using a Yubikey
@@ -359,7 +360,7 @@ cosign sign --sk myregistry.io/myapp:v1.0
 cosign sign --key awskms:///alias/my-signing-key myregistry.io/myapp:v1.0
 
 # Sign using GCP KMS
-cosign sign --key gcpkms://projects/my-project/locations/global/keyRings/my-ring/cryptoKeys/my-key \
+cosign sign --key gcpkms://projects/my-project/locations/global/keyRings/my-ring/cryptoKeys/my-key/versions/1 \
   myregistry.io/myapp:v1.0
 
 # Sign using HashiCorp Vault
