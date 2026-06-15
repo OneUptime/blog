@@ -32,16 +32,16 @@ gitleaks is a single binary written in Go. Install it using your package manager
 brew install gitleaks
 
 # Linux (download from GitHub releases)
-wget https://github.com/gitleaks/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz
-tar -xzf gitleaks_8.18.0_linux_x64.tar.gz
+wget https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+tar -xzf gitleaks_8.30.1_linux_x64.tar.gz
 sudo mv gitleaks /usr/local/bin/
 
 # Using Docker
-docker run --rm -v $(pwd):/repo zricethezav/gitleaks:latest detect --source /repo
+docker run --rm -v "$(pwd):/repo" ghcr.io/gitleaks/gitleaks:latest git /repo
 
 # Verify installation
 gitleaks version
-# gitleaks version 8.18.0
+# v8.30.1
 ```
 
 ## Basic Scanning
@@ -49,17 +49,17 @@ gitleaks version
 Run gitleaks against your repository:
 
 ```bash
-# Scan the current directory (checks all commits)
-gitleaks detect --source .
+# Scan the current directory's Git history
+gitleaks git .
 
 # Scan only staged changes (pre-commit hook use case)
-gitleaks protect --source . --staged
+gitleaks git --staged .
 
 # Scan specific commits
-gitleaks detect --source . --log-opts="HEAD~10..HEAD"
+gitleaks git --log-opts="HEAD~10..HEAD" .
 
 # Output results as JSON
-gitleaks detect --source . --report-format json --report-path results.json
+gitleaks git --report-format json --report-path results.json .
 ```
 
 When gitleaks finds a secret, it outputs the file, line, commit, and secret type:
@@ -90,10 +90,10 @@ gitleaks uses regular expressions and entropy analysis to detect secrets. The de
 - Private keys (RSA, SSH, PGP)
 - Generic high-entropy strings
 
-View the built-in rules:
+Run with verbose output to see which rules are triggered during a scan:
 
 ```bash
-gitleaks detect --source . --verbose
+gitleaks git --verbose .
 ```
 
 ## Custom Configuration
@@ -112,16 +112,18 @@ useDefault = true
 id = "internal-api-key"
 description = "Internal API Key"
 regex = '''(?i)INTERNAL_API_KEY\s*[=:]\s*['"]?([a-zA-Z0-9]{32,})['"]?'''
+secretGroup = 1
 tags = ["internal", "api"]
 
 [[rules]]
 id = "database-url"
 description = "Database connection string"
-regex = '''(?i)(postgres|mysql|mongodb):\/\/[^:]+:[^@]+@[^\s]+'''
+regex = '''(?i)(?:postgres|mysql|mongodb):\/\/[^:]+:([^@]+)@[^\s]+'''
+secretGroup = 1
 tags = ["database", "credentials"]
 
 # Define paths to ignore (vendored code, test fixtures)
-[allowlist]
+[[allowlists]]
 description = "Global allowlist"
 paths = [
     '''vendor/''',
@@ -131,21 +133,21 @@ paths = [
 ]
 
 # Ignore specific files
-[[rules.allowlist]]
+[[allowlists]]
 paths = [
     '''\.env\.example''',
     '''config/settings\.example\.py''',
 ]
 
 # Ignore specific patterns (known false positives)
-[[rules.allowlist]]
+[[allowlists]]
 regexes = [
     '''AKIAIOSFODNN7EXAMPLE''',  # AWS example key from docs
     '''wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY''',  # AWS example secret
 ]
 
 # Ignore specific commits (after remediation)
-[[rules.allowlist]]
+[[allowlists]]
 commits = [
     "a1b2c3d4e5f6789012345678901234567890abcd",
 ]
@@ -154,7 +156,7 @@ commits = [
 Use your custom config:
 
 ```bash
-gitleaks detect --source . --config .gitleaks.toml
+gitleaks git --config .gitleaks.toml .
 ```
 
 ## Pre-Commit Hook Integration
@@ -169,7 +171,7 @@ pip install pre-commit
 cat > .pre-commit-config.yaml << 'EOF'
 repos:
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.0
+    rev: v8.30.1
     hooks:
       - id: gitleaks
 EOF
@@ -211,14 +213,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Full history needed for scanning all commits
 
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Required for organization repositories
           # Scan only new commits in PR
           GITLEAKS_ENABLE_COMMENTS: true
 ```
@@ -232,10 +235,12 @@ stages:
 
 gitleaks:
   stage: security
-  image: zricethezav/gitleaks:latest
+  image:
+    name: ghcr.io/gitleaks/gitleaks:latest
+    entrypoint: [""]
   script:
     # Scan commits in this branch only
-    - gitleaks detect --source . --log-opts="${CI_COMMIT_BEFORE_SHA}..${CI_COMMIT_SHA}" --verbose
+    - gitleaks git --log-opts="${CI_COMMIT_BEFORE_SHA}..${CI_COMMIT_SHA}" --verbose .
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -252,8 +257,8 @@ pipeline {
         stage('Secret Scan') {
             steps {
                 sh '''
-                    docker run --rm -v ${WORKSPACE}:/repo zricethezav/gitleaks:latest \
-                        detect --source /repo --verbose --exit-code 1
+                    docker run --rm -v ${WORKSPACE}:/repo ghcr.io/gitleaks/gitleaks:latest \
+                        git /repo --verbose --exit-code 1
                 '''
             }
         }
@@ -274,13 +279,13 @@ When onboarding an existing repository, scan all historical commits:
 
 ```bash
 # Full history scan (may take time for large repos)
-gitleaks detect --source . --verbose --report-format sarif --report-path gitleaks.sarif
+gitleaks git --verbose --report-format sarif --report-path gitleaks.sarif .
 
 # Scan specific branch
-gitleaks detect --source . --log-opts="origin/main"
+gitleaks git --log-opts="origin/main" .
 
 # Scan all branches
-gitleaks detect --source . --log-opts="--all"
+gitleaks git --log-opts="--all" .
 ```
 
 ## Remediation Workflow
@@ -316,10 +321,10 @@ For repositories with existing secrets in history that cannot be cleaned:
 
 ```bash
 # Generate a baseline of known issues
-gitleaks detect --source . --report-format json --report-path .gitleaks-baseline.json
+gitleaks git --report-format json --report-path .gitleaks-baseline.json .
 
 # Future scans compare against baseline
-gitleaks detect --source . --baseline-path .gitleaks-baseline.json
+gitleaks git --baseline-path .gitleaks-baseline.json .
 ```
 
 New secrets trigger failures; historical ones are ignored.
@@ -330,7 +335,7 @@ Track secret scanning effectiveness:
 
 ```bash
 # Count findings by rule type
-gitleaks detect --source . --report-format json --report-path - | \
+gitleaks git --report-format json --report-path - . | \
   jq -r '.[].RuleID' | sort | uniq -c | sort -rn
 ```
 
