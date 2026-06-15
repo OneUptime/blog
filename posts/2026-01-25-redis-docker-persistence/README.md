@@ -12,7 +12,7 @@ Running Redis in Docker is easy. Running it without losing data on container res
 
 ## The Persistence Problem
 
-By default, Redis stores everything in memory. When a container stops, all data is gone. Docker volumes solve the storage problem, but you also need Redis configured to write data to disk.
+Redis serves data from memory, and persistence writes that data to disk. Without a persistent data directory and Redis persistence enabled, data can be lost when a container is removed or Redis stops before writing a snapshot. Docker volumes solve the storage problem, but you also need Redis configured to write data to disk.
 
 ```mermaid
 flowchart TD
@@ -89,7 +89,7 @@ docker run -d \
 
 ### Combined Persistence
 
-For production, use both RDB and AOF. RDB provides fast restarts and backup snapshots, while AOF ensures minimal data loss.
+For production, use both RDB and AOF. RDB provides backup snapshots, while AOF is used on restart and ensures minimal data loss.
 
 ```bash
 # Run Redis with both RDB and AOF
@@ -110,8 +110,6 @@ docker run -d \
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -139,7 +137,7 @@ services:
 
     # Health check ensures container is actually working
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "your-secure-password-here", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -242,7 +240,7 @@ EXPOSE 6379
 
 # Health check
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=5 \
-  CMD redis-cli ping || exit 1
+  CMD redis-cli -a your-secure-password-here ping || exit 1
 
 # Start Redis with custom config
 CMD ["redis-server", "/usr/local/etc/redis/redis.conf"]
@@ -373,7 +371,12 @@ spec:
 ```python
 import redis
 
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+r = redis.Redis(
+    host='localhost',
+    port=6379,
+    password='your-secure-password-here',
+    decode_responses=True,
+)
 
 def check_persistence_status():
     """
@@ -381,10 +384,11 @@ def check_persistence_status():
     Useful for monitoring and alerting.
     """
     info = r.info()
+    config = r.config_get('save')
 
     status = {
         # RDB status
-        'rdb_enabled': info.get('rdb_bgsave_in_progress', 0) is not None,
+        'rdb_enabled': bool(config.get('save')),
         'rdb_last_save_time': info.get('rdb_last_save_time', 0),
         'rdb_last_bgsave_status': info.get('rdb_last_bgsave_status', 'unknown'),
         'rdb_last_bgsave_time_sec': info.get('rdb_last_bgsave_time_sec', 0),
@@ -413,12 +417,12 @@ def check_persistence_health():
     issues = []
 
     # Check RDB status
-    if status['rdb_last_bgsave_status'] != 'ok':
+    if status['rdb_enabled'] and status['rdb_last_bgsave_status'] != 'ok':
         issues.append(f"RDB save failed: {status['rdb_last_bgsave_status']}")
 
     # Check if last save is too old (more than 1 hour)
     import time
-    if time.time() - status['rdb_last_save_time'] > 3600:
+    if status['rdb_enabled'] and time.time() - status['rdb_last_save_time'] > 3600:
         issues.append("RDB snapshot is more than 1 hour old")
 
     # Check AOF status
@@ -451,10 +455,10 @@ else:
 
 ## Graceful Shutdown
 
-Proper shutdown ensures Redis saves all data before the container stops.
+Proper shutdown gives Redis time to flush pending persistence work before the container stops.
 
 ```bash
-# Docker stop sends SIGTERM, Redis saves data and exits cleanly
+# Docker stop sends SIGTERM, Redis shuts down cleanly
 # Default timeout is 10 seconds, increase for large datasets
 docker stop --time=30 redis
 
@@ -472,7 +476,7 @@ docker kill redis
 | **None** | Data lost on restart | Fastest | Caching only |
 | **RDB only** | Up to N minutes of data loss | Fast | Periodic backups acceptable |
 | **AOF everysec** | Up to 1 second of data loss | Good | Most production use |
-| **AOF always** | No data loss | Slower | Maximum durability |
+| **AOF always** | Lowest data-loss risk | Slower | Maximum durability |
 | **RDB + AOF** | Best of both | Good | Recommended for production |
 
 Running Redis in Docker with persistence is straightforward once you understand the options. Use AOF with everysec fsync for most production deployments, add RDB for backup snapshots, and always use volumes to store the data directory.
