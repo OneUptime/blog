@@ -12,7 +12,7 @@ Docker Swarm turns a group of Docker hosts into a single virtual cluster. It pro
 
 ## Swarm Architecture Overview
 
-A Swarm cluster consists of manager and worker nodes. Managers handle orchestration decisions. Workers run the actual containers.
+A Swarm cluster consists of manager and worker nodes. Managers handle orchestration decisions. Workers run containers, and managers can also run workloads unless you drain them.
 
 ```mermaid
 graph TD
@@ -195,6 +195,10 @@ services:
 
   db:
     image: postgres:15
+    secrets:
+      - db_password
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
     deploy:
       replicas: 1
       placement:
@@ -211,9 +215,16 @@ networks:
 
 volumes:
   pgdata:
+
+secrets:
+  db_password:
+    external: true
 ```
 
 ```bash
+# Create the external secret referenced by the stack
+echo "change-this-password" | docker secret create db_password -
+
 # Deploy the stack
 docker stack deploy -c stack.yml myapp
 
@@ -288,7 +299,7 @@ docker service create \
 docker node update --availability drain worker1
 
 # Existing tasks are moved to other nodes
-docker service ps myapp
+docker service ps webapp
 
 # Return node to active status
 docker node update --availability active worker1
@@ -309,7 +320,7 @@ docker node rm worker1
 Swarm provides built-in secret management.
 
 ```bash
-# Create a secret from a file
+# Create a secret from stdin
 echo "supersecretpassword" | docker secret create db_password -
 
 # Create a secret from a file
@@ -394,7 +405,7 @@ Unhealthy containers are automatically replaced by Swarm.
 ### Backup Swarm State
 
 ```bash
-# Stop Docker on manager (brief downtime)
+# Stop Docker on one manager before backup
 sudo systemctl stop docker
 
 # Backup the swarm state
@@ -409,7 +420,9 @@ sudo systemctl start docker
 ```bash
 # On a new manager node
 sudo systemctl stop docker
+sudo rm -rf /var/lib/docker/swarm
 sudo tar -xvzf swarm-backup.tar.gz -C /
+sudo systemctl start docker
 sudo docker swarm init --force-new-cluster
 ```
 
