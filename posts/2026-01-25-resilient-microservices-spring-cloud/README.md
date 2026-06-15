@@ -34,8 +34,9 @@ First, add the necessary dependencies to your `pom.xml`:
         <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
     <dependency>
-        <groupId>org.springframework.cloud</groupId>
-        <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
+        <groupId>io.github.resilience4j</groupId>
+        <artifactId>resilience4j-spring-boot3</artifactId>
+        <version>2.4.0</version>
     </dependency>
     <dependency>
         <groupId>org.springframework.boot</groupId>
@@ -45,10 +46,15 @@ First, add the necessary dependencies to your `pom.xml`:
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <optional>true</optional>
+    </dependency>
 </dependencies>
 ```
 
-The AOP starter is essential since Resilience4j uses aspect-oriented programming for its annotations.
+The AOP starter is essential since Resilience4j uses aspect-oriented programming for its annotations. If you prefer the Spring Cloud CircuitBreaker factory API instead of annotations, use `spring-cloud-starter-circuitbreaker-resilience4j`.
 
 ## Implementing Circuit Breakers
 
@@ -58,6 +64,7 @@ Here is a service that calls an external payment API:
 
 ```java
 @Service
+@Slf4j
 public class PaymentService {
 
     private final RestTemplate restTemplate;
@@ -99,6 +106,8 @@ resilience4j:
   circuitbreaker:
     instances:
       paymentService:
+        # Publish this circuit breaker in actuator health details
+        registerHealthIndicator: true
         # Number of calls to evaluate before deciding state
         slidingWindowSize: 10
         # Percentage of failures that trips the circuit
@@ -166,7 +175,7 @@ resilience4j:
           - com.example.BusinessValidationException
 ```
 
-**Important**: Order matters when combining patterns. Retry should be the outermost decorator, followed by circuit breaker. This way, retries happen before the circuit breaker evaluates the result.
+**Important**: Order matters when combining patterns. With Resilience4j's default annotation aspect order, retry wraps the circuit breaker, so each retry attempt passes through the circuit breaker. If you need the circuit breaker to evaluate only after retries finish, configure the aspect order explicitly or use Resilience4j's functional decorators.
 
 ## Implementing Bulkheads for Isolation
 
@@ -217,6 +226,7 @@ When calling external APIs with usage limits, or when you need to protect downst
 
 ```java
 @Service
+@Slf4j
 public class NotificationService {
 
     @RateLimiter(name = "emailService", fallbackMethod = "queueNotification")
@@ -275,7 +285,7 @@ public class ProductService {
 
     private final WebClient webClient;
 
-    // Patterns are applied in order: Bulkhead -> RateLimiter -> Retry -> CircuitBreaker
+    // Default annotation nesting: Retry -> CircuitBreaker -> RateLimiter -> Bulkhead
     @Bulkhead(name = "productService")
     @RateLimiter(name = "productService")
     @Retry(name = "productService")
