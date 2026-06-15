@@ -30,7 +30,7 @@ The most basic operation is creating an index with explicit settings and mapping
 ```bash
 # Create an index with custom settings
 
-curl -X PUT "localhost:9200/products" -H 'Content-Type: application/json' -d'
+curl -X PUT "localhost:9200/products_v1" -H 'Content-Type: application/json' -d'
 {
   "settings": {
     "number_of_shards": 3,
@@ -139,17 +139,17 @@ sequenceDiagram
     participant V1 as products_v1
     participant V2 as products_v2
 
-    App->>Alias: Reads/Writes
+    App->>Alias: Reads
     Alias->>V1: Routes to v1
     Note over V2: Create v2 with new mappings
     Note over V1,V2: Reindex data from v1 to v2
     Alias->>V2: Swap alias to v2
-    App->>Alias: Continues working
+    App->>Alias: Continues reading
     Alias->>V2: Routes to v2
     Note over V1: Delete old index
 ```
 
-Here's the code to perform a zero-downtime migration:
+Here's the code to perform a zero-downtime migration. If writes are active during the reindex, pause them briefly for the final cutover or use a dual-write/catch-up strategy so writes that arrive after the reindex starts are not missed.
 
 ```bash
 # Step 1: Create the new index with updated mappings
@@ -223,9 +223,22 @@ curl -X POST "localhost:9200/_aliases" -H 'Content-Type: application/json' -d'
       }
     },
     {
+      "remove": {
+        "index": "products_v1",
+        "alias": "products_write"
+      }
+    },
+    {
       "add": {
         "index": "products_v2",
         "alias": "products"
+      }
+    },
+    {
+      "add": {
+        "index": "products_v2",
+        "alias": "products_write",
+        "is_write_index": true
       }
     }
   ]
@@ -284,7 +297,7 @@ Force merge reduces segment count for better query performance. Only run on indi
 
 ```bash
 # Force merge to a single segment
-# Warning: This is resource-intensive and blocks writes
+# Warning: This is resource-intensive and should only be run on read-only indices
 curl -X POST "localhost:9200/products_archive/_forcemerge?max_num_segments=1"
 
 # Force merge with async operation
@@ -293,16 +306,16 @@ curl -X POST "localhost:9200/products_archive/_forcemerge?max_num_segments=1&wai
 
 ### Refresh and Flush
 
-Control when data becomes searchable and when it's persisted to disk.
+Control when data becomes searchable and when Elasticsearch commits index changes.
 
 ```bash
 # Manually refresh an index to make recent changes searchable
 curl -X POST "localhost:9200/products/_refresh"
 
-# Flush the index to persist translog to disk
+# Flush the index to commit Lucene segments and start a new translog
 curl -X POST "localhost:9200/products/_flush"
 
-# Synced flush before planned maintenance (deprecated in 8.x, use flush)
+# Wait for any ongoing flush before running another flush
 curl -X POST "localhost:9200/products/_flush?wait_if_ongoing=true"
 ```
 
@@ -350,6 +363,29 @@ curl -X GET "localhost:9200/_cat/shards/products?v"
 For logs and metrics, use time-based indices with rollover for efficient management.
 
 ```bash
+# Configure automatic rollover
+curl -X PUT "localhost:9200/_ilm/policy/logs_policy" -H 'Content-Type: application/json' -d'
+{
+  "policy": {
+    "phases": {
+      "hot": {
+        "actions": {
+          "rollover": {
+            "max_primary_shard_size": "50GB",
+            "max_age": "1d"
+          }
+        }
+      },
+      "delete": {
+        "min_age": "30d",
+        "actions": {
+          "delete": {}
+        }
+      }
+    }
+  }
+}'
+
 # Create an index template for time-based indices
 curl -X PUT "localhost:9200/_index_template/logs_template" -H 'Content-Type: application/json' -d'
 {
@@ -357,7 +393,9 @@ curl -X PUT "localhost:9200/_index_template/logs_template" -H 'Content-Type: app
   "template": {
     "settings": {
       "number_of_shards": 1,
-      "number_of_replicas": 1
+      "number_of_replicas": 1,
+      "index.lifecycle.name": "logs_policy",
+      "index.lifecycle.rollover_alias": "logs_write"
     },
     "mappings": {
       "properties": {
@@ -374,6 +412,9 @@ curl -X PUT "localhost:9200/_index_template/logs_template" -H 'Content-Type: app
           "type": "keyword"
         }
       }
+    },
+    "aliases": {
+      "logs_read": {}
     }
   }
 }'
@@ -384,30 +425,6 @@ curl -X PUT "localhost:9200/logs-000001" -H 'Content-Type: application/json' -d'
   "aliases": {
     "logs_write": {
       "is_write_index": true
-    },
-    "logs_read": {}
-  }
-}'
-
-# Configure automatic rollover
-curl -X PUT "localhost:9200/_ilm/policy/logs_policy" -H 'Content-Type: application/json' -d'
-{
-  "policy": {
-    "phases": {
-      "hot": {
-        "actions": {
-          "rollover": {
-            "max_size": "50GB",
-            "max_age": "1d"
-          }
-        }
-      },
-      "delete": {
-        "min_age": "30d",
-        "actions": {
-          "delete": {}
-        }
-      }
     }
   }
 }'
@@ -429,11 +446,8 @@ curl -X POST "localhost:9200/logs-2024.01.*/_open"
 # Delete indices matching a pattern
 curl -X DELETE "localhost:9200/logs-2024.01.*"
 
-# Freeze indices for infrequent access (reduces memory usage)
-curl -X POST "localhost:9200/logs-2024.01.01/_freeze"
-
-# Unfreeze when needed
-curl -X POST "localhost:9200/logs-2024.01.01/_unfreeze"
+# For infrequent access in Elasticsearch 8.x, use ILM with cold/frozen data tiers or searchable snapshots.
+# The old _freeze and _unfreeze APIs were removed in Elasticsearch 8.0.
 ```
 
 ---
@@ -444,11 +458,10 @@ Here's a Python helper class for common index management tasks:
 
 ```python
 from elasticsearch import Elasticsearch
-from datetime import datetime
 import time
 
 class IndexManager:
-    def __init__(self, hosts=['localhost:9200']):
+    def __init__(self, hosts=['http://localhost:9200']):
         # Initialize client with retry configuration
         self.es = Elasticsearch(
             hosts,
@@ -470,10 +483,8 @@ class IndexManager:
         # Create the index
         self.es.indices.create(
             index=index_name,
-            body={
-                'settings': default_settings,
-                'mappings': mappings
-            }
+            settings=default_settings,
+            mappings=mappings
         )
 
         # Add the alias
@@ -485,27 +496,23 @@ class IndexManager:
         return True
 
     def reindex_with_zero_downtime(self, source_index, dest_index, alias_name, new_mappings):
-        """Perform zero-downtime reindex with alias swap"""
+        """Perform reindex with alias swap; quiesce or catch up writes before swapping."""
 
         # Create destination index with new mappings
         # Disable refresh during reindex for speed
         self.es.indices.create(
             index=dest_index,
-            body={
-                'settings': {
-                    'refresh_interval': '-1',
-                    'number_of_replicas': 0
-                },
-                'mappings': new_mappings
-            }
+            settings={
+                'refresh_interval': '-1',
+                'number_of_replicas': 0
+            },
+            mappings=new_mappings
         )
 
         # Start async reindex
         task = self.es.reindex(
-            body={
-                'source': {'index': source_index},
-                'dest': {'index': dest_index}
-            },
+            source={'index': source_index},
+            dest={'index': dest_index},
             wait_for_completion=False
         )
 
@@ -526,7 +533,7 @@ class IndexManager:
         # Restore settings
         self.es.indices.put_settings(
             index=dest_index,
-            body={
+            settings={
                 'refresh_interval': '5s',
                 'number_of_replicas': 1
             }
@@ -534,12 +541,10 @@ class IndexManager:
 
         # Atomic alias swap
         self.es.indices.update_aliases(
-            body={
-                'actions': [
-                    {'remove': {'index': source_index, 'alias': alias_name}},
-                    {'add': {'index': dest_index, 'alias': alias_name}}
-                ]
-            }
+            actions=[
+                {'remove': {'index': source_index, 'alias': alias_name}},
+                {'add': {'index': dest_index, 'alias': alias_name}}
+            ]
         )
 
         print(f"Migration complete. Alias '{alias_name}' now points to '{dest_index}'")
@@ -601,7 +606,7 @@ if __name__ == '__main__':
 **Maintenance Windows:**
 - Schedule force merge operations during low-traffic periods
 - Monitor cluster health during reindex operations
-- Keep at least one replica during maintenance
+- Keep at least one replica during maintenance unless you intentionally reduce replicas for a controlled bulk load or reindex
 
 ---
 
