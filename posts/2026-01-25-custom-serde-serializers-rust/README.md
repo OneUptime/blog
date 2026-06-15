@@ -180,25 +180,26 @@ pub struct Task {
 For commonly used transformations, you can create a wrapper type that encapsulates the serialization logic:
 
 ```rust
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use chrono::{DateTime, Utc};
+use serde::{Serialize, Serializer};
 use std::marker::PhantomData;
 
 // Marker trait for serialization strategies
 pub trait TimestampFormat {
-    fn format(secs: i64) -> String;
-    fn parse(s: &str) -> Result<i64, String>;
+    fn to_timestamp(secs: i64) -> i64;
+    fn from_timestamp(value: i64) -> i64;
 }
 
 // Unix timestamp as integer
 pub struct UnixSeconds;
 
 impl TimestampFormat for UnixSeconds {
-    fn format(secs: i64) -> String {
-        secs.to_string()
+    fn to_timestamp(secs: i64) -> i64 {
+        secs
     }
 
-    fn parse(s: &str) -> Result<i64, String> {
-        s.parse().map_err(|e| format!("invalid integer: {}", e))
+    fn from_timestamp(value: i64) -> i64 {
+        value
     }
 }
 
@@ -206,13 +207,12 @@ impl TimestampFormat for UnixSeconds {
 pub struct UnixMillis;
 
 impl TimestampFormat for UnixMillis {
-    fn format(secs: i64) -> String {
-        (secs * 1000).to_string()
+    fn to_timestamp(secs: i64) -> i64 {
+        secs * 1000
     }
 
-    fn parse(s: &str) -> Result<i64, String> {
-        let millis: i64 = s.parse().map_err(|e| format!("invalid integer: {}", e))?;
-        Ok(millis / 1000)
+    fn from_timestamp(value: i64) -> i64 {
+        value / 1000
     }
 }
 
@@ -237,7 +237,7 @@ impl<F: TimestampFormat> Serialize for Timestamp<F> {
     where
         Ser: Serializer,
     {
-        serializer.serialize_i64(self.value.timestamp())
+        serializer.serialize_i64(F::to_timestamp(self.value.timestamp()))
     }
 }
 ```
@@ -359,7 +359,7 @@ pub struct Config {
     pub last_updated: DateTime<Utc>,
 
     // Handle Vec of items serialized as comma-separated string
-    #[serde_as(as = "serde_with::StringWithSeparator::<serde_with::CommaSeparator, String>")]
+    #[serde_as(as = "serde_with::StringWithSeparator::<serde_with::formats::CommaSeparator, String>")]
     pub tags: Vec<String>,
 }
 ```
