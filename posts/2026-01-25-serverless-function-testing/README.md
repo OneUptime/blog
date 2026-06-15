@@ -53,13 +53,17 @@ Test handler functions in isolation:
 
 ```typescript
 // src/handlers/createOrder.ts
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { APIGatewayProxyEvent, APIGatewayProxyResult, Callback, Context } from 'aws-lambda';
 import { OrderService } from '../services/orderService';
 import { validateOrder } from '../utils/validation';
 
 // Dependencies injected for testability
 export const createHandler = (orderService: OrderService) => {
-    return async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    return async (
+        event: APIGatewayProxyEvent,
+        _context?: Context,
+        _callback?: Callback<APIGatewayProxyResult>
+    ): Promise<APIGatewayProxyResult> => {
         try {
             // Parse request body
             const body = JSON.parse(event.body || '{}');
@@ -252,7 +256,7 @@ Transform: AWS::Serverless-2016-10-31
 Globals:
   Function:
     Timeout: 30
-    Runtime: nodejs18.x
+    Runtime: nodejs22.x
     MemorySize: 256
 
 Resources:
@@ -290,7 +294,6 @@ Resources:
 Test events for SAM:
 
 ```json
-// events/createOrder.json
 {
     "body": "{\"items\": [{\"productId\": \"prod-1\", \"quantity\": 2}], \"shippingAddress\": {\"street\": \"123 Main St\", \"city\": \"Test City\"}}",
     "httpMethod": "POST",
@@ -401,7 +404,13 @@ Measure and test cold start performance:
 
 ```typescript
 // tests/performance/coldStart.test.ts
-import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
+import {
+    GetFunctionConfigurationCommand,
+    InvokeCommand,
+    LambdaClient,
+    UpdateFunctionConfigurationCommand,
+    waitUntilFunctionUpdated,
+} from '@aws-sdk/client-lambda';
 
 describe('Cold Start Performance', () => {
     const lambda = new LambdaClient({ region: 'us-east-1' });
@@ -410,20 +419,25 @@ describe('Cold Start Performance', () => {
     // Force cold start by updating config
     async function forceColdStart(): Promise<void> {
         // Updating environment variable forces new container
-        const { LambdaClient, UpdateFunctionConfigurationCommand } = await import('@aws-sdk/client-lambda');
-        const client = new LambdaClient({ region: 'us-east-1' });
+        const currentConfig = await lambda.send(new GetFunctionConfigurationCommand({
+            FunctionName: functionName,
+        }));
 
-        await client.send(new UpdateFunctionConfigurationCommand({
+        await lambda.send(new UpdateFunctionConfigurationCommand({
             FunctionName: functionName,
             Environment: {
                 Variables: {
+                    ...(currentConfig.Environment?.Variables || {}),
                     COLD_START_TRIGGER: Date.now().toString(),
                 },
             },
         }));
 
         // Wait for update to complete
-        await new Promise(r => setTimeout(r, 5000));
+        await waitUntilFunctionUpdated(
+            { client: lambda, maxWaitTime: 60 },
+            { FunctionName: functionName }
+        );
     }
 
     test('cold start completes within SLA', async () => {
@@ -499,7 +513,7 @@ Test Lambda event sources:
 
 ```typescript
 // tests/integration/eventSources.test.ts
-import { SQSClient, SendMessageCommand, ReceiveMessageCommand } from '@aws-sdk/client-sqs';
+import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 describe('Event Source Integration', () => {
@@ -567,13 +581,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Install dependencies
         run: npm ci
 
       - name: Run unit tests
-        run: npm test -- --testPathPattern=unit
+        run: npm test -- --testPathPatterns=unit
 
   integration-tests:
     runs-on: ubuntu-latest
@@ -590,7 +604,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Install dependencies
         run: npm ci
@@ -601,7 +615,7 @@ jobs:
             --endpoint-url http://localhost:8000 \
             --table-name orders-test \
             --attribute-definitions AttributeName=id,AttributeType=S \
-            --key-schema AttributeName=KeyType=HASH \
+            --key-schema AttributeName=id,KeyType=HASH \
             --billing-mode PAY_PER_REQUEST
         env:
           AWS_ACCESS_KEY_ID: test
@@ -609,7 +623,7 @@ jobs:
           AWS_DEFAULT_REGION: us-east-1
 
       - name: Run integration tests
-        run: npm test -- --testPathPattern=integration
+        run: npm test -- --testPathPatterns=integration
         env:
           DYNAMODB_ENDPOINT: http://localhost:8000
           TEST_ORDERS_TABLE: orders-test
@@ -620,7 +634,7 @@ jobs:
 | Test Type | Tools | When to Use |
 |-----------|-------|-------------|
 | **Unit tests** | Jest, mock dependencies | Every change |
-| **Local tests** | SAM CLI, LocalStack | Development |
+| **Local tests** | SAM CLI, DynamoDB Local, LocalStack | Development |
 | **Integration tests** | Real AWS services | Pre-deployment |
 | **Cold start tests** | Lambda invocation | Performance monitoring |
 
