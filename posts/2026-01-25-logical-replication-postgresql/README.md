@@ -8,7 +8,7 @@ Description: Learn how to set up and manage logical replication in PostgreSQL fo
 
 ---
 
-Logical replication lets you selectively replicate data between PostgreSQL databases. Unlike streaming replication which copies the entire database at the physical level, logical replication works at the row level and lets you choose specific tables, filter rows, and even transform data during replication.
+Logical replication lets you selectively replicate data between PostgreSQL databases. Unlike streaming replication which copies the entire database at the physical level, logical replication works at the row level and lets you choose specific tables, filter rows, and select columns during replication.
 
 ## Logical vs Physical Replication
 
@@ -28,7 +28,7 @@ Understanding when to use each approach:
 
 ## Prerequisites
 
-Logical replication requires specific configuration on both publisher and subscriber.
+Logical replication requires specific configuration on the publisher and enough worker capacity on the subscriber.
 
 ### Publisher Configuration
 
@@ -50,9 +50,7 @@ sudo systemctl restart postgresql
 Configure `pg_hba.conf` to allow replication connections:
 
 ```text
-# Allow replication from subscriber IP
-
-host    replication     repl_user    10.0.0.50/32    scram-sha-256
+# Allow logical replication from subscriber IP
 host    all             repl_user    10.0.0.50/32    scram-sha-256
 ```
 
@@ -215,7 +213,7 @@ ALTER TABLE orders ADD COLUMN shipping_method VARCHAR(50) DEFAULT 'standard';
 -- On publisher:
 ALTER TABLE orders ADD COLUMN shipping_method VARCHAR(50) DEFAULT 'standard';
 
--- Step 3: Refresh the subscription to pick up new column
+-- Step 3: Refresh only if you changed publication table membership or column lists
 -- On subscriber:
 ALTER SUBSCRIPTION orders_sub REFRESH PUBLICATION;
 ```
@@ -271,7 +269,9 @@ When lag is minimal:
 ```sql
 -- On old server: Enable read-only mode
 ALTER DATABASE myapp SET default_transaction_read_only = on;
-SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'myapp';
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = 'myapp' AND pid <> pg_backend_pid();
 
 -- Verify final sync on new server
 -- Then update application connection strings to point to new server
@@ -288,13 +288,13 @@ For multi-master setups (use with caution):
 -- On server A: Create publication and subscription
 CREATE PUBLICATION pub_a FOR TABLE shared_data;
 CREATE SUBSCRIPTION sub_from_b
-CONNECTION 'host=server-b.example.com ...'
+CONNECTION 'host=server-b.example.com port=5432 dbname=myapp user=repl_user password=secret'
 PUBLICATION pub_b;
 
 -- On server B: Create publication and subscription
 CREATE PUBLICATION pub_b FOR TABLE shared_data;
 CREATE SUBSCRIPTION sub_from_a
-CONNECTION 'host=server-a.example.com ...'
+CONNECTION 'host=server-a.example.com port=5432 dbname=myapp user=repl_user password=secret'
 PUBLICATION pub_a;
 ```
 
@@ -314,19 +314,10 @@ Logical replication can fail on conflicts (unique constraint violations, missing
 
 ```sql
 -- Skip a transaction causing conflicts
-ALTER SUBSCRIPTION orders_sub DISABLE;
-
--- Find the problematic LSN
-SELECT * FROM pg_stat_subscription;
+-- Find the problematic finish LSN in the PostgreSQL server log
 
 -- Skip the transaction
-SELECT pg_replication_origin_advance(
-    'pg_' || (SELECT oid FROM pg_subscription WHERE subname = 'orders_sub'),
-    'specific_lsn'::pg_lsn
-);
-
--- Re-enable subscription
-ALTER SUBSCRIPTION orders_sub ENABLE;
+ALTER SUBSCRIPTION orders_sub SKIP (lsn = '0/14C0378');
 ```
 
 Better approach: design your schema to avoid conflicts:
@@ -335,7 +326,9 @@ Better approach: design your schema to avoid conflicts:
 -- Use UUIDs instead of sequences for distributed systems
 CREATE TABLE orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    ...
+    customer_id UUID,
+    amount NUMERIC(10,2),
+    created_at TIMESTAMP
 );
 ```
 
@@ -347,14 +340,14 @@ CREATE TABLE orders (
 -- More WAL senders if you have many subscribers
 ALTER SYSTEM SET max_wal_senders = 20;
 
--- Longer slot retention for slow subscribers
-ALTER SYSTEM SET wal_keep_size = '10GB';
+-- Cap WAL retained by logical replication slots
+ALTER SYSTEM SET max_slot_wal_keep_size = '10GB';
 ```
 
 ### On the Subscriber
 
 ```sql
--- Parallel initial table copy (PostgreSQL 16+)
+-- Parallel apply for streamed in-progress transactions (PostgreSQL 16+)
 ALTER SUBSCRIPTION orders_sub
 SET (streaming = 'parallel', binary = true);
 
