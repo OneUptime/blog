@@ -45,18 +45,19 @@ conn.close()
 
 ```python
 import sqlite3
+from contextlib import closing
 
-# Context manager handles closing automatically
-with sqlite3.connect("myapp.db") as conn:
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            price REAL NOT NULL
-        )
-    """)
-    conn.commit()
+# closing() closes the connection; the connection context manager commits or rolls back
+with closing(sqlite3.connect("myapp.db")) as conn:
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS products (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                price REAL NOT NULL
+            )
+        """)
 # Connection closed automatically
 ```
 
@@ -82,6 +83,9 @@ with sqlite3.connect("myapp.db") as conn:
         {"username": "bob", "email": "bob@example.com"}
     )
 
+    # Get the last inserted row ID from execute()
+    print(f"Last row ID: {cursor.lastrowid}")
+
     # Insert multiple rows
     users = [
         ("carol", "carol@example.com"),
@@ -92,9 +96,6 @@ with sqlite3.connect("myapp.db") as conn:
         "INSERT INTO users (username, email) VALUES (?, ?)",
         users
     )
-
-    # Get the last inserted row ID
-    print(f"Last row ID: {cursor.lastrowid}")
 
     conn.commit()
 ```
@@ -284,6 +285,13 @@ sqlite3.register_converter("timestamp", lambda s: datetime.fromisoformat(s.decod
 
 with sqlite3.connect("myapp.db", detect_types=sqlite3.PARSE_DECLTYPES) as conn:
     cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            event_date TIMESTAMP NOT NULL
+        )
+    """)
 
     # Insert with datetime
     cursor.execute(
@@ -401,6 +409,11 @@ class Database:
         if not kwargs:
             return False
 
+        allowed_fields = {"username", "email", "active"}
+        invalid_fields = set(kwargs) - allowed_fields
+        if invalid_fields:
+            raise ValueError(f"Invalid fields: {', '.join(invalid_fields)}")
+
         fields = ", ".join(f"{k} = ?" for k in kwargs)
         values = list(kwargs.values()) + [user_id]
 
@@ -444,9 +457,13 @@ for user in db.get_all_users():
 ### 1. Use Context Managers
 
 ```python
-# Automatically handles closing
-with sqlite3.connect("myapp.db") as conn:
-    # ...
+from contextlib import closing
+
+# closing() closes the connection; with conn handles commit or rollback
+with closing(sqlite3.connect("myapp.db")) as conn:
+    with conn:
+        # ...
+        pass
 ```
 
 ### 2. Use Parameterized Queries
