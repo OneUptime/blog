@@ -47,8 +47,11 @@ However, this is just a temporary solution. You need to understand why memory is
 ### Find Large Keys
 
 ```bash
-# Scan for big keys (samples randomly, does not scan all)
+# Scan for keys with many elements
 redis-cli --bigkeys
+
+# Scan for keys consuming a lot of memory
+redis-cli --memkeys
 
 # Sample output:
 # [00.00%] Biggest string found so far 'session:large' with 1048576 bytes
@@ -161,8 +164,10 @@ Available policies:
 |--------|-------------|
 | noeviction | Return error on writes (default) |
 | allkeys-lru | Evict least recently used keys |
+| allkeys-lrm | Evict least recently modified keys (Redis 8.6+) |
 | allkeys-lfu | Evict least frequently used keys |
 | volatile-lru | Evict LRU keys with TTL set |
+| volatile-lrm | Evict LRM keys with TTL set (Redis 8.6+) |
 | volatile-lfu | Evict LFU keys with TTL set |
 | allkeys-random | Evict random keys |
 | volatile-random | Evict random keys with TTL |
@@ -190,14 +195,14 @@ Available policies:
 
 ```python
 # Bad: Storing JSON strings
-r.set('user:123', '{"name": "Alice", "email": "alice@example.com"}')
+r.set('user:123:string', '{"name": "Alice", "email": "alice@example.com"}')
 
 # Better: Use hashes (more memory efficient for small objects)
-r.hset('user:123', mapping={'name': 'Alice', 'email': 'alice@example.com'})
+r.hset('user:123:hash', mapping={'name': 'Alice', 'email': 'alice@example.com'})
 
 # Check the difference
 print(f"String: {r.memory_usage('user:123:string')} bytes")
-print(f"Hash: {r.memory_usage('user:123')} bytes")
+print(f"Hash: {r.memory_usage('user:123:hash')} bytes")
 ```
 
 ### 2. Enable Compression for Large Values
@@ -205,6 +210,7 @@ print(f"Hash: {r.memory_usage('user:123')} bytes")
 ```python
 import zlib
 import json
+from typing import Any
 
 class CompressedCache:
     """Cache with compression for large values."""
@@ -213,7 +219,7 @@ class CompressedCache:
         self.r = redis_client
         self.threshold = compression_threshold
 
-    def set(self, key: str, value: any, ex: int = None):
+    def set(self, key: str, value: Any, ex: int = None):
         data = json.dumps(value).encode('utf-8')
 
         if len(data) > self.threshold:
@@ -248,17 +254,18 @@ cache.set('large:data', large_data, ex=3600)
 Redis can store small integers more efficiently:
 
 ```python
-# Redis internally optimizes integers
-r.set('counter', 12345)  # Stored efficiently as integer
+# Redis internally optimizes string values that represent 64-bit integers
+r.set('counter', 12345)
+print(r.object('ENCODING', 'counter'))  # b'int'
 
-# Avoid storing numbers as strings unnecessarily
-r.set('counter', '12345')  # Takes more memory
+# Avoid wrapping numbers in larger strings or JSON when a simple counter works
+r.set('counter:json', '{"value": 12345}')  # Stored as a larger string
 ```
 
-### 4. Hash Field Compression (Redis 7+)
+### 4. Hash Listpack Encoding (Redis 7+)
 
 ```bash
-# Configure hash field compression
+# Configure memory-efficient encoding for small hashes
 hash-max-listpack-entries 512
 hash-max-listpack-value 64
 ```
@@ -367,17 +374,17 @@ High fragmentation wastes memory. Redis 4.0+ has active defragmentation:
 
 ```bash
 # Enable active defragmentation
-CONFIG SET activedefrag yes
+redis-cli CONFIG SET activedefrag yes
 
 # Configure thresholds
-CONFIG SET active-defrag-ignore-bytes 100mb
-CONFIG SET active-defrag-threshold-lower 10
-CONFIG SET active-defrag-threshold-upper 100
-CONFIG SET active-defrag-cycle-min 1
-CONFIG SET active-defrag-cycle-max 25
+redis-cli CONFIG SET active-defrag-ignore-bytes 100mb
+redis-cli CONFIG SET active-defrag-threshold-lower 10
+redis-cli CONFIG SET active-defrag-threshold-upper 100
+redis-cli CONFIG SET active-defrag-cycle-min 1
+redis-cli CONFIG SET active-defrag-cycle-max 25
 
 # Check fragmentation
-INFO memory | grep fragmentation
+redis-cli INFO memory | grep fragmentation
 ```
 
 ## Scaling Out
@@ -405,7 +412,7 @@ rc.set('user:1', 'data')  # Routes to appropriate shard
 import hashlib
 
 class ShardedRedis:
-    """Simple consistent hashing across Redis instances."""
+    """Simple hash-based sharding across Redis instances."""
 
     def __init__(self, hosts):
         self.clients = [redis.Redis(host=h) for h in hosts]
