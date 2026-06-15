@@ -81,11 +81,11 @@ let result = retry_with_backoff(
 The problem with pure exponential backoff is that clients failing at the same time will retry at the same time. If your service went down at 12:00:00 and a hundred clients failed, they will all retry at 12:00:01, then 12:00:03, then 12:00:07. You need jitter to randomize the delays.
 
 ```rust
-use rand::Rng;
+use rand::prelude::*;
 use std::time::Duration;
-use tokio::time::sleep;
 
 // Three common jitter strategies
+#[derive(Clone, Copy)]
 pub enum JitterStrategy {
     // Random delay between 0 and calculated delay
     Full,
@@ -99,28 +99,41 @@ pub fn calculate_delay_with_jitter(
     base_delay: Duration,
     attempt: u32,
     max_delay: Duration,
+    previous_delay: Option<Duration>,
     strategy: &JitterStrategy,
 ) -> Duration {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Calculate exponential delay: base * 2^attempt
     let exponential_ms = base_delay.as_millis() as f64 * 2_f64.powi(attempt as i32);
-    let capped_ms = exponential_ms.min(max_delay.as_millis() as f64);
+    let max_ms = max_delay.as_millis() as f64;
+    let capped_ms = exponential_ms.min(max_ms);
+
+    if capped_ms <= 0.0 {
+        return Duration::ZERO;
+    }
 
     let jittered_ms = match strategy {
         // Full jitter: random between 0 and delay
-        JitterStrategy::Full => rng.gen_range(0.0..capped_ms),
+        JitterStrategy::Full => rng.random_range(0.0..=capped_ms),
 
         // Equal jitter: half the delay plus random half
         JitterStrategy::Equal => {
             let half = capped_ms / 2.0;
-            half + rng.gen_range(0.0..half)
+            half + rng.random_range(0.0..=half)
         }
 
         // Decorrelated: based on previous delay with randomization
         JitterStrategy::Decorrelated => {
             let min = base_delay.as_millis() as f64;
-            rng.gen_range(min..(capped_ms * 3.0).min(max_delay.as_millis() as f64))
+            let previous = previous_delay.unwrap_or(base_delay).as_millis() as f64;
+            let upper = (previous * 3.0).min(max_ms);
+
+            if upper <= min {
+                upper
+            } else {
+                rng.random_range(min..=upper)
+            }
         }
     };
 
@@ -133,7 +146,7 @@ pub fn calculate_delay_with_jitter(
 For real applications, you want a configurable retry policy. Rust's builder pattern works well here.
 
 ```rust
-use rand::Rng;
+use rand::prelude::*;
 use std::future::Future;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -165,7 +178,7 @@ impl RetryConfig {
     }
 
     pub fn max_attempts(mut self, attempts: u32) -> Self {
-        self.max_attempts = attempts;
+        self.max_attempts = attempts.max(1);
         self
     }
 
@@ -190,18 +203,30 @@ impl RetryConfig {
     }
 
     // Calculate delay for a given attempt number
-    fn delay_for_attempt(&self, attempt: u32) -> Duration {
-        let mut rng = rand::thread_rng();
+    fn delay_for_attempt(&self, attempt: u32, previous_delay: Duration) -> Duration {
+        let mut rng = rand::rng();
 
         let base_ms = self.initial_delay.as_millis() as f64;
+        let max_ms = self.max_delay.as_millis() as f64;
         let exponential = base_ms * self.multiplier.powi(attempt as i32);
-        let capped = exponential.min(self.max_delay.as_millis() as f64);
+        let capped = exponential.min(max_ms);
+
+        if capped <= 0.0 {
+            return Duration::ZERO;
+        }
 
         let jittered = match self.jitter {
-            JitterStrategy::Full => rng.gen_range(0.0..capped),
-            JitterStrategy::Equal => capped / 2.0 + rng.gen_range(0.0..capped / 2.0),
+            JitterStrategy::Full => rng.random_range(0.0..=capped),
+            JitterStrategy::Equal => capped / 2.0 + rng.random_range(0.0..=capped / 2.0),
             JitterStrategy::Decorrelated => {
-                rng.gen_range(base_ms..(capped * 3.0).min(self.max_delay.as_millis() as f64))
+                let min = base_ms.min(max_ms);
+                let upper = (previous_delay.as_millis() as f64 * 3.0).min(max_ms);
+
+                if upper <= min {
+                    min
+                } else {
+                    rng.random_range(min..=upper)
+                }
             }
         };
 
@@ -215,6 +240,7 @@ impl RetryConfig {
         Fut: Future<Output = Result<T, E>>,
     {
         let mut last_error = None;
+        let mut previous_delay = self.initial_delay;
 
         for attempt in 0..self.max_attempts {
             match operation(attempt).await {
@@ -224,7 +250,8 @@ impl RetryConfig {
 
                     // Don't sleep after the last attempt
                     if attempt + 1 < self.max_attempts {
-                        let delay = self.delay_for_attempt(attempt);
+                        let delay = self.delay_for_attempt(attempt, previous_delay);
+                        previous_delay = delay;
                         sleep(delay).await;
                     }
                 }
@@ -294,6 +321,7 @@ where
     Fut: Future<Output = Result<T, E>>,
 {
     let mut last_error = None;
+    let mut previous_delay = config.initial_delay;
 
     for attempt in 0..config.max_attempts {
         match operation(attempt).await {
@@ -307,7 +335,8 @@ where
                 last_error = Some(err);
 
                 if attempt + 1 < config.max_attempts {
-                    let delay = config.delay_for_attempt(attempt);
+                    let delay = config.delay_for_attempt(attempt, previous_delay);
+                    previous_delay = delay;
                     sleep(delay).await;
                 }
             }
@@ -324,6 +353,8 @@ APIs often return a `Retry-After` header telling you exactly when to retry. Resp
 
 ```rust
 use std::time::Duration;
+use reqwest::header::RETRY_AFTER;
+use reqwest::StatusCode;
 
 pub struct RetryAfterInfo {
     pub delay: Duration,
@@ -354,6 +385,7 @@ async fn fetch_with_rate_limit_respect(
     config: &RetryConfig,
 ) -> Result<String, reqwest::Error> {
     let mut attempt = 0;
+    let mut previous_delay = config.initial_delay;
 
     loop {
         let response = client.get(url).send().await?;
@@ -362,14 +394,22 @@ async fn fetch_with_rate_limit_respect(
             return response.text().await;
         }
 
-        if response.status() == 429 {
+        if response.status() == StatusCode::TOO_MANY_REQUESTS {
             // Check for Retry-After header
-            let delay = response
+            let retry_after = response
                 .headers()
-                .get("retry-after")
+                .get(RETRY_AFTER)
                 .and_then(|v| v.to_str().ok())
-                .and_then(parse_retry_after)
-                .unwrap_or_else(|| config.delay_for_attempt(attempt));
+                .and_then(parse_retry_after);
+
+            let delay = match retry_after {
+                Some(delay) => delay,
+                None => {
+                    let delay = config.delay_for_attempt(attempt, previous_delay);
+                    previous_delay = delay;
+                    delay
+                }
+            };
 
             sleep(delay).await;
             attempt += 1;
