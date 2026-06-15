@@ -40,8 +40,8 @@ r.sadd('user:1001:following', 1005, 1006)
 r.set('order:5001:user', '1001')
 r.sadd('user:1001:orders', 5001, 5002, 5003)
 
-# This enables easy pattern matching
-user_keys = r.keys('user:1001:*')
+# This enables easy pattern matching with SCAN
+user_keys = list(r.scan_iter('user:1001:*'))
 print(f"All keys for user 1001: {user_keys}")
 ```
 
@@ -87,14 +87,14 @@ r.lpush('queue:emails', json.dumps({'to': 'user@example.com', 'subject': 'Welcom
 r.lpush('queue:notifications', json.dumps({'user_id': 1001, 'type': 'alert'}))
 
 # 8. Cache keys: cache:source:identifier
-r.setex('cache:api:weather:new_york', 3600, '{"temp": 72}')
-r.setex('cache:db:user:1001', 300, '{"name": "Alice"}')
+r.set('cache:api:weather:new_york', '{"temp": 72}', ex=3600)
+r.set('cache:db:user:1001', '{"name": "Alice"}', ex=300)
 
 # 9. Lock keys: lock:resource
 r.set('lock:order:5001', 'worker_1', nx=True, ex=30)
 
 # 10. Session keys: session:token
-r.setex('session:abc123xyz', 86400, json.dumps({'user_id': 1001}))
+r.set('session:abc123xyz', json.dumps({'user_id': 1001}), ex=86400)
 ```
 
 ## Building a Key Generator
@@ -212,7 +212,7 @@ r.set('alice@example.com', 'data')  # Email as key?
 r.set('user:1001', 'data')
 r.set('user:email:alice@example.com', '1001')
 
-# BAD: Including spaces or special characters
+# BAD: Including spaces or ambiguous characters
 r.set('user profile:1001', 'data')  # Spaces
 r.set('user:1001:full name', 'data')  # Spaces
 
@@ -327,7 +327,7 @@ Document your key conventions for team reference:
 | Separator | Use colons (:) consistently |
 | Format | type:id:field |
 | Length | Keep keys reasonably short |
-| Characters | Avoid spaces and special chars |
+| Characters | Avoid spaces and ambiguous chars |
 | Prefixes | Use for environment/tenant separation |
 | Documentation | Document patterns for your team |
 
