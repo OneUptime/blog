@@ -17,8 +17,6 @@ Start with a minimal working configuration.
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16
@@ -100,7 +98,7 @@ const pool = new Pool({
 });
 
 // Or explicit configuration
-const pool = new Pool({
+const explicitPool = new Pool({
   host: process.env.PGHOST,
   port: process.env.PGPORT,
   user: process.env.PGUSER,
@@ -114,8 +112,6 @@ const pool = new Pool({
 The `depends_on` directive only waits for container start, not service readiness. Add health checks.
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16
@@ -146,8 +142,6 @@ The `condition: service_healthy` ensures PostgreSQL accepts connections before s
 For complex setups, define custom networks.
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16
@@ -226,6 +220,7 @@ Applications should retry connections on startup.
 
 ```python
 # Python retry pattern
+import os
 import time
 import psycopg2
 from psycopg2 import OperationalError
@@ -310,8 +305,6 @@ ports:
 Run multiple database instances for different services.
 
 ```yaml
-version: '3.8'
-
 services:
   postgres_main:
     image: postgres:16
@@ -389,8 +382,6 @@ Common error messages:
 For production-like environments:
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16
