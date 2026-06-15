@@ -43,7 +43,7 @@ All tenants share the same collections with a `tenantId` field for isolation.
 ```javascript
 // Document structure with tenant identifier
 const orderDocument = {
-  _id: ObjectId("..."),
+  _id: new ObjectId("65b2f7a0f5e7c9a7d0e3b101"),
   tenantId: "acme-corp",        // Tenant identifier
   orderNumber: "ORD-12345",
   customer: {
@@ -115,6 +115,11 @@ class OrderRepository {
 
   // Aggregation with tenant scope
   async aggregate(pipeline) {
+    const firstStage = pipeline[0] ? Object.keys(pipeline[0])[0] : null;
+    if (['$geoNear', '$search', '$searchMeta', '$vectorSearch'].includes(firstStage)) {
+      throw new Error(`Add tenant filtering inside the ${firstStage} stage instead`);
+    }
+
     // Prepend tenant filter to pipeline
     const scopedPipeline = [
       { $match: { tenantId: this.tenantId } },
@@ -149,10 +154,14 @@ class TenantDatabaseManager {
     this.dbCache = new Map();
   }
 
+  getDatabaseName(tenantId) {
+    return `tenant_${tenantId.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  }
+
   // Get database for a specific tenant
   getDatabase(tenantId) {
     // Sanitize tenant ID for use as database name
-    const dbName = `tenant_${tenantId.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const dbName = this.getDatabaseName(tenantId);
 
     if (!this.dbCache.has(dbName)) {
       const db = this.client.db(dbName);
@@ -186,7 +195,7 @@ class TenantDatabaseManager {
   async deprovisionTenant(tenantId) {
     const db = this.getDatabase(tenantId);
     await db.dropDatabase();
-    this.dbCache.delete(`tenant_${tenantId}`);
+    this.dbCache.delete(this.getDatabaseName(tenantId));
     console.log(`Dropped database for tenant: ${tenantId}`);
   }
 
@@ -247,25 +256,28 @@ sh.shardCollection("saas_app.events", { tenantId: 1, createdAt: 1 });
 Zone sharding for dedicated resources:
 
 ```javascript
-// Create zones for premium tenants
-sh.addShardTag("shard0", "premium");
-sh.addShardTag("shard1", "premium");
-sh.addShardTag("shard2", "standard");
-sh.addShardTag("shard3", "standard");
+// For zone sharding, use a shard key with a non-hashed prefix you can zone on
+sh.shardCollection("saas_app.dedicated_orders", { tenantTier: 1, tenantId: "hashed" });
 
-// Assign premium tenants to premium shards
-sh.addTagRange(
-  "saas_app.orders",
-  { tenantId: "enterprise-1" },
-  { tenantId: "enterprise-2" },
+// Create zones for premium and standard tenants
+sh.addShardToZone("shard0", "premium");
+sh.addShardToZone("shard1", "premium");
+sh.addShardToZone("shard2", "standard");
+sh.addShardToZone("shard3", "standard");
+
+// Assign premium tenant tier to premium shards
+sh.updateZoneKeyRange(
+  "saas_app.dedicated_orders",
+  { tenantTier: "premium", tenantId: MinKey },
+  { tenantTier: "premium", tenantId: MaxKey },
   "premium"
 );
 
-// Standard tenants go to standard shards
-sh.addTagRange(
-  "saas_app.orders",
-  { tenantId: MinKey },
-  { tenantId: "enterprise-1" },
+// Standard tenant tier goes to standard shards
+sh.updateZoneKeyRange(
+  "saas_app.dedicated_orders",
+  { tenantTier: "standard", tenantId: MinKey },
+  { tenantTier: "standard", tenantId: MaxKey },
   "standard"
 );
 ```
@@ -359,6 +371,11 @@ class TenantScopedCollection {
   }
 
   aggregate(pipeline) {
+    const firstStage = pipeline[0] ? Object.keys(pipeline[0])[0] : null;
+    if (['$geoNear', '$search', '$searchMeta', '$vectorSearch'].includes(firstStage)) {
+      throw new Error(`Add tenant filtering inside the ${firstStage} stage instead`);
+    }
+
     // Ensure first stage filters by tenant
     const scopedPipeline = [
       { $match: { tenantId: this.tenantId } },
