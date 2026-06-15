@@ -15,7 +15,7 @@ The "invalid reference format" error appears when Docker cannot parse an image n
 A valid Docker image reference follows this pattern:
 
 ```text
-[registry/][namespace/]repository[:tag|@digest]
+[registry/][namespace/]repository[:tag][@digest]
 ```
 
 Examples of valid references:
@@ -26,7 +26,7 @@ nginx:latest
 mycompany/myapp:v1.2.3
 ghcr.io/myorg/myapp:sha-abc123
 registry.example.com:5000/myapp:latest
-myapp@sha256:abc123def456...
+myapp@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 ```
 
 ## Common Causes and Solutions
@@ -80,7 +80,7 @@ Hidden whitespace characters cause parsing failures:
 ```bash
 # BROKEN: Trailing space
 IMAGE="myapp:latest "
-docker pull $IMAGE
+docker pull "$IMAGE"
 # Error: invalid reference format
 
 # Diagnose whitespace issues
@@ -89,20 +89,20 @@ echo "$IMAGE" | cat -A
 
 # FIXED: Trim whitespace
 IMAGE=$(echo "$IMAGE" | tr -d '[:space:]')
-docker pull $IMAGE
+docker pull "$IMAGE"
 ```
 
-In shell scripts, watch for newlines:
+In shell scripts, watch for carriage returns and embedded newlines:
 
 ```bash
-# BROKEN: Variable from file contains newline
+# BROKEN: Variable from a Windows-formatted file contains a carriage return
 IMAGE=$(cat version.txt)
 
-# FIXED: Remove trailing newline
-IMAGE=$(cat version.txt | tr -d '\n')
+# FIXED: Remove carriage returns and newlines
+IMAGE=$(cat version.txt | tr -d '\r\n')
 # Or
 IMAGE=$(< version.txt)
-IMAGE=${IMAGE%$'\n'}
+IMAGE=${IMAGE//$'\r'/}
 ```
 
 ### Cause 3: Invalid Characters
@@ -129,7 +129,7 @@ docker pull myapp:v1.0-beta
 ```
 
 Valid characters:
-- Repository name: `[a-z0-9]+(?:[._-][a-z0-9]+)*`
+- Repository name component: `[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*`
 - Tag: `[a-zA-Z0-9_][a-zA-Z0-9_.-]*` (max 128 chars)
 
 ### Cause 4: Malformed Tags
@@ -255,6 +255,7 @@ printf "Hex dump: %s\n" "$(echo -n "$IMAGE" | xxd)"
 
 validate_image_ref() {
   local ref="$1"
+  local name_tag name tag digest first_part path_part path_parts
 
   # Check for empty
   if [ -z "$ref" ]; then
@@ -268,9 +269,56 @@ validate_image_ref() {
     return 1
   fi
 
-  # Basic format validation
-  if ! [[ "$ref" =~ ^[a-z0-9][a-z0-9._/-]*(:[-a-zA-Z0-9._]+)?(@sha256:[a-f0-9]{64})?$ ]]; then
-    echo "Error: Image reference format appears invalid"
+  name_tag="$ref"
+  if [[ "$ref" == *@* ]]; then
+    digest="${ref##*@}"
+    name_tag="${ref%@*}"
+    if ! [[ "$digest" =~ ^[A-Za-z][A-Za-z0-9]*([+._-][A-Za-z][A-Za-z0-9]*)*:[0-9A-Fa-f]{32,}$ ]]; then
+      echo "Error: Image digest format appears invalid"
+      echo "Reference: $ref"
+      return 1
+    fi
+  fi
+
+  name="$name_tag"
+  if [[ "${name_tag##*/}" == *:* ]]; then
+    tag="${name_tag##*:}"
+    name="${name_tag%:*}"
+    if ! [[ "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+      echo "Error: Image tag format appears invalid"
+      echo "Reference: $ref"
+      return 1
+    fi
+  fi
+
+  first_part="${name%%/*}"
+  if [[ "$first_part" == *.* || "$first_part" == *:* || "$first_part" == "localhost" ]]; then
+    if ! [[ "$first_part" =~ ^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)(\.([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?))*(:[0-9]+)?$ ]]; then
+      echo "Error: Registry hostname format appears invalid"
+      echo "Reference: $ref"
+      return 1
+    fi
+    name="${name#*/}"
+  fi
+
+  if [ -z "$name" ]; then
+    echo "Error: Repository name is empty"
+    echo "Reference: $ref"
+    return 1
+  fi
+
+  local IFS='/'
+  read -ra path_parts <<< "$name"
+  for path_part in "${path_parts[@]}"; do
+    if ! [[ "$path_part" =~ ^[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*$ ]]; then
+      echo "Error: Repository name format appears invalid"
+      echo "Reference: $ref"
+      return 1
+    fi
+  done
+
+  if [ ${#name} -gt 255 ]; then
+    echo "Error: Repository name is too long"
     echo "Reference: $ref"
     return 1
   fi
