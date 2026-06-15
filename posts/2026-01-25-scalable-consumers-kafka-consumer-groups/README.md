@@ -12,7 +12,7 @@ Consumer groups are the foundation of Kafka's scalability model for message cons
 
 ## How Consumer Groups Work
 
-When multiple consumers share the same `group.id`, Kafka treats them as a single logical subscriber. Each partition is assigned to exactly one consumer in the group, ensuring no duplicate processing.
+When multiple consumers share the same `group.id`, Kafka treats them as a single logical subscriber. Each partition is assigned to exactly one consumer in the group at a time, ensuring two consumers in the same group do not process the same partition concurrently.
 
 ```mermaid
 graph LR
@@ -39,7 +39,7 @@ graph LR
     P5 --> C3
 ```
 
-With six partitions and three consumers, each consumer handles two partitions. Adding a fourth consumer triggers a rebalance, redistributing partitions evenly.
+With six partitions and three consumers, each consumer handles two partitions. Adding a fourth consumer triggers a rebalance, redistributing partitions as evenly as possible.
 
 ## Basic Consumer Group Implementation
 
@@ -146,6 +146,7 @@ Rebalances occur when consumers join or leave the group. Use a `ConsumerRebalanc
 
 ```java
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import java.util.Collection;
 import java.util.HashMap;
@@ -154,7 +155,7 @@ import java.util.Map;
 public class RebalanceHandler implements ConsumerRebalanceListener {
 
     private final KafkaConsumer<String, String> consumer;
-    private final Map<TopicPartition, Long> currentOffsets = new HashMap<>();
+    private final Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
 
     public RebalanceHandler(KafkaConsumer<String, String> consumer) {
         this.consumer = consumer;
@@ -190,7 +191,7 @@ public class RebalanceHandler implements ConsumerRebalanceListener {
 
     // Track offsets for manual commit
     public void trackOffset(TopicPartition partition, long offset) {
-        currentOffsets.put(partition, offset + 1);
+        currentOffsets.put(partition, new OffsetAndMetadata(offset + 1));
     }
 
     private void initializePartitionResources(TopicPartition partition) {
@@ -261,7 +262,7 @@ props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 10000); // 10 seconds
 props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 300000); // 5 minutes
 ```
 
-For long-running processing, pause partitions instead of exceeding poll intervals:
+For long-running processing that still completes within `max.poll.interval.ms`, pause partitions to avoid fetching more records while the current batch is processed:
 
 ```java
 while (true) {
@@ -283,6 +284,8 @@ while (true) {
     }
 }
 ```
+
+If processing can exceed `max.poll.interval.ms`, move the work to another thread and keep calling `poll()` on the consumer thread, or increase `max.poll.interval.ms` to cover the worst-case batch processing time.
 
 ## Scaling Consumers Dynamically
 
