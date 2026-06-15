@@ -247,7 +247,9 @@ redis-cli CONFIG SET replica-read-only yes
 
 This is almost never the right solution. Use it only for:
 - Emergency data recovery
-- Promoting a replica manually
+- Isolated recovery tasks where the writes are intentionally local-only
+
+To promote a replica manually, use `REPLICAOF NO ONE` instead.
 
 ## Read/Write Splitting
 
