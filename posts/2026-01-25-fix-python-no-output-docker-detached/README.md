@@ -56,8 +56,6 @@ In Docker Compose:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -172,8 +170,6 @@ logger = logging.getLogger(__name__)
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -181,25 +177,23 @@ services:
       LOG_LEVEL: DEBUG  # Set to DEBUG for more verbose output
 ```
 
-## Solution 5: Using stdbuf
+## Solution 5: Avoid stdbuf for Python
 
-For applications you cannot modify, use `stdbuf` to control buffering at the OS level:
+For applications you cannot modify, prefer starting Python with `-u` instead of relying on `stdbuf`. The `stdbuf` command controls C stdio buffering for many programs, but Python configures its own standard streams, so `stdbuf -oL python app.py` is not a reliable fix for Python's `print()` buffering.
 
 ```dockerfile
 # Dockerfile
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y coreutils && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 COPY . .
 RUN pip install -r requirements.txt
 
-# stdbuf -oL means line-buffered stdout
-CMD ["stdbuf", "-oL", "python", "app.py"]
+# Run Python in unbuffered mode
+CMD ["python", "-u", "app.py"]
 ```
 
-The `-oL` flag sets stdout to line-buffered mode, flushing on every newline.
+This changes the interpreter's buffering mode directly, which is the part that matters for Python output.
 
 ## Best Practices for Docker Python Logging
 
