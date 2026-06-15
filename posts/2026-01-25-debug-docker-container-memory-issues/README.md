@@ -109,18 +109,17 @@ Memory leaks cause gradual increases in usage until the container crashes. Profi
 ### Node.js Memory Profiling
 
 ```javascript
-// Enable heap snapshots via command line
-// docker run -e NODE_OPTIONS="--expose-gc" myapp
+// Heap snapshots can also be enabled via command line:
+// docker run -e NODE_OPTIONS="--heapsnapshot-signal=SIGUSR2" myapp
 
 // In your application code
 const v8 = require('v8');
-const fs = require('fs');
 
 // Take heap snapshot for analysis
 function takeHeapSnapshot() {
   const snapshotFile = `/tmp/heap-${Date.now()}.heapsnapshot`;
-  const snapshotStream = v8.writeHeapSnapshot(snapshotFile);
-  console.log(`Heap snapshot written to ${snapshotFile}`);
+  const writtenFile = v8.writeHeapSnapshot(snapshotFile);
+  console.log(`Heap snapshot written to ${writtenFile}`);
 }
 
 // Trigger via API endpoint or signal
@@ -193,11 +192,17 @@ INTERVAL=${2:-5}
 echo "timestamp,memory_bytes,memory_percent" > memory_log.csv
 
 while true; do
-    STATS=$(docker stats $CONTAINER --no-stream --format "{{.MemUsage}}")
-    MEM_USED=$(echo $STATS | awk -F'/' '{print $1}' | tr -d ' ')
+    MEM_USED=$(docker exec "$CONTAINER" cat /sys/fs/cgroup/memory.current)
+    MEM_MAX=$(docker exec "$CONTAINER" cat /sys/fs/cgroup/memory.max)
     TIMESTAMP=$(date +%s)
 
-    echo "$TIMESTAMP,$MEM_USED" >> memory_log.csv
+    if [ "$MEM_MAX" = "max" ]; then
+        MEM_PERCENT=0
+    else
+        MEM_PERCENT=$((MEM_USED * 100 / MEM_MAX))
+    fi
+
+    echo "$TIMESTAMP,$MEM_USED,$MEM_PERCENT" >> memory_log.csv
     sleep $INTERVAL
 done
 ```
@@ -271,7 +276,11 @@ class MyClass {
     process.on('uncaughtException', this.handleError);
   }
 
-  // GOOD: Clean up in destructor
+  handleError(error) {
+    console.error(error);
+  }
+
+  // GOOD: Clean up when the instance is no longer needed
   destroy() {
     process.removeListener('uncaughtException', this.handleError);
   }
@@ -298,12 +307,12 @@ def process_request(request_id):
 
 ### Cause 3: JVM Heap Misconfiguration
 
-Java applications need explicit heap sizing to respect container limits:
+Java applications often need heap sizing tuned for container limits:
 
 ```dockerfile
 FROM eclipse-temurin:21-jre
 
-# Let JVM detect container limits automatically
+# Size the Java heap as a percentage of the detected container limit
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
 
 COPY app.jar /app/app.jar
@@ -317,7 +326,7 @@ CMD ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
 docker exec mycontainer ps aux | wc -l
 
 # Check thread count
-docker exec mycontainer cat /proc/*/status | grep Threads | awk '{sum+=$2} END {print sum}'
+docker exec mycontainer sh -c "cat /proc/*/status" | grep Threads | awk '{sum+=$2} END {print sum}'
 ```
 
 Limit thread pools appropriately:
@@ -358,6 +367,11 @@ services:
 THRESHOLD=80
 CURRENT=$(cat /sys/fs/cgroup/memory.current)
 MAX=$(cat /sys/fs/cgroup/memory.max)
+
+if [ "$MAX" = "max" ]; then
+  echo "No memory limit configured"
+  exit 0
+fi
 
 PERCENT=$((CURRENT * 100 / MAX))
 
