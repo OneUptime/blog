@@ -132,7 +132,7 @@ interface UpdateWithLockOptions<T> {
 }
 
 export class OptimisticLockService {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: PrismaClient | Prisma.TransactionClient) {}
 
   // Update a record with optimistic locking
   async updateWithLock<T extends { id: string; version: number }>(
@@ -193,16 +193,31 @@ export class OptimisticLockService {
     currentVersion: number,
     updateData: Partial<Omit<T, 'id' | 'version'>>
   ): Promise<T> {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(modelName)) {
+      throw new Error(`Invalid model name: ${modelName}`);
+    }
+
+    const entries = Object.entries(updateData);
+    if (entries.length === 0) {
+      throw new Error('No update data provided');
+    }
+
+    for (const [key] of entries) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+        throw new Error(`Invalid field name: ${key}`);
+      }
+    }
+
     // Build the update fields dynamically
-    const setFields = Object.entries(updateData)
-      .map(([key]) => `"${key}" = $${Object.keys(updateData).indexOf(key) + 4}`)
+    const setFields = entries
+      .map(([key], index) => `"${key}" = $${index + 4}`)
       .join(', ');
 
     const values = [
       id,
       currentVersion,
       currentVersion + 1,
-      ...Object.values(updateData),
+      ...entries.map(([, value]) => value),
     ];
 
     // Execute update with version check
@@ -234,6 +249,10 @@ export class OptimisticLockService {
     modelName: string,
     id: string
   ): Promise<T | null> {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(modelName)) {
+      throw new Error(`Invalid model name: ${modelName}`);
+    }
+
     const result = await this.prisma.$queryRawUnsafe<T[]>(
       `SELECT * FROM "${modelName}" WHERE "id" = $1`,
       id
@@ -249,13 +268,13 @@ export class OptimisticLockService {
 
 ## Building a Type-Safe Repository
 
-Let us create a repository that uses our optimistic locking service with proper typing.
+Let us create a repository that uses Prisma's atomic updates with proper typing.
 
 ```typescript
 // src/repositories/ProductRepository.ts
 
 import { PrismaClient, Product, Prisma } from '@prisma/client';
-import { OptimisticLockService, OptimisticLockError } from '../services/OptimisticLockService';
+import { OptimisticLockError } from '../services/OptimisticLockService';
 
 // Input type for product updates
 interface ProductUpdateInput {
@@ -271,11 +290,7 @@ interface ProductWithVersion extends Product {
 }
 
 export class ProductRepository {
-  private lockService: OptimisticLockService;
-
-  constructor(private prisma: PrismaClient) {
-    this.lockService = new OptimisticLockService(prisma);
-  }
+  constructor(private prisma: PrismaClient | Prisma.TransactionClient) {}
 
   // Find a product by ID
   async findById(id: string): Promise<ProductWithVersion | null> {
@@ -379,20 +394,13 @@ interface CreateOrderInput {
   }>;
 }
 
-interface OrderUpdateInput {
-  status?: OrderStatus;
-}
-
 export class OrderService {
-  private productRepo: ProductRepository;
-
-  constructor(private prisma: PrismaClient) {
-    this.productRepo = new ProductRepository(prisma);
-  }
+  constructor(private prisma: PrismaClient) {}
 
   // Create an order with stock reservation
   async createOrder(input: CreateOrderInput): Promise<Order> {
     return this.prisma.$transaction(async (tx) => {
+      const productRepo = new ProductRepository(tx);
       let total = new Prisma.Decimal(0);
       const orderItems: Array<{
         productId: string;
@@ -403,7 +411,7 @@ export class OrderService {
       // Reserve stock for each item
       for (const item of input.items) {
         // Reduce stock with optimistic locking
-        const product = await this.productRepo.updateStock(
+        const product = await productRepo.updateStock(
           item.productId,
           -item.quantity
         );
@@ -490,6 +498,7 @@ export class OrderService {
   // Cancel order and restore stock
   async cancelOrder(orderId: string, version: number): Promise<Order> {
     return this.prisma.$transaction(async (tx) => {
+      const productRepo = new ProductRepository(tx);
       // Update order status with version check
       const result = await tx.order.updateMany({
         where: {
@@ -526,7 +535,7 @@ export class OrderService {
 
       // Restore stock for each item
       for (const item of items) {
-        await this.productRepo.updateStock(item.productId, item.quantity);
+        await productRepo.updateStock(item.productId, item.quantity);
       }
 
       return tx.order.findUniqueOrThrow({
@@ -700,7 +709,7 @@ Optimistic locking with Prisma provides a scalable way to handle concurrent upda
 | Version tracking | Integer field incremented on each update |
 | Conflict detection | WHERE clause includes version check |
 | Error handling | Custom OptimisticLockError with details |
-| Retry strategy | Configurable with exponential backoff |
+| Retry strategy | Configurable with incremental backoff |
 | API response | Return new version for client tracking |
 
 Key takeaways:
