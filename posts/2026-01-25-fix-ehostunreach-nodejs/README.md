@@ -48,7 +48,7 @@ dig api.example.com
 
 ```javascript
 // Problem - typo or wrong address
-const response = await fetch('http://192.168.1.100:3000/api');
+const badResponse = await fetch('http://192.168.1.100:3000/api');
 
 // Fix - verify the address
 const HOST = process.env.API_HOST || 'localhost';
@@ -99,13 +99,13 @@ Containers cannot reach host machine by localhost:
 
 ```javascript
 // Problem - from inside Docker
-const response = await fetch('http://localhost:3000/api');  // EHOSTUNREACH
+const localResponse = await fetch('http://localhost:3000/api');  // Points to the container, not the host
 
 // Fix - use host.docker.internal (Docker Desktop)
-const response = await fetch('http://host.docker.internal:3000/api');
+const desktopResponse = await fetch('http://host.docker.internal:3000/api');
 
-// Or use the actual host IP
-const response = await fetch('http://172.17.0.1:3000/api');  // Docker bridge IP
+// Or use the bridge gateway on a default Linux Docker bridge
+const bridgeResponse = await fetch('http://172.17.0.1:3000/api');
 ```
 
 Docker Compose networking:
@@ -136,7 +136,7 @@ const response = await fetch(`${API_URL}/endpoint`);
 
 ```javascript
 // Problem - hardcoded IP that does not exist in cluster
-const response = await fetch('http://192.168.1.100:3000/api');
+const hardcodedResponse = await fetch('http://192.168.1.100:3000/api');
 
 // Fix - use Kubernetes service name
 // Format: http://<service-name>.<namespace>.svc.cluster.local:<port>
@@ -144,7 +144,7 @@ const API_URL = process.env.API_URL || 'http://my-api.default.svc.cluster.local:
 const response = await fetch(`${API_URL}/api`);
 
 // Or just the service name if in same namespace
-const API_URL = process.env.API_URL || 'http://my-api:3000';
+const SAME_NAMESPACE_API_URL = process.env.API_URL || 'http://my-api:3000';
 ```
 
 ### 5. VPN or Network Configuration
@@ -154,13 +154,20 @@ When a VPN changes your routing:
 ```javascript
 const http = require('http');
 
-// Create agent that binds to specific interface
+// Create agent that binds to specific interface for http.get/http.request
 const agent = new http.Agent({
     localAddress: '10.0.0.5',  // Your local IP on the correct interface
     keepAlive: true
 });
 
-const response = await fetch('http://api.internal:3000/endpoint', { agent });
+const req = http.get('http://api.internal:3000/endpoint', { agent }, (res) => {
+    res.resume();
+    console.log(`Status: ${res.statusCode}`);
+});
+
+req.on('error', (error) => {
+    console.error('Connection failed:', error.code, error.message);
+});
 ```
 
 ### 6. Firewall Blocking
@@ -181,14 +188,14 @@ sudo ufw status
 sudo pfctl -s rules
 ```
 
-Allow the connection:
+Allow inbound connections on the target host:
 
 ```bash
 # iptables
-sudo iptables -A OUTPUT -d 192.168.1.100 -p tcp --dport 3000 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 3000 -j ACCEPT
 
 # UFW
-sudo ufw allow out to 192.168.1.100 port 3000
+sudo ufw allow 3000/tcp
 
 # firewalld
 sudo firewall-cmd --add-port=3000/tcp --permanent
@@ -211,12 +218,13 @@ async function fetchWithRetry(url, options = {}, maxRetries = 3) {
             return response;
         } catch (error) {
             lastError = error;
+            const errorCode = error.code || error.cause?.code;
 
             // Only retry on network errors
-            if (error.code === 'EHOSTUNREACH' ||
-                error.code === 'ECONNREFUSED' ||
-                error.code === 'ETIMEDOUT' ||
-                error.code === 'ENOTFOUND') {
+            if (errorCode === 'EHOSTUNREACH' ||
+                errorCode === 'ECONNREFUSED' ||
+                errorCode === 'ETIMEDOUT' ||
+                errorCode === 'ENOTFOUND') {
 
                 if (attempt < maxRetries) {
                     const delay = retryDelay * Math.pow(backoffMultiplier, attempt - 1);
@@ -259,6 +267,7 @@ class ApiClient {
     async checkHealth(url) {
         return new Promise((resolve) => {
             const req = http.get(`${url}/health`, { timeout: 2000 }, (res) => {
+                res.resume();
                 resolve(res.statusCode === 200);
             });
 
@@ -342,7 +351,14 @@ function createDebugAgent() {
 
 // Use the debug agent
 const agent = createDebugAgent();
-const response = await fetch('http://api.example.com:3000/test', { agent });
+const req = http.get('http://api.example.com:3000/test', { agent }, (res) => {
+    res.resume();
+    console.log(`Status: ${res.statusCode}`);
+});
+
+req.on('error', (error) => {
+    console.error('Request failed:', error.code, error.message);
+});
 ```
 
 ## Environment-Specific Configuration
