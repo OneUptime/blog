@@ -71,7 +71,7 @@ pip install --upgrade requests
 pip install --upgrade pip
 
 # Upgrade all outdated packages (use a script)
-pip list --outdated --format=freeze | cut -d = -f 1 | xargs -n1 pip install -U
+pip list --outdated --format=json | python -c "import json, sys; print('\n'.join(pkg['name'] for pkg in json.load(sys.stdin)))" | xargs -n1 pip install -U
 ```
 
 ## Virtual Environments
@@ -276,7 +276,7 @@ index-url = https://pypi.org/simple
 trusted-host = pypi.org
 
 [install]
-# Always upgrade pip
+# Upgrade dependencies eagerly when upgrading packages
 upgrade-strategy = eager
 ```
 
@@ -365,8 +365,8 @@ pip-sync requirements.txt
 ### 4. Hash Checking for Security
 
 ```bash
-# Generate requirements with hashes
-pip freeze --all | pip hash - > requirements.txt
+# Generate requirements with hashes (requires pip-tools)
+pip-compile --generate-hashes requirements.in
 
 # Verify hashes during install
 pip install --require-hashes -r requirements.txt
