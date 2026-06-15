@@ -31,6 +31,7 @@ package main
 
 import (
     "encoding/json"
+    "fmt"
     "log"
     "net/http"
     "sync"
@@ -46,15 +47,17 @@ type Message struct {
 
 // LongPollServer manages client connections and message broadcasting
 type LongPollServer struct {
-    mu       sync.RWMutex
-    clients  map[chan Message]struct{}
-    messages []Message
+    mu         sync.RWMutex
+    clients    map[chan Message]struct{}
+    messages   []Message
+    maxHistory int
 }
 
 func NewLongPollServer() *LongPollServer {
     return &LongPollServer{
-        clients:  make(map[chan Message]struct{}),
-        messages: make([]Message, 0),
+        clients:    make(map[chan Message]struct{}),
+        messages:   make([]Message, 0),
+        maxHistory: 100,
     }
 }
 ```
@@ -214,9 +217,9 @@ Clients can miss messages during reconnection. Add a `lastEventID` parameter so 
 
 ```go
 type LongPollServer struct {
-    mu       sync.RWMutex
-    clients  map[chan Message]struct{}
-    messages []Message
+    mu         sync.RWMutex
+    clients    map[chan Message]struct{}
+    messages   []Message
     maxHistory int
 }
 
@@ -291,6 +294,9 @@ func (s *LongPollServer) HandlePoll(w http.ResponseWriter, r *http.Request) {
 
     // Register to specific channel
     s.mu.Lock()
+    if s.channels == nil {
+        s.channels = make(map[string]map[chan Message]struct{})
+    }
     if s.channels[channel] == nil {
         s.channels[channel] = make(map[chan Message]struct{})
     }
