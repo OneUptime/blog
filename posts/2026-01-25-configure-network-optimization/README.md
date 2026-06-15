@@ -103,11 +103,11 @@ Tune TCP behavior for faster connections and better resource utilization:
 # /etc/sysctl.conf
 
 # Enable TCP Fast Open for faster connection establishment
-# Client and server support (value 3)
+# Client support plus server support for listeners that enable TCP_FASTOPEN (value 3)
 net.ipv4.tcp_fastopen = 3
 
 # Reuse TIME_WAIT sockets for new connections
-# Safe for most workloads
+# Use only after testing; modern kernels default to loopback-only reuse
 net.ipv4.tcp_tw_reuse = 1
 
 # Enable TCP window scaling for high-bandwidth connections
@@ -136,7 +136,7 @@ sysctl net.ipv4.tcp_available_congestion_control
 # Developed by Google, excellent for high-latency networks
 net.ipv4.tcp_congestion_control = bbr
 
-# Ensure fair queuing is enabled (required for BBR)
+# Enable fair queuing for better BBR pacing on busy servers
 net.core.default_qdisc = fq
 ```
 
