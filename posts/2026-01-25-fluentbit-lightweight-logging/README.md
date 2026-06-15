@@ -8,7 +8,7 @@ Description: Learn how to implement FluentBit for lightweight log collection in 
 
 ---
 
-> FluentBit is a fast, lightweight log processor and forwarder designed for high-throughput environments. At roughly 650KB with no external dependencies, it is perfect for containers and edge devices where resources are limited.
+> FluentBit is a fast, lightweight log processor and forwarder designed for high-throughput environments. With low CPU and memory usage, it is well suited for containers and edge devices where resources are limited.
 
 While Fluentd offers extensive plugin support and flexibility, FluentBit focuses on doing one thing extremely well: collecting and forwarding logs with minimal resource usage. For Kubernetes environments where you need a log shipper on every node, FluentBit's small footprint makes it the better choice.
 
@@ -20,11 +20,11 @@ Understanding when to use each tool helps you make the right choice:
 
 | Feature | FluentBit | Fluentd |
 |---------|-----------|---------|
-| Memory Usage | ~650KB | ~40MB |
+| Memory Usage | Low baseline footprint | Higher baseline footprint |
 | Language | C | C and Ruby |
 | Plugin System | Built-in | Extensive ecosystem |
 | Use Case | Log forwarding | Log aggregation |
-| Dependencies | None | Ruby runtime |
+| Dependencies | No Ruby runtime | Ruby runtime |
 
 The common pattern is to run FluentBit on edge nodes for collection and Fluentd as an aggregator for complex processing.
 
@@ -76,14 +76,14 @@ docker run -d \
   --name fluent-bit \
   -v /var/log:/var/log:ro \
   -v $(pwd)/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf \
-  fluent/fluent-bit:2.2
+  fluent/fluent-bit:5.0.7
 ```
 
 ---
 
 ## Configuration Fundamentals
 
-FluentBit uses a simple configuration format with sections for service settings, inputs, filters, and outputs:
+FluentBit supports a classic configuration format with sections for service settings, inputs, filters, and outputs:
 
 ```ini
 # /etc/fluent-bit/fluent-bit.conf
@@ -164,7 +164,7 @@ The most common input for collecting log files:
     DB                /var/log/flb_backend.db
     DB.sync           normal
 
-    # Memory buffer limit per monitored file
+    # Memory buffer limit for this tail input
     Mem_Buf_Limit     10MB
 
     # Handle long lines
@@ -179,7 +179,7 @@ The most common input for collecting log files:
     # Handle log rotation
     Rotate_Wait       30
 
-    # Multiline configuration for stack traces
+    # Legacy multiline configuration for stack traces
     Multiline         On
     Multiline_Flush   5
     Parser_Firstline  multiline_start
@@ -363,9 +363,9 @@ function process_log(tag, timestamp, record)
         )
     end
 
-    -- Return modified record
-    -- Return code: 0=keep, 1=modify, 2=drop
-    return 1, timestamp, record
+    -- Return modified record without changing the event timestamp
+    -- Return code: -1=drop, 0=keep unchanged, 1=modify timestamp and record, 2=modify record only
+    return 2, timestamp, record
 end
 ```
 
@@ -397,6 +397,7 @@ end
     # Index configuration
     Index           logs
     Type            _doc
+    Suppress_Type_Name On
 
     # Use time-based indices
     Logstash_Format On
@@ -410,7 +411,7 @@ end
     # Retry configuration
     Retry_Limit     5
 
-    # Buffer in case of failures
+    # Buffer for reading Elasticsearch HTTP responses
     Buffer_Size     5MB
 ```
 
@@ -435,7 +436,7 @@ Send to Fluentd or another FluentBit:
     tls.verify      On
     tls.ca_file     /etc/fluent-bit/certs/ca.crt
 
-    # Send as MessagePack (more efficient)
+    # Always send forward protocol options
     Send_options    true
     Require_ack_response true
 ```
@@ -494,7 +495,7 @@ spec:
         - operator: Exists
       containers:
         - name: fluent-bit
-          image: fluent/fluent-bit:2.2
+          image: fluent/fluent-bit:5.0.7
           ports:
             - containerPort: 2020
               name: metrics
@@ -586,11 +587,8 @@ Tune FluentBit for high-throughput environments:
     Name              es
     Match             *
 
-    # Batch writes for efficiency
+    # Buffer for reading Elasticsearch HTTP responses
     Buffer_Size       10M
-
-    # Connection pooling
-    HTTP_Pooling      On
 
     # Compression reduces network usage
     Compress          gzip
@@ -613,13 +611,16 @@ curl http://localhost:2020/
 curl http://localhost:2020/api/v1/metrics/prometheus
 
 # Check input/output stats
+curl http://localhost:2020/api/v1/metrics
+
+# Check storage stats (requires storage.metrics On)
 curl http://localhost:2020/api/v1/storage
 ```
 
 Key metrics to monitor:
 - `fluentbit_input_bytes_total`: Bytes received
 - `fluentbit_output_retries_total`: Output retries
-- `fluentbit_filter_records_total`: Records processed
+- `fluentbit_output_proc_records_total`: Records delivered by outputs
 
 ---
 
