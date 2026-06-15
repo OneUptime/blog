@@ -24,7 +24,7 @@ HTTP/3 uses QUIC as its transport protocol instead of TCP, providing faster conn
 HTTP/3 support requires:
 
 - Nginx 1.25.0 or later
-- OpenSSL 3.0+ or BoringSSL
+- OpenSSL 3.5.1+ is recommended for QUIC support, or BoringSSL, LibreSSL, or QuicTLS. With older OpenSSL versions, Nginx uses a compatibility layer that does not support early data.
 - UDP port access (usually 443)
 
 Check your Nginx version and modules:
@@ -46,6 +46,7 @@ Enable HTTP/3 alongside HTTP/2:
 server {
     # HTTP/2 over TCP
     listen 443 ssl;
+    http2 on;
 
     # HTTP/3 over QUIC
     listen 443 quic reuseport;
@@ -95,6 +96,7 @@ server {
     # HTTP/2 over TCP (IPv4 and IPv6)
     listen 443 ssl;
     listen [::]:443 ssl;
+    http2 on;
 
     # HTTP/3 over QUIC (IPv4 and IPv6)
     listen 443 quic reuseport;
@@ -167,7 +169,7 @@ http {
         listen 443 quic reuseport;
         listen 443 ssl;
 
-        # Connection idle timeout
+        # Active connection ID limit
         quic_active_connection_id_limit 2;
 
         # ... rest of configuration
@@ -277,12 +279,12 @@ sequenceDiagram
 Optimize HTTP/3 performance:
 
 ```nginx
+# Enable eBPF packet routing for QUIC connection migration (main context, Linux 5.7+)
+quic_bpf on;
+
 http {
     # Enable GSO for better performance
     quic_gso on;
-
-    # Buffer settings for QUIC
-    quic_bpf on;  # Enable BPF (Linux 5.7+)
 
     server {
         listen 443 quic reuseport;
@@ -322,6 +324,7 @@ When running multiple virtual hosts:
 server {
     listen 443 quic reuseport;
     listen 443 ssl;
+    http2 on;
     server_name site1.example.com;
 
     # ... configuration
@@ -331,6 +334,7 @@ server {
 server {
     listen 443 quic;
     listen 443 ssl;
+    http2 on;
     server_name site2.example.com;
 
     # ... configuration
@@ -339,6 +343,7 @@ server {
 server {
     listen 443 quic;
     listen 443 ssl;
+    http2 on;
     server_name site3.example.com;
 
     # ... configuration
@@ -356,7 +361,7 @@ http {
     log_format detailed '$remote_addr - [$time_local] '
                         '"$request" $status '
                         'protocol=$server_protocol '
-                        'quic=$quic '
+                        'http3=$http3 '
                         'ssl_early_data=$ssl_early_data';
 
     server {
@@ -364,6 +369,7 @@ http {
 
         listen 443 quic reuseport;
         listen 443 ssl;
+        http2 on;
 
         # ... rest of configuration
     }
@@ -390,6 +396,7 @@ server {
     # Always provide HTTP/2 fallback
     listen 443 ssl;
     listen [::]:443 ssl;
+    http2 on;
 
     # HTTP/3 when available
     listen 443 quic reuseport;
