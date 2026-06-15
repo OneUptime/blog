@@ -126,7 +126,7 @@ func captureStack(skip int) []Frame {
 
 ## Implementing the Error Interface
 
-For our custom type to work seamlessly with Go's error handling, we need to implement the standard interfaces:
+For our custom type to work seamlessly with Go's error handling, we need to implement the error interface and Go's wrapping convention:
 
 ```go
 // Error implements the error interface
@@ -190,7 +190,7 @@ Now you can add relevant debugging information:
 
 ```go
 func processOrder(orderID string, userID string) error {
-    order, err := fetchOrder(orderID)
+    _, err := fetchOrder(orderID)
     if err != nil {
         return errors.Wrap(err, "failed to process order").
             WithContext("order_id", orderID).
@@ -252,21 +252,19 @@ This produces output like:
 payment processing failed: card declined
 
 Stack trace:
-  1. main.chargeCard
-     /app/main.go:32
-  2. main.processPayment
+  1. main.processPayment
      /app/main.go:25
-  3. main.handleRequest
+  2. main.handleRequest
      /app/main.go:19
-  4. main.main
+  3. main.main
      /app/main.go:10
 ```
 
 ## Performance Considerations
 
-Capturing stack traces isn't free. The `runtime.Callers` function allocates memory and does non-trivial work. Here are some strategies to keep things performant:
+Capturing stack traces isn't free. The code above allocates a program-counter buffer, and resolving frames does non-trivial work. Here are some strategies to keep things performant:
 
-**Lazy Stack Capture**: Only capture the stack when you actually need it:
+**Lazy Frame Resolution**: Capture program counters up front, but resolve file, line, and function details only when you actually need them:
 
 ```go
 type LazyStackError struct {
