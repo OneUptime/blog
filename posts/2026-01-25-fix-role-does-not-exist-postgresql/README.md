@@ -70,10 +70,12 @@ psql -U postgres mydb
 
 ### Solution 1: Create the Missing Role
 
-```sql
--- Connect as superuser (postgres)
+```bash
+# Connect as superuser (postgres)
 sudo -u postgres psql
+```
 
+```sql
 -- Create a basic role that can login
 CREATE ROLE myuser WITH LOGIN PASSWORD 'mypassword';
 
@@ -171,11 +173,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
 
 ### Scenario 3: Docker/Container Setup
 
-```dockerfile
-# Dockerfile or docker-compose.yml
+```yaml
+# docker-compose.yml
 # PostgreSQL creates the POSTGRES_USER automatically
 
-# docker-compose.yml
 services:
   db:
     image: postgres:15
@@ -185,9 +186,9 @@ services:
       POSTGRES_DB: mydb
 ```
 
-```bash
-# If you need additional roles, create them in init script
-# init.sql (mounted to /docker-entrypoint-initdb.d/)
+```sql
+-- If you need additional roles, create them in init script
+-- init.sql (mounted to /docker-entrypoint-initdb.d/)
 CREATE ROLE readonly_user WITH LOGIN PASSWORD 'readonly_pass';
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly_user;
 ```
@@ -198,11 +199,11 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly_user;
 # Error: FATAL: Peer authentication failed for user "myuser"
 # This means the role exists but peer auth requires matching OS user
 
-# Option 1: Use password authentication
-psql -U myuser -h localhost mydb  # Forces TCP connection with password auth
+# Option 1: Use host-based authentication
+psql -U myuser -h localhost mydb  # Uses TCP; pg_hba.conf must allow password auth for localhost
 
-# Option 2: Modify pg_hba.conf to allow password auth
-# local   all   myuser   md5
+# Option 2: Modify pg_hba.conf to allow password auth for local socket connections
+# local   all   myuser   scram-sha-256
 ```
 
 ---
@@ -308,36 +309,35 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO myuser;
 \set app_password 'secure_random_password'
 \set app_database 'myapp_db'
 
--- Create role
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'app_user') THEN
-        EXECUTE format('CREATE ROLE %I WITH LOGIN PASSWORD %L', :'app_user', :'app_password');
-    END IF;
-END
-$$;
+-- Create role if it does not exist
+SELECT NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'app_user') AS app_role_missing
+\gset
+
+\if :app_role_missing
+CREATE ROLE :"app_user" WITH LOGIN PASSWORD :'app_password';
+\endif
 
 -- Grant database access
-GRANT CONNECT ON DATABASE :app_database TO :app_user;
+GRANT CONNECT ON DATABASE :"app_database" TO :"app_user";
 
 -- Connect to application database
-\c :app_database
+\c :"app_database"
 
 -- Grant schema access
-GRANT USAGE ON SCHEMA public TO :app_user;
+GRANT USAGE ON SCHEMA public TO :"app_user";
 
 -- Grant table permissions
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :"app_user";
 
 -- Grant sequence permissions
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO :app_user;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO :"app_user";
 
 -- Set default privileges for future objects
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"app_user";
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-GRANT USAGE, SELECT ON SEQUENCES TO :app_user;
+GRANT USAGE, SELECT ON SEQUENCES TO :"app_user";
 
 -- Confirm role creation
 \echo 'Role created successfully:'
