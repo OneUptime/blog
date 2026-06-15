@@ -72,7 +72,7 @@ import psutil
 import asyncio
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Callable, Any
 from dataclasses import dataclass, asdict
 import aiohttp
@@ -118,7 +118,7 @@ class MetricCollector:
 
     def collect(self) -> DeviceMetrics:
         """Collect all system metrics"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # CPU
         cpu_percent = psutil.cpu_percent(interval=1)
@@ -220,8 +220,17 @@ class MonitoringAgent:
             payload = {
                 "device_id": self.device_id,
                 "timestamp": metrics.timestamp.isoformat(),
-                "system": asdict(metrics),
-                "custom": [asdict(m) for m in custom_metrics]
+                "system": {
+                    **asdict(metrics),
+                    "timestamp": metrics.timestamp.isoformat()
+                },
+                "custom": [
+                    {
+                        **asdict(m),
+                        "timestamp": m.timestamp.isoformat()
+                    }
+                    for m in custom_metrics
+                ]
             }
 
             # Try to send
@@ -286,7 +295,7 @@ def collect_application_metrics() -> List[Metric]:
     metrics.append(Metric(
         name="sensor_queue_size",
         value=42,  # Replace with actual value
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         labels={"sensor_type": "temperature"},
         unit="items"
     ))
@@ -321,15 +330,30 @@ if __name__ == "__main__":
 # monitoring_server.py
 # Server for receiving and processing device metrics
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 import logging
 
-app = FastAPI(title="Device Monitoring Server")
 logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(check_offline_devices())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+app = FastAPI(title="Device Monitoring Server", lifespan=lifespan)
 
 # In-memory storage (use proper database in production)
 device_metrics: Dict[str, List[dict]] = {}
@@ -348,6 +372,7 @@ class SystemMetrics(BaseModel):
     temperature: Optional[float] = None
     uptime_seconds: int = 0
     process_count: int = 0
+    load_average: Optional[tuple] = None
 
 class CustomMetric(BaseModel):
     name: str
@@ -388,7 +413,7 @@ async def receive_metrics(payload: MetricsPayload):
     if device_id not in device_metrics:
         device_metrics[device_id] = []
 
-    device_metrics[device_id].append(payload.dict())
+    device_metrics[device_id].append(payload.model_dump(mode="json"))
 
     # Keep only last 24 hours (simplified)
     if len(device_metrics[device_id]) > 1440:  # 1 per minute * 24 hours
@@ -400,7 +425,7 @@ async def receive_metrics(payload: MetricsPayload):
         "last_seen": payload.timestamp,
         "status": "unhealthy" if alerts else "healthy",
         "alerts": alerts,
-        "metrics": payload.system.dict()
+        "metrics": payload.system.model_dump(mode="json")
     }
 
     # Trigger alerts if needed
@@ -494,7 +519,7 @@ async def get_device_metrics(
 async def check_offline_devices():
     """Check for devices that stopped reporting"""
     while True:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         offline_threshold = 300  # 5 minutes
 
         for device_id, status in device_status.items():
@@ -512,9 +537,6 @@ async def check_offline_devices():
 
         await asyncio.sleep(60)
 
-@app.on_event("startup")
-async def startup():
-    asyncio.create_task(check_offline_devices())
 ```
 
 ---
@@ -527,7 +549,7 @@ async def startup():
 
 import asyncio
 import aiohttp
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 from collections import deque
@@ -554,7 +576,7 @@ class ConnectivityMonitor:
 
     async def check_device(self, device_id: str, endpoint: str) -> ConnectivityMetrics:
         """Check connectivity to a specific device"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Initialize state tracking
         if device_id not in self.device_states:
@@ -573,7 +595,8 @@ class ConnectivityMonitor:
         latency_ms = None
 
         try:
-            start = asyncio.get_event_loop().time()
+            loop = asyncio.get_running_loop()
+            start = loop.time()
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"{endpoint}/health",
@@ -581,7 +604,7 @@ class ConnectivityMonitor:
                 ) as response:
                     if response.status == 200:
                         online = True
-                        latency_ms = (asyncio.get_event_loop().time() - start) * 1000
+                        latency_ms = (loop.time() - start) * 1000
 
         except Exception:
             online = False
@@ -639,7 +662,7 @@ class ConnectivityMonitor:
             "min_ms": min(history),
             "max_ms": max(history),
             "p50_ms": statistics.median(history),
-            "p95_ms": statistics.quantiles(history, n=100)[94] if len(history) > 1 else history[0],
+            "p95_ms": statistics.quantiles(history, n=100, method="inclusive")[94] if len(history) > 1 else history[0],
             "samples": len(history)
         }
 ```
@@ -654,7 +677,7 @@ class ConnectivityMonitor:
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict
 from dataclasses import dataclass
 from enum import Enum
@@ -706,7 +729,7 @@ class LogCollector:
     ):
         """Add log entry to buffer"""
         entry = LogEntry(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             level=level,
             message=message,
             source=source,
@@ -773,7 +796,7 @@ class LogCollector:
 
     async def _store_locally(self, payload: dict):
         """Store logs locally when offline"""
-        filename = f"{self.local_storage_path}/{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json.gz"
+        filename = f"{self.local_storage_path}/{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json.gz"
 
         with gzip.open(filename, 'wt') as f:
             json.dump(payload, f)
@@ -794,7 +817,7 @@ class LogCollector:
 # Alerting rules for device monitoring
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Callable, Any, Optional
 from enum import Enum
 
@@ -841,7 +864,7 @@ class AlertEngine:
     def evaluate(self, device_id: str, metrics: Dict) -> List[Alert]:
         """Evaluate metrics against all rules"""
         new_alerts = []
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for rule in self.rules:
             rule_key = f"{device_id}:{rule.name}"
