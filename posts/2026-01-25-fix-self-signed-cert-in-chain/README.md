@@ -41,23 +41,33 @@ const fs = require('fs');
 const ca = fs.readFileSync('/path/to/corporate-root-ca.pem');
 
 const agent = new https.Agent({
-    ca: ca  // Add to trusted CAs
+    ca: ca  // Trust this CA for requests made with this agent
 });
 
-// Use with fetch
-const response = await fetch('https://internal-api.company.com/data', { agent });
+async function requestData() {
+    // Use with Node's built-in fetch by installing undici and passing a dispatcher
+    const { Agent: UndiciAgent } = require('undici');
+    const dispatcher = new UndiciAgent({
+        connect: { ca }
+    });
+    const fetchResponse = await fetch('https://internal-api.company.com/data', { dispatcher });
 
-// Use with axios
-const axios = require('axios');
-const instance = axios.create({
-    httpsAgent: agent
-});
-const response = await instance.get('https://internal-api.company.com/data');
+    // Use with axios
+    const axios = require('axios');
+    const instance = axios.create({
+        httpsAgent: agent
+    });
+    const axiosResponse = await instance.get('https://internal-api.company.com/data');
+
+    return { fetchResponse, axiosResponse };
+}
+
+requestData().catch(console.error);
 ```
 
 ## Solution 2: NODE_EXTRA_CA_CERTS Environment Variable
 
-Add the CA to all Node.js requests without code changes:
+Add the CA to Node.js TLS requests that do not explicitly set their own `ca` option:
 
 ```bash
 # Set the environment variable
@@ -108,16 +118,17 @@ const agent = new https.Agent({ ca });
 
 ## Getting the CA Certificate
 
-If you do not have the CA certificate file, extract it from the server:
+If you do not have the CA certificate file, ask your administrator for the root CA. You can inspect the certificates sent by the server, but many servers omit the root certificate from the TLS chain, so the last certificate shown is often an intermediate CA:
 
 ```bash
 # Get all certificates in the chain
 openssl s_client -connect internal-api.company.com:443 -showcerts < /dev/null 2>/dev/null | \
   sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' > chain.pem
 
-# Get just the root CA (last certificate in the chain)
+# Save the last certificate sent by the server. This is often an intermediate CA,
+# not the root CA, because TLS servers commonly omit the root certificate.
 openssl s_client -connect internal-api.company.com:443 -showcerts < /dev/null 2>/dev/null | \
-  awk '/-----BEGIN CERTIFICATE-----/{cert=""} {cert=cert $0 "\n"} /-----END CERTIFICATE-----/{last=cert} END{print last}' > root-ca.pem
+  awk '/-----BEGIN CERTIFICATE-----/{cert=""} {cert=cert $0 "\n"} /-----END CERTIFICATE-----/{last=cert} END{print last}' > last-cert-sent.pem
 ```
 
 Programmatically extract in Node.js:
@@ -127,7 +138,7 @@ const tls = require('tls');
 
 function getCertificateChain(host, port = 443) {
     return new Promise((resolve, reject) => {
-        const socket = tls.connect(port, host, { rejectUnauthorized: false }, () => {
+        const socket = tls.connect(port, host, { rejectUnauthorized: false, servername: host }, () => {
             const cert = socket.getPeerCertificate(true);  // true = return full chain
             const chain = [];
 
@@ -158,11 +169,14 @@ function getCertificateChain(host, port = 443) {
 }
 
 // Usage
-const chain = await getCertificateChain('internal-api.company.com');
-console.log('Certificate chain:');
-chain.forEach((cert, i) => {
-    console.log(`${i + 1}. ${cert.subject.CN} (issued by ${cert.issuer.CN})`);
-});
+getCertificateChain('internal-api.company.com')
+    .then((chain) => {
+        console.log('Certificate chain:');
+        chain.forEach((cert, i) => {
+            console.log(`${i + 1}. ${cert.subject.CN} (issued by ${cert.issuer.CN})`);
+        });
+    })
+    .catch(console.error);
 ```
 
 ## Database Connections
@@ -215,6 +229,9 @@ COPY certs/corporate-ca.pem /usr/local/share/ca-certificates/corporate-ca.crt
 # Update CA certificates
 RUN apk add --no-cache ca-certificates && update-ca-certificates
 
+# Make Node.js extend its default CA set with this certificate
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/corporate-ca.crt
+
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -241,14 +258,14 @@ CMD ["node", "src/index.js"]
 
 ## Windows Considerations
 
-On Windows, you might need to add the CA to the system store:
+On Windows, you might need to add the CA to the system store for tools that use Windows trusted roots:
 
 ```powershell
 # Import to Windows certificate store (as Administrator)
 certutil -addstore -f "ROOT" corporate-ca.pem
 ```
 
-Or provide it explicitly in your Node.js application as shown above.
+For Node.js itself, provide it explicitly in your application or with `NODE_EXTRA_CA_CERTS` as shown above. On Node.js versions that support system CAs, you can also enable the system store with `NODE_USE_SYSTEM_CA=1`.
 
 ## Development vs Production
 
