@@ -68,7 +68,7 @@ for val in falsy_values:
 
 ### Truthy Values
 
-Everything else is truthy:
+Many other values are truthy:
 
 ```python
 # These are all truthy
@@ -128,10 +128,10 @@ a = 5
 b = 5
 print(a is b)  # True - but do not rely on this!
 
-# This fails because larger integers are not cached
-x = 1000
-y = 1000
-print(x is y)  # False - different objects
+# This may fail because larger integers are not guaranteed to be cached
+x = int("1000")
+y = int("1000")
+print(x is y)  # Usually False - but do not rely on identity either way!
 
 # Use == for value comparison
 print(x == y)  # True - correct way
