@@ -76,12 +76,12 @@ router.get('/health', async (req, res) => {
 
   // Check external API
   try {
-    const response = await fetch('https://api.stripe.com/v1/health', {
-      timeout: 5000
+    const response = await fetch('https://api.example.com/health', {
+      signal: AbortSignal.timeout(5000)
     });
-    health.checks.stripe = response.ok ? 'ok' : 'degraded';
+    health.checks.externalApi = response.ok ? 'ok' : 'degraded';
   } catch (error) {
-    health.checks.stripe = 'unreachable';
+    health.checks.externalApi = 'unreachable';
     // External API down might not be critical
   }
 
@@ -121,7 +121,7 @@ fi
 
 # Test 2: Homepage loads
 echo -n "Homepage... "
-HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" --max-time $TIMEOUT "$BASE_URL/")
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time "$TIMEOUT" "$BASE_URL/") || HTTP_CODE="000"
 if [ "$HTTP_CODE" = "200" ]; then
     echo "PASS"
 else
@@ -141,7 +141,7 @@ fi
 
 # Test 4: Static assets load
 echo -n "Static assets... "
-ASSET_CODE=$(curl -sf -o /dev/null -w "%{http_code}" --max-time $TIMEOUT "$BASE_URL/static/main.js")
+ASSET_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time "$TIMEOUT" "$BASE_URL/static/main.js") || ASSET_CODE="000"
 if [ "$ASSET_CODE" = "200" ]; then
     echo "PASS"
 else
@@ -253,30 +253,13 @@ Test the most important user journeys:
 
 ```javascript
 // tests/smoke/critical-flows.test.js
-const { chromium } = require('playwright');
+const { test, expect } = require('@playwright/test');
 
-describe('Critical User Flows', () => {
-  let browser;
-  let page;
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
-  beforeAll(async () => {
-    browser = await chromium.launch();
-  });
-
-  afterAll(async () => {
-    await browser.close();
-  });
-
-  beforeEach(async () => {
-    page = await browser.newPage();
-  });
-
-  afterEach(async () => {
-    await page.close();
-  });
-
-  test('user can view homepage and navigate to products', async () => {
-    await page.goto(process.env.BASE_URL);
+test.describe('Critical User Flows', () => {
+  test('user can view homepage and navigate to products', async ({ page }) => {
+    await page.goto(BASE_URL);
 
     // Homepage loads
     await expect(page.locator('h1')).toBeVisible();
@@ -286,10 +269,10 @@ describe('Critical User Flows', () => {
 
     // Products page loads
     await expect(page.locator('[data-testid="product-list"]')).toBeVisible();
-  }, 30000);
+  });
 
-  test('user can search for products', async () => {
-    await page.goto(`${process.env.BASE_URL}/products`);
+  test('user can search for products', async ({ page }) => {
+    await page.goto(`${BASE_URL}/products`);
 
     // Enter search term
     await page.fill('[data-testid="search-input"]', 'test');
@@ -297,17 +280,17 @@ describe('Critical User Flows', () => {
 
     // Results appear
     await expect(page.locator('[data-testid="search-results"]')).toBeVisible();
-  }, 30000);
+  });
 
-  test('user can add item to cart', async () => {
-    await page.goto(`${process.env.BASE_URL}/products/1`);
+  test('user can add item to cart', async ({ page }) => {
+    await page.goto(`${BASE_URL}/products/1`);
 
     // Add to cart
     await page.click('[data-testid="add-to-cart"]');
 
     // Cart updates
     await expect(page.locator('[data-testid="cart-count"]')).toHaveText('1');
-  }, 30000);
+  });
 });
 ```
 
@@ -363,7 +346,13 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api
@@ -397,7 +386,7 @@ BASE_URL=$2
 echo "Running post-deployment smoke tests for $ENVIRONMENT"
 
 # Run smoke tests
-if ! npm run test:smoke; then
+if ! BASE_URL="$BASE_URL" npm run test:smoke; then
     echo "Smoke tests failed! Initiating rollback..."
 
     # Notify team
@@ -428,6 +417,7 @@ Run smoke tests continuously in production:
 const cron = require('node-cron');
 const axios = require('axios');
 const { sendAlert } = require('./alerting');
+const { recordMetric } = require('./metrics');
 
 const ENDPOINTS = [
   { name: 'Health', url: '/health', expected: 200 },
