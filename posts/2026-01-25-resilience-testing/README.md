@@ -114,23 +114,23 @@ Test pod crash recovery:
 
 ```yaml
 # pod-failure.yaml
-# Kill random pods to test recovery
+# Kill random pods every 10 minutes to test recovery
 apiVersion: chaos-mesh.org/v1alpha1
-kind: PodChaos
+kind: Schedule
 metadata:
   name: api-pod-failure
   namespace: production
 spec:
-  action: pod-kill
-  mode: one
-  selector:
-    namespaces:
-      - production
-    labelSelectors:
-      app: api-server
-  # Run every 10 minutes
-  scheduler:
-    cron: "*/10 * * * *"
+  schedule: "@every 10m"
+  type: PodChaos
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        app: api-server
 ```
 
 Container kill within a pod:
@@ -257,13 +257,13 @@ class ResilienceTestRunner {
     async applyExperiment(experiment: ChaosExperiment): Promise<void> {
         const manifest = experiment.manifest as any;
 
-        await this.k8sApi.createNamespacedCustomObject(
-            'chaos-mesh.org',
-            'v1alpha1',
-            manifest.metadata.namespace,
-            this.getResourcePlural(manifest.kind),
-            manifest
-        );
+        await this.k8sApi.createNamespacedCustomObject({
+            group: 'chaos-mesh.org',
+            version: 'v1alpha1',
+            namespace: manifest.metadata.namespace,
+            plural: this.getResourcePlural(manifest.kind),
+            body: manifest,
+        });
 
         console.log(`Applied experiment: ${experiment.name}`);
     }
@@ -272,13 +272,13 @@ class ResilienceTestRunner {
     async deleteExperiment(experiment: ChaosExperiment): Promise<void> {
         const manifest = experiment.manifest as any;
 
-        await this.k8sApi.deleteNamespacedCustomObject(
-            'chaos-mesh.org',
-            'v1alpha1',
-            manifest.metadata.namespace,
-            this.getResourcePlural(manifest.kind),
-            manifest.metadata.name
-        );
+        await this.k8sApi.deleteNamespacedCustomObject({
+            group: 'chaos-mesh.org',
+            version: 'v1alpha1',
+            namespace: manifest.metadata.namespace,
+            plural: this.getResourcePlural(manifest.kind),
+            name: manifest.metadata.name,
+        });
 
         console.log(`Deleted experiment: ${experiment.name}`);
     }
@@ -517,12 +517,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v4
 
       - name: Configure kubeconfig
         run: |
           echo "${{ secrets.STAGING_KUBECONFIG }}" > kubeconfig
-          export KUBECONFIG=kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> "$GITHUB_ENV"
 
       - name: Verify Chaos Mesh installed
         run: kubectl get pods -n chaos-mesh
