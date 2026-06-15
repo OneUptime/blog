@@ -31,7 +31,7 @@ sequenceDiagram
     Note over P: Immediate termination
 ```
 
-The problem is that PID 1 in a container has special behavior - it does not receive default signal handlers. Your application must explicitly handle signals.
+The problem is that PID 1 in a container has special behavior - signals that would normally terminate a process can be ignored unless a handler is installed. Your application must explicitly handle signals.
 
 ## The PID 1 Problem
 
@@ -85,6 +85,7 @@ const server = http.createServer((req, res) => {
 
 // Track connections for graceful shutdown
 const connections = new Set();
+let shuttingDown = false;
 
 server.on('connection', (conn) => {
   connections.add(conn);
@@ -93,6 +94,9 @@ server.on('connection', (conn) => {
 
 // Graceful shutdown handler
 function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
   console.log(`Received ${signal}, shutting down gracefully...`);
 
   // Stop accepting new connections
@@ -101,10 +105,8 @@ function shutdown(signal) {
     process.exit(0);
   });
 
-  // Close existing connections after current requests complete
-  for (const conn of connections) {
-    conn.end();
-  }
+  // Close idle keep-alive connections while active requests complete
+  server.closeIdleConnections?.();
 
   // Force close after timeout
   setTimeout(() => {
@@ -296,7 +298,6 @@ docker run --init myapp:latest
 In Docker Compose:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -309,13 +310,12 @@ Configure the grace period for graceful shutdown:
 
 ```bash
 # Increase stop timeout to 30 seconds
-docker stop --time=30 mycontainer
+docker stop --timeout=30 mycontainer
 
 # Or in docker-compose.yml
 ```
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -450,8 +450,8 @@ CMD ["node", "server.js"]
 # Set stop signal
 STOPSIGNAL SIGTERM
 
-# Set reasonable stop timeout
-LABEL docker.stop-timeout="30"
+# Set a reasonable stop timeout when creating or running the container:
+# docker run --stop-timeout=30 myapp:latest
 ```
 
 ---
