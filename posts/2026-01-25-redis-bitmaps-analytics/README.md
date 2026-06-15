@@ -54,6 +54,7 @@ BITCOUNT users:active:2026-01-25
 
 ```python
 import redis
+import uuid
 from datetime import datetime, timedelta
 
 r = redis.Redis()
@@ -121,7 +122,7 @@ BITOP OR users:active:either users:active:2026-01-24 users:active:2026-01-25
 # XOR - Users active on exactly ONE day
 BITOP XOR users:active:exclusive users:active:2026-01-24 users:active:2026-01-25
 
-# NOT - Invert bits (users NOT active)
+# NOT - Invert bits in the existing bitmap range
 BITOP NOT users:inactive:2026-01-25 users:active:2026-01-25
 ```
 
@@ -140,7 +141,7 @@ class RetentionAnalyzer:
         """Calculate retention between two dates."""
         key1 = f"users:active:{date1}"
         key2 = f"users:active:{date2}"
-        result_key = f"retention:{date1}:{date2}"
+        result_key = f"temp:retention:{date1}:{date2}:{uuid.uuid4().hex}"
 
         # Users active on both days
         self.r.bitop('AND', result_key, key1, key2)
@@ -169,7 +170,7 @@ class RetentionAnalyzer:
             check_date = (datetime.strptime(cohort_date, '%Y-%m-%d') +
                          timedelta(days=i)).strftime('%Y-%m-%d')
             check_key = f"users:active:{check_date}"
-            temp_key = f"temp:retention:{cohort_date}:{check_date}"
+            temp_key = f"temp:retention:{cohort_date}:{check_date}:{uuid.uuid4().hex}"
 
             self.r.bitop('AND', temp_key, cohort_key, check_key)
             retained = self.r.bitcount(temp_key)
@@ -230,7 +231,7 @@ class FeatureFlagTracker:
             return 0
 
         keys = [f"feature:{f}" for f in features]
-        result_key = "temp:all_features"
+        result_key = f"temp:all_features:{uuid.uuid4().hex}"
 
         self.r.bitop('AND', result_key, *keys)
         count = self.r.bitcount(result_key)
@@ -244,7 +245,7 @@ class FeatureFlagTracker:
             return 0
 
         keys = [f"feature:{f}" for f in features]
-        result_key = "temp:any_features"
+        result_key = f"temp:any_features:{uuid.uuid4().hex}"
 
         self.r.bitop('OR', result_key, *keys)
         count = self.r.bitcount(result_key)
@@ -299,7 +300,7 @@ class RealtimeStats:
         if not existing_keys:
             return 0
 
-        result_key = f"temp:daily:{event}:{date}"
+        result_key = f"temp:daily:{event}:{date}:{uuid.uuid4().hex}"
         self.r.bitop('OR', result_key, *existing_keys)
         count = self.r.bitcount(result_key)
         self.r.delete(result_key)
@@ -316,7 +317,7 @@ class RealtimeStats:
         if not all_keys:
             return 0
 
-        result_key = f"temp:multi_event:{date}"
+        result_key = f"temp:multi_event:{date}:{uuid.uuid4().hex}"
         self.r.bitop('OR', result_key, *all_keys)
         count = self.r.bitcount(result_key)
         self.r.delete(result_key)
@@ -399,13 +400,14 @@ class BitmapWithMapping:
         """Get or create bit position for an external ID."""
         # Check if mapping exists
         position = self.r.hget(self.mapping_key, external_id)
-        if position:
+        if position is not None:
             return int(position)
 
         # Create new mapping
-        position = self.r.incr(self.counter_key)
-        self.r.hset(self.mapping_key, external_id, position)
-        return position
+        position = self.r.incr(self.counter_key) - 1
+        if self.r.hsetnx(self.mapping_key, external_id, position):
+            return position
+        return int(self.r.hget(self.mapping_key, external_id))
 
     def set_bit(self, bitmap_key: str, external_id: str, value: int):
         """Set bit for an external ID."""
