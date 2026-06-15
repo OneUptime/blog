@@ -135,7 +135,7 @@ etcdctl --endpoints=https://127.0.0.1:2379 \
   --key=/etc/kubernetes/pki/etcd/server.key \
   endpoint status -w table | awk '{print $4}'
 
-# Check which keys are using space
+# Count keys by Kubernetes resource type
 etcdctl --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
   --cert=/etc/kubernetes/pki/etcd/server.crt \
@@ -185,11 +185,11 @@ etcdctl --endpoints=https://127.0.0.1:2379 \
   snapshot save /backup/etcd-snapshot.db
 
 # Verify the snapshot
-etcdctl snapshot status /backup/etcd-snapshot.db -w table
+etcdutl snapshot status /backup/etcd-snapshot.db -w table
 
 # Restore from snapshot (on each member)
-# Stop etcd first, then restore
-etcdctl snapshot restore /backup/etcd-snapshot.db \
+# Stop all API servers and etcd first, then restore
+etcdutl snapshot restore /backup/etcd-snapshot.db \
   --name=etcd-member-1 \
   --initial-cluster=etcd-member-1=https://10.0.0.1:2380,etcd-member-2=https://10.0.0.2:2380,etcd-member-3=https://10.0.0.3:2380 \
   --initial-cluster-token=etcd-cluster-1 \
@@ -319,7 +319,7 @@ groups:
           summary: "etcd cluster has had multiple leader changes"
 
       - alert: EtcdInsufficientMembers
-        expr: count(etcd_server_has_leader) < 2
+        expr: sum(up{job=~".*etcd.*"} == bool 1) without (instance) < ((count(up{job=~".*etcd.*"}) without (instance) + 1) / 2)
         for: 5m
         labels:
           severity: critical
