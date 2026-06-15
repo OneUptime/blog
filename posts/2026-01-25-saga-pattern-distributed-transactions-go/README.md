@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Saga Pattern, Distributed System, Microservice, Transaction
 
-Description: Learn how to implement the Saga pattern in Go to manage distributed transactions across microservices, with practical code examples for both choreography and orchestration approaches.
+Description: Learn how to implement the Saga pattern in Go to manage distributed transactions across microservices, with practical code examples for an orchestration approach.
 
 ---
 
@@ -105,7 +105,7 @@ func (s *Saga) Execute(ctx context.Context, data map[string]interface{}) Executi
             result.Success = false
             result.Error = ctx.Err()
             result.FailedStep = step.Name
-            s.rollback(ctx, completedSteps, data)
+            s.rollback(context.WithoutCancel(ctx), completedSteps, data)
             result.RolledBack = true
             result.CompletedSteps = completedSteps
             return result
@@ -118,7 +118,7 @@ func (s *Saga) Execute(ctx context.Context, data map[string]interface{}) Executi
             result.FailedStep = step.Name
 
             // Rollback completed steps in reverse order
-            s.rollback(ctx, completedSteps, data)
+            s.rollback(context.WithoutCancel(ctx), completedSteps, data)
             result.RolledBack = true
             result.CompletedSteps = completedSteps
             return result
@@ -167,6 +167,8 @@ import (
     "errors"
     "fmt"
     "time"
+
+    saga "example.com/yourapp/saga"
 )
 
 // OrderService handles order creation
@@ -235,18 +237,18 @@ func main() {
     paymentSvc := &PaymentService{shouldFail: false}
 
     // Build the saga
-    orderSaga := New("order-processing").
-        AddStep(Step{
+    orderSaga := saga.New("order-processing").
+        AddStep(saga.Step{
             Name:       "create-order",
             Action:     orderSvc.CreateOrder,
             Compensate: orderSvc.CancelOrder,
         }).
-        AddStep(Step{
+        AddStep(saga.Step{
             Name:       "reserve-inventory",
             Action:     inventorySvc.ReserveStock,
             Compensate: inventorySvc.ReleaseStock,
         }).
-        AddStep(Step{
+        AddStep(saga.Step{
             Name:       "process-payment",
             Action:     paymentSvc.ProcessPayment,
             Compensate: paymentSvc.RefundPayment,
