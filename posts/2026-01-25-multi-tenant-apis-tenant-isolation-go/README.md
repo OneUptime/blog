@@ -21,6 +21,7 @@ package middleware
 
 import (
     "context"
+    "net"
     "net/http"
     "strings"
 )
@@ -34,6 +35,10 @@ type Tenant struct {
     ID        string
     Name      string
     PlanTier  string
+}
+
+type TenantStore interface {
+    GetByID(ctx context.Context, tenantID string) (*Tenant, error)
 }
 
 // TenantMiddleware extracts and validates tenant from the request
@@ -67,6 +72,10 @@ func TenantMiddleware(tenantStore TenantStore) func(http.Handler) http.Handler {
 }
 
 func extractFromSubdomain(host string) string {
+    if h, _, err := net.SplitHostPort(host); err == nil {
+        host = h
+    }
+
     parts := strings.Split(host, ".")
     if len(parts) >= 3 {
         return parts[0] // acme.yourapp.com returns "acme"
@@ -102,7 +111,6 @@ import (
     "context"
     "database/sql"
     "errors"
-    "fmt"
 )
 
 var ErrNoTenant = errors.New("no tenant in context")
@@ -116,19 +124,26 @@ func NewTenantScopedDB(db *sql.DB) *TenantScopedDB {
     return &TenantScopedDB{db: db}
 }
 
-// Query automatically adds tenant filtering to all queries
+// Query automatically passes tenant_id as the first query argument
 func (t *TenantScopedDB) Query(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
     tenant, ok := GetTenant(ctx)
     if !ok {
         return nil, ErrNoTenant
     }
 
-    // Prepend tenant_id to args and inject into query
-    // This assumes queries use $1 for tenant_id
-    scopedQuery := fmt.Sprintf("WITH tenant_scope AS (SELECT $1::text AS tid) %s", query)
     scopedArgs := append([]any{tenant.ID}, args...)
+    return t.db.QueryContext(ctx, query, scopedArgs...)
+}
 
-    return t.db.QueryContext(ctx, scopedQuery, scopedArgs...)
+// QueryRow automatically passes tenant_id as the first query argument
+func (t *TenantScopedDB) QueryRow(ctx context.Context, query string, args ...any) (*sql.Row, error) {
+    tenant, ok := GetTenant(ctx)
+    if !ok {
+        return nil, ErrNoTenant
+    }
+
+    scopedArgs := append([]any{tenant.ID}, args...)
+    return t.db.QueryRowContext(ctx, query, scopedArgs...), nil
 }
 
 // UserRepository demonstrates tenant-scoped data access
@@ -137,18 +152,21 @@ type UserRepository struct {
 }
 
 func (r *UserRepository) GetByID(ctx context.Context, userID string) (*User, error) {
-    // Notice: every query includes tenant_id in WHERE clause
+    // Notice: every query uses $1 for tenant_id
     query := `
         SELECT id, email, name, created_at
         FROM users
-        WHERE tenant_id = (SELECT tid FROM tenant_scope)
+        WHERE tenant_id = $1
         AND id = $2
     `
 
-    row := r.db.db.QueryRowContext(ctx, query, userID)
+    row, err := r.db.QueryRow(ctx, query, userID)
+    if err != nil {
+        return nil, err
+    }
 
     var user User
-    err := row.Scan(&user.ID, &user.Email, &user.Name, &user.CreatedAt)
+    err = row.Scan(&user.ID, &user.Email, &user.Name, &user.CreatedAt)
     if err != nil {
         return nil, err
     }
@@ -156,11 +174,6 @@ func (r *UserRepository) GetByID(ctx context.Context, userID string) (*User, err
 }
 
 func (r *UserRepository) List(ctx context.Context) ([]User, error) {
-    tenant, ok := GetTenant(ctx)
-    if !ok {
-        return nil, ErrNoTenant
-    }
-
     query := `
         SELECT id, email, name, created_at
         FROM users
@@ -168,7 +181,7 @@ func (r *UserRepository) List(ctx context.Context) ([]User, error) {
         ORDER BY created_at DESC
     `
 
-    rows, err := r.db.db.QueryContext(ctx, query, tenant.ID)
+    rows, err := r.db.Query(ctx, query)
     if err != nil {
         return nil, err
     }
@@ -181,6 +194,9 @@ func (r *UserRepository) List(ctx context.Context) ([]User, error) {
             return nil, err
         }
         users = append(users, u)
+    }
+    if err := rows.Err(); err != nil {
+        return nil, err
     }
     return users, nil
 }
@@ -197,31 +213,41 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 -- Create a policy that filters by the current tenant
 CREATE POLICY tenant_isolation ON users
     FOR ALL
-    USING (tenant_id = current_setting('app.current_tenant_id')::text);
+    USING (tenant_id = current_setting('app.current_tenant_id', true));
 
 -- Force RLS even for table owners
 ALTER TABLE users FORCE ROW LEVEL SECURITY;
 ```
 
-Then set the tenant context at the start of each request:
+Then set the tenant context at the start of each database transaction:
 
 ```go
-func (t *TenantScopedDB) SetTenantContext(ctx context.Context) error {
+func (t *TenantScopedDB) BeginTenantTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
     tenant, ok := GetTenant(ctx)
     if !ok {
-        return ErrNoTenant
+        return nil, ErrNoTenant
     }
 
-    // Set the PostgreSQL session variable
-    _, err := t.db.ExecContext(ctx,
-        "SET LOCAL app.current_tenant_id = $1",
+    tx, err := t.db.BeginTx(ctx, opts)
+    if err != nil {
+        return nil, err
+    }
+
+    // Set a PostgreSQL transaction-local variable
+    _, err = tx.ExecContext(ctx,
+        "SELECT set_config('app.current_tenant_id', $1, true)",
         tenant.ID,
     )
-    return err
+    if err != nil {
+        _ = tx.Rollback()
+        return nil, err
+    }
+
+    return tx, nil
 }
 ```
 
-With RLS enabled, even a query that forgets the `WHERE tenant_id = ...` clause will only return rows for the current tenant. Defense in depth at its finest.
+With RLS enabled, even a query inside that transaction that forgets the `WHERE tenant_id = ...` clause will only return rows for the current tenant. Defense in depth at its finest.
 
 ## Rate Limiting Per Tenant
 
@@ -273,9 +299,14 @@ func (tl *TenantLimiter) Allow(ctx context.Context) bool {
 
     // Refill tokens based on elapsed time
     elapsed := time.Since(bucket.lastCheck)
-    refill := int(elapsed / tl.interval) * tl.rate
-    bucket.tokens = min(bucket.tokens+refill, tl.rate)
-    bucket.lastCheck = time.Now()
+    intervals := int(elapsed / tl.interval)
+    if intervals > 0 {
+        bucket.tokens += intervals * tl.rate
+        if bucket.tokens > tl.rate {
+            bucket.tokens = tl.rate
+        }
+        bucket.lastCheck = bucket.lastCheck.Add(time.Duration(intervals) * tl.interval)
+    }
 
     if bucket.tokens > 0 {
         bucket.tokens--
