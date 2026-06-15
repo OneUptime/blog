@@ -75,7 +75,7 @@ BEGIN
     END IF;
 
     -- Output results (use RAISE NOTICE since DO blocks cannot return values)
-    RAISE NOTICE 'Total users: %, Active: %, Inactive ratio: %%',
+    RAISE NOTICE 'Total users: %, Active: %, Inactive ratio: % percent',
         user_count, active_count, inactive_ratio;
 END;
 $$;
@@ -183,11 +183,10 @@ SELECT *
 FROM audit_log
 WHERE user_id = current_setting('myapp.user_id')::INTEGER;
 
--- Set variable for current transaction only
-SELECT set_config('myapp.batch_size', '1000', true);  -- true = local to transaction
-
 -- In a transaction
 BEGIN;
+    -- Set variables for the current transaction only
+    SELECT set_config('myapp.batch_size', '1000', true);  -- true = local to transaction
     SELECT set_config('myapp.processing_date', '2026-01-25', true);
 
     -- Use the variable
@@ -196,7 +195,7 @@ BEGIN;
     FROM pending_items
     LIMIT current_setting('myapp.batch_size')::INTEGER;
 COMMIT;
--- Variable is gone after commit
+-- Variables are gone after commit
 ```
 
 ## Variable Scope in PL/pgSQL
@@ -238,7 +237,7 @@ DECLARE
     var1 INTEGER;
     var2 INTEGER;
     var3 TEXT;
-    rec RECORD;
+    var4 TEXT;
 BEGIN
     -- Direct assignment
     var1 := 100;
@@ -252,7 +251,7 @@ BEGIN
         email
     INTO
         var3,
-        rec  -- This would need rec to be proper type
+        var4
     FROM users
     LIMIT 1;
 
@@ -279,7 +278,7 @@ CREATE OR REPLACE FUNCTION loop_with_variables()
 RETURNS TABLE(iteration INTEGER, value TEXT) AS $$
 DECLARE
     i INTEGER;
-    current_user RECORD;
+    user_rec RECORD;
 BEGIN
     -- FOR loop with integer variable
     FOR i IN 1..5 LOOP
@@ -289,9 +288,9 @@ BEGIN
     END LOOP;
 
     -- FOR loop over query results
-    FOR current_user IN SELECT id, username FROM users LIMIT 3 LOOP
-        iteration := current_user.id;
-        value := current_user.username;
+    FOR user_rec IN SELECT id, username FROM users LIMIT 3 LOOP
+        iteration := user_rec.id;
+        value := user_rec.username;
         RETURN NEXT;
     END LOOP;
 
