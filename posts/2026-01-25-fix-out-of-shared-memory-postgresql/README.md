@@ -35,7 +35,7 @@ The error message and hint will vary depending on which resource was exhausted.
 
 ### 1. Too Many Locks
 
-The most common cause is exceeding the number of locks PostgreSQL can track. Each table, index, or row lock consumes shared memory.
+The most common cause is exceeding the number of object locks PostgreSQL can track. Locks on tables, indexes, and other lockable database objects consume entries in the shared lock table. Row-level locks are recorded in the locked rows themselves, although lock waits can still appear in `pg_locks`.
 
 ```sql
 -- Check current lock count
@@ -48,9 +48,9 @@ GROUP BY mode, locktype
 ORDER BY count(*) DESC;
 
 -- Example output showing potential issues:
--- total_locks | mode          | locktype
--- 15000       | AccessShareLock | relation
--- 8500        | RowExclusiveLock | tuple
+-- total_locks | mode             | locktype
+-- 15000       | AccessShareLock  | relation
+-- 8500        | RowExclusiveLock | relation
 ```
 
 ### 2. Many Subtransactions
@@ -81,7 +81,7 @@ Serializable isolation level uses predicate locks which consume more memory:
 -- High isolation level with many rows
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 SELECT * FROM large_table WHERE category = 'active';
--- Creates predicate locks on all matching rows
+-- Creates predicate locks based on the data accessed by the query plan
 COMMIT;
 ```
 
@@ -123,17 +123,20 @@ ORDER BY name;
 ```sql
 -- Estimate lock table size
 SELECT
-    current_setting('max_connections')::int *
+    (current_setting('max_connections')::int +
+     current_setting('max_prepared_transactions')::int) *
     current_setting('max_locks_per_transaction')::int as estimated_lock_slots;
 
 -- Check actual lock usage vs capacity
 SELECT
     count(*) as current_locks,
-    current_setting('max_connections')::int *
+    (current_setting('max_connections')::int +
+     current_setting('max_prepared_transactions')::int) *
     current_setting('max_locks_per_transaction')::int as max_locks,
     round(
         100.0 * count(*) /
-        (current_setting('max_connections')::int *
+        ((current_setting('max_connections')::int +
+          current_setting('max_prepared_transactions')::int) *
          current_setting('max_locks_per_transaction')::int)
     , 2) as usage_percent
 FROM pg_locks;
@@ -172,7 +175,8 @@ SHOW max_locks_per_transaction;
 -- Default is typically 64
 
 -- Calculate how many locks your workload needs
--- Formula: max_connections * max_locks_per_transaction
+-- Approximate formula:
+-- (max_connections + max_prepared_transactions) * max_locks_per_transaction
 ```
 
 Edit `postgresql.conf`:
@@ -237,10 +241,12 @@ def process_all_partitions(conn):
 def process_partitions_individually(conn):
     cursor = conn.cursor()
 
-    # Get partition names
+    # Get safely quoted partition names
     cursor.execute("""
-        SELECT inhrelid::regclass::text as partition_name
+        SELECT format('%I.%I', n.nspname, c.relname) as partition_name
         FROM pg_inherits
+        JOIN pg_class c ON c.oid = inhrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE inhparent = 'partitioned_table'::regclass
     """)
     partitions = cursor.fetchall()
@@ -257,7 +263,7 @@ def process_partitions_individually(conn):
 -- Bad: Single query locking thousands of rows
 UPDATE orders SET status = 'archived' WHERE created_at < '2025-01-01';
 
--- Better: Process in batches
+-- Better: Process in batches from a top-level DO block
 DO $$
 DECLARE
     batch_size INT := 1000;
@@ -276,7 +282,7 @@ BEGIN
 
         GET DIAGNOSTICS updated_count = ROW_COUNT;
 
-        COMMIT;  -- Release locks after each batch
+        COMMIT;  -- Release locks after each batch; only allowed if DO is not run inside another transaction block
 
         EXIT WHEN updated_count = 0;
 
@@ -331,12 +337,13 @@ The total shared memory needed depends on several settings:
 SELECT
     -- Base shared buffers
     pg_size_pretty(
-        current_setting('shared_buffers')::bigint * 8192
+        pg_size_bytes(current_setting('shared_buffers'))
     ) as shared_buffers_size,
 
     -- Lock table estimate (rough)
     pg_size_pretty(
-        current_setting('max_connections')::bigint *
+        (current_setting('max_connections')::bigint +
+         current_setting('max_prepared_transactions')::bigint) *
         current_setting('max_locks_per_transaction')::bigint *
         400  -- Approximate bytes per lock entry
     ) as estimated_lock_table;
@@ -373,14 +380,15 @@ max_pred_locks_per_transaction = 512
 CREATE VIEW lock_monitor AS
 SELECT
     count(*) as total_locks,
-    current_setting('max_connections')::int *
+    (current_setting('max_connections')::int +
+     current_setting('max_prepared_transactions')::int) *
     current_setting('max_locks_per_transaction')::int as max_locks,
     round(
         100.0 * count(*) /
-        (current_setting('max_connections')::int *
+        ((current_setting('max_connections')::int +
+          current_setting('max_prepared_transactions')::int) *
          current_setting('max_locks_per_transaction')::int)
-    , 2) as usage_percent,
-    max(count(*)) OVER () as peak_locks
+    , 2) as usage_percent
 FROM pg_locks;
 
 -- Query the monitor
@@ -396,7 +404,8 @@ Monitor lock usage and alert before hitting limits:
 SELECT
     CASE
         WHEN (count(*)::float /
-              (current_setting('max_connections')::int *
+              ((current_setting('max_connections')::int +
+                current_setting('max_prepared_transactions')::int) *
                current_setting('max_locks_per_transaction')::int)) > 0.8
         THEN 'WARNING: Lock usage above 80%'
         ELSE 'OK'
