@@ -15,11 +15,13 @@ Prisma is a modern ORM that makes database access feel natural in TypeScript and
 Initialize Prisma in your Node.js project:
 
 ```bash
-npm install prisma @prisma/client
-npx prisma init
+npm install prisma --save-dev
+npm install @prisma/client @prisma/adapter-pg pg dotenv
+npm pkg set type=module
+npx prisma init --output ../generated/prisma
 ```
 
-This creates a `prisma` folder with a `schema.prisma` file and adds a `.env` file for your database connection.
+This creates a `prisma` folder with a `schema.prisma` file, adds a `.env` file for your database connection, and creates a `prisma.config.ts` file for Prisma configuration.
 
 Configure your database connection in `.env`:
 
@@ -35,6 +37,25 @@ DATABASE_URL="mysql://user:password@localhost:3306/mydb"
 DATABASE_URL="file:./dev.db"
 ```
 
+The examples below use PostgreSQL. If you switch to MySQL or SQLite, install the matching Prisma driver adapter and update the `datasource` provider.
+
+Configure Prisma to load the database URL in `prisma.config.ts`:
+
+```typescript
+import "dotenv/config";
+import { defineConfig, env } from "prisma/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: {
+    path: "prisma/migrations",
+  },
+  datasource: {
+    url: env("DATABASE_URL"),
+  },
+});
+```
+
 ## Schema Design
 
 Define your data models in `prisma/schema.prisma`:
@@ -43,12 +64,12 @@ Define your data models in `prisma/schema.prisma`:
 // prisma/schema.prisma
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../generated/prisma"
 }
 
 datasource db {
-  provider = "postgresql"  // or mysql, sqlite, mongodb
-  url      = env("DATABASE_URL")
+  provider = "postgresql"  // or mysql, sqlite
 }
 
 // User model
@@ -58,6 +79,7 @@ model User {
   name      String?
   password  String
   role      Role      @default(USER)
+  credits   Int       @default(0)
   posts     Post[]    // One-to-many relation
   profile   Profile?  // One-to-one relation
   createdAt DateTime  @default(now())
@@ -131,17 +153,23 @@ npx prisma generate
 
 ```javascript
 // src/db.js
-const { PrismaClient } = require('@prisma/client');
+import "dotenv/config";
+import { PrismaClient } from "../generated/prisma/client.js";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({
+    connectionString: process.env.DATABASE_URL
+});
 
-module.exports = prisma;
+const prisma = new PrismaClient({ adapter });
+
+export default prisma;
 ```
 
 ### Create Records
 
 ```javascript
-const prisma = require('./db');
+import prisma from './db.js';
 
 // Create a single user
 async function createUser() {
@@ -184,7 +212,7 @@ async function createManyUsers() {
             { email: 'user2@example.com', name: 'User 2', password: 'hash2' },
             { email: 'user3@example.com', name: 'User 3', password: 'hash3' }
         ],
-        skipDuplicates: true  // Ignore duplicates
+        skipDuplicates: true  // Ignore duplicates; not supported by SQLite, SQL Server, or MongoDB
     });
     return count;
 }
@@ -500,7 +528,7 @@ async function complexQuery() {
 }
 
 // Raw execute (for INSERT, UPDATE, DELETE)
-async function rawUpdate() {
+async function rawUpdate(userId) {
     const result = await prisma.$executeRaw`
         UPDATE "User" SET "updatedAt" = NOW() WHERE id = ${userId}
     `;
@@ -513,7 +541,7 @@ async function rawUpdate() {
 Always disconnect Prisma when your app shuts down:
 
 ```javascript
-const prisma = require('./db');
+import prisma from './db.js';
 
 process.on('SIGTERM', async () => {
     await prisma.$disconnect();
