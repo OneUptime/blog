@@ -31,10 +31,10 @@ The aggregator manages data sources and coordinates fetching. Each source is a p
 // DataAggregator.ts
 // Core aggregator that coordinates multiple data sources
 
-export interface DataSource<T> {
+export interface DataSource<TRaw, TResult = TRaw> {
   name: string;
-  fetch(params: Record<string, any>): Promise<T>;
-  transform?(data: T): any;
+  fetch(params: Record<string, any>): Promise<TRaw>;
+  transform?(data: TRaw): TResult;
   required?: boolean; // If true, aggregation fails if this source fails
 }
 
@@ -50,12 +50,12 @@ export interface AggregationResult<T> {
 }
 
 export class DataAggregator<T extends Record<string, any>> {
-  private sources: Map<string, DataSource<any>> = new Map();
+  private sources: Map<string, DataSource<any, any>> = new Map();
   private cache: Map<string, { data: any; expiry: number }> = new Map();
   private defaultCacheTtl: number = 60000;
 
   // Register a data source
-  addSource<K extends keyof T>(name: K, source: DataSource<T[K]>): this {
+  addSource<K extends keyof T>(name: K, source: DataSource<any, T[K]>): this {
     this.sources.set(name as string, source);
     return this;
   }
@@ -92,6 +92,7 @@ export class DataAggregator<T extends Record<string, any>> {
                 data: cached,
                 success: true,
                 duration: Date.now() - sourceStartTime,
+                error: undefined,
                 fromCache: true,
               };
             }
@@ -113,6 +114,7 @@ export class DataAggregator<T extends Record<string, any>> {
             data: transformed,
             success: true,
             duration: Date.now() - sourceStartTime,
+            error: undefined,
             fromCache: false,
           };
         } catch (error) {
@@ -160,7 +162,7 @@ export class DataAggregator<T extends Record<string, any>> {
 
   // Fetch with timeout wrapper
   private async fetchWithTimeout<R>(
-    source: DataSource<R>,
+    source: DataSource<R, any>,
     params: Record<string, any>,
     timeout: number
   ): Promise<R> {
@@ -240,7 +242,9 @@ export class UserSource implements DataSource<User> {
   }
 
   async fetch(params: { userId: string }): Promise<User> {
-    const response = await fetch(`${this.baseUrl}/users/${params.userId}`);
+    const response = await fetch(
+      `${this.baseUrl}/users/${encodeURIComponent(params.userId)}`
+    );
 
     if (!response.ok) {
       throw new Error(`User service returned ${response.status}`);
@@ -279,7 +283,7 @@ interface OrdersSummary {
   orderCount: number;
 }
 
-export class OrdersSource implements DataSource<Order[]> {
+export class OrdersSource implements DataSource<Order[], OrdersSummary> {
   name = 'orders';
   required = false; // Aggregation continues without order data
 
@@ -290,8 +294,9 @@ export class OrdersSource implements DataSource<Order[]> {
   }
 
   async fetch(params: { userId: string }): Promise<Order[]> {
+    const query = new URLSearchParams({ userId: params.userId });
     const response = await fetch(
-      `${this.baseUrl}/orders?userId=${params.userId}`
+      `${this.baseUrl}/orders?${query}`
     );
 
     if (!response.ok) {
@@ -336,7 +341,7 @@ export class PreferencesSource implements DataSource<Preferences> {
 
   async fetch(params: { userId: string }): Promise<Preferences> {
     const response = await fetch(
-      `${this.baseUrl}/preferences/${params.userId}`
+      `${this.baseUrl}/preferences/${encodeURIComponent(params.userId)}`
     );
 
     if (!response.ok) {
@@ -418,7 +423,7 @@ interface UserProfile {
 }
 
 export class UserProfileAggregator {
-  private aggregator: DataAggregator<UserProfile>;
+  public readonly aggregator: DataAggregator<UserProfile>;
 
   constructor(config: {
     userServiceUrl: string;
@@ -483,7 +488,7 @@ interface Activity {
   createdAt: Date;
 }
 
-export class ActivitySource implements DataSource<Activity[]> {
+export class ActivitySource implements DataSource<Activity[], { recent: Activity[]; types: string[] }> {
   name = 'activity';
   required = false;
 
@@ -524,13 +529,15 @@ When you need to aggregate data for multiple entities, batch processing is more 
 // BatchAggregator.ts
 // Aggregates data for multiple entities efficiently
 
+import { DataAggregator } from './DataAggregator';
+
 interface BatchResult<T> {
   results: Map<string, T>;
   errors: Map<string, Error>;
   duration: number;
 }
 
-export class BatchAggregator<T> {
+export class BatchAggregator<T extends Record<string, any>> {
   private aggregator: DataAggregator<T>;
   private concurrency: number;
 
@@ -559,12 +566,15 @@ export class BatchAggregator<T> {
         })
       );
 
-      for (const result of batchResults) {
+      for (const [index, result] of batchResults.entries()) {
         if (result.status === 'fulfilled') {
           results.set(result.value.id, result.value.data);
         } else {
-          const id = batch[batchResults.indexOf(result)];
-          errors.set(id, result.reason);
+          const id = batch[index];
+          const error = result.reason instanceof Error
+            ? result.reason
+            : new Error(String(result.reason));
+          errors.set(id, error);
         }
       }
     }
@@ -619,7 +629,7 @@ const profileAggregator = new UserProfileAggregator({
 });
 
 // Extended aggregator with database source
-const extendedAggregator = new DataAggregator()
+const extendedAggregator = new DataAggregator<{ activity: { recent: any[]; types: string[] } }>()
   .addSource('activity', new ActivitySource(pool));
 
 // Endpoint: Get user profile
@@ -654,21 +664,12 @@ app.post('/api/admin/cache/clear', (req, res) => {
   res.json({ message: 'Cache cleared' });
 });
 
-// Health check that verifies sources
+// Health check that verifies the required aggregation path
 app.get('/health', async (req, res) => {
   try {
     // Quick aggregation with short timeout to test sources
-    const result = await profileAggregator.getProfile('health-check-user');
-    const failedSources = result.sources?.filter((s) => !s.success) || [];
-
-    if (failedSources.length > 0) {
-      res.status(503).json({
-        status: 'degraded',
-        failedSources: failedSources.map((s) => s.name),
-      });
-    } else {
-      res.json({ status: 'healthy' });
-    }
+    await profileAggregator.getProfile('health-check-user');
+    res.json({ status: 'healthy' });
   } catch (error) {
     res.status(503).json({ status: 'unhealthy', error: 'Required source failed' });
   }
@@ -708,6 +709,11 @@ export class StreamingAggregator {
       read() {},
     });
 
+    if (sources.length === 0) {
+      queueMicrotask(() => readable.push(null));
+      return readable;
+    }
+
     // Start all fetches immediately
     for (const source of sources) {
       source
@@ -741,6 +747,11 @@ export class StreamingAggregator {
 }
 
 // Usage with Express
+const streamingAggregator = new StreamingAggregator()
+  .addSource(new UserSource(process.env.USER_SERVICE_URL || 'http://localhost:3001'))
+  .addSource(new OrdersSource(process.env.ORDER_SERVICE_URL || 'http://localhost:3002'))
+  .addSource(new PreferencesSource(process.env.PREFS_SERVICE_URL || 'http://localhost:3003'));
+
 app.get('/api/users/:userId/profile/stream', (req, res) => {
   const stream = streamingAggregator.stream({ userId: req.params.userId });
 
