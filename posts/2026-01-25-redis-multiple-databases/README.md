@@ -41,12 +41,12 @@ print(r1.keys('*'))  # [b'user:1']
 
 ## Using SELECT Command
 
-Within a single connection, you can switch databases with SELECT:
+Within a single connection, you can switch databases with SELECT. With redis-py, use a single-connection client when demonstrating SELECT directly; in application code, separate client instances per database are usually safer.
 
 ```python
 import redis
 
-r = redis.Redis(host='localhost', port=6379, db=0)
+r = redis.Redis(host='localhost', port=6379, db=0, single_connection_client=True)
 
 # Start in database 0
 r.set('key', 'value in db 0')
