@@ -196,7 +196,7 @@ The IdentityReplicationPolicy keeps original topic names (useful for active-pass
 
 ## Consumer Offset Translation
 
-MM2 translates consumer group offsets so consumers can switch clusters seamlessly.
+MM2 translates consumer group offsets so consumers can switch clusters after the checkpoint connector has synced offsets to the target cluster. With the default replication policy, consumers must subscribe to the replicated topic name on the target cluster.
 
 ```java
 // Consumer that can failover between clusters
@@ -206,7 +206,13 @@ public class FailoverConsumer {
     private final String secondaryBootstrap;
     private final String groupId;
 
-    public void consumeWithFailover() {
+    public FailoverConsumer(String primaryBootstrap, String secondaryBootstrap, String groupId) {
+        this.primaryBootstrap = primaryBootstrap;
+        this.secondaryBootstrap = secondaryBootstrap;
+        this.groupId = groupId;
+    }
+
+    public void consumeWithFailover() throws InterruptedException {
         String bootstrap = primaryBootstrap;
 
         while (true) {
@@ -229,12 +235,15 @@ public class FailoverConsumer {
         Properties props = new Properties();
         props.put("bootstrap.servers", bootstrap);
         props.put("group.id", groupId);
-        // MM2 syncs offsets so we resume from the right position
+        props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        // MM2 syncs offsets so we resume from the translated position
         props.put("auto.offset.reset", "latest");
 
         try (KafkaConsumer<String, String> consumer =
                  new KafkaConsumer<>(props)) {
-            consumer.subscribe(List.of("orders"));
+            String topic = bootstrap.equals(primaryBootstrap) ? "orders" : "source.orders";
+            consumer.subscribe(List.of(topic));
 
             while (true) {
                 ConsumerRecords<String, String> records =
@@ -249,7 +258,7 @@ public class FailoverConsumer {
 
 ## Monitoring Replication Lag
 
-Check heartbeat topics to measure replication latency.
+Check heartbeat topics to measure replication latency. MM2 heartbeat records are binary records; use the MM2 `Heartbeat` helper to deserialize them.
 
 ```java
 @Service
@@ -257,12 +266,10 @@ public class MM2LagMonitor {
 
     // Heartbeats contain timestamps from source cluster
     // Compare with current time to measure lag
-    @KafkaListener(topics = "source.heartbeats", groupId = "mm2-monitor")
-    public void checkHeartbeat(ConsumerRecord<String, String> record) {
-        // Parse heartbeat timestamp
-        JsonObject heartbeat = JsonParser.parseString(record.value())
-            .getAsJsonObject();
-        long sourceTimestamp = heartbeat.get("timestamp").getAsLong();
+    @KafkaListener(topics = "heartbeats", groupId = "mm2-monitor")
+    public void checkHeartbeat(ConsumerRecord<byte[], byte[]> record) {
+        Heartbeat heartbeat = Heartbeat.deserializeRecord(record);
+        long sourceTimestamp = heartbeat.timestamp();
         long currentTime = System.currentTimeMillis();
         long lagMs = currentTime - sourceTimestamp;
 
@@ -279,8 +286,8 @@ public class MM2LagMonitor {
 Use JMX metrics for detailed monitoring:
 
 ```bash
-# Key MM2 metrics
-kafka.connect:type=mirror-source-connector-task-metrics,*
+# Key MM2 metric names
+MirrorSourceConnector
   - record-count
   - byte-count
   - replication-latency-ms-avg
@@ -306,12 +313,12 @@ dc2.bootstrap.servers = kafka-dc2-1:9092
 dc1->dc2.enabled = true
 dc2->dc1.enabled = true
 
-# Replicate all topics except internal ones
+# Replicate all topics except internal and already-replicated remote topics
 dc1->dc2.topics = .*
-dc1->dc2.topics.exclude = .*\..*,__.*,mm2.*
+dc1->dc2.topics.exclude = dc2\..*,__.*,mm2.*
 
 dc2->dc1.topics = .*
-dc2->dc1.topics.exclude = .*\..*,__.*,mm2.*
+dc2->dc1.topics.exclude = dc1\..*,__.*,mm2.*
 
 # Both clusters create prefixed copies
 # dc1 gets: dc2.topic-name
@@ -347,7 +354,7 @@ kafka-console-consumer.sh \
 # 3. Verify checkpoint sync is current
 kafka-console-consumer.sh \
   --bootstrap-server kafka-target-1:9092 \
-  --topic mm2-offset-syncs.source.internal \
+  --topic source.checkpoints.internal \
   --from-beginning
 
 # 4. Update consumer bootstrap servers to target cluster
