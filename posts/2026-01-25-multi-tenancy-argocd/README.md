@@ -72,6 +72,7 @@ spec:
   clusterResourceWhitelist:
     - group: ''
       kind: Namespace
+      name: 'team-a-*'
 
   # What namespace resources can be created
   namespaceResourceWhitelist:
@@ -131,8 +132,7 @@ data:
     p, role:monitoring, applications, get, */*, allow
     g, monitoring-team, role:monitoring
 
-    # Deny all by default - explicit allow required
-    p, *, *, *, */*, deny
+    # No catch-all deny rule is needed; requests without a matching allow are denied
 
   # Enable group-based access from SSO
   scopes: '[groups]'
@@ -210,14 +210,11 @@ kind: AppProject
 metadata:
   name: team-a
 spec:
-  # Allow creating Namespaces and ClusterRoles
+  # Allow creating only team-owned Namespaces
   clusterResourceWhitelist:
     - group: ''
       kind: Namespace
-    - group: rbac.authorization.k8s.io
-      kind: ClusterRole
-    - group: rbac.authorization.k8s.io
-      kind: ClusterRoleBinding
+      name: 'team-a-*'
 ```
 
 ### Namespace Resources
@@ -236,9 +233,9 @@ spec:
       kind: ResourceQuota
     - group: ''
       kind: LimitRange
-    # Prevent PodSecurityPolicy bypass
-    - group: policy
-      kind: PodSecurityPolicy
+    # Prevent modifying network boundaries
+    - group: networking.k8s.io
+      kind: NetworkPolicy
 ```
 
 ## Sync Windows
