@@ -88,7 +88,7 @@ Execution Time: 46.012 ms
 1. **cost=start..total**: Estimated startup and total cost (relative units)
 2. **actual time=start..total**: Real milliseconds spent
 3. **rows**: Estimated vs actual row count
-4. **Buffers: shared hit/read**: Pages found in cache vs read from disk
+4. **Buffers: shared hit/read**: Pages found in PostgreSQL shared buffers vs read into shared buffers from the OS or storage
 5. **Rows Removed by Filter**: Rows scanned but not returned
 
 ---
@@ -97,7 +97,7 @@ Execution Time: 46.012 ms
 
 ### Problem 1: Sequential Scans on Large Tables
 
-When you see `Seq Scan` on a large table with a filter, you have a missing index:
+When you see `Seq Scan` on a large table with a selective filter, you may have a missing or unsuitable index:
 
 ```sql
 -- Bad: Full table scan
@@ -143,8 +143,8 @@ Nested Loop  (cost=0.43..125000.00 rows=10000 width=48)
   ->  Index Scan on order_items  (actual rows=5 loops=10000)
       -- 10000 * 5 = 50000 index lookups
 
--- Solution: Force a hash join or add appropriate indexes
-SET enable_nestloop = off;  -- Temporarily disable to test
+-- Solution: Test an alternative plan or add appropriate indexes
+SET enable_nestloop = off;  -- Temporarily discourage nested loops to compare plans
 EXPLAIN ANALYZE SELECT ...;
 SET enable_nestloop = on;   -- Re-enable
 ```
@@ -178,10 +178,10 @@ Sort  (cost=45000.00..45000.50 rows=365 width=48)
   ->  HashAggregate  (cost=44900.00..44950.00 rows=365 width=48)
         ->  Seq Scan on orders  (cost=0.00..35000.00 rows=500000 width=16)
               Filter: (created_at >= '2024-01-01' AND created_at <= '2024-12-31')
-              Buffers: shared read=25000  -- All from disk!
+              Buffers: shared read=25000  -- Read into PostgreSQL shared buffers
 ```
 
-The problems: sequential scan, no index, reading from disk.
+The problems: sequential scan, no suitable index, reading many blocks into PostgreSQL shared buffers.
 
 ```sql
 -- Fix 1: Create an index on the date range
@@ -203,7 +203,7 @@ Sort  (cost=1500.00..1500.50 rows=365 width=48)
   ->  HashAggregate  (cost=1400.00..1450.00 rows=365 width=48)
         ->  Index Only Scan using idx_orders_created_covering on orders
               Index Cond: (created_at >= '2024-01-01' AND created_at <= '2024-12-31')
-              Buffers: shared hit=1250  -- All from cache!
+              Buffers: shared hit=1250  -- Found in PostgreSQL shared buffers
 ```
 
 ### Example 2: Optimizing a Join Query
@@ -229,9 +229,9 @@ CREATE INDEX idx_order_items_product ON order_items (product_id);
 CREATE INDEX idx_order_items_order ON order_items (order_id);
 CREATE INDEX idx_orders_created ON orders (created_at);
 
--- Rewrite with CTE for better plan control
+-- Rewrite to isolate recent orders and make the filtering step explicit
 WITH recent_orders AS (
-    -- PostgreSQL can optimize this subquery independently
+    -- PostgreSQL can fold a single-use, side-effect-free CTE into the parent query
     SELECT id FROM orders
     WHERE created_at > NOW() - INTERVAL '30 days'
 )
@@ -318,8 +318,8 @@ WHERE idx_scan = 0 AND indexrelname NOT LIKE '%pkey%';
 |---------|---------|-----|
 | Sequential scan | `Seq Scan` on filtered column | Add index |
 | Bad estimates | rows estimate far from actual | Run ANALYZE |
-| Disk reads | `Buffers: shared read` high | Increase shared_buffers or add covering index |
-| Nested loop | High loop count | Add index or increase work_mem |
+| Buffer reads | `Buffers: shared read` high | Reduce pages read with better indexes or pre-warm frequently used data |
+| Nested loop | High loop count | Add indexes or compare join strategies |
 | Sort spill | `Sort Method: external merge` | Increase work_mem |
 
 ---
