@@ -39,7 +39,7 @@ SELECT name FROM products WHERE name LIKE 'Cafe%';
 -- Returns: Cafe (not Café)
 ```
 
-## Using ICU Collations (PostgreSQL 10+)
+## Using ICU Collations (PostgreSQL 12+)
 
 ICU (International Components for Unicode) collations support accent-insensitive comparisons.
 
@@ -47,8 +47,8 @@ ICU (International Components for Unicode) collations support accent-insensitive
 -- Check available ICU collations
 SELECT collname FROM pg_collation WHERE collprovider = 'i' LIMIT 10;
 
--- Create a collation that ignores accents
--- The @colStrength=primary means only base letters are compared
+-- Create a collation that ignores accents and case
+-- ks-level1 means only base letters are compared
 CREATE COLLATION IF NOT EXISTS ignore_accents (
     provider = icu,
     locale = 'und-u-ks-level1',  -- Level 1 = base letters only
@@ -122,7 +122,7 @@ SELECT name FROM products
 WHERE unaccent(name) = unaccent('Cafe');
 -- Returns both: Cafe, Café
 
--- Use with ILIKE for case and accent insensitive search
+-- Use with lower() and LIKE for case and accent insensitive search
 SELECT name FROM products
 WHERE unaccent(lower(name)) LIKE unaccent(lower('%creme%'));
 -- Returns: Crème Brûlée, Creme Brulee
@@ -133,28 +133,28 @@ WHERE unaccent(lower(name)) LIKE unaccent(lower('%creme%'));
 For performance, create indexes that support accent-insensitive searches.
 
 ```sql
--- Expression index using unaccent
+-- Expression index using the immutable wrapper shown below
 CREATE INDEX idx_products_name_unaccent
-ON products (unaccent(lower(name)));
+ON products (immutable_unaccent(lower(name)));
 
 -- Query can now use the index
 EXPLAIN SELECT name FROM products
-WHERE unaccent(lower(name)) = unaccent(lower('Cafe'));
+WHERE immutable_unaccent(lower(name)) = immutable_unaccent(lower('Cafe'));
 
 -- For LIKE queries, use gin_trgm_ops
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE INDEX idx_products_name_trgm
-ON products USING gin (unaccent(lower(name)) gin_trgm_ops);
+ON products USING gin (immutable_unaccent(lower(name)) gin_trgm_ops);
 
 -- Pattern matching can use the index
 EXPLAIN SELECT name FROM products
-WHERE unaccent(lower(name)) LIKE '%creme%';
+WHERE immutable_unaccent(lower(name)) LIKE '%creme%';
 ```
 
 ## Immutable unaccent Wrapper
 
-The default `unaccent` function is STABLE, not IMMUTABLE, which limits index usage. Create an immutable wrapper.
+The default `unaccent` function is STABLE, not IMMUTABLE, which prevents direct use in expression indexes. Create an immutable wrapper when you treat the rules file as fixed.
 
 ```sql
 -- Create immutable version of unaccent
@@ -216,10 +216,10 @@ INSERT INTO articles (title, content) VALUES
     ('Café Culture in Paris', 'The café scene is vibrant...'),
     ('Résumé Writing Tips', 'A great résumé starts with...');
 
--- Search finds accented and non-accented versions
+-- Search finds accented text from a non-accented query
 SELECT title FROM articles
 WHERE search_vector @@ to_tsquery('english_unaccent', 'cafe');
--- Returns articles about both "Café" and "Cafe"
+-- Returns articles about "Café"
 ```
 
 ## Custom unaccent Dictionary
@@ -227,11 +227,8 @@ WHERE search_vector @@ to_tsquery('english_unaccent', 'cafe');
 Customize the unaccent rules for specific needs.
 
 ```sql
--- View default unaccent rules location
-SHOW lc_messages;  -- Indicates locale directory
-
 -- You can create custom rules in a file:
--- $SHAREDIR/tsearch_data/my_unaccent.rules
+-- $(pg_config --sharedir)/tsearch_data/my_unaccent.rules
 
 -- Content format (one rule per line):
 -- à a
