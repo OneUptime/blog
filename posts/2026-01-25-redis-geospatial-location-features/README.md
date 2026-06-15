@@ -8,7 +8,7 @@ Description: Learn how to implement location-based features using Redis geospati
 
 ---
 
-> Location-based features are everywhere: finding nearby restaurants, tracking delivery drivers, matching ride-share passengers with drivers. Redis geospatial commands make implementing these features fast and straightforward, with the ability to query millions of locations in milliseconds.
+> Location-based features are everywhere: finding nearby restaurants, tracking delivery drivers, matching ride-share passengers with drivers. Redis geospatial commands make implementing these features fast and straightforward, with low-latency queries across large location datasets.
 
 Redis stores geospatial data using sorted sets with geohash encoding. This allows efficient radius queries and distance calculations while leveraging Redis's speed and simplicity.
 
@@ -16,7 +16,7 @@ Redis stores geospatial data using sorted sets with geohash encoding. This allow
 
 ## Understanding Redis Geospatial Commands
 
-Redis provides six commands for geospatial operations:
+Redis provides several commands for geospatial operations. Common commands include:
 
 | Command | Description |
 |---------|-------------|
@@ -31,7 +31,7 @@ Redis provides six commands for geospatial operations:
 
 ## Adding Locations
 
-Store locations with their latitude and longitude:
+Store locations with their longitude and latitude:
 
 ```bash
 # GEOADD key longitude latitude member [longitude latitude member ...]

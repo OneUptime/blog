@@ -105,7 +105,7 @@ print(r.hgetall('page:home:stats'))
 ```python
 import redis
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
 r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
@@ -124,8 +124,8 @@ class UserProfile:
             return False
 
         profile = {
-            'created_at': datetime.utcnow().isoformat(),
-            'updated_at': datetime.utcnow().isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat(),
             **data
         }
 
@@ -164,7 +164,7 @@ class UserProfile:
         if not r.exists(self.key):
             return False
 
-        data['updated_at'] = datetime.utcnow().isoformat()
+        data['updated_at'] = datetime.now(timezone.utc).isoformat()
 
         for key, value in data.items():
             if isinstance(value, (dict, list)):
@@ -215,7 +215,8 @@ print(f"Login count: {profile.get(['login_count'])}")
 import redis
 import json
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional
 
 r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
@@ -236,8 +237,8 @@ class SessionManager:
 
         session_data = {
             'user_id': user_id,
-            'created_at': datetime.utcnow().isoformat(),
-            'last_activity': datetime.utcnow().isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'last_activity': datetime.now(timezone.utc).isoformat(),
             'data': json.dumps(data or {})
         }
 
@@ -256,7 +257,7 @@ class SessionManager:
 
         # Refresh TTL and update last activity
         pipe = r.pipeline()
-        pipe.hset(key, 'last_activity', datetime.utcnow().isoformat())
+        pipe.hset(key, 'last_activity', datetime.now(timezone.utc).isoformat())
         pipe.expire(key, self.ttl)
         pipe.execute()
 
@@ -276,7 +277,7 @@ class SessionManager:
 
         r.hset(key, mapping={
             'data': json.dumps(current_data),
-            'last_activity': datetime.utcnow().isoformat()
+            'last_activity': datetime.now(timezone.utc).isoformat()
         })
         r.expire(key, self.ttl)
 
@@ -337,7 +338,7 @@ def check_encoding(key):
     memory = r.memory_usage(key)
     return encoding.decode(), memory
 
-# Small hash uses ziplist/listpack (memory efficient)
+# Small hash uses listpack encoding in Redis 7.0+ (memory efficient)
 r.hset('small_hash', mapping={f'f{i}': f'v{i}' for i in range(10)})
 print(f"Small hash: {check_encoding('small_hash')}")
 
@@ -345,9 +346,9 @@ print(f"Small hash: {check_encoding('small_hash')}")
 r.hset('large_hash', mapping={f'f{i}': f'v{i}' for i in range(1000)})
 print(f"Large hash: {check_encoding('large_hash')}")
 
-# Configure thresholds in redis.conf:
-# hash-max-ziplist-entries 512
-# hash-max-ziplist-value 64
+# Configure thresholds in redis.conf for Redis 7.0+:
+# hash-max-listpack-entries 512
+# hash-max-listpack-value 64
 
 # Compare memory: separate keys vs hash
 # Separate keys
@@ -371,7 +372,7 @@ print(f"Savings: {(1 - hash_memory/separate_memory)*100:.0f}%")
 |--------|------|------------------|
 | Memory (small objects) | More efficient | Less efficient |
 | Partial read/write | Yes | No |
-| TTL per field | No | Yes |
+| TTL per field | Redis 7.4+/8.0+ field expiration commands; otherwise no | Yes |
 | Cluster slot | One key, one slot | Keys can spread |
 | Pipelining | Fewer commands | More commands |
 
@@ -420,6 +421,6 @@ r.incr('counter:visits')
 Best practices:
 - Use hashes for object-like data with multiple fields
 - Take advantage of partial updates to reduce bandwidth
-- Keep field values reasonably small for ziplist encoding
-- Use HMGET/HMSET for batch operations
+- Keep field values reasonably small for listpack encoding
+- Use HMGET and HSET with a mapping for batch operations
 - Consider hashes for memory optimization over multiple keys
