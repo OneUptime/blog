@@ -30,16 +30,31 @@ The tradeoff? You cannot free individual objects. If that fits your access patte
 Let us build a basic arena allocator to understand how they work:
 
 ```rust
-use std::cell::RefCell;
+use std::alloc::{alloc, dealloc, handle_alloc_error, Layout};
+use std::cell::{Cell, RefCell};
 use std::mem;
+use std::ptr::NonNull;
+
+struct Chunk {
+    ptr: NonNull<u8>,
+    layout: Layout,
+}
+
+impl Drop for Chunk {
+    fn drop(&mut self) {
+        unsafe {
+            dealloc(self.ptr.as_ptr(), self.layout);
+        }
+    }
+}
 
 pub struct Arena {
     // Store chunks of memory
-    chunks: RefCell<Vec<Vec<u8>>>,
+    chunks: RefCell<Vec<Chunk>>,
     // Current position in the active chunk
-    current: RefCell<*mut u8>,
+    current: Cell<*mut u8>,
     // End of the active chunk
-    end: RefCell<*mut u8>,
+    end: Cell<*mut u8>,
 }
 
 impl Arena {
@@ -48,14 +63,22 @@ impl Arena {
     pub fn new() -> Self {
         Arena {
             chunks: RefCell::new(Vec::new()),
-            current: RefCell::new(std::ptr::null_mut()),
-            end: RefCell::new(std::ptr::null_mut()),
+            current: Cell::new(std::ptr::null_mut()),
+            end: Cell::new(std::ptr::null_mut()),
         }
     }
 
     // Allocate memory for a value of type T
     pub fn alloc<T>(&self, value: T) -> &mut T {
-        let layout = std::alloc::Layout::new::<T>();
+        if mem::size_of::<T>() == 0 {
+            let ptr = NonNull::<T>::dangling().as_ptr();
+            unsafe {
+                ptr.write(value);
+                return &mut *ptr;
+            }
+        }
+
+        let layout = Layout::new::<T>();
         let ptr = self.alloc_raw(layout);
 
         // Safety: ptr is properly aligned and valid for writes
@@ -65,48 +88,51 @@ impl Arena {
         }
     }
 
-    fn alloc_raw(&self, layout: std::alloc::Layout) -> *mut u8 {
-        let mut current = self.current.borrow_mut();
-        let mut end = self.end.borrow_mut();
-
+    fn alloc_raw(&self, layout: Layout) -> *mut u8 {
         // Align the current pointer
-        let aligned = (*current as usize)
+        let aligned = (self.current.get() as usize)
             .checked_add(layout.align() - 1)
             .map(|n| n & !(layout.align() - 1))
             .unwrap_or(0) as *mut u8;
 
-        let new_current = unsafe { aligned.add(layout.size()) };
-
-        if new_current <= *end {
-            // We have space in the current chunk
-            *current = new_current;
-            aligned
-        } else {
-            // Need a new chunk
-            self.grow(layout)
+        if let Some(new_current) = (aligned as usize).checked_add(layout.size()) {
+            if new_current <= self.end.get() as usize {
+                // We have space in the current chunk
+                self.current.set(new_current as *mut u8);
+                return aligned;
+            }
         }
+
+        // Need a new chunk
+        self.grow(layout)
     }
 
-    fn grow(&self, layout: std::alloc::Layout) -> *mut u8 {
+    fn grow(&self, layout: Layout) -> *mut u8 {
         let size = std::cmp::max(Self::CHUNK_SIZE, layout.size());
-        let mut chunk = vec![0u8; size];
-        let ptr = chunk.as_mut_ptr();
+        let align = std::cmp::max(mem::align_of::<usize>(), layout.align());
+        let chunk_layout = Layout::from_size_align(size, align).unwrap();
+        let ptr = unsafe { alloc(chunk_layout) };
+        let ptr = NonNull::new(ptr).unwrap_or_else(|| handle_alloc_error(chunk_layout));
 
-        self.chunks.borrow_mut().push(chunk);
+        self.chunks.borrow_mut().push(Chunk {
+            ptr,
+            layout: chunk_layout,
+        });
 
-        *self.current.borrow_mut() = unsafe { ptr.add(layout.size()) };
-        *self.end.borrow_mut() = unsafe { ptr.add(size) };
+        self.current
+            .set(unsafe { ptr.as_ptr().add(layout.size()) });
+        self.end.set(unsafe { ptr.as_ptr().add(size) });
 
-        ptr
+        ptr.as_ptr()
     }
 }
 ```
 
-This implementation demonstrates the core concept: allocations bump a pointer forward, and we grow by adding new chunks when needed. When the `Arena` is dropped, all chunks are freed together.
+This implementation demonstrates the core concept: allocations bump a pointer forward, and we grow by adding new chunks when needed. When the `Arena` is dropped, all chunks are freed together. Like `bumpalo::Bump::alloc`, this toy implementation does not run `Drop` implementations for values allocated inside the arena.
 
 ## Using the bumpalo Crate
 
-For production use, reach for the excellent `bumpalo` crate instead of rolling your own:
+For production use, reach for the excellent `bumpalo` crate instead of rolling your own. Enable its `collections` feature if you want to use `bumpalo::vec!`:
 
 ```rust
 use bumpalo::Bump;
