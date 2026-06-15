@@ -17,7 +17,7 @@ The `ZeroDivisionError` occurs when you try to divide a number by zero. This is 
 
 10 / 0    # ZeroDivisionError: division by zero
 10 // 0   # ZeroDivisionError: integer division or modulo by zero
-10 % 0    # ZeroDivisionError: integer division or modulo by zero
+10 % 0    # ZeroDivisionError: integer modulo by zero
 ```
 
 The error also occurs with float division (though floats have `inf` in some languages, Python raises an error):
@@ -207,7 +207,7 @@ df = pd.DataFrame({
     "units": [10, 0, 0]
 })
 
-# Replace inf with NaN
+# Avoid inf by replacing zero denominators with missing values
 df["price_per_unit"] = df["revenue"] / df["units"].replace(0, pd.NA)
 ```
 
