@@ -29,7 +29,6 @@ First, let's define the messages that flow between coordinator and workers:
 ```rust
 // src/protocol.rs
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestConfig {
@@ -83,7 +82,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 
 pub struct Worker {
     id: String,
@@ -164,14 +162,15 @@ impl Worker {
 
         let start = Instant::now();
         let mut handles = Vec::new();
+        let progress_interval = (config.requests_per_worker / 10).max(1);
 
-        for _ in 0..config.requests_per_worker {
+        for request_idx in 0..config.requests_per_worker {
             let permit = semaphore.clone().acquire_owned().await?;
             let client = self.http_client.clone();
             let url = config.target_url.clone();
             let timeout = Duration::from_millis(config.timeout_ms);
-            let completed = completed.clone();
-            let errors = errors.clone();
+            let completed_counter = completed.clone();
+            let error_counter = errors.clone();
             let latencies = latencies.clone();
 
             let handle = tokio::spawn(async move {
@@ -181,11 +180,11 @@ impl Worker {
 
                 match result {
                     Ok(resp) if resp.status().is_success() => {
-                        completed.fetch_add(1, Ordering::Relaxed);
+                        completed_counter.fetch_add(1, Ordering::Relaxed);
                         latencies.lock().await.push(latency.as_millis() as f64);
                     }
                     _ => {
-                        errors.fetch_add(1, Ordering::Relaxed);
+                        error_counter.fetch_add(1, Ordering::Relaxed);
                     }
                 }
 
@@ -193,6 +192,15 @@ impl Worker {
             });
 
             handles.push(handle);
+
+            if (request_idx + 1) % progress_interval == 0 {
+                let progress_msg = WorkerMessage::Progress {
+                    test_id: test_id.to_string(),
+                    completed: completed.load(Ordering::Relaxed),
+                    errors: errors.load(Ordering::Relaxed),
+                };
+                self.send_message(writer, &progress_msg).await?;
+            }
         }
 
         // Wait for all requests to complete
@@ -424,8 +432,6 @@ Here's how you would use these components:
 mod coordinator;
 mod protocol;
 mod worker;
-
-use protocol::TestConfig;
 
 #[tokio::main]
 async fn main() {
