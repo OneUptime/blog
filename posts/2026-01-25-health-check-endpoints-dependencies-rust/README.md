@@ -301,8 +301,8 @@ impl HealthCheck for RedisHealthCheck {
     async fn check(&self) -> Result<DependencyHealth, Box<dyn std::error::Error + Send + Sync>> {
         // Use PING command to verify connectivity
         let mut conn = self.client.clone();
-        redis::cmd("PING")
-            .query_async::<_, String>(&mut conn)
+        let _: String = redis::cmd("PING")
+            .query_async(&mut conn)
             .await?;
 
         // Optionally get server info for diagnostics
@@ -703,7 +703,7 @@ When you hit `/health/ready`, you get a comprehensive view of all dependencies:
     {
       "name": "redis",
       "status": "unhealthy",
-      "latency_ms": 5003,
+      "latency_ms": 2003,
       "message": "Health check timed out"
     },
     {
