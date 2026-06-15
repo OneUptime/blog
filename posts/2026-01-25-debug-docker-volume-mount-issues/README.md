@@ -40,13 +40,10 @@ If the `Mounts` array is empty or missing your expected path, the volume was not
 ls -la /home/user/app
 
 # Common mistake: using relative paths that resolve incorrectly
-# Wrong: volumes: ["./app:/app"] when running from wrong directory
-# The path resolves relative to where docker compose runs, not the compose file
+# Wrong: assuming ./app resolves from your current shell directory
+# In Compose, relative host paths resolve from the Compose file's parent directory
 
-# Check your current directory matches expectations
-pwd
-
-# Verify the docker-compose.yml location
+# Verify the resolved mount source
 docker compose config | grep -A5 volumes
 ```
 
@@ -88,21 +85,19 @@ docker exec mycontainer ls -la /app
 
 ```yaml
 # docker-compose.yml - Run container as your host user
-version: '3.8'
-
 services:
   app:
     image: node:20
     # Use host user's UID and GID
-    user: "${UID:-1000}:${GID:-1000}"
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     volumes:
       - ./src:/app/src
 ```
 
 ```bash
 # Export your user IDs before running
-export UID=$(id -u)
-export GID=$(id -g)
+export HOST_UID=$(id -u)
+export HOST_GID=$(id -g)
 docker compose up
 ```
 
@@ -119,18 +114,15 @@ chmod -R 777 ./src
 ### Fix 3: Use Named Volumes with Correct Ownership
 
 ```yaml
-# Named volumes preserve permissions better than bind mounts
-version: '3.8'
-
+# Named volumes are managed by Docker and can avoid host UID mismatches
 services:
   app:
     image: node:20
     volumes:
       - app_data:/app/data
-    # Initialize volume with correct ownership
+    # Initialize volume with correct ownership, then run the app as node
     entrypoint: |
-      sh -c 'chown -R node:node /app/data && exec node server.js'
-    user: node
+      sh -c 'chown -R node:node /app/data && exec su node -c "node server.js"'
 
 volumes:
   app_data:
@@ -138,7 +130,7 @@ volumes:
 
 ## Symptom: Volume Shows Empty When It Should Have Data
 
-Named volumes can appear empty when mounted over directories that contain image files.
+Bind mounts and non-empty volumes can obscure directories that contain image files. New empty volumes are populated from the container directory by default, unless copying is disabled.
 
 ```dockerfile
 # Dockerfile
@@ -294,8 +286,11 @@ Unused volumes consume disk space and can cause confusion when troubleshooting.
 # List volumes not attached to any container
 docker volume ls -f dangling=true
 
-# Remove all unused volumes (careful in production!)
+# Remove unused anonymous volumes (careful in production!)
 docker volume prune
+
+# Remove all unused volumes, including named volumes
+docker volume prune --all
 
 # Remove specific volume
 docker volume rm myvolume
