@@ -228,7 +228,7 @@ struct Point {
     y: i32,
 }
 
-// Implement Ord by distance from origin
+// Implement Ord by distance from origin, then by coordinates
 impl PartialEq for Point {
     fn eq(&self, other: &Self) -> bool {
         self.x == other.x && self.y == other.y
@@ -247,7 +247,10 @@ impl Ord for Point {
     fn cmp(&self, other: &Self) -> Ordering {
         let self_dist = self.x * self.x + self.y * self.y;
         let other_dist = other.x * other.x + other.y * other.y;
-        self_dist.cmp(&other_dist)
+        self_dist
+            .cmp(&other_dist)
+            .then_with(|| self.x.cmp(&other.x))
+            .then_with(|| self.y.cmp(&other.y))
     }
 }
 
