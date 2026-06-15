@@ -34,7 +34,7 @@ Redis provides three commands for HyperLogLog:
 ```bash
 # PFADD: Add elements to a HyperLogLog
 
-# Returns 1 if the cardinality estimate changed, 0 otherwise
+# Returns 1 if at least one HyperLogLog internal register changed, 0 otherwise
 PFADD visitors:2026-01-25 "user_abc123"
 PFADD visitors:2026-01-25 "user_def456" "user_ghi789"
 
@@ -54,10 +54,10 @@ PFMERGE visitors:week-04 visitors:2026-01-25 visitors:2026-01-24 visitors:2026-0
 Here is a complete analytics implementation using HyperLogLog:
 
 ```python
-import redis
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import hashlib
+import redis
 
 class VisitorAnalytics:
     """
@@ -113,7 +113,7 @@ class VisitorAnalytics:
             page: Optional page identifier for per-page tracking
 
         Returns:
-            True if this appears to be a new visitor (cardinality changed)
+            True if this visit changed the HyperLogLog's internal state
         """
         visitor_id = self._get_visitor_id(request_data)
         now = datetime.utcnow()
@@ -139,7 +139,7 @@ class VisitorAnalytics:
 
         results = pipe.execute()
 
-        # First result indicates if daily cardinality changed
+        # First result indicates if the daily HyperLogLog state changed
         return results[0] == 1
 
     def get_daily_count(self, date: datetime) -> int:
@@ -232,7 +232,7 @@ class VisitorAnalytics:
         period1_end: datetime,
         period2_start: datetime,
         period2_end: datetime
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Compare unique visitors between two time periods.
         Useful for week-over-week or month-over-month analysis.
@@ -266,8 +266,8 @@ if __name__ == '__main__':
     }
 
     # Track a visit
-    is_new = analytics.track_visit(visit_data, page='/home')
-    print(f"New visitor: {is_new}")
+    changed = analytics.track_visit(visit_data, page='/home')
+    print(f"HyperLogLog changed: {changed}")
 
     # Get counts
     today = datetime.utcnow()
