@@ -64,7 +64,8 @@ Rust's `BinaryHeap` is a max-heap by default, so we wrap our request type to inv
 
 ```rust
 use std::collections::BinaryHeap;
-use std::sync::{Arc, Mutex};
+use std::cmp::Ordering;
+use std::sync::Mutex;
 use std::time::Instant;
 
 #[derive(Debug)]
@@ -79,7 +80,7 @@ struct HeapEntry(PrioritizedRequest);
 
 impl PartialEq for HeapEntry {
     fn eq(&self, other: &Self) -> bool {
-        self.0.priority == other.0.priority
+        self.0.priority == other.0.priority && self.0.arrived_at == other.0.arrived_at
     }
 }
 
@@ -135,7 +136,7 @@ impl PriorityQueue {
 }
 ```
 
-The secondary sort by arrival time prevents starvation within a priority tier. Without it, a steady stream of Critical requests could keep Normal requests waiting indefinitely.
+The secondary sort by arrival time preserves FIFO fairness within a priority tier. It does not prevent starvation across tiers; if Critical traffic saturates all workers, Normal requests can still wait indefinitely unless you add aging, quotas, or separate capacity reservations.
 
 ## Admission Control: Shedding Load Intelligently
 
@@ -154,12 +155,19 @@ impl PriorityQueue {
             return AdmissionResult::Admitted;
         }
 
-        // Queue is full. Check if we can evict a lower-priority request.
-        if let Some(lowest) = heap.peek() {
+        // Queue is full. Find the lowest-priority queued request.
+        // `peek()` returns the next request to process, not the best eviction candidate.
+        if let Some((evict_idx, lowest)) = heap
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| a.cmp(b))
+        {
             if request.priority < lowest.0.priority {
-                // Incoming request has higher priority - evict the lowest
-                let evicted = heap.pop().unwrap();
-                heap.push(HeapEntry(request));
+                // Incoming request has higher priority - evict the lowest.
+                let mut entries: Vec<_> = heap.drain().collect();
+                let evicted = entries.swap_remove(evict_idx);
+                entries.push(HeapEntry(request));
+                *heap = BinaryHeap::from(entries);
                 return AdmissionResult::AdmittedWithEviction(evicted.0);
             }
         }
@@ -284,6 +292,6 @@ Request prioritization is not about making your service faster. It is about maki
 
 With a priority queue and admission control, you guarantee that your most important traffic keeps flowing even when everything else is backed up. Your checkout path stays fast during the flash sale, and your analytics can wait until things calm down.
 
-The patterns here translate directly to other ecosystems, but Rust's ownership model and zero-cost abstractions make it particularly well-suited for this kind of low-level control. You get predictable latency without garbage collection pauses, and the type system catches ordering bugs at compile time.
+The patterns here translate directly to other ecosystems, but Rust's ownership model and zero-cost abstractions make it particularly well-suited for this kind of low-level control. You get predictable latency without garbage collection pauses, and explicit `Ord` implementations make the ordering rules visible in code.
 
 Start with three priority tiers, measure the results, and adjust from there. Your on-call engineers will thank you the next time traffic spikes.
