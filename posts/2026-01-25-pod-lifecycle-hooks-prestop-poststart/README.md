@@ -27,21 +27,23 @@ sequenceDiagram
     K->>C: Begin Readiness Probes
 
     Note over K,A: Container Termination
+    K->>C: Start terminationGracePeriodSeconds countdown
     K->>C: Execute preStop Hook
     K->>C: Send SIGTERM
     C->>A: Application Shutdown
-    K->>C: Wait terminationGracePeriodSeconds
+    K->>C: Wait for remaining grace period
     K->>C: Send SIGKILL (if still running)
 ```
 
 The hooks run in-band with the container lifecycle, meaning:
 - `postStart` runs alongside (not after) the container entrypoint
 - `preStop` must complete before SIGTERM is sent
-- Both hooks block progress until they finish or timeout
+- The termination grace period countdown starts before `preStop` runs
+- Both hooks block progress until they finish or the grace period expires
 
 ## Configuring postStart Hooks
 
-The `postStart` hook is useful for initialization tasks that should not block the main application startup:
+The `postStart` hook is useful for initialization tasks that run with the main application startup, but it still blocks the container from reaching the running state until it completes:
 
 ```yaml
 # deployment-with-poststart.yaml
@@ -82,7 +84,7 @@ spec:
                       -d '{"name": "web-app", "port": 8080}'
 ```
 
-You can also use HTTP hooks for simpler scenarios:
+You can also use HTTP hooks for simple scenarios where the endpoint is available as soon as the container starts. If the application takes time to bind its port, prefer an `exec` hook with retry logic:
 
 ```yaml
 # http-poststart-example.yaml
@@ -152,8 +154,9 @@ spec:
                     # This gives in-flight requests time to finish
                     sleep 15
 
-                    # Signal the application to start graceful shutdown
-                    kill -SIGTERM 1
+                    # Let this hook finish so kubelet can send SIGTERM
+                    # to the application for graceful shutdown
+                    echo "Drain delay complete"
 ```
 
 ## Connection Draining Pattern
@@ -309,7 +312,8 @@ spec:
               - -c
               # Push final metrics before shutdown
               - |
-                curl -X POST http://prometheus:9091/api/v1/admin/wipe
+                printf 'shutdown_timestamp_seconds %s\n' "$(date +%s)" | \
+                  curl --data-binary @- http://localhost:9091/metrics/job/metrics-exporter
                 sleep 2
 ```
 
@@ -373,7 +377,7 @@ lifecycle:
 
 2. **Handle hook failures**: A failed postStart hook prevents the container from running. Make hooks resilient.
 
-3. **Coordinate with probes**: The preStop hook runs before probes fail. Use the sleep delay to allow endpoint removal.
+3. **Coordinate with endpoint removal**: Terminating Pods are marked as not ready in EndpointSlices. Use a short sleep delay when needed to give clients and load balancers time to stop routing new requests.
 
 4. **Test termination**: Regularly test `kubectl delete pod` to verify graceful shutdown works.
 
