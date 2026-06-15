@@ -232,22 +232,20 @@ modules:
   edged:
     enable: true
     # Container runtime configuration
-    cgroupDriver: systemd
-    # Pod sandbox image for ARM devices
-    podSandboxImage: kubeedge/pause:3.6-arm64
-    # Resource limits for edge constraints
-    nodeStatusUpdateFrequency: 10
-    # Image pull settings
-    imagePullProgressDeadline: 60
+    tailoredKubeletConfig:
+      cgroupDriver: systemd
+      nodeStatusUpdateFrequency: 10s
+    # Pod sandbox image
+    podSandboxImage: kubeedge/pause:3.6
     # Runtime type
-    containerRuntime: containerd
+    containerRuntime: remote
     remoteRuntimeEndpoint: unix:///run/containerd/containerd.sock
     remoteImageEndpoint: unix:///run/containerd/containerd.sock
 
   eventBus:
     enable: true
     # MQTT broker configuration for IoT devices
-    mqttMode: 0  # 0: internal, 1: external, 2: both
+    mqttMode: 0  # 0: internal, 1: both, 2: external
     mqttQOS: 0
     mqttRetain: false
     mqttSessionQueueSize: 100
@@ -290,29 +288,25 @@ spec:
   properties:
     - name: temperature
       description: Current temperature reading
-      type:
-        int:
-          accessMode: ReadOnly
-          minimum: -40
-          maximum: 85
-          unit: Celsius
+      type: INT
+      accessMode: ReadOnly
+      minimum: "-40"
+      maximum: "85"
+      unit: Celsius
     - name: humidity
       description: Relative humidity percentage
-      type:
-        int:
-          accessMode: ReadOnly
-          minimum: 0
-          maximum: 100
-          unit: Percent
+      type: INT
+      accessMode: ReadOnly
+      minimum: "0"
+      maximum: "100"
+      unit: Percent
     - name: sample-interval
       description: Sampling interval in seconds
-      type:
-        int:
-          accessMode: ReadWrite
-          minimum: 1
-          maximum: 3600
-          defaultValue: 60
-          unit: Seconds
+      type: INT
+      accessMode: ReadWrite
+      minimum: "1"
+      maximum: "3600"
+      unit: Seconds
 ```
 
 ### Create a Device Instance
@@ -337,35 +331,37 @@ spec:
   nodeName: edge-node-01
   # Protocol configuration for this device
   protocol:
-    modbus:
+    protocolName: modbus
+    configData:
+      serialPort: /dev/ttyUSB0
+      baudRate: 9600
+      dataBits: 8
+      parity: none
+      stopBits: 1
       slaveID: 1
-    common:
-      com:
-        serialPort: /dev/ttyUSB0
-        baudRate: 9600
-        dataBits: 8
-        parity: none
-        stopBits: 1
-  # Property visitors define how to read each property
-  propertyVisitors:
-    - propertyName: temperature
-      modbus:
-        register: HoldingRegister
-        offset: 0
-        limit: 1
-      collectCycle: 10000  # milliseconds
-      reportCycle: 60000   # milliseconds
-    - propertyName: humidity
-      modbus:
-        register: HoldingRegister
-        offset: 1
-        limit: 1
-      collectCycle: 10000
-      reportCycle: 60000
-status:
-  # Desired state (set by cloud)
-  twins:
-    - propertyName: sample-interval
+  # Properties define reporting and visitor configuration
+  properties:
+    - name: temperature
+      collectCycle: 10000000000  # nanoseconds
+      reportCycle: 60000000000   # nanoseconds
+      reportToCloud: true
+      visitors:
+        protocolName: modbus
+        configData:
+          register: HoldingRegister
+          offset: 0
+          limit: 1
+    - name: humidity
+      collectCycle: 10000000000
+      reportCycle: 60000000000
+      reportToCloud: true
+      visitors:
+        protocolName: modbus
+        configData:
+          register: HoldingRegister
+          offset: 1
+          limit: 1
+    - name: sample-interval
       desired:
         value: "30"
         metadata:
@@ -412,7 +408,7 @@ spec:
           env:
             # MQTT broker for device communication
             - name: MQTT_BROKER
-              value: "tcp://127.0.0.1:1883"
+              value: "127.0.0.1"
             # Device topics to subscribe
             - name: DEVICE_TOPICS
               value: "$hw/events/device/+/twin/update"
@@ -558,14 +554,15 @@ modules:
     # Configure SQLite for local state
     contextSendGroup: hub
     contextSendModule: websocket
-    # How long to keep metadata locally
-    podStatusSyncInterval: 60
+    # Timeout for cloud fallback queries when metadata is not local
+    remoteQueryTimeout: 60
 
   edged:
     # Continue running pods when disconnected
     registerNodeNamespace: default
-    # Local image pull policy
-    imagePullPolicy: IfNotPresent
+    # Use pre-pulled images or set imagePullPolicy: IfNotPresent in Pod specs
+    tailoredKubeletConfig:
+      serializeImagePulls: true
 ```
 
 ---
