@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Redis, Cluster, Failover, High Availability
 
-Description: A practical guide to building a Redis cluster client in Rust that handles node failures gracefully, with automatic failover, connection pooling, and retry logic.
+Description: A practical guide to building a Redis cluster client in Rust that handles node failures gracefully, with automatic failover, connection reuse, and retry logic.
 
 ---
 
-Running Redis in cluster mode gives you horizontal scaling and fault tolerance, but your client code needs to handle the complexity that comes with it. Nodes fail, slots move, and connections drop. This guide walks through building a Redis cluster client in Rust that handles these scenarios without dropping requests.
+Running Redis in cluster mode gives you horizontal scaling and fault tolerance, but your client code needs to handle the complexity that comes with it. Nodes fail, slots move, and connections drop. This guide walks through building a Redis cluster client in Rust that handles these scenarios without immediately failing requests.
 
 ## Understanding Redis Cluster Basics
 
@@ -34,7 +34,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-redis = { version = "0.24", features = ["cluster", "tokio-comp", "connection-manager"] }
+redis = { version = "0.24", features = ["cluster-async", "tokio-comp"] }
 tokio = { version = "1", features = ["full"] }
 thiserror = "1.0"
 tracing = "0.1"
@@ -75,15 +75,15 @@ This works for simple cases, but production systems need more control over failu
 
 ## Building a Resilient Client Wrapper
 
-Let's build a wrapper that adds connection pooling, automatic retries, and health monitoring.
+Let's build a wrapper that adds connection reuse, automatic retries, and health monitoring.
 
 ```rust
-use redis::cluster::{ClusterClient, ClusterConnection};
+use redis::cluster::ClusterClient;
 use redis::{AsyncCommands, RedisError, RedisResult};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use tokio::time::sleep;
+use tokio::time::{sleep, timeout};
 use tracing::{error, info, warn};
 
 // Custom error types for better error handling
@@ -98,7 +98,7 @@ pub enum ClusterError {
     #[error("Cluster unavailable: no healthy nodes")]
     ClusterUnavailable,
 
-    #[error("Connection timeout after {0:?}")]
+    #[error("Operation timeout after {0:?}")]
     Timeout(Duration),
 }
 
@@ -140,12 +140,11 @@ pub struct FailoverClient {
 
 impl FailoverClient {
     pub async fn new(config: ClusterConfig) -> Result<Self, ClusterError> {
-        let client = ClusterClient::builder(config.nodes.clone())
-            .connection_timeout(config.connection_timeout)
-            .read_timeout(config.read_timeout)
-            .build()?;
+        let client = ClusterClient::builder(config.nodes.clone()).build()?;
 
-        let connection = client.get_async_connection().await?;
+        let connection = timeout(config.connection_timeout, client.get_async_connection())
+            .await
+            .map_err(|_| ClusterError::Timeout(config.connection_timeout))??;
 
         info!("Connected to Redis cluster with {} seed nodes", config.nodes.len());
 
@@ -180,14 +179,22 @@ impl FailoverClient {
         let mut delay = self.config.base_retry_delay;
 
         for attempt in 1..=self.config.max_retries {
-            match self.client.get_async_connection().await {
-                Ok(new_conn) => {
+            match timeout(self.config.connection_timeout, self.client.get_async_connection()).await {
+                Ok(Ok(new_conn)) => {
                     *conn_guard = Some(new_conn);
                     info!("Reconnected to Redis cluster on attempt {}", attempt);
                     return Ok(());
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     warn!("Reconnection attempt {} failed: {}", attempt, e);
+
+                    if attempt < self.config.max_retries {
+                        sleep(delay).await;
+                        delay = std::cmp::min(delay * 2, self.config.max_retry_delay);
+                    }
+                }
+                Err(_) => {
+                    warn!("Reconnection attempt {} timed out", attempt);
 
                     if attempt < self.config.max_retries {
                         sleep(delay).await;
@@ -205,7 +212,7 @@ impl FailoverClient {
 
 ## Adding Retry Logic for Operations
 
-Each operation should retry transparently when it hits a transient failure.
+Each idempotent operation can retry transparently when it hits a transient failure.
 
 ```rust
 impl FailoverClient {
@@ -233,14 +240,14 @@ impl FailoverClient {
             };
 
             // Try the operation
-            match operation(conn).await {
-                Ok((new_conn, result)) => {
+            match timeout(self.config.read_timeout, operation(conn)).await {
+                Ok(Ok((new_conn, result))) => {
                     // Update connection and return result
                     let mut guard = self.connection.write().await;
                     *guard = Some(new_conn);
                     return Ok(result);
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     // Check if this error is retryable
                     if Self::is_retryable(&e) {
                         warn!(
@@ -264,6 +271,24 @@ impl FailoverClient {
                         return Err(ClusterError::Redis(e));
                     }
                 }
+                Err(_) => {
+                    warn!(
+                        "Operation timed out (attempt {}/{})",
+                        attempt, self.config.max_retries
+                    );
+
+                    // Clear connection to force reconnect
+                    {
+                        let mut guard = self.connection.write().await;
+                        *guard = None;
+                    }
+
+                    if attempt < self.config.max_retries {
+                        sleep(delay).await;
+                        delay = std::cmp::min(delay * 2, self.config.max_retry_delay);
+                        self.reconnect().await?;
+                    }
+                }
             }
         }
 
@@ -279,10 +304,11 @@ impl FailoverClient {
         matches!(
             error.kind(),
             ErrorKind::IoError
-                | ErrorKind::ClusterConnectionNotFound
                 | ErrorKind::ClusterDown
                 | ErrorKind::MasterDown
                 | ErrorKind::BusyLoadingError
+                | ErrorKind::TryAgain
+                | ErrorKind::ReadOnly
         )
     }
 }
@@ -365,7 +391,7 @@ impl FailoverClient {
 
 ## Health Checking and Monitoring
 
-Add a health check method that verifies cluster connectivity and reports node status.
+Add a health check method that verifies cluster connectivity and reports cluster status.
 
 ```rust
 impl FailoverClient {
@@ -448,7 +474,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 When slots move between nodes during resharding, you'll see MOVED or ASK errors. The `redis` crate handles these automatically by following redirections, but you should be aware of them in your logs. During heavy resharding, you might see brief latency spikes as the client updates its slot map.
 
-For very large clusters or frequent topology changes, consider running a background task that periodically refreshes the slot mapping:
+For very large clusters or frequent topology changes, consider running a background task that periodically verifies connectivity and triggers the reconnect path when needed:
 
 ```rust
 // Background task to keep topology fresh
@@ -459,9 +485,9 @@ pub fn start_topology_refresh(client: Arc<FailoverClient>, interval: Duration) {
         loop {
             ticker.tick().await;
 
-            // Health check forces a topology refresh on reconnect
+            // Health check triggers reconnect if the shared connection is unhealthy
             if let Err(e) = client.health_check().await {
-                warn!("Topology refresh health check failed: {}", e);
+                warn!("Cluster health check failed: {}", e);
             }
         }
     });
