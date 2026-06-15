@@ -96,9 +96,7 @@ const { MongoClient } = require('mongodb');
 
 const client = new MongoClient('mongodb://localhost:27017/mydb', {
   maxPoolSize: 50,
-  minPoolSize: 5,
-  // Enable connection pool monitoring
-  monitorCommands: true
+  minPoolSize: 5
 });
 
 // Listen for pool events to track connection lifecycle
@@ -111,8 +109,8 @@ client.on('connectionCreated', (event) => {
 });
 
 client.on('connectionCheckOutStarted', (event) => {
-  // A request is waiting for a connection
-  // High frequency here may indicate pool is too small
+  // An operation is attempting to acquire a connection
+  // Checkout failures or long checkout durations may indicate the pool is too small
   console.log('Checkout started at:', new Date().toISOString());
 });
 
@@ -128,21 +126,19 @@ client.on('connectionPoolClosed', (event) => {
   console.log('Pool closed for:', event.address);
 });
 
-// Track pool statistics programmatically
-async function getPoolStats() {
-  // Access internal pool statistics (driver-specific)
-  const topology = client.topology;
-  if (topology) {
-    const servers = topology.s.servers;
-    for (const [address, server] of servers) {
-      const pool = server.s.pool;
-      console.log(`Pool stats for ${address}:`, {
-        totalConnections: pool.totalConnectionCount,
-        availableConnections: pool.availableConnectionCount,
-        pendingConnections: pool.pendingConnectionCount
-      });
-    }
-  }
+// Track checked-out connections with public driver events
+let checkedOut = 0;
+
+client.on('connectionCheckedOut', () => {
+  checkedOut++;
+});
+
+client.on('connectionCheckedIn', () => {
+  checkedOut--;
+});
+
+function getPoolStats() {
+  console.log('Currently checked out connections:', checkedOut);
 }
 ```
 
@@ -158,7 +154,7 @@ const client = new MongoClient(
   'mongodb://mongo1:27017,mongo2:27017,mongo3:27017/mydb?replicaSet=rs0',
   {
     // These settings apply per server, not total
-    // With 3 nodes: up to 150 total connections (50 * 3)
+    // With 3 nodes: up to 150 pooled connections (50 * 3), plus monitoring sockets
     maxPoolSize: 50,
     minPoolSize: 5,
 
@@ -181,7 +177,6 @@ const client = new MongoClient(
 
 ```python
 from pymongo import MongoClient
-from pymongo.pool import PoolOptions
 
 # Python driver pool configuration
 
@@ -194,12 +189,10 @@ client = MongoClient(
     # Maximum time (ms) connection can remain idle before closing
     maxIdleTimeMS=30000,
     # Maximum time (ms) to wait for connection from pool
-    waitQueueTimeoutMS=5000,
-    # Enable connection pool events
-    event_listeners=None  # Add custom listeners here
+    waitQueueTimeoutMS=5000
 )
 
-# Use context manager for clean connection handling
+# Use the shared client for pooled operations
 def query_with_pool():
     db = client.mydb
     collection = db.users
@@ -244,7 +237,7 @@ console.log(`Recommended pool size: ${poolSize}`); // 75
 
 ## Common Pool Configuration Mistakes
 
-**Setting pool size too high**: More connections consume memory on both client and server. MongoDB limits total connections (default: 65536). If 100 app instances each use 100 connections, you hit limits fast.
+**Setting pool size too high**: More connections consume memory on both client and server. MongoDB limits total connections with `net.maxIncomingConnections`, and the effective limit also depends on the operating system and deployment type. If 100 app instances each use 100 connections, you hit limits fast.
 
 **Ignoring waitQueueTimeoutMS**: Without a timeout, requests hang indefinitely when the pool is exhausted. Always set a reasonable timeout and handle the error.
 
@@ -256,10 +249,10 @@ async function queryWithTimeout(collection, query) {
   try {
     return await collection.findOne(query);
   } catch (error) {
-    if (error.name === 'MongoPoolClearedError' ||
-        error.message.includes('connection pool')) {
-      // Pool exhausted - implement backoff or circuit breaker
-      console.error('Pool exhausted, retrying after delay');
+    if (error.name === 'MongoWaitQueueTimeoutError' ||
+        error.message.includes('timed out while checking out a connection')) {
+      // Pool checkout timed out - implement backoff or circuit breaker
+      console.error('Connection pool checkout timed out, retrying after delay');
       await new Promise(resolve => setTimeout(resolve, 100));
       return await collection.findOne(query);
     }
