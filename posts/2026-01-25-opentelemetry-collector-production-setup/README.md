@@ -86,7 +86,7 @@ processors:
         value: production
         action: upsert
       - key: collector.version
-        value: "1.0.0"
+        value: "0.154.0"
         action: insert
 
 exporters:
@@ -147,7 +147,14 @@ service:
         service: otel-collector
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 ## Kubernetes Deployment
@@ -173,7 +180,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.154.0
           args:
             - "--config=/etc/otel/config.yaml"
           ports:
@@ -290,7 +297,11 @@ exporters:
 extensions:
   file_storage:
     directory: /var/lib/otel/queue
+    create_directory: true
     timeout: 10s
+
+service:
+  extensions: [file_storage]
 ```
 
 ## Security Best Practices
@@ -307,6 +318,12 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+        tls:
+          cert_file: /certs/server.crt
+          key_file: /certs/server.key
+          client_ca_file: /certs/ca.crt  # For mTLS
+      http:
+        endpoint: 0.0.0.0:4318
         tls:
           cert_file: /certs/server.crt
           key_file: /certs/server.key
@@ -328,6 +345,9 @@ receivers:
       grpc:
         auth:
           authenticator: bearertokenauth
+
+service:
+  extensions: [bearertokenauth]
 ```
 
 ### Network Policies
@@ -362,12 +382,12 @@ The collector exposes metrics about its own operation. Monitor these key metrics
 
 - `otelcol_receiver_accepted_spans` - Spans successfully received
 - `otelcol_receiver_refused_spans` - Spans rejected (authentication, rate limiting)
-- `otelcol_processor_dropped_spans` - Spans dropped during processing
+- `otelcol_exporter_enqueue_failed_spans` - Spans that failed to enter the exporter queue
 - `otelcol_exporter_sent_spans` - Spans successfully exported
 - `otelcol_exporter_send_failed_spans` - Export failures
 - `otelcol_exporter_queue_size` - Current queue depth
 
-Create alerts for queue buildup, high drop rates, or export failures.
+For metrics and logs, monitor the corresponding `metric_points` and `log_records` variants. Create alerts for queue buildup, high enqueue failure rates, refused data, or export failures.
 
 ## Performance Tuning
 
