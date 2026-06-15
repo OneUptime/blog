@@ -63,7 +63,7 @@ from typing import Generator
 # Create engine and session factory once at module level
 DATABASE_URL = "postgresql://user:pass@localhost/db"
 engine = create_engine(DATABASE_URL, pool_size=10, max_overflow=20)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+SessionLocal = sessionmaker(bind=engine, autoflush=False)
 
 def get_db() -> Generator[Session, None, None]:
     """
@@ -104,10 +104,9 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 @router.post("/", response_model=UserResponse)
 def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
     """
-    Create a new user.
-    Transaction commits on success, rolls back on exception.
+    Create a new user and commit the transaction.
     """
-    user = User(**user_data.dict())
+    user = User(**user_data.model_dump())
     db.add(user)
     db.commit()
     db.refresh(user)  # Load generated fields like id
@@ -380,7 +379,7 @@ Generator dependencies are automatically cleaned up after the request completes.
 # scoped_dependencies.py
 # Scoped dependencies with automatic cleanup
 from fastapi import Depends
-from typing import Generator
+from typing import AsyncGenerator, Generator
 import httpx
 
 def get_http_client() -> Generator[httpx.Client, None, None]:
@@ -394,7 +393,7 @@ def get_http_client() -> Generator[httpx.Client, None, None]:
     finally:
         client.close()
 
-async def get_async_http_client() -> Generator[httpx.AsyncClient, None, None]:
+async def get_async_http_client() -> AsyncGenerator[httpx.AsyncClient, None]:
     """
     Async dependency that provides an async HTTP client.
     Perfect for making external API calls.
