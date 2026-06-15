@@ -16,7 +16,7 @@ This guide breaks down when to use each approach, backs it up with benchmarks, a
 
 A mutex-protected map is simple: every read and write acquires a lock. This works well when reads and writes are balanced or when you have a small number of goroutines. The downside is contention. Under heavy concurrent access, goroutines spend more time waiting for locks than doing actual work.
 
-`sync.Map` takes a different approach. It uses a combination of atomic operations and an internal read-only cache to optimize for two specific patterns: keys that are written once and read many times, and keys that are only ever accessed by one goroutine. The trade-off is that `sync.Map` has higher overhead for write-heavy workloads and doesn't support the full map API.
+`sync.Map` takes a different approach. It uses a combination of atomic operations and internal state optimized for two specific patterns: keys that are written once and read many times, and multiple goroutines working on disjoint sets of keys. The trade-off is that `sync.Map` has higher overhead for write-heavy workloads and doesn't support the full map API.
 
 ## When to Use sync.Map
 
@@ -41,7 +41,7 @@ type ConfigCache struct {
 
 // Get retrieves a configuration value by key
 func (c *ConfigCache) Get(key string) (string, bool) {
-    // Load is lock-free for keys in the read-only portion
+    // Load is optimized for read-mostly access patterns
     value, ok := c.store.Load(key)
     if !ok {
         return "", false
@@ -62,7 +62,7 @@ func (c *ConfigCache) LoadAll(configs map[string]string) {
 }
 ```
 
-In this pattern, writes happen during initialization, and subsequent access is almost entirely reads. `sync.Map` handles this with minimal contention because reads hit an internal atomic snapshot.
+In this pattern, writes happen during initialization, and subsequent access is almost entirely reads. `sync.Map` handles this with minimal contention because it is optimized for entries that are written once and read many times.
 
 ## When to Use a Mutex-Protected Map
 
@@ -179,7 +179,7 @@ func (m *MutexMap) Store(key string, value int) {
     m.m[key] = value
 }
 
-// Benchmark: 95% reads, 5% writes (sync.Map wins)
+// Benchmark: 95% reads, 5% writes
 func BenchmarkSyncMapReadHeavy(b *testing.B) {
     var m sync.Map
     m.Store("key", 1)
@@ -213,7 +213,7 @@ func BenchmarkMutexMapReadHeavy(b *testing.B) {
     })
 }
 
-// Benchmark: 50% reads, 50% writes (mutex usually wins)
+// Benchmark: 50% reads, 50% writes
 func BenchmarkSyncMapBalanced(b *testing.B) {
     var m sync.Map
     m.Store("key", 1)
@@ -248,11 +248,11 @@ func BenchmarkMutexMapBalanced(b *testing.B) {
 }
 ```
 
-Running these benchmarks typically shows:
+Running benchmarks like these often shows:
 
-- Read-heavy (95/5): `sync.Map` is 2-3x faster
-- Balanced (50/50): `sync.RWMutex` is 1.5-2x faster
-- Write-heavy (5/95): `sync.RWMutex` is significantly faster
+- Read-heavy, write-once or growing caches: `sync.Map` can reduce lock contention
+- Balanced or write-heavy workloads: `sync.RWMutex` often wins
+- Hot-key workloads where many goroutines overwrite the same keys: benchmark carefully, because they do not match the main `sync.Map` optimization cases
 
 The exact numbers vary by CPU and Go version, but the pattern holds. Test with your actual workload.
 
@@ -293,13 +293,13 @@ Ask these questions about your use case:
 1. **Is the map written once and read many times?** Use `sync.Map`.
 2. **Do goroutines access mostly disjoint keys?** Use `sync.Map`.
 3. **Do you need `len()`, iteration, or bulk operations?** Use mutex + map.
-4. **Is your write ratio above 10-20%?** Use mutex + map.
+4. **Are writes frequent or concentrated on the same keys?** Use mutex + map.
 5. **Is the access pattern unpredictable or changing?** Start with mutex + map. It's easier to reason about and optimize later.
 
 When in doubt, benchmark your actual workload. The few minutes spent writing a benchmark will save hours of debugging performance issues in production.
 
 ## Final Thoughts
 
-Both `sync.Map` and mutex-protected maps are tools with specific strengths. `sync.Map` is optimized for read-heavy, append-only patterns. Mutex-protected maps are more flexible, easier to understand, and often faster for general-purpose concurrent access.
+Both `sync.Map` and mutex-protected maps are tools with specific strengths. `sync.Map` is optimized for read-heavy, write-once or disjoint-key patterns. Mutex-protected maps are more flexible, easier to understand, and often faster for general-purpose concurrent access.
 
 The mistake is treating `sync.Map` as a drop-in replacement for mutex-protected maps. It isn't. Pick based on your access pattern, validate with benchmarks, and don't hesitate to switch if your workload changes. Concurrency primitives are cheap to swap - production outages aren't.
