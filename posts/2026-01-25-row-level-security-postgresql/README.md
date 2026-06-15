@@ -29,7 +29,7 @@ With RLS, the database enforces isolation automatically:
 ```sql
 -- RLS-enforced filtering (safe)
 SELECT * FROM invoices;
--- PostgreSQL automatically adds: WHERE tenant_id = current_tenant()
+-- PostgreSQL applies the policy expression: WHERE tenant_id = current_tenant_id()
 ```
 
 Even if your application has bugs, the database prevents cross-tenant data access.
@@ -55,16 +55,18 @@ CREATE TABLE customers (
     tenant_id UUID NOT NULL REFERENCES tenants(id),
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE (tenant_id, id)
 );
 
 CREATE TABLE invoices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id),
-    customer_id UUID NOT NULL REFERENCES customers(id),
+    customer_id UUID NOT NULL,
     amount DECIMAL(10, 2) NOT NULL,
     status VARCHAR(50) DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    FOREIGN KEY (tenant_id, customer_id) REFERENCES customers(tenant_id, id)
 );
 
 -- Index for efficient tenant filtering
@@ -90,7 +92,7 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql STABLE;
 
--- Function to set current tenant (call at connection start)
+-- Function to set current tenant (call when a connection is checked out)
 CREATE OR REPLACE FUNCTION set_tenant(p_tenant_id UUID)
 RETURNS VOID AS $$
 BEGIN
@@ -105,6 +107,11 @@ $$ LANGUAGE plpgsql;
 -- Enable RLS on tables
 ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+
+-- Run application queries as a non-owner role.
+-- Table owners and superusers bypass RLS unless FORCE ROW LEVEL SECURITY is enabled.
+CREATE ROLE app_user LOGIN;
+GRANT SELECT, INSERT, UPDATE, DELETE ON customers, invoices TO app_user;
 
 -- Create isolation policies for customers table
 CREATE POLICY tenant_isolation_select ON customers
@@ -180,8 +187,6 @@ from fastapi import FastAPI, Depends, Request
 from contextlib import asynccontextmanager
 import asyncpg
 
-app = FastAPI()
-
 # Database pool
 pool = None
 
@@ -201,8 +206,11 @@ async def get_db(request: Request):
 
     async with pool.acquire() as conn:
         # Set tenant context
-        await conn.execute("SELECT set_tenant($1)", tenant_id)
-        yield conn
+        await conn.execute("SELECT set_tenant($1::uuid)", tenant_id)
+        try:
+            yield conn
+        finally:
+            await conn.execute("RESET app.tenant_id")
 
 @app.get("/customers")
 async def list_customers(conn = Depends(get_db)):
@@ -245,22 +253,25 @@ CREATE TABLE tenant_users (
     UNIQUE(tenant_id, user_id)
 );
 
+ALTER TABLE customers ADD COLUMN assigned_staff_id UUID;
+
 -- Function to get current user's role
 CREATE OR REPLACE FUNCTION current_user_role()
 RETURNS VARCHAR AS $$
 BEGIN
-    RETURN current_setting('app.user_role', true);
+    RETURN NULLIF(current_setting('app.user_role', true), '');
 END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- Policy: Staff can only see their own customers
 CREATE POLICY staff_customer_access ON customers
+    AS RESTRICTIVE
     FOR SELECT
     USING (
         tenant_id = current_tenant_id()
         AND (
             current_user_role() IN ('admin', 'manager')
-            OR assigned_staff_id = current_setting('app.user_id', true)::UUID
+            OR assigned_staff_id = NULLIF(current_setting('app.user_id', true), '')::UUID
         )
     );
 ```
@@ -417,6 +428,9 @@ INSERT INTO customers (tenant_id, name, email) VALUES
     ('11111111-1111-1111-1111-111111111111', 'Alice', 'alice@acme.com'),
     ('22222222-2222-2222-2222-222222222222', 'Bob', 'bob@widget.com');
 
+-- Run RLS checks as app_user, not as a table owner or superuser
+SET ROLE app_user;
+
 -- Test isolation
 SELECT set_tenant('11111111-1111-1111-1111-111111111111');
 SELECT * FROM customers;  -- Should only see Alice
@@ -439,12 +453,13 @@ VALUES ('22222222-2222-2222-2222-222222222222', 'Hacker', 'hacker@evil.com');
 
 ```python
 # Wrong: No tenant context set
-conn = get_raw_connection()
-conn.execute("SELECT * FROM customers")  # Returns nothing!
+with conn.cursor() as cur:
+    cur.execute("SELECT * FROM customers")  # Returns nothing!
 
 # Right: Always set tenant context
-conn.execute("SELECT set_tenant($1)", (tenant_id,))
-conn.execute("SELECT * FROM customers")  # Returns tenant's data
+with conn.cursor() as cur:
+    cur.execute("SELECT set_tenant(%s)", (tenant_id,))
+    cur.execute("SELECT * FROM customers")  # Returns tenant's data
 ```
 
 ### 2. RLS Not Applying to Superusers
