@@ -67,7 +67,24 @@ aws s3api put-bucket-versioning \
     --versioning-configuration Status=Enabled
 ```
 
-Create IAM role for replication:
+Create a trust policy for the IAM role:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "s3.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+        }
+    ]
+}
+```
+
+Attach this permissions policy to the role:
 
 ```json
 {
@@ -163,7 +180,7 @@ aws cloudwatch get-metric-statistics \
     --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
     --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
     --period 300 \
-    --statistics Average
+    --statistics Maximum
 ```
 
 ## Azure Blob Storage Geo-Replication
@@ -231,12 +248,21 @@ For more control, use Azure object replication:
 ```bash
 # Create policy for specific containers
 az storage account or-policy create \
-    --account-name companydata-primary \
+    --account-name companydata-dr \
     --resource-group myresources \
     --source-account companydata-primary \
     --destination-account companydata-dr \
     --source-container backups \
     --destination-container backups-replica
+
+az storage account or-policy show \
+    --account-name companydata-dr \
+    --resource-group myresources \
+    --policy-id <policy-id> | \
+    az storage account or-policy create \
+        --account-name companydata-primary \
+        --resource-group myresources \
+        --policy "@-"
 ```
 
 ## Google Cloud Storage Cross-Region
@@ -260,8 +286,8 @@ gcloud transfer jobs create \
     gs://company-data-primary \
     gs://company-data-dr \
     --name="daily-replication" \
-    --schedule-start-date=2026-01-25 \
-    --schedule-repeats-every=P1D
+    --schedule-starts=2026-01-25T00:00:00+00:00 \
+    --schedule-repeats-every=1d
 ```
 
 ### Dual-Region Buckets
@@ -271,7 +297,7 @@ gcloud transfer jobs create \
 gsutil mb -l nam4 -c standard gs://company-data-dual
 
 # nam4 = Iowa and South Carolina
-# Automatic synchronous replication between regions
+# Automatic asynchronous replication between regions
 ```
 
 ## Database Cross-Region Replication
@@ -282,8 +308,7 @@ gsutil mb -l nam4 -c standard gs://company-data-dual
 # Create cross-region read replica
 aws rds create-db-instance-read-replica \
     --db-instance-identifier production-dr \
-    --source-db-instance-identifier production-primary \
-    --source-region us-east-1 \
+    --source-db-instance-identifier arn:aws:rds:us-east-1:123456789012:db:production-primary \
     --region us-west-2 \
     --db-instance-class db.r5.large
 
@@ -359,7 +384,13 @@ metadata:
 spec:
   serviceName: postgres
   replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-primary
   template:
+    metadata:
+      labels:
+        app: postgres-primary
     spec:
       containers:
         - name: postgres
@@ -375,6 +406,14 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
 ---
 # replica-postgres.yaml (us-west-2 cluster)
 apiVersion: apps/v1
@@ -384,7 +423,13 @@ metadata:
 spec:
   serviceName: postgres
   replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-replica
   template:
+    metadata:
+      labels:
+        app: postgres-replica
     spec:
       containers:
         - name: postgres
@@ -399,8 +444,21 @@ spec:
             - bash
             - -c
             - |
-              pg_basebackup -h primary.example.com -U replication -D /var/lib/postgresql/data -Fp -Xs -P -R
+              if [ ! -s /var/lib/postgresql/data/PG_VERSION ]; then
+                pg_basebackup -h primary.example.com -U replication -D /var/lib/postgresql/data -Fp -Xs -P -R
+              fi
               exec postgres
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
 ```
 
 ## Monitoring Cross-Region Replication
@@ -430,12 +488,12 @@ def check_s3_replication_status(source_bucket, dest_bucket):
         StartTime=datetime.utcnow() - timedelta(hours=1),
         EndTime=datetime.utcnow(),
         Period=300,
-        Statistics=['Average', 'Maximum']
+        Statistics=['Maximum']
     )
 
     if response['Datapoints']:
         latest = max(response['Datapoints'], key=lambda x: x['Timestamp'])
-        print(f"Replication Latency - Avg: {latest['Average']:.2f}s, Max: {latest['Maximum']:.2f}s")
+        print(f"Replication Latency - Max: {latest['Maximum']:.2f}s")
 
         # Alert if latency exceeds threshold
         if latest['Maximum'] > 900:  # 15 minutes
