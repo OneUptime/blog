@@ -119,11 +119,12 @@ sudo apt-get clean
 **Database-Level Cleanup:**
 
 ```sql
--- Find and remove bloated tables
-VACUUM FULL verbose large_table;
+-- Reclaim space from bloated tables after enough free space exists for the rewrite
+VACUUM FULL VERBOSE large_table;
 
 -- Delete old data
 DELETE FROM logs WHERE created_at < NOW() - INTERVAL '90 days';
+-- Plain VACUUM makes space reusable in the table, but usually does not return it to the OS
 VACUUM logs;
 
 -- Drop unused indexes
@@ -221,16 +222,22 @@ SELECT
     current_setting('data_directory') AS data_directory,
     pg_size_pretty(sum(pg_database_size(datname))) AS total_database_size,
     (SELECT pg_size_pretty(sum(size))
-     FROM pg_ls_waldir()) AS wal_size;
+     FROM pg_ls_waldir()) AS wal_size
+FROM pg_database;
 
--- Set up alert query
+-- Set up alert query (replace data_volume_bytes with your volume size)
+WITH limits AS (
+    SELECT 80::numeric AS max_used_percent,
+           500::numeric * 1024 * 1024 * 1024 AS data_volume_bytes
+)
 SELECT
     CASE
-        WHEN pg_database_size(current_database()) >
-             0.8 * (SELECT setting::bigint * 1024 FROM pg_settings WHERE name = 'data_directory')
+        WHEN sum(pg_database_size(datname)) >
+             (max(max_used_percent) / 100) * max(data_volume_bytes)
         THEN 'WARNING'
         ELSE 'OK'
-    END AS status;
+    END AS status
+FROM pg_database, limits;
 ```
 
 ### Implement Data Retention
@@ -305,15 +312,14 @@ fi
 # 1. Stop PostgreSQL
 sudo systemctl stop postgresql
 
-# 2. Remove archived WAL files (if archiving is enabled)
-# Be careful - only remove if you have valid backups!
-sudo rm /var/lib/postgresql/14/main/pg_wal/archive_status/*.done
-
-# 3. Remove old log files
+# 2. Remove old log files
 sudo rm /var/lib/postgresql/14/main/log/*.log
 
-# 4. Clear backup label if present
-sudo rm /var/lib/postgresql/14/main/backup_label.old
+# 3. If WAL archiving writes to a separate archive directory,
+# remove only archived WAL files you no longer need for backups/PITR
+# sudo find /mnt/pg_wal_archive -type f -mtime +7 -delete
+
+# 4. Do not manually delete files from pg_wal or pg_wal/archive_status
 
 # 5. Try to start PostgreSQL
 sudo systemctl start postgresql
@@ -335,8 +341,8 @@ FROM pg_stat_user_tables
 WHERE n_dead_tup > 10000
 ORDER BY n_dead_tup DESC;
 
--- Vacuum large bloated tables
-VACUUM FULL verbose bloated_table;
+-- Vacuum large bloated tables after enough free space exists for the rewrite
+VACUUM FULL VERBOSE bloated_table;
 ```
 
 ### Step 3: Add More Storage
@@ -369,7 +375,7 @@ ALTER TABLE large_table SET TABLESPACE extended_storage;
 # Recommended mount options:
 # noatime - Don't update access times
 # nodiratime - Don't update directory access times
-# nobarrier - If using battery-backed RAID (careful!)
+# barrier/nobarrier - Removed for XFS on modern Linux kernels; don't set it
 
 # Example /etc/fstab entry:
 /dev/sdb1 /var/lib/postgresql xfs defaults,noatime 0 2
@@ -413,7 +419,7 @@ Example for 100GB database:
 The "could not extend file" error usually means disk full, but can also indicate file system limits or tablespace issues. The key points are:
 
 1. **Check disk space** first with `df -h`
-2. **Free space immediately** by removing logs and vacuuming
+2. **Free space immediately** by removing logs, dropping/truncating old data, or running `VACUUM FULL` after enough working space exists
 3. **Prevent recurrence** with monitoring and data retention
 4. **Plan capacity** for 2-3x expected data size
 
