@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Multi-Tenancy, SaaS, Database Design, Architecture
 
-Description: Learn the three main approaches to multi-tenant database design in PostgreSQL - shared tables, separate schemas.
+Description: Learn the three main approaches to multi-tenant database design in PostgreSQL - shared tables, separate schemas, and separate databases.
 
 ---
 
@@ -60,10 +60,6 @@ Each tenant gets their own PostgreSQL database.
 ### Implementation
 
 ```sql
--- Enable Row Level Security
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-
 -- Create tables with tenant_id
 CREATE TABLE tenants (
     id VARCHAR(50) PRIMARY KEY,
@@ -77,15 +73,17 @@ CREATE TABLE users (
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT now(),
+    UNIQUE(tenant_id, id),
     UNIQUE(tenant_id, email)  -- Email unique per tenant
 );
 
 CREATE TABLE orders (
     id SERIAL PRIMARY KEY,
     tenant_id VARCHAR(50) NOT NULL REFERENCES tenants(id),
-    user_id INTEGER NOT NULL REFERENCES users(id),
+    user_id INTEGER NOT NULL,
     amount NUMERIC(10,2) NOT NULL,
-    created_at TIMESTAMP DEFAULT now()
+    created_at TIMESTAMP DEFAULT now(),
+    FOREIGN KEY (tenant_id, user_id) REFERENCES users(tenant_id, id)
 );
 
 -- Create indexes including tenant_id
@@ -93,6 +91,10 @@ CREATE INDEX idx_users_tenant ON users(tenant_id);
 CREATE INDEX idx_users_tenant_email ON users(tenant_id, email);
 CREATE INDEX idx_orders_tenant ON orders(tenant_id);
 CREATE INDEX idx_orders_tenant_user ON orders(tenant_id, user_id);
+
+-- Enable Row Level Security
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ```
 
 ### Row Level Security
@@ -103,6 +105,7 @@ RLS ensures tenants can only see their own data:
 -- Create application role
 CREATE ROLE app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user;
 
 -- RLS policy for users table
 CREATE POLICY tenant_isolation_users ON users
@@ -142,7 +145,7 @@ def tenant_context(conn, tenant_id):
     """Set tenant context for the connection."""
     cursor = conn.cursor()
     # Set the tenant for this session
-    cursor.execute("SET app.current_tenant = %s", (tenant_id,))
+    cursor.execute("SELECT set_config('app.current_tenant', %s, false)", (tenant_id,))
     try:
         yield cursor
     finally:
@@ -162,7 +165,7 @@ with tenant_context(conn, 'acme') as cursor:
 - Simple deployment and maintenance
 - Easy cross-tenant queries and analytics
 - Efficient connection pooling
-- No schema migration complexity
+- No per-tenant schema migration complexity
 
 **Cons:**
 - Noisy neighbor risk (one tenant's queries affect others)
@@ -225,12 +228,16 @@ INSERT INTO orders (user_id, amount) VALUES (1, 99.99);  -- Inserts into acme.or
 Application code:
 
 ```python
+from psycopg2 import sql
+
 def get_tenant_connection(tenant_id):
     """Get a connection configured for a specific tenant."""
     conn = psycopg2.connect(dsn)
     cursor = conn.cursor()
     # Set search_path to tenant schema
-    cursor.execute("SET search_path TO %s, public", (tenant_id,))
+    cursor.execute(
+        sql.SQL("SET search_path TO {}, public").format(sql.Identifier(tenant_id))
+    )
     return conn
 
 # Usage
@@ -244,6 +251,8 @@ cursor.execute("SELECT * FROM users")  # Queries acme.users
 Apply migrations to all tenant schemas:
 
 ```python
+from psycopg2 import sql
+
 def migrate_all_tenants(migration_sql):
     """Apply a migration to all tenant schemas."""
     conn = psycopg2.connect(dsn)
@@ -258,7 +267,9 @@ def migrate_all_tenants(migration_sql):
     schemas = [row[0] for row in cursor.fetchall()]
 
     for schema in schemas:
-        cursor.execute(f"SET search_path TO {schema}")
+        cursor.execute(
+            sql.SQL("SET search_path TO {}").format(sql.Identifier(schema))
+        )
         cursor.execute(migration_sql)
         print(f"Migrated {schema}")
 
@@ -273,7 +284,7 @@ migrate_all_tenants("ALTER TABLE users ADD COLUMN phone VARCHAR(20)")
 **Pros:**
 - Good tenant isolation within a shared database
 - Easy tenant-specific customizations
-- Can restore individual tenant from backup
+- Can dump and restore individual tenant schemas with logical backups
 - Better noisy neighbor protection than shared tables
 
 **Cons:**
@@ -352,7 +363,7 @@ conn = pool_manager.get_connection('acme')
 | Customization | None | Some | Full |
 | Ops complexity | Low | Medium | High |
 | Cross-tenant queries | Easy | Medium | Hard |
-| Backup granularity | Database | Database | Per-tenant |
+| Backup granularity | Database | Schema (logical backups) | Per-tenant |
 
 ### Recommendations
 
