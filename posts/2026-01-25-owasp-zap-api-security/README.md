@@ -15,8 +15,8 @@ Static analysis catches bugs in code, but many vulnerabilities only appear at ru
 ZAP identifies vulnerabilities from the OWASP Top 10 and beyond:
 
 - **Injection**: SQL, NoSQL, OS command, LDAP injection
-- **Broken Authentication**: Weak session management, credential exposure
-- **Sensitive Data Exposure**: Unencrypted data, verbose error messages
+- **Identification and Authentication Failures**: Weak session management, credential exposure
+- **Cryptographic Failures / Sensitive Data Exposure**: Unencrypted data, verbose error messages
 - **Security Misconfiguration**: Missing headers, default credentials
 - **Cross-Site Scripting (XSS)**: Reflected, stored, and DOM-based
 - **Broken Access Control**: IDOR, privilege escalation
@@ -65,14 +65,11 @@ docker run -u zap -p 8080:8080 -d zaproxy/zap-stable zap.sh -daemon \
   -config api.addrs.addr.regex=true
 ```
 
-### CLI Tool
+### Command Line
 
 ```bash
-# Install ZAP CLI
-pip install zapcli
-
-# Or use the ZAP command line directly
-docker run --rm -v $(pwd):/zap/wrk zaproxy/zap-stable zap-cli --help
+# Use the ZAP command line directly
+docker run --rm -v $(pwd):/zap/wrk zaproxy/zap-stable zap.sh -help
 ```
 
 ## Scanning an API with OpenAPI Specification
@@ -84,18 +81,18 @@ The most effective way to scan APIs is by importing an OpenAPI (Swagger) spec:
 docker run -u zap -p 8080:8080 -d --name zap zaproxy/zap-stable \
   zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.disablekey=true
 
-# Import OpenAPI spec and scan
-docker exec zap zap-cli openapi import-url https://api.example.com/openapi.json
+# Import OpenAPI spec
+curl "http://localhost:8080/JSON/openapi/action/importUrl/?url=https://api.example.com/openapi.json"
 
 # Or import from file
-docker cp openapi.yaml zap:/zap/openapi.yaml
-docker exec zap zap-cli openapi import-file /zap/openapi.yaml -t https://api.example.com
+docker cp openapi.yaml zap:/zap/wrk/openapi.yaml
+curl "http://localhost:8080/JSON/openapi/action/importFile/?file=/zap/wrk/openapi.yaml&target=https://api.example.com"
 
 # Run active scan
-docker exec zap zap-cli active-scan -r https://api.example.com
+curl "http://localhost:8080/JSON/ascan/action/scan/?url=https://api.example.com"
 
 # Generate report
-docker exec zap zap-cli report -o /zap/wrk/report.html -f html
+curl "http://localhost:8080/OTHER/core/other/htmlreport/" -o report.html
 ```
 
 ## API Scan Script
@@ -139,6 +136,7 @@ Many APIs require authentication. Configure ZAP to handle it:
 
 ```python
 # auth-scan.py
+import time
 import requests
 from zapv2 import ZAPv2
 
@@ -183,34 +181,15 @@ with open('report.html', 'w') as f:
 ### Session-Based Authentication
 
 ```bash
-# Create a context file for authentication
-cat > context.yaml << 'EOF'
-env:
-  contexts:
-    - name: "api-context"
-      urls:
-        - "https://api.example.com.*"
-      authentication:
-        method: "json"
-        parameters:
-          loginPageUrl: "https://api.example.com/auth/login"
-          loginRequestData: '{"username":"{%username%}","password":"{%password%}"}'
-        verification:
-          method: "response"
-          loggedInRegex: "access_token"
-      users:
-        - name: "testuser"
-          credentials:
-            username: "testuser"
-            password: "testpass"
-EOF
+# Create and test a ZAP context in the Desktop app, configure the
+# authentication method and user there, then export it as api-context.context.
 
 # Run scan with context
 docker run --rm -v $(pwd):/zap/wrk:rw \
   -t zaproxy/zap-stable zap-api-scan.py \
   -t https://api.example.com/openapi.json \
   -f openapi \
-  -n context.yaml \
+  -n /zap/wrk/api-context.context \
   -U testuser \
   -r report.html
 ```
@@ -246,7 +225,7 @@ jobs:
           timeout 60 bash -c 'until curl -s http://localhost:3000/health; do sleep 2; done'
 
       - name: ZAP API Scan
-        uses: zaproxy/action-api-scan@v0.5.0
+        uses: zaproxy/action-api-scan@v0.10.0
         with:
           target: 'http://localhost:3000/openapi.json'
           format: openapi
@@ -256,7 +235,7 @@ jobs:
 
       - name: Upload ZAP Report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: zap-report
           path: report_html.html
@@ -266,13 +245,13 @@ Create a rules file to customize severity thresholds:
 
 ```text
 # zap-rules.tsv
-# Rule ID    Action (IGNORE, WARN, FAIL)
-10021       WARN    # X-Content-Type-Options Header Missing
-10038       FAIL    # Content Security Policy Header Not Set
-40012       FAIL    # Cross Site Scripting (Reflected)
-40014       FAIL    # Cross Site Scripting (Persistent)
-90019       FAIL    # Server Side Include
-90020       FAIL    # Remote OS Command Injection
+# Rule ID    Action    Rule name
+10021       WARN      (X-Content-Type-Options Header Missing)
+10038       FAIL      (Content Security Policy Header Not Set)
+40012       FAIL      (Cross Site Scripting (Reflected))
+40014       FAIL      (Cross Site Scripting (Persistent))
+90019       FAIL      (Server Side Code Injection)
+90020       FAIL      (Remote OS Command Injection)
 ```
 
 ### GitLab CI
@@ -323,17 +302,13 @@ Example finding:
 
 ## Handling False Positives
 
-Create a false positive configuration:
+Create a scan configuration that marks known false-positive URLs out of scope:
 
-```yaml
-# false-positives.yaml
-- alert: "X-Content-Type-Options Header Missing"
-  url: "https://api.example.com/health"
-  reason: "Health endpoint does not return sensitive data"
-
-- alert: "Content Security Policy (CSP) Header Not Set"
-  url: "https://api.example.com/api/.*"
-  reason: "API endpoints return JSON, CSP is for HTML pages"
+```text
+# false-positives.tsv
+# Rule ID    Action        URL regex
+10021       OUTOFSCOPE    https://api.example.com/health
+10038       OUTOFSCOPE    https://api.example.com/api/.*
 ```
 
 Apply during scan:
@@ -343,17 +318,13 @@ docker run --rm -v $(pwd):/zap/wrk:rw \
   -t zaproxy/zap-stable zap-api-scan.py \
   -t https://api.example.com/openapi.json \
   -f openapi \
-  -c false-positives.yaml \
+  -c false-positives.tsv \
   -r report.html
 ```
 
 ## Scanning GraphQL APIs
 
 ```bash
-# Import GraphQL schema
-docker exec zap zap-cli graphql import-url https://api.example.com/graphql
-
-# Or with introspection
 docker run --rm -v $(pwd):/zap/wrk:rw \
   -t zaproxy/zap-stable zap-api-scan.py \
   -t https://api.example.com/graphql \
