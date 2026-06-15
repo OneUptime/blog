@@ -91,7 +91,7 @@ Key fields:
 Key metrics:
 - **nReturned**: Documents returned to client
 - **totalKeysExamined**: Index entries scanned
-- **totalDocsExamined**: Documents fetched from disk
+- **totalDocsExamined**: Documents examined from the collection
 - **executionTimeMillis**: Query execution time
 
 ## Identifying Problems
@@ -182,9 +182,9 @@ db.orders.createIndex({ status: 1, createdAt: -1 });
 }
 ```
 
-### Problem 4: Blocked Sort Warning
+### Problem 4: Sort Memory Warning
 
-MongoDB has a 100MB limit for in-memory sorts. Exceeding this fails the query.
+MongoDB has a 100MB memory threshold for blocking sort stages. Starting in MongoDB 6.0, stages that exceed this threshold write temporary files to disk by default when `allowDiskUseByDefault` is enabled. If disk use is disabled, the query fails.
 
 ```javascript
 {
@@ -195,7 +195,7 @@ MongoDB has a 100MB limit for in-memory sorts. Exceeding this fails the query.
 }
 ```
 
-**Fix**: Add an index to avoid in-memory sorting, or use allowDiskUse for aggregations.
+**Fix**: Add an index to avoid blocking sorts, or use allowDiskUse for aggregations when disk use is not enabled by default.
 
 ```javascript
 // Allow disk use for large aggregation sorts
@@ -245,7 +245,7 @@ db.orders.find(
   { _id: 0, status: 1, amount: 1 }  // Project only indexed fields
 ).explain("executionStats");
 
-// Perfect output shows no FETCH
+// Covered output shows an IXSCAN with no FETCH
 {
   "winningPlan": {
     "stage": "PROJECTION_COVERED",
