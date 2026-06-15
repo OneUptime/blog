@@ -31,15 +31,16 @@ flowchart LR
 ## Setting Up RedisJSON
 
 ```bash
-# Run Redis with RedisJSON module
+# Run Redis Stack server with RedisJSON
 
 docker run -d --name redis-json \
   -p 6379:6379 \
-  redislabs/rejson:latest
+  redis/redis-stack-server:latest
 
 # Or with both RedisJSON and RediSearch for querying
 docker run -d --name redis-stack \
   -p 6379:6379 \
+  -p 8001:8001 \
   redis/redis-stack:latest
 ```
 
@@ -174,7 +175,10 @@ def remove_from_array(user_id, path, index):
 
     # JSON.ARRPOP removes and returns an element
     result = r.execute_command('JSON.ARRPOP', key, path, index)
-    return json.loads(result) if result else None
+    if result:
+        values = [json.loads(item) if item is not None else None for item in result]
+        return values[0] if len(values) == 1 else values
+    return None
 
 
 # Update examples
@@ -199,7 +203,8 @@ print(f"Removed tag: {removed}")  # developer
 def set_nested_field(key, path, value):
     """
     Set a field at any nesting level.
-    Creates intermediate objects if they don't exist (with NX option).
+    Creates the final object member if the parent object exists.
+    Intermediate objects must already exist.
     """
     r.execute_command('JSON.SET', key, path, json.dumps(value))
 
@@ -209,7 +214,7 @@ def merge_object(key, path, data):
     Merge data into an existing object.
     Similar to Object.assign() in JavaScript.
     """
-    # JSON.MERGE combines objects (Redis 7.2+)
+    # JSON.MERGE combines objects (RedisJSON 2.6+)
     # For older versions, use JSON.SET for each field
     try:
         r.execute_command('JSON.MERGE', key, path, json.dumps(data))
@@ -427,7 +432,7 @@ print(user['name'])  # Alice
 
 ## Memory Efficiency
 
-RedisJSON stores documents in a binary format that is more memory-efficient than storing serialized JSON strings.
+RedisJSON stores documents as binary data after deserialization. This enables path-level operations, but it can use more memory than storing serialized JSON strings, so measure with your own document shape.
 
 ```python
 def compare_storage():
