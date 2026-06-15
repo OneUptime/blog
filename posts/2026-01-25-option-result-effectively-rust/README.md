@@ -259,7 +259,7 @@ impl Database {
     }
 }
 
-fn get_user_email(db: &Database, name: &str) -> Option<&str> {
+fn get_user_email<'a>(db: &'a Database, name: &str) -> Option<&'a str> {
     db.find_user(name)?
         .email
         .as_ref()
@@ -267,7 +267,7 @@ fn get_user_email(db: &Database, name: &str) -> Option<&str> {
 }
 
 // Using and_then for more complex logic
-fn get_domain(db: &Database, name: &str) -> Option<&str> {
+fn get_domain<'a>(db: &'a Database, name: &str) -> Option<&'a str> {
     db.find_user(name)
         .and_then(|u| u.email.as_ref())
         .and_then(|email| email.split('@').nth(1))
