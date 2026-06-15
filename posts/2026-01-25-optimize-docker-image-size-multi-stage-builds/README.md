@@ -17,7 +17,7 @@ A typical Node.js application image built the traditional way might look like th
 ```dockerfile
 # Traditional single-stage build - results in large image
 
-FROM node:20
+FROM node:24
 
 WORKDIR /app
 
@@ -44,7 +44,7 @@ Multi-stage builds let you separate the build environment from the runtime envir
 
 ```dockerfile
 # Stage 1: Build stage - contains all build tools
-FROM node:20 AS builder
+FROM node:24 AS builder
 
 WORKDIR /app
 
@@ -57,13 +57,13 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production stage - minimal runtime
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 
 WORKDIR /app
 
 # Copy only production dependencies
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy built artifacts from builder stage
 COPY --from=builder /app/dist ./dist
@@ -87,7 +87,7 @@ Go applications benefit enormously from multi-stage builds because you can compi
 
 ```dockerfile
 # Stage 1: Build the Go binary
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates
@@ -173,15 +173,12 @@ Notice how the production stage installs `libpq5` (the runtime library) but not 
 
 ## Advanced Techniques
 
-### Using Build Arguments
+### Using Build Targets
 
-You can create conditional builds using arguments:
+You can create separate development and production targets:
 
 ```dockerfile
-# Build argument with default value
-ARG BUILD_ENV=production
-
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 COPY package*.json ./
 
@@ -198,10 +195,10 @@ COPY . .
 RUN npm run build
 
 # Production runtime stage
-FROM node:20-alpine AS production
+FROM base AS production
 WORKDIR /app
+RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
 CMD ["node", "dist/index.js"]
 ```
 
@@ -222,11 +219,8 @@ You can copy files from any image, not just previous stages:
 ```dockerfile
 FROM alpine:3.20
 
-# Copy nginx binary from official nginx image
-COPY --from=nginx:alpine /usr/sbin/nginx /usr/sbin/nginx
-
-# Copy your configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+# Copy the default nginx configuration from the official nginx image
+COPY --from=nginx:alpine /etc/nginx/nginx.conf /nginx.conf
 ```
 
 ### Parallel Builds for Speed
@@ -235,12 +229,12 @@ Independent stages can build in parallel with BuildKit:
 
 ```dockerfile
 # These two stages build in parallel
-FROM golang:1.22-alpine AS backend-builder
+FROM golang:1.26-alpine AS backend-builder
 WORKDIR /src
 COPY backend/ .
 RUN go build -o /backend ./...
 
-FROM node:20-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 WORKDIR /src
 COPY frontend/ .
 RUN npm ci && npm run build
