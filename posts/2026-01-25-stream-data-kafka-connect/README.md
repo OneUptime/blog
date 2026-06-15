@@ -95,6 +95,10 @@ rest.advertised.port=8083
 
 # Plugin path for connector JARs
 plugin.path=/opt/kafka-connect/plugins
+
+# Config provider for file-based secrets used in connector configs
+config.providers=file
+config.providers.file.class=org.apache.kafka.common.config.provider.FileConfigProvider
 ```
 
 Start the worker:
@@ -110,11 +114,11 @@ Stream changes from PostgreSQL to Kafka using the Debezium connector. This captu
 
 ```bash
 # Install the Debezium PostgreSQL connector
-confluent-hub install debezium/debezium-connector-postgresql:latest
+confluent connect plugin install debezium/debezium-connector-postgresql:latest
 
 # Or download manually to plugin.path
-wget https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/2.4.0.Final/debezium-connector-postgres-2.4.0.Final-plugin.tar.gz
-tar -xzf debezium-connector-postgres-2.4.0.Final-plugin.tar.gz -C /opt/kafka-connect/plugins/
+wget https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/3.5.0.Final/debezium-connector-postgres-3.5.0.Final-plugin.tar.gz
+tar -xzf debezium-connector-postgres-3.5.0.Final-plugin.tar.gz -C /opt/kafka-connect/plugins/
 ```
 
 Create the connector configuration:
@@ -181,17 +185,17 @@ Push data from Kafka topics to Elasticsearch for search and analytics.
     "connection.username": "elastic",
     "connection.password": "${file:/opt/kafka-connect/secrets/es.properties:password}",
 
-    "type.name": "_doc",
     "key.ignore": "false",
     "schema.ignore": "true",
 
-    "behavior.on.null.values": "delete",
+    "behavior.on.null.values": "DELETE",
     "behavior.on.malformed.documents": "warn",
 
-    "write.method": "upsert",
+    "write.method": "UPSERT",
     "batch.size": "1000",
     "max.buffered.records": "5000",
     "flush.timeout.ms": "10000",
+    "flush.synchronously": "true",
 
     "transforms": "extractKey,removePrefix",
     "transforms.extractKey.type": "org.apache.kafka.connect.transforms.ExtractField$Key",
@@ -313,7 +317,7 @@ Increase `tasks.max` to parallelize work. Each task runs independently:
 }
 ```
 
-For source connectors, tasks are assigned based on the source (tables, partitions, files). For sink connectors, tasks are assigned Kafka partitions. The number of active tasks will not exceed the number of partitions in the source topics.
+For source connectors, tasks are assigned based on the source (tables, partitions, files). For sink connectors, tasks consume assigned Kafka topic partitions, so useful parallelism is bounded by the partitions available to assign.
 
 ```bash
 # Check task distribution
