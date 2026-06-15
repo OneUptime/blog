@@ -143,7 +143,7 @@ db.articles.createIndex(
 }
 ```
 
-**When to use**: Search features, finding documents by keyword. Not suitable for autocomplete (use wildcard indexes instead).
+**When to use**: Search features, finding documents by keyword. Not suitable for autocomplete (use MongoDB Search autocomplete instead).
 
 ## Geospatial Indexes
 
@@ -329,14 +329,14 @@ db.users.createIndex(
 );
 ```
 
-Queries on sparse fields must exist to use the index:
+Queries on sparse fields must limit results to documents that contain the indexed field to use the index:
 
 ```javascript
 // Uses sparse index
 db.users.find({ secondaryEmail: "backup@example.com" });
 
-// Sort might not return all documents
-db.users.find().sort({ secondaryEmail: 1 });  // Excludes docs without field
+// MongoDB will not use the sparse index for this sort if it would omit documents
+db.users.find().sort({ secondaryEmail: 1 });
 ```
 
 **When to use**: Optional fields, data migration scenarios. Prefer partial indexes for more control.
