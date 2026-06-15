@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Traefik, Kubernetes, Ingresses, DevOps, Load Balancing
 
-Description: Learn how to deploy and configure Traefik as an Ingress Controller in Kubernetes, including routing rules, TLS termination, and automatic service discovery.
+Description: Learn how to deploy and configure Traefik as an Ingress Controller in Kubernetes, including routing rules, entrypoints, and automatic service discovery.
 
 ---
 
@@ -109,6 +109,7 @@ rules:
       - tlsoptions
       - tlsstores
       - serverstransports
+      - serverstransporttcps
     verbs:
       - get
       - list
@@ -147,7 +148,7 @@ kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v3.0/docs/con
 
 ## Step 4: Deploy Traefik
 
-Now create the Traefik Deployment and Service. This configuration exposes both HTTP (80) and HTTPS (443) entrypoints.
+Now create the Traefik Deployment and Service. This configuration exposes HTTP (80) and a `websecure` entrypoint on port 443 that can be used for HTTPS after TLS is configured.
 
 ```yaml
 # traefik-deployment.yaml
@@ -176,12 +177,14 @@ spec:
             # Enable Kubernetes provider for service discovery
             - --providers.kubernetescrd
             - --providers.kubernetesingress
-            # Define entrypoints for HTTP and HTTPS traffic
+            # Define HTTP and websecure entrypoints
             - --entrypoints.web.address=:80
             - --entrypoints.websecure.address=:443
             # Enable the dashboard (accessible via port-forward)
             - --api.dashboard=true
             - --api.insecure=true
+            # Enable the /ping endpoint used by health probes
+            - --ping=true
             # Log level for debugging
             - --log.level=INFO
           ports:
