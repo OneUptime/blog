@@ -22,7 +22,7 @@ docker build --progress=plain -t myapp:debug .
 # Disable BuildKit for classic output format
 DOCKER_BUILDKIT=0 docker build -t myapp:debug .
 
-# Enable maximum verbosity with BuildKit
+# Disable cache while keeping readable BuildKit output
 docker build --progress=plain --no-cache -t myapp:debug .
 ```
 
@@ -99,19 +99,16 @@ RUN npm run build
 docker build --target=debug -t myapp:debug .
 ```
 
-## Interactive Debugging with Intermediate Images
+## Interactive Debugging with Intermediate State
 
-BuildKit creates intermediate images you can inspect:
+BuildKit does not normally print runnable intermediate image IDs. To inspect state before a failing command, add a temporary debug target immediately before that command:
 
 ```bash
-# Build with BuildKit and keep intermediate layers
-DOCKER_BUILDKIT=1 docker build -t myapp:debug .
+# Build a debug stage that stops before the failing instruction
+docker build --target=debug -t myapp:debug .
 
-# Find the failing layer ID from output
-# "ERROR: process "/bin/sh -c npm ci" did not complete successfully"
-
-# Run an interactive shell in the previous successful layer
-docker run --rm -it <previous-layer-sha> sh
+# Run an interactive shell in that debug image
+docker run --rm -it myapp:debug sh
 ```
 
 For classic builds, use the `--rm=false` flag:
@@ -157,8 +154,8 @@ RUN npm ci
 Common network fixes:
 
 ```bash
-# Use custom DNS
-docker build --dns=8.8.8.8 -t myapp:debug .
+# Use host networking as a diagnostic on Linux
+docker build --network=host -t myapp:debug .
 
 # Pass proxy settings as build args
 docker build \
@@ -290,8 +287,8 @@ RUN ls -la /usr/share/nginx/html
 Builds can fail due to insufficient resources:
 
 ```bash
-# Increase memory for build
-docker build --memory=4g -t myapp:debug .
+# Limit memory for a legacy builder build
+DOCKER_BUILDKIT=0 docker build --memory=4g -t myapp:debug .
 
 # Check available resources
 docker system info | grep -i memory
