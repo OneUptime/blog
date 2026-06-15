@@ -8,11 +8,11 @@ Description: A comprehensive guide to managing Kafka consumer offsets, including
 
 ---
 
-Consumer offsets track where each consumer group has read in each partition. Proper offset management is critical for ensuring exactly-once or at-least-once processing semantics. Get it wrong, and you either lose messages or process them multiple times. This guide covers offset management strategies and recovery procedures.
+Consumer offsets track where each consumer group has read in each partition. Proper offset management is critical for ensuring at-least-once processing semantics and avoiding unwanted duplicates or message loss. Exactly-once processing requires coordinating offsets with your processing output, such as Kafka transactions or an external atomic store. Get it wrong, and you either lose messages or process them multiple times. This guide covers offset management strategies and recovery procedures.
 
 ## Understanding Offsets
 
-Every message in a Kafka partition has a unique, monotonically increasing offset. Consumers track their position by committing offsets.
+Every message in a Kafka partition has a unique, monotonically increasing offset, though offsets are not guaranteed to be consecutive. Consumers track their position by committing the next offset they should read.
 
 ```mermaid
 graph LR
@@ -22,16 +22,16 @@ graph LR
 
     CO[Committed Offset: 3]
     CP[Current Position: 5]
-    LEO[Log End Offset: 5]
+    LEO[Log End Offset: 6]
 
-    M3 -.->|Last committed| CO
-    M5 -.->|Currently reading| CP
-    M5 -.->|Latest available| LEO
+    M3 -.->|Next after committed records| CO
+    M5 -.->|Next record to read| CP
+    M5 -.->|Latest record offset| LEO
 ```
 
-- **Committed offset**: Last position successfully processed and saved
-- **Current position**: Where the consumer is currently reading
-- **Log end offset**: Latest message in the partition
+- **Committed offset**: The next offset to read after records successfully processed and saved
+- **Current position**: The offset of the next record the consumer will return
+- **Log end offset**: The offset after the latest message in the partition
 
 ## Automatic vs Manual Offset Commits
 
@@ -43,6 +43,8 @@ Kafka periodically commits offsets in the background:
 Properties props = new Properties();
 props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka:9092");
 props.put(ConsumerConfig.GROUP_ID_CONFIG, "my-group");
+props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 
 // Auto-commit enabled by default
 props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
@@ -59,6 +61,10 @@ Commit after successfully processing messages:
 
 ```java
 Properties props = new Properties();
+props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka:9092");
+props.put(ConsumerConfig.GROUP_ID_CONFIG, "my-group");
+props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
 
 try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
@@ -161,10 +167,10 @@ props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
 
 ## Seeking to Specific Positions
 
-Override committed offsets to read from specific positions:
+Override the consumer's current position to read from specific positions:
 
 ```java
-// Assign partitions manually (required for seeking)
+// Assign partitions manually before seeking
 TopicPartition partition0 = new TopicPartition("orders", 0);
 TopicPartition partition1 = new TopicPartition("orders", 1);
 consumer.assign(Arrays.asList(partition0, partition1));
@@ -286,7 +292,7 @@ kafka-topics.sh --bootstrap-server kafka:9092 \
 # Read offset commits (for debugging)
 kafka-console-consumer.sh --bootstrap-server kafka:9092 \
     --topic __consumer_offsets \
-    --formatter "kafka.coordinator.group.GroupMetadataManager\$OffsetsMessageFormatter" \
+    --formatter "org.apache.kafka.tools.consumer.OffsetsMessageFormatter" \
     --from-beginning
 ```
 
@@ -295,7 +301,7 @@ Configure offset retention:
 ```properties
 # server.properties
 
-# How long to retain offsets after consumer group becomes empty
+# How long to retain offsets after a consumer group becomes empty
 offsets.retention.minutes=10080  # 7 days (default)
 
 # Replication for __consumer_offsets topic
