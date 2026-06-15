@@ -24,7 +24,7 @@ User Request (5s timeout)
                 -> Database (no timeout)
 ```
 
-The goal is to pass the original deadline down the entire chain, so when the user's 5-second window expires, all downstream work stops immediately.
+The goal is to pass or encode the original deadline down the entire chain, so when the user's 5-second window expires, downstream work that observes the context can stop promptly.
 
 ## Context Basics: WithTimeout vs WithDeadline
 
@@ -48,6 +48,7 @@ func main() {
     deadline := time.Now().Add(5 * time.Second)
     ctx2, cancel2 := context.WithDeadline(context.Background(), deadline)
     defer cancel2()
+    _ = ctx2
 
     // Check remaining time - useful for logging and decisions
     if dl, ok := ctx1.Deadline(); ok {
@@ -61,7 +62,7 @@ Always call the cancel function, even if the context times out. The defer patter
 
 ## Propagating Timeouts in HTTP Handlers
 
-When your service receives an HTTP request, the incoming context should carry the deadline. Extract it and pass it to all downstream operations.
+When your service receives an HTTP request, `r.Context()` carries the request lifecycle. It has a deadline only if your own server, middleware, or an upstream deadline header has added one. Extract it and pass it to all downstream operations.
 
 ```go
 package main
@@ -77,7 +78,8 @@ import (
 // Handler that respects incoming context timeout
 func handleRequest(w http.ResponseWriter, r *http.Request) {
     // r.Context() carries the request's lifecycle
-    // It gets cancelled when: client disconnects, timeout hits, or server shuts down
+    // It gets cancelled when: client disconnects, HTTP/2 request is canceled,
+    // ServeHTTP returns, or a derived timeout hits
     ctx := r.Context()
 
     // Check if we have time to do our work
@@ -110,6 +112,11 @@ func fetchFromDownstream(ctx context.Context) (map[string]interface{}, error) {
     if err != nil {
         return nil, err
     }
+    if deadline, ok := ctx.Deadline(); ok {
+        // Plain HTTP does not automatically propagate context deadlines.
+        // Use an application-specific header that the downstream service parses.
+        req.Header.Set("X-Request-Deadline", deadline.Format(time.RFC3339Nano))
+    }
 
     // The client will respect the context's deadline
     resp, err := http.DefaultClient.Do(req)
@@ -126,7 +133,7 @@ func fetchFromDownstream(ctx context.Context) (map[string]interface{}, error) {
 
 ## Setting Timeouts at the Edge
 
-Your API gateway or entry point should establish the initial timeout. This creates the deadline that propagates through the system.
+Your API gateway or entry point should establish the initial timeout. This creates the deadline that your handlers can pass to local work and outgoing calls, or encode explicitly for protocols such as HTTP.
 
 ```go
 package main
@@ -148,19 +155,8 @@ func TimeoutMiddleware(timeout time.Duration) func(http.Handler) http.Handler {
             // Replace the request's context
             r = r.WithContext(ctx)
 
-            // Use a channel to detect if handler completes
-            done := make(chan struct{})
-            go func() {
-                next.ServeHTTP(w, r)
-                close(done)
-            }()
-
-            select {
-            case <-done:
-                // Handler completed
-            case <-ctx.Done():
-                // Timeout hit
-            }
+            // Handlers and downstream calls must observe ctx.Done().
+            next.ServeHTTP(w, r)
         })
     }
 }
