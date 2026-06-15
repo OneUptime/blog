@@ -47,14 +47,14 @@ The most robust approach is using idempotency keys. The client provides a unique
 
 # Idempotency key implementation with Redis
 import hashlib
-import json
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional, Any, Dict
-import redis.asyncio as redis
-from fastapi import FastAPI, Request, Response, HTTPException, Header
-from fastapi.responses import JSONResponse
 import pickle
+from typing import Dict, Optional
+
+import redis.asyncio as redis
+from fastapi import FastAPI, HTTPException, Request, Response
 
 @dataclass
 class IdempotencyRecord:
@@ -122,10 +122,10 @@ class IdempotencyStore:
         redis_key = self._make_key(idempotency_key)
 
         # Store with TTL so old records are automatically cleaned up
-        await self.redis.setex(
+        await self.redis.set(
             redis_key,
-            self.ttl,
-            pickle.dumps(record)
+            pickle.dumps(record),
+            ex=self.ttl
         )
 
         return record
@@ -153,15 +153,18 @@ class IdempotencyStore:
         await self.redis.delete(lock_key)
 
 
-# FastAPI middleware for idempotency
-app = FastAPI()
 idempotency_store: IdempotencyStore = None
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global idempotency_store
     redis_client = redis.from_url("redis://localhost:6379")
     idempotency_store = IdempotencyStore(redis_client)
+    yield
+    await redis_client.aclose()
+
+# FastAPI middleware for idempotency
+app = FastAPI(lifespan=lifespan)
 
 @app.middleware("http")
 async def idempotency_middleware(request: Request, call_next):
@@ -180,8 +183,12 @@ async def idempotency_middleware(request: Request, call_next):
         # No key provided - process normally
         return await call_next(request)
 
-    # Read request body for hashing
+    # Read request body for hashing and replay it for the endpoint handler
     body = await request.body()
+    async def receive():
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    request = Request(request.scope, receive)
     request_hash = idempotency_store._hash_request(
         request.method,
         request.url.path,
@@ -257,8 +264,10 @@ For cases where clients cannot provide idempotency keys, you can generate finger
 # Automatic request fingerprinting for duplicate detection
 import hashlib
 import json
+from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Optional, Set
-from datetime import datetime, timedelta
+
 import redis.asyncio as redis
 from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
@@ -366,12 +375,10 @@ class RequestFingerprinter:
         return True
 
 
-# FastAPI integration
-app = FastAPI()
 fingerprinter: RequestFingerprinter = None
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global fingerprinter
     redis_client = redis.from_url("redis://localhost:6379")
     config = FingerprintConfig(
@@ -380,6 +387,11 @@ async def startup():
         excluded_fields={'timestamp', 'request_id', 'nonce'}
     )
     fingerprinter = RequestFingerprinter(redis_client, config)
+    yield
+    await redis_client.aclose()
+
+# FastAPI integration
+app = FastAPI(lifespan=lifespan)
 
 # Decorator for endpoints that need duplicate protection
 from functools import wraps
@@ -431,10 +443,8 @@ For critical operations, implement idempotency at the database level using uniqu
 # database_idempotency.py
 # Database-level duplicate prevention with unique constraints
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 import asyncpg
-from contextlib import asynccontextmanager
 
 @dataclass
 class Payment:
@@ -467,34 +477,29 @@ class PaymentService:
         """
         async with self.db.acquire() as conn:
             async with conn.transaction():
-                # Try to insert the payment
-                # If idempotency_key already exists, this will raise an error
-                try:
-                    payment_id = await self._generate_payment_id()
+                payment_id = await self._generate_payment_id()
 
-                    row = await conn.fetchrow(
-                        """
-                        INSERT INTO payments (
-                            id, amount, currency, recipient_id,
-                            status, idempotency_key, created_at
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-                        RETURNING *
-                        """,
-                        payment_id,
-                        amount,
-                        currency,
-                        recipient_id,
-                        'pending',
-                        idempotency_key,
-                        datetime.utcnow()
-                    )
+                # Try to insert the payment. If idempotency_key already
+                # exists, ON CONFLICT avoids aborting the transaction.
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO payments (
+                        id, amount, currency, recipient_id,
+                        status, idempotency_key, created_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    ON CONFLICT (idempotency_key) DO NOTHING
+                    RETURNING *
+                    """,
+                    payment_id,
+                    amount,
+                    currency,
+                    recipient_id,
+                    'pending',
+                    idempotency_key,
+                    datetime.utcnow()
+                )
 
-                    # Process the payment
-                    await self._process_payment(conn, payment_id)
-
-                    return self._row_to_payment(row)
-
-                except asyncpg.UniqueViolationError:
+                if row is None:
                     # Idempotency key already exists - return existing payment
                     existing = await conn.fetchrow(
                         """
@@ -502,21 +507,23 @@ class PaymentService:
                         """,
                         idempotency_key
                     )
+                    return self._row_to_payment(existing)
 
-                    if existing:
-                        return self._row_to_payment(existing)
-
-                    # Race condition - retry
-                    raise
+                # Process the payment and return the updated row
+                processed = await self._process_payment(conn, payment_id)
+                return self._row_to_payment(processed)
 
     async def _process_payment(self, conn, payment_id: str):
         """Process the payment (call payment provider, etc.)"""
         # Actual payment processing would go here
 
         # Update status after successful processing
-        await conn.execute(
+        return await conn.fetchrow(
             """
-            UPDATE payments SET status = 'completed' WHERE id = $1
+            UPDATE payments
+            SET status = 'completed'
+            WHERE id = $1
+            RETURNING *
             """,
             payment_id
         )
@@ -546,10 +553,10 @@ CREATE TABLE payments (
     currency VARCHAR(3) NOT NULL,
     recipient_id VARCHAR(64) NOT NULL,
     status VARCHAR(20) NOT NULL,
-    idempotency_key VARCHAR(64) NOT NULL UNIQUE,  -- Unique constraint
+    idempotency_key VARCHAR(64) NOT NULL,
     created_at TIMESTAMP NOT NULL,
 
-    -- Index for looking up by idempotency key
+    -- Unique constraint and index for looking up by idempotency key
     CONSTRAINT payments_idempotency_key_idx UNIQUE (idempotency_key)
 );
 
@@ -778,11 +785,9 @@ class APIClient:
                            If not provided, one will be generated.
         """
         # Generate idempotency key if not provided
-        # Use a deterministic key based on request params for automatic dedup
+        # Reuse the same key when retrying the same logical operation
         if idempotency_key is None:
-            idempotency_key = self._generate_idempotency_key(
-                amount, currency, recipient_id
-            )
+            idempotency_key = self._generate_idempotency_key()
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -836,19 +841,12 @@ class APIClient:
                 else:
                     raise
 
-    def _generate_idempotency_key(
-        self,
-        amount: float,
-        currency: str,
-        recipient_id: str
-    ) -> str:
+    def _generate_idempotency_key(self) -> str:
         """
-        Generate a deterministic idempotency key.
-        Same parameters will always produce the same key.
+        Generate a unique idempotency key for one logical operation.
+        Store and reuse this value when retrying that operation.
         """
-        import hashlib
-        content = f"{amount}:{currency}:{recipient_id}"
-        return hashlib.sha256(content.encode()).hexdigest()[:32]
+        return str(uuid.uuid4())
 ```
 
 ---
