@@ -8,7 +8,7 @@ Description: Learn how to implement dead letter queues in Go to handle failed me
 
 ---
 
-Message queues are the backbone of distributed systems. They decouple services, smooth out traffic spikes, and enable asynchronous processing. But what happens when a message fails to process? Maybe the payload is malformed, a downstream service is unavailable, or the handler throws an unexpected error. Without proper handling, that message could be lost forever or worse - stuck in an infinite retry loop that brings your system to its knees.
+Message queues are the backbone of distributed systems. They decouple services, smooth out traffic spikes, and enable asynchronous processing. But what happens when a message fails to process? Maybe the payload is malformed, a downstream service is unavailable, or the handler returns an unexpected error. Without proper handling, that message could be lost forever or worse - stuck in an infinite retry loop that brings your system to its knees.
 
 This is where dead letter queues come in. A dead letter queue (DLQ) is a separate queue that catches messages that cannot be processed successfully. Instead of losing the message or retrying indefinitely, you move it to the DLQ for later inspection, debugging, or reprocessing.
 
@@ -37,6 +37,7 @@ package dlq
 import (
     "context"
     "encoding/json"
+    "errors"
     "fmt"
     "time"
 )
@@ -102,7 +103,10 @@ func (p *Processor) Start(ctx context.Context) error {
         select {
         case <-ctx.Done():
             return ctx.Err()
-        case msg := <-messages:
+        case msg, ok := <-messages:
+            if !ok {
+                return fmt.Errorf("message channel closed")
+            }
             p.processMessage(ctx, msg)
         }
     }
@@ -121,21 +125,26 @@ func (p *Processor) processMessage(ctx context.Context, msg Message) {
         return
     }
 
-    // Handler failed - check retry count
-    if msg.Retries >= p.maxRetries {
-        // Max retries exceeded - send to DLQ
-        p.sendToDLQ(ctx, msg, err)
-        p.mainQueue.Ack(ctx, msg.ID)
+    // Handler failed - check retry count and error type
+    if msg.Retries >= p.maxRetries || !IsRetryable(err) {
+        // Max retries exceeded or permanent failure - send to DLQ
+        if dlqErr := p.sendToDLQ(ctx, msg, err); dlqErr != nil {
+            fmt.Printf("failed to send message %s to DLQ: %v\n", msg.ID, dlqErr)
+            return
+        }
+        if ackErr := p.mainQueue.Ack(ctx, msg.ID); ackErr != nil {
+            fmt.Printf("failed to ack message %s after DLQ publish: %v\n", msg.ID, ackErr)
+        }
         return
     }
 
     // Still have retries left - the message will be redelivered
-    // by the broker after nack or timeout
+    // by the broker after a visibility timeout or broker-specific nack
     fmt.Printf("message %s failed (attempt %d/%d): %v\n",
         msg.ID, msg.Retries+1, p.maxRetries, err)
 }
 
-func (p *Processor) sendToDLQ(ctx context.Context, msg Message, handlerErr error) {
+func (p *Processor) sendToDLQ(ctx context.Context, msg Message, handlerErr error) error {
     deadLetter := DeadLetter{
         OriginalMessage: msg,
         Error:           handlerErr.Error(),
@@ -145,15 +154,14 @@ func (p *Processor) sendToDLQ(ctx context.Context, msg Message, handlerErr error
 
     data, err := json.Marshal(deadLetter)
     if err != nil {
-        fmt.Printf("failed to marshal dead letter: %v\n", err)
-        return
+        return fmt.Errorf("failed to marshal dead letter: %w", err)
     }
 
     if err := p.dlq.Publish(ctx, data); err != nil {
-        fmt.Printf("failed to publish to DLQ: %v\n", err)
-        // This is bad - we might lose the message
-        // Consider writing to a local file as fallback
+        return fmt.Errorf("failed to publish to DLQ: %w", err)
     }
+
+    return nil
 }
 ```
 
@@ -206,8 +214,10 @@ func ProcessWithBackoff(ctx context.Context, msg Message, handler Handler, cfg R
             return nil
         }
 
-        fmt.Printf("attempt %d failed: %v, backing off %v\n",
-            attempt+1, lastErr, backoff)
+        if attempt < cfg.MaxRetries {
+            fmt.Printf("attempt %d failed: %v, backing off %v\n",
+                attempt+1, lastErr, backoff)
+        }
     }
 
     return fmt.Errorf("all %d attempts failed, last error: %w",
@@ -240,6 +250,10 @@ func (e ClassifiedError) Error() string {
     return e.Err.Error()
 }
 
+func (e ClassifiedError) Unwrap() error {
+    return e.Err
+}
+
 // NewTransientError creates a retryable error
 func NewTransientError(err error) ClassifiedError {
     return ClassifiedError{Err: err, Type: Transient}
@@ -252,7 +266,8 @@ func NewPermanentError(err error) ClassifiedError {
 
 // IsRetryable checks if an error should be retried
 func IsRetryable(err error) bool {
-    if classified, ok := err.(ClassifiedError); ok {
+    var classified ClassifiedError
+    if errors.As(err, &classified) {
         return classified.Type == Transient
     }
     // Default to retryable for unknown errors
@@ -330,7 +345,10 @@ func (c *DLQConsumer) Process(ctx context.Context) error {
         select {
         case <-ctx.Done():
             return ctx.Err()
-        case msg := <-messages:
+        case msg, ok := <-messages:
+            if !ok {
+                return fmt.Errorf("DLQ message channel closed")
+            }
             var dl DeadLetter
             if err := json.Unmarshal(msg.Payload, &dl); err != nil {
                 fmt.Printf("invalid dead letter format: %v\n", err)
@@ -346,11 +364,20 @@ func (c *DLQConsumer) Process(ctx context.Context) error {
             case Retry:
                 // Reset retry count and republish
                 dl.OriginalMessage.Retries = 0
-                data, _ := json.Marshal(dl.OriginalMessage)
-                c.mainQueue.Publish(ctx, data)
-                c.dlq.Ack(ctx, msg.ID)
+                data, err := json.Marshal(dl.OriginalMessage)
+                if err != nil {
+                    fmt.Printf("failed to marshal message for retry: %v\n", err)
+                    continue
+                }
+                if err := c.mainQueue.Publish(ctx, data); err != nil {
+                    fmt.Printf("failed to republish message: %v\n", err)
+                    continue
+                }
+                if err := c.dlq.Ack(ctx, msg.ID); err != nil {
+                    fmt.Printf("failed to ack DLQ message %s after retry publish: %v\n", msg.ID, err)
+                }
             case Hold:
-                // Leave in DLQ for manual inspection
+                // Do not acknowledge; the broker keeps or redelivers it according to its policy
             }
         }
     }
@@ -359,7 +386,7 @@ func (c *DLQConsumer) Process(ctx context.Context) error {
 
 ## Best Practices
 
-**Set appropriate TTLs.** Messages in the DLQ should not live forever. Set a time-to-live based on your SLAs. If nobody investigates a failed message in 30 days, it probably does not matter anymore.
+**Set appropriate retention.** Messages in the DLQ should not live forever. Set a retention period based on your SLAs and the limits of your queue provider. If nobody investigates a failed message before that period expires, it probably does not matter anymore.
 
 **Monitor DLQ depth.** A growing DLQ indicates a problem. Set up alerts when the queue exceeds a threshold. If you normally have zero messages in the DLQ and suddenly have 1000, something is wrong.
 
