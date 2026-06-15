@@ -63,15 +63,13 @@ Here is the structure of a custom propagator in different languages.
 
 ```javascript
 const {
-  Context,
-  TextMapPropagator,
   trace,
   isSpanContextValid,
   TraceFlags,
 } = require('@opentelemetry/api');
 
 // Custom propagator for a legacy system using X-Request-ID format
-class LegacyRequestIdPropagator extends TextMapPropagator {
+class LegacyRequestIdPropagator {
   // Header names used by the legacy system
   static TRACE_HEADER = 'X-Request-ID';
   static PARENT_HEADER = 'X-Parent-Request-ID';
@@ -96,9 +94,10 @@ class LegacyRequestIdPropagator extends TextMapPropagator {
 
   // Extract context from incoming request headers
   extract(context, carrier, getter) {
-    const requestId = getter.get(carrier, LegacyRequestIdPropagator.TRACE_HEADER);
+    const requestIdHeader = getter.get(carrier, LegacyRequestIdPropagator.TRACE_HEADER);
+    const requestId = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
 
-    if (!requestId) {
+    if (typeof requestId !== 'string') {
       return context;
     }
 
@@ -113,7 +112,8 @@ class LegacyRequestIdPropagator extends TextMapPropagator {
     const spanId = parts[1].padStart(16, '0');
 
     // Check sampled flag
-    const sampledHeader = getter.get(carrier, LegacyRequestIdPropagator.SAMPLED_HEADER);
+    const sampledHeaderValue = getter.get(carrier, LegacyRequestIdPropagator.SAMPLED_HEADER);
+    const sampledHeader = Array.isArray(sampledHeaderValue) ? sampledHeaderValue[0] : sampledHeaderValue;
     const traceFlags = sampledHeader === '1' ? TraceFlags.SAMPLED : TraceFlags.NONE;
 
     const spanContext = {
@@ -148,9 +148,9 @@ module.exports = { LegacyRequestIdPropagator };
 ```python
 from opentelemetry import trace
 from opentelemetry.propagators.textmap import TextMapPropagator, Getter, Setter
-from opentelemetry.trace import SpanContext, TraceFlags, INVALID_SPAN_CONTEXT
+from opentelemetry.trace import SpanContext, TraceFlags
 from opentelemetry.context import Context
-from typing import Optional, List, Iterable
+from typing import Optional, Iterable
 
 class LegacyRequestIdPropagator(TextMapPropagator):
     TRACE_HEADER = 'X-Request-ID'
@@ -196,6 +196,11 @@ class LegacyRequestIdPropagator(TextMapPropagator):
             request_id = getter.get(carrier, self.TRACE_HEADER)
             sampled_header = getter.get(carrier, self.SAMPLED_HEADER)
 
+        if isinstance(request_id, list):
+            request_id = request_id[0] if request_id else None
+        if isinstance(sampled_header, list):
+            sampled_header = sampled_header[0] if sampled_header else None
+
         if not request_id:
             return context
 
@@ -210,7 +215,7 @@ class LegacyRequestIdPropagator(TextMapPropagator):
         except ValueError:
             return context
 
-        trace_flags = TraceFlags.SAMPLED if sampled_header == '1' else TraceFlags.NONE
+        trace_flags = TraceFlags.SAMPLED if sampled_header == '1' else TraceFlags.DEFAULT
 
         span_context = SpanContext(
             trace_id=trace_id,
@@ -229,7 +234,7 @@ class LegacyRequestIdPropagator(TextMapPropagator):
 
     @property
     def fields(self) -> Iterable[str]:
-        return [self.TRACE_HEADER, self.PARENT_HEADER, self.SAMPLED_HEADER]
+        return {self.TRACE_HEADER, self.PARENT_HEADER, self.SAMPLED_HEADER}
 ```
 
 ### Go Custom Propagator
@@ -240,7 +245,6 @@ package propagator
 import (
     "context"
     "fmt"
-    "strconv"
     "strings"
 
     "go.opentelemetry.io/otel/propagation"
@@ -296,7 +300,7 @@ func (p LegacyRequestIdPropagator) Extract(ctx context.Context, carrier propagat
     }
 
     sampledHeader := carrier.Get(SampledHeader)
-    traceFlags := trace.FlagsDeferred
+    traceFlags := trace.TraceFlags(0)
     if sampledHeader == "1" {
         traceFlags = trace.FlagsSampled
     }
@@ -385,13 +389,13 @@ func main() {
 Sometimes you need to propagate more than just trace context. Here is a propagator that includes custom business context.
 
 ```javascript
-const { Context, createContextKey } = require('@opentelemetry/api');
+const { context, createContextKey } = require('@opentelemetry/api');
 
 // Define custom context keys
 const TENANT_ID_KEY = createContextKey('tenant_id');
 const USER_ID_KEY = createContextKey('user_id');
 
-class BusinessContextPropagator extends TextMapPropagator {
+class BusinessContextPropagator {
   static TENANT_HEADER = 'X-Tenant-ID';
   static USER_HEADER = 'X-User-ID';
 
@@ -408,8 +412,10 @@ class BusinessContextPropagator extends TextMapPropagator {
   }
 
   extract(context, carrier, getter) {
-    const tenantId = getter.get(carrier, BusinessContextPropagator.TENANT_HEADER);
-    const userId = getter.get(carrier, BusinessContextPropagator.USER_HEADER);
+    const tenantIdValue = getter.get(carrier, BusinessContextPropagator.TENANT_HEADER);
+    const userIdValue = getter.get(carrier, BusinessContextPropagator.USER_HEADER);
+    const tenantId = Array.isArray(tenantIdValue) ? tenantIdValue[0] : tenantIdValue;
+    const userId = Array.isArray(userIdValue) ? userIdValue[0] : userIdValue;
 
     if (tenantId) {
       context = context.setValue(TENANT_ID_KEY, tenantId);
@@ -448,9 +454,8 @@ function getTenantId() {
 Handle multiple trace formats with priority:
 
 ```javascript
-class FallbackPropagator extends TextMapPropagator {
+class FallbackPropagator {
   constructor(primary, fallback) {
-    super();
     this.primary = primary;
     this.fallback = fallback;
   }
