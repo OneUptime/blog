@@ -40,6 +40,9 @@ src/
 ├── events/          # Domain events
 │   ├── mod.rs
 │   └── user.rs
+├── projections/     # Event projections for read models
+│   ├── mod.rs
+│   └── user.rs
 ├── models/          # Domain models and read models
 │   ├── mod.rs
 │   ├── user.rs
@@ -156,11 +159,11 @@ use crate::storage::EventStore;
 use std::sync::Arc;
 
 pub struct UserCommandHandler {
-    event_store: Arc<dyn EventStore>,
+    event_store: Arc<dyn EventStore + Send + Sync>,
 }
 
 impl UserCommandHandler {
-    pub fn new(event_store: Arc<dyn EventStore>) -> Self {
+    pub fn new(event_store: Arc<dyn EventStore + Send + Sync>) -> Self {
         Self { event_store }
     }
 
@@ -212,6 +215,10 @@ impl CommandHandler<UpdateUserProfile> for UserCommandHandler {
 
         if events.is_empty() {
             return Err(UserCommandError::NotFound(cmd.user_id));
+        }
+
+        if cmd.name.is_none() && cmd.bio.is_none() {
+            return Ok(());
         }
 
         // Create update event only if there are changes
@@ -293,6 +300,7 @@ Queries are optimized for reading. We create denormalized read models that are u
 // src/queries/user.rs
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // Query definitions - what data we want to retrieve
@@ -353,11 +361,11 @@ use crate::storage::ReadModelStore;
 use std::sync::Arc;
 
 pub struct UserQueryHandler {
-    read_store: Arc<dyn ReadModelStore>,
+    read_store: Arc<dyn ReadModelStore + Send + Sync>,
 }
 
 impl UserQueryHandler {
-    pub fn new(read_store: Arc<dyn ReadModelStore>) -> Self {
+    pub fn new(read_store: Arc<dyn ReadModelStore + Send + Sync>) -> Self {
         Self { read_store }
     }
 }
@@ -402,12 +410,19 @@ use crate::queries::UserReadModel;
 use crate::storage::ReadModelStore;
 use std::sync::Arc;
 
+#[derive(Debug, thiserror::Error)]
+pub enum ProjectionError {
+    #[error("Read model update failed: {0}")]
+    ReadModel(String),
+}
+
+#[derive(Clone)]
 pub struct UserProjection {
-    read_store: Arc<dyn ReadModelStore>,
+    read_store: Arc<dyn ReadModelStore + Send + Sync>,
 }
 
 impl UserProjection {
-    pub fn new(read_store: Arc<dyn ReadModelStore>) -> Self {
+    pub fn new(read_store: Arc<dyn ReadModelStore + Send + Sync>) -> Self {
         Self { read_store }
     }
 
@@ -425,7 +440,10 @@ impl UserProjection {
                     created_at,
                     updated_at: created_at,
                 };
-                self.read_store.insert_user(model).await?;
+                self.read_store
+                    .insert_user(model)
+                    .await
+                    .map_err(|e| ProjectionError::ReadModel(e.to_string()))?;
             }
 
             UserEvent::ProfileUpdated { id, name, bio, updated_at } => {
@@ -441,7 +459,8 @@ impl UserProjection {
                         user.updated_at = updated_at;
                         user
                     })
-                    .await?;
+                    .await
+                    .map_err(|e| ProjectionError::ReadModel(e.to_string()))?;
             }
 
             UserEvent::Deactivated { id, deactivated_at, .. } => {
@@ -451,7 +470,8 @@ impl UserProjection {
                         user.updated_at = deactivated_at;
                         user
                     })
-                    .await?;
+                    .await
+                    .map_err(|e| ProjectionError::ReadModel(e.to_string()))?;
             }
 
             UserEvent::Reactivated { id, reactivated_at } => {
@@ -461,7 +481,8 @@ impl UserProjection {
                         user.updated_at = reactivated_at;
                         user
                     })
-                    .await?;
+                    .await
+                    .map_err(|e| ProjectionError::ReadModel(e.to_string()))?;
             }
         }
 
@@ -481,6 +502,7 @@ Finally, let's create a simple dispatcher that routes commands and queries:
 use std::sync::Arc;
 
 pub struct CqrsDispatcher {
+    event_store: Arc<dyn EventStore + Send + Sync>,
     user_command_handler: UserCommandHandler,
     user_query_handler: UserQueryHandler,
     user_projection: UserProjection,
@@ -488,10 +510,11 @@ pub struct CqrsDispatcher {
 
 impl CqrsDispatcher {
     pub fn new(
-        event_store: Arc<dyn EventStore>,
-        read_store: Arc<dyn ReadModelStore>,
+        event_store: Arc<dyn EventStore + Send + Sync>,
+        read_store: Arc<dyn ReadModelStore + Send + Sync>,
     ) -> Self {
         Self {
+            event_store: event_store.clone(),
             user_command_handler: UserCommandHandler::new(event_store.clone()),
             user_query_handler: UserQueryHandler::new(read_store.clone()),
             user_projection: UserProjection::new(read_store),
@@ -505,14 +528,15 @@ impl CqrsDispatcher {
     ) -> Result<Uuid, UserCommandError> {
         let user_id = self.user_command_handler.handle(cmd.clone()).await?;
 
-        // Project the event to update read models
+        // Project the persisted event to update read models
         // In production, this would be async via message queue
-        let event = UserEvent::Created {
-            id: user_id,
-            email: cmd.email,
-            name: cmd.name,
-            created_at: chrono::Utc::now(),
-        };
+        let event = self.event_store
+            .load(user_id)
+            .await
+            .map_err(|e| UserCommandError::Storage(e.to_string()))?
+            .last()
+            .cloned()
+            .ok_or_else(|| UserCommandError::Storage("Missing persisted event".to_string()))?;
 
         // Fire and forget projection - eventual consistency
         let projection = self.user_projection.clone();
