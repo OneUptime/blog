@@ -40,7 +40,7 @@ graph TB
         BLOB[Blob Storage]
         FUNC[Azure Functions]
         STREAM[Stream Analytics]
-        TSI[Time Series Insights]
+        ADX[Azure Data Explorer]
     end
 
     D1 & D2 & D3 -->|MQTT/AMQP/HTTPS| EP
@@ -51,7 +51,7 @@ graph TB
     MSG --> BLOB
     MSG --> FUNC
     EH --> STREAM
-    STREAM --> TSI
+    STREAM --> ADX
 ```
 
 ---
@@ -94,13 +94,19 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
+variable "subscription_id" {
+  description = "Azure subscription ID for the deployment"
+  type        = string
+}
+
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
 }
 
 # Resource group
@@ -226,11 +232,10 @@ resource "azurerm_eventhub_namespace" "iot" {
 }
 
 resource "azurerm_eventhub" "alerts" {
-  name                = "iot-alerts"
-  namespace_name      = azurerm_eventhub_namespace.iot.name
-  resource_group_name = azurerm_resource_group.iot.name
-  partition_count     = 2
-  message_retention   = 1
+  name              = "iot-alerts"
+  namespace_id      = azurerm_eventhub_namespace.iot.id
+  partition_count   = 2
+  message_retention = 1
 }
 
 resource "azurerm_eventhub_authorization_rule" "iot" {
@@ -243,9 +248,19 @@ resource "azurerm_eventhub_authorization_rule" "iot" {
   manage              = false
 }
 
+resource "azurerm_iothub_shared_access_policy" "device_management" {
+  name                = "device-management"
+  resource_group_name = azurerm_resource_group.iot.name
+  iothub_name         = azurerm_iothub.main.name
+
+  registry_read   = true
+  registry_write  = true
+  service_connect = true
+}
+
 # Output connection strings
 output "iot_hub_connection_string" {
-  value     = azurerm_iothub.main.primary_connection_string
+  value     = azurerm_iothub_shared_access_policy.device_management.primary_connection_string
   sensitive = true
 }
 
@@ -288,38 +303,7 @@ az iot hub device-identity list \
 
 ### Terraform Device Registration
 
-```hcl
-# devices.tf
-# Device registration and configuration
-
-# Individual device registration
-resource "azurerm_iothub_device" "sensor_001" {
-  iothub_id = azurerm_iothub.main.id
-  device_id = "sensor-001"
-
-  lifecycle {
-    ignore_changes = [
-      # Ignore changes made by device provisioning
-      tags,
-    ]
-  }
-}
-
-# Device with specific configuration
-resource "azurerm_iothub_device" "gateway_001" {
-  iothub_id = azurerm_iothub.main.id
-  device_id = "gateway-001"
-
-  # Enable as edge device
-  # edge_enabled = true
-}
-
-# Output device connection strings
-output "sensor_001_connection_string" {
-  value     = "HostName=${azurerm_iothub.main.hostname};DeviceId=sensor-001;SharedAccessKey=${azurerm_iothub_device.sensor_001.primary_key}"
-  sensitive = true
-}
-```
+The AzureRM provider manages IoT Hub infrastructure, but it doesn't currently include an `azurerm_iothub_device` resource for device identities. Register devices with the Azure CLI, Azure IoT SDKs, or the IoT Hub REST API, and keep Terraform focused on the hub, endpoints, routes, and shared access policies.
 
 ---
 
@@ -619,18 +603,25 @@ Configure routing rules to direct messages to different endpoints.
 
 ```bash
 # Create storage endpoint
-az iot hub routing-endpoint create \
+az iot hub message-endpoint create storage-container \
   --hub-name mycompany-iot-hub \
   --endpoint-name storage-endpoint \
-  --endpoint-type azurestoragecontainer \
   --endpoint-resource-group iot-production-rg \
   --endpoint-subscription-id <SUBSCRIPTION_ID> \
   --connection-string "<STORAGE_CONNECTION_STRING>" \
   --container-name telemetry \
   --encoding json
 
+# Create Event Hub endpoint
+az iot hub message-endpoint create eventhub \
+  --hub-name mycompany-iot-hub \
+  --endpoint-name eventhub-endpoint \
+  --endpoint-resource-group iot-production-rg \
+  --endpoint-subscription-id <SUBSCRIPTION_ID> \
+  --connection-string "<EVENTHUB_CONNECTION_STRING>"
+
 # Create route for all telemetry
-az iot hub route create \
+az iot hub message-route create \
   --hub-name mycompany-iot-hub \
   --route-name telemetry-to-storage \
   --source-type DeviceMessages \
@@ -638,7 +629,7 @@ az iot hub route create \
   --condition "true"
 
 # Create route for alerts only
-az iot hub route create \
+az iot hub message-route create \
   --hub-name mycompany-iot-hub \
   --route-name alerts-to-eventhub \
   --source-type DeviceMessages \
@@ -646,7 +637,7 @@ az iot hub route create \
   --condition "alert = 'true'"
 
 # List routes
-az iot hub route list \
+az iot hub message-route list \
   --hub-name mycompany-iot-hub \
   --output table
 ```
