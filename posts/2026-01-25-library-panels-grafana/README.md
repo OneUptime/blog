@@ -20,14 +20,14 @@ Library panels are reusable panel definitions stored centrally. Link a library p
 
 ## Creating Your First Library Panel
 
-You can create a library panel from scratch or convert an existing panel. Let's start by converting a panel you already have.
+You can create a library panel by first creating a dashboard panel, or by converting an existing panel. Let's start by converting a panel you already have.
 
 ### Converting an Existing Panel
 
-Open any dashboard containing a panel you want to reuse. Click the panel title, then select "More" from the dropdown menu.
+Open any dashboard containing a panel you want to reuse. Click **Edit**, hover over the panel to show the panel actions, then select **More**.
 
 ```text
-Panel Menu > More > Create library panel
+Panel Actions > More > New library panel
 ```
 
 A dialog appears asking for:
@@ -35,13 +35,11 @@ A dialog appears asking for:
 - **Library panel name**: Choose something descriptive like "Service Latency P99" rather than "Latency Panel 1"
 - **Folder**: Select where to store the library panel for organization
 
-After saving, the panel icon changes to indicate it is now linked to a library panel.
+After creating the library panel, save the dashboard. The panel icon changes to indicate it is now linked to a library panel.
 
 ### Creating a New Library Panel
 
-Navigate to the Dashboards section in Grafana's left sidebar, then click "Library panels." Here you can manage all library panels in your instance.
-
-Click "New library panel" to open the panel editor. Configure your panel as you would any regular panel:
+Grafana creates library panels from dashboard panels. Start by creating a regular panel on a dashboard, then convert it to a library panel from the panel actions menu. Configure your panel as you would any regular panel:
 
 ```yaml
 # Example: Service Health Panel Configuration
@@ -71,10 +69,10 @@ Adding a library panel to a dashboard takes just a few clicks.
 
 ### Adding via Dashboard Editor
 
-Open your dashboard in edit mode. In the panel list on the left, you will see a "Library panels" tab. Browse or search for the panel you need, then drag it onto your dashboard.
+Open your dashboard in edit mode and click the add element button. Choose a panel, then click "Use library panel." Browse or search for the panel you need, then click it to add it to your dashboard.
 
 ```text
-Dashboard Edit Mode > Add panel > Library panels tab > Drag to dashboard
+Dashboard Edit Mode > Add element > Panel > Use library panel > Select panel
 ```
 
 The panel appears with a special icon indicating it is linked.
@@ -124,7 +122,7 @@ After saving, every dashboard using this library panel reflects your changes imm
 
 ### Viewing Linked Dashboards
 
-Before making breaking changes, check which dashboards use the panel. In the library panel editor, look for the "Linked dashboards" section. This shows every dashboard referencing this panel, helping you assess the impact of your changes.
+Before making breaking changes, check which dashboards use the panel. Navigate to Dashboards > Library panels, select the panel, and review the dashboards where it is used. This helps you assess the impact of your changes.
 
 ## Organizing Library Panels
 
@@ -240,56 +238,69 @@ print(f"Found {len(duplicates)} potential library panel candidates")
 3. Test each dashboard after migration
 4. Delete the old local panel once the library version is confirmed working
 
-## Integration with Dashboard Provisioning
+## Integration with Dashboard-as-Code Workflows
 
-If you use provisioning to manage dashboards as code, library panels fit naturally.
+If you manage dashboards as code, library panels can fit into that workflow. Grafana's classic file provisioning loads dashboard files, but it does not support a separate `provisioning/library-panels` YAML format. Create or update library panels through the Library Element HTTP API, then reference their UIDs from dashboard JSON.
 
-### Provisioning Library Panels
+### Creating Library Panels Programmatically
 
-Create a provisioning file for library panels:
+Create a library panel with the Library Element HTTP API:
 
-```yaml
-# provisioning/library-panels/panels.yaml
-apiVersion: 1
-
-panels:
-  - name: Service Latency P99
-    uid: service-latency-p99
-    folder: Application
-    model:
-      type: timeseries
-      datasource:
-        type: prometheus
-        uid: prometheus-main
-      targets:
-        - expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
-          legendFormat: "{{service}}"
-      fieldConfig:
-        defaults:
-          unit: s
+```json
+{
+  "uid": "service-latency-p99",
+  "folderUid": "application",
+  "name": "Service Latency P99",
+  "kind": 1,
+  "model": {
+    "type": "timeseries",
+    "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus-main"
+    },
+    "targets": [
+      {
+        "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))",
+        "legendFormat": "{{service}}"
+      }
+    ],
+    "fieldConfig": {
+      "defaults": {
+        "unit": "s"
+      }
+    }
+  }
+}
 ```
 
 ### Referencing in Provisioned Dashboards
 
-Your provisioned dashboards can then reference these panels:
+Your provisioned dashboard JSON can then reference these panels:
 
-```yaml
-# provisioning/dashboards/service-overview.yaml
-panels:
-  - libraryPanel:
-      uid: service-latency-p99
-    gridPos:
-      h: 8
-      w: 12
-      x: 0
-      y: 0
+```json
+{
+  "panels": [
+    {
+      "libraryPanel": {
+        "uid": "service-latency-p99",
+        "name": "Service Latency P99"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
+    }
+  ]
+}
 ```
 
 ## Troubleshooting Common Issues
 
 ### Panel Shows "Library panel not found"
 
-This occurs when the library panel was deleted or moved. Check:
+This occurs when the referenced library panel cannot be loaded. Check:
 - The library panel still exists
 - You have view permissions on its folder
 - The UID has not changed
@@ -300,7 +311,7 @@ Ensure the host dashboard defines all variables the library panel expects. Check
 
 ### Changes Not Propagating
 
-Clear your browser cache and refresh. Grafana caches panel definitions, which can delay update visibility.
+Make sure you saved the library panel edit and refresh any dashboards that are already open. Once the library panel is saved, linked dashboards should use the updated definition.
 
 ## Conclusion
 
