@@ -21,14 +21,14 @@ Node Exporter is the standard way to monitor Linux servers with Prometheus. It r
 ```bash
 # Download the latest release
 
-wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
+wget https://github.com/prometheus/node_exporter/releases/download/v1.11.1/node_exporter-1.11.1.linux-amd64.tar.gz
 
 # Extract and install
-tar xvfz node_exporter-1.7.0.linux-amd64.tar.gz
-sudo mv node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+tar xvfz node_exporter-1.11.1.linux-amd64.tar.gz
+sudo mv node_exporter-1.11.1.linux-amd64/node_exporter /usr/local/bin/
 
 # Create a systemd service
-sudo cat > /etc/systemd/system/node_exporter.service << EOF
+sudo tee /etc/systemd/system/node_exporter.service > /dev/null << EOF
 [Unit]
 Description=Node Exporter
 Wants=network-online.target
@@ -154,6 +154,7 @@ Node Exporter uses collectors to gather different types of metrics. You can enab
 ```bash
 # Enable only specific collectors
 node_exporter \
+  --collector.disable-defaults \
   --collector.cpu \
   --collector.meminfo \
   --collector.diskstats \
@@ -206,7 +207,7 @@ node_load5   # 5 minute load average
 node_load15  # 15 minute load average
 
 # CPU saturation (load per CPU)
-node_load1 / count by (instance) (node_cpu_seconds_total{mode="idle"})
+node_load1 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})
 ```
 
 ### Memory Metrics
@@ -230,6 +231,7 @@ node_memory_SwapFree_bytes     # Free swap
 
 # Swap usage percentage
 (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes)) * 100
+  and node_memory_SwapTotal_bytes > 0
 ```
 
 ### Disk Metrics
@@ -257,7 +259,7 @@ rate(node_disk_written_bytes_total[5m])
 # Disk I/O utilization (time spent doing I/O)
 rate(node_disk_io_time_seconds_total[5m])
 
-# Disk I/O wait time
+# Disk average queue size while busy
 rate(node_disk_io_time_weighted_seconds_total[5m]) /
 rate(node_disk_io_time_seconds_total[5m])
 ```
@@ -375,7 +377,7 @@ groups:
       # High load average
       - alert: HighLoadAverage
         expr: |
-          node_load15 / count by (instance) (node_cpu_seconds_total{mode="idle"}) > 2
+          node_load15 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"}) > 2
         for: 15m
         labels:
           severity: warning
@@ -397,6 +399,7 @@ groups:
       - alert: HighSwapUsage
         expr: |
           (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes)) * 100 > 50
+            and node_memory_SwapTotal_bytes > 0
         for: 15m
         labels:
           severity: warning
@@ -464,7 +467,7 @@ groups:
       # Load per CPU
       - record: instance:node_load:per_cpu
         expr: |
-          node_load1 / count by (instance) (node_cpu_seconds_total{mode="idle"})
+          node_load1 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})
 ```
 
 ## System Monitoring Architecture
