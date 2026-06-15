@@ -53,7 +53,7 @@ Use Scroll API when:
 - Exporting large datasets
 - Reindexing data
 - Bulk processing all matching documents
-- You need more than 10,000 results
+- You need to process more than 10,000 results in an existing scroll-based workflow
 
 ---
 
@@ -67,6 +67,7 @@ Use Scroll API when:
 curl -X POST "localhost:9200/logs/_search?scroll=1m" -H 'Content-Type: application/json' -d'
 {
   "size": 1000,
+  "track_total_hits": true,
   "query": {
     "range": {
       "@timestamp": {
@@ -126,13 +127,14 @@ ES_HOST="localhost:9200"
 INDEX="logs"
 SCROLL_TIME="5m"
 BATCH_SIZE=1000
-OUTPUT_FILE="export.json"
+OUTPUT_FILE="export.jsonl"
 
 # Initial scroll request
 RESPONSE=$(curl -s -X POST "$ES_HOST/$INDEX/_search?scroll=$SCROLL_TIME" \
   -H 'Content-Type: application/json' \
   -d '{
     "size": '"$BATCH_SIZE"',
+    "track_total_hits": true,
     "query": { "match_all": {} },
     "_source": ["@timestamp", "message", "level"]
   }')
@@ -200,8 +202,7 @@ curl -X GET "localhost:9200/_search" -H 'Content-Type: application/json' -d'
     "keep_alive": "5m"
   },
   "sort": [
-    { "@timestamp": "asc" },
-    { "_id": "asc" }
+    { "@timestamp": "asc" }
   ]
 }'
 
@@ -217,10 +218,9 @@ curl -X GET "localhost:9200/_search" -H 'Content-Type: application/json' -d'
     "keep_alive": "5m"
   },
   "sort": [
-    { "@timestamp": "asc" },
-    { "_id": "asc" }
+    { "@timestamp": "asc" }
   ],
-  "search_after": ["2024-01-15T10:30:00.000Z", "abc123"]
+  "search_after": ["2024-01-15T10:30:00.000Z", 4294967298]
 }'
 
 # Close the PIT
@@ -238,7 +238,7 @@ Here's a complete Python implementation with both Scroll and PIT APIs:
 
 ```python
 from elasticsearch import Elasticsearch
-from typing import Iterator, Dict, Any, List, Optional, Callable
+from typing import Iterator, Dict, Any, List, Callable
 from dataclasses import dataclass
 import time
 import json
@@ -273,18 +273,12 @@ class ScrollProcessor:
         if query is None:
             query = {"match_all": {}}
 
-        # Initial search request
-        body = {
-            "query": query,
-            "size": config.batch_size
-        }
-
-        if source:
-            body["_source"] = source
-
         response = self.es.search(
             index=index,
-            body=body,
+            query=query,
+            size=config.batch_size,
+            source=source,
+            track_total_hits=True,
             scroll=config.scroll_timeout
         )
 
@@ -448,7 +442,7 @@ class ScrollProcessor:
                 batch.append(transformed)
 
             if len(batch) >= batch_size * 2:
-                self.es.bulk(body=batch)
+                self.es.bulk(operations=batch)
                 count += len(batch) // 2
                 batch = []
 
@@ -457,7 +451,7 @@ class ScrollProcessor:
 
         # Final batch
         if batch:
-            self.es.bulk(body=batch)
+            self.es.bulk(operations=batch)
             count += len(batch) // 2
 
         print(f"Reindex complete: {count} documents")
@@ -487,7 +481,7 @@ class PITProcessor:
             query = {"match_all": {}}
 
         if sort is None:
-            sort = [{"_id": "asc"}]
+            sort = [{"_shard_doc": "asc"}]
 
         # Open PIT
         pit_response = self.es.open_point_in_time(
@@ -500,23 +494,17 @@ class PITProcessor:
             search_after = None
 
             while True:
-                body = {
-                    "query": query,
-                    "size": batch_size,
-                    "pit": {
+                response = self.es.search(
+                    query=query,
+                    size=batch_size,
+                    pit={
                         "id": pit_id,
                         "keep_alive": keep_alive
                     },
-                    "sort": sort
-                }
-
-                if source:
-                    body["_source"] = source
-
-                if search_after:
-                    body["search_after"] = search_after
-
-                response = self.es.search(body=body)
+                    sort=sort,
+                    source=source,
+                    search_after=search_after
+                )
 
                 hits = response["hits"]["hits"]
                 if not hits:
@@ -534,7 +522,7 @@ class PITProcessor:
         finally:
             # Close PIT
             try:
-                self.es.close_point_in_time(body={"id": pit_id})
+                self.es.close_point_in_time(id=pit_id)
             except Exception as e:
                 print(f"Warning: Failed to close PIT: {e}")
 
@@ -591,7 +579,7 @@ if __name__ == "__main__":
     for doc in pit_processor.search_with_pit(
         index="logs",
         query={"match_all": {}},
-        sort=[{"@timestamp": "asc"}, {"_id": "asc"}]
+        sort=[{"@timestamp": "asc"}]
     ):
         count += 1
         if count % 10000 == 0:
@@ -633,7 +621,8 @@ Python implementation for parallel sliced scrolling:
 
 ```python
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Any
+from elasticsearch import Elasticsearch
+from typing import List, Dict, Any, Callable
 import threading
 
 class ParallelScrollProcessor:
@@ -648,9 +637,11 @@ class ParallelScrollProcessor:
         index: str,
         query: Dict[str, Any] = None,
         num_slices: int = 5,
-        processor: callable = None
+        processor: Callable[[Dict[str, Any]], None] = None
     ) -> int:
         """Process documents in parallel using sliced scrolls"""
+
+        self.total_processed = 0
 
         with ThreadPoolExecutor(max_workers=num_slices) as executor:
             futures = []
@@ -679,22 +670,22 @@ class ParallelScrollProcessor:
         query: Dict[str, Any],
         slice_id: int,
         max_slices: int,
-        processor: callable
+        processor: Callable[[Dict[str, Any]], None]
     ) -> int:
         """Process a single slice"""
 
         es = Elasticsearch(self.hosts, **self.kwargs)
 
-        body = {
-            "slice": {
+        response = es.search(
+            index=index,
+            query=query or {"match_all": {}},
+            size=1000,
+            slice={
                 "id": slice_id,
                 "max": max_slices
             },
-            "query": query or {"match_all": {}},
-            "size": 1000
-        }
-
-        response = es.search(index=index, body=body, scroll="5m")
+            scroll="5m"
+        )
         scroll_id = response["_scroll_id"]
         hits = response["hits"]["hits"]
         count = 0
