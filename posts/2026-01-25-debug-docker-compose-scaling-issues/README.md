@@ -23,7 +23,7 @@ docker compose up -d --scale api=5
 docker compose ps api
 ```
 
-The container names follow the pattern `project_service_index`:
+The container names follow the pattern `project-service-index`:
 
 ```text
 myproject-api-1
@@ -39,7 +39,6 @@ The most common scaling issue is port conflicts. If you bind a host port, only o
 
 ```yaml
 # BROKEN: Cannot scale - port 8080 conflict
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -59,7 +58,6 @@ Let Docker assign random host ports:
 
 ```yaml
 # Working: Random host ports assigned
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -71,8 +69,8 @@ services:
 # Find assigned ports
 docker compose ps api
 # NAME          PORTS
-# api-1         0.0.0.0:32768->8080/tcp
-# api-2         0.0.0.0:32769->8080/tcp
+# myproject-api-1  0.0.0.0:32768->8080/tcp
+# myproject-api-2  0.0.0.0:32769->8080/tcp
 ```
 
 ### Solution: Use a Load Balancer
@@ -80,14 +78,13 @@ docker compose ps api
 For production, put a reverse proxy in front of scaled services:
 
 ```yaml
-version: '3.8'
 services:
   nginx:
     image: nginx:alpine
     ports:
       - "80:80"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - api
 
@@ -130,7 +127,6 @@ docker inspect --format '{{.State.OOMKilled}}' myproject-api-1
 Define limits in your Compose file:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -162,10 +158,10 @@ Replicas may start but fail health checks, causing restarts or never becoming he
 ```bash
 # Check health status
 docker compose ps
-# NAME    STATUS
-# api-1   Up (healthy)
-# api-2   Up (unhealthy)
-# api-3   Up (health: starting)
+# NAME             STATUS
+# myproject-api-1  Up (healthy)
+# myproject-api-2  Up (unhealthy)
+# myproject-api-3  Up (health: starting)
 
 # View health check logs
 docker inspect --format '{{json .State.Health}}' myproject-api-2 | jq
@@ -176,7 +172,6 @@ docker inspect --format '{{json .State.Health}}' myproject-api-2 | jq
 Scaled services may need longer startup times:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -215,7 +210,6 @@ graph TD
 Set per-replica connection limits:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -227,8 +221,7 @@ services:
 
   database:
     image: postgres:15
-    environment:
-      - POSTGRES_MAX_CONNECTIONS=100
+    command: ["postgres", "-c", "max_connections=100"]
 ```
 
 Or use a connection pooler like PgBouncer:
@@ -267,7 +260,6 @@ services:
 ### Solution: Use Replica-Specific Paths or External Storage
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -299,7 +291,6 @@ docker compose exec nginx nslookup api
 ### Solution: Verify Network Configuration
 
 ```yaml
-version: '3.8'
 services:
   nginx:
     image: nginx:alpine
@@ -345,7 +336,7 @@ upstream api_servers {
     server api:8080;
 }
 
-# Or with health checks
+# Or with passive failure handling
 upstream api_servers {
     server api:8080 max_fails=3 fail_timeout=30s;
 }
@@ -358,7 +349,7 @@ upstream api_servers {
 docker compose logs -f api
 
 # View specific replica logs
-docker compose logs -f api-3
+docker compose logs -f --index 3 api
 
 # Execute command on all replicas
 for i in $(docker compose ps -q api); do
@@ -366,10 +357,10 @@ for i in $(docker compose ps -q api); do
 done
 
 # Check replica network connectivity
-docker compose exec api-1 ping -c 2 api-2
+docker compose exec --index 1 api ping -c 2 api
 
 # Monitor scaling events
-docker compose events --filter service=api
+docker compose events api
 
 # Inspect replica differences
 diff <(docker inspect myproject-api-1) <(docker inspect myproject-api-2)
@@ -377,10 +368,9 @@ diff <(docker inspect myproject-api-1) <(docker inspect myproject-api-2)
 
 ## Scaling with Deploy Configuration
 
-For more control, use the deploy key (requires Compose v3+):
+For more control, use the deploy key from the Compose Deploy Specification:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -400,7 +390,7 @@ services:
         window: 120s
 ```
 
-Note: `deploy` configuration is fully supported only in Swarm mode. For standalone Compose, use `--scale` flag and service-level settings.
+Note: Some `deploy` settings are platform-specific. Standalone Compose supports scaling with `--scale` or `deploy.replicas`, but Swarm-style rolling update and rollback behavior requires Swarm mode.
 
 ---
 
