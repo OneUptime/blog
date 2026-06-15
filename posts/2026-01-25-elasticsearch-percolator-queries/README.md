@@ -85,6 +85,9 @@ curl -X PUT "localhost:9200/alerts" -H 'Content-Type: application/json' -d'
       },
       "severity": {
         "type": "keyword"
+      },
+      "response_time": {
+        "type": "integer"
       }
     }
   }
@@ -635,16 +638,17 @@ class PercolatorAlertService:
 
         for hit in response["hits"]["hits"]:
             # The _percolator_document_slot field tells us which document matched
-            doc_slot = hit.get("fields", {}).get("_percolator_document_slot", [0])[0]
+            doc_slots = hit.get("fields", {}).get("_percolator_document_slot", [0])
 
-            results[doc_slot].append(TriggeredAlert(
-                rule_id=hit["_id"],
-                rule_name=hit["_source"]["rule_name"],
-                severity=hit["_source"]["severity"],
-                notification_channels=hit["_source"]["notification_channels"],
-                document=documents[doc_slot],
-                triggered_at=datetime.utcnow()
-            ))
+            for doc_slot in doc_slots:
+                results[doc_slot].append(TriggeredAlert(
+                    rule_id=hit["_id"],
+                    rule_name=hit["_source"]["rule_name"],
+                    severity=hit["_source"]["severity"],
+                    notification_channels=hit["_source"]["notification_channels"],
+                    document=documents[doc_slot],
+                    triggered_at=datetime.utcnow()
+                ))
 
         return results
 
@@ -803,7 +807,7 @@ if __name__ == "__main__":
 
 **Performance:**
 - Batch document checks when possible
-- Monitor percolator query cache size
+- Monitor percolator query complexity and search latency
 - Consider query complexity when scaling
 
 **Maintenance:**
