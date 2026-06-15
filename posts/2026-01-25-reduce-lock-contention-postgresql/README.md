@@ -34,30 +34,16 @@ This query shows current locks and which queries are waiting:
 ```sql
 -- Find blocked queries and what is blocking them
 SELECT
-    blocked_locks.pid AS blocked_pid,
-    blocked_activity.usename AS blocked_user,
-    blocking_locks.pid AS blocking_pid,
-    blocking_activity.usename AS blocking_user,
-    blocked_activity.query AS blocked_statement,
-    blocking_activity.query AS blocking_statement
-FROM pg_catalog.pg_locks blocked_locks
-JOIN pg_catalog.pg_stat_activity blocked_activity
-    ON blocked_activity.pid = blocked_locks.pid
-JOIN pg_catalog.pg_locks blocking_locks
-    ON blocking_locks.locktype = blocked_locks.locktype
-    AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
-    AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
-    AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
-    AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
-    AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
-    AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
-    AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
-    AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
-    AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
-    AND blocking_locks.pid != blocked_locks.pid
-JOIN pg_catalog.pg_stat_activity blocking_activity
-    ON blocking_activity.pid = blocking_locks.pid
-WHERE NOT blocked_locks.granted;
+    blocked.pid AS blocked_pid,
+    blocked.usename AS blocked_user,
+    blocking.pid AS blocking_pid,
+    blocking.usename AS blocking_user,
+    blocked.query AS blocked_statement,
+    blocking.query AS blocking_statement
+FROM pg_catalog.pg_stat_activity blocked
+JOIN LATERAL unnest(pg_blocking_pids(blocked.pid)) AS blockers(pid) ON true
+JOIN pg_catalog.pg_stat_activity blocking
+    ON blocking.pid = blockers.pid;
 ```
 
 ### Track Lock Wait Times
@@ -132,9 +118,10 @@ For batch updates, sort your data first:
 -- Process updates in primary key order to avoid deadlocks
 WITH sorted_updates AS (
     SELECT id, new_balance
-    FROM unnest(ARRAY[5, 2, 8, 1]) AS id
-    JOIN unnest(ARRAY[500, 200, 800, 100]) AS new_balance
-    ON true
+    FROM unnest(
+        ARRAY[5, 2, 8, 1],
+        ARRAY[500, 200, 800, 100]
+    ) AS updates(id, new_balance)
     ORDER BY id  -- Consistent ordering
 )
 UPDATE accounts a
@@ -213,7 +200,7 @@ Note that CONCURRENTLY has some caveats:
 
 ## Strategy 6: Partition Hot Tables
 
-When many transactions update the same table, partitioning can spread the load:
+When contention is concentrated in predictable ranges, partitioning can spread the load across separate physical tables:
 
 ```sql
 -- Create a partitioned table
@@ -232,20 +219,20 @@ CREATE TABLE events_2026_02 PARTITION OF events
     FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
 ```
 
-With partitioning, transactions targeting different time ranges lock different physical tables.
+With partitioning, transactions and maintenance operations targeting different time ranges can work on different physical tables.
 
 ## Strategy 7: Use Appropriate Isolation Levels
 
-The default READ COMMITTED level is usually fine, but sometimes you can reduce locking by being explicit:
+The default READ COMMITTED level is usually fine, but sometimes you should be explicit about the consistency you need:
 
 ```sql
--- For read-heavy analytics queries that can tolerate slightly stale data
+-- For read-heavy analytics queries that need a stable snapshot
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SELECT count(*) FROM large_table WHERE created_at > '2026-01-01';
 COMMIT;
 ```
 
-Read-only transactions at REPEATABLE READ use snapshots and never block writers.
+Plain SELECT queries use snapshots and do not block writers. REPEATABLE READ keeps that snapshot stable for the whole transaction, but applications should still be prepared to retry transactions if they later add writes at this isolation level.
 
 ## Monitoring Lock Contention Over Time
 
