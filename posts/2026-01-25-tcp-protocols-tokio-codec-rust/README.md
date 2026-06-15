@@ -32,6 +32,7 @@ edition = "2021"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 bytes = "1"
+futures-util = { version = "0.3", features = ["sink"] }
 thiserror = "1"
 ```
 
@@ -69,6 +70,8 @@ pub enum ProtocolError {
     InvalidMessageType(u8),
     #[error("Invalid UTF-8 in key")]
     InvalidUtf8,
+    #[error("Invalid frame: {0}")]
+    InvalidFrame(&'static str),
     #[error("Message too large: {0} bytes")]
     MessageTooLarge(usize),
 }
@@ -123,7 +126,7 @@ impl Decoder for CommandCodec {
 
 fn parse_command(data: &[u8]) -> Result<Option<Command>, ProtocolError> {
     if data.is_empty() {
-        return Ok(None);
+        return Err(ProtocolError::InvalidFrame("empty message"));
     }
 
     let msg_type = data[0];
@@ -133,11 +136,11 @@ fn parse_command(data: &[u8]) -> Result<Option<Command>, ProtocolError> {
         // GET: type(1) + key_len(2) + key
         0x01 => {
             if payload.len() < 2 {
-                return Ok(None);
+                return Err(ProtocolError::InvalidFrame("GET missing key length"));
             }
             let key_len = u16::from_be_bytes([payload[0], payload[1]]) as usize;
             if payload.len() < 2 + key_len {
-                return Ok(None);
+                return Err(ProtocolError::InvalidFrame("GET key is truncated"));
             }
             let key = String::from_utf8(payload[2..2 + key_len].to_vec())
                 .map_err(|_| ProtocolError::InvalidUtf8)?;
@@ -146,11 +149,11 @@ fn parse_command(data: &[u8]) -> Result<Option<Command>, ProtocolError> {
         // SET: type(1) + key_len(2) + key + value_len(4) + value
         0x02 => {
             if payload.len() < 2 {
-                return Ok(None);
+                return Err(ProtocolError::InvalidFrame("SET missing key length"));
             }
             let key_len = u16::from_be_bytes([payload[0], payload[1]]) as usize;
             if payload.len() < 2 + key_len + 4 {
-                return Ok(None);
+                return Err(ProtocolError::InvalidFrame("SET key or value length is truncated"));
             }
             let key = String::from_utf8(payload[2..2 + key_len].to_vec())
                 .map_err(|_| ProtocolError::InvalidUtf8)?;
@@ -163,6 +166,10 @@ fn parse_command(data: &[u8]) -> Result<Option<Command>, ProtocolError> {
                 payload[value_start + 3],
             ]) as usize;
 
+            if payload.len() < value_start + 4 + value_len {
+                return Err(ProtocolError::InvalidFrame("SET value is truncated"));
+            }
+
             let value = Bytes::copy_from_slice(
                 &payload[value_start + 4..value_start + 4 + value_len]
             );
@@ -171,9 +178,12 @@ fn parse_command(data: &[u8]) -> Result<Option<Command>, ProtocolError> {
         // DELETE: type(1) + key_len(2) + key
         0x03 => {
             if payload.len() < 2 {
-                return Ok(None);
+                return Err(ProtocolError::InvalidFrame("DELETE missing key length"));
             }
             let key_len = u16::from_be_bytes([payload[0], payload[1]]) as usize;
+            if payload.len() < 2 + key_len {
+                return Err(ProtocolError::InvalidFrame("DELETE key is truncated"));
+            }
             let key = String::from_utf8(payload[2..2 + key_len].to_vec())
                 .map_err(|_| ProtocolError::InvalidUtf8)?;
             Ok(Some(Command::Delete { key }))
@@ -235,7 +245,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tokio_util::codec::Framed;
-use futures::{SinkExt, StreamExt};
+use futures_util::{SinkExt, StreamExt};
 
 type Store = Arc<RwLock<HashMap<String, Bytes>>>;
 
