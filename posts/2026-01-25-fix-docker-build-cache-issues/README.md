@@ -68,19 +68,20 @@ COPY . .                    # Source changes don't affect npm ci
 RUN npm run build
 ```
 
-### Problem 2: Dynamic Content in RUN Commands
+### Problem 2: Stale RUN Command Results
 
-Commands that produce different output each time break caching:
+Docker usually caches `RUN` instructions by the command string, not by inspecting the files the command creates. Commands that depend on current time or remote package indexes can reuse stale cached output:
 
 ```dockerfile
-# BAD: Timestamp changes every build
+# BAD: Reuses the first cached timestamp unless cache is bypassed
 RUN echo "Built at $(date)" > /build-info.txt
 
-# BAD: Always fetches latest, unpredictable
+# BAD: Reuses cached package indexes unless cache is invalidated
 RUN apt-get update && apt-get install -y curl
 
-# GOOD: Pin versions for reproducibility
-RUN apt-get update && apt-get install -y curl=7.88.1-10+deb12u5
+# GOOD: Add an explicit cache-busting argument when you need fresh package indexes
+ARG APT_CACHE_BUST=1
+RUN apt-get update && apt-get install -y --no-install-recommends curl
 ```
 
 ### Problem 3: Changing ARG Values
@@ -143,7 +144,7 @@ Sometimes you need to bypass the cache:
 # Rebuild everything from scratch
 docker build --no-cache -t myapp .
 
-# Rebuild from a specific stage
+# Build a specific stage without cache
 docker build --target builder --no-cache -t myapp:builder .
 ```
 
@@ -209,20 +210,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -261,9 +262,11 @@ For multiple package managers:
 FROM python:3.12-slim
 
 # apt cache
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt \
-    apt-get update && apt-get install -y build-essential
+RUN rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends build-essential
 
 # pip cache
 COPY requirements.txt .
@@ -299,7 +302,7 @@ CMD ["node", "dist/index.js"]
 
 When cache invalidates unexpectedly:
 
-1. **Check file timestamps**: Git operations can change timestamps. Use `.dockerignore` or explicit COPY commands.
+1. **Check file metadata and content**: Docker ignores file modification time (`mtime`) for cache checks, but content and other file metadata changes can still invalidate `ADD` and `COPY`. Use `.dockerignore` or explicit COPY commands.
 
 2. **Review .dockerignore**: Missing entries cause cache invalidation:
 
