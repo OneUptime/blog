@@ -86,6 +86,7 @@ export default App;
 ```jsx
 // preload.jsx
 import { lazy } from 'react';
+import { Link } from 'react-router-dom';
 
 // Create lazy component with preload capability
 function lazyWithPreload(importFunc) {
@@ -190,12 +191,15 @@ function Dashboard() {
   height="600"
 />
 
-<!-- With placeholder -->
+<!-- With responsive sources -->
 <img
-  src="placeholder-blur.jpg"
-  data-src="large-image.jpg"
+  src="large-image-800.jpg"
+  srcset="large-image-400.jpg 400w, large-image-800.jpg 800w"
+  sizes="(max-width: 600px) 400px, 800px"
   loading="lazy"
   alt="Description"
+  width="800"
+  height="600"
   class="lazy-image"
 />
 ```
@@ -206,7 +210,7 @@ function Dashboard() {
 // LazyImage.jsx
 import React, { useState, useEffect, useRef } from 'react';
 
-function LazyImage({ src, alt, placeholder, className, ...props }) {
+function LazyImage({ src, alt, placeholder, className = '', ...props }) {
   const [imageSrc, setImageSrc] = useState(placeholder || '');
   const [isLoaded, setIsLoaded] = useState(false);
   const imgRef = useRef();
@@ -346,7 +350,7 @@ users = service.database.query("SELECT * FROM users")
 ```python
 # thread_safe_lazy.py
 import threading
-from typing import TypeVar, Callable, Optional
+from typing import TypeVar, Callable, Optional, Generic
 
 T = TypeVar('T')
 
@@ -393,7 +397,7 @@ class ServiceContainer:
         return RedisCache(self.config['redis_url'])
 
     def _create_queue(self):
-        from queue import MessageQueue
+        from message_queue import MessageQueue
         return MessageQueue(self.config['queue_url'])
 
     @property
@@ -431,7 +435,7 @@ def get_users(db = Depends(get_database)):
 
 ```python
 # sqlalchemy_lazy.py
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, DateTime, Integer, String, ForeignKey, select
 from sqlalchemy.orm import relationship, declarative_base, joinedload, selectinload
 
 Base = declarative_base()
@@ -453,8 +457,8 @@ class User(Base):
     # 'subquery' - load with subquery (good for collections)
     posts = relationship('Post', lazy='subquery')
 
-    # 'dynamic' - return query object for further filtering
-    comments = relationship('Comment', lazy='dynamic')
+    # 'write_only' - never load the full collection implicitly
+    comments = relationship('Comment', lazy='write_only')
 
 
 class Order(Base):
@@ -467,36 +471,64 @@ class Order(Base):
     user = relationship('User', back_populates='orders')
 
 
+class Profile(Base):
+    __tablename__ = 'profiles'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'))
+    bio = Column(String(255))
+
+
+class Post(Base):
+    __tablename__ = 'posts'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'))
+    title = Column(String(200))
+
+
+class Comment(Base):
+    __tablename__ = 'comments'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'))
+    body = Column(String(500))
+    created_at = Column(DateTime)
+
+
 # Query patterns
 
 # Bad: N+1 queries (1 for users + N for orders)
 def get_users_bad(session):
-    users = session.query(User).all()
+    users = session.scalars(select(User)).all()
     for user in users:
         print(user.orders)  # Triggers separate query for each user!
     return users
 
 # Good: Eager load with joinedload
 def get_users_with_orders(session):
-    users = session.query(User).options(
+    stmt = select(User).options(
         joinedload(User.orders)
-    ).all()
+    )
+    users = session.scalars(stmt).unique().all()
     # All data loaded in single query with JOIN
     return users
 
 # Good: Eager load with selectinload (better for large collections)
 def get_users_with_posts(session):
-    users = session.query(User).options(
+    stmt = select(User).options(
         selectinload(User.posts)
-    ).all()
+    )
+    users = session.scalars(stmt).all()
     # Loads posts with IN query: SELECT * FROM posts WHERE user_id IN (1,2,3...)
     return users
 
-# Dynamic loading for filtering
+# Write-only loading for filtering large collections
 def get_user_recent_comments(session, user_id, limit=10):
-    user = session.query(User).get(user_id)
-    # comments is a Query object, not a list
-    recent = user.comments.order_by(Comment.created_at.desc()).limit(limit).all()
+    user = session.get(User, user_id)
+    # comments is a WriteOnlyCollection, not a list
+    stmt = user.comments.select().order_by(Comment.created_at.desc()).limit(limit)
+    recent = session.scalars(stmt).all()
     return recent
 ```
 
