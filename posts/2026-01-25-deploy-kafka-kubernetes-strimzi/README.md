@@ -21,14 +21,14 @@ graph TB
 
         subgraph "Kafka Custom Resources"
             KC[Kafka CR]
+            KNP[KafkaNodePool CR]
             KT[KafkaTopic CR]
             KU[KafkaUser CR]
             KC2[KafkaConnect CR]
         end
 
         subgraph "Managed Resources"
-            SS1[Kafka StatefulSet]
-            SS2[ZK StatefulSet]
+            SS1[Kafka StrimziPodSet]
             SVC[Services]
             SEC[Secrets]
             CM[ConfigMaps]
@@ -36,12 +36,13 @@ graph TB
     end
 
     SO -->|Watches| KC
+    SO -->|Watches| KNP
     SO -->|Watches| KT
     SO -->|Watches| KU
     SO -->|Watches| KC2
 
     KC -->|Creates| SS1
-    KC -->|Creates| SS2
+    KNP -->|Configures| SS1
     KC -->|Creates| SVC
     KU -->|Creates| SEC
     KC -->|Creates| CM
@@ -76,49 +77,103 @@ kubectl get crds | grep strimzi
 For production, install via Helm for better control:
 
 ```bash
-# Add Strimzi Helm repository
-helm repo add strimzi https://strimzi.io/charts/
-helm repo update
-
 # Install with custom values
-helm install strimzi-operator strimzi/strimzi-kafka-operator \
+helm install strimzi-operator oci://quay.io/strimzi-helm/strimzi-kafka-operator \
     --namespace kafka \
-    --set watchNamespaces="{kafka}" \
+    --create-namespace \
     --set resources.requests.memory=256Mi \
     --set resources.requests.cpu=100m
 ```
 
 ## Step 2: Deploy a Kafka Cluster
 
-Create a Kafka cluster using the Kafka custom resource:
+Create a Kafka cluster using Kafka and KafkaNodePool custom resources:
 
 ```yaml
 # kafka-cluster.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: controllers
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: production-cluster
+spec:
+  replicas: 3
+  roles:
+    - controller
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 20Gi
+        class: fast-ssd
+        deleteClaim: false
+        kraftMetadata: shared
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: "0.5"
+    limits:
+      memory: 2Gi
+      cpu: "1"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: brokers
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: production-cluster
+spec:
+  replicas: 3
+  roles:
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 100Gi
+        class: fast-ssd
+        deleteClaim: false
+  resources:
+    requests:
+      memory: 4Gi
+      cpu: "1"
+    limits:
+      memory: 8Gi
+      cpu: "2"
+  jvmOptions:
+    -Xms: 2048m
+    -Xmx: 4096m
+---
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: production-cluster
   namespace: kafka
 spec:
   kafka:
-    version: 3.6.0
-    replicas: 3
+    version: 4.1.0
 
     listeners:
-      - name: plain
-        port: 9092
-        type: internal
-        tls: false
       - name: tls
         port: 9093
         type: internal
         tls: true
+        authentication:
+          type: scram-sha-512
       - name: external
         port: 9094
         type: loadbalancer
         tls: true
         authentication:
           type: scram-sha-512
+
+    authorization:
+      type: simple
 
     config:
       # Replication settings
@@ -140,48 +195,12 @@ spec:
       log.segment.bytes: 1073741824
       log.retention.check.interval.ms: 300000
 
-    storage:
-      type: jbod
-      volumes:
-        - id: 0
-          type: persistent-claim
-          size: 100Gi
-          class: fast-ssd
-          deleteClaim: false
-
-    resources:
-      requests:
-        memory: 4Gi
-        cpu: "1"
-      limits:
-        memory: 8Gi
-        cpu: "2"
-
-    jvmOptions:
-      -Xms: 2048m
-      -Xmx: 4096m
-
     metricsConfig:
       type: jmxPrometheusExporter
       valueFrom:
         configMapKeyRef:
           name: kafka-metrics
           key: kafka-metrics-config.yml
-
-  zookeeper:
-    replicas: 3
-    storage:
-      type: persistent-claim
-      size: 20Gi
-      class: fast-ssd
-      deleteClaim: false
-    resources:
-      requests:
-        memory: 1Gi
-        cpu: "0.5"
-      limits:
-        memory: 2Gi
-        cpu: "1"
 
   entityOperator:
     topicOperator:
@@ -217,7 +236,7 @@ Manage topics declaratively:
 
 ```yaml
 # topics.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: orders
@@ -233,7 +252,7 @@ spec:
     min.insync.replicas: 2
     cleanup.policy: delete
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: user-events
@@ -267,7 +286,7 @@ Set up authenticated access with SCRAM-SHA-512:
 
 ```yaml
 # users.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: order-service
@@ -308,7 +327,7 @@ spec:
           - Read
         host: "*"
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: analytics-reader
@@ -381,6 +400,8 @@ spec:
                   key: password
             - name: KAFKA_SSL_TRUSTSTORE_LOCATION
               value: "/etc/kafka/certs/ca.crt"
+            - name: KAFKA_SSL_TRUSTSTORE_TYPE
+              value: "PEM"
           volumeMounts:
             - name: kafka-certs
               mountPath: /etc/kafka/certs
@@ -424,12 +445,12 @@ data:
         type: GAUGE
 ```
 
-Deploy ServiceMonitor for Prometheus:
+Deploy PodMonitor for Prometheus:
 
 ```yaml
-# service-monitor.yaml
+# pod-monitor.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: kafka-metrics
   namespace: kafka
@@ -440,7 +461,8 @@ spec:
     matchLabels:
       strimzi.io/cluster: production-cluster
       strimzi.io/kind: Kafka
-  endpoints:
+      strimzi.io/broker-role: "true"
+  podMetricsEndpoints:
     - port: tcp-prometheus
       path: /metrics
       interval: 15s
@@ -452,39 +474,38 @@ Use MirrorMaker 2 for replication:
 
 ```yaml
 # mirror-maker.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaMirrorMaker2
 metadata:
   name: cluster-mirror
   namespace: kafka
 spec:
-  version: 3.6.0
+  version: 4.1.0
   replicas: 2
-  connectCluster: "backup-cluster"
-  clusters:
-    - alias: "production-cluster"
-      bootstrapServers: production-cluster-kafka-bootstrap:9093
-      tls:
-        trustedCertificates:
-          - secretName: production-cluster-cluster-ca-cert
-            certificate: ca.crt
-    - alias: "backup-cluster"
-      bootstrapServers: backup-cluster-kafka-bootstrap:9093
-      tls:
-        trustedCertificates:
-          - secretName: backup-cluster-cluster-ca-cert
-            certificate: ca.crt
+  target:
+    alias: "backup-cluster"
+    bootstrapServers: backup-cluster-kafka-bootstrap:9093
+    groupId: cluster-mirror-connect
+    configStorageTopic: cluster-mirror-configs
+    offsetStorageTopic: cluster-mirror-offsets
+    statusStorageTopic: cluster-mirror-status
+    tls:
+      trustedCertificates:
+        - secretName: backup-cluster-cluster-ca-cert
+          certificate: ca.crt
   mirrors:
-    - sourceCluster: "production-cluster"
-      targetCluster: "backup-cluster"
+    - source:
+        alias: "production-cluster"
+        bootstrapServers: production-cluster-kafka-bootstrap:9093
+        tls:
+          trustedCertificates:
+            - secretName: production-cluster-cluster-ca-cert
+              certificate: ca.crt
       sourceConnector:
         config:
           replication.factor: 3
           offset-syncs.topic.replication.factor: 3
           sync.topic.acls.enabled: "false"
-      heartbeatConnector:
-        config:
-          heartbeats.topic.replication.factor: 3
       checkpointConnector:
         config:
           checkpoints.topic.replication.factor: 3
@@ -518,6 +539,7 @@ spec:
     matchLabels:
       strimzi.io/cluster: production-cluster
       strimzi.io/kind: Kafka
+      strimzi.io/broker-role: "true"
 ```
 
 ## Upgrading Kafka
@@ -528,7 +550,7 @@ Strimzi handles rolling upgrades:
 # Update the version in the Kafka CR
 spec:
   kafka:
-    version: 3.7.0  # New version
+    version: 4.2.0  # New version supported by your Strimzi release
 ```
 
 Apply and watch:
