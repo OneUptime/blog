@@ -23,14 +23,15 @@ This connection between aggregated metrics and detailed traces significantly red
 ## Prerequisites
 
 Exemplars require:
-- Prometheus 2.26+ with native histogram or classic histogram metrics
+- Prometheus 2.26+ with exemplar storage enabled
+- Counter or histogram metrics exposed in OpenMetrics format
 - Application instrumentation that attaches trace IDs to metrics
 - A trace backend (Jaeger, Tempo, Zipkin) to view traces
 - Grafana 7.4+ for visualization with exemplar support
 
 ## Enabling Exemplars in Prometheus
 
-Enable exemplar storage in Prometheus:
+Configure exemplar storage in Prometheus:
 
 ```yaml
 # prometheus.yml
@@ -50,7 +51,7 @@ scrape_configs:
       - targets: ['app:8080']
 ```
 
-Or via command line:
+Then start Prometheus with exemplar storage enabled:
 
 ```bash
 prometheus \
@@ -67,7 +68,7 @@ prometheus \
 ```python
 # app.py - Flask application with exemplars
 from flask import Flask, request
-from prometheus_client import Histogram, Counter, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Histogram, Counter, REGISTRY
 from prometheus_client.openmetrics.exposition import generate_latest as generate_openmetrics
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -79,7 +80,7 @@ import random
 
 # Initialize OpenTelemetry tracing
 trace.set_tracer_provider(TracerProvider())
-otlp_exporter = OTLPSpanExporter(endpoint="tempo:4317", insecure=True)
+otlp_exporter = OTLPSpanExporter(endpoint="http://tempo:4317", insecure=True)
 trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(otlp_exporter))
 tracer = trace.get_tracer(__name__)
 
@@ -107,7 +108,7 @@ def get_exemplar():
     if span.is_recording():
         ctx = span.get_span_context()
         return {'trace_id': format(ctx.trace_id, '032x')}
-    return {}
+    return None
 
 
 @app.route('/api/users')
@@ -160,7 +161,6 @@ package main
 
 import (
     "context"
-    "fmt"
     "math/rand"
     "net/http"
     "time"
@@ -205,7 +205,7 @@ func initTracer() func() {
         sdktrace.WithBatcher(exporter),
         sdktrace.WithResource(resource.NewWithAttributes(
             semconv.SchemaURL,
-            semconv.ServiceName("my-service"),
+            semconv.ServiceNameKey.String("my-service"),
         )),
     )
 
@@ -268,25 +268,24 @@ func main() {
 const express = require('express');
 const promClient = require('prom-client');
 const opentelemetry = require('@opentelemetry/api');
-const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Initialize OpenTelemetry
-const provider = new NodeTracerProvider({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-  }),
-});
-
 const exporter = new OTLPTraceExporter({
-  url: 'grpc://tempo:4317',
+  url: 'http://tempo:4317',
 });
 
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-provider.register();
+const sdk = new NodeSDK({
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-service',
+  }),
+  traceExporter: exporter,
+});
+
+sdk.start();
 
 const tracer = opentelemetry.trace.getTracer('my-service');
 
@@ -320,11 +319,11 @@ app.get('/api/users', async (req, res) => {
 
   // Record with exemplar
   const spanContext = span.spanContext();
-  requestDuration.observe(
-    { method: 'GET', endpoint: '/api/users', status: '200' },
-    duration,
-    { trace_id: spanContext.traceId }
-  );
+  requestDuration.observe({
+    labels: { method: 'GET', endpoint: '/api/users', status: '200' },
+    value: duration,
+    exemplarLabels: { trace_id: spanContext.traceId },
+  });
 
   span.end();
   res.json({ users: ['alice', 'bob'] });
@@ -435,7 +434,7 @@ datasources:
 ### PromQL with Exemplars
 
 ```promql
-# Histogram quantile query - exemplars are attached automatically
+# Histogram quantile query - Grafana can request exemplars for matching series
 histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
 
 # Query exemplars directly via API
