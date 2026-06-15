@@ -35,7 +35,7 @@ Add ShardingSphere JDBC to your Spring Boot project:
 <!-- pom.xml -->
 <dependency>
     <groupId>org.apache.shardingsphere</groupId>
-    <artifactId>shardingsphere-jdbc-core-spring-boot-starter</artifactId>
+    <artifactId>shardingsphere-jdbc-core</artifactId>
     <version>5.4.1</version>
 </dependency>
 <dependency>
@@ -46,6 +46,16 @@ Add ShardingSphere JDBC to your Spring Boot project:
     <groupId>com.mysql</groupId>
     <artifactId>mysql-connector-j</artifactId>
     <scope>runtime</scope>
+</dependency>
+<dependency>
+    <groupId>org.yaml</groupId>
+    <artifactId>snakeyaml</artifactId>
+    <version>1.33</version>
+</dependency>
+<dependency>
+    <groupId>org.glassfish.jaxb</groupId>
+    <artifactId>jaxb-runtime</artifactId>
+    <version>2.3.8</version>
 </dependency>
 ```
 
@@ -86,71 +96,77 @@ CREATE TABLE t_order_1 (...);
 
 ### Application Configuration
 
-Configure sharding rules in your application properties:
+Configure Spring Boot to use the ShardingSphere JDBC driver:
 
 ```yaml
 # application.yml
 
 spring:
-  shardingsphere:
-    # Define data sources
-    datasource:
-      names: ds0,ds1
-      ds0:
-        type: com.zaxxer.hikari.HikariDataSource
-        driver-class-name: com.mysql.cj.jdbc.Driver
-        jdbc-url: jdbc:mysql://localhost:3306/ds_0?serverTimezone=UTC
-        username: root
-        password: ${DB_PASSWORD}
-      ds1:
-        type: com.zaxxer.hikari.HikariDataSource
-        driver-class-name: com.mysql.cj.jdbc.Driver
-        jdbc-url: jdbc:mysql://localhost:3307/ds_1?serverTimezone=UTC
-        username: root
-        password: ${DB_PASSWORD}
+  datasource:
+    driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
+    url: jdbc:shardingsphere:classpath:shardingsphere.yaml
+```
 
-    # Define sharding rules
-    rules:
-      sharding:
-        tables:
-          t_order:
-            # Specify actual data nodes (database.table combinations)
-            actual-data-nodes: ds$->{0..1}.t_order_$->{0..1}
-            # Database sharding strategy based on user_id
-            database-strategy:
-              standard:
-                sharding-column: user_id
-                sharding-algorithm-name: database-inline
-            # Table sharding strategy based on order_id
-            table-strategy:
-              standard:
-                sharding-column: order_id
-                sharding-algorithm-name: table-inline
-            # Key generation for order_id
-            key-generate-strategy:
-              column: order_id
-              key-generator-name: snowflake
+Then define the data sources and sharding rules in `src/main/resources/shardingsphere.yaml`:
 
-        # Define sharding algorithms
-        sharding-algorithms:
-          database-inline:
-            type: INLINE
-            props:
-              algorithm-expression: ds$->{user_id % 2}
-          table-inline:
-            type: INLINE
-            props:
-              algorithm-expression: t_order_$->{order_id % 2}
+```yaml
+# shardingsphere.yaml
 
-        # Define key generators
-        key-generators:
-          snowflake:
-            type: SNOWFLAKE
-            props:
-              worker-id: 1
+dataSources:
+  ds0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://localhost:3306/ds_0?serverTimezone=UTC
+    username: root
+    password: your_password
+  ds1:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://localhost:3307/ds_1?serverTimezone=UTC
+    username: root
+    password: your_password
 
-    props:
-      sql-show: true  # Log actual SQL for debugging
+rules:
+  - !SHARDING
+    tables:
+      t_order:
+        # Specify actual data nodes (database.table combinations)
+        actualDataNodes: ds$->{0..1}.t_order_$->{0..1}
+        # Database sharding strategy based on user_id
+        databaseStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: database-inline
+        # Table sharding strategy based on order_id
+        tableStrategy:
+          standard:
+            shardingColumn: order_id
+            shardingAlgorithmName: table-inline
+        # Key generation for order_id
+        keyGenerateStrategy:
+          column: order_id
+          keyGeneratorName: snowflake
+
+    # Define sharding algorithms
+    shardingAlgorithms:
+      database-inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds$->{user_id % 2}
+      table-inline:
+        type: INLINE
+        props:
+          algorithm-expression: t_order_$->{order_id % 2}
+
+    # Define key generators
+    keyGenerators:
+      snowflake:
+        type: SNOWFLAKE
+        props:
+          worker-id: 1
+
+props:
+  sql-show: true  # Log actual SQL for debugging
 ```
 
 ---
@@ -174,6 +190,7 @@ public class Order {
 
     @Id
     // Key is generated by ShardingSphere, not JPA
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "order_id")
     private Long orderId;
 
@@ -375,17 +392,15 @@ public class UserIdShardingAlgorithm implements StandardShardingAlgorithm<Long> 
 Register the custom algorithm:
 
 ```yaml
-# application.yml
-spring:
-  shardingsphere:
-    rules:
-      sharding:
-        sharding-algorithms:
-          user-custom:
-            type: CLASS_BASED
-            props:
-              strategy: STANDARD
-              algorithmClassName: com.example.sharding.UserIdShardingAlgorithm
+# shardingsphere.yaml
+rules:
+  - !SHARDING
+    shardingAlgorithms:
+      user-custom:
+        type: CLASS_BASED
+        props:
+          strategy: STANDARD
+          algorithmClassName: com.example.sharding.UserIdShardingAlgorithm
 ```
 
 ### Hint-Based Sharding
@@ -442,20 +457,19 @@ public class AdminOrderService {
 Some tables should exist in all shards with identical data. Use broadcast tables for reference data:
 
 ```yaml
-# application.yml
-spring:
-  shardingsphere:
-    rules:
-      sharding:
-        tables:
-          t_order:
-            # ... order sharding config
+# shardingsphere.yaml
+rules:
+  - !SHARDING
+    tables:
+      t_order:
+        # ... order sharding config
 
-        # Broadcast tables are replicated to all data sources
-        broadcast-tables:
-          - t_config
-          - t_country
-          - t_currency
+  # Broadcast tables are replicated to all data sources
+  - !BROADCAST
+    tables:
+      - t_config
+      - t_country
+      - t_currency
 ```
 
 ```java
@@ -495,49 +509,56 @@ Updates to broadcast tables are automatically applied to all shards.
 Add read replicas for each shard to scale read operations:
 
 ```yaml
-# application.yml
-spring:
-  shardingsphere:
-    datasource:
-      names: ds0_primary,ds0_replica,ds1_primary,ds1_replica
-      ds0_primary:
-        jdbc-url: jdbc:mysql://primary-0:3306/ds_0
-        # ... connection config
-      ds0_replica:
-        jdbc-url: jdbc:mysql://replica-0:3306/ds_0
-        # ... connection config
-      ds1_primary:
-        jdbc-url: jdbc:mysql://primary-1:3306/ds_1
-        # ... connection config
-      ds1_replica:
-        jdbc-url: jdbc:mysql://replica-1:3306/ds_1
-        # ... connection config
+# shardingsphere.yaml
+dataSources:
+  ds0_primary:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://primary-0:3306/ds_0
+    username: root
+    password: your_password
+  ds0_replica:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://replica-0:3306/ds_0
+    username: root
+    password: your_password
+  ds1_primary:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://primary-1:3306/ds_1
+    username: root
+    password: your_password
+  ds1_replica:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://replica-1:3306/ds_1
+    username: root
+    password: your_password
 
-    rules:
-      # Read-write splitting configuration
-      readwrite-splitting:
-        data-sources:
-          ds0:
-            static-strategy:
-              write-data-source-name: ds0_primary
-              read-data-source-names:
-                - ds0_replica
-            load-balancer-name: round-robin
-          ds1:
-            static-strategy:
-              write-data-source-name: ds1_primary
-              read-data-source-names:
-                - ds1_replica
-            load-balancer-name: round-robin
-        load-balancers:
-          round-robin:
-            type: ROUND_ROBIN
+rules:
+  # Read-write splitting configuration
+  - !READWRITE_SPLITTING
+    dataSources:
+      ds0:
+        writeDataSourceName: ds0_primary
+        readDataSourceNames:
+          - ds0_replica
+        loadBalancerName: round-robin
+      ds1:
+        writeDataSourceName: ds1_primary
+        readDataSourceNames:
+          - ds1_replica
+        loadBalancerName: round-robin
+    loadBalancers:
+      round-robin:
+        type: ROUND_ROBIN
 
-      # Sharding uses the logical data source names
-      sharding:
-        tables:
-          t_order:
-            actual-data-nodes: ds$->{0..1}.t_order_$->{0..1}
+  # Sharding uses the logical data source names
+  - !SHARDING
+    tables:
+      t_order:
+        actualDataNodes: ds$->{0..1}.t_order_$->{0..1}
 ```
 
 ---
@@ -547,6 +568,8 @@ spring:
 ### XA Transactions Across Shards
 
 Enable distributed transactions for operations spanning multiple shards:
+
+With ShardingSphere 5.4.1, use this XA setup with Spring Boot 2.x. The 5.4.1 documentation notes that XA distributed transactions are not ready for Spring Boot 3.
 
 ```xml
 <!-- pom.xml -->
@@ -563,15 +586,16 @@ Enable distributed transactions for operations spanning multiple shards:
 ```
 
 ```yaml
-# application.yml
-spring:
-  shardingsphere:
-    props:
-      xa-transaction-manager-type: Atomikos
+# shardingsphere.yaml
+transaction:
+  defaultType: XA
+  providerType: Atomikos
 ```
 
 ```java
 package com.example.service;
+
+import java.math.BigDecimal;
 
 import org.apache.shardingsphere.transaction.annotation.ShardingSphereTransactionType;
 import org.apache.shardingsphere.transaction.core.TransactionType;
@@ -611,43 +635,37 @@ public class TransferService {
 
 ### SQL Logging
 
-Enable SQL logging to see how queries are routed:
+Enable SQL logging in `shardingsphere.yaml` to see how queries are routed:
 
 ```yaml
-# application.yml
-spring:
-  shardingsphere:
-    props:
-      sql-show: true
-      sql-simple: false  # Show full SQL with parameters
+# shardingsphere.yaml
+props:
+  sql-show: true
 ```
 
 ### Metrics with Micrometer
 
-ShardingSphere exposes metrics that can be collected:
+Spring Boot Actuator and Micrometer can collect HikariCP connection pool metrics when Actuator is on the classpath:
 
-```java
-package com.example.config;
+```xml
+<!-- pom.xml -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-prometheus</artifactId>
+</dependency>
+```
 
-import io.micrometer.core.instrument.MeterRegistry;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-import javax.sql.DataSource;
-import com.zaxxer.hikari.HikariDataSource;
-
-@Configuration
-public class MetricsConfig {
-
-    // HikariCP automatically exposes connection pool metrics
-    // when Micrometer is on the classpath
-
-    @Bean
-    public DataSourceMetrics dataSourceMetrics(DataSource dataSource, MeterRegistry registry) {
-        // Additional custom metrics can be added here
-        return new DataSourceMetrics(dataSource, registry);
-    }
-}
+```yaml
+# application.yml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
 ```
 
 ---
@@ -667,7 +685,7 @@ public class MetricsConfig {
 
 Sharding-JDBC enables horizontal database scaling in Spring Boot applications without changing business code. Key takeaways:
 
-- Configure sharding rules declaratively in application properties
+- Configure sharding rules declaratively in ShardingSphere YAML
 - Use inline expressions for simple sharding strategies
 - Include sharding keys in queries for efficient routing
 - Broadcast tables replicate reference data across all shards
