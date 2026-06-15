@@ -109,12 +109,13 @@ http_requests_total{route="/users/{id}/orders/{orderId}"}
 ```yaml
 # Bad: Too many label dimensions
 http_requests_total{
-  method, status, path, instance, pod, node,
-  datacenter, region, az, version, build
+  method="GET", status="200", path="/users/123", instance="10.0.0.1:8080",
+  pod="api-7f8c9d", node="node-1", datacenter="dc1", region="us-east-1",
+  az="us-east-1a", version="1.2.3", build="abc123"
 }
 
 # Good: Keep only actionable dimensions
-http_requests_total{method, status, route, service}
+http_requests_total{method="GET", status="200", route="/users/{id}", service="api"}
 ```
 
 ## Cardinality Monitoring Architecture
@@ -169,8 +170,6 @@ http_requests = Counter(
 
 def normalize_path(path: str) -> str:
     """Convert dynamic path segments to placeholders."""
-    # Replace numeric IDs
-    path = re.sub(r'/\d+', '/{id}', path)
     # Replace UUIDs
     path = re.sub(
         r'/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
@@ -178,6 +177,8 @@ def normalize_path(path: str) -> str:
         path,
         flags=re.IGNORECASE
     )
+    # Replace numeric IDs
+    path = re.sub(r'/\d+(/|$)', r'/{id}\1', path)
     return path
 
 def record_request(method: str, path: str, status: int):
@@ -196,11 +197,13 @@ package main
 
 import (
     "regexp"
+    "strconv"
+
     "github.com/prometheus/client_golang/prometheus"
 )
 
 var (
-    idPattern   = regexp.MustCompile(`/\d+`)
+    idPattern   = regexp.MustCompile(`/\d+(/|$)`)
     uuidPattern = regexp.MustCompile(
         `/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`,
     )
@@ -215,14 +218,14 @@ var (
 )
 
 func normalizePath(path string) string {
-    path = idPattern.ReplaceAllString(path, "/{id}")
     path = uuidPattern.ReplaceAllString(path, "/{uuid}")
+    path = idPattern.ReplaceAllString(path, `/{id}$1`)
     return path
 }
 
 func recordRequest(method, path string, status int) {
     route := normalizePath(path)
-    httpRequests.WithLabelValues(method, route, string(status)).Inc()
+    httpRequests.WithLabelValues(method, route, strconv.Itoa(status)).Inc()
 }
 ```
 
@@ -242,59 +245,64 @@ scrape_configs:
         action: labeldrop
 
       # Drop labels matching a pattern
-      - source_labels: [__name__]
-        regex: 'http_.*'
-        action: keep
-      - regex: 'session_id'
+      - regex: 'session_.*'
         action: labeldrop
 ```
 
 ### Replace Dynamic Values
 
 ```yaml
-# prometheus.yml - Normalize label values
-metric_relabel_configs:
-  # Replace numeric IDs in path label
-  - source_labels: [path]
-    regex: '(.*/)\d+(.*)'
-    replacement: '${1}{id}${2}'
-    target_label: path
+# prometheus.yml - Normalize label values inside a scrape config
+scrape_configs:
+  - job_name: 'app'
+    static_configs:
+      - targets: ['app:9090']
+    metric_relabel_configs:
+      # Replace numeric IDs in path label
+      - source_labels: [path]
+        regex: '(.*/)\d+(.*)'
+        replacement: '${1}{id}${2}'
+        target_label: path
 
-  # Bucket status codes
-  - source_labels: [status_code]
-    regex: '2..'
-    replacement: '2xx'
-    target_label: status_class
-  - source_labels: [status_code]
-    regex: '4..'
-    replacement: '4xx'
-    target_label: status_class
-  - source_labels: [status_code]
-    regex: '5..'
-    replacement: '5xx'
-    target_label: status_class
+      # Add status class for aggregation
+      - source_labels: [status_code]
+        regex: '2..'
+        replacement: '2xx'
+        target_label: status_class
+      - source_labels: [status_code]
+        regex: '4..'
+        replacement: '4xx'
+        target_label: status_class
+      - source_labels: [status_code]
+        regex: '5..'
+        replacement: '5xx'
+        target_label: status_class
 ```
 
 ### Drop Entire Metrics
 
 ```yaml
-# prometheus.yml - Drop metrics with too many series
-metric_relabel_configs:
-  # Drop specific metrics
-  - source_labels: [__name__]
-    regex: 'high_cardinality_metric_.*'
-    action: drop
+# prometheus.yml - Drop metrics with too many series inside a scrape config
+scrape_configs:
+  - job_name: 'app'
+    static_configs:
+      - targets: ['app:9090']
+    metric_relabel_configs:
+      # Drop specific metrics
+      - source_labels: [__name__]
+        regex: 'high_cardinality_metric_.*'
+        action: drop
 
-  # Drop metrics with specific label values
-  - source_labels: [__name__, environment]
-    regex: 'debug_.*;development'
-    action: drop
+      # Drop metrics with specific label values
+      - source_labels: [__name__, environment]
+        regex: 'debug_.*;development'
+        action: drop
 ```
 
-### Aggregate Before Storage
+### Aggregate After Ingestion
 
 ```yaml
-# recording_rules.yml - Aggregate high-cardinality metrics
+# recording_rules.yml - Aggregate high-cardinality metrics for dashboards
 groups:
   - name: cardinality_reduction
     interval: 1m
@@ -305,9 +313,6 @@ groups:
           sum by (service, method, status) (
             rate(http_requests_total[5m])
           )
-
-      # Drop instance-level after aggregation
-      # Then drop the original in scrape config
 ```
 
 ## Setting Cardinality Limits
