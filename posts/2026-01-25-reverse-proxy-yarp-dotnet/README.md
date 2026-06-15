@@ -218,8 +218,7 @@ YARP provides powerful request and response transformation capabilities.
       },
       "Transforms": [
         { "PathRemovePrefix": "/api" },
-        { "RequestHeader": "X-Forwarded-Host", "Append": "{Host}" },
-        { "RequestHeader": "X-Request-Id", "Set": "{Random}" },
+        { "RequestHeader": "X-Proxy-Server", "Set": "YARP" },
         { "ResponseHeader": "X-Proxy-Server", "Set": "YARP", "When": "Always" }
       ]
     }
@@ -248,7 +247,7 @@ public class TenantTransformProvider : ITransformProvider
     public void Apply(TransformBuilderContext context)
     {
         // Add tenant ID header based on subdomain
-        context.AddRequestTransform(async transformContext =>
+        context.AddRequestTransform(transformContext =>
         {
             var host = transformContext.HttpContext.Request.Host.Host;
             var tenantId = ExtractTenantFromHost(host);
@@ -257,10 +256,12 @@ public class TenantTransformProvider : ITransformProvider
             {
                 transformContext.ProxyRequest.Headers.Add("X-Tenant-Id", tenantId);
             }
+
+            return default;
         });
 
         // Add response timing header
-        context.AddResponseTransform(async transformContext =>
+        context.AddResponseTransform(transformContext =>
         {
             var startTime = transformContext.HttpContext.Items["RequestStartTime"] as DateTime?;
             if (startTime.HasValue)
@@ -269,10 +270,12 @@ public class TenantTransformProvider : ITransformProvider
                 transformContext.HttpContext.Response.Headers["X-Response-Time"] =
                     $"{elapsed.TotalMilliseconds:F2}ms";
             }
+
+            return default;
         });
     }
 
-    private string ExtractTenantFromHost(string host)
+    private string? ExtractTenantFromHost(string host)
     {
         var parts = host.Split('.');
         return parts.Length > 2 ? parts[0] : null;
@@ -280,12 +283,14 @@ public class TenantTransformProvider : ITransformProvider
 }
 
 // Register the transform provider
-builder.Services.AddSingleton<ITransformProvider, TenantTransformProvider>();
+builder.Services.AddReverseProxy()
+    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
+    .AddTransforms<TenantTransformProvider>();
 ```
 
 ## Health Checks
 
-YARP integrates with ASP.NET Core health checks to monitor backend destinations:
+YARP provides active and passive destination health checks to monitor backend destinations:
 
 ```json
 {
@@ -307,8 +312,7 @@ YARP integrates with ASP.NET Core health checks to monitor backend destinations:
       },
       "Destinations": {
         "server-1": {
-          "Address": "https://server1:8080/",
-          "Health": "https://server1:8080/health"
+          "Address": "https://server1:8080/"
         }
       }
     }
@@ -322,14 +326,24 @@ YARP integrates with ASP.NET Core health checks to monitor backend destinations:
 // CustomHealthCheckPolicy.cs
 public class CustomHealthCheckPolicy : IActiveHealthCheckPolicy
 {
+    private readonly IDestinationHealthUpdater _healthUpdater;
+
+    public CustomHealthCheckPolicy(IDestinationHealthUpdater healthUpdater)
+    {
+        _healthUpdater = healthUpdater;
+    }
+
     public string Name => "CustomHealthCheck";
 
     public void ProbingCompleted(
         ClusterState cluster,
         IReadOnlyList<DestinationProbingResult> probingResults)
     {
-        foreach (var result in probingResults)
+        var newHealthStates = new NewActiveDestinationHealth[probingResults.Count];
+
+        for (var i = 0; i < probingResults.Count; i++)
         {
+            var result = probingResults[i];
             DestinationHealth health;
 
             if (result.Response == null)
@@ -339,7 +353,7 @@ public class CustomHealthCheckPolicy : IActiveHealthCheckPolicy
             else if (result.Response.StatusCode == HttpStatusCode.OK)
             {
                 // Check response body for detailed health status
-                var content = result.Response.Content.ReadAsStringAsync().Result;
+                var content = result.Response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
                 health = content.Contains("\"status\":\"healthy\"")
                     ? DestinationHealth.Healthy
                     : DestinationHealth.Unhealthy;
@@ -349,10 +363,15 @@ public class CustomHealthCheckPolicy : IActiveHealthCheckPolicy
                 health = DestinationHealth.Unhealthy;
             }
 
-            result.Destination.Health.Active = health;
+            newHealthStates[i] = new NewActiveDestinationHealth(result.Destination, health);
         }
+
+        _healthUpdater.SetActive(cluster, newHealthStates);
     }
 }
+
+// Register the policy and set "Policy": "CustomHealthCheck" in the cluster's Active health check configuration.
+builder.Services.AddSingleton<IActiveHealthCheckPolicy, CustomHealthCheckPolicy>();
 ```
 
 ## Authentication and Authorization
@@ -383,26 +402,8 @@ var app = builder.Build();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Apply authorization to specific routes
-app.MapReverseProxy(proxyPipeline =>
-{
-    proxyPipeline.Use(async (context, next) =>
-    {
-        // Custom middleware before proxying
-        var route = context.GetReverseProxyFeature().Route;
-
-        if (route.Config.Metadata?.ContainsKey("RequireAuth") == true)
-        {
-            if (!context.User.Identity?.IsAuthenticated == true)
-            {
-                context.Response.StatusCode = 401;
-                return;
-            }
-        }
-
-        await next();
-    });
-});
+// Apply authorization to proxy routes
+app.MapReverseProxy().RequireAuthorization("ApiAccess");
 ```
 
 ## Rate Limiting
@@ -448,7 +449,7 @@ For scenarios where routes and clusters change at runtime, use a custom configur
 public class DynamicProxyConfigProvider : IProxyConfigProvider
 {
     private readonly IDbContext _dbContext;
-    private volatile IProxyConfig _config;
+    private volatile DynamicProxyConfig _config;
 
     public DynamicProxyConfigProvider(IDbContext dbContext)
     {
@@ -464,10 +465,10 @@ public class DynamicProxyConfigProvider : IProxyConfigProvider
         _config = LoadConfig();
 
         // Signal configuration change
-        oldConfig.ChangeToken.OnChange(() => { });
+        oldConfig.SignalChange();
     }
 
-    private IProxyConfig LoadConfig()
+    private DynamicProxyConfig LoadConfig()
     {
         var routes = _dbContext.ProxyRoutes
             .Select(r => new RouteConfig
@@ -488,7 +489,31 @@ public class DynamicProxyConfigProvider : IProxyConfigProvider
             })
             .ToList();
 
-        return new InMemoryProxyConfig(routes, clusters);
+        return new DynamicProxyConfig(routes, clusters);
+    }
+
+    private sealed class DynamicProxyConfig : IProxyConfig
+    {
+        private readonly CancellationTokenSource _changeToken = new();
+
+        public DynamicProxyConfig(
+            IReadOnlyList<RouteConfig> routes,
+            IReadOnlyList<ClusterConfig> clusters)
+        {
+            Routes = routes;
+            Clusters = clusters;
+        }
+
+        public IReadOnlyList<RouteConfig> Routes { get; }
+
+        public IReadOnlyList<ClusterConfig> Clusters { get; }
+
+        public IChangeToken ChangeToken => new CancellationChangeToken(_changeToken.Token);
+
+        public void SignalChange()
+        {
+            _changeToken.Cancel();
+        }
     }
 }
 ```
