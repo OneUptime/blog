@@ -54,12 +54,12 @@ GROUP BY region;
 Hash aggregation builds an in-memory hash table and is faster when the number of groups is small relative to work_mem. Sort aggregation sorts the data first and is better when data is already sorted or when there are many groups.
 
 ```sql
--- Force hash aggregation (for testing)
+-- Encourage hash aggregation (for testing)
 SET enable_sort = off;
 EXPLAIN SELECT region, SUM(revenue) FROM sales GROUP BY region;
 RESET enable_sort;
 
--- Force sort aggregation (for testing)
+-- Disable hash aggregation to test a sort-based plan
 SET enable_hashagg = off;
 EXPLAIN SELECT region, SUM(revenue) FROM sales GROUP BY region;
 RESET enable_hashagg;
@@ -170,8 +170,9 @@ SELECT
 FROM sales
 GROUP BY region, DATE_TRUNC('month', sale_date);
 
--- Create index on the materialized view
-CREATE INDEX idx_regional_summary_region ON regional_sales_summary (region);
+-- Create a unique index required for concurrent refresh
+CREATE UNIQUE INDEX idx_regional_summary_unique
+ON regional_sales_summary (region, month);
 
 -- Query the materialized view (instant results)
 SELECT region, SUM(total_revenue) AS yearly_revenue
@@ -212,7 +213,7 @@ PostgreSQL can parallelize aggregations on large tables.
 SHOW max_parallel_workers_per_gather;
 SHOW parallel_tuple_cost;
 
--- Force parallel execution for testing
+-- Lower parallel costs to encourage parallel execution for testing
 SET parallel_tuple_cost = 0;
 SET parallel_setup_cost = 0;
 
@@ -231,7 +232,7 @@ RESET parallel_setup_cost;
 Several patterns hurt GROUP BY performance.
 
 ```sql
--- SLOW: Function on grouped column prevents index use
+-- SLOW: Function on grouped column prevents a plain region index from helping
 SELECT UPPER(region) AS region_upper, SUM(revenue)
 FROM sales
 GROUP BY UPPER(region);
@@ -264,16 +265,13 @@ For continuously growing data, maintain summary tables.
 ```sql
 -- Create a summary table
 CREATE TABLE sales_daily_summary (
-    summary_date DATE PRIMARY KEY,
-    region VARCHAR(50),
+    summary_date DATE NOT NULL,
+    region VARCHAR(50) NOT NULL,
     total_transactions INTEGER,
     total_revenue DECIMAL(12,2),
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (summary_date, region)
 );
-
--- Create unique constraint for upsert
-CREATE UNIQUE INDEX idx_daily_summary_unique
-ON sales_daily_summary (summary_date, region);
 
 -- Insert or update daily summaries
 INSERT INTO sales_daily_summary (summary_date, region, total_transactions, total_revenue)
@@ -302,7 +300,7 @@ FROM sales
 GROUP BY region
 HAVING SUM(revenue) > 100000;
 
--- Alternative: Filter with subquery (sometimes faster)
+-- Equivalent: Filter the aggregate result in a subquery and compare plans
 SELECT * FROM (
     SELECT region, SUM(revenue) AS total
     FROM sales
