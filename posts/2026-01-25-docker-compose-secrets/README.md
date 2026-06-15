@@ -8,14 +8,14 @@ Description: Securely manage sensitive data in Docker Compose using secrets for 
 
 ---
 
-Environment variables are convenient but risky for secrets. They appear in process listings, logs, and container inspect output. Docker Compose secrets provide a more secure way to pass sensitive data to containers through in-memory filesystems.
+Environment variables are convenient but risky for secrets. They can appear in process environments, logs, and container inspect output. Docker Compose secrets provide a more secure way to pass sensitive data to containers as files.
 
 ## How Docker Secrets Work
 
 Secrets are mounted as files inside containers at `/run/secrets/<secret_name>`. They are:
-- Stored in memory (tmpfs), not on disk
+- Mounted as read-only files; Swarm secrets use an in-memory filesystem, while local file-backed Compose secrets are bind-mounted from the host
 - Only accessible to services that explicitly request them
-- Not visible in `docker inspect` or container logs
+- Not exposed as environment variable values in `docker inspect` or container logs
 
 ```mermaid
 graph LR
@@ -33,8 +33,6 @@ graph LR
 Define secrets from files:
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapp:latest
@@ -140,8 +138,6 @@ func readSecret(name string) string {
 Many official Docker images support the `_FILE` suffix convention:
 
 ```yaml
-version: '3.8'
-
 services:
   database:
     image: postgres:15
@@ -169,8 +165,6 @@ secrets:
 For CI/CD pipelines, create secrets from environment variables:
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapp:latest
@@ -193,8 +187,6 @@ docker compose up
 In Docker Swarm, secrets can be managed externally:
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapp:latest
@@ -223,24 +215,22 @@ docker secret ls
 Control how secrets appear in containers:
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapp:latest
     secrets:
       - source: db_password
         target: database_password    # Custom filename
-        uid: '1000'                  # Owner UID
-        gid: '1000'                  # Owner GID
-        mode: 0400                   # File permissions
+        uid: '1000'                  # Owner UID (ignored for local file-backed secrets)
+        gid: '1000'                  # Owner GID (ignored for local file-backed secrets)
+        mode: 0400                   # File permissions (ignored for local file-backed secrets)
 
 secrets:
   db_password:
     file: ./secrets/db_password.txt
 ```
 
-The secret appears at `/run/secrets/database_password` with the specified permissions.
+The secret appears at `/run/secrets/database_password`. For local file-backed Compose secrets, set ownership and permissions on the source file because `uid`, `gid`, and `mode` are ignored; these fields are honored for Docker Compose secrets sourced from environment variables and for Swarm secrets.
 
 ## Secrets with Multiple Environments
 
@@ -248,8 +238,6 @@ Manage different secrets for different environments:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   api:
     image: myapp:latest
@@ -278,8 +266,8 @@ secrets:
 # Development
 docker compose up
 
-# Production
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up
+# Production with Swarm-managed external secrets
+docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml myapp
 ```
 
 ## Generating Secrets Securely
@@ -304,18 +292,14 @@ openssl req -x509 -nodes -days 365 \
 Using secrets for certificates:
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
     secrets:
       - source: tls_cert
         target: /etc/nginx/ssl/tls.crt
-        mode: 0444
       - source: tls_key
         target: /etc/nginx/ssl/tls.key
-        mode: 0400
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
 
@@ -383,8 +367,6 @@ When to use each:
 ## Complete Production Example
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapp:latest
@@ -394,10 +376,8 @@ services:
       - jwt_secret
       - source: tls_cert
         target: /app/certs/server.crt
-        mode: 0444
       - source: tls_key
         target: /app/certs/server.key
-        mode: 0400
     environment:
       # Non-sensitive configuration
       - NODE_ENV=production
@@ -476,4 +456,4 @@ volumes:
 
 ---
 
-Docker Compose secrets keep sensitive data out of environment variables, image layers, and process listings. Read secrets from files in your application, use the `_FILE` convention where supported, and never commit secret files to version control. For production deployments with Docker Swarm, external secrets provide centralized management with encryption at rest.
+Docker Compose secrets keep sensitive data out of environment variable values, image layers, and command lines. Read secrets from files in your application, use the `_FILE` convention where supported, and never commit secret files to version control. For production deployments with Docker Swarm, external secrets provide centralized management with encryption at rest.
