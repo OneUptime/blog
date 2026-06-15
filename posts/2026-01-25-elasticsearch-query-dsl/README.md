@@ -25,8 +25,30 @@ Let's create sample data to work with:
 
 ```bash
 # Create a sample index with products
+curl -X PUT "localhost:9200/products" -H 'Content-Type: application/json' -d'
+{
+  "mappings": {
+    "properties": {
+      "name": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword"
+          }
+        }
+      },
+      "description": { "type": "text" },
+      "price": { "type": "float" },
+      "category": { "type": "keyword" },
+      "brand": { "type": "keyword" },
+      "rating": { "type": "float" },
+      "in_stock": { "type": "boolean" },
+      "created_at": { "type": "date" }
+    }
+  }
+}'
 
-curl -X POST "localhost:9200/products/_bulk" -H 'Content-Type: application/json' -d'
+curl -X POST "localhost:9200/products/_bulk?refresh=true" -H 'Content-Type: application/x-ndjson' --data-binary '
 {"index": {"_id": "1"}}
 {"name": "iPhone 15 Pro", "description": "Latest Apple smartphone with A17 chip", "price": 999, "category": "electronics", "brand": "Apple", "rating": 4.8, "in_stock": true, "created_at": "2024-09-22"}
 {"index": {"_id": "2"}}
@@ -61,7 +83,7 @@ graph LR
 ```
 
 - **Query context**: Calculates relevance scores. Use for full-text search.
-- **Filter context**: Binary yes/no matching. Use for exact matching, ranges, and existence checks. Filters are cached and faster.
+- **Filter context**: Binary yes/no matching. Use for exact matching, ranges, and existence checks. Frequently used filters can be cached and are often faster.
 
 ---
 
@@ -228,7 +250,7 @@ curl -X GET "localhost:9200/products/_search?pretty" -H 'Content-Type: applicati
 {
   "query": {
     "prefix": {
-      "name": {
+      "name.keyword": {
         "value": "Mac"
       }
     }
@@ -240,7 +262,7 @@ curl -X GET "localhost:9200/products/_search?pretty" -H 'Content-Type: applicati
 {
   "query": {
     "wildcard": {
-      "name": {
+      "name.keyword": {
         "value": "*Pro*"
       }
     }
@@ -557,7 +579,7 @@ Here's a helper class to build queries programmatically:
 
 ```python
 from elasticsearch import Elasticsearch
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 class QueryBuilder:
     def __init__(self):
@@ -627,6 +649,25 @@ class QueryBuilder:
                     "boost": boost
                 }
             }
+        })
+        return self
+
+    def should_range(self, field: str, gte=None, lte=None, gt=None, lt=None,
+                     boost: float = 1.0):
+        """Add a should range for optional boosting"""
+        range_params = {}
+        if gte is not None:
+            range_params["gte"] = gte
+        if lte is not None:
+            range_params["lte"] = lte
+        if gt is not None:
+            range_params["gt"] = gt
+        if lt is not None:
+            range_params["lt"] = lt
+        range_params["boost"] = boost
+
+        self.query["bool"]["should"].append({
+            "range": {field: range_params}
         })
         return self
 
@@ -704,7 +745,7 @@ def search_products(es: Elasticsearch, search_term: str, category: str = None,
         builder.filter_term("category", category)
 
     # Price range filter
-    if min_price or max_price:
+    if min_price is not None or max_price is not None:
         builder.filter_range("price", gte=min_price, lte=max_price)
 
     # Stock filter
@@ -712,7 +753,7 @@ def search_products(es: Elasticsearch, search_term: str, category: str = None,
         builder.filter_term("in_stock", True)
 
     # Boost high-rated products
-    builder.should_term("rating", 4.5, boost=1.5)
+    builder.should_range("rating", gte=4.5, boost=1.5)
 
     # Sort by relevance, then rating
     builder.order_by("_score", "desc")
@@ -731,7 +772,7 @@ def search_products(es: Elasticsearch, search_term: str, category: str = None,
 
 # Run a search
 if __name__ == "__main__":
-    es = Elasticsearch(["localhost:9200"])
+    es = Elasticsearch("http://localhost:9200")
 
     results = search_products(
         es,
@@ -750,7 +791,7 @@ if __name__ == "__main__":
 ## Best Practices
 
 **Use filters for exact matches:**
-Filters are cached and don't calculate scores, making them faster for exact value matching.
+Frequently used filters can be cached and don't calculate scores, making them faster for exact value matching.
 
 **Avoid wildcard queries on large datasets:**
 Leading wildcards (`*term`) are especially expensive as they scan the entire index.
