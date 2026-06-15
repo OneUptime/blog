@@ -159,7 +159,7 @@ For truly massive inserts, consider using database-specific bulk loading mechani
 
 A single-threaded step is often enough for jobs that need to run nightly. But when you need to process millions of records in minutes rather than hours, Spring Batch offers several scaling options.
 
-The simplest is multi-threaded step execution. Each chunk is processed by a different thread from a pool.
+The simplest is multi-threaded step execution. The step uses a task executor to do work concurrently, with the actual concurrency bounded by the executor configuration and any pooled resources such as database connections.
 
 ```java
 @Bean
@@ -175,7 +175,6 @@ public Step parallelStep(JobRepository jobRepository,
             .processor(processor)
             .writer(writer)
             .taskExecutor(taskExecutor)
-            .throttleLimit(8) // Max concurrent chunks
             .build();
 }
 
@@ -190,7 +189,7 @@ public TaskExecutor taskExecutor() {
 }
 ```
 
-There is a catch: your reader must be thread-safe. The paging reader is inherently thread-safe because each page query is independent. Cursor-based readers are not, since multiple threads would fight over the same cursor. Wrap non-thread-safe readers with `SynchronizedItemStreamReader` if needed.
+There is a catch: any component invoked concurrently must be thread-safe. In current Spring Batch, adding a `TaskExecutor` makes the processor run concurrently while reading and writing are still done serially. If you use a reader in a multi-threaded client, check its contract carefully. The `JdbcPagingItemReader` can be used between calls to `open`, but you should set `saveState(false)` for multi-threaded use, which means no restart state is saved for that reader. Cursor-based readers are not suitable for shared concurrent reads, since multiple threads would fight over the same cursor. Wrap non-thread-safe readers with `SynchronizedItemStreamReader` only when serializing access is acceptable.
 
 For even larger scale, use partitioning. The job splits the dataset into independent partitions, and each partition runs as a separate step instance. Partitions can run on different threads, processes, or even different machines.
 
@@ -210,7 +209,7 @@ public Step partitionedStep(JobRepository jobRepository,
 
 @Bean
 public Partitioner rangePartitioner(DataSource dataSource) {
-    // Partition by ID ranges
+    // Partition by ID ranges using an application-provided Partitioner implementation
     ColumnRangePartitioner partitioner = new ColumnRangePartitioner();
     partitioner.setColumn("id");
     partitioner.setTable("users");
