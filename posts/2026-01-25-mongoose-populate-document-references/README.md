@@ -8,7 +8,7 @@ Description: Master Mongoose populate to efficiently query related documents, ha
 
 ---
 
-MongoDB is a document database, not a relational one. But real applications need relationships between data. Mongoose populate lets you reference documents in other collections and fetch them in a single query. Think of it as MongoDB's version of SQL joins, though it works differently under the hood.
+MongoDB is a document database, not a relational one. But real applications need relationships between data. Mongoose populate lets you reference documents in other collections and fetch them without writing separate lookup code. Think of it as MongoDB's version of SQL joins, though it works differently under the hood.
 
 ## Understanding Document References
 
@@ -172,7 +172,7 @@ const posts = await Post.find()
 // Filter them out if needed
 const postsWithActiveAuthors = posts.filter(post => post.author !== null);
 
-// Populate with sorting and limiting
+// Populate with sorting and limiting, assuming User has a posts ref array or virtual
 const user = await User.findById(userId)
     .populate({
         path: 'posts',
@@ -246,7 +246,7 @@ posts.forEach(post => {
     }
 });
 
-// Use a pre-find middleware to auto-filter
+// Use a pre-find middleware to auto-populate
 postSchema.pre(/^find/, function(next) {
     this.populate({
         path: 'author',
@@ -365,7 +365,7 @@ async function getBlogData() {
             path: 'posts',
             match: { published: true },
             options: { sort: { createdAt: -1 }, limit: 5 },
-            select: 'title createdAt'
+            select: 'title createdAt author'
         });
 
     // Get published posts with author details
