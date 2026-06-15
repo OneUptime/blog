@@ -67,7 +67,7 @@ kubectl apply -f repo-secret.yaml
 ### GitHub Personal Access Token
 
 1. Go to GitHub Settings > Developer settings > Personal access tokens
-2. Generate a new token with `repo` scope
+2. Generate a classic token with `repo` scope, or a fine-grained token with read access to repository contents
 3. Use the token as the password
 
 ```yaml
@@ -142,8 +142,10 @@ ArgoCD validates SSH host keys. Add trusted hosts:
 # Get GitHub's host key
 ssh-keyscan github.com >> known_hosts
 
-# Add to ArgoCD ConfigMap
-kubectl edit configmap argocd-ssh-known-hosts-cm -n argocd
+# Add to ArgoCD ConfigMap under the ssh_known_hosts key
+kubectl create configmap argocd-ssh-known-hosts-cm -n argocd \
+  --from-file=ssh_known_hosts=known_hosts \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 Or include in the secret:
@@ -368,6 +370,9 @@ kind: ConfigMap
 metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
 data:
   git.internal.example.com: |
     -----BEGIN CERTIFICATE-----
@@ -404,10 +409,7 @@ kubectl apply -f repo-secret.yaml
 
 ```bash
 # Test repository connection
-argocd repo add https://github.com/myorg/myrepo.git \
-  --username git \
-  --password token \
-  --dry-run
+argocd repo get https://github.com/myorg/myrepo.git --refresh hard
 ```
 
 ### Check Repo Server Logs
@@ -455,15 +457,16 @@ url: https://github.com/myorg
 
 ```bash
 # Script to rotate tokens
-for secret in $(kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repo-creds -o name); do
+for secret in $(kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repo-creds -o jsonpath='{range .items[?(@.data.password)]}{.metadata.name}{"\n"}{end}'); do
   # Update with new token
-  kubectl patch $secret -n argocd --type='json' -p='[{"op":"replace","path":"/stringData/password","value":"new-token"}]'
+  encoded=$(printf '%s' 'new-token' | base64 | tr -d '\n')
+  kubectl patch secret "$secret" -n argocd --type='json' -p="[{\"op\":\"replace\",\"path\":\"/data/password\",\"value\":\"$encoded\"}]"
 done
 ```
 
 ### Use Least Privilege
 
-- GitHub tokens: only `repo` scope needed
+- GitHub tokens: for classic PATs, use `repo` for private repositories; for fine-grained PATs, grant read access to repository contents
 - Deploy keys: read-only unless write-back needed
 - GitHub Apps: minimal permissions
 
