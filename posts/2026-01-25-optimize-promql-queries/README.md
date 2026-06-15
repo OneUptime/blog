@@ -96,9 +96,9 @@ http_requests_total{method=~"GET|POST|PUT|DELETE|PATCH"}
 
 ## Optimizing Aggregations
 
-### Aggregate Before Functions
+### Pre-Aggregate Repeated Work
 
-Apply aggregations early to reduce the number of series processed:
+For counters, apply `rate()` before aggregating so Prometheus can detect counter resets correctly. Use recording rules when the resulting aggregation is expensive and reused often:
 
 ```promql
 # Inefficient: rate() on many series, then sum
@@ -302,16 +302,16 @@ max_over_time(
 max_over_time(job:http_requests:rate5m[1d])
 ```
 
-### Anti-Pattern 4: Using count() Instead of Aggregation
+### Anti-Pattern 4: Confusing count() and group()
 
 ```promql
-# Inefficient for counting series
+# Correct: count series
 count(up{job="api"})
 
-# Use group() for presence checks
+# Correct: group() normalizes matching series to value 1
 group(up{job="api"})
 
-# Or count with proper aggregation
+# Count with proper aggregation
 count by (job) (up)
 ```
 
@@ -359,12 +359,12 @@ sum(rate(http_requests_total[5m]))
 Use the Prometheus expression browser to analyze queries:
 
 ```bash
-# Check query duration via API
+# Check result series count via API
 curl -g 'http://prometheus:9090/api/v1/query?query=sum(rate(http_requests_total[5m]))' \
   | jq '.data.result | length'
 
-# Get query stats (Prometheus 2.25+)
-curl -g 'http://prometheus:9090/api/v1/query?query=sum(rate(http_requests_total[5m]))&stats=true' \
+# Get query stats
+curl -g 'http://prometheus:9090/api/v1/query?query=sum(rate(http_requests_total[5m]))&stats=all' \
   | jq '.data.stats'
 ```
 
@@ -415,10 +415,9 @@ sum(rate(http_requests_total{job="api"}[5m]))
 sum(rate(http_requests_total{status=~"5.."}[5m])) /
 sum(rate(http_requests_total[5m]))
 
-# After: Single query with conditional
-sum(rate(http_requests_total{status=~"5.."}[5m])) /
-sum(rate(http_requests_total[5m]))
-# Or use recording rules for both numerator and denominator
+# After: use recording rules for both numerator and denominator
+sum(job:http_errors:rate5m) /
+sum(job:http_requests:rate5m)
 
 # Example 3: Percentile calculation
 # Before: Full histogram computation
