@@ -143,6 +143,7 @@ Sometimes you want routing decisions based on more than just percentages. Featur
 package main
 
 import (
+    "hash/fnv"
     "net/http"
     "strings"
     "sync"
@@ -201,6 +202,12 @@ func (ffr *FeatureFlagRouter) isInternalRequest(r *http.Request) bool {
            r.Header.Get("X-Internal-Request") == "true"
 }
 
+func (ffr *FeatureFlagRouter) hashToBucket(s string) int {
+    h := fnv.New32a()
+    h.Write([]byte(s))
+    return int(h.Sum32() % 100)
+}
+
 // Runtime flag updates
 func (ffr *FeatureFlagRouter) SetFlag(name string, value bool) {
     ffr.mu.Lock()
@@ -225,7 +232,9 @@ Traffic migration should automatically stop routing to a failing service. Add he
 package main
 
 import (
+    "math/rand"
     "net/http"
+    "net/http/httputil"
     "sync/atomic"
     "time"
 )
@@ -278,6 +287,14 @@ func (hr *HealthAwareRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 Here's a complete example tying everything together with an admin API for runtime control:
 
 ```go
+package main
+
+import (
+    "fmt"
+    "net/http"
+    "strconv"
+)
+
 func main() {
     router, _ := NewWeightedRouter(
         "http://service-v1:8080",
