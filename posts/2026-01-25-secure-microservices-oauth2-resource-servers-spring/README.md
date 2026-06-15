@@ -8,7 +8,7 @@ Description: Learn how to configure Spring Boot microservices as OAuth2 resource
 
 ---
 
-When building microservices, every service needs to verify that incoming requests are authorized. Rather than having each service manage its own authentication, OAuth2 resource servers let you delegate token validation to a central authorization server while keeping authorization decisions local. This guide walks through implementing OAuth2 resource server security in Spring Boot.
+When building microservices, every service needs to verify that incoming requests are authorized. Rather than having each service manage its own authentication, OAuth2 resource servers let you delegate authentication and token issuance to a central authorization server while keeping token validation and authorization decisions local. This guide walks through implementing OAuth2 resource server security in Spring Boot.
 
 ---
 
@@ -50,6 +50,13 @@ For Maven:
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-security</artifactId>
     </dependency>
+
+    <!-- Spring Security test support for MockMvc JWT testing -->
+    <dependency>
+        <groupId>org.springframework.security</groupId>
+        <artifactId>spring-security-test</artifactId>
+        <scope>test</scope>
+    </dependency>
 </dependencies>
 ```
 
@@ -60,6 +67,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
     implementation 'org.springframework.boot:spring-boot-starter-security'
+    testImplementation 'org.springframework.security:spring-security-test'
 }
 ```
 
@@ -78,7 +86,7 @@ spring:
       resourceserver:
         jwt:
           # The JWKS URI where public keys are published for token verification
-          jwks-uri: https://auth.example.com/.well-known/jwks.json
+          jwk-set-uri: https://auth.example.com/.well-known/jwks.json
 ```
 
 With this configuration, Spring Security will automatically:
@@ -99,10 +107,13 @@ package com.example.orderservice.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
@@ -129,12 +140,12 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
 
                 // Read operations require the 'read' scope
-                .requestMatchers("GET", "/api/orders/**").hasAuthority("SCOPE_read")
+                .requestMatchers(HttpMethod.GET, "/api/orders/**").hasAuthority("SCOPE_read")
 
                 // Write operations require the 'write' scope
-                .requestMatchers("POST", "/api/orders/**").hasAuthority("SCOPE_write")
-                .requestMatchers("PUT", "/api/orders/**").hasAuthority("SCOPE_write")
-                .requestMatchers("DELETE", "/api/orders/**").hasAuthority("SCOPE_write")
+                .requestMatchers(HttpMethod.POST, "/api/orders/**").hasAuthority("SCOPE_write")
+                .requestMatchers(HttpMethod.PUT, "/api/orders/**").hasAuthority("SCOPE_write")
+                .requestMatchers(HttpMethod.DELETE, "/api/orders/**").hasAuthority("SCOPE_write")
 
                 // Everything else requires authentication
                 .anyRequest().authenticated()
@@ -282,6 +293,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/orders")
 public class OrderController {
@@ -370,11 +383,12 @@ public class OrderSecurity {
 Beyond signature validation, you often need to verify specific claims like audience, issuer, or custom business rules.
 
 ```java
-// JwtClaimValidator.java
+// JwtValidationConfig.java
 package com.example.orderservice.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jwt.*;
@@ -393,7 +407,7 @@ public class JwtValidationConfig {
 
         // Chain multiple validators together
         OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(
-            // Validate timestamp claims (exp, nbf, iat)
+            // Validate standard JWT claims, including timestamp claims such as exp and nbf
             JwtValidators.createDefault(),
 
             // Validate issuer matches your authorization server
@@ -442,44 +456,70 @@ public class JwtValidationConfig {
 
 ## Handling Token Validation Errors
 
-Provide clear error responses when token validation fails. This helps API consumers understand what went wrong.
+Provide clear error responses when token validation fails. Since authentication and authorization failures happen in the Spring Security filter chain, configure an authentication entry point and access denied handler instead of relying on `@ExceptionHandler`.
 
 ```java
-// SecurityExceptionHandler.java
+// SecurityErrorHandlers.java
 package com.example.orderservice.config;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.access.AccessDeniedHandler;
 
 import java.time.Instant;
 import java.util.Map;
 
-@RestControllerAdvice
-public class SecurityExceptionHandler {
+@Configuration
+public class SecurityErrorHandlers {
 
-    @ExceptionHandler(InvalidBearerTokenException.class)
-    @ResponseStatus(HttpStatus.UNAUTHORIZED)
-    public Map<String, Object> handleInvalidToken(InvalidBearerTokenException ex) {
-        return Map.of(
-            "error", "invalid_token",
-            "message", "The access token is invalid or expired",
-            "timestamp", Instant.now().toString()
-        );
+    @Bean
+    public AuthenticationEntryPoint authenticationEntryPoint(ObjectMapper objectMapper) {
+        return (request, response, authException) -> {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            objectMapper.writeValue(response.getOutputStream(), Map.of(
+                "error", "invalid_token",
+                "message", "The access token is missing, invalid, or expired",
+                "timestamp", Instant.now().toString()
+            ));
+        };
     }
 
-    @ExceptionHandler(AccessDeniedException.class)
-    @ResponseStatus(HttpStatus.FORBIDDEN)
-    public Map<String, Object> handleAccessDenied(AccessDeniedException ex) {
-        return Map.of(
-            "error", "insufficient_scope",
-            "message", "You do not have permission to access this resource",
-            "timestamp", Instant.now().toString()
-        );
+    @Bean
+    public AccessDeniedHandler accessDeniedHandler(ObjectMapper objectMapper) {
+        return (request, response, accessDeniedException) -> {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            objectMapper.writeValue(response.getOutputStream(), Map.of(
+                "error", "insufficient_scope",
+                "message", "You do not have permission to access this resource",
+                "timestamp", Instant.now().toString()
+            ));
+        };
     }
+}
+```
+
+Then inject the handlers into your `SecurityFilterChain` bean and wire them into exception handling:
+
+```java
+@Bean
+public SecurityFilterChain securityFilterChain(
+        HttpSecurity http,
+        AuthenticationEntryPoint authenticationEntryPoint,
+        AccessDeniedHandler accessDeniedHandler) throws Exception {
+
+    http.exceptionHandling(exceptions -> exceptions
+        .authenticationEntryPoint(authenticationEntryPoint)
+        .accessDeniedHandler(accessDeniedHandler)
+    );
+
+    // Keep the rest of your security configuration here
+    return http.build();
 }
 ```
 
@@ -493,20 +533,31 @@ Spring Security provides test utilities for simulating authenticated requests.
 // OrderControllerTest.java
 package com.example.orderservice.controller;
 
+import com.example.orderservice.config.SecurityConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(OrderController.class)
+@Import(SecurityConfig.class)
 class OrderControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @MockitoBean
+    private OrderService orderService;
+
+    @MockitoBean
+    private JwtDecoder jwtDecoder;
 
     @Test
     void listOrders_withValidToken_returnsOrders() throws Exception {
