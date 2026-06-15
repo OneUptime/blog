@@ -17,10 +17,10 @@ Node.js is excellent at handling application logic and I/O operations, but it ha
 | Task | Node.js Alone | Node.js + Nginx |
 |------|---------------|-----------------|
 | Static files | Slow, uses app resources | Fast, separate process |
-| SSL termination | CPU intensive | Hardware accelerated |
+| SSL termination | CPU intensive | Handled by reverse proxy |
 | Load balancing | Manual implementation | Built-in feature |
 | Connection pooling | Limited | Thousands easily |
-| DDoS protection | Vulnerable | Rate limiting built-in |
+| Traffic abuse protection | App handles it | Rate limiting built-in |
 
 ## Basic Nginx Configuration
 
@@ -62,7 +62,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # Disable buffering for real-time applications
+        # Bypass cache for WebSocket upgrade requests
         proxy_cache_bypass $http_upgrade;
     }
 }
@@ -105,7 +105,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name myapp.com www.myapp.com;
 
     # SSL certificate paths (added by Certbot)
@@ -148,12 +149,13 @@ upstream nodejs_cluster {
     server 127.0.0.1:3001 weight=2;
     server 127.0.0.1:3002 weight=1;
 
-    # Health check settings
-    keepalive 64;  # Keep connections alive for better performance
+    # Reuse idle upstream connections for better performance
+    keepalive 64;
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name myapp.com;
 
     ssl_certificate /etc/letsencrypt/live/myapp.com/fullchain.pem;
@@ -162,8 +164,7 @@ server {
     location / {
         proxy_pass http://nodejs_cluster;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -172,16 +173,18 @@ server {
 }
 ```
 
-Start multiple Node.js instances using PM2:
+Start multiple Node.js instances using PM2, assuming your app reads `PORT` from the environment:
 
 ```bash
 # Install PM2 globally
 npm install -g pm2
 
-# Start 3 instances of your app
-pm2 start app.js -i 3 --name "myapp"
+# Start 3 app processes on the ports configured in the upstream block
+PORT=3000 pm2 start app.js --name "myapp-3000"
+PORT=3001 pm2 start app.js --name "myapp-3001"
+PORT=3002 pm2 start app.js --name "myapp-3002"
 
-# Or use cluster mode to match CPU cores
+# Or use cluster mode to match CPU cores, then proxy to one port
 pm2 start app.js -i max --name "myapp"
 ```
 
@@ -191,7 +194,8 @@ Let Nginx handle static files instead of Node.js:
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name myapp.com;
 
     ssl_certificate /etc/letsencrypt/live/myapp.com/fullchain.pem;
@@ -280,7 +284,8 @@ limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
 limit_req_zone $binary_remote_addr zone=login_limit:10m rate=1r/s;
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name myapp.com;
 
     # Apply rate limiting to API endpoints
@@ -349,7 +354,7 @@ app.get('/health', (req, res) => {
 });
 ```
 
-Configure Nginx to use it (Nginx Plus feature, or use upstream with passive checks):
+Use it from Nginx Plus active checks or external monitoring. With open source Nginx, use upstream passive checks:
 
 ```nginx
 upstream nodejs_cluster {
