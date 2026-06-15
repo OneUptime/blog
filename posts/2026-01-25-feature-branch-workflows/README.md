@@ -92,7 +92,7 @@ jobs:
       - name: Check branch name
         run: |
           BRANCH_NAME="${GITHUB_REF#refs/heads/}"
-          PATTERN="^(feature|fix|bugfix|hotfix|chore|refactor|release|experiment|spike)\/[a-z0-9-]+$"
+          PATTERN="^(feature|fix|bugfix|hotfix|chore|refactor|release|experiment|spike)\/[a-z0-9][a-z0-9.-]*$"
 
           if [[ ! $BRANCH_NAME =~ $PATTERN ]]; then
             echo "Invalid branch name: $BRANCH_NAME"
@@ -151,8 +151,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          cutoff=$(date -d "3 days ago" +%s)
+
           # Get all feature branches older than 3 days
           for branch in $(git branch -r --no-merged origin/main | grep "origin/feature/" | sed 's/origin\///'); do
+            branch_date=$(git log -1 --format=%ct origin/$branch)
+            if [[ $branch_date -ge $cutoff ]]; then
+              echo "Skipping recent branch: $branch"
+              continue
+            fi
+
             echo "Checking $branch..."
 
             # Try to merge main
@@ -245,9 +253,14 @@ Configure via GitHub CLI:
 # Set up branch protection
 gh api repos/{owner}/{repo}/branches/main/protection \
   --method PUT \
-  --field required_status_checks='{"strict":true,"contexts":["lint","test","build"]}' \
+  --field 'required_status_checks[strict]=true' \
+  --field 'required_status_checks[contexts][]=lint' \
+  --field 'required_status_checks[contexts][]=test' \
+  --field 'required_status_checks[contexts][]=build' \
   --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":1,"dismiss_stale_reviews":true}' \
+  --field 'required_pull_request_reviews[required_approving_review_count]=1' \
+  --field 'required_pull_request_reviews[dismiss_stale_reviews]=true' \
+  --field required_linear_history=true \
   --field restrictions=null
 ```
 
@@ -323,7 +336,7 @@ If a branch will take longer than a week:
 When features take weeks, use feature flags to merge incrementally:
 
 ```typescript
-// src/features/flags.ts
+// src/features/flags.tsx
 export const featureFlags = {
   newCheckoutFlow: process.env.ENABLE_NEW_CHECKOUT === 'true',
   betaSearch: process.env.ENABLE_BETA_SEARCH === 'true',
@@ -403,10 +416,17 @@ jobs:
         with:
           script: |
             const branch = context.payload.pull_request.head.ref;
+            const headRepo = context.payload.pull_request.head.repo;
+
+            if (headRepo.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+              console.log(`Skipping branch from fork: ${headRepo.full_name}:${branch}`);
+              return;
+            }
 
             // Don't delete protected branches
-            const protected = ['main', 'develop', 'release'];
-            if (protected.includes(branch)) {
+            const protectedBranches = ['main', 'develop'];
+            const protectedPrefixes = ['release/'];
+            if (protectedBranches.includes(branch) || protectedPrefixes.some(prefix => branch.startsWith(prefix))) {
               console.log(`Skipping protected branch: ${branch}`);
               return;
             }
