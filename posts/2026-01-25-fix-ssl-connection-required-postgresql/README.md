@@ -39,7 +39,7 @@ PostgreSQL supports several SSL connection modes:
 | `disable` | Never use SSL | None |
 | `allow` | Try non-SSL first, then SSL | None |
 | `prefer` | Try SSL first, then non-SSL (default) | None |
-| `require` | Always use SSL | None |
+| `require` | Always use SSL | None by default |
 | `verify-ca` | Require SSL, verify server CA | CA certificate |
 | `verify-full` | Require SSL, verify CA and hostname | CA + hostname |
 
@@ -102,12 +102,12 @@ conn = psycopg2.connect(
 const { Pool } = require('pg');
 
 // Method 1: Connection string
-const pool = new Pool({
+const poolFromUrl = new Pool({
   connectionString: 'postgresql://user:pass@host:5432/db?sslmode=require'
 });
 
 // Method 2: Configuration object
-const pool = new Pool({
+const verifiedPool = new Pool({
   host: 'host.example.com',
   database: 'mydb',
   user: 'myuser',
@@ -119,7 +119,7 @@ const pool = new Pool({
 
 // Method 3: With custom CA certificate
 const fs = require('fs');
-const pool = new Pool({
+const caPool = new Pool({
   host: 'host.example.com',
   database: 'mydb',
   user: 'myuser',
@@ -131,7 +131,7 @@ const pool = new Pool({
 });
 
 // Method 4: Disable certificate verification (not recommended for production)
-const pool = new Pool({
+const insecurePool = new Pool({
   connectionString: 'postgresql://user:pass@host:5432/db',
   ssl: {
     rejectUnauthorized: false
@@ -143,14 +143,14 @@ const pool = new Pool({
 
 ```java
 // Connection string with SSL
-String url = "jdbc:postgresql://host:5432/mydb?sslmode=require";
-Connection conn = DriverManager.getConnection(url, "user", "password");
+String sslUrl = "jdbc:postgresql://host:5432/mydb?sslmode=require";
+Connection sslConn = DriverManager.getConnection(sslUrl, "user", "password");
 
 // With certificate verification
-String url = "jdbc:postgresql://host:5432/mydb" +
+String verifiedUrl = "jdbc:postgresql://host:5432/mydb" +
     "?sslmode=verify-full" +
     "&sslrootcert=/path/to/ca-certificate.crt";
-Connection conn = DriverManager.getConnection(url, "user", "password");
+Connection verifiedConn = DriverManager.getConnection(verifiedUrl, "user", "password");
 
 // Using Properties
 Properties props = new Properties();
@@ -158,7 +158,7 @@ props.setProperty("user", "myuser");
 props.setProperty("password", "mypassword");
 props.setProperty("ssl", "true");
 props.setProperty("sslmode", "require");
-Connection conn = DriverManager.getConnection(
+Connection propsConn = DriverManager.getConnection(
     "jdbc:postgresql://host:5432/mydb", props
 );
 ```
@@ -177,10 +177,18 @@ func main() {
     // Connection string with SSL
     connStr := "host=host.example.com user=myuser password=mypass dbname=mydb sslmode=require"
     db, err := sql.Open("postgres", connStr)
+    if err != nil {
+        panic(err)
+    }
+    defer db.Close()
 
     // With certificate verification
-    connStr := "host=host.example.com user=myuser password=mypass dbname=mydb sslmode=verify-full sslrootcert=/path/to/ca.crt"
-    db, err := sql.Open("postgres", connStr)
+    verifiedConnStr := "host=host.example.com user=myuser password=mypass dbname=mydb sslmode=verify-full sslrootcert=/path/to/ca.crt"
+    verifiedDB, err := sql.Open("postgres", verifiedConnStr)
+    if err != nil {
+        panic(err)
+    }
+    defer verifiedDB.Close()
 }
 ```
 
@@ -375,11 +383,14 @@ postgresql://user:pass@x.x.x.x:5432/mydb?sslmode=verify-ca&sslrootcert=server-ca
 ### Azure Database for PostgreSQL
 
 ```bash
-# Download Azure CA certificate
-wget https://www.digicert.com/CACerts/BaltimoreCyberTrustRoot.crt.pem
+# Download and combine the current Azure root CA certificates
+wget https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem
+wget "https://www.microsoft.com/pkiops/certs/Microsoft%20RSA%20Root%20Certificate%20Authority%202017.crt"
+cat DigiCertGlobalRootG2.crt.pem \
+    "Microsoft RSA Root Certificate Authority 2017.crt" > azure-postgresql-root-ca.pem
 
 # Connection string
-postgresql://user@myserver:pass@myserver.postgres.database.azure.com:5432/mydb?sslmode=require
+postgresql://user:pass@myserver.postgres.database.azure.com:5432/mydb?sslmode=verify-full&sslrootcert=azure-postgresql-root-ca.pem
 ```
 
 ### DigitalOcean Managed Database
