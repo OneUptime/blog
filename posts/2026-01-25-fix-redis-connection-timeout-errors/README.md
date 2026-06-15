@@ -15,7 +15,7 @@ Connection timeout errors are among the most frustrating Redis issues because th
 A connection timeout happens when your client cannot establish or maintain a connection to Redis within the expected time. There are two main types:
 
 1. **Connect timeout** - Cannot establish initial connection
-2. **Socket timeout** - Connection drops during an operation
+2. **Socket timeout** - No response is received within the configured read/write timeout during an operation
 
 ```python
 # Example error in Python
@@ -78,14 +78,14 @@ If Redis is bound to 127.0.0.1, it will not accept external connections:
 ```bash
 # In redis.conf, change:
 bind 127.0.0.1
-# To:
-bind 0.0.0.0
-# Or specific interface:
+# To a specific private interface:
 bind 192.168.1.100
 
 # Then restart Redis
 systemctl restart redis
 ```
+
+Avoid binding Redis to `0.0.0.0` unless access is restricted with protected mode, authentication/ACLs, and firewall or security group rules.
 
 ### 2. Connection Pool Exhaustion
 
@@ -119,13 +119,14 @@ r = redis.Redis(connection_pool=pool)
 // Node.js with ioredis
 const Redis = require('ioredis');
 
+// ioredis normally uses one shared connection rather than a connection pool.
 const redis = new Redis({
   host: 'redis-host',
   port: 6379,
   maxRetriesPerRequest: 3,
   connectTimeout: 10000,
   commandTimeout: 5000,
-  // Connection pool settings
+  // Socket settings
   family: 4,
   keepAlive: 10000,
   noDelay: true
@@ -144,11 +145,12 @@ redis-cli INFO clients
 
 # If close to maxclients, increase it:
 redis-cli CONFIG SET maxclients 20000
+# Also update redis.conf or run CONFIG REWRITE so the change survives restart
 ```
 
 ### 3. Slow Commands Blocking Server
 
-A slow command blocks the single-threaded Redis server, causing other operations to time out.
+A slow command can block Redis command execution, causing other operations to time out.
 
 **Symptoms:**
 - Sporadic timeouts
@@ -212,6 +214,9 @@ Configure on the client side:
 
 ```python
 # Python
+import redis
+import socket
+
 r = redis.Redis(
     host='redis-host',
     port=6379,
@@ -247,9 +252,11 @@ redis-cli INFO memory
 # If memory is tight, either:
 # 1. Increase maxmemory
 redis-cli CONFIG SET maxmemory 8gb
+# Also update redis.conf or run CONFIG REWRITE so the change survives restart
 
 # 2. Or set appropriate eviction policy
 redis-cli CONFIG SET maxmemory-policy allkeys-lru
+# Also update redis.conf or run CONFIG REWRITE so the change survives restart
 ```
 
 ### 6. DNS Resolution Delays
@@ -332,20 +339,30 @@ redis.on('connect', () => {
 ### Java (Jedis)
 
 ```java
-JedisPoolConfig poolConfig = new JedisPoolConfig();
+import java.time.Duration;
+import redis.clients.jedis.ConnectionPoolConfig;
+import redis.clients.jedis.DefaultJedisClientConfig;
+import redis.clients.jedis.JedisClientConfig;
+import redis.clients.jedis.RedisClient;
+
+ConnectionPoolConfig poolConfig = new ConnectionPoolConfig();
 poolConfig.setMaxTotal(50);
 poolConfig.setMaxIdle(10);
 poolConfig.setMinIdle(5);
 poolConfig.setTestOnBorrow(true);
 poolConfig.setTestWhileIdle(true);
-poolConfig.setMaxWaitMillis(5000);
+poolConfig.setMaxWait(Duration.ofSeconds(5));
 
-JedisPool pool = new JedisPool(
-    poolConfig,
-    "redis-host",
-    6379,
-    5000  // Connection timeout
-);
+JedisClientConfig clientConfig = DefaultJedisClientConfig.builder()
+    .connectionTimeoutMillis(5000)
+    .socketTimeoutMillis(5000)
+    .build();
+
+RedisClient jedis = RedisClient.builder()
+    .hostAndPort("redis-host", 6379)
+    .clientConfig(clientConfig)
+    .poolConfig(poolConfig)
+    .build();
 ```
 
 ## Monitoring and Alerting
@@ -355,6 +372,9 @@ Set up proactive monitoring to catch timeout issues early:
 ```python
 import time
 import redis
+
+def send_alert(message):
+    print(message)
 
 def health_check(redis_client):
     """Perform Redis health check with timing."""
