@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Lazy_static, Static, Initialization, Configuration
 
-Description: Learn how to use lazy_static and once_cell for runtime-initialized global variables in Rust. This guide covers static initialization, thread safety, and best practices.
+Description: Learn how to use lazy_static, OnceLock, and OnceCell for runtime-initialized global variables in Rust. This guide covers static initialization, thread safety, and best practices.
 
 ---
 
-Rust's static variables must be initialized with constant expressions, which limits their usefulness for complex data. The lazy_static crate and the standard library's once_cell module allow you to initialize statics at runtime while maintaining thread safety.
+Rust's static variables must be initialized with constant expressions, which limits their usefulness for complex data. The lazy_static crate and standard library types like OnceLock allow you to initialize statics at runtime while maintaining thread safety.
 
 ## The Problem with Static Initialization
 
@@ -24,7 +24,7 @@ static NUMBERS: [i32; 3] = [1, 2, 3];
 
 // This also does NOT work
 // static CONFIG: HashMap<String, String> = HashMap::new();
-// error: HashMap::new is not a const fn (until recent Rust versions)
+// error: HashMap::new normally cannot be used in const or static initializers
 
 fn main() {
     println!("{:?}", NUMBERS);
@@ -95,9 +95,9 @@ fn main() {
 }
 ```
 
-## Using once_cell (Standard Library)
+## Using OnceLock and OnceCell (Standard Library)
 
-Modern Rust includes once_cell in the standard library (stabilized in Rust 1.70+).
+Modern Rust includes OnceLock and OnceCell in the standard library (stabilized in Rust 1.70+).
 
 ```rust
 use std::sync::OnceLock;
@@ -385,7 +385,7 @@ lazy_static! {
     // Pre-computed lookup tables
     static ref FIBONACCI: Vec<u64> = {
         let mut fib = vec![0, 1];
-        for i in 2..100 {
+        for i in 2..94 {
             fib.push(fib[i - 1] + fib[i - 2]);
         }
         fib
