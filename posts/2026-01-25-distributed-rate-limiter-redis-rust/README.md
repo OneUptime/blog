@@ -8,7 +8,7 @@ Description: A hands-on guide to building a production-ready distributed rate li
 
 ---
 
-Rate limiting is one of those problems that seems simple until you need it to work across multiple servers. A single-instance rate limiter is straightforward, but once you scale horizontally, you need shared state. Redis is the natural choice here because it is fast, supports atomic operations, and handles the coordination problem for you. This guide walks through building a distributed rate limiter in Rust that can handle millions of requests.
+Rate limiting is one of those problems that seems simple until you need it to work across multiple servers. A single-instance rate limiter is straightforward, but once you scale horizontally, you need shared state. Redis is the natural choice here because it is fast, supports atomic operations, and handles the coordination problem for you. This guide walks through building a distributed rate limiter in Rust for high-throughput APIs.
 
 ## Why Redis for Distributed Rate Limiting?
 
@@ -39,9 +39,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
-tokio = { version = "1.35", features = ["full"] }
-thiserror = "1.0"
+redis = { version = "1.2", features = ["tokio-comp", "connection-manager"] }
+tokio = { version = "1", features = ["full"] }
+thiserror = "2"
+axum = "0.8"
 ```
 
 ## The Sliding Window Algorithm
@@ -61,7 +62,7 @@ If you are 30 seconds into a 60-second window, the previous window counts for 50
 Let's define the types and error handling:
 
 ```rust
-use redis::{AsyncCommands, Client, Script};
+use redis::{Client, Script};
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
@@ -216,15 +217,16 @@ For real applications, you will want middleware that integrates with your web fr
 
 ```rust
 use axum::{
+    extract::Request,
     extract::State,
-    http::{Request, StatusCode},
+    http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use std::sync::Arc;
 
 // Extract client identifier from request - customize based on your needs
-fn get_client_id<Bd>(req: &Request<Bd>) -> String {
+fn get_client_id(req: &Request) -> String {
     // Try API key header first
     if let Some(api_key) = req.headers().get("X-API-Key") {
         if let Ok(key) = api_key.to_str() {
@@ -241,10 +243,10 @@ fn get_client_id<Bd>(req: &Request<Bd>) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-pub async fn rate_limit_middleware<Bd>(
+pub async fn rate_limit_middleware(
     State(limiter): State<Arc<RateLimiter>>,
-    req: Request<Bd>,
-    next: Next<Bd>,
+    req: Request,
+    next: Next,
 ) -> Response {
     let client_id = get_client_id(&req);
 
@@ -257,7 +259,7 @@ pub async fn rate_limit_middleware<Bd>(
                         ("X-RateLimit-Limit", limiter.config.max_requests.to_string()),
                         ("X-RateLimit-Remaining", "0".to_string()),
                         ("X-RateLimit-Reset", result.reset_at.to_string()),
-                        ("Retry-After", (result.reset_at - current_timestamp()).to_string()),
+                        ("Retry-After", result.reset_at.saturating_sub(current_timestamp()).to_string()),
                     ],
                     "Rate limit exceeded",
                 ).into_response();
@@ -290,9 +292,9 @@ fn current_timestamp() -> u64 {
 }
 ```
 
-## Connection Pooling for High Throughput
+## Connection Reuse for High Throughput
 
-For production workloads, you want connection pooling. The `redis` crate's `ConnectionManager` handles this:
+For production workloads, you want to reuse async connections and handle reconnects. The `redis` crate's `ConnectionManager` wraps a multiplexed connection and reconnects automatically after connection errors:
 
 ```rust
 use redis::aio::ConnectionManager;
@@ -321,7 +323,7 @@ impl PooledRateLimiter {
     }
 
     pub async fn check(&self, identifier: &str) -> Result<RateLimitResult, RateLimitError> {
-        // Clone is cheap - ConnectionManager uses Arc internally
+        // Clone is cheap - requests share the same underlying connection
         let mut conn = self.conn_manager.clone();
 
         // Rest of the implementation is the same
@@ -428,7 +430,7 @@ async fn test_rate_limiting() {
 
 A few things to keep in mind when deploying:
 
-**Redis Cluster** - If you use Redis Cluster, all keys for a given client must hash to the same slot. Use hash tags: `{user:123}:ratelimit:window`.
+**Redis Cluster** - If you use Redis Cluster, all keys used by the Lua script for a given client must hash to the same slot. Use the same hash tag in both window keys, such as `ratelimit:{user:123}:current` and `ratelimit:{user:123}:previous`.
 
 **Failover Strategy** - Decide whether to fail open (allow requests when Redis is down) or fail closed (block all requests). Most APIs fail open to maintain availability.
 
@@ -444,7 +446,7 @@ The key points:
 
 - Use Lua scripts for atomic increment and check operations
 - Sliding window prevents the double-burst problem at window boundaries
-- Connection pooling is essential for high throughput
+- Reusing async Redis connections is essential for high throughput
 - Always fail gracefully when Redis is unavailable
 
-This pattern scales to millions of requests per second with proper Redis configuration and is battle-tested in production systems worldwide.
+This pattern can handle high request volumes with proper Redis configuration and is battle-tested in production systems worldwide.
