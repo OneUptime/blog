@@ -136,7 +136,7 @@ def batch_operations():
 def pipeline_context_manager():
     """
     Use pipeline as a context manager for cleaner code.
-    Execute is called automatically when exiting the block.
+    Call execute() before exiting the block; the context manager cleans up the pipeline.
     """
     with r.pipeline() as pipe:
         pipe.set('counter', 0)
@@ -156,7 +156,8 @@ def pipeline_context_manager():
 def pipeline_with_transaction():
     """
     Pipeline with transaction=True (default) wraps commands in MULTI/EXEC.
-    This ensures atomicity - all commands succeed or none do.
+    This ensures commands execute in order without interleaving from other clients.
+    Redis does not roll back successful commands if a later command fails at runtime.
     """
     with r.pipeline(transaction=True) as pipe:
         pipe.set('balance:checking', 1000)
@@ -416,7 +417,7 @@ class UserCache:
             pipe.execute()
 
     def increment_visit_counts(self, user_ids):
-        """Increment visit count for multiple users atomically."""
+        """Increment visit count for multiple users in one transaction."""
         with self.r.pipeline() as pipe:
             for uid in user_ids:
                 pipe.hincrby(f"user:{uid}", 'visits', 1)
