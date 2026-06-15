@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, FluentValidation, Validation, ASP.NET Core
 
-Description: Learn how to implement request validation in .NET using FluentValidation. This guide covers basic validators, custom rules, conditional validation, and automatic integration with ASP.
+Description: Learn how to implement request validation in .NET using FluentValidation. This guide covers basic validators, custom rules, conditional validation, and automatic integration with ASP.NET Core.
 
 ---
 
@@ -27,20 +27,21 @@ Install the NuGet packages:
 
 ```bash
 dotnet add package FluentValidation
-dotnet add package FluentValidation.AspNetCore
+dotnet add package FluentValidation.DependencyInjectionExtensions
 ```
 
 Register FluentValidation in `Program.cs`:
 
 ```csharp
 using FluentValidation;
+using FluentValidation.DependencyInjectionExtensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Register all validators from the assembly
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 
-// Add controllers with automatic validation
+// Add controllers
 builder.Services.AddControllers();
 
 var app = builder.Build();
@@ -168,6 +169,7 @@ Create a validation filter for automatic handling:
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.Extensions.DependencyInjection;
 
 public class ValidationFilter : IAsyncActionFilter
 {
