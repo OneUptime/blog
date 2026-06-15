@@ -204,11 +204,11 @@ LATERAL enables calculations that depend on previous rows without window functio
 SELECT
     o.id,
     o.order_date,
-    o.amount,
+    o.total_amount,
     running.total
 FROM orders o
 CROSS JOIN LATERAL (
-    SELECT SUM(amount) AS total
+    SELECT SUM(total_amount) AS total
     FROM orders
     WHERE order_date <= o.order_date
 ) running
@@ -218,8 +218,8 @@ ORDER BY o.order_date;
 SELECT
     id,
     order_date,
-    amount,
-    SUM(amount) OVER (ORDER BY order_date) AS total
+    total_amount,
+    SUM(total_amount) OVER (ORDER BY order_date) AS total
 FROM orders
 ORDER BY order_date;
 ```
