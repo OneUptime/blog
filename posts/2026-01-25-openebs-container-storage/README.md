@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenEBS, Kubernetes, Storage, CSI, DevOps
 
-Description: A practical guide to deploying OpenEBS for container-native storage in Kubernetes, covering Mayastor, cStor, and LocalPV engines, with installation steps and use case recommendations.
+Description: A practical guide to deploying OpenEBS for container-native storage in Kubernetes, covering Replicated PV Mayastor and LocalPV engines, with installation steps and use case recommendations.
 
 ---
 
-OpenEBS is a container-native storage solution that turns your Kubernetes nodes into a distributed storage system. Unlike traditional storage arrays, OpenEBS runs entirely in userspace as containers, providing different storage engines optimized for various workloads. Whether you need fast local volumes for single-node performance or replicated pools for high availability, OpenEBS has an engine for the job.
+OpenEBS is a container-native storage solution that turns storage attached to your Kubernetes nodes into Local or Replicated Persistent Volumes. Unlike traditional storage arrays, OpenEBS data engines and control plane run as Kubernetes-managed services, providing different storage engines optimized for various workloads. Whether you need fast local volumes for single-node performance or replicated pools for high availability, OpenEBS has an engine for the job.
 
 This guide covers the major OpenEBS engines, installation procedures, and practical configurations for common scenarios.
 
@@ -16,8 +16,8 @@ This guide covers the major OpenEBS engines, installation procedures, and practi
 
 OpenEBS solves storage challenges with flexibility:
 
-1. **Multiple engines:** Choose between LocalPV, cStor, Jiva, and Mayastor based on your requirements.
-2. **Container-native:** Runs as pods on your cluster, no kernel modules or dedicated storage servers required.
+1. **Multiple engines:** Choose between LocalPV Hostpath, LocalPV LVM, LocalPV ZFS, and Replicated PV Mayastor based on your requirements.
+2. **Container-native:** Runs as pods on your cluster, with host prerequisites depending on the engine.
 3. **Per-workload control:** Different applications can use different storage backends in the same cluster.
 4. **CNCF project:** Active community with regular releases and enterprise support options.
 
@@ -29,46 +29,42 @@ The tradeoff is complexity. You become the integrator, selecting and tuning engi
 flowchart TD
     A[OpenEBS] --> B[LocalPV]
     A --> C[Mayastor]
-    A --> D[cStor]
-    A --> E[Jiva]
 
     B --> F[Hostpath: Simple local storage]
-    B --> G[Device: Dedicated block devices]
+    B --> G[LVM: LVM-backed local volumes]
     B --> H[ZFS: ZFS-backed local volumes]
-    B --> I[LVM: LVM-backed local volumes]
 
     C --> J[NVMe-over-TCP replicated storage]
-    D --> K[iSCSI-based replicated pools]
-    E --> L[Simple replicated volumes]
 ```
 
 **LocalPV:** Best for workloads that handle replication themselves (databases with native clustering). Provides raw disk performance.
 
-**Mayastor:** The modern choice for replicated block storage. Uses NVMe-over-TCP for high performance. Requires NVMe-capable hardware.
+**Mayastor:** The current replicated block storage engine. Uses NVMe-over-TCP for high performance and requires nodes with the `nvme-tcp` kernel module and huge pages configured.
 
-**cStor:** Mature replicated storage with ZFS-like features (snapshots, clones, compression). Good for general-purpose HA storage.
+**LocalPV LVM:** Local volumes backed by preconfigured LVM volume groups, useful when you want resizing and better disk abstraction.
 
-**Jiva:** Simplest replicated engine. Good for development but not recommended for high-performance production workloads.
+**LocalPV ZFS:** Local volumes backed by ZFS pools, useful when you want ZFS features such as snapshots and compression.
 
 ## Prerequisites
 
 Before installing OpenEBS, ensure your cluster meets these requirements:
 
 ```bash
-# Check Kubernetes version (1.21+ required)
+# Check Kubernetes version (OpenEBS 4.x requires Kubernetes 1.23+)
 
-kubectl version --short
+kubectl version
 
-# Verify iSCSI is installed (required for cStor/Jiva)
-# Ubuntu/Debian
-sudo apt install -y open-iscsi
-sudo systemctl enable --now iscsid
+# For LocalPV LVM, install LVM utilities and create a volume group on storage nodes
+sudo apt install -y lvm2
+sudo pvcreate /dev/sdb
+sudo vgcreate lvmvg /dev/sdb
 
-# RHEL/CentOS
-sudo dnf install -y iscsi-initiator-utils
-sudo systemctl enable --now iscsid
+# For LocalPV ZFS, install ZFS utilities and create a zpool on storage nodes
+sudo apt install -y zfsutils-linux
+sudo zpool create zfspv-pool /dev/sdc
 
-# For Mayastor, verify hugepages support
+# For Mayastor, verify NVMe-TCP and hugepages support
+sudo modprobe nvme-tcp
 grep HugePages /proc/meminfo
 # If not configured:
 echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
@@ -80,36 +76,33 @@ Install the OpenEBS operator using Helm:
 
 ```bash
 # Add OpenEBS Helm repository
-helm repo add openebs https://openebs.github.io/charts
+helm repo add openebs https://openebs.github.io/openebs
 helm repo update
 
-# Install OpenEBS with LocalPV and cStor
+# Install OpenEBS with LocalPV and Replicated PV Mayastor
 helm install openebs openebs/openebs \
     --namespace openebs \
-    --create-namespace \
-    --set cstor.enabled=true \
-    --set mayastor.enabled=false
+    --create-namespace
 
 # Wait for pods to be ready
 kubectl -n openebs get pods -w
 
 # Verify installation
-kubectl get storageclass | grep openebs
+kubectl get storageclass
 ```
 
-For Mayastor (high-performance option):
+For local-only clusters without Replicated PV Mayastor:
 
 ```bash
 helm install openebs openebs/openebs \
     --namespace openebs \
     --create-namespace \
-    --set mayastor.enabled=true \
-    --set cstor.enabled=false
+    --set engines.replicated.mayastor.enabled=false
 ```
 
 ## Configuring LocalPV
 
-LocalPV is the simplest option for local storage. It creates directories or uses dedicated devices on nodes.
+LocalPV is the simplest option for local storage. It creates directories or uses host-managed LVM/ZFS storage on nodes.
 
 ### LocalPV Hostpath
 
@@ -131,26 +124,23 @@ volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 ```
 
-### LocalPV Device
+### LocalPV LVM
 
-For dedicated block devices:
+For LVM-backed local volumes:
 
 ```yaml
-# storageclass-localpv-device.yaml
+# storageclass-localpv-lvm.yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: openebs-device
-  annotations:
-    openebs.io/cas-type: local
-    cas.openebs.io/config: |
-      - name: StorageType
-        value: "device"
-      - name: FSType
-        value: "ext4"
-provisioner: openebs.io/local
+  name: openebs-lvmpv
+parameters:
+  storage: "lvm"
+  volgroup: "lvmvg"
+provisioner: local.csi.openebs.io
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
+allowVolumeExpansion: true
 ```
 
 Use LocalPV in a deployment:
@@ -199,71 +189,34 @@ spec:
             claimName: redis-data
 ```
 
-## Configuring cStor Pools
+## Configuring LocalPV ZFS
 
-cStor provides replicated storage using a pool of block devices across nodes.
+LocalPV ZFS provides local volumes from ZFS pools that already exist on the nodes.
 
-First, identify available block devices:
+First, create the ZFS pool on each node that should provide ZFS-backed volumes:
 
 ```bash
-# List block devices on nodes
-kubectl get blockdevices -n openebs
-
-# Output shows device paths and states:
-# NAME                                           NODENAME    SIZE          CLAIMSTATE   STATUS
-# blockdevice-abc123...                          worker-01   107374182400  Unclaimed    Active
-# blockdevice-def456...                          worker-02   107374182400  Unclaimed    Active
-# blockdevice-ghi789...                          worker-03   107374182400  Unclaimed    Active
+sudo zpool create zfspv-pool /dev/sdc
+zpool status
 ```
 
-Create a cStor pool cluster:
+Create a StorageClass for ZFS:
 
 ```yaml
-# cstor-pool-cluster.yaml
-apiVersion: cstor.openebs.io/v1
-kind: CStorPoolCluster
-metadata:
-  name: cstor-disk-pool
-  namespace: openebs
-spec:
-  pools:
-    - nodeSelector:
-        kubernetes.io/hostname: "worker-01"
-      dataRaidGroups:
-        - blockDevices:
-            - blockDeviceName: "blockdevice-abc123"
-      poolConfig:
-        dataRaidGroupType: "stripe"
-    - nodeSelector:
-        kubernetes.io/hostname: "worker-02"
-      dataRaidGroups:
-        - blockDevices:
-            - blockDeviceName: "blockdevice-def456"
-      poolConfig:
-        dataRaidGroupType: "stripe"
-    - nodeSelector:
-        kubernetes.io/hostname: "worker-03"
-      dataRaidGroups:
-        - blockDevices:
-            - blockDeviceName: "blockdevice-ghi789"
-      poolConfig:
-        dataRaidGroupType: "stripe"
-```
-
-Create a StorageClass for cStor:
-
-```yaml
-# cstor-storageclass.yaml
+# zfs-storageclass.yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: cstor-replicated
-provisioner: cstor.csi.openebs.io
+  name: openebs-zfspv
 allowVolumeExpansion: true
 parameters:
-  cas-type: cstor
-  cstorPoolCluster: cstor-disk-pool
-  replicaCount: "3"
+  recordsize: "128k"
+  compression: "off"
+  dedup: "off"
+  fstype: "zfs"
+  poolname: "zfspv-pool"
+provisioner: zfs.csi.openebs.io
+volumeBindingMode: WaitForFirstConsumer
 ```
 
 ## Configuring Mayastor
@@ -272,7 +225,7 @@ Mayastor uses NVMe-over-TCP for high-performance replicated storage.
 
 Prepare nodes with hugepages:
 
-```yaml
+```bash
 # mayastor-node-label.yaml
 # Label nodes that will participate in Mayastor pools
 kubectl label nodes worker-01 worker-02 worker-03 openebs.io/engine=mayastor
@@ -282,35 +235,35 @@ Create a Mayastor pool:
 
 ```yaml
 # mayastor-pool.yaml
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-worker-01
   namespace: openebs
 spec:
   node: worker-01
-  disks:
-    - /dev/nvme1n1
+  disks: ["aio:///dev/disk/by-id/nvme-worker-01"]
+  maxExpansion: "5x"
 ---
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-worker-02
   namespace: openebs
 spec:
   node: worker-02
-  disks:
-    - /dev/nvme1n1
+  disks: ["aio:///dev/disk/by-id/nvme-worker-02"]
+  maxExpansion: "5x"
 ---
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-worker-03
   namespace: openebs
 spec:
   node: worker-03
-  disks:
-    - /dev/nvme1n1
+  disks: ["aio:///dev/disk/by-id/nvme-worker-03"]
+  maxExpansion: "5x"
 ```
 
 Create Mayastor StorageClass:
@@ -323,23 +276,22 @@ metadata:
   name: mayastor-replicated
 provisioner: io.openebs.csi-mayastor
 parameters:
-  ioTimeout: "60"
   protocol: nvmf
   repl: "3"
 volumeBindingMode: Immediate
 ```
 
-## Volume Snapshots with cStor
+## Volume Snapshots with Mayastor
 
-cStor supports CSI snapshots:
+Replicated PV Mayastor supports CSI snapshots:
 
 ```yaml
-# cstor-snapshotclass.yaml
+# mayastor-snapshotclass.yaml
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
-  name: cstor-snapshot-class
-driver: cstor.csi.openebs.io
+  name: mayastor-snapshot-class
+driver: io.openebs.csi-mayastor
 deletionPolicy: Delete
 ---
 # Take a snapshot
@@ -349,7 +301,7 @@ metadata:
   name: postgres-snapshot
   namespace: production
 spec:
-  volumeSnapshotClassName: cstor-snapshot-class
+  volumeSnapshotClassName: mayastor-snapshot-class
   source:
     persistentVolumeClaimName: postgres-data
 ```
@@ -364,7 +316,7 @@ metadata:
   name: postgres-restored
   namespace: production
 spec:
-  storageClassName: cstor-replicated
+  storageClassName: mayastor-replicated
   dataSource:
     name: postgres-snapshot
     kind: VolumeSnapshot
@@ -390,27 +342,27 @@ metadata:
 spec:
   selector:
     matchLabels:
-      openebs.io/component: openebs-cstor-pool
+      app: mayastor
   endpoints:
-    - port: exporter
+    - port: metrics
       interval: 30s
 ```
 
 Key metrics to monitor:
-- `openebs_pool_size`: Total pool capacity
-- `openebs_pool_used`: Used pool capacity
-- `openebs_volume_replica_status`: Replica health
-- `openebs_read_latency` / `openebs_write_latency`: I/O latency
+- `disk_pool_total_size_bytes`: Total pool capacity
+- `disk_pool_used_size_bytes`: Used pool capacity
+- `disk_pool_status`: Pool health
+- `volume_read_latency_us` / `volume_write_latency_us`: I/O latency counters
 
 ## Use Case Recommendations
 
 | Workload | Recommended Engine | Reason |
 |----------|-------------------|--------|
 | Clustered databases (CockroachDB, Cassandra) | LocalPV | Database handles replication |
-| Single-instance databases (PostgreSQL, MySQL) | cStor or Mayastor | Storage-level replication for HA |
+| Single-instance databases (PostgreSQL, MySQL) | Mayastor | Storage-level replication for HA |
 | Development environments | LocalPV Hostpath | Simple, no hardware requirements |
 | High-performance analytics | Mayastor | NVMe-over-TCP for low latency |
-| General stateful apps | cStor | Mature, full-featured |
+| General stateful apps | LocalPV LVM or Mayastor | Use local volumes when the app handles HA; use Mayastor when storage-level replication is required |
 
 ## Best Practices
 
@@ -420,10 +372,10 @@ Key metrics to monitor:
 
 3. **Test failover:** Periodically kill nodes and verify volumes reattach correctly. Measure recovery time.
 
-4. **Size pools appropriately:** cStor pools cannot easily shrink. Plan for growth.
+4. **Size pools appropriately:** Replicated PV Mayastor pool expansion is controlled by the `maxExpansion` value set when the DiskPool is created. Plan this limit before creating pools.
 
 5. **Use dedicated devices:** For production, dedicate block devices to OpenEBS rather than sharing with the OS.
 
 ## Wrapping Up
 
-OpenEBS gives you storage flexibility that traditional SANs cannot match. Start with LocalPV for simplicity, graduate to cStor or Mayastor when you need replication, and pick the engine that fits each workload. The key is understanding that not every application needs replicated storage at the infrastructure layer. Match the engine to the requirement and you will have storage that performs well without unnecessary complexity.
+OpenEBS gives you storage flexibility that traditional SANs cannot match. Start with LocalPV for simplicity, graduate to Mayastor when you need replication, and pick the engine that fits each workload. The key is understanding that not every application needs replicated storage at the infrastructure layer. Match the engine to the requirement and you will have storage that performs well without unnecessary complexity.
