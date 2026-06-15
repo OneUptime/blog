@@ -87,8 +87,8 @@ data:
             - profile
             - email
             - groups
-          # Map Okta groups to ArgoCD
-          insecureSkipEmailVerified: true
+          # Allow Dex to pass group claims through to ArgoCD
+          insecureEnableGroups: true
 ```
 
 Store the client secret:
@@ -154,7 +154,7 @@ data:
             - DevOps
             - Platform
           # Include group names instead of IDs
-          useGroupDisplayName: true
+          groupNameFormat: name
 ```
 
 ## Configuring OIDC with Google
@@ -166,6 +166,7 @@ data:
 3. Application type: Web application
 4. Authorized redirect URIs: `https://argocd.example.com/api/dex/callback`
 5. Note the Client ID and Client Secret
+6. For Google Workspace group lookup, create a service account with Domain-Wide Delegation and the Admin SDK Directory group-readonly scope
 
 ### Step 2: Configure ArgoCD
 
@@ -192,6 +193,9 @@ data:
           # Request groups (requires Google Workspace)
           groups:
             - devops@example.com
+          serviceAccountFilePath: /etc/dex/googleAuth.json
+          domainToAdminEmail:
+            example.com: admin@example.com
 ```
 
 ## Configuring OIDC with Keycloak
@@ -235,6 +239,7 @@ data:
             - email
             - groups
           # Map Keycloak groups claim
+          insecureEnableGroups: true
           userIDKey: preferred_username
           userNameKey: preferred_username
 ```
@@ -287,7 +292,7 @@ data:
   admin.enabled: "false"
 ```
 
-Keep a break-glass procedure by storing the admin password securely.
+Keep a break-glass procedure that documents how to re-enable the admin account and stores the admin password securely.
 
 ## Using CLI with SSO
 
@@ -297,11 +302,11 @@ Login via SSO using the CLI:
 # Opens browser for SSO login
 argocd login argocd.example.com --sso
 
-# For headless/CI environments, use auth tokens
+# Use a different local callback port if 8085 is unavailable
 argocd login argocd.example.com --sso --sso-port 8085
 
-# Or use API tokens
-argocd account generate-token --account admin
+# For automation, use a local account with the apiKey capability
+argocd account generate-token --account automation
 ```
 
 ## Multiple Identity Providers
@@ -361,7 +366,8 @@ dex.config: |
         # Skip TLS verification (not for production)
         insecureSkipVerify: true
         # Or add custom CA
-        rootCA: /etc/dex/tls/ca.crt
+        rootCAs:
+          - /etc/dex/tls/ca.crt
 ```
 
 ### Test OIDC Configuration
@@ -390,8 +396,8 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Session timeout in hours
-  timeout.session: "24h"
+  # User session duration
+  users.session.duration: "24h"
   # Reconciliation timeout
   timeout.reconciliation: "180s"
 ```
