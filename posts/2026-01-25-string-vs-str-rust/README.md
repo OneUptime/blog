@@ -16,7 +16,7 @@ The distinction between `String` and `&str` confuses many Rust newcomers. Both r
 |--------|----------|--------|
 | Ownership | Owned, heap-allocated | Borrowed reference |
 | Mutability | Can grow and modify | Immutable view |
-| Size | Dynamic, stored on heap | Fixed, can point anywhere |
+| Size | Fixed-size handle; dynamic buffer on heap | Fixed-size reference; can point anywhere |
 | Memory | Owns its buffer | Borrows existing data |
 
 ```rust
@@ -30,10 +30,10 @@ fn main() {
     let slice: &str = &owned[0..5];  // Points into String
 
     // String contains: pointer, length, capacity
-    println!("String size: {} bytes", std::mem::size_of::<String>());  // 24
+    println!("String size: {} bytes", std::mem::size_of::<String>());  // 24 on 64-bit targets
 
     // &str contains: pointer, length
-    println!("&str size: {} bytes", std::mem::size_of::<&str>());  // 16
+    println!("&str size: {} bytes", std::mem::size_of::<&str>());  // 16 on 64-bit targets
 }
 ```
 
@@ -238,7 +238,7 @@ When you sometimes need to borrow and sometimes own, use `Cow` (Clone on Write):
 use std::borrow::Cow;
 
 // Returns borrowed when possible, owned when necessary
-fn normalize_whitespace(input: &str) -> Cow<str> {
+fn normalize_whitespace(input: &str) -> Cow<'_, str> {
     if input.contains("  ") {
         // Need to modify, return owned
         let normalized: String = input
@@ -252,7 +252,7 @@ fn normalize_whitespace(input: &str) -> Cow<str> {
     }
 }
 
-fn escape_html(input: &str) -> Cow<str> {
+fn escape_html(input: &str) -> Cow<'_, str> {
     if input.contains(['<', '>', '&', '"', '\'']) {
         let escaped = input
             .replace('&', "&amp;")
@@ -294,7 +294,7 @@ fn inefficient(names: &[String]) {
 
 fn efficient(names: &[String]) {
     for name in names {
-        // Good: no allocation, uses format! which is optimized
+        // Good: no intermediate String allocation
         println!("Hello, {}", name);
     }
 }
@@ -356,7 +356,7 @@ impl Config {
 fn analyze(text: &str) -> Analysis { /* ... */ }
 fn transform(text: &str) -> String { /* ... */ }
 fn extract<'a>(text: &'a str) -> &'a str { /* ... */ }
-fn flexible(text: &str) -> Cow<str> { /* ... */ }
+fn flexible(text: &str) -> Cow<'_, str> { /* ... */ }
 ```
 
 ## Summary
