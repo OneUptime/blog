@@ -57,6 +57,10 @@ func ProcessInBatches(db *sql.DB) error {
             }
             count++
         }
+        if err := rows.Err(); err != nil {
+            rows.Close()
+            return err
+        }
         rows.Close()
 
         // No more records to process
@@ -112,6 +116,10 @@ func ProcessWithCursor(db *sql.DB) error {
             lastID = id
             count++
         }
+        if err := rows.Err(); err != nil {
+            rows.Close()
+            return err
+        }
         rows.Close()
 
         if count == 0 {
@@ -125,7 +133,7 @@ func ProcessWithCursor(db *sql.DB) error {
 }
 ```
 
-This query runs in constant time because it uses the index on the primary key. No matter how far into the dataset you are, each batch query takes the same amount of time.
+This query uses the index on the primary key, so it avoids scanning an ever-growing number of skipped rows as the job moves through the table. For a fixed batch size, query time is usually far more stable than OFFSET-based pagination.
 
 ## Adding Concurrency with Worker Pools
 
@@ -180,6 +188,7 @@ func ProcessConcurrently(db *sql.DB, workerCount int) error {
         )
         if err != nil {
             close(jobs)
+            wg.Wait()
             return err
         }
 
@@ -190,6 +199,7 @@ func ProcessConcurrently(db *sql.DB, workerCount int) error {
             if err := rows.Scan(&record.ID, &record.Data); err != nil {
                 rows.Close()
                 close(jobs)
+                wg.Wait()
                 return err
             }
 
@@ -197,6 +207,12 @@ func ProcessConcurrently(db *sql.DB, workerCount int) error {
             jobs <- record
             lastID = record.ID
             count++
+        }
+        if err := rows.Err(); err != nil {
+            rows.Close()
+            close(jobs)
+            wg.Wait()
+            return err
         }
         rows.Close()
 
@@ -261,6 +277,13 @@ func (r *BatchResult) Summary() string {
     r.mu.Lock()
     defer r.mu.Unlock()
     return fmt.Sprintf("processed: %d, failed: %d", r.Processed, r.Failed)
+}
+
+// Snapshot returns counters safely while workers may still be running
+func (r *BatchResult) Snapshot() (processed, failed int) {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+    return r.Processed, r.Failed
 }
 ```
 
@@ -445,6 +468,10 @@ func ProcessWithCheckpoint(db *sql.DB, checkpointFile string) error {
             count++
             totalProcessed++
         }
+        if err := rows.Err(); err != nil {
+            rows.Close()
+            return err
+        }
         rows.Close()
 
         if count == 0 {
@@ -461,7 +488,7 @@ func ProcessWithCheckpoint(db *sql.DB, checkpointFile string) error {
 }
 ```
 
-The atomic write pattern - writing to a temporary file then renaming - prevents corruption if the process dies mid-write.
+The atomic write pattern - writing to a temporary file then renaming it on the same filesystem - prevents readers from seeing a partially written checkpoint if the process dies mid-write.
 
 ## Rate Limiting for External APIs
 
@@ -472,7 +499,6 @@ package main
 
 import (
     "context"
-    "time"
 
     "golang.org/x/time/rate"
 )
@@ -584,7 +610,10 @@ func (bp *BatchProcessor) Run(ctx context.Context) error {
         }
 
         lastID = newLastID
-        SaveCheckpoint(bp.checkpointFile, lastID, result.Processed)
+        processed, _ := result.Snapshot()
+        if err := SaveCheckpoint(bp.checkpointFile, lastID, processed); err != nil {
+            log.Printf("failed to save checkpoint: %v", err)
+        }
     }
 
     close(jobs)
