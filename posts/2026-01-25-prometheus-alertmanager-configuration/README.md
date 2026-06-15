@@ -27,9 +27,9 @@ Key responsibilities include:
 ```bash
 # Download and extract Alertmanager
 
-wget https://github.com/prometheus/alertmanager/releases/download/v0.26.0/alertmanager-0.26.0.linux-amd64.tar.gz
-tar xvfz alertmanager-0.26.0.linux-amd64.tar.gz
-cd alertmanager-0.26.0.linux-amd64
+wget https://github.com/prometheus/alertmanager/releases/download/v0.32.2/alertmanager-0.32.2.linux-amd64.tar.gz
+tar xvfz alertmanager-0.32.2.linux-amd64.tar.gz
+cd alertmanager-0.32.2.linux-amd64
 
 # Start Alertmanager
 ./alertmanager --config.file=alertmanager.yml
@@ -42,7 +42,7 @@ cd alertmanager-0.26.0.linux-amd64
 version: '3.8'
 services:
   alertmanager:
-    image: prom/alertmanager:v0.26.0
+    image: prom/alertmanager:v0.32.2
     ports:
       - "9093:9093"
     volumes:
@@ -95,10 +95,10 @@ receivers:
 
 # Inhibition rules
 inhibit_rules:
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
     equal: ['alertname', 'cluster', 'service']
 ```
 
@@ -124,13 +124,13 @@ route:
   # How long to wait before re-sending a notification
   repeat_interval: 4h
 
-  # Child routes (evaluated in order, first match wins)
+  # Child routes (evaluated in order; a matching route stops evaluation unless continue is true)
   routes:
     # Critical production alerts to PagerDuty
     - receiver: 'team-ops-pagerduty'
       matchers:
-        - severity = critical
-        - environment = production
+        - severity = "critical"
+        - environment = "production"
       continue: false  # Stop evaluating after match
 
     # Database alerts to DBA team
@@ -139,26 +139,27 @@ route:
         - service =~ "postgres|mysql|mongodb"
       group_by: ['alertname', 'service', 'instance']
 
+    # Critical platform alerts page and still go to platform Slack
+    - receiver: 'team-platform-pagerduty'
+      matchers:
+        - team = "platform"
+        - severity = "critical"
+      continue: true
+
     # Platform team alerts
     - receiver: 'team-platform-slack'
       matchers:
-        - team = platform
-      routes:
-        # Critical platform alerts also page
-        - receiver: 'team-platform-pagerduty'
-          matchers:
-            - severity = critical
-          continue: true  # Also send to parent receiver
+        - team = "platform"
 
     # All warnings go to general Slack
     - receiver: 'team-ops-slack'
       matchers:
-        - severity = warning
+        - severity = "warning"
 
     # Catch-all for info alerts
     - receiver: 'team-ops-email'
       matchers:
-        - severity = info
+        - severity = "info"
       group_wait: 1h
       repeat_interval: 24h
 ```
@@ -206,8 +207,8 @@ receivers:
 
         # Custom details for PagerDuty
         details:
-          firing: '{{ template "pagerduty.instances" .Alerts.Firing }}'
-          resolved: '{{ template "pagerduty.instances" .Alerts.Resolved }}'
+          firing: '{{ .Alerts.Firing | toJSON }}'
+          resolved: '{{ .Alerts.Resolved | toJSON }}'
           num_firing: '{{ .Alerts.Firing | len }}'
           num_resolved: '{{ .Alerts.Resolved | len }}'
 
@@ -215,7 +216,7 @@ receivers:
         links:
           - href: '{{ template "runbook.link" . }}'
             text: 'Runbook'
-          - href: '{{ template "dashboard.link" . }}'
+          - href: '{{ (index .Alerts 0).GeneratorURL }}'
             text: 'Dashboard'
 ```
 
@@ -261,8 +262,8 @@ receivers:
 ```yaml
 receivers:
   - name: 'team-ops-teams'
-    msteams_configs:
-      - webhook_url: 'https://outlook.office.com/webhook/XXX'
+    msteamsv2_configs:
+      - webhook_url: 'https://prod-00.westus.logic.azure.com/workflows/XXX/triggers/manual/paths/invoke'
         title: '{{ .CommonLabels.alertname }}'
         text: '{{ .CommonAnnotations.description }}'
         send_resolved: true
@@ -318,9 +319,9 @@ Inhibition prevents notifications for lower-severity alerts when a related highe
 inhibit_rules:
   # Critical alerts suppress warnings for the same service
   - source_matchers:
-      - severity = critical
+      - severity = "critical"
     target_matchers:
-      - severity = warning
+      - severity = "warning"
     equal:
       - alertname
       - cluster
@@ -328,7 +329,7 @@ inhibit_rules:
 
   # Cluster-down suppresses all other cluster alerts
   - source_matchers:
-      - alertname = ClusterDown
+      - alertname = "ClusterDown"
     target_matchers:
       - cluster =~ ".+"
     equal:
@@ -336,7 +337,7 @@ inhibit_rules:
 
   # Node-down suppresses pod alerts on that node
   - source_matchers:
-      - alertname = NodeDown
+      - alertname = "NodeDown"
     target_matchers:
       - alertname =~ "Pod.*"
     equal:
@@ -344,7 +345,7 @@ inhibit_rules:
 
   # Maintenance mode suppresses all alerts for a service
   - source_matchers:
-      - alertname = MaintenanceMode
+      - alertname = "MaintenanceMode"
     target_matchers:
       - severity =~ "warning|critical"
     equal:
@@ -459,7 +460,7 @@ Deploy multiple Alertmanager instances in a cluster:
 version: '3.8'
 services:
   alertmanager-1:
-    image: prom/alertmanager:v0.26.0
+    image: prom/alertmanager:v0.32.2
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
@@ -472,7 +473,7 @@ services:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
 
   alertmanager-2:
-    image: prom/alertmanager:v0.26.0
+    image: prom/alertmanager:v0.32.2
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
@@ -483,7 +484,7 @@ services:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
 
   alertmanager-3:
-    image: prom/alertmanager:v0.26.0
+    image: prom/alertmanager:v0.32.2
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
