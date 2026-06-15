@@ -188,7 +188,7 @@ Trait bounds can also include lifetime constraints when dealing with references.
 ```rust
 use std::fmt::Debug;
 
-// Require that T lives at least as long as 'a
+// Require that any references inside T are valid for at least 'a
 fn store_and_print<'a, T>(value: &'a T)
 where
     T: Debug + 'a,
@@ -196,7 +196,7 @@ where
     println!("{:?}", value);
 }
 
-// Common pattern: 'static bound for owned data
+// Common pattern: 'static bound for data sent to a spawned thread
 fn spawn_task<T>(value: T)
 where
     T: Send + 'static,
