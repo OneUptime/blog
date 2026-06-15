@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Loki, Grafana, Log Aggregation, Promtail, LogQL, Observability, Kubernetes
+Tags: Loki, Grafana, Log Aggregation, Grafana Alloy, LogQL, Observability, Kubernetes
 
 Description: Learn how to configure Grafana Loki for cost-effective log aggregation.
 
@@ -18,7 +18,7 @@ Loki takes a different approach to logging. Instead of indexing the full text of
 
 Loki offers several advantages over traditional logging solutions:
 
-**Cost Effective**: By indexing only labels rather than full text, Loki uses 10-100x less index storage than Elasticsearch.
+**Cost Effective**: By indexing only labels rather than full text, Loki keeps a small index and stores compressed log chunks in object storage or the filesystem.
 
 **Prometheus-like**: If you already use Prometheus and Grafana, Loki fits naturally into your stack with similar concepts and query patterns.
 
@@ -29,13 +29,13 @@ Loki offers several advantages over traditional logging solutions:
 ```mermaid
 flowchart LR
     subgraph Collection
-        A[Promtail] --> B[Loki]
+        A[Grafana Alloy] --> B[Loki]
         C[FluentBit] --> B
         D[Docker Driver] --> B
     end
 
     subgraph Storage
-        B --> E[Index: BoltDB/Cassandra]
+        B --> E[Index: TSDB]
         B --> F[Chunks: S3/GCS/Filesystem]
     end
 
@@ -58,7 +58,7 @@ version: '3.8'
 
 services:
   loki:
-    image: grafana/loki:2.9.0
+    image: grafana/loki:3.7.0
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
@@ -68,20 +68,20 @@ services:
     networks:
       - loki
 
-  promtail:
-    image: grafana/promtail:2.9.0
+  alloy:
+    image: grafana/alloy:v1.16.3
     volumes:
-      - ./promtail-config.yaml:/etc/promtail/config.yaml
+      - ./alloy-config.alloy:/etc/alloy/config.alloy
       - /var/log:/var/log:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    command: -config.file=/etc/promtail/config.yaml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: run /etc/alloy/config.alloy --server.http.listen-addr=0.0.0.0:12345
     depends_on:
       - loki
     networks:
       - loki
 
   grafana:
-    image: grafana/grafana:10.2.0
+    image: grafana/grafana:13.0.2
     ports:
       - "3000:3000"
     environment:
@@ -117,64 +117,44 @@ auth_enabled: false
 
 server:
   http_listen_port: 3100
-  grpc_listen_port: 9096
-
-  # Logging configuration
   log_level: info
 
-# Ingester configuration
-ingester:
-  # How long chunks stay in memory before flushing
-  chunk_idle_period: 3m
-
-  # Maximum chunk age before flushing
-  max_chunk_age: 1h
-
-  # Target chunk size (compressed)
-  chunk_target_size: 1048576
-
-  # Retain chunks in memory after flushing
-  chunk_retain_period: 30s
-
-  # Limit streams per user
-  max_transfer_retries: 0
-
-  lifecycler:
-    ring:
-      kvstore:
-        store: inmemory
-      replication_factor: 1
+common:
+  path_prefix: /loki
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
 
 # Schema configuration
 schema_config:
   configs:
     - from: 2024-01-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: filesystem
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
 
 # Storage configuration
 storage_config:
-  boltdb_shipper:
-    active_index_directory: /loki/boltdb-shipper-active
-    cache_location: /loki/boltdb-shipper-cache
-    cache_ttl: 24h
-    shared_store: filesystem
-
   filesystem:
     directory: /loki/chunks
 
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+
 # Compactor configuration
 compactor:
-  working_directory: /loki/boltdb-shipper-compactor
-  shared_store: filesystem
+  working_directory: /loki/compactor
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
+  delete_request_store: filesystem
 
 # Limits configuration
 limits_config:
@@ -194,15 +174,6 @@ limits_config:
   # Retention period
   retention_period: 744h  # 31 days
 
-# Chunk store configuration
-chunk_store_config:
-  max_look_back_period: 0s
-
-# Table manager (for index retention)
-table_manager:
-  retention_deletes_enabled: true
-  retention_period: 744h
-
 # Query configuration
 query_range:
   results_cache:
@@ -214,169 +185,172 @@ query_range:
 
 ---
 
-## Configuring Promtail
+## Configuring Grafana Alloy
 
-Promtail is Loki's log collection agent. Configure it to scrape logs from your systems:
+Grafana Alloy is Grafana's supported agent for collecting logs and sending them to Loki. Configure it to scrape logs from your systems:
 
-```yaml
-# promtail-config.yaml
-# Promtail agent configuration
+```alloy
+// alloy-config.alloy
+// Grafana Alloy log collection configuration
 
-server:
-  http_listen_port: 9080
-  grpc_listen_port: 0
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
 
-# Position file tracks where we are in each log file
-positions:
-  filename: /tmp/positions.yaml
+// System logs
+loki.source.file "system" {
+  targets = [
+    {
+      __path__ = "/var/log/*.log",
+      job      = "varlogs",
+      host     = sys.env("HOSTNAME"),
+    },
+  ]
+  forward_to = [loki.process.system.receiver]
 
-# Loki server to push logs to
-clients:
-  - url: http://loki:3100/loki/api/v1/push
-    # Batch configuration
-    batchwait: 1s
-    batchsize: 1048576
+  file_match {
+    enabled = true
+  }
+}
 
-    # Retry configuration
-    backoff_config:
-      min_period: 500ms
-      max_period: 5m
-      max_retries: 10
+loki.process "system" {
+  forward_to = [loki.write.local.receiver]
 
-    # Timeout
-    timeout: 10s
+  // Parse syslog format
+  stage.regex {
+    expression = "^(?P<timestamp>\\w+\\s+\\d+\\s+\\d+:\\d+:\\d+)\\s+(?P<hostname>\\w+)\\s+(?P<program>[\\w-]+)(\\[(?P<pid>\\d+)\\])?: (?P<message>.*)$"
+  }
 
-# Scrape configurations
-scrape_configs:
-  # System logs
-  - job_name: system
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: varlogs
-          host: ${HOSTNAME}
-          __path__: /var/log/*.log
+  // Set timestamp
+  stage.timestamp {
+    source = "timestamp"
+    format = "Jan 02 15:04:05"
+  }
 
-    pipeline_stages:
-      # Parse syslog format
-      - regex:
-          expression: '^(?P<timestamp>\w+\s+\d+\s+\d+:\d+:\d+)\s+(?P<hostname>\w+)\s+(?P<program>[\w\-]+)(\[(?P<pid>\d+)\])?: (?P<message>.*)$'
+  // Add extracted fields as labels
+  stage.labels {
+    values = {
+      program  = "",
+      hostname = "",
+    }
+  }
+}
 
-      # Set timestamp
-      - timestamp:
-          source: timestamp
-          format: "Jan 02 15:04:05"
+// Application logs (JSON format)
+loki.source.file "application" {
+  targets = [
+    {
+      __path__     = "/var/log/app/*.log",
+      job          = "application",
+      environment  = "production",
+    },
+  ]
+  forward_to = [loki.process.application.receiver]
 
-      # Add extracted fields as labels
-      - labels:
-          program:
-          hostname:
+  file_match {
+    enabled = true
+  }
+}
 
-  # Application logs (JSON format)
-  - job_name: application
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: application
-          environment: production
-          __path__: /var/log/app/*.log
+loki.process "application" {
+  forward_to = [loki.write.local.receiver]
 
-    pipeline_stages:
-      # Parse JSON logs
-      - json:
-          expressions:
-            level: level
-            service: service
-            message: message
-            trace_id: trace_id
+  // Parse JSON logs
+  stage.json {
+    expressions = {
+      level     = "level",
+      service   = "service",
+      message   = "message",
+      timestamp = "timestamp",
+      trace_id  = "trace_id",
+    }
+  }
 
-      # Add labels from JSON fields
-      - labels:
-          level:
-          service:
+  // Add labels from JSON fields
+  stage.labels {
+    values = {
+      level   = "",
+      service = "",
+    }
+  }
 
-      # Set timestamp from JSON
-      - timestamp:
-          source: timestamp
-          format: RFC3339Nano
+  // Set timestamp from JSON
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339Nano"
+  }
 
-      # Set output message
-      - output:
-          source: message
+  // Set output message
+  stage.output {
+    source = "message"
+  }
+}
 
-  # Docker container logs
-  - job_name: docker
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: docker
-          __path__: /var/lib/docker/containers/*/*.log
+// Docker container logs
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
 
-    pipeline_stages:
-      # Parse Docker JSON log format
-      - json:
-          expressions:
-            log: log
-            stream: stream
-            time: time
+discovery.relabel "docker_logs" {
+  targets = discovery.docker.containers.targets
 
-      # Extract container ID from path
-      - regex:
-          source: filename
-          expression: '/var/lib/docker/containers/(?P<container_id>[^/]+)/'
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
 
-      - labels:
-          stream:
-          container_id:
-
-      - timestamp:
-          source: time
-          format: RFC3339Nano
-
-      - output:
-          source: log
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  labels        = {"job" = "docker"}
+  relabel_rules = discovery.relabel.docker_logs.rules
+  forward_to    = [loki.write.local.receiver]
+}
 ```
 
 ---
 
 ## Kubernetes Deployment
 
-Deploy Promtail as a DaemonSet in Kubernetes:
+Deploy Grafana Alloy as a DaemonSet in Kubernetes:
 
 ```yaml
-# promtail-daemonset.yaml
+# alloy-daemonset.yaml
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: promtail
+  name: alloy
   namespace: logging
 spec:
   selector:
     matchLabels:
-      app: promtail
+      app: alloy
   template:
     metadata:
       labels:
-        app: promtail
+        app: alloy
     spec:
-      serviceAccountName: promtail
+      serviceAccountName: alloy
       tolerations:
         - operator: Exists
       containers:
-        - name: promtail
-          image: grafana/promtail:2.9.0
+        - name: alloy
+          image: grafana/alloy:v1.16.3
           args:
-            - -config.file=/etc/promtail/promtail.yaml
+            - run
+            - /etc/alloy/config.alloy
+            - --server.http.listen-addr=0.0.0.0:12345
           env:
             - name: HOSTNAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
           ports:
-            - containerPort: 3101
+            - containerPort: 12345
               name: http-metrics
           resources:
             limits:
@@ -387,12 +361,9 @@ spec:
               memory: 64Mi
           volumeMounts:
             - name: config
-              mountPath: /etc/promtail
+              mountPath: /etc/alloy
             - name: varlog
               mountPath: /var/log
-              readOnly: true
-            - name: containers
-              mountPath: /var/lib/docker/containers
               readOnly: true
             - name: pods
               mountPath: /var/log/pods
@@ -400,77 +371,101 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: promtail-config
+            name: alloy-config
         - name: varlog
           hostPath:
             path: /var/log
-        - name: containers
-          hostPath:
-            path: /var/lib/docker/containers
         - name: pods
           hostPath:
             path: /var/log/pods
 ---
-# Kubernetes-specific Promtail configuration
+# Kubernetes-specific Alloy configuration
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: promtail-config
+  name: alloy-config
   namespace: logging
 data:
-  promtail.yaml: |
-    server:
-      http_listen_port: 3101
+  config.alloy: |
+    loki.write "default" {
+      endpoint {
+        url = "http://loki.logging.svc:3100/loki/api/v1/push"
+      }
+    }
 
-    positions:
-      filename: /tmp/positions.yaml
+    discovery.kubernetes "pods" {
+      role = "pod"
 
-    clients:
-      - url: http://loki.logging.svc:3100/loki/api/v1/push
+      selectors {
+        role  = "pod"
+        field = "spec.nodeName=" + sys.env("HOSTNAME")
+      }
+    }
 
-    scrape_configs:
-      - job_name: kubernetes-pods
-        kubernetes_sd_configs:
-          - role: pod
+    discovery.relabel "pod_logs" {
+      targets = discovery.kubernetes.pods.targets
 
-        pipeline_stages:
-          - cri: {}
-          - json:
-              expressions:
-                level: level
-                msg: msg
-          - labels:
-              level:
+      # Keep only pods with logging enabled
+      rule {
+        source_labels = ["__meta_kubernetes_pod_annotation_logging"]
+        action        = "keep"
+        regex         = "true"
+      }
 
-        relabel_configs:
-          # Keep only pods with logging enabled
-          - source_labels: [__meta_kubernetes_pod_annotation_logging]
-            action: keep
-            regex: "true"
+      # Set namespace label
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
 
-          # Set namespace label
-          - source_labels: [__meta_kubernetes_namespace]
-            target_label: namespace
+      # Set pod name label
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
 
-          # Set pod name label
-          - source_labels: [__meta_kubernetes_pod_name]
-            target_label: pod
+      # Set container name label
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+      }
 
-          # Set container name label
-          - source_labels: [__meta_kubernetes_pod_container_name]
-            target_label: container
+      # Set app label from pod label
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app"]
+        target_label  = "app"
+      }
 
-          # Set app label from pod label
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            target_label: app
+      # Set log file path
+      rule {
+        source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+        separator     = "/"
+        target_label  = "__path__"
+        replacement   = "/var/log/pods/*$1/*.log"
+      }
+    }
 
-          # Set log file path
-          - replacement: /var/log/pods/*$1/*.log
-            separator: /
-            source_labels:
-              - __meta_kubernetes_pod_uid
-              - __meta_kubernetes_pod_container_name
-            target_label: __path__
+    loki.source.kubernetes "pod_logs" {
+      targets    = discovery.relabel.pod_logs.output
+      forward_to = [loki.process.pod_logs.receiver]
+    }
+
+    loki.process "pod_logs" {
+      forward_to = [loki.write.default.receiver]
+
+      stage.json {
+        expressions = {
+          level = "level",
+          msg   = "msg",
+        }
+      }
+
+      stage.labels {
+        values = {
+          level = "",
+        }
+      }
+    }
 ```
 
 ---
@@ -521,7 +516,7 @@ LogQL is Loki's query language. Learn the basics:
 
 ```logql
 # Count errors per minute
-sum(rate({job="application"} |= "error" [1m])) by (service)
+sum by (service) (rate({job="application"} |= "error" [1m]))
 
 # Count logs by level
 sum by (level) (count_over_time({job="application"} | json [5m]))
@@ -576,7 +571,7 @@ Create a dashboard for log analysis:
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum(rate({job=\"application\"} [5m])) by (level)",
+          "expr": "sum by (level) (rate({job=\"application\"} [5m]))",
           "legendFormat": "{{level}}"
         }
       ]
@@ -638,14 +633,25 @@ ingester:
         store: memberlist
       replication_factor: 3
 
+# Schema configuration
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
 # S3 storage for production
 storage_config:
-  boltdb_shipper:
+  tsdb_shipper:
     active_index_directory: /loki/index
-    shared_store: s3
+    cache_location: /loki/index_cache
 
   aws:
-    s3: s3://your-bucket/loki
+    bucketnames: your-bucket
     region: us-east-1
 
   # Or use GCS
