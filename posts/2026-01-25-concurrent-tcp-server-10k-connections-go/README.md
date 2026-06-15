@@ -158,7 +158,7 @@ func handleConnection(conn net.Conn) {
 
 ## Buffer Pooling for Memory Efficiency
 
-Creating a new buffer for every read operation generates garbage. At 10K connections, this thrashes the garbage collector. Use `sync.Pool` to reuse buffers.
+Creating a new buffer for every connection generates garbage. At 10K connections, this adds pressure to the garbage collector. Use `sync.Pool` to reuse buffers.
 
 ```go
 import "sync"
@@ -167,7 +167,7 @@ import "sync"
 var bufferPool = sync.Pool{
     New: func() interface{} {
         // 4KB buffers - adjust based on your protocol
-        return make([]byte, 4096)
+        return new([4096]byte)
     },
 }
 
@@ -175,12 +175,12 @@ func handleConnection(conn net.Conn) {
     defer conn.Close()
 
     // Get buffer from pool
-    buf := bufferPool.Get().([]byte)
+    buf := bufferPool.Get().(*[4096]byte)
     defer bufferPool.Put(buf) // Return to pool when done
 
     for {
         conn.SetReadDeadline(time.Now().Add(30 * time.Second))
-        n, err := conn.Read(buf)
+        n, err := conn.Read(buf[:])
         if err != nil {
             return
         }
@@ -320,7 +320,7 @@ net.core.somaxconn = 65535
 # Increase number of incoming connections queue
 net.core.netdev_max_backlog = 65535
 
-# Reuse TIME_WAIT sockets faster
+# Allow safe reuse of TIME_WAIT sockets for new outgoing connections
 net.ipv4.tcp_tw_reuse = 1
 
 # Increase ephemeral port range
@@ -334,19 +334,27 @@ sudo sysctl -p
 
 ## Common Pitfalls
 
-**Forgetting to close connections.** Sounds obvious, but defer statements in the wrong place will leak connections. Always `defer conn.Close()` immediately after accepting.
+**Forgetting to close connections.** Sounds obvious, but defer statements in the wrong place will leak connections. Make sure each accepted connection has one clear owner that closes it, usually with `defer conn.Close()` at the top of the handler.
 
 **Blocking in handlers.** If your handler does any I/O besides the connection itself - database calls, HTTP requests - use timeouts there too. A slow database will cascade into connection exhaustion.
 
 **Not handling partial writes.** `conn.Write()` might not write everything. For critical applications, use a loop or `io.Copy()`.
 
 ```go
+import (
+    "io"
+    "net"
+)
+
 // Ensure all bytes are written
 func writeAll(conn net.Conn, data []byte) error {
     for len(data) > 0 {
         n, err := conn.Write(data)
         if err != nil {
             return err
+        }
+        if n == 0 {
+            return io.ErrShortWrite
         }
         data = data[n:]
     }
@@ -367,6 +375,7 @@ package main
 
 import (
     "context"
+    "io"
     "log"
     "net"
     "os"
@@ -385,7 +394,7 @@ const (
 
 var bufferPool = sync.Pool{
     New: func() interface{} {
-        return make([]byte, bufferSize)
+        return new([bufferSize]byte)
     },
 }
 
@@ -443,7 +452,7 @@ func main() {
 func handleConnection(ctx context.Context, conn net.Conn) {
     defer conn.Close()
 
-    buf := bufferPool.Get().([]byte)
+    buf := bufferPool.Get().(*[bufferSize]byte)
     defer bufferPool.Put(buf)
 
     for {
@@ -454,16 +463,30 @@ func handleConnection(ctx context.Context, conn net.Conn) {
         }
 
         conn.SetReadDeadline(time.Now().Add(readTimeout))
-        n, err := conn.Read(buf)
+        n, err := conn.Read(buf[:])
         if err != nil {
             return
         }
 
         conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-        if _, err := conn.Write(buf[:n]); err != nil {
+        if err := writeAll(conn, buf[:n]); err != nil {
             return
         }
     }
+}
+
+func writeAll(conn net.Conn, data []byte) error {
+    for len(data) > 0 {
+        n, err := conn.Write(data)
+        if err != nil {
+            return err
+        }
+        if n == 0 {
+            return io.ErrShortWrite
+        }
+        data = data[n:]
+    }
+    return nil
 }
 ```
 
