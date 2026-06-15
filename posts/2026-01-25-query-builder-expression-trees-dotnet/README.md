@@ -18,7 +18,7 @@ LINQ queries are powerful, but they require knowing the filter conditions at com
 flowchart LR
     A[User Filter Request] --> B[Parse Conditions]
     B --> C[Build Expression Tree]
-    C --> D[Compile to Lambda]
+    C --> D[Create Lambda Expression]
     D --> E[Execute via EF Core]
     E --> F[SQL Query]
 ```
@@ -98,8 +98,7 @@ public class ExpressionBuilder<T>
         var property = Expression.Property(parameter, filter.PropertyName);
 
         // Convert value to property type
-        var value = ConvertValue(filter.Value, property.Type);
-        var constant = Expression.Constant(value, property.Type);
+        var constant = BuildConstantExpression(filter.Value, property.Type);
 
         // Build comparison expression based on operator
         Expression comparison = filter.Operator switch
@@ -124,6 +123,11 @@ public class ExpressionBuilder<T>
 
     private Expression BuildContainsExpression(MemberExpression property, object? value)
     {
+        if (property.Type != typeof(string))
+        {
+            throw new NotSupportedException("Contains is only supported for string properties");
+        }
+
         // Call property.Contains(value) for string properties
         var method = typeof(string).GetMethod("Contains", new[] { typeof(string) });
         var constant = Expression.Constant(value?.ToString() ?? string.Empty);
@@ -135,17 +139,36 @@ public class ExpressionBuilder<T>
         object? value,
         string methodName)
     {
+        if (property.Type != typeof(string))
+        {
+            throw new NotSupportedException($"{methodName} is only supported for string properties");
+        }
+
         var method = typeof(string).GetMethod(methodName, new[] { typeof(string) });
         var constant = Expression.Constant(value?.ToString() ?? string.Empty);
         return Expression.Call(property, method!, constant);
     }
 
-    private object? ConvertValue(object? value, Type targetType)
+    private Expression BuildConstantExpression(object? value, Type targetType)
     {
-        if (value == null) return null;
+        if (value == null)
+        {
+            if (targetType.IsValueType && Nullable.GetUnderlyingType(targetType) == null)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot compare non-nullable type {targetType.Name} with null");
+            }
+
+            return Expression.Constant(null, targetType);
+        }
 
         var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
-        return Convert.ChangeType(value, underlyingType);
+        var converted = Convert.ChangeType(value, underlyingType);
+        var constant = Expression.Constant(converted, underlyingType);
+
+        return underlyingType == targetType
+            ? constant
+            : Expression.Convert(constant, targetType);
     }
 }
 ```
@@ -359,8 +382,7 @@ public class NestedExpressionBuilder<T>
         // Handle null parent objects with null propagation
         var nullChecks = BuildNullChecks(parameter, filter.PropertyName);
 
-        var value = Convert.ChangeType(filter.Value, property.Type);
-        var constant = Expression.Constant(value, property.Type);
+        var constant = BuildConstantExpression(filter.Value, property.Type);
 
         Expression comparison = filter.Operator switch
         {
@@ -391,6 +413,12 @@ public class NestedExpressionBuilder<T>
         for (int i = 0; i < parts.Length - 1; i++)
         {
             current = Expression.Property(current, parts[i]);
+
+            if (!CanBeNull(current.Type))
+            {
+                continue;
+            }
+
             var nullCheck = Expression.NotEqual(
                 current,
                 Expression.Constant(null, current.Type));
@@ -405,9 +433,41 @@ public class NestedExpressionBuilder<T>
 
     private Expression BuildContains(MemberExpression property, object? value)
     {
+        if (property.Type != typeof(string))
+        {
+            throw new NotSupportedException("Contains is only supported for string properties");
+        }
+
         var method = typeof(string).GetMethod("Contains", new[] { typeof(string) });
         var constant = Expression.Constant(value?.ToString() ?? string.Empty);
         return Expression.Call(property, method!, constant);
+    }
+
+    private Expression BuildConstantExpression(object? value, Type targetType)
+    {
+        if (value == null)
+        {
+            if (targetType.IsValueType && Nullable.GetUnderlyingType(targetType) == null)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot compare non-nullable type {targetType.Name} with null");
+            }
+
+            return Expression.Constant(null, targetType);
+        }
+
+        var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+        var converted = Convert.ChangeType(value, underlyingType);
+        var constant = Expression.Constant(converted, underlyingType);
+
+        return underlyingType == targetType
+            ? constant
+            : Expression.Convert(constant, targetType);
+    }
+
+    private static bool CanBeNull(Type type)
+    {
+        return !type.IsValueType || Nullable.GetUnderlyingType(type) != null;
     }
 }
 
@@ -544,21 +604,21 @@ public class PagedResult<T>
 }
 ```
 
-## Caching Compiled Expressions
+## Caching Built Expressions
 
-Expression compilation is expensive. Cache compiled delegates for repeated use.
+Expression construction and reflection have overhead. When you use Entity Framework Core, keep the expression tree and pass it to `IQueryable.Where` so EF Core can translate it to SQL. Cache built expressions for repeated filter shapes; for high-volume fixed queries, use EF Core's compiled query APIs.
 
 ```csharp
-// Cache compiled expressions for better performance
-public class CompiledExpressionCache<T>
+// Cache expression trees for better performance with IQueryable providers
+public class ExpressionCache<T>
 {
-    private readonly ConcurrentDictionary<string, Func<T, bool>> _cache = new();
+    private readonly ConcurrentDictionary<string, Expression<Func<T, bool>>> _cache = new();
 
-    public Func<T, bool> GetOrCompile(
+    public Expression<Func<T, bool>> GetOrAdd(
         string cacheKey,
-        Expression<Func<T, bool>> expression)
+        Func<Expression<Func<T, bool>>> expressionFactory)
     {
-        return _cache.GetOrAdd(cacheKey, _ => expression.Compile());
+        return _cache.GetOrAdd(cacheKey, _ => expressionFactory());
     }
 
     // Generate cache key from filter conditions
