@@ -8,7 +8,7 @@ Description: Learn how to use Python's threading module for concurrent programmi
 
 ---
 
-Python's `threading` module enables concurrent execution of code. While Python's Global Interpreter Lock (GIL) limits true parallelism for CPU-bound tasks, threading is excellent for I/O-bound operations like network requests, file operations, and database queries.
+Python's `threading` module enables concurrent execution of code. In default CPython builds, the Global Interpreter Lock (GIL) limits true parallelism for CPU-bound tasks, but threading is excellent for I/O-bound operations like network requests, file operations, and database queries.
 
 ## Understanding Threading vs Multiprocessing
 
@@ -25,9 +25,9 @@ Python's `threading` module enables concurrent execution of code. While Python's
 # - Image processing
 # - Data transformation
 
-# The GIL (Global Interpreter Lock) means only one thread
-# executes Python bytecode at a time. But threads release
-# the GIL during I/O operations, allowing concurrency.
+# In default CPython builds, the GIL (Global Interpreter Lock)
+# means only one thread executes Python bytecode at a time.
+# But threads release the GIL during I/O operations, allowing concurrency.
 ```
 
 ## Basic Thread Creation
