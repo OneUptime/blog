@@ -124,7 +124,7 @@ spec:
             name: myapp-secrets
 ```
 
-All keys in the secret become environment variables with the same names.
+All keys in the secret that are valid environment variable names become environment variables with the same names.
 
 ### With Prefix
 
@@ -277,6 +277,7 @@ kubectl edit secret myapp-secrets -n production
 # Replace from file
 kubectl create secret generic myapp-secrets \
   --from-literal=DATABASE_PASSWORD=newsecret \
+  -n production \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
@@ -295,7 +296,7 @@ Pods do not automatically see secret updates for env vars. You need to restart p
 kubectl rollout restart deployment/api-server -n production
 ```
 
-For file-mounted secrets, updates propagate automatically (with a delay).
+For file-mounted secrets, updates propagate automatically (with a delay) unless the Secret is mounted using `subPath`.
 
 ### Using Reloader
 
@@ -320,7 +321,7 @@ metadata:
 Sync secrets from external providers (AWS Secrets Manager, HashiCorp Vault, etc.):
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-secrets
@@ -345,7 +346,7 @@ Encrypt secrets for GitOps:
 
 ```bash
 # Install sealed-secrets controller
-kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.24.0/controller.yaml
+kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.37.0/controller.yaml
 
 # Seal a secret
 kubeseal --format yaml < secret.yaml > sealed-secret.yaml
