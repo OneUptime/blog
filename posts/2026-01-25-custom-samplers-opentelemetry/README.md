@@ -32,8 +32,8 @@ The sampler returns:
 ### Node.js Custom Sampler
 
 ```javascript
-const { SamplingDecision, SpanKind } = require('@opentelemetry/api');
-const { Sampler } = require('@opentelemetry/sdk-trace-base');
+const { SpanKind } = require('@opentelemetry/api');
+const { SamplingDecision } = require('@opentelemetry/sdk-trace-base');
 
 // Priority-based sampler that always samples high-priority operations
 class PriorityBasedSampler {
@@ -55,7 +55,7 @@ class PriorityBasedSampler {
     // Always sample errors (if we can detect them from attributes)
     if (attributes?.['error'] === true || attributes?.['http.status_code'] >= 500) {
       return {
-        decision: SamplingDecision.RECORD_AND_SAMPLE,
+        decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: { 'sampling.reason': 'error' },
       };
     }
@@ -64,7 +64,7 @@ class PriorityBasedSampler {
     const operationName = this._extractOperationName(spanName);
     if (this.highPriorityOperations.has(operationName)) {
       return {
-        decision: SamplingDecision.RECORD_AND_SAMPLE,
+        decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: { 'sampling.reason': 'high_priority_operation' },
       };
     }
@@ -73,7 +73,7 @@ class PriorityBasedSampler {
     const userTier = attributes?.['user.tier'];
     if (userTier && this.highPriorityUserTiers.has(userTier)) {
       return {
-        decision: SamplingDecision.RECORD_AND_SAMPLE,
+        decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: { 'sampling.reason': 'high_priority_user' },
       };
     }
@@ -81,7 +81,7 @@ class PriorityBasedSampler {
     // Probabilistic sampling for everything else
     if (this._shouldSampleProbabilistically(traceId)) {
       return {
-        decision: SamplingDecision.RECORD_AND_SAMPLE,
+        decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: { 'sampling.reason': 'probabilistic' },
       };
     }
@@ -161,12 +161,14 @@ class PriorityBasedSampler(Sampler):
         trace_state: "TraceState" = None,
     ) -> SamplingResult:
         attributes = attributes or {}
+        result_trace_state = trace_state
 
         # Always sample errors
         if attributes.get('error') or attributes.get('http.status_code', 0) >= 500:
             return SamplingResult(
                 Decision.RECORD_AND_SAMPLE,
                 {'sampling.reason': 'error'},
+                result_trace_state,
             )
 
         # Always sample high-priority operations
@@ -175,6 +177,7 @@ class PriorityBasedSampler(Sampler):
             return SamplingResult(
                 Decision.RECORD_AND_SAMPLE,
                 {'sampling.reason': 'high_priority_operation'},
+                result_trace_state,
             )
 
         # Always sample high-priority user tiers
@@ -183,6 +186,7 @@ class PriorityBasedSampler(Sampler):
             return SamplingResult(
                 Decision.RECORD_AND_SAMPLE,
                 {'sampling.reason': 'high_priority_user'},
+                result_trace_state,
             )
 
         # Probabilistic sampling
@@ -190,9 +194,10 @@ class PriorityBasedSampler(Sampler):
             return SamplingResult(
                 Decision.RECORD_AND_SAMPLE,
                 {'sampling.reason': 'probabilistic'},
+                result_trace_state,
             )
 
-        return SamplingResult(Decision.DROP)
+        return SamplingResult(Decision.DROP, trace_state=result_trace_state)
 
     def _extract_operation_name(self, span_name: str) -> str:
         parts = span_name.split(' ')
@@ -269,18 +274,22 @@ func NewPriorityBasedSampler(
 }
 
 func (s *PriorityBasedSampler) ShouldSample(p trace.SamplingParameters) trace.SamplingResult {
+    psc := oteltrace.SpanContextFromContext(p.ParentContext)
+
     // Check for errors in attributes
     for _, attr := range p.Attributes {
         if attr.Key == "error" && attr.Value.AsBool() {
             return trace.SamplingResult{
                 Decision:   trace.RecordAndSample,
                 Attributes: []attribute.KeyValue{attribute.String("sampling.reason", "error")},
+                Tracestate: psc.TraceState(),
             }
         }
         if attr.Key == "http.status_code" && attr.Value.AsInt64() >= 500 {
             return trace.SamplingResult{
                 Decision:   trace.RecordAndSample,
                 Attributes: []attribute.KeyValue{attribute.String("sampling.reason", "error")},
+                Tracestate: psc.TraceState(),
             }
         }
     }
@@ -291,6 +300,7 @@ func (s *PriorityBasedSampler) ShouldSample(p trace.SamplingParameters) trace.Sa
         return trace.SamplingResult{
             Decision:   trace.RecordAndSample,
             Attributes: []attribute.KeyValue{attribute.String("sampling.reason", "high_priority_operation")},
+            Tracestate: psc.TraceState(),
         }
     }
 
@@ -300,6 +310,7 @@ func (s *PriorityBasedSampler) ShouldSample(p trace.SamplingParameters) trace.Sa
             return trace.SamplingResult{
                 Decision:   trace.RecordAndSample,
                 Attributes: []attribute.KeyValue{attribute.String("sampling.reason", "high_priority_user")},
+                Tracestate: psc.TraceState(),
             }
         }
     }
@@ -309,10 +320,14 @@ func (s *PriorityBasedSampler) ShouldSample(p trace.SamplingParameters) trace.Sa
         return trace.SamplingResult{
             Decision:   trace.RecordAndSample,
             Attributes: []attribute.KeyValue{attribute.String("sampling.reason", "probabilistic")},
+            Tracestate: psc.TraceState(),
         }
     }
 
-    return trace.SamplingResult{Decision: trace.Drop}
+    return trace.SamplingResult{
+        Decision:   trace.Drop,
+        Tracestate: psc.TraceState(),
+    }
 }
 
 func (s *PriorityBasedSampler) extractOperationName(spanName string) string {
@@ -370,7 +385,7 @@ class AdaptiveRateSampler {
 
     if (this._shouldSampleProbabilistically(traceId, this.currentRate)) {
       return {
-        decision: SamplingDecision.RECORD_AND_SAMPLE,
+        decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: {
           'sampling.reason': 'adaptive',
           'sampling.rate': this.currentRate,
@@ -433,7 +448,7 @@ class RuleBasedSampler {
       if (this._matchesRule(rule, spanName, attributes)) {
         if (this._shouldSampleProbabilistically(traceId, rule.rate)) {
           return {
-            decision: SamplingDecision.RECORD_AND_SAMPLE,
+            decision: SamplingDecision.RECORD_AND_SAMPLED,
             attributes: {
               'sampling.rule': rule.name,
               'sampling.rate': rule.rate,
@@ -447,7 +462,7 @@ class RuleBasedSampler {
     // Default sampling
     if (this._shouldSampleProbabilistically(traceId, this.defaultRate)) {
       return {
-        decision: SamplingDecision.RECORD_AND_SAMPLE,
+        decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: {
           'sampling.rule': 'default',
           'sampling.rate': this.defaultRate,
@@ -544,7 +559,7 @@ describe('PriorityBasedSampler', () => {
       []
     );
 
-    expect(result.decision).toBe(SamplingDecision.RECORD_AND_SAMPLE);
+    expect(result.decision).toBe(SamplingDecision.RECORD_AND_SAMPLED);
     expect(result.attributes['sampling.reason']).toBe('error');
   });
 
@@ -558,7 +573,7 @@ describe('PriorityBasedSampler', () => {
       []
     );
 
-    expect(result.decision).toBe(SamplingDecision.RECORD_AND_SAMPLE);
+    expect(result.decision).toBe(SamplingDecision.RECORD_AND_SAMPLED);
     expect(result.attributes['sampling.reason']).toBe('high_priority_operation');
   });
 
@@ -576,7 +591,7 @@ describe('PriorityBasedSampler', () => {
         {},
         []
       );
-      if (result.decision === SamplingDecision.RECORD_AND_SAMPLE) {
+      if (result.decision === SamplingDecision.RECORD_AND_SAMPLED) {
         sampled++;
       }
     }
