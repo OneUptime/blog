@@ -21,7 +21,7 @@ Gatekeeper acts as a validating admission webhook. When kubectl apply runs, Gate
 - Preventing hostPath mounts
 - Requiring network policies exist
 
-Unlike static analysis, Gatekeeper enforces policies at admission time, making them impossible to bypass.
+Unlike static analysis, Gatekeeper enforces policies at admission time, making them difficult to bypass through normal Kubernetes API workflows when the webhook is available and scoped to the resource.
 
 ## Architecture Overview
 
@@ -44,7 +44,7 @@ Deploy Gatekeeper using kubectl or Helm:
 ```bash
 # Option 1: Apply manifests directly
 
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.14.0/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.2/deploy/gatekeeper.yaml
 
 # Option 2: Install with Helm
 helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
@@ -53,8 +53,7 @@ helm repo update
 helm install gatekeeper gatekeeper/gatekeeper \
   --namespace gatekeeper-system \
   --create-namespace \
-  --set replicas=3 \
-  --set audit.replicas=1
+  --set replicas=3
 ```
 
 Verify the installation:
@@ -217,6 +216,18 @@ spec:
           container.securityContext.privileged == true
           msg := sprintf("Privileged container not allowed: %v", [container.name])
         }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          container.securityContext.privileged == true
+          msg := sprintf("Privileged init container not allowed: %v", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.ephemeralContainers[_]
+          container.securityContext.privileged == true
+          msg := sprintf("Privileged ephemeral container not allowed: %v", [container.name])
+        }
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sBlockPrivileged
@@ -261,6 +272,18 @@ spec:
           container := input.review.object.spec.containers[_]
           not strings.any_prefix_match(container.image, input.parameters.repos)
           msg := sprintf("Container image '%v' is not from an approved registry", [container.image])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not strings.any_prefix_match(container.image, input.parameters.repos)
+          msg := sprintf("Init container image '%v' is not from an approved registry", [container.image])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.ephemeralContainers[_]
+          not strings.any_prefix_match(container.image, input.parameters.repos)
+          msg := sprintf("Ephemeral container image '%v' is not from an approved registry", [container.image])
         }
 
         # Helper: check if image starts with any allowed prefix
@@ -388,6 +411,7 @@ git clone https://github.com/open-policy-agent/gatekeeper-library.git
 
 # Apply a policy from the library
 kubectl apply -f gatekeeper-library/library/pod-security-policy/privileged-containers/
+kubectl apply -f gatekeeper-library/library/pod-security-policy/privileged-containers/samples/psp-privileged-container/constraint.yaml
 ```
 
 ---
