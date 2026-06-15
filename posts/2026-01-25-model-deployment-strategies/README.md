@@ -73,7 +73,7 @@ class BlueGreenDeployer:
             DeploymentSlot.BLUE: None,
             DeploymentSlot.GREEN: None
         }
-        self.active_slot: DeploymentSlot = DeploymentSlot.BLUE
+        self.active_slot: DeploymentSlot = DeploymentSlot.GREEN
         self._lock = threading.Lock()
 
     def deploy(
@@ -484,7 +484,7 @@ class ShadowResult:
     shadow_prediction: Optional[Any]
     primary_latency_ms: float
     shadow_latency_ms: Optional[float]
-    predictions_match: bool
+    predictions_match: Optional[bool]
 
 class ShadowDeployer:
     """
@@ -506,6 +506,7 @@ class ShadowDeployer:
         self.shadow_version: Optional[str] = None
         self.comparison_logger = comparison_logger
         self.executor = ThreadPoolExecutor(max_workers=4)
+        self._background_tasks = set()
 
     def set_shadow(self, model, version: str):
         """Set the shadow model."""
@@ -521,62 +522,79 @@ class ShadowDeployer:
         """
         Make prediction with both models.
 
-        Primary prediction is returned immediately.
-        Shadow prediction runs concurrently and is logged.
+        Primary prediction is returned without waiting for the shadow model.
+        Shadow prediction runs in the background and is logged.
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         # Run primary prediction
-        primary_start = asyncio.get_event_loop().time()
+        primary_start = loop.time()
         primary_prediction = await loop.run_in_executor(
             self.executor,
             self.primary_model.predict,
             features
         )
-        primary_latency = (asyncio.get_event_loop().time() - primary_start) * 1000
+        primary_latency = (loop.time() - primary_start) * 1000
 
-        # Run shadow if configured
-        shadow_prediction = None
-        shadow_latency = None
-        predictions_match = True
-
+        # Run shadow if configured, but do not block the user response
         if self.shadow_model:
-            try:
-                shadow_start = asyncio.get_event_loop().time()
-                shadow_prediction = await loop.run_in_executor(
-                    self.executor,
-                    self.shadow_model.predict,
-                    features
-                )
-                shadow_latency = (asyncio.get_event_loop().time() - shadow_start) * 1000
-
-                # Compare predictions
-                predictions_match = self._compare_predictions(
+            task = asyncio.create_task(
+                self._run_shadow(
+                    features,
                     primary_prediction,
-                    shadow_prediction
+                    primary_latency,
+                    self.shadow_model,
+                    self.shadow_version
                 )
-
-                # Log comparison
-                self.comparison_logger.log(
-                    primary_version=self.primary_version,
-                    shadow_version=self.shadow_version,
-                    primary_prediction=primary_prediction,
-                    shadow_prediction=shadow_prediction,
-                    primary_latency_ms=primary_latency,
-                    shadow_latency_ms=shadow_latency,
-                    match=predictions_match
-                )
-
-            except Exception as e:
-                logger.error(f"Shadow prediction failed: {e}")
+            )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
         return ShadowResult(
             primary_prediction=primary_prediction,
-            shadow_prediction=shadow_prediction,
+            shadow_prediction=None,
             primary_latency_ms=primary_latency,
-            shadow_latency_ms=shadow_latency,
-            predictions_match=predictions_match
+            shadow_latency_ms=None,
+            predictions_match=None
         )
+
+    async def _run_shadow(
+        self,
+        features,
+        primary_prediction,
+        primary_latency,
+        shadow_model,
+        shadow_version
+    ):
+        """Run and log shadow prediction in the background."""
+        loop = asyncio.get_running_loop()
+
+        try:
+            shadow_start = loop.time()
+            shadow_prediction = await loop.run_in_executor(
+                self.executor,
+                shadow_model.predict,
+                features
+            )
+            shadow_latency = (loop.time() - shadow_start) * 1000
+
+            predictions_match = self._compare_predictions(
+                primary_prediction,
+                shadow_prediction
+            )
+
+            self.comparison_logger.log(
+                primary_version=self.primary_version,
+                shadow_version=shadow_version,
+                primary_prediction=primary_prediction,
+                shadow_prediction=shadow_prediction,
+                primary_latency_ms=primary_latency,
+                shadow_latency_ms=shadow_latency,
+                match=predictions_match
+            )
+
+        except Exception as e:
+            logger.error(f"Shadow prediction failed: {e}")
 
     def _compare_predictions(
         self,
@@ -659,7 +677,8 @@ deployer = ShadowDeployer(
 deployer.set_shadow(model_v2, "2.0.0")
 
 # Make predictions - only primary affects users
-result = await deployer.predict(features)
+async def handle_request(features):
+    return await deployer.predict(features)
 
 # Analyze after shadow period
 match_rate = comparison_logger.get_match_rate("2.0.0")
