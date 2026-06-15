@@ -34,7 +34,7 @@ sequenceDiagram
 - **0-RTT resumption**: Send data on first packet
 - **Removed weak ciphers**: No RC4, 3DES, or SHA-1
 - **Forward secrecy required**: Every connection uses ephemeral keys
-- **Simplified cipher suites**: Only five secure suites
+- **Simplified cipher suites**: Five TLS 1.3 suites are defined, with three commonly enabled by default
 
 ## Nginx TLS 1.3 Configuration
 
@@ -42,7 +42,8 @@ sequenceDiagram
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;  # Nginx 1.25.1+ syntax
     server_name example.com;
 
     # Certificate files
@@ -52,19 +53,22 @@ server {
     # Protocol versions - TLS 1.2 and 1.3 only
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    # TLS 1.3 cipher suites (preferred)
-    ssl_ciphers TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    # TLS 1.2 cipher suites
+    ssl_ciphers ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
 
-    # Use server's cipher preference
+    # TLS 1.3 cipher suites require OpenSSL configuration commands in Nginx
+    ssl_conf_command Ciphersuites TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256;
+
+    # Use server's cipher preference for TLS 1.2
     ssl_prefer_server_ciphers on;
 
     # ECDH curve
-    ssl_ecdh_curve X25519:secp384r1;
+    ssl_ecdh_curve X25519:prime256v1:secp384r1;
 
     # Session settings
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:50m;
-    ssl_session_tickets off;  # Disable for perfect forward secrecy
+    ssl_session_tickets off;  # Disable ticket-based resumption unless ticket keys are rotated
 
     # OCSP Stapling
     ssl_stapling on;
@@ -82,7 +86,8 @@ server {
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;  # Nginx 1.25.1+ syntax
     server_name secure.example.com;
 
     ssl_certificate /etc/ssl/certs/example.com.crt;
@@ -91,9 +96,9 @@ server {
     # TLS 1.3 only - maximum security
     ssl_protocols TLSv1.3;
 
-    # TLS 1.3 only has these cipher suites
-    # They are automatically selected, but you can specify preference
-    ssl_ciphers TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256;
+    # TLS 1.3 cipher suites are automatically selected by OpenSSL.
+    # To override them in Nginx 1.19.4+, use ssl_conf_command.
+    ssl_conf_command Ciphersuites TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256;
 
     # 0-RTT (early data) - enable with caution
     ssl_early_data on;
@@ -102,7 +107,7 @@ server {
     proxy_set_header Early-Data $ssl_early_data;
 
     location / {
-        # Reject early data for state-changing requests
+        # Reject all early data unless the application explicitly handles replay risk
         if ($ssl_early_data = 1) {
             return 425;
         }
@@ -275,8 +280,8 @@ server {
     # Prevent MIME type sniffing
     add_header X-Content-Type-Options "nosniff" always;
 
-    # XSS protection
-    add_header X-XSS-Protection "1; mode=block" always;
+    # Disable legacy XSS filtering; rely on CSP instead
+    add_header X-XSS-Protection "0" always;
 
     # Referrer policy
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
@@ -298,8 +303,8 @@ server {
 ssl_session_cache shared:SSL:50m;
 ssl_session_timeout 1d;
 
-# Disable session tickets for perfect forward secrecy
-# (Optional - enables faster resumption but slightly reduces security)
+# Disable ticket-based resumption unless ticket keys are rotated
+# (Optional - enabling tickets can improve resumption performance)
 ssl_session_tickets off;
 
 # If enabling session tickets, rotate keys regularly
@@ -317,7 +322,7 @@ ssl_early_data on;
 
 location / {
     # Protect against replay attacks
-    # Reject early data for non-idempotent requests
+    # Reject early data unless the request is GET
 
     set $reject_early 0;
 
@@ -350,7 +355,7 @@ DOMAIN=$1
 
 echo "=== Supported Protocols ==="
 for proto in tls1 tls1_1 tls1_2 tls1_3; do
-    if openssl s_client -connect $DOMAIN:443 -$proto </dev/null 2>/dev/null | grep -q "Cipher"; then
+    if openssl s_client -connect "$DOMAIN:443" -servername "$DOMAIN" -$proto -brief </dev/null 2>&1 | grep -q "Protocol version: TLS"; then
         echo "$proto: SUPPORTED"
     else
         echo "$proto: NOT SUPPORTED"
