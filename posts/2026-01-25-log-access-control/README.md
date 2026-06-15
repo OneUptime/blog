@@ -84,6 +84,27 @@ interface Permission {
   }[];
 }
 
+interface LogQuery {
+  timeRange: { start: Date; end: Date };
+  filters?: {
+    field: string;
+    operator: 'eq' | 'in' | 'contains';
+    value: unknown;
+  }[];
+  _fieldRestrictions?: {
+    allowed?: string[];
+    denied: string[];
+  };
+}
+
+interface EffectivePermissions {
+  allowedSources: string[];
+  allowedFields?: string[];
+  deniedFields: string[];
+  mandatoryFilters: NonNullable<Permission['filters']>;
+  maxTimeRange?: Permission['maxTimeRange'];
+}
+
 class LogAccessController {
   private roles: Map<string, Role> = new Map();
   private userRoles: Map<string, string[]> = new Map();
@@ -239,7 +260,10 @@ class LogAccessController {
     // Extract sources from query filters
     const sourceFilter = query.filters?.find(f => f.field === 'source' || f.field === 'service');
     if (sourceFilter) {
-      return Array.isArray(sourceFilter.value) ? sourceFilter.value : [sourceFilter.value];
+      if (Array.isArray(sourceFilter.value)) {
+        return sourceFilter.value.filter((value): value is string => typeof value === 'string');
+      }
+      return typeof sourceFilter.value === 'string' ? [sourceFilter.value] : [];
     }
     return ['*'];
   }
@@ -390,6 +414,11 @@ interface FieldSecurityConfig {
   encryptedFields: string[];
 }
 
+interface LogEntry {
+  tenant_id?: string;
+  [key: string]: unknown;
+}
+
 class FieldSecurityProcessor {
   private config: FieldSecurityConfig;
 
@@ -398,7 +427,7 @@ class FieldSecurityProcessor {
   }
 
   process(log: LogEntry, userPermissions: EffectivePermissions): LogEntry {
-    const processed = { ...log };
+    const processed = structuredClone(log);
 
     // Remove hidden fields
     for (const field of this.config.hiddenFields) {
@@ -428,14 +457,32 @@ class FieldSecurityProcessor {
 
   private deleteField(obj: Record<string, unknown>, path: string): void {
     const parts = path.split('.');
-    let current: any = obj;
+    this.deleteFieldParts(obj, parts);
+  }
 
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (current[parts[i]] === undefined) return;
-      current = current[parts[i]];
+  private deleteFieldParts(obj: Record<string, unknown>, parts: string[]): void {
+    if (parts.length === 0) return;
+
+    const [currentPart, ...remainingParts] = parts;
+
+    if (currentPart === '*') {
+      for (const value of Object.values(obj)) {
+        if (value && typeof value === 'object') {
+          this.deleteFieldParts(value as Record<string, unknown>, remainingParts);
+        }
+      }
+      return;
     }
 
-    delete current[parts[parts.length - 1]];
+    if (remainingParts.length === 0) {
+      delete obj[currentPart];
+      return;
+    }
+
+    const next = obj[currentPart];
+    if (next && typeof next === 'object') {
+      this.deleteFieldParts(next as Record<string, unknown>, remainingParts);
+    }
   }
 
   private getField(obj: Record<string, unknown>, path: string): unknown {
@@ -582,21 +629,47 @@ class MultiTenantAccessController {
   // Validate log belongs to user's tenants
   canAccessLog(userId: string, log: LogEntry): boolean {
     const userTenantIds = this.userTenants.get(userId) || [];
-    return userTenantIds.includes(log.tenant_id);
+    return typeof log.tenant_id === 'string' && userTenantIds.includes(log.tenant_id);
+  }
+
+  getUserTenants(userId: string): string[] {
+    return this.userTenants.get(userId) || [];
   }
 }
 
 // Middleware for Express
+interface Request {
+  user?: { id: string };
+  headers: Record<string, string | string[] | undefined>;
+  tenantContext?: {
+    allowedTenants: string[];
+    currentTenant: string;
+  };
+}
+
+interface Response {
+  status(code: number): {
+    json(body: unknown): void;
+  };
+}
+
+type NextFunction = () => void;
+
 function tenantIsolationMiddleware(controller: MultiTenantAccessController) {
   return (req: Request, res: Response, next: NextFunction) => {
     const userId = req.user?.id;
-    const requestedTenantId = req.headers['x-tenant-id'] as string;
+    const tenantHeader = req.headers['x-tenant-id'];
+    const requestedTenantId = Array.isArray(tenantHeader) ? tenantHeader[0] : tenantHeader;
 
     if (!userId) {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
     const userTenants = controller.getUserTenants(userId);
+
+    if (userTenants.length === 0) {
+      return res.status(403).json({ error: 'No tenant access configured' });
+    }
 
     if (requestedTenantId && !userTenants.includes(requestedTenantId)) {
       return res.status(403).json({ error: 'Access to tenant denied' });
@@ -649,6 +722,28 @@ interface LogAccessEvent {
     requestId: string;
     duration_ms: number;
   };
+}
+
+interface User {
+  id: string;
+  email: string;
+  roles: string[];
+  currentTenant?: string;
+  ip: string;
+  userAgent: string;
+}
+
+interface QueryResult<T> {
+  logs?: T[];
+}
+
+interface AuditStorage {
+  write(event: LogAccessEvent & { _type: string }): Promise<void>;
+  query(filters: Record<string, unknown>): Promise<LogAccessEvent[]>;
+}
+
+function generateRequestId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 class LogAccessAuditor {
@@ -727,6 +822,17 @@ class LogAccessAuditor {
       _type: 'log_access_audit',
       ...filters
     });
+  }
+
+  private extractSources(query: LogQuery): string[] {
+    const sourceFilter = query.filters?.find(f => f.field === 'source' || f.field === 'service');
+    if (sourceFilter) {
+      if (Array.isArray(sourceFilter.value)) {
+        return sourceFilter.value.filter((value): value is string => typeof value === 'string');
+      }
+      return typeof sourceFilter.value === 'string' ? [sourceFilter.value] : [];
+    }
+    return ['*'];
   }
 }
 ```
