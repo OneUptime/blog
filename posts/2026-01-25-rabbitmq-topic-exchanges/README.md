@@ -22,7 +22,7 @@ Two special characters work as wildcards:
 flowchart LR
     P[Producer] --> TE[Topic Exchange]
 
-    TE -->|"order.created.*"| Q1[US Orders Queue]
+    TE -->|"order.created.us"| Q1[US Orders Queue]
     TE -->|"order.*.eu"| Q2[EU Orders Queue]
     TE -->|"order.#"| Q3[All Orders Queue]
     TE -->|"*.shipped.*"| Q4[Shipping Queue]
@@ -149,7 +149,7 @@ When publishing, specify a routing key that describes the message content.
 ```python
 import pika
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 def publish_event(event_type, region, data):
     connection = pika.BlockingConnection(
@@ -165,7 +165,7 @@ def publish_event(event_type, region, data):
         'event': event_type,
         'region': region,
         'data': data,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }
 
     # Publish with the routing key
@@ -196,7 +196,7 @@ const amqp = require('amqplib');
 
 async function publishEvent(eventType, region, data) {
     const connection = await amqp.connect('amqp://localhost');
-    const channel = await connection.createChannel();
+    const channel = await connection.createConfirmChannel();
 
     const routingKey = `${eventType}.${region}`;
 
@@ -216,6 +216,7 @@ async function publishEvent(eventType, region, data) {
             contentType: 'application/json'
         }
     );
+    await channel.waitForConfirms();
 
     console.log(`Published ${routingKey}:`, data);
     await connection.close();
@@ -408,7 +409,7 @@ channel.exchange_declare(exchange='unrouted', exchange_type='fanout')
 channel.queue_declare(queue='unrouted_messages')
 channel.queue_bind(exchange='unrouted', queue='unrouted_messages')
 
-# Declare main exchange with alternate exchange
+# Declare main exchange with alternate exchange before first using it
 channel.exchange_declare(
     exchange='events',
     exchange_type='topic',
