@@ -173,14 +173,25 @@ export function idempotencyMiddleware(
 
       // Intercept response to cache it
       const originalJson = res.json.bind(res);
+      let responseCached = false;
+
       res.json = (body: any) => {
+        responseCached = true;
         idempotencyService.complete(fullKey, body, res.statusCode);
         return originalJson(body);
       };
 
-      // Handle errors
-      res.on('error', () => {
-        idempotencyService.fail(fullKey);
+      // Release the lock if the handler finishes without sending JSON
+      res.on('finish', () => {
+        if (!responseCached) {
+          idempotencyService.release(fullKey);
+        }
+      });
+
+      res.on('close', () => {
+        if (!responseCached && !res.writableEnded) {
+          idempotencyService.release(fullKey);
+        }
       });
 
       next();
@@ -325,7 +336,8 @@ When clients cannot provide idempotency keys, generate them from request content
 ```typescript
 // ContentDeduplication.ts
 import crypto from 'crypto';
-import { Request } from 'express';
+import { Request, Response, NextFunction } from 'express';
+import { IdempotencyService } from './IdempotencyService';
 
 export class ContentDeduplicator {
   // Generate fingerprint from request content
@@ -402,10 +414,25 @@ export function contentDeduplicationMiddleware(
     (req as any).idempotencyKey = fullKey;
 
     const originalJson = res.json.bind(res);
+    let responseCached = false;
+
     res.json = (body: any) => {
+      responseCached = true;
       idempotencyService.complete(fullKey, body, res.statusCode);
       return originalJson(body);
     };
+
+    res.on('finish', () => {
+      if (!responseCached) {
+        idempotencyService.release(fullKey);
+      }
+    });
+
+    res.on('close', () => {
+      if (!responseCached && !res.writableEnded) {
+        idempotencyService.release(fullKey);
+      }
+    });
 
     next();
   };
@@ -645,7 +672,8 @@ app.use('/api', async (req, res, next) => {
 
     const originalJson = res.json.bind(res);
     res.json = (body: any) => {
-      idempotencyService.complete(fullKey, body, res.statusCode);
+      void idempotencyService.complete(fullKey, body, res.statusCode)
+        .catch((error) => console.error('Failed to cache idempotent response:', error));
       return originalJson(body);
     };
 
