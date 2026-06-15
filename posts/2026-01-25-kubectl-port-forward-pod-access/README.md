@@ -62,7 +62,7 @@ This keeps your terminal cleaner than running multiple port-forward commands.
 
 ## Listen on All Interfaces
 
-By default, port-forward binds to `127.0.0.1` (localhost only). To allow access from other machines on your network:
+By default, port-forward binds to `localhost` (`127.0.0.1` and `::1` where available). To allow access from other machines on your network:
 
 ```bash
 # Listen on all network interfaces
