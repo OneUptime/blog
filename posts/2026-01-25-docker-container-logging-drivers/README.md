@@ -38,12 +38,12 @@ graph LR
 |--------|----------|---------------------|
 | json-file | Default, local development | Yes |
 | local | Production local, better performance | Yes |
-| syslog | Traditional Unix logging | No |
-| journald | systemd-based systems | Yes (via journalctl) |
-| fluentd | Centralized logging | No |
-| awslogs | AWS CloudWatch | No |
-| gcplogs | Google Cloud Logging | No |
-| splunk | Splunk Enterprise | No |
+| syslog | Traditional Unix logging | Yes (Docker 20.10+ dual logging cache) |
+| journald | systemd-based systems | Yes |
+| fluentd | Centralized logging | Yes (Docker 20.10+ dual logging cache) |
+| awslogs | AWS CloudWatch | Yes (Docker 20.10+ dual logging cache) |
+| gcplogs | Google Cloud Logging | Yes (Docker 20.10+ dual logging cache) |
+| splunk | Splunk Enterprise | Yes (Docker 20.10+ dual logging cache) |
 
 ## The Default json-file Driver
 
@@ -74,7 +74,6 @@ docker run -d \
 Set defaults for all containers in Docker daemon configuration:
 
 ```json
-// /etc/docker/daemon.json
 {
   "log-driver": "json-file",
   "log-opts": {
@@ -88,8 +87,8 @@ Set defaults for all containers in Docker daemon configuration:
 ```
 
 ```bash
-# Reload Docker to apply changes
-sudo systemctl reload docker
+# Restart Docker to apply changes for new containers
+sudo systemctl restart docker
 ```
 
 ## The Local Driver for Production
@@ -159,7 +158,7 @@ docker run -d \
   --log-opt fluentd-address=localhost:24224 \
   --log-opt tag="docker.{{.Name}}" \
   --log-opt fluentd-async=true \
-  --log-opt fluentd-buffer-limit=8MB \
+  --log-opt fluentd-buffer-limit=8192 \
   --name api \
   myapp:latest
 ```
@@ -193,7 +192,7 @@ Fluentd configuration for forwarding to Elasticsearch:
 For containers running on AWS:
 
 ```bash
-# Requires AWS credentials configured
+# Requires AWS credentials available to the Docker daemon
 docker run -d \
   --log-driver=awslogs \
   --log-opt awslogs-region=us-east-1 \
@@ -224,7 +223,7 @@ For ECS tasks, configure in task definition:
 For containers on GCP:
 
 ```bash
-# Requires Application Default Credentials
+# Requires Application Default Credentials available to the Docker daemon
 docker run -d \
   --log-driver=gcplogs \
   --log-opt gcp-project=my-project-id \
@@ -294,19 +293,13 @@ services:
 Docker 20.10+ supports dual logging to keep local logs while forwarding:
 
 ```json
-// /etc/docker/daemon.json
 {
   "log-driver": "fluentd",
   "log-opts": {
     "fluentd-address": "localhost:24224",
-    "tag": "docker.{{.Name}}"
-  },
-  "features": {
-    "buildkit": true
-  },
-  "log-opts": {
-    "mode": "non-blocking",
-    "max-buffer-size": "4m"
+    "tag": "docker.{{.Name}}",
+    "cache-max-size": "20m",
+    "cache-max-file": "5"
   }
 }
 ```
@@ -331,10 +324,10 @@ const log = {
 console.log(JSON.stringify(log));
 ```
 
-Configure Docker to parse JSON logs:
+Send JSON-formatted application logs and parse them in your Fluentd pipeline:
 
 ```bash
-# Fluentd can parse JSON logs automatically
+# Forward JSON-formatted log lines to Fluentd
 docker run -d \
   --log-driver=fluentd \
   --log-opt fluentd-address=localhost:24224 \
@@ -392,7 +385,7 @@ services:
       options:
         fluentd-address: "localhost:24224"
         fluentd-async: "true"
-        fluentd-buffer-limit: "16MB"
+        fluentd-buffer-limit: "16384"
         mode: "non-blocking"
         max-buffer-size: "8m"
 ```
