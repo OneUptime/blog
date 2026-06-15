@@ -40,6 +40,11 @@ The foundation of DNS high availability is having multiple nameservers. At minim
 ```bash
 # /etc/named.conf on primary server (ns1.example.com)
 
+key "failover-key" {
+    algorithm hmac-sha256;
+    secret "u7FNY6JtJ0k+ZQdPi4QvpqW1S2aMdj0M6mQa7Kp4Lxw=";
+};
+
 options {
     directory "/var/named";
     listen-on port 53 { any; };
@@ -60,7 +65,7 @@ options {
 };
 
 zone "example.com" IN {
-    type master;
+    type primary;
     file "zones/example.com.zone";
 
     # Allow dynamic updates (for automated failover)
@@ -98,6 +103,8 @@ www     IN      A       10.0.1.102
 ; API endpoint with weighted distribution (using SRV)
 _api._tcp   IN  SRV     10 60 443 api1.example.com.
 _api._tcp   IN  SRV     10 40 443 api2.example.com.
+api1        IN  A       10.0.1.100
+api2        IN  A       10.0.1.101
 ```
 
 ### Secondary Server Configuration
@@ -111,11 +118,11 @@ options {
 };
 
 zone "example.com" IN {
-    type slave;
+    type secondary;
     file "zones/example.com.zone";
-    masters { 192.168.1.10; };  # Primary server
+    primaries { 192.168.1.10; };  # Primary server
 
-    # How often to check for zone updates
+    # Store the transferred zone in text format
     masterfile-format text;
 };
 ```
@@ -128,9 +135,11 @@ Static DNS records do not respond to server failures. You need active health che
 
 ```bash
 # Create health check using AWS CLI
+# Route 53 health checkers are outside your VPC, so replace this
+# documentation IP with a public, routable endpoint.
 aws route53 create-health-check --caller-reference $(date +%s) \
   --health-check-config '{
-    "IPAddress": "10.0.1.100",
+    "IPAddress": "203.0.113.100",
     "Port": 443,
     "Type": "HTTPS",
     "ResourcePath": "/health",
@@ -150,7 +159,7 @@ aws route53 change-resource-record-sets \
         "SetIdentifier": "primary",
         "Failover": "PRIMARY",
         "TTL": 60,
-        "ResourceRecords": [{"Value": "10.0.1.100"}],
+        "ResourceRecords": [{"Value": "203.0.113.100"}],
         "HealthCheckId": "health-check-id-here"
       }
     }]
@@ -181,7 +190,7 @@ DNS_SERVER = "192.168.1.10"
 ZONE = "example.com"
 RECORD = "api"
 TSIG_KEY_NAME = "failover-key"
-TSIG_SECRET = "base64-encoded-secret-here"
+TSIG_SECRET = "u7FNY6JtJ0k+ZQdPi4QvpqW1S2aMdj0M6mQa7Kp4Lxw="
 
 # Endpoints to monitor
 ENDPOINTS = [
@@ -264,7 +273,7 @@ if __name__ == "__main__":
 
 ## GeoDNS for Global High Availability
 
-GeoDNS routes users to the nearest healthy server based on their location.
+GeoDNS routes users to the nearest server based on their location. Combine it with health checks or automation if you also need unhealthy regions removed automatically.
 
 ### PowerDNS with GeoIP Backend
 
@@ -281,35 +290,44 @@ domains:
   - domain: example.com
     ttl: 300
     records:
+      example.com:
+        - soa: ns1.example.com hostmaster.example.com 2026012501 3600 900 604800 300
+        - ns: ns1.example.com
+        - ns: ns2.example.com
+
       # Default (fallback) record
-      api.example.com:
+      default.api.example.com:
         - a:
             content: 10.0.1.100
             weight: 100
 
       # North America
-      api.example.com:
+      na.api.example.com:
         - a:
             content: 10.0.2.100  # US East server
             weight: 100
-        geo:
-          continent: NA
 
       # Europe
-      api.example.com:
+      eu.api.example.com:
         - a:
             content: 10.0.3.100  # EU server
             weight: 100
-        geo:
-          continent: EU
 
       # Asia Pacific
-      api.example.com:
+      apac.api.example.com:
         - a:
             content: 10.0.4.100  # APAC server
             weight: 100
-        geo:
-          continent: AS
+
+    services:
+      api.example.com:
+        default: ['%mp.api.example.com', 'default.api.example.com']
+
+    mapping_lookup_formats: ['%cn']
+    custom_mapping:
+      NA: na
+      EU: eu
+      AS: apac
 ```
 
 ## Anycast DNS Configuration
@@ -338,7 +356,7 @@ router id 10.0.1.10;  # Change per server
 
 protocol kernel {
     scan time 60;
-    export all;
+    ipv4 { export all; };
 }
 
 protocol device {
@@ -347,6 +365,7 @@ protocol device {
 
 # Announce the anycast IP
 protocol static {
+    ipv4;
     route 192.0.2.1/32 via "lo";
 }
 
@@ -354,12 +373,13 @@ protocol bgp upstream {
     local as 65001;
     neighbor 10.0.0.1 as 65000;  # Upstream router
 
-    export filter {
-        if net = 192.0.2.1/32 then accept;
-        reject;
+    ipv4 {
+        import none;
+        export filter {
+            if net = 192.0.2.1/32 then accept;
+            reject;
+        };
     };
-
-    import none;
 }
 ```
 
