@@ -51,7 +51,7 @@ The version starts at 1 and increments with every successful update. Some teams 
 Let's build a practical example using `sqlx` with PostgreSQL. We will create a product update function that handles concurrent modifications safely.
 
 ```rust
-use sqlx::{PgPool, Error as SqlxError};
+use sqlx::{types::Decimal, PgPool, Error as SqlxError};
 use thiserror::Error;
 
 // Define our domain types
@@ -59,7 +59,7 @@ use thiserror::Error;
 pub struct Product {
     pub id: i32,
     pub name: String,
-    pub price: f64,
+    pub price: Decimal,
     pub stock: i32,
     pub version: i32,
 }
@@ -99,7 +99,7 @@ pub async fn update_product(
     pool: &PgPool,
     id: i32,
     name: &str,
-    price: f64,
+    price: Decimal,
     stock: i32,
     expected_version: i32,
 ) -> Result<Product, UpdateError> {
@@ -163,7 +163,7 @@ const RETRY_DELAY_MS: u64 = 50;
 pub async fn update_product_with_retry(
     pool: &PgPool,
     id: i32,
-    update_fn: impl Fn(&Product) -> (String, f64, i32),
+    update_fn: impl Fn(&Product) -> (String, Decimal, i32),
 ) -> Result<Product, UpdateError> {
     let mut attempts = 0;
 
@@ -263,7 +263,7 @@ async fn test_optimistic_lock_conflict() {
     let pool = setup_test_db().await;
 
     // Create a test product
-    let product = create_test_product(&pool, "Widget", 10.0, 100).await;
+    let product = create_test_product(&pool, "Widget", Decimal::new(1000, 2), 100).await;
 
     // Simulate reading the same version twice
     let version_a = product.version;
@@ -271,13 +271,13 @@ async fn test_optimistic_lock_conflict() {
 
     // First update succeeds
     let result_a = update_product(
-        &pool, product.id, "Widget A", 10.0, 90, version_a
+        &pool, product.id, "Widget A", Decimal::new(1000, 2), 90, version_a
     ).await;
     assert!(result_a.is_ok());
 
     // Second update with stale version fails
     let result_b = update_product(
-        &pool, product.id, "Widget B", 10.0, 80, version_b
+        &pool, product.id, "Widget B", Decimal::new(1000, 2), 80, version_b
     ).await;
     assert!(matches!(result_b, Err(UpdateError::Conflict)));
 }
