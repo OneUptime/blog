@@ -65,7 +65,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using System.Data;
 
-public class DatabaseConfigurationProvider : ConfigurationProvider
+public class DatabaseConfigurationProvider : ConfigurationProvider, IDisposable
 {
     private readonly string _connectionString;
     private readonly string _environment;
@@ -223,7 +223,7 @@ Load configuration from a remote configuration service:
 using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 
-public class ApiConfigurationProvider : ConfigurationProvider
+public class ApiConfigurationProvider : ConfigurationProvider, IDisposable
 {
     private readonly string _baseUrl;
     private readonly string _apiKey;
@@ -308,6 +308,11 @@ public class ApiConfigurationProvider : ConfigurationProvider
             }
         }
     }
+
+    public void Dispose()
+    {
+        _httpClient.Dispose();
+    }
 }
 
 public class ApiConfigurationSource : IConfigurationSource
@@ -361,7 +366,7 @@ public class YamlConfigurationProvider : FileConfigurationProvider
         var yamlContent = reader.ReadToEnd();
 
         // Deserialize YAML to a dictionary structure
-        var yamlData = deserializer.Deserialize<Dictionary<string, object>>(yamlContent);
+        var yamlData = deserializer.Deserialize<Dictionary<object, object>>(yamlContent);
 
         // Convert to configuration key-value pairs
         Data = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -461,6 +466,14 @@ features:
 When loading sensitive configuration, implement proper handling:
 
 ```csharp
+public interface ISecretStore
+{
+    Task<IEnumerable<Secret>> GetAllSecretsAsync();
+    Task<string?> GetSecretAsync(string path);
+}
+
+public record Secret(string Path, string Value);
+
 public class SecureConfigurationProvider : ConfigurationProvider
 {
     private readonly ISecretStore _secretStore;
@@ -502,7 +515,7 @@ public class SecureConfigurationProvider : ConfigurationProvider
         // Try loading on-demand for secrets not in initial load
         try
         {
-            var secretPath = "myapp/" + key.Replace(":", "/").ToLower();
+            var secretPath = "myapp/" + key.Replace(":", "/").ToLowerInvariant();
             value = _secretStore.GetSecretAsync(secretPath).GetAwaiter().GetResult();
 
             if (value != null)
