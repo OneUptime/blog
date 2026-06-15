@@ -32,6 +32,7 @@ Install the tool:
 # Install semantic-release and plugins
 
 npm install --save-dev semantic-release \
+  conventional-changelog-conventionalcommits \
   @semantic-release/git \
   @semantic-release/changelog \
   @semantic-release/commit-analyzer \
@@ -48,6 +49,7 @@ Create a configuration file:
   "plugins": [
     ["@semantic-release/commit-analyzer", {
       "preset": "conventionalcommits",
+      "presetConfig": {},
       "releaseRules": [
         {"type": "feat", "release": "minor"},
         {"type": "fix", "release": "patch"},
@@ -62,7 +64,10 @@ Create a configuration file:
         {"breaking": true, "release": "major"}
       ]
     }],
-    "@semantic-release/release-notes-generator",
+    ["@semantic-release/release-notes-generator", {
+      "preset": "conventionalcommits",
+      "presetConfig": {}
+    }],
     ["@semantic-release/changelog", {
       "changelogFile": "CHANGELOG.md"
     }],
@@ -371,10 +376,6 @@ version_files = [
 tag_format = "v$version"
 update_changelog_on_bump = true
 changelog_incremental = true
-
-[tool.commitizen.customize]
-bump_pattern = "^(feat|fix|perf|refactor)(!)?:"
-bump_map = {"feat" = "MINOR", "fix" = "PATCH", "perf" = "PATCH", "refactor" = "PATCH"}
 ```
 
 Bump versions:
@@ -394,7 +395,7 @@ cz changelog
 
 1. **Enforce commit format**: Use commitlint to reject non-conforming commits. This ensures semantic-release can always determine the correct version.
 
-2. **Start at 0.x.x for new projects**: Before your first stable release, use 0.x.x versions. Breaking changes bump the minor version (0.1.0 to 0.2.0).
+2. **Start at 0.x.x for new projects**: Before your first stable release, use 0.x.x versions. SemVer treats 0.y.z as initial development where the public API should not be considered stable; many teams use minor bumps for breaking changes during this phase (0.1.0 to 0.2.0).
 
 3. **Document breaking changes**: Include migration guides in commit footers or link to documentation.
 
