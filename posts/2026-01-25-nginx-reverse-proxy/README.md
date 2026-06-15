@@ -190,7 +190,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com www.example.com;
 
     # SSL configuration (certificates managed separately)
@@ -249,7 +250,7 @@ sudo tail -f /var/log/nginx/error.log
 # Check for configuration errors
 sudo nginx -t
 
-# View upstream connection status
+# Check whether the stub status module is available
 sudo nginx -V 2>&1 | grep -o with-http_stub_status_module
 ```
 
