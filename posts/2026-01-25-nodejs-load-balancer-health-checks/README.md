@@ -33,7 +33,7 @@ interface Backend {
 class LoadBalancer {
   private backends: Backend[];
   private proxy: httpProxy;
-  private currentIndex: number = 0;
+  private currentIndex: number = -1;
 
   constructor(backends: { host: string; port: number }[]) {
     // Initialize backend list with health metadata
@@ -128,6 +128,16 @@ Passive health detection waits for requests to fail. Active health checking proa
 // health-checker.ts
 import http from 'http';
 
+interface Backend {
+  host: string;
+  port: number;
+  healthy: boolean;
+  activeConnections: number;
+  lastChecked: Date | null;
+  consecutiveFailures: number;
+  consecutiveSuccesses: number;
+}
+
 interface HealthCheckConfig {
   path: string;           // Endpoint to check (e.g., /health)
   interval: number;       // Milliseconds between checks
@@ -164,6 +174,7 @@ class HealthChecker {
         },
         (res) => {
           // Consider 2xx status codes as healthy
+          res.resume();
           resolve(res.statusCode !== undefined && res.statusCode >= 200 && res.statusCode < 300);
         }
       );
@@ -188,20 +199,18 @@ class HealthChecker {
 
       // Mark as healthy after threshold successes
       if (!backend.healthy) {
-        // Track consecutive successes (reusing consecutiveFailures logic inverted)
-        const consecutiveSuccesses = (backend as any).consecutiveSuccesses || 0;
-        (backend as any).consecutiveSuccesses = consecutiveSuccesses + 1;
+        backend.consecutiveSuccesses++;
 
-        if ((backend as any).consecutiveSuccesses >= this.config.healthyThreshold) {
+        if (backend.consecutiveSuccesses >= this.config.healthyThreshold) {
           backend.healthy = true;
-          (backend as any).consecutiveSuccesses = 0;
+          backend.consecutiveSuccesses = 0;
           console.log(`Backend ${backend.host}:${backend.port} is now HEALTHY`);
           onStatusChange(backend);
         }
       }
     } else {
       backend.consecutiveFailures++;
-      (backend as any).consecutiveSuccesses = 0;
+      backend.consecutiveSuccesses = 0;
 
       // Mark as unhealthy after threshold failures
       if (backend.healthy && backend.consecutiveFailures >= this.config.unhealthyThreshold) {
@@ -254,7 +263,7 @@ interface WeightedBackend extends Backend {
 }
 
 class LoadBalancingAlgorithms {
-  private roundRobinIndex: number = 0;
+  private roundRobinIndex: number = -1;
 
   // Simple round-robin: each backend gets requests in turn
   roundRobin(backends: Backend[]): Backend | null {
@@ -336,6 +345,7 @@ interface Backend {
   activeConnections: number;
   lastChecked: Date | null;
   consecutiveFailures: number;
+  consecutiveSuccesses: number;
   currentWeight: number;
 }
 
@@ -357,7 +367,7 @@ class ProductionLoadBalancer {
   private backends: Backend[];
   private proxy: httpProxy;
   private config: LoadBalancerConfig;
-  private roundRobinIndex: number = 0;
+  private roundRobinIndex: number = -1;
   private healthCheckTimers: NodeJS.Timeout[] = [];
 
   constructor(
@@ -387,6 +397,7 @@ class ProductionLoadBalancer {
       activeConnections: 0,
       lastChecked: null,
       consecutiveFailures: 0,
+      consecutiveSuccesses: 0,
       currentWeight: 0,
     }));
 
@@ -414,8 +425,11 @@ class ProductionLoadBalancer {
   }
 
   // Select backend based on configured algorithm
-  private selectBackend(req: http.IncomingMessage): Backend | null {
-    const healthy = this.backends.filter(b => b.healthy);
+  private selectBackend(
+    req: http.IncomingMessage,
+    candidates: Backend[] = this.backends
+  ): Backend | null {
+    const healthy = candidates.filter(b => b.healthy);
     if (healthy.length === 0) return null;
 
     switch (this.config.algorithm) {
@@ -480,7 +494,7 @@ class ProductionLoadBalancer {
       return;
     }
 
-    const backend = this.selectBackend(req);
+    const backend = this.selectBackend(req, available);
     if (!backend) {
       res.writeHead(503);
       res.end('No backend available');
@@ -489,6 +503,13 @@ class ProductionLoadBalancer {
 
     backend.activeConnections++;
     (req as any).__backend = backend;
+    let connectionReleased = false;
+    const releaseConnection = () => {
+      if (!connectionReleased) {
+        backend.activeConnections--;
+        connectionReleased = true;
+      }
+    };
 
     const target = `http://${backend.host}:${backend.port}`;
 
@@ -497,8 +518,10 @@ class ProductionLoadBalancer {
     req.headers['x-request-attempt'] = String(attempt + 1);
 
     this.proxy.web(req, res, { target }, (err) => {
-      backend.activeConnections--;
+      releaseConnection();
+      (req as any).__backend = null;
       backend.consecutiveFailures++;
+      backend.consecutiveSuccesses = 0;
 
       // Mark unhealthy after threshold
       if (backend.consecutiveFailures >= this.config.healthCheck.unhealthyThreshold) {
@@ -519,11 +542,8 @@ class ProductionLoadBalancer {
       }
     });
 
-    res.on('finish', () => {
-      if ((req as any).__backend) {
-        (req as any).__backend.activeConnections--;
-      }
-    });
+    res.once('finish', releaseConnection);
+    res.once('close', releaseConnection);
   }
 
   // Active health checking
@@ -537,12 +557,17 @@ class ProductionLoadBalancer {
 
           if (healthy) {
             backend.consecutiveFailures = 0;
+            backend.consecutiveSuccesses++;
             if (!backend.healthy) {
-              console.log(`Backend ${backend.host}:${backend.port} recovered`);
-              backend.healthy = true;
+              if (backend.consecutiveSuccesses >= this.config.healthCheck.healthyThreshold) {
+                console.log(`Backend ${backend.host}:${backend.port} recovered`);
+                backend.healthy = true;
+                backend.consecutiveSuccesses = 0;
+              }
             }
           } else {
             backend.consecutiveFailures++;
+            backend.consecutiveSuccesses = 0;
             if (backend.healthy &&
                 backend.consecutiveFailures >= this.config.healthCheck.unhealthyThreshold) {
               console.log(`Backend ${backend.host}:${backend.port} failed health check`);
@@ -576,6 +601,7 @@ class ProductionLoadBalancer {
           timeout: this.config.healthCheck.timeout,
         },
         (res) => {
+          res.resume();
           resolve(res.statusCode !== undefined && res.statusCode >= 200 && res.statusCode < 300);
         }
       );
