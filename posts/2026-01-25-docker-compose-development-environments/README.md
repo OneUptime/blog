@@ -16,9 +16,6 @@ A development-focused Docker Compose file typically includes your application, d
 
 ```yaml
 # docker-compose.yml
-
-version: '3.8'
-
 services:
   app:
     build:
@@ -110,8 +107,9 @@ These frameworks need specific configuration to detect file changes through Dock
 ```javascript
 // next.config.js
 module.exports = {
-  webpackDevMiddleware: config => {
+  webpack: config => {
     config.watchOptions = {
+      ...config.watchOptions,
       poll: 1000,      // Check for changes every second
       aggregateTimeout: 300,
     };
@@ -120,7 +118,7 @@ module.exports = {
 };
 ```
 
-### Python with Flask/FastAPI
+### Python with Flask
 
 ```yaml
 # docker-compose.yml
@@ -133,7 +131,7 @@ services:
       - .:/app
     environment:
       - FLASK_DEBUG=1
-    command: flask run --host=0.0.0.0 --reload
+    command: flask run --host=0.0.0.0 --debug
 ```
 
 ## Separating Development and Production Configs
@@ -142,8 +140,6 @@ Use multiple Compose files to layer configurations:
 
 ```yaml
 # docker-compose.yml (base configuration)
-version: '3.8'
-
 services:
   app:
     build: .
@@ -156,8 +152,6 @@ services:
 
 ```yaml
 # docker-compose.override.yml (automatically loaded, dev settings)
-version: '3.8'
-
 services:
   app:
     build:
@@ -181,8 +175,6 @@ services:
 
 ```yaml
 # docker-compose.prod.yml (production overrides)
-version: '3.8'
-
 services:
   app:
     build:
@@ -210,8 +202,6 @@ Include debugging and development tools in your dev setup:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build:
@@ -300,6 +290,8 @@ services:
   app:
     env_file:
       - .env.development
+      - path: .env.development.local
+        required: false
     environment:
       # Override specific values
       - LOG_LEVEL=debug
@@ -336,7 +328,7 @@ services:
       - ./logs:/app/logs:delegated
 ```
 
-For even better performance, use Docker's synchronized file shares (Docker Desktop 4.6+):
+For projects where bind mounts are slow, use Compose Watch with `docker compose up --watch` to sync files into the container:
 
 ```yaml
 services:
