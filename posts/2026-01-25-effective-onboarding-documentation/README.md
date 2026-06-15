@@ -50,7 +50,7 @@ onboarding/
 
 The first document should get developers to a working environment:
 
-```markdown
+````markdown
 # Day One: Environment Setup
 
 Welcome to the team! This guide gets your development environment running.
@@ -73,7 +73,7 @@ cd platform
 
 ## Install dependencies
 make setup
-```bash
+```
 
 This takes about 10 minutes. While it runs, continue to Step 2.
 
@@ -92,7 +92,7 @@ Request database read access in #platform-requests Slack channel:
 
 ```text
 @platform-team Please grant read access to dev databases for [your-name]
-```bash
+```
 
 ## Step 3: Start the Development Server
 
@@ -103,7 +103,7 @@ make dev
 ## Verify it's working
 curl http://localhost:3000/health
 ## Should return: {"status": "ok"}
-```bash
+```
 
 ## Step 4: Verify Your Setup
 
@@ -111,17 +111,17 @@ Run the verification script:
 
 ```bash
 ./scripts/verify-setup.sh
-```bash
+```
 
 Expected output:
 ```text
 ✓ Docker running
-✓ Node.js v20.x installed
+✓ Node.js v22.x installed
 ✓ PostgreSQL connection successful
 ✓ Redis connection successful
 ✓ AWS credentials valid
 ✓ All services healthy
-```bash
+```
 
 ## Troubleshooting
 
@@ -135,7 +135,7 @@ Start Docker Desktop and wait for it to fully initialize.
 ## Find and kill the process
 lsof -i :3000
 kill -9 <PID>
-```bash
+```
 
 ### Error: "Database connection refused"
 
@@ -148,13 +148,13 @@ Once your setup is verified:
 1. Read [Architecture Overview](../02-first-week/architecture.md)
 2. Pick a [Good First Issue](https://github.com/acme/platform/labels/good-first-issue)
 3. Join the #dev-onboarding Slack channel
-```text
+````
 
 ## First Week: Understanding the System
 
 Provide architectural context:
 
-```markdown
+````markdown
 # Architecture Overview
 
 This document explains how our system is structured and why.
@@ -191,7 +191,7 @@ flowchart TD
     E --> L
     F --> M
     F --> N
-```bash
+```
 
 ## Service Responsibilities
 
@@ -264,7 +264,7 @@ Trade-offs we accept:
 - [Database Schema Documentation](./database-schemas.md)
 - [API Documentation](https://api.acme.com/docs)
 - [Infrastructure Diagrams](./infrastructure.md)
-```text
+````
 
 ## First Month: Going Deeper
 
@@ -389,7 +389,7 @@ else
 fi
 
 # Check Node version
-required_node="20"
+required_node="22"
 current_node=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
 if [ "$current_node" -ge "$required_node" ]; then
     echo "✓ Node.js v${current_node}.x installed"
