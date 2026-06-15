@@ -17,9 +17,11 @@ ENOENT stands for "Error NO ENTry" and means Node.js cannot find the file or dir
 The most frequent cause is using relative paths that resolve from the wrong location:
 
 ```javascript
+const fs = require('fs');
+
 // You are in /project and run: node src/app.js
 // This tries to read /project/config.json (not /project/src/config.json)
-const config = fs.readFileSync('./config.json');
+// const config = fs.readFileSync('./config.json');
 
 // Fix: Use __dirname to get the directory of the current file
 const path = require('path');
@@ -48,8 +50,11 @@ const absolutePath = path.join(__dirname, 'data.json');
 When creating a file, the parent directory must exist:
 
 ```javascript
+const fs = require('fs');
+const path = require('path');
+
 // This fails if /logs/ directory does not exist
-fs.writeFileSync('/logs/app.log', 'Hello');
+// fs.writeFileSync('/logs/app.log', 'Hello');
 // Error: ENOENT: no such file or directory, open '/logs/app.log'
 
 // Fix: Create directory first
@@ -64,12 +69,14 @@ fs.writeFileSync(path.join(logDir, 'app.log'), 'Hello');
 
 ### Path with Typos or Case Sensitivity
 
-File systems on Linux and macOS are case-sensitive:
+File systems on Linux are usually case-sensitive. macOS depends on the volume format, and case-sensitive APFS volumes are available:
 
 ```javascript
+const fs = require('fs');
+
 // File is named: Config.json
-// This fails on Linux/macOS
-const config = fs.readFileSync('./config.json');  // lowercase 'c'
+// This fails on case-sensitive file systems
+// const config = fs.readFileSync('./config.json');  // lowercase 'c'
 
 // Fix: Match the exact case
 const config = fs.readFileSync('./Config.json');
@@ -81,7 +88,7 @@ If you are using ES modules, `__dirname` is not available:
 
 ```javascript
 // This fails in ES modules
-const config = fs.readFileSync(path.join(__dirname, 'config.json'));
+// const config = readFileSync(join(__dirname, 'config.json'));
 // ReferenceError: __dirname is not defined
 
 // Fix: Create __dirname manually
@@ -95,9 +102,9 @@ const __dirname = dirname(__filename);
 const config = readFileSync(join(__dirname, 'config.json'));
 ```
 
-## Check If File Exists Before Reading
+## Handle Missing Files When Reading
 
-Always verify the file exists before operations:
+For simple scripts, you can verify the file exists before operations:
 
 ```javascript
 const fs = require('fs');
@@ -125,15 +132,13 @@ function readConfigFile(filename) {
 const config = readConfigFile('config.json') || { defaultValue: true };
 ```
 
-For async code:
+For code that immediately reads the file, handle `ENOENT` from the read operation to avoid a race condition where the file changes between the existence check and the read:
 
 ```javascript
 const fs = require('fs').promises;
-const path = require('path');
 
 async function readFileIfExists(filepath) {
     try {
-        await fs.access(filepath);  // Check if file is accessible
         return await fs.readFile(filepath, 'utf-8');
     } catch (error) {
         if (error.code === 'ENOENT') {
@@ -154,12 +159,13 @@ const fs = require('fs');
 const path = require('path');
 
 function safeReadFile(userPath) {
-    // Resolve to absolute path
-    const resolvedPath = path.resolve(userPath);
+    // Resolve relative to the allowed directory
+    const baseDir = path.resolve(__dirname, 'uploads');
+    const resolvedPath = path.resolve(baseDir, userPath);
 
     // Security: Prevent directory traversal attacks
-    const baseDir = path.resolve(__dirname, 'uploads');
-    if (!resolvedPath.startsWith(baseDir)) {
+    const relativePath = path.relative(baseDir, resolvedPath);
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
         throw new Error('Access denied: path outside allowed directory');
     }
 
@@ -184,15 +190,18 @@ const fs = require('fs');
 function findPackageJson(startDir = __dirname) {
     let dir = startDir;
 
-    while (dir !== path.parse(dir).root) {
+    while (true) {
         const packagePath = path.join(dir, 'package.json');
         if (fs.existsSync(packagePath)) {
             return packagePath;
         }
+
+        if (dir === path.parse(dir).root) {
+            return null;
+        }
+
         dir = path.dirname(dir);
     }
-
-    return null;
 }
 
 const packagePath = findPackageJson();
@@ -262,7 +271,7 @@ const path = require('path');
 const os = require('os');
 
 function createTempFile(content) {
-    // Use system temp directory - always exists
+    // Use the system temp directory
     const tempDir = os.tmpdir();
     const tempFile = path.join(tempDir, `myapp-${Date.now()}.tmp`);
 
@@ -376,4 +385,4 @@ paths.ensureDir(paths.logs);
 
 ## Summary
 
-ENOENT errors come down to path resolution. Use `path.join(__dirname, ...)` instead of relative paths, check file existence before operations, create directories before writing files, and use consistent path utilities across your project. When debugging, print the resolved paths to see exactly where Node.js is looking for your files.
+ENOENT errors come down to path resolution. Use `path.join(__dirname, ...)` instead of relative paths, handle missing file errors, create directories before writing files, and use consistent path utilities across your project. When debugging, print the resolved paths to see exactly where Node.js is looking for your files.
