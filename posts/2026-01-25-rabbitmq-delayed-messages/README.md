@@ -12,7 +12,7 @@ Sometimes you need a message to be delivered not now, but later. A reminder emai
 
 ## Two Approaches to Delayed Messages
 
-1. **Delayed Message Exchange Plugin**: A dedicated plugin that supports arbitrary delays
+1. **Delayed Message Exchange Plugin**: A dedicated plugin that supports flexible short-term delays
 2. **TTL + Dead Letter Pattern**: Use message expiration to trigger delayed delivery
 
 ```mermaid
@@ -33,17 +33,17 @@ flowchart TB
 
 ## Method 1: Delayed Message Exchange Plugin
 
-The delayed message exchange plugin is the cleanest solution for arbitrary delays.
+The delayed message exchange plugin is the cleanest solution for flexible short-term delays.
 
 ### Installing the Plugin
 
 ```bash
-# Download the plugin (check for latest version)
+# Download the plugin release that matches your RabbitMQ release series
 
-wget https://github.com/rabbitmq/rabbitmq-delayed-message-exchange/releases/download/v3.12.0/rabbitmq_delayed_message_exchange-3.12.0.ez
+wget https://github.com/rabbitmq/rabbitmq-delayed-message-exchange/releases/download/v4.2.0/rabbitmq_delayed_message_exchange-4.2.0.ez
 
 # Copy to plugins directory
-sudo cp rabbitmq_delayed_message_exchange-3.12.0.ez /usr/lib/rabbitmq/plugins/
+sudo cp rabbitmq_delayed_message_exchange-4.2.0.ez /usr/lib/rabbitmq/plugins/
 
 # Enable the plugin
 sudo rabbitmq-plugins enable rabbitmq_delayed_message_exchange
@@ -288,7 +288,7 @@ publish_with_delay({'action': 'retry_payment'}, 'wait_1min')
 
 ### Dynamic Delays with Per-Message TTL
 
-For arbitrary delays without creating many queues:
+For flexible delays without creating many queues, as long as you understand the head-of-line blocking trade-off:
 
 ```python
 def setup_dynamic_delay():
@@ -316,7 +316,7 @@ def setup_dynamic_delay():
     connection.close()
 
 def publish_with_dynamic_delay(task, delay_ms):
-    """Publish with an arbitrary delay using per-message TTL"""
+    """Publish with a flexible delay using per-message TTL"""
     connection = pika.BlockingConnection(
         pika.ConnectionParameters('localhost')
     )
@@ -438,7 +438,7 @@ scheduler = ReminderScheduler(channel)
 scheduler.schedule_reminder(
     user_id='123',
     message='Your subscription expires tomorrow',
-    deliver_at=datetime.utcnow() + timedelta(days=29)
+    deliver_at=datetime.utcnow() + timedelta(hours=12)
 )
 ```
 
@@ -508,9 +508,9 @@ def consume_scheduled_tasks():
 
 ### Plugin Limitations
 
-- Maximum delay is about 24 days (2^31 - 1 milliseconds)
-- Delayed messages are held in memory until delivery
-- Cluster restarts may lose non-persisted delayed messages
+- Maximum delay is about 49 days (2^32 - 1 milliseconds), but the plugin is intended for seconds, minutes, hours, or a day or two at most
+- Delayed messages are stored in a Mnesia table with a single disk replica on the node where they were published
+- Node restarts re-initialize scheduled delivery, but losing that node or disabling the plugin on it can lose delayed messages stored on that node
 
 ### TTL Pattern Limitations
 
@@ -529,7 +529,7 @@ rabbitmqctl list_queues name messages memory | grep -E "(delayed|wait)"
 
 ## Best Practices
 
-1. **Use the plugin for arbitrary delays**: Simpler and more flexible
+1. **Use the plugin for flexible short-term delays**: Simpler and more flexible
 2. **Use TTL pattern for fixed intervals**: Less overhead, no plugin required
 3. **Set reasonable maximum delays**: Avoid scheduling messages years in advance
 4. **Monitor delayed message counts**: Alert if too many messages accumulate
@@ -538,4 +538,4 @@ rabbitmqctl list_queues name messages memory | grep -E "(delayed|wait)"
 
 ## Conclusion
 
-Delayed messages enable powerful scheduling patterns in RabbitMQ. The delayed message exchange plugin provides the cleanest solution for arbitrary delays, while the TTL-based pattern works without any plugins. Choose based on your requirements, and remember that both approaches have trade-offs in terms of precision and resource usage.
+Delayed messages enable powerful scheduling patterns in RabbitMQ. The delayed message exchange plugin provides the cleanest solution for flexible short-term delays, while the TTL-based pattern works without any plugins. Choose based on your requirements, and remember that both approaches have trade-offs in terms of precision and resource usage.
