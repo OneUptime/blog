@@ -171,7 +171,7 @@ struct WindowCounter {
 pub struct ConcurrentRateLimiter {
     max_requests: u64,
     window_duration: Duration,
-    // RwLock for the outer map, separate locks per key would be even better
+    // RwLock for the outer map, with separate locks per key
     counters: Arc<RwLock<HashMap<String, Arc<RwLock<WindowCounter>>>>>,
 }
 
@@ -269,7 +269,7 @@ impl ConcurrentRateLimiter {
 }
 ```
 
-The key insight here is using a two-level locking strategy. The outer `RwLock` protects the HashMap, while each counter has its own lock. This means requests for different keys do not block each other.
+The key insight here is using a two-level locking strategy. The outer `RwLock` protects the HashMap, while each counter has its own lock. After the map lookup, requests for different keys do not block each other.
 
 ---
 
@@ -281,6 +281,7 @@ Here is how to use our rate limiter as Actix Web middleware:
 // src/actix_middleware.rs
 
 use actix_web::{
+    body::EitherBody,
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
     Error, HttpResponse,
     http::header::{HeaderName, HeaderValue},
@@ -307,7 +308,7 @@ where
     Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
     Bd: 'static,
 {
-    type Response = ServiceResponse<Bd>;
+    type Response = ServiceResponse<EitherBody<Bd>>;
     type Error = Error;
     type Transform = RateLimitMiddlewareService<Svc>;
     type InitError = ();
@@ -331,7 +332,7 @@ where
     Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
     Bd: 'static,
 {
-    type Response = ServiceResponse<Bd>;
+    type Response = ServiceResponse<EitherBody<Bd>>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -355,7 +356,7 @@ where
                 .body("Rate limit exceeded");
 
             return Box::pin(async move {
-                Ok(req.into_response(response).map_into_boxed_body())
+                Ok(req.into_response(response).map_into_right_body())
             });
         }
 
@@ -369,7 +370,7 @@ where
                 HeaderName::from_static("x-ratelimit-remaining"),
                 HeaderValue::from_str(&remaining.to_string()).unwrap(),
             );
-            Ok(res)
+            Ok(res.map_into_left_body())
         })
     }
 }
@@ -489,7 +490,8 @@ where
             });
         }
 
-        let mut inner = self.inner.clone();
+        let clone = self.inner.clone();
+        let mut inner = std::mem::replace(&mut self.inner, clone);
         Box::pin(async move { inner.call(req).await })
     }
 }
@@ -574,10 +576,9 @@ mod tests {
         // Wait 1 second (half the window)
         thread::sleep(Duration::from_secs(1));
 
-        // Should have about 7-8 remaining due to sliding window
-        // (5 * 0.5 weight from previous + current)
+        // These requests are still in the current window, so about 5 remain
         let remaining = limiter.remaining("test");
-        assert!(remaining >= 7 && remaining <= 8);
+        assert!(remaining >= 4 && remaining <= 5);
     }
 }
 ```
