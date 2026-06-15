@@ -33,7 +33,7 @@ Burp acts as a proxy between your browser and the target application.
 ### Setting Up the Proxy Listener
 
 1. Open Burp Suite
-2. Go to Proxy > Options
+2. Go to Settings > Tools > Proxy
 3. Verify listener is running on 127.0.0.1:8080
 
 ### Configuring Your Browser
@@ -44,7 +44,7 @@ For Firefox:
 1. Settings > Network Settings > Configure Proxy
 2. Manual proxy configuration
 3. HTTP Proxy: 127.0.0.1, Port: 8080
-4. Check "Also use this proxy for HTTPS"
+4. Check "Use this proxy server for all protocols"
 ```
 
 For Chrome with extension:
@@ -58,7 +58,7 @@ For Chrome with extension:
 
 For HTTPS interception:
 
-1. With browser proxied, visit http://burp
+1. With browser proxied, visit http://burpsuite
 2. Click "CA Certificate" to download
 3. Import into browser trust store
 
@@ -88,7 +88,7 @@ flowchart TD
 ### Intercept Mode
 
 1. Go to Proxy > Intercept
-2. Click "Intercept is off" to turn it on
+2. Click "Intercept off" to turn it on
 3. Browse the target application
 4. Modify requests before they're sent
 
@@ -148,11 +148,11 @@ Test payloads:
 GET /api/users?id=1' HTTP/1.1
 
 # Boolean-based detection
-GET /api/users?id=1 AND 1=1 HTTP/1.1
-GET /api/users?id=1 AND 1=2 HTTP/1.1
+GET /api/users?id=1%20AND%201=1 HTTP/1.1
+GET /api/users?id=1%20AND%201=2 HTTP/1.1
 
 # Time-based detection
-GET /api/users?id=1; WAITFOR DELAY '0:0:5' HTTP/1.1
+GET /api/users?id=1%3B%20WAITFOR%20DELAY%20'0:0:5' HTTP/1.1
 ```
 
 ### Testing for XSS
@@ -220,32 +220,13 @@ user
 Burp Scanner automatically finds vulnerabilities:
 
 1. Right-click target in site map
-2. Select "Scan" or "Active scan this host"
+2. Select "Scan"
 3. Configure scan options
-4. Review findings in Target > Issues
+4. Review findings in Dashboard > All issues
 
 ### Scan Configurations
 
-Create custom scan configs for different scenarios:
-
-```json
-{
-  "name": "API Security Scan",
-  "scan_type": "active",
-  "insertion_point_options": {
-    "insert_in_url_path": true,
-    "insert_in_parameter_values": true,
-    "insert_in_header_values": true,
-    "insert_in_json": true
-  },
-  "scan_options": {
-    "enable_sql_injection": true,
-    "enable_xss": true,
-    "enable_xxe": true,
-    "enable_ssrf": true
-  }
-}
-```
+Create custom scan configs for different scenarios in the Scan configuration tab. Use the built-in presets or edit the crawl and audit settings, then save the configuration to the configuration library or export the generated JSON for reuse.
 
 ## Testing Authentication
 
@@ -318,7 +299,7 @@ Cookie: session=normal_user_session
 
 Install extensions from BApp Store:
 
-1. Extender > BApp Store
+1. Extensions > BApp Store
 2. Browse or search
 3. Click Install
 
@@ -367,22 +348,17 @@ jobs:
   dast:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Start application
-        run: docker-compose up -d
+        run: docker compose up -d
 
       - name: Run OWASP ZAP scan
-        uses: zaproxy/action-baseline@v0.10.0
+        uses: zaproxy/action-baseline@v0.15.0
         with:
           target: 'http://localhost:3000'
           rules_file_name: '.zap/rules.tsv'
-
-      - name: Upload report
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-report
-          path: report_html.html
+          artifact_name: 'security-report'
 ```
 
 ## Best Practices
