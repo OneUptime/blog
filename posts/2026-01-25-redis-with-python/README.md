@@ -28,7 +28,7 @@ pip install redis[hiredis]
 import redis
 
 # Simple connection
-r = redis.Redis(host='localhost', port=6379, db=0)
+r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
 # Test connection
 r.ping()  # Returns True if connected
@@ -42,7 +42,7 @@ r = redis.Redis(
 )
 
 # Using URL
-r = redis.from_url('redis://:password@localhost:6379/0')
+r = redis.from_url('redis://:password@localhost:6379/0', decode_responses=True)
 ```
 
 ### Connection Pooling
@@ -233,6 +233,7 @@ else:
 ### Session Storage
 
 ```python
+import json
 import uuid
 
 class SessionManager:
@@ -308,7 +309,7 @@ async def main():
         pipe.set('key2', 'value2')
         results = await pipe.execute()
 
-    await r.close()
+    await r.aclose()
 
 asyncio.run(main())
 ```
