@@ -215,12 +215,10 @@ await queue.put(
 
 ```python
 # priority_middleware.py
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 import asyncio
-from typing import Callable
-import time
 
 app = FastAPI()
 
@@ -242,11 +240,11 @@ class RequestPrioritizer:
                        for p in Priority}
         self.workers = workers
         self.semaphores = {
-            Priority.CRITICAL: asyncio.Semaphore(workers // 2),  # 50% capacity
-            Priority.HIGH: asyncio.Semaphore(workers // 4),       # 25% capacity
-            Priority.NORMAL: asyncio.Semaphore(workers // 4),     # 20% capacity
-            Priority.LOW: asyncio.Semaphore(workers // 10),       # 5% capacity
-            Priority.BULK: asyncio.Semaphore(workers // 20),      # Reserved
+            Priority.CRITICAL: asyncio.Semaphore(max(1, workers * 40 // 100)),
+            Priority.HIGH: asyncio.Semaphore(max(1, workers * 30 // 100)),
+            Priority.NORMAL: asyncio.Semaphore(max(1, workers * 20 // 100)),
+            Priority.LOW: asyncio.Semaphore(max(1, workers * 9 // 100)),
+            Priority.BULK: asyncio.Semaphore(max(1, workers * 1 // 100)),
         }
 
     def get_priority(self, request: Request) -> Priority:
@@ -269,7 +267,7 @@ class RequestPrioritizer:
 
     async def acquire(self, priority: Priority) -> bool:
         """Acquire processing slot for priority level"""
-        # Critical always gets through
+        # Critical waits for a reserved slot instead of being rejected quickly
         if priority == Priority.CRITICAL:
             return await self.semaphores[priority].acquire()
 
@@ -338,12 +336,13 @@ class PrioritizedConnectionPool:
         self.pool: asyncpg.Pool = None
 
         # Reserve connections by priority
-        # Critical: 40%, High: 30%, Normal: 20%, Low: 10%
+        # Critical: 40%, High: 25%, Normal: 20%, Low: 10%, Bulk: 5%
         self.reserved = {
             Priority.CRITICAL: int(max_size * 0.4),
-            Priority.HIGH: int(max_size * 0.3),
+            Priority.HIGH: int(max_size * 0.25),
             Priority.NORMAL: int(max_size * 0.2),
             Priority.LOW: int(max_size * 0.1),
+            Priority.BULK: max(1, int(max_size * 0.05)),
         }
 
         # Semaphores for each priority level
@@ -369,7 +368,7 @@ class PrioritizedConnectionPool:
         acquired_priority = None
 
         for p in Priority:
-            if p.value <= priority.value:
+            if p.value >= priority.value and p in self.semaphores:
                 try:
                     await asyncio.wait_for(
                         self.semaphores[p].acquire(),
@@ -593,7 +592,13 @@ metadata:
   name: payment-service
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       priorityClassName: critical-priority
       containers:
@@ -615,7 +620,13 @@ metadata:
   name: analytics-service
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: analytics-service
   template:
+    metadata:
+      labels:
+        app: analytics-service
     spec:
       priorityClassName: low-priority
       containers:
@@ -636,6 +647,9 @@ spec:
 
 ```python
 # priority_metrics.py
+import time
+
+from fastapi import Request
 from prometheus_client import Counter, Histogram, Gauge
 
 # Metrics by priority
@@ -661,7 +675,7 @@ queue_depth_by_priority = Gauge(
 # Track in middleware
 @app.middleware("http")
 async def priority_metrics_middleware(request: Request, call_next):
-    priority = request.state.priority
+    priority = getattr(request.state, "priority", Priority.NORMAL)
 
     start = time.perf_counter()
     try:
