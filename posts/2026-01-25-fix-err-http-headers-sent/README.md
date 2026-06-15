@@ -293,8 +293,9 @@ app.use((req, res, next) => {
             console.trace();  // Print stack trace
             return res;
         }
+        const result = originalJson(data);
         responseSent = true;
-        return originalJson(data);
+        return result;
     };
 
     res.send = (data) => {
