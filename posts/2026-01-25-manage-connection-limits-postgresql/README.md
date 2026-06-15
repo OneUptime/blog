@@ -81,12 +81,14 @@ ALTER SYSTEM SET max_connections = 200;
 ALTER SYSTEM SET superuser_reserved_connections = 5;
 ```
 
-After changing max_connections, you must restart PostgreSQL:
+After changing these settings, you must restart PostgreSQL:
 
 ```bash
-# Check if the change will be applied
+# Reload configuration so pending_restart is updated
+sudo -u postgres psql -c "SELECT pg_reload_conf();"
 
-sudo -u postgres psql -c "SELECT name, setting, pending_restart FROM pg_settings WHERE name = 'max_connections';"
+# Check if the changes require a restart
+sudo -u postgres psql -c "SELECT name, setting, pending_restart FROM pg_settings WHERE name IN ('max_connections', 'superuser_reserved_connections');"
 
 # Restart PostgreSQL
 sudo systemctl restart postgresql
@@ -106,7 +108,7 @@ ALTER ROLE app_user CONNECTION LIMIT 50;
 -- Check current limits
 SELECT rolname, rolconnlimit
 FROM pg_roles
-WHERE rolconnlimit > 0;
+WHERE rolconnlimit <> -1;
 ```
 
 A value of -1 means unlimited (up to max_connections).
@@ -122,7 +124,7 @@ ALTER DATABASE myapp CONNECTION LIMIT 100;
 -- Check database limits
 SELECT datname, datconnlimit
 FROM pg_database
-WHERE datconnlimit > 0;
+WHERE datconnlimit <> -1;
 ```
 
 ## Handling Connection Exhaustion
@@ -194,6 +196,7 @@ listen_port = 6432
 # Authentication
 auth_type = md5
 auth_file = /etc/pgbouncer/userlist.txt
+admin_users = pgbouncer
 
 # Pool settings
 pool_mode = transaction
@@ -235,13 +238,14 @@ pool_mode = transaction
 
 ```bash
 # Generate password hash for PgBouncer
-echo "\"app_user\" \"md5$(echo -n 'passwordapp_user' | md5sum | cut -d' ' -f1)\"" | sudo tee /etc/pgbouncer/userlist.txt
+echo "\"app_user\" \"md5$(echo -n 'secretapp_user' | md5sum | cut -d' ' -f1)\"" | sudo tee /etc/pgbouncer/userlist.txt
+echo "\"pgbouncer\" \"md5$(echo -n 'admin_passwordpgbouncer' | md5sum | cut -d' ' -f1)\"" | sudo tee -a /etc/pgbouncer/userlist.txt
 ```
 
 Or use plain text (less secure):
 
 ```text
-"app_user" "plain_password"
+"app_user" "secret"
 ```
 
 ### Monitoring PgBouncer
@@ -373,7 +377,7 @@ WHERE usage_percent > 80;
 
 Connection management in PostgreSQL requires attention at multiple levels:
 
-1. **Set appropriate limits** based on your server's RAM (roughly 400 connections per GB of RAM as a starting point)
+1. **Set appropriate limits** based on your server's RAM and workload instead of relying on a fixed connections-per-GB rule
 2. **Use per-user limits** to prevent any single application from exhausting the pool
 3. **Deploy PgBouncer** for applications with many short-lived connections
 4. **Configure application pools** to limit connections at the source
