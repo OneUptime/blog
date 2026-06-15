@@ -148,7 +148,7 @@ response = requests.get("https://api.github.com/users/octocat")
 
 # Status code
 print(response.status_code)   # 200
-print(response.ok)            # True (200-299)
+print(response.ok)            # True for status codes less than 400
 print(response.reason)        # OK
 
 # Content
@@ -303,7 +303,7 @@ response = session.get("https://api.example.com/posts")
 response = session.post("https://api.example.com/comments", json={"text": "Hello"})
 
 # Sessions persist cookies automatically
-session.get("https://example.com/login", data={"user": "john", "pass": "secret"})
+session.post("https://example.com/login", data={"user": "john", "pass": "secret"})
 session.get("https://example.com/dashboard")  # Cookies included automatically
 
 # Close session when done
