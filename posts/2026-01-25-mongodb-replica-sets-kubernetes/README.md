@@ -48,7 +48,7 @@ flowchart TB
 ## Prerequisites
 
 Before starting:
-- Kubernetes cluster (1.19+)
+- Kubernetes cluster (1.21+)
 - kubectl configured
 - Storage class for persistent volumes
 - Sufficient cluster resources (recommend 2GB+ RAM per pod)
@@ -149,14 +149,14 @@ data:
     set -e
 
     # Wait for all pods to be ready
-    until mongo --eval "print('waiting for connection...')"; do
+    until mongosh --eval "print('waiting for connection...')"; do
       sleep 2
     done
 
     # Check if replica set is already initialized
-    if mongo --eval "rs.status()" | grep -q "NotYetInitialized"; then
+    if mongosh --eval "rs.status()" | grep -q "NotYetInitialized"; then
       echo "Initializing replica set..."
-      mongo <<EOF
+      mongosh <<EOF
     rs.initiate({
       _id: "rs0",
       members: [
@@ -310,7 +310,8 @@ rs.status()
 // Connection string for applications in the same namespace
 mongodb://admin:password@mongodb-0.mongodb-headless.mongodb.svc.cluster.local:27017,mongodb-1.mongodb-headless.mongodb.svc.cluster.local:27017,mongodb-2.mongodb-headless.mongodb.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin
 
-// Shorter form using service discovery
+// For quick in-cluster testing, a Service can be used as an initial seed.
+// For application deployments, prefer the full pod seed list above.
 mongodb://admin:password@mongodb.mongodb.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin
 ```
 
@@ -435,6 +436,9 @@ spec:
                 - |
                   mongodump \
                     --uri="mongodb://mongodb-0.mongodb-headless:27017,mongodb-1.mongodb-headless:27017,mongodb-2.mongodb-headless:27017/?replicaSet=rs0&readPreference=secondary" \
+                    --username="$MONGO_INITDB_ROOT_USERNAME" \
+                    --password="$MONGO_INITDB_ROOT_PASSWORD" \
+                    --authenticationDatabase=admin \
                     --archive=/backup/mongodb-$(date +%Y%m%d).gz \
                     --gzip
               env:
