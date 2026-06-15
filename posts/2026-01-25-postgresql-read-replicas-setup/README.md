@@ -47,7 +47,7 @@ Edit `postgresql.conf` on the primary server.
 wal_level = replica                    # Required for replication
 max_wal_senders = 10                   # Max number of replicas
 wal_keep_size = 1GB                    # Keep WAL files for slow replicas
-hot_standby = on                       # Allow queries on replicas
+hot_standby = on                       # Set on replicas to allow read-only queries
 
 # Recommended settings for replication
 synchronous_commit = on                # Can set to 'remote_apply' for sync replication
@@ -55,7 +55,7 @@ max_replication_slots = 10             # Prevent WAL deletion before replica cat
 
 # Archive settings (optional but recommended for point-in-time recovery)
 archive_mode = on
-archive_command = 'cp %p /var/lib/postgresql/archive/%f'
+archive_command = 'test ! -f /var/lib/postgresql/archive/%f && cp %p /var/lib/postgresql/archive/%f'
 ```
 
 ## Step 2: Create Replication User
@@ -64,10 +64,8 @@ Connect to the primary and create a dedicated replication user.
 
 ```sql
 -- Create replication user with limited privileges
-CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'your_secure_password';
-
--- Grant necessary permissions
-GRANT CONNECT ON DATABASE postgres TO replicator;
+SET password_encryption = 'scram-sha-256';
+CREATE USER replicator WITH REPLICATION PASSWORD 'your_secure_password';
 ```
 
 ## Step 3: Configure Host-Based Authentication
@@ -273,7 +271,7 @@ SELECT pg_is_in_recovery();  -- Should return false
 
 ## Synchronous Replication
 
-For zero data loss, configure synchronous replication.
+To reduce the risk of data loss for acknowledged commits, configure synchronous replication.
 
 ```ini
 # On primary postgresql.conf
@@ -286,7 +284,7 @@ synchronous_commit = remote_apply         # Wait for replay on replica
 primary_conninfo = '... application_name=replica_1'
 ```
 
-Synchronous replication increases write latency but guarantees the replica has committed transactions.
+Synchronous replication increases write latency. With `remote_apply`, the primary waits until the selected synchronous standby has replayed the transaction and made it visible to queries.
 
 ## Load Balancing Read Queries
 
@@ -318,10 +316,10 @@ with get_connection(read_only=True) as conn:
     cursor.execute("SELECT * FROM products WHERE active = true")
 ```
 
-### Using PgBouncer with Target Session Attrs
+### Using PgBouncer with Separate Read/Write Pools
 
 ```ini
-# pgbouncer.ini for read-write splitting
+# pgbouncer.ini with separate aliases for read-write and read-only connections
 [databases]
 myapp_rw = host=primary.example.com dbname=myapp
 myapp_ro = host=replica1.example.com,replica2.example.com dbname=myapp
@@ -361,7 +359,7 @@ SELECT pg_drop_replication_slot('unused_slot');
 # If replica cannot catch up, re-sync from primary
 sudo systemctl stop postgresql
 sudo rm -rf /var/lib/postgresql/16/main/*
-sudo -u postgres pg_basebackup -h primary.example.com -D /var/lib/postgresql/16/main -U replicator -R
+sudo -u postgres pg_basebackup -h primary.example.com -D /var/lib/postgresql/16/main -U replicator -X stream -S replica_1_slot -R
 sudo systemctl start postgresql
 ```
 
