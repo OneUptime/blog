@@ -132,8 +132,6 @@ Use it alongside your application:
 
 ```yaml
 # docker-compose.debug.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -184,8 +182,6 @@ Docker Compose configuration:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   api:
     build:
@@ -277,6 +273,7 @@ Configure structured logging for easier debugging:
 
 ```javascript
 // src/logger.js
+const crypto = require('node:crypto');
 const pino = require('pino');
 
 const logger = pino({
@@ -313,8 +310,6 @@ Docker Compose with log aggregation:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   api:
     build: .
@@ -430,7 +425,7 @@ docker exec <container_id> node --expose-gc -e "
   console.log('After GC:', process.memoryUsage());
 "
 
-# Generate heap dump (Node.js)
+# Generate heap dump (Node.js; start the app with --heapsnapshot-signal=SIGUSR2 first)
 docker exec <container_id> kill -USR2 1
 ```
 
