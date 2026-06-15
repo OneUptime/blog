@@ -34,7 +34,7 @@ sequenceDiagram
 |-----------|------------------|-------|-----------------|
 | gzip | Good | Fast | Universal |
 | Brotli (br) | Better | Slower | Modern browsers |
-| zstd | Best | Fastest | Limited (growing) |
+| zstd | Often very good | Very fast | Newer browsers and non-browser clients |
 
 ## NGINX Compression Configuration
 
@@ -98,7 +98,7 @@ http {
         location / {
             root /var/www/html;
 
-            # Try .br first, then .gz, then original
+            # Serve matching pre-compressed files when the client supports them
             gzip_static on;
             brotli_static on;
         }
@@ -132,21 +132,17 @@ defaults
 frontend http_front
     bind *:80
 
-    # Enable compression
-    compression algo gzip
-    compression type text/html text/plain text/css text/javascript
-    compression type application/javascript application/json application/xml
-
     default_backend http_back
 
 backend http_back
     balance roundrobin
 
     # Compress responses from backend
+    filter comp-res
     compression algo gzip
     compression type text/html text/plain text/css text/javascript application/json
 
-    # Only compress if backend did not already compress
+    # Remove Accept-Encoding before forwarding so backends do not compress too
     compression offload
 
     server web1 10.0.1.10:8080 check
@@ -163,7 +159,7 @@ backend http_back
 import gzip
 import zlib
 from io import BytesIO
-from flask import Flask, request, Response
+from flask import Flask, request, Response, make_response
 from functools import wraps
 
 app = Flask(__name__)
@@ -187,27 +183,21 @@ def compression_middleware(min_size: int = 500):
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
-            response = f(*args, **kwargs)
-
-            # Get response data
-            if isinstance(response, Response):
-                data = response.get_data()
-                content_type = response.content_type
-            else:
-                data = response.encode() if isinstance(response, str) else response
-                content_type = 'application/json'
+            response = make_response(f(*args, **kwargs))
+            data = response.get_data()
+            content_type = response.content_type
 
             # Skip small responses
             if len(data) < min_size:
                 return response
 
             # Check Accept-Encoding
-            accepted = request.headers.get('Accept-Encoding', '')
+            accepted = request.accept_encodings
 
             # Choose best encoding
-            if 'gzip' in accepted:
+            if accepted['gzip'] > 0:
                 compressed, encoding = compress_response(data, 'gzip')
-            elif 'deflate' in accepted:
+            elif accepted['deflate'] > 0:
                 compressed, encoding = compress_response(data, 'deflate')
             else:
                 return response
@@ -217,6 +207,7 @@ def compression_middleware(min_size: int = 500):
             resp.headers['Content-Encoding'] = encoding
             resp.headers['Content-Type'] = content_type
             resp.headers['Vary'] = 'Accept-Encoding'
+            resp.headers['Content-Length'] = str(len(compressed))
 
             return resp
         return wrapper
@@ -276,9 +267,7 @@ app.use(compression({
 
 // Custom Brotli compression for specific routes
 const brotliMiddleware = (req, res, next) => {
-    const acceptEncoding = req.headers['accept-encoding'] || '';
-
-    if (acceptEncoding.includes('br')) {
+    if (req.acceptsEncodings('br')) {
         // Store original send
         const originalSend = res.send.bind(res);
 
@@ -298,6 +287,7 @@ const brotliMiddleware = (req, res, next) => {
 
                         res.setHeader('Content-Encoding', 'br');
                         res.setHeader('Vary', 'Accept-Encoding');
+                        res.removeHeader('Content-Length');
                         originalSend(compressed);
                     });
                     return;
@@ -326,6 +316,7 @@ import (
     "compress/gzip"
     "io"
     "net/http"
+    "strconv"
     "strings"
     "sync"
 
@@ -340,6 +331,26 @@ var gzipPool = sync.Pool{
     },
 }
 
+func acceptsEncoding(r *http.Request, name string) bool {
+    for _, part := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
+        values := strings.Split(strings.TrimSpace(part), ";")
+        if strings.TrimSpace(values[0]) != name {
+            continue
+        }
+        for _, value := range values[1:] {
+            value = strings.TrimSpace(value)
+            if strings.HasPrefix(value, "q=") {
+                quality, err := strconv.ParseFloat(strings.TrimPrefix(value, "q="), 64)
+                if err == nil && quality <= 0 {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+    return false
+}
+
 type compressedResponseWriter struct {
     io.Writer
     http.ResponseWriter
@@ -352,13 +363,11 @@ func (w compressedResponseWriter) Write(b []byte) (int, error) {
 
 func compressionMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        // Check Accept-Encoding
-        acceptEncoding := r.Header.Get("Accept-Encoding")
-
         // Try Brotli first, then gzip
-        if strings.Contains(acceptEncoding, "br") {
+        if acceptsEncoding(r, "br") {
             w.Header().Set("Content-Encoding", "br")
             w.Header().Set("Vary", "Accept-Encoding")
+            w.Header().Del("Content-Length")
 
             bw := brotli.NewWriterLevel(w, brotli.DefaultCompression)
             defer bw.Close()
@@ -368,9 +377,10 @@ func compressionMiddleware(next http.Handler) http.Handler {
             return
         }
 
-        if strings.Contains(acceptEncoding, "gzip") {
+        if acceptsEncoding(r, "gzip") {
             w.Header().Set("Content-Encoding", "gzip")
             w.Header().Set("Vary", "Accept-Encoding")
+            w.Header().Del("Content-Length")
 
             gz := gzipPool.Get().(*gzip.Writer)
             defer gzipPool.Put(gz)
@@ -413,7 +423,7 @@ Compress files at build time for maximum efficiency:
 STATIC_DIR="/var/www/html/static"
 
 # Find compressible files
-find $STATIC_DIR -type f \( \
+find "$STATIC_DIR" -type f \( \
     -name "*.html" -o \
     -name "*.css" -o \
     -name "*.js" -o \
@@ -434,7 +444,7 @@ find $STATIC_DIR -type f \( \
 done
 
 echo "Compression complete"
-ls -la $STATIC_DIR/*.{gz,br,zst} 2>/dev/null | head -20
+find "$STATIC_DIR" -type f \( -name "*.gz" -o -name "*.br" -o -name "*.zst" \) -print | head -20
 ```
 
 Webpack configuration for pre-compression:
