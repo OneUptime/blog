@@ -14,7 +14,7 @@ The "Connection refused" error is one of the most common Redis issues. It means 
 
 The error appears differently depending on your client:
 
-```python
+```text
 # Python redis-py
 
 redis.exceptions.ConnectionError: Error 111 connecting to localhost:6379. Connection refused.
@@ -56,11 +56,16 @@ journalctl -u redis -n 100
 The most common cause. Start the Redis server:
 
 ```bash
-# Systemd (most Linux distributions)
+# Systemd (service name is redis-server or redis depending on platform)
+sudo systemctl start redis-server
+sudo systemctl enable redis-server  # Start on boot
+# or
 sudo systemctl start redis
-sudo systemctl enable redis  # Start on boot
+sudo systemctl enable redis
 
 # Check status
+sudo systemctl status redis-server
+# or
 sudo systemctl status redis
 
 # If using redis-server directly
@@ -95,7 +100,7 @@ def ensure_redis_connection():
     except redis.ConnectionError as e:
         if not check_redis_running():
             print("Redis server is not running. Start it with:")
-            print("  sudo systemctl start redis")
+            print("  sudo systemctl start redis-server  # or: sudo systemctl start redis")
         else:
             print(f"Redis is running but connection failed: {e}")
         raise
@@ -138,7 +143,7 @@ Redis may be configured to only accept local connections:
 redis-cli CONFIG GET bind
 
 # In redis.conf, binding affects what interfaces accept connections
-# bind 127.0.0.1        # Only localhost (default, secure)
+# bind 127.0.0.1 ::1    # Only localhost (common packaged default, secure)
 # bind 0.0.0.0          # All interfaces (less secure)
 # bind 192.168.1.100    # Specific interface
 ```
@@ -154,6 +159,8 @@ bind 0.0.0.0
 bind 192.168.1.100
 
 # Restart Redis
+sudo systemctl restart redis-server
+# or
 sudo systemctl restart redis
 ```
 
@@ -174,9 +181,11 @@ Solutions:
 ```bash
 # Option 1: Disable protected mode (not recommended for production)
 redis-cli CONFIG SET protected-mode no
+# Runtime change only; also update redis.conf or run CONFIG REWRITE
 
-# Option 2: Set a password (recommended)
+# Option 2: Set authentication (recommended)
 redis-cli CONFIG SET requirepass your_strong_password
+# Runtime change only; also update redis.conf or run CONFIG REWRITE
 
 # Option 3: Bind to localhost only (if remote access not needed)
 # This is the default secure configuration
@@ -217,7 +226,6 @@ telnet redis-host 6379
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
 services:
   redis:
     image: redis:7-alpine
@@ -279,6 +287,7 @@ redis-cli CONFIG GET maxclients
 
 # Increase if needed
 redis-cli CONFIG SET maxclients 20000
+# Runtime change only; also update redis.conf or run CONFIG REWRITE
 
 # Or in redis.conf
 maxclients 20000
