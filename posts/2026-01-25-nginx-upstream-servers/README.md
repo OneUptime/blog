@@ -50,7 +50,7 @@ upstream backend {
     # Backup server (only used when primary servers fail)
     server 192.168.1.12:8080 backup;
 
-    # Server temporarily disabled
+    # Server marked unavailable
     server 192.168.1.13:8080 down;
 }
 ```
@@ -309,6 +309,7 @@ http {
     resolver 8.8.8.8 valid=30s;
 
     upstream backend {
+        zone backend 64k;
         server backend.internal.example.com:8080 resolve;
     }
 
@@ -322,6 +323,8 @@ http {
     }
 }
 ```
+
+Note: the resolve parameter for upstream servers requires Nginx 1.27.3 or later in Nginx Open Source. Earlier versions require Nginx Plus.
 
 For variable upstreams:
 
@@ -386,7 +389,8 @@ upstream websocket_handlers {
 # /etc/nginx/conf.d/app.conf
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     ssl_certificate /etc/ssl/certs/api.example.com.crt;
@@ -477,14 +481,14 @@ flowchart TD
 
 ## Monitoring Upstream Status
 
-Check upstream server status:
+Check basic Nginx status:
 
 ```nginx
 server {
     listen 8080;
 
-    location /upstream_status {
-        stub_status on;
+    location /basic_status {
+        stub_status;
         allow 127.0.0.1;
         deny all;
     }
