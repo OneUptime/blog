@@ -211,8 +211,8 @@ fn main() {
 ```rust
 fn main() {
     // Each closure has unique anonymous type
-    let add_one = |x| x + 1;
-    let add_two = |x| x + 2;
+    let add_one = |x: i32| x + 1;
+    let add_two = |x: i32| x + 2;
 
     // Error: expected closure, found different closure
     // let funcs = [add_one, add_two];
@@ -246,7 +246,7 @@ fn main() {
     let mut v = Vec::new();
     v.push(1i32);
 
-    // Error with collect
+    // Fix: annotate the collection type
     let nums: Vec<_> = "1,2,3"
         .split(',')
         .map(|s| s.parse::<i32>().unwrap())
@@ -269,6 +269,7 @@ fn main() {
     let b: bool = tuple.2;
 
     // Destructuring
+    let tuple = (1, String::from("hello"), true);
     let (x, s, b) = tuple;
 }
 ```
