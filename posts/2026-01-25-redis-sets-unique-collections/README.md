@@ -312,20 +312,23 @@ Sets use special encoding for small integer sets:
 ```python
 import redis
 
-r = redis.Redis(host='localhost', port=6379, db=0)
+r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
 # Integer set uses intset encoding (very compact)
 r.sadd('int_set', *range(100))
 encoding = r.object('encoding', 'int_set')
 print(f"Integer set encoding: {encoding}")  # intset
 
-# String set uses hashtable
-r.sadd('string_set', *[f'item_{i}' for i in range(100)])
+# Larger string sets use hashtable
+r.sadd('string_set', *[f'item_{i}' for i in range(200)])
 encoding = r.object('encoding', 'string_set')
 print(f"String set encoding: {encoding}")  # hashtable
 
 # Configure in redis.conf
 # set-max-intset-entries 512
+# Redis 7.2+ can also compact small string sets with:
+# set-max-listpack-entries 128
+# set-max-listpack-value 64
 ```
 
 ## Scanning Large Sets
@@ -356,8 +359,8 @@ for item in scan_set('large_set', match='item_1*'):
 
 | Operation | Command | Complexity |
 |-----------|---------|------------|
-| Add | SADD | O(N) |
-| Remove | SREM | O(N) |
+| Add | SADD | O(1) per member, O(N) for N members |
+| Remove | SREM | O(N) for N members |
 | Check membership | SISMEMBER | O(1) |
 | Get all | SMEMBERS | O(N) |
 | Count | SCARD | O(1) |
