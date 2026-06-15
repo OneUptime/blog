@@ -36,10 +36,9 @@ docker run -d --name redisinsight \
 ```bash
 # Download from Redis website or use package manager
 # macOS with Homebrew
-brew install redis/tap/redisinsight
+brew install --cask redis-insight
 
-# Start RedisInsight
-redisinsight
+# Start RedisInsight from your Applications folder
 ```
 
 ### Connecting to Redis
@@ -189,7 +188,7 @@ groups:
     rules:
       # Memory usage alert
       - alert: RedisHighMemoryUsage
-        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9 and redis_memory_max_bytes > 0
         for: 5m
         labels:
           severity: warning
@@ -217,7 +216,7 @@ groups:
 
       # No replicas connected
       - alert: RedisNoReplicas
-        expr: redis_connected_slaves == 0
+        expr: redis_instance_info{role="master"} == 1 and redis_connected_slaves == 0
         for: 5m
         labels:
           severity: warning
@@ -252,14 +251,14 @@ Import or create a Redis dashboard in Grafana:
         "type": "gauge",
         "targets": [
           {
-            "expr": "redis_memory_used_bytes / redis_memory_max_bytes * 100",
+            "expr": "redis_memory_used_bytes / redis_memory_max_bytes * 100 and redis_memory_max_bytes > 0",
             "legendFormat": "Memory %"
           }
         ]
       },
       {
         "title": "Commands per Second",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "rate(redis_commands_processed_total[1m])",
@@ -279,7 +278,7 @@ Import or create a Redis dashboard in Grafana:
       },
       {
         "title": "Connected Clients",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "redis_connected_clients",
@@ -299,7 +298,7 @@ Here are PromQL queries for essential Redis metrics:
 ```promql
 # Memory metrics
 redis_memory_used_bytes
-redis_memory_max_bytes
+redis_memory_max_bytes  # 0 when maxmemory is not configured
 redis_memory_used_rss_bytes
 
 # Performance metrics
@@ -308,7 +307,7 @@ rate(redis_keyspace_hits_total[5m])
 rate(redis_keyspace_misses_total[5m])
 
 # Hit ratio
-redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)
+redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total) * 100
 
 # Connection metrics
 redis_connected_clients
@@ -397,8 +396,9 @@ class RedisMonitor:
 
         # Get keyspace size
         keyspace_size = sum(
-            info.get(f'db{i}', {}).get('keys', 0)
-            for i in range(16)
+            db.get('keys', 0)
+            for name, db in info.items()
+            if name.startswith('db') and isinstance(db, dict)
         )
 
         # Get replication lag
@@ -470,7 +470,7 @@ class RedisMonitor:
                 'id': entry['id'],
                 'timestamp': datetime.fromtimestamp(entry['start_time']),
                 'duration_ms': entry['duration'] / 1000,
-                'command': ' '.join(str(arg) for arg in entry['command'][:5]),
+                'command': entry['command'],
                 'client': entry.get('client_address', 'unknown')
             }
             for entry in slowlog
@@ -549,30 +549,36 @@ When building Redis dashboards, organize panels by category:
 
 ## Alerting Configuration
 
-Set up alerts in Grafana for critical conditions:
+Set up Prometheus alert rules, then route them to Grafana or Alertmanager for critical conditions:
 
 ```yaml
-# Grafana alert rules
-alert_rules:
-  - alert: RedisDown
-    expr: redis_up == 0
-    for: 1m
-    severity: critical
+# prometheus-rules.yml
+groups:
+  - name: redis_alerts
+    rules:
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
 
-  - alert: RedisMemoryCritical
-    expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.95
-    for: 5m
-    severity: critical
+      - alert: RedisMemoryCritical
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.95 and redis_memory_max_bytes > 0
+        for: 5m
+        labels:
+          severity: critical
 
-  - alert: RedisReplicationBroken
-    expr: redis_master_link_up == 0
-    for: 2m
-    severity: critical
+      - alert: RedisReplicationBroken
+        expr: redis_instance_info{role="slave"} == 1 and redis_master_link_up == 0
+        for: 2m
+        labels:
+          severity: critical
 
-  - alert: RedisSlowlogGrowing
-    expr: rate(redis_slowlog_length[5m]) > 1
-    for: 10m
-    severity: warning
+      - alert: RedisSlowlogGrowing
+        expr: increase(redis_slowlog_length[10m]) > 0
+        for: 10m
+        labels:
+          severity: warning
 ```
 
 ---
