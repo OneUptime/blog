@@ -16,7 +16,7 @@ When you try to return a reference to something created inside a function, the c
 
 ```rust
 // This won't compile
-fn create_greeting() -> &str {
+fn create_greeting() -> &'static str {
     let greeting = String::from("Hello, World!");
     &greeting  // Error: cannot return reference to local variable
 }
@@ -26,15 +26,15 @@ The error message looks like this:
 
 ```text
 error[E0515]: cannot return reference to local variable `greeting`
- --> src/main.rs:3:5
+ --> src/main.rs:4:5
   |
-3 |     &greeting
+4 |     &greeting  // Error: cannot return reference to local variable
   |     ^^^^^^^^^ returns a reference to data owned by the current function
 ```
 
 ## Why Rust Prevents This
 
-The variable `greeting` is allocated on the stack within `create_greeting`. When the function returns, its stack frame is deallocated, and `greeting` no longer exists. If Rust allowed returning a reference to it, the caller would have a pointer to invalid memory.
+The variable `greeting` is a local `String` value within `create_greeting`. The `String` owns a heap buffer, and when the function returns, `greeting` is dropped and that buffer is freed. If Rust allowed returning a reference to it, the caller would have a pointer to invalid memory.
 
 ```mermaid
 sequenceDiagram
@@ -137,7 +137,7 @@ use std::borrow::Cow;
 
 // Cow allows returning either borrowed or owned data
 // Avoids allocation when borrowed data suffices
-fn normalize_path(path: &str) -> Cow<str> {
+fn normalize_path(path: &str) -> Cow<'_, str> {
     if path.starts_with('/') {
         // Return borrowed data - no allocation
         Cow::Borrowed(path)
@@ -147,7 +147,7 @@ fn normalize_path(path: &str) -> Cow<str> {
     }
 }
 
-fn process_input(input: &str) -> Cow<str> {
+fn process_input(input: &str) -> Cow<'_, str> {
     if input.chars().all(|c| c.is_ascii()) {
         // No transformation needed, borrow the input
         Cow::Borrowed(input)
@@ -212,13 +212,12 @@ This pattern avoids repeated allocations when performing many operations.
 
 ## Solution 6: Box for Heap Allocation
 
-Return heap-allocated data when the size is large or determined at runtime.
+Return heap-allocated data when you need pointer indirection, such as a slice whose size is determined at runtime or a trait object.
 
 ```rust
-// Return boxed data for heap allocation
-fn create_large_array() -> Box<[u8; 1_000_000]> {
-    // Allocated directly on heap, not stack
-    Box::new([0u8; 1_000_000])
+// Return boxed data for heap allocation with runtime-sized slices
+fn create_large_buffer(size: usize) -> Box<[u8]> {
+    vec![0u8; size].into_boxed_slice()
 }
 
 // Return boxed trait object for dynamic dispatch
