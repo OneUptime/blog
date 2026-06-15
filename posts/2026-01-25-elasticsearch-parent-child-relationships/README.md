@@ -351,26 +351,14 @@ curl -X GET "localhost:9200/blog/_search?pretty" -H 'Content-Type: application/j
 {
   "size": 0,
   "aggs": {
-    "posts": {
-      "filter": {
-        "term": { "blog_relation": "post" }
+    "comments_by_post": {
+      "terms": {
+        "field": "blog_relation#post"
       },
       "aggs": {
-        "by_post": {
-          "terms": {
-            "field": "_id"
-          },
-          "aggs": {
-            "comments": {
-              "children": {
-                "type": "comment"
-              },
-              "aggs": {
-                "comment_count": {
-                  "value_count": { "field": "_id" }
-                }
-              }
-            }
+        "comments": {
+          "filter": {
+            "term": { "blog_relation": "comment" }
           }
         }
       }
@@ -388,7 +376,7 @@ curl -X GET "localhost:9200/blog/_search?pretty" -H 'Content-Type: application/j
   "aggs": {
     "to_post": {
       "parent": {
-        "type": "post"
+        "type": "comment"
       },
       "aggs": {
         "by_author": {
@@ -469,7 +457,7 @@ curl -X POST "localhost:9200/ecommerce/_refresh"
 ### Complex Queries
 
 ```bash
-# Find products with average rating > 4 from verified purchases
+# Find products with at least 2 verified reviews rated 4 or higher
 curl -X GET "localhost:9200/ecommerce/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "query": {
@@ -484,7 +472,7 @@ curl -X GET "localhost:9200/ecommerce/_search?pretty" -H 'Content-Type: applicat
         }
       },
       "min_children": 2,
-      "score_mode": "avg"
+      "score_mode": "none"
     }
   }
 }'
@@ -555,28 +543,26 @@ class ParentChildService:
 
         self.es.indices.create(
             index=self.index,
-            body={
-                "mappings": {
-                    "properties": {
-                        "relation_type": {
-                            "type": "join",
-                            "relations": {
-                                "product": "review"
-                            }
-                        },
-                        "name": {
-                            "type": "text",
-                            "fields": {"keyword": {"type": "keyword"}}
-                        },
-                        "category": {"type": "keyword"},
-                        "price": {"type": "float"},
-                        "in_stock": {"type": "boolean"},
-                        "reviewer": {"type": "keyword"},
-                        "rating": {"type": "integer"},
-                        "comment": {"type": "text"},
-                        "verified_purchase": {"type": "boolean"},
-                        "review_date": {"type": "date"}
-                    }
+            mappings={
+                "properties": {
+                    "relation_type": {
+                        "type": "join",
+                        "relations": {
+                            "product": "review"
+                        }
+                    },
+                    "name": {
+                        "type": "text",
+                        "fields": {"keyword": {"type": "keyword"}}
+                    },
+                    "category": {"type": "keyword"},
+                    "price": {"type": "float"},
+                    "in_stock": {"type": "boolean"},
+                    "reviewer": {"type": "keyword"},
+                    "rating": {"type": "integer"},
+                    "comment": {"type": "text"},
+                    "verified_purchase": {"type": "boolean"},
+                    "review_date": {"type": "date"}
                 }
             }
         )
@@ -589,7 +575,7 @@ class ParentChildService:
             index=self.index,
             id=product.id,
             routing=product.id,
-            body={
+            document={
                 "relation_type": "product",
                 "name": product.name,
                 "category": product.category,
@@ -606,7 +592,7 @@ class ParentChildService:
             index=self.index,
             id=review.id,
             routing=review.product_id,  # Must route to parent
-            body={
+            document={
                 "relation_type": {
                     "name": "review",
                     "parent": review.product_id
@@ -636,15 +622,13 @@ class ParentChildService:
         # Get reviews
         reviews = self.es.search(
             index=self.index,
-            body={
-                "query": {
-                    "parent_id": {
-                        "type": "review",
-                        "id": product_id
-                    }
+            query={
+                "parent_id": {
+                    "type": "review",
+                    "id": product_id
                 },
-                "sort": [{"review_date": "desc"}]
-            }
+            },
+            sort=[{"review_date": "desc"}]
         )
 
         return {
@@ -657,24 +641,22 @@ class ParentChildService:
         min_rating: int = 4,
         min_reviews: int = 1
     ) -> List[Dict[str, Any]]:
-        """Find products with high average ratings"""
+        """Find products with enough reviews at or above a rating threshold"""
 
         response = self.es.search(
             index=self.index,
-            body={
-                "query": {
-                    "has_child": {
-                        "type": "review",
-                        "query": {
-                            "range": {"rating": {"gte": min_rating}}
-                        },
-                        "min_children": min_reviews,
-                        "score_mode": "avg",
-                        "inner_hits": {
-                            "size": 3,
-                            "sort": [{"rating": "desc"}],
-                            "_source": ["reviewer", "rating", "comment"]
-                        }
+            query={
+                "has_child": {
+                    "type": "review",
+                    "query": {
+                        "range": {"rating": {"gte": min_rating}}
+                    },
+                    "min_children": min_reviews,
+                    "score_mode": "none",
+                    "inner_hits": {
+                        "size": 3,
+                        "sort": [{"rating": "desc"}],
+                        "_source": ["reviewer", "rating", "comment"]
                     }
                 }
             }
@@ -699,16 +681,14 @@ class ParentChildService:
 
         response = self.es.search(
             index=self.index,
-            body={
-                "query": {
-                    "has_child": {
-                        "type": "review",
-                        "query": {
-                            "term": {"reviewer": reviewer}
-                        },
-                        "inner_hits": {
-                            "_source": ["rating", "comment", "review_date"]
-                        }
+            query={
+                "has_child": {
+                    "type": "review",
+                    "query": {
+                        "term": {"reviewer": reviewer}
+                    },
+                    "inner_hits": {
+                        "_source": ["rating", "comment", "review_date"]
                     }
                 }
             }
@@ -727,25 +707,23 @@ class ParentChildService:
 
         response = self.es.search(
             index=self.index,
-            body={
-                "size": 0,
-                "query": {
-                    "term": {"relation_type": "product"}
-                },
-                "aggs": {
-                    "by_category": {
-                        "terms": {"field": "category"},
-                        "aggs": {
-                            "reviews": {
-                                "children": {"type": "review"},
-                                "aggs": {
-                                    "avg_rating": {"avg": {"field": "rating"}},
-                                    "rating_distribution": {
-                                        "terms": {"field": "rating"}
-                                    },
-                                    "verified_count": {
-                                        "filter": {"term": {"verified_purchase": True}}
-                                    }
+            size=0,
+            query={
+                "term": {"relation_type": "product"}
+            },
+            aggs={
+                "by_category": {
+                    "terms": {"field": "category"},
+                    "aggs": {
+                        "reviews": {
+                            "children": {"type": "review"},
+                            "aggs": {
+                                "avg_rating": {"avg": {"field": "rating"}},
+                                "rating_distribution": {
+                                    "terms": {"field": "rating"}
+                                },
+                                "verified_count": {
+                                    "filter": {"term": {"verified_purchase": True}}
                                 }
                             }
                         }
@@ -790,7 +768,7 @@ class ParentChildService:
                 index=self.index,
                 id=review_id,
                 routing=product_id,
-                body={"doc": update_doc}
+                doc=update_doc
             )
 
         return True
