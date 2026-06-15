@@ -50,7 +50,7 @@ The conventional wisdom is to set `shared_buffers` to 25% of total RAM for dedic
 -- Check current setting
 SHOW shared_buffers;
 
--- View in bytes
+-- View raw setting and unit
 SELECT setting, unit FROM pg_settings WHERE name = 'shared_buffers';
 ```
 
@@ -82,13 +82,16 @@ CREATE EXTENSION IF NOT EXISTS pg_buffercache;
 
 -- See what is in the buffer cache
 SELECT
-    c.relname AS table_name,
-    pg_size_pretty(count(*) * 8192) AS buffered_size,
+    n.nspname AS schema_name,
+    c.relname AS relation_name,
+    pg_size_pretty(count(*) * current_setting('block_size')::integer) AS buffered_size,
     ROUND(100.0 * count(*) / (SELECT setting::integer FROM pg_settings WHERE name = 'shared_buffers'), 2) AS buffer_percent
 FROM pg_buffercache b
 JOIN pg_class c ON b.relfilenode = pg_relation_filenode(c.oid)
-WHERE c.relname NOT LIKE 'pg_%'
-GROUP BY c.relname
+    AND b.reldatabase IN (0, (SELECT oid FROM pg_database WHERE datname = current_database()))
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname NOT LIKE 'pg_%'
+GROUP BY n.nspname, c.relname
 ORDER BY count(*) DESC
 LIMIT 20;
 ```
@@ -120,7 +123,7 @@ If hit ratio is below 95%, consider increasing `shared_buffers`.
 
 ### The Danger of work_mem
 
-Unlike `shared_buffers`, `work_mem` is allocated per operation, not per connection. A single query with multiple sorts or hash joins can use several allocations. With 100 connections each running complex queries, memory usage can explode.
+Unlike `shared_buffers`, `work_mem` is allocated per operation, not per connection. A single query with multiple sorts or hash joins can use several allocations, and hash operations can use more through `hash_mem_multiplier`. With 100 connections each running complex queries, memory usage can explode.
 
 ```sql
 -- Check current setting
@@ -130,7 +133,7 @@ SHOW work_mem;
 ### The Math
 
 ```text
-Potential memory = max_connections x work_mem x operations_per_query
+Potential memory = active_connections x work_mem x operations_per_query
 ```
 
 With defaults:
@@ -138,7 +141,7 @@ With defaults:
 - work_mem = 4MB
 - 3 operations per query (conservative)
 
-That is 100 x 4MB x 3 = 1.2 GB potential usage just for work_mem.
+That is 100 x 4MB x 3 = 1.2 GB potential usage just for non-hash work_mem operations. Hash operations can use more because their limit is `work_mem` multiplied by `hash_mem_multiplier`.
 
 ### Sizing Guidelines
 
@@ -180,6 +183,7 @@ Check for queries spilling to disk.
 
 ```sql
 -- Look for temp file usage in pg_stat_statements
+-- Requires pg_stat_statements in shared_preload_libraries and a server restart
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 SELECT
@@ -238,7 +242,7 @@ effective_cache_size = 48GB  # For 64GB RAM server
 Memory for maintenance operations like VACUUM, CREATE INDEX.
 
 ```ini
-# Can be much higher than work_mem since these run one at a time
+# Can be much higher than work_mem, but concurrent maintenance and autovacuum workers still need to fit in RAM
 maintenance_work_mem = 2GB
 ```
 
@@ -287,15 +291,10 @@ max_connections = 200              # Depends on your app
 ### Real-Time Memory Check
 
 ```sql
--- Total memory used by PostgreSQL processes
+-- Total memory used by the current session's memory contexts
 SELECT
     pg_size_pretty(sum(total_bytes)) AS total_memory
-FROM (
-    SELECT
-        pg_backend_pid() AS pid,
-        pg_backend_memory_contexts() AS ctx
-    FROM pg_stat_activity
-) AS memory_info;
+FROM pg_backend_memory_contexts;
 
 -- Simpler: check via OS
 -- ps aux | grep postgres | awk '{sum += $6} END {print sum/1024 " MB"}'
@@ -305,7 +304,7 @@ FROM (
 
 ```sql
 -- View memory contexts for current session
-SELECT * FROM pg_backend_memory_contexts()
+SELECT * FROM pg_backend_memory_contexts
 ORDER BY total_bytes DESC
 LIMIT 20;
 ```
