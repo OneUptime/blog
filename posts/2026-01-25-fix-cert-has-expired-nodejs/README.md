@@ -68,14 +68,16 @@ function checkCertificate(hostname, port = 443) {
 }
 
 // Usage
-const certInfo = await checkCertificate('api.example.com');
-console.log('Certificate info:', certInfo);
+(async () => {
+    const certInfo = await checkCertificate('api.example.com');
+    console.log('Certificate info:', certInfo);
 
-if (certInfo.isExpired) {
-    console.error('Certificate has expired!');
-} else if (certInfo.daysUntilExpiry < 30) {
-    console.warn(`Certificate expires in ${certInfo.daysUntilExpiry} days`);
-}
+    if (certInfo.isExpired) {
+        console.error('Certificate has expired!');
+    } else if (certInfo.daysUntilExpiry < 30) {
+        console.warn(`Certificate expires in ${certInfo.daysUntilExpiry} days`);
+    }
+})();
 ```
 
 ## Solutions
@@ -108,14 +110,18 @@ Contact the server administrator. In the meantime, if you must connect and under
 
 ```javascript
 // TEMPORARY WORKAROUND - NOT RECOMMENDED FOR PRODUCTION
-const https = require('https');
+const { Agent } = require('undici');
 
-const agent = new https.Agent({
-    rejectUnauthorized: false  // Disables certificate validation
+const dispatcher = new Agent({
+    connect: {
+        rejectUnauthorized: false  // Disables certificate validation
+    }
 });
 
 // Use only for specific requests
-const response = await fetch('https://api.example.com/data', { agent });
+(async () => {
+    const response = await fetch('https://api.example.com/data', { dispatcher });
+})();
 ```
 
 This should only be used when:
@@ -147,8 +153,8 @@ nvm install node --reinstall-packages-from=node
 If the server's certificate chain is incomplete:
 
 ```javascript
-const https = require('https');
 const fs = require('fs');
+const { Agent } = require('undici');
 
 // Load intermediate/root certificates
 const ca = [
@@ -156,9 +162,11 @@ const ca = [
     fs.readFileSync('/path/to/root.pem')
 ];
 
-const agent = new https.Agent({ ca });
+const dispatcher = new Agent({ connect: { ca } });
 
-const response = await fetch('https://api.example.com/data', { agent });
+(async () => {
+    const response = await fetch('https://api.example.com/data', { dispatcher });
+})();
 ```
 
 ## Certificate Monitoring Service
@@ -241,24 +249,26 @@ const monitor = new CertificateMonitor({
     criticalThreshold: 7
 });
 
-const results = await monitor.checkMultiple([
-    'api.example.com',
-    'auth.example.com:443',
-    'internal.example.com:8443'
-]);
+(async () => {
+    const results = await monitor.checkMultiple([
+        'api.example.com',
+        'auth.example.com:443',
+        'internal.example.com:8443'
+    ]);
 
-// Alert on issues
-results.forEach(result => {
-    if (result.status === 'expired') {
-        console.error(`EXPIRED: ${result.host}`);
-        // Send alert
-    } else if (result.status === 'critical') {
-        console.error(`CRITICAL: ${result.host} expires in ${result.daysUntilExpiry} days`);
-        // Send alert
-    } else if (result.status === 'warning') {
-        console.warn(`WARNING: ${result.host} expires in ${result.daysUntilExpiry} days`);
-    }
-});
+    // Alert on issues
+    results.forEach(result => {
+        if (result.status === 'expired') {
+            console.error(`EXPIRED: ${result.host}`);
+            // Send alert
+        } else if (result.status === 'critical') {
+            console.error(`CRITICAL: ${result.host} expires in ${result.daysUntilExpiry} days`);
+            // Send alert
+        } else if (result.status === 'warning') {
+            console.warn(`WARNING: ${result.host} expires in ${result.daysUntilExpiry} days`);
+        }
+    });
+})();
 ```
 
 ## Scheduled Certificate Checks
@@ -311,12 +321,16 @@ function formatIssues(issues) {
 Implement retry logic that falls back to insecure mode for specific, trusted internal services:
 
 ```javascript
+const { Agent } = require('undici');
+
 async function fetchWithCertRetry(url, options = {}) {
     try {
         // First try with certificate validation
         return await fetch(url, options);
     } catch (error) {
-        if (error.code === 'CERT_HAS_EXPIRED') {
+        const errorCode = error.code || error.cause?.code;
+
+        if (errorCode === 'CERT_HAS_EXPIRED') {
             // Log the issue
             console.error(`Certificate expired for ${url}`);
 
@@ -327,8 +341,12 @@ async function fetchWithCertRetry(url, options = {}) {
             if (internalDomains.some(d => hostname.endsWith(d))) {
                 console.warn('Retrying with certificate validation disabled (internal service)');
 
-                const agent = new https.Agent({ rejectUnauthorized: false });
-                return await fetch(url, { ...options, agent });
+                const dispatcher = new Agent({
+                    connect: {
+                        rejectUnauthorized: false
+                    }
+                });
+                return await fetch(url, { ...options, dispatcher });
             }
         }
 
@@ -343,7 +361,7 @@ Update certificates in containers:
 
 ```dockerfile
 # Dockerfile
-FROM node:18-alpine
+FROM node:lts-alpine
 
 # Update CA certificates
 RUN apk add --no-cache ca-certificates && update-ca-certificates
@@ -355,12 +373,13 @@ RUN npm ci
 CMD ["node", "src/index.js"]
 ```
 
-In Kubernetes, mount current certificates:
+In a Kubernetes pod template, mount current certificates:
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 spec:
+  # ...
   template:
     spec:
       containers:
