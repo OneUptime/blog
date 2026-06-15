@@ -457,9 +457,9 @@ async function bootstrap() {
   );
 
   // Register exception filters
-  // Order matters: more specific filters first
+  // Order matters: declare catch-all filters first so specific filters can match first
   app.useGlobalFilters(
-    new AllExceptionsFilter(),        // Catch-all fallback
+    new AllExceptionsFilter(),        // Catch-all fallback, declared first
     new ValidationExceptionFilter(),   // Validation errors
     new AppExceptionFilter()           // Custom app exceptions
   );
@@ -585,7 +585,7 @@ import { RequestContextMiddleware } from './middleware/request-context.middlewar
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RequestContextMiddleware).forRoutes('*');
+    consumer.apply(RequestContextMiddleware).forRoutes('{*splat}');
   }
 }
 ```
@@ -682,11 +682,11 @@ describe('AllExceptionsFilter', () => {
 
 ## Conclusion
 
-Custom exception filters in NestJS give you complete control over error handling in your API. By creating a hierarchy of filters from specific to general, you can handle each type of error appropriately while maintaining consistent response formats.
+Custom exception filters in NestJS give you complete control over error handling in your API. By creating a hierarchy that combines catch-all and type-specific filters in the correct registration order, you can handle each type of error appropriately while maintaining consistent response formats.
 
 Key takeaways:
 - Use the @Catch decorator to target specific exception types
-- Register filters in order from most specific to most general
+- Register catch-all filters before more specific filters so specific filters can handle their bound exception types
 - Include request context in error responses for debugging
 - Create custom exceptions for domain-specific errors
 - Always log exceptions with appropriate severity levels
