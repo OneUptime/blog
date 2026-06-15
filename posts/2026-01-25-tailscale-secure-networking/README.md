@@ -32,7 +32,7 @@ Before starting:
 - Tailscale account (free tier available)
 - Kubernetes cluster (v1.19+)
 - kubectl with cluster admin access
-- OAuth client configured in Tailscale Admin Console
+- OAuth client configured in Tailscale Admin Console with device, auth key, and service permissions
 
 ---
 
@@ -85,48 +85,32 @@ oauth:
 
 # Operator configuration
 operatorConfig:
-  # Hostname prefix for devices created by operator
+  # Hostname for the operator device
   hostname: k8s
 
   # Default tags for created devices
   defaultTags:
   - tag:k8s-operator
 
-# Image settings
-image:
-  repository: tailscale/k8s-operator
-  tag: stable
+  # Image settings
+  image:
+    repository: tailscale/k8s-operator
+    # Leave empty to use the chart appVersion
+    tag: ""
 
-# Resource limits
-resources:
-  requests:
-    cpu: 50m
-    memory: 64Mi
-  limits:
-    cpu: 200m
-    memory: 128Mi
-
-# Enable proxy class for services
-proxyClass:
-  enabled: true
-
-# Enable connector for subnet routing
-connector:
-  enabled: true
+  # Resource limits
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
 ```
 
 Deploy the operator:
 
 ```bash
-# Create namespace
-kubectl create namespace tailscale
-
-# Create OAuth secret
-kubectl create secret generic tailscale-oauth \
-  --namespace tailscale \
-  --from-literal=clientId=your-client-id \
-  --from-literal=clientSecret=your-client-secret
-
 # Add Tailscale Helm repository
 helm repo add tailscale https://pkgs.tailscale.com/helmcharts
 helm repo update
@@ -134,7 +118,9 @@ helm repo update
 # Install operator
 helm install tailscale-operator tailscale/tailscale-operator \
   --namespace tailscale \
-  --values tailscale-operator-values.yaml
+  --create-namespace \
+  --values tailscale-operator-values.yaml \
+  --wait
 
 # Verify deployment
 kubectl get pods -n tailscale
@@ -198,7 +184,11 @@ Define access control in your Tailscale Admin Console:
     "tag:api": ["tag:k8s-operator"],
     "tag:database": ["tag:k8s-operator"],
     "tag:developer": ["autogroup:admin"],
-    "tag:sre": ["autogroup:admin"]
+    "tag:sre": ["autogroup:admin"],
+    "tag:ci-runner": ["autogroup:admin"],
+    "tag:k8s-api": ["tag:k8s-operator"],
+    "tag:k8s-pod": ["autogroup:admin"],
+    "tag:k8s-subnet-router": ["tag:k8s-operator"]
   },
 
   "acls": [
@@ -234,10 +224,21 @@ Define access control in your Tailscale Admin Console:
     }
   ],
 
+  "autoApprovers": {
+    "services": {
+      "svc:*": ["tag:k8s-api"]
+    }
+  },
+
   "grants": [
     {
       "src": ["group:engineering"],
-      "dst": ["tag:k8s-service"],
+      "dst": ["tag:k8s-api"],
+      "ip": ["tcp:80", "tcp:443"]
+    },
+    {
+      "src": ["group:engineering"],
+      "dst": ["tag:k8s-api"],
       "app": {
         "tailscale.com/cap/kubernetes": [{
           "impersonate": {
@@ -272,8 +273,9 @@ apiVersion: tailscale.com/v1alpha1
 kind: Connector
 metadata:
   name: cluster-subnet-router
-  namespace: tailscale
 spec:
+  replicas: 1
+
   # Hostname on Tailnet
   hostname: k8s-subnet-router
 
@@ -421,37 +423,35 @@ Access your cluster's API server securely:
 
 ```yaml
 # api-server-proxy.yaml
-# Expose Kubernetes API via Tailscale
-apiVersion: v1
-kind: Service
+# Expose Kubernetes API via the Tailscale API server proxy
+apiVersion: tailscale.com/v1alpha1
+kind: ProxyGroup
 metadata:
-  name: kubernetes-api-tailscale
-  namespace: default
-  annotations:
-    tailscale.com/expose: "true"
-    tailscale.com/hostname: "k8s-api"
-    tailscale.com/tags: "tag:k8s-api"
+  name: k8s-api
 spec:
-  type: ExternalName
-  externalName: kubernetes.default.svc.cluster.local
-  ports:
-  - port: 443
-    targetPort: 443
+  type: kube-apiserver
+  replicas: 2
+  tags:
+  - tag:k8s-api
+  kubeAPIServer:
+    mode: auth
 ```
 
 Configure kubectl to use Tailscale:
 
 ```bash
-# Update kubeconfig to use Tailscale hostname
-kubectl config set-cluster tailscale-cluster \
-  --server=https://k8s-api.your-tailnet.ts.net:443 \
-  --certificate-authority=/path/to/ca.crt
+# Enable impersonation RBAC for API server proxy pods
+helm upgrade tailscale-operator tailscale/tailscale-operator \
+  --namespace tailscale \
+  --set-string apiServerProxyConfig.allowImpersonation="true" \
+  --reuse-values
 
-kubectl config set-context tailscale-context \
-  --cluster=tailscale-cluster \
-  --user=your-user
+# Deploy the API server proxy
+kubectl apply -f api-server-proxy.yaml
+kubectl wait proxygroup k8s-api --for=condition=ProxyGroupReady=true
 
-kubectl config use-context tailscale-context
+# Configure kubeconfig to use the Tailscale proxy URL
+tailscale configure kubeconfig https://k8s-api.your-tailnet.ts.net
 
 # Now kubectl works from any device on your Tailnet
 kubectl get pods
@@ -464,31 +464,36 @@ kubectl get pods
 Enable MagicDNS for automatic DNS resolution:
 
 ```yaml
-# coredns-tailscale.yaml
-# CoreDNS ConfigMap patch for MagicDNS
-apiVersion: v1
-kind: ConfigMap
+# dnsconfig.yaml
+# Deploy a Tailscale nameserver for in-cluster MagicDNS resolution
+apiVersion: tailscale.com/v1alpha1
+kind: DNSConfig
 metadata:
-  name: coredns
-  namespace: kube-system
-data:
-  Corefile: |
-    .:53 {
-        errors
-        health
-        kubernetes cluster.local in-addr.arpa ip6.arpa {
-           pods insecure
-           fallthrough in-addr.arpa ip6.arpa
-        }
-        # Forward Tailscale DNS queries to MagicDNS
-        forward your-tailnet.ts.net 100.100.100.100
-        prometheus :9153
-        forward . /etc/resolv.conf
-        cache 30
-        loop
-        reload
-        loadbalance
-    }
+  name: ts-dns
+spec:
+  nameserver:
+    image:
+      repo: tailscale/k8s-nameserver
+      tag: unstable
+```
+
+After applying the `DNSConfig`, forward your tailnet's `.ts.net` domain to the nameserver Service IP in CoreDNS:
+
+```bash
+kubectl apply -f dnsconfig.yaml
+TS_DNS_IP=$(kubectl get dnsconfig ts-dns -o jsonpath='{.status.nameserver.ip}')
+
+kubectl -n kube-system edit configmap coredns
+```
+
+Add a stub domain to the CoreDNS `Corefile`, replacing `TS_DNS_IP` with the nameserver IP from the previous command:
+
+```text
+your-tailnet.ts.net:53 {
+    errors
+    cache 30
+    forward . TS_DNS_IP
+}
 ```
 
 ---
@@ -503,11 +508,11 @@ Track Tailscale health and connectivity:
 # Monitor Tailscale status in cluster
 
 echo "=== Tailscale Operator Status ==="
-kubectl get pods -n tailscale -l app.kubernetes.io/name=operator
+kubectl get pods -n tailscale
 
 echo ""
 echo "=== Exposed Services ==="
-kubectl get services -A -l tailscale.com/expose=true
+kubectl get services -A -o json | jq '.items[] | select(.metadata.annotations["tailscale.com/expose"] == "true") | {namespace: .metadata.namespace, name: .metadata.name, hostname: .metadata.annotations["tailscale.com/hostname"]}'
 
 echo ""
 echo "=== Tailscale Devices ==="
@@ -516,7 +521,7 @@ tailscale status --json | jq '.Peer | to_entries[] | select(.value.Tags | contai
 
 echo ""
 echo "=== Connection Tests ==="
-for svc in $(kubectl get services -A -l tailscale.com/expose=true -o jsonpath='{.items[*].metadata.annotations.tailscale\.com/hostname}'); do
+for svc in $(kubectl get services -A -o json | jq -r '.items[] | select(.metadata.annotations["tailscale.com/expose"] == "true") | .metadata.annotations["tailscale.com/hostname"]'); do
     echo -n "$svc: "
     if tailscale ping --timeout=5s $svc.your-tailnet.ts.net &> /dev/null; then
         echo "OK"
@@ -544,18 +549,7 @@ Create separate Tailnets for production and non-production to ensure complete is
 
 ### Enable Key Expiry
 
-Configure devices to require periodic re-authentication:
-
-```json
-{
-  "nodeAttrs": [
-    {
-      "target": ["tag:k8s-service"],
-      "attr": ["key-expiry:90d"]
-    }
-  ]
-}
-```
+Review the Key Expiry settings in the Tailscale Admin Console. Tagged devices, including operator-managed Kubernetes proxies, have key expiry disabled by default, so plan a re-authentication process before enabling expiry for production infrastructure.
 
 ---
 
