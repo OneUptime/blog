@@ -25,6 +25,11 @@ Spring Boot makes Redis caching straightforward with its auto-configuration and 
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-cache</artifactId>
     </dependency>
+    <!-- Required for Lettuce connection pooling -->
+    <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-pool2</artifactId>
+    </dependency>
 </dependencies>
 ```
 
@@ -35,6 +40,7 @@ For Gradle:
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-cache'
+    implementation 'org.apache.commons:commons-pool2'
 }
 ```
 
@@ -44,17 +50,18 @@ dependencies {
 # application.yml
 
 spring:
-  redis:
-    host: localhost
-    port: 6379
-    password: your-password  # Optional
-    timeout: 2000ms
-    lettuce:
-      pool:
-        max-active: 8
-        max-idle: 8
-        min-idle: 0
-        max-wait: -1ms
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: your-password  # Optional
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
   cache:
     type: redis
     redis:
@@ -200,7 +207,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
@@ -219,7 +226,7 @@ public class CacheConfig {
             .serializeKeysWith(RedisSerializationContext.SerializationPair
                 .fromSerializer(new StringRedisSerializer()))
             .serializeValuesWith(RedisSerializationContext.SerializationPair
-                .fromSerializer(new GenericJackson2JsonRedisSerializer()))
+                .fromSerializer(GenericJacksonJsonRedisSerializer.create(builder -> {})))
             .disableCachingNullValues();
 
         // Per-cache configuration
@@ -338,6 +345,14 @@ public class CacheService {
 ### Configure RedisTemplate
 
 ```java
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
+import org.springframework.data.redis.serializer.RedisSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
+
 @Configuration
 public class RedisConfig {
 
@@ -347,16 +362,8 @@ public class RedisConfig {
         template.setConnectionFactory(factory);
 
         // Use JSON serialization
-        Jackson2JsonRedisSerializer<Object> serializer =
-            new Jackson2JsonRedisSerializer<>(Object.class);
-
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
-        mapper.activateDefaultTyping(
-            LaissezFaireSubTypeValidator.instance,
-            ObjectMapper.DefaultTyping.NON_FINAL
-        );
-        serializer.setObjectMapper(mapper);
+        RedisSerializer<Object> serializer =
+            GenericJacksonJsonRedisSerializer.create(builder -> {});
 
         // Key serializer
         template.setKeySerializer(new StringRedisSerializer());
