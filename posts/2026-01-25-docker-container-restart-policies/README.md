@@ -63,7 +63,7 @@ docker run -d \
 # After crash, container restarts immediately
 ```
 
-The catch: `always` restarts even after `docker stop`. When the daemon restarts (system reboot, Docker update), stopped containers come back up.
+The catch: after `docker stop`, an `always` container stays stopped only until the daemon restarts or the container is manually restarted. When the daemon restarts (system reboot, Docker update), stopped containers come back up.
 
 ### unless-stopped
 
@@ -115,13 +115,13 @@ graph TD
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   # Critical service - always running
   database:
     image: postgres:15
     restart: always
+    environment:
+      - POSTGRES_PASSWORD=secret
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -227,6 +227,17 @@ Restart policies do not wait for dependencies. A restarted container may fail if
 
 ```yaml
 services:
+  database:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      - POSTGRES_PASSWORD=secret
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     restart: unless-stopped
     depends_on:
