@@ -19,7 +19,7 @@ A feature flag needs several properties to support different rollout strategies.
 ```typescript
 // types/flag.ts
 // Core flag definition with multiple evaluation strategies
-interface FeatureFlag {
+export interface FeatureFlag {
   key: string;                    // Unique identifier like "dark_mode"
   enabled: boolean;               // Global kill switch
   description?: string;
@@ -29,7 +29,7 @@ interface FeatureFlag {
   updatedAt: Date;
 }
 
-interface FlagRule {
+export interface FlagRule {
   id: string;
   priority: number;               // Lower number = higher priority
   conditions: RuleCondition[];    // All conditions must match (AND logic)
@@ -37,14 +37,14 @@ interface FlagRule {
   value: boolean;                 // Value to return when rule matches
 }
 
-interface RuleCondition {
+export interface RuleCondition {
   attribute: string;              // User attribute to check
   operator: 'equals' | 'notEquals' | 'contains' | 'in' | 'greaterThan' | 'lessThan';
   value: string | number | string[];
 }
 
 // Context passed during flag evaluation
-interface EvaluationContext {
+export interface EvaluationContext {
   userId?: string;
   email?: string;
   country?: string;
@@ -60,6 +60,7 @@ The flag store handles persistence and retrieval. For production, you would use 
 ```typescript
 // store/flagStore.ts
 import { readFileSync, writeFileSync, existsSync } from 'fs';
+import type { FeatureFlag } from '../types/flag';
 
 class FlagStore {
   private flags: Map<string, FeatureFlag> = new Map();
@@ -135,6 +136,12 @@ The evaluation engine is the heart of the feature flag service. It checks condit
 ```typescript
 // evaluator/flagEvaluator.ts
 import { createHash } from 'crypto';
+import type {
+  EvaluationContext,
+  FeatureFlag,
+  FlagRule,
+  RuleCondition,
+} from '../types/flag';
 
 class FlagEvaluator {
   // Main evaluation function that returns a boolean
@@ -246,6 +253,8 @@ The API exposes endpoints for creating, updating, and evaluating flags. This is 
 import express from 'express';
 import { flagStore } from './store/flagStore';
 import { evaluator } from './evaluator/flagEvaluator';
+import { webhookNotifier } from './webhooks/notifier';
+import type { EvaluationContext, FeatureFlag } from './types/flag';
 
 const app = express();
 app.use(express.json());
@@ -283,6 +292,7 @@ app.put('/api/flags/:key', (req, res) => {
   };
 
   flagStore.set(flag);
+  void webhookNotifier.notifyFlagChange(flag);
   res.json(flag);
 });
 
@@ -302,7 +312,7 @@ app.post('/api/evaluate/:key', (req, res) => {
     return res.status(404).json({ error: 'Flag not found' });
   }
 
-  const context: EvaluationContext = req.body;
+  const context: EvaluationContext = req.body ?? {};
   const value = evaluator.evaluate(flag, context);
 
   res.json({
@@ -315,7 +325,7 @@ app.post('/api/evaluate/:key', (req, res) => {
 // Bulk evaluate multiple flags at once
 // Clients call this on app startup to get all relevant flags
 app.post('/api/evaluate', (req, res) => {
-  const { flagKeys, context } = req.body;
+  const { flagKeys, context = {} } = req.body;
   const results: Record<string, boolean> = {};
 
   const keysToEvaluate = flagKeys || flagStore.getAll().map(f => f.key);
@@ -341,11 +351,13 @@ Applications need a client SDK to fetch and cache flag values. The SDK should mi
 
 ```typescript
 // sdk/client.ts
+import type { EvaluationContext } from '../types/flag';
+
 class FeatureFlagClient {
   private baseUrl: string;
   private context: EvaluationContext;
   private cache: Map<string, boolean> = new Map();
-  private refreshInterval: NodeJS.Timeout | null = null;
+  private refreshInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: {
     baseUrl: string;
@@ -567,6 +579,8 @@ Instead of polling, you can notify clients when flags change using webhooks.
 
 ```typescript
 // webhooks/notifier.ts
+import type { FeatureFlag } from '../types/flag';
+
 class WebhookNotifier {
   private subscribers: Map<string, string[]> = new Map();
 
