@@ -8,9 +8,11 @@ Description: Learn how to model and query graph data using RedisGraph.
 
 ---
 
-> RedisGraph brings the power of graph databases to Redis, allowing you to model complex relationships and traverse connected data with the Cypher query language. For applications that need to represent networks, hierarchies, or any interconnected data, RedisGraph offers sub-millisecond query performance.
+> RedisGraph brought the power of graph databases to Redis, allowing you to model complex relationships and traverse connected data with the Cypher query language. For applications that need to represent networks, hierarchies, or any interconnected data, RedisGraph could offer very low-latency query performance when deployed on supported legacy versions.
 
-Graph databases excel at scenarios where relationships between entities matter as much as the entities themselves. Social networks, recommendation systems, fraud detection, and knowledge graphs all benefit from graph data modeling. RedisGraph combines the speed of Redis with the expressiveness of property graphs.
+Graph databases excel at scenarios where relationships between entities matter as much as the entities themselves. Social networks, recommendation systems, fraud detection, and knowledge graphs all benefit from graph data modeling. RedisGraph combined the speed of Redis with the expressiveness of property graphs.
+
+**Important:** Redis has announced RedisGraph end-of-life, and graph capabilities are no longer included in Redis Stack 7.2 and later. The examples below are useful for maintaining legacy RedisGraph deployments, but new projects should choose a currently supported graph database.
 
 ---
 
@@ -41,15 +43,15 @@ graph LR
 
 ### Installation
 
-RedisGraph runs as a Redis module. You can load it into an existing Redis instance or use Docker:
+RedisGraph runs as a Redis module in legacy deployments. You can load it into a compatible Redis instance or use the deprecated RedisGraph Docker image:
 
 ```bash
-# Using Docker - the simplest way to get started
+# Using Docker for a legacy local RedisGraph instance
 
-docker run -p 6379:6379 redis/redis-stack:latest
+docker run -p 6379:6379 redislabs/redisgraph
 
 # Or load the module into existing Redis
-# Download the module from https://redis.io/docs/stack/graph/
+# Download the module from https://redis.io/docs/latest/operate/oss_and_stack/stack-with-enterprise/deprecated-features/graph/
 redis-server --loadmodule /path/to/redisgraph.so
 ```
 
@@ -253,6 +255,8 @@ Here's how to model products, categories, and purchase history:
 # Create product catalog with categories
 setup_catalog = """
 CREATE
+    (customer:Customer {id: 'C001', name: 'Customer One'}),
+
     (electronics:Category {name: 'Electronics'}),
     (laptops:Category {name: 'Laptops'}),
     (phones:Category {name: 'Phones'}),
@@ -325,10 +329,10 @@ Create indexes on frequently queried properties:
 ```python
 # Create an index on the User label for the name property
 # This dramatically speeds up lookups like MATCH (u:User {name: 'Alice'})
-social_graph.query("CREATE INDEX FOR (u:User) ON (u.name)")
+social_graph.query("CREATE INDEX ON :User(name)")
 
 # Create an index for product SKUs
-product_graph.query("CREATE INDEX FOR (p:Product) ON (p.sku)")
+product_graph.query("CREATE INDEX ON :Product(sku)")
 
 # List existing indexes
 indexes = social_graph.query("CALL db.indexes()")
@@ -341,20 +345,26 @@ Use EXPLAIN and PROFILE to understand query execution:
 
 ```python
 # EXPLAIN shows the query plan without executing
-explain_result = social_graph.query("""
-EXPLAIN MATCH (a:User)-[:FOLLOWS*2]->(b:User)
+explain_result = social_graph.execution_plan("""
+MATCH (a:User)-[:FOLLOWS*2]->(b:User)
 RETURN a.name, b.name
 """)
 
 # PROFILE executes and shows actual timing
 profile_result = social_graph.query("""
-PROFILE MATCH (a:User {name: 'Alice'})-[:FOLLOWS]->(b:User)
+MATCH (a:User {name: 'Alice'})-[:FOLLOWS]->(b:User)
+RETURN b.name
+""", profile=True)
+
+# Regular query results expose execution statistics
+query_result = social_graph.query("""
+MATCH (a:User {name: 'Alice'})-[:FOLLOWS]->(b:User)
 RETURN b.name
 """)
 
 # Check execution statistics
-print(f"Nodes created: {profile_result.nodes_created}")
-print(f"Query time: {profile_result.run_time_ms}ms")
+print(f"Profile plan: {profile_result.result_set}")
+print(f"Query time: {query_result.run_time_ms}ms")
 ```
 
 ---
@@ -403,7 +413,7 @@ social_graph.query(update_relationship)
 
 ## Conclusion
 
-RedisGraph provides a powerful way to model and query connected data with the familiarity of Redis and the expressiveness of Cypher. Key takeaways:
+RedisGraph provided a powerful way to model and query connected data with the familiarity of Redis and the expressiveness of Cypher. Key takeaways:
 
 - Use nodes for entities and relationships for connections between them
 - Properties on both nodes and relationships store your data attributes
@@ -411,11 +421,11 @@ RedisGraph provides a powerful way to model and query connected data with the fa
 - Indexes are essential for production performance
 - Variable-length paths enable flexible graph exploration
 
-For applications dealing with social networks, recommendations, fraud detection, or any domain with rich relationships, RedisGraph offers an excellent balance of speed and functionality.
+For legacy applications dealing with social networks, recommendations, fraud detection, or any domain with rich relationships, RedisGraph offered an excellent balance of speed and functionality.
 
 ---
 
-*Need to monitor your Redis and RedisGraph performance? [OneUptime](https://oneuptime.com) provides comprehensive observability for your entire stack, including Redis metrics and alerting.*
+*Need to monitor your Redis performance? [OneUptime](https://oneuptime.com) provides comprehensive observability for your entire stack, including Redis metrics and alerting.*
 
 **Related Reading:**
 - [How to Build Message Queues with Redis Lists](https://oneuptime.com/blog/post/2026-01-26-redis-message-queues-lists/view)
