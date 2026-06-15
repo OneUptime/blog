@@ -28,6 +28,7 @@ Ollama supports macOS, Linux, and Windows.
 # macOS using Homebrew
 
 brew install ollama
+brew services start ollama
 
 # Linux one-liner install
 curl -fsSL https://ollama.com/install.sh | sh
@@ -39,7 +40,7 @@ ollama serve
 ollama --version
 ```
 
-On macOS, Ollama runs as a background service automatically. On Linux, you may want to set up systemd:
+The macOS app runs Ollama as a background service automatically. If you install with Homebrew, use `brew services start ollama`. On Linux, the installer configures a systemd service; for a custom service, use a unit like this:
 
 ```bash
 # Create systemd service file
@@ -54,12 +55,16 @@ User=ollama
 ExecStart=/usr/local/bin/ollama serve
 Restart=always
 RestartSec=3
-Environment="OLLAMA_HOST=0.0.0.0"
+Environment="OLLAMA_HOST=0.0.0.0:11434"
 Environment="OLLAMA_MODELS=/data/ollama/models"
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
+# Make sure the ollama user can write to the custom model directory
+sudo mkdir -p /data/ollama/models
+sudo chown -R ollama:ollama /data/ollama/models
 
 # Enable and start the service
 sudo systemctl daemon-reload
@@ -173,7 +178,7 @@ stream_generate("Write a Python function to calculate fibonacci numbers:")
 
 ## Chat Conversations
 
-The chat API maintains conversation history:
+The chat API accepts conversation history:
 
 ```python
 import requests
@@ -252,17 +257,14 @@ import numpy as np
 
 def get_embeddings(texts, model="nomic-embed-text"):
     """Generate embeddings for a list of texts."""
-    embeddings = []
-    for text in texts:
-        response = requests.post(
-            "http://localhost:11434/api/embeddings",
-            json={
-                "model": model,
-                "prompt": text
-            }
-        )
-        embeddings.append(response.json()["embedding"])
-    return np.array(embeddings)
+    response = requests.post(
+        "http://localhost:11434/api/embed",
+        json={
+            "model": model,
+            "input": texts
+        }
+    )
+    return np.array(response.json()["embeddings"])
 
 def cosine_similarity(a, b):
     """Calculate cosine similarity between two vectors."""
@@ -357,15 +359,15 @@ Configure GPU usage for optimal performance:
 
 ```bash
 # Check GPU detection
-ollama run mistral --verbose 2>&1 | grep -i gpu
+ollama ps
 
-# Set GPU layers (more layers = more GPU memory used)
-OLLAMA_NUM_GPU=35 ollama serve
+# Increase the default context length (uses more memory)
+OLLAMA_CONTEXT_LENGTH=8192 ollama serve
 
-# Use CPU only
-OLLAMA_NUM_GPU=0 ollama serve
+# Use CPU only on NVIDIA systems
+CUDA_VISIBLE_DEVICES=-1 ollama serve
 
-# Specify which GPU to use (multi-GPU systems)
+# Specify which NVIDIA GPU to use (multi-GPU systems)
 CUDA_VISIBLE_DEVICES=0 ollama serve
 ```
 
@@ -374,12 +376,11 @@ CUDA_VISIBLE_DEVICES=0 ollama serve
 Use Ollama with LangChain for building AI applications:
 
 ```python
-from langchain_community.llms import Ollama
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
+from langchain_ollama.llms import OllamaLLM
 
 # Initialize Ollama LLM
-llm = Ollama(
+llm = OllamaLLM(
     model="mistral",
     base_url="http://localhost:11434",
     temperature=0.7
@@ -393,10 +394,10 @@ Question: {question}
 Answer:"""
 
 prompt = PromptTemplate(template=template, input_variables=["question"])
-chain = LLMChain(llm=llm, prompt=prompt)
+chain = prompt | llm
 
 # Run the chain
-response = chain.run(question="What are the benefits of microservices architecture?")
+response = chain.invoke({"question": "What are the benefits of microservices architecture?"})
 print(response)
 ```
 
@@ -405,7 +406,7 @@ print(response)
 1. **Use quantized models**: Models ending in `q4_0` or `q4_K_M` use less memory
 2. **Adjust context window**: Smaller `num_ctx` uses less RAM
 3. **Monitor memory usage**: Use `ollama ps` to see loaded models
-4. **Unload unused models**: Ollama keeps models in memory; restart to free RAM
+4. **Unload unused models**: Ollama keeps models in memory briefly; use `ollama stop` to free RAM immediately
 5. **Use SSD storage**: Model loading is much faster from SSD
 
 ```bash
@@ -415,8 +416,8 @@ ollama ps
 # Use a quantized variant
 ollama pull llama2:7b-q4_0
 
-# Run with reduced context
-ollama run mistral --num-ctx 2048
+# Unload a model immediately
+ollama stop mistral
 ```
 
 ---
