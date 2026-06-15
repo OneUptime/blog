@@ -55,10 +55,12 @@ interface ParsedLog {
   parseTime?: number;
 }
 
+type FieldType = 'string' | 'number' | 'boolean' | 'date';
+
 interface ParserRule {
   name: string;
   pattern: RegExp;
-  fieldTypes?: Record<string, 'string' | 'number' | 'boolean' | 'date'>;
+  fieldTypes?: Record<string, FieldType>;
 }
 
 class RegexLogParser {
@@ -95,7 +97,7 @@ class RegexLogParser {
 
   private convertTypes(
     groups: Record<string, string>,
-    types: Record<string, string>
+    types: Record<string, FieldType>
   ): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
@@ -106,13 +108,15 @@ class RegexLogParser {
 
       switch (type) {
         case 'number':
-          result[key] = parseFloat(value);
+          const numberValue = Number(value);
+          result[key] = Number.isNaN(numberValue) ? value : numberValue;
           break;
         case 'boolean':
           result[key] = value.toLowerCase() === 'true';
           break;
         case 'date':
-          result[key] = new Date(value).toISOString();
+          const dateValue = new Date(value);
+          result[key] = Number.isNaN(dateValue.getTime()) ? value : dateValue.toISOString();
           break;
         default:
           result[key] = value;
@@ -129,7 +133,7 @@ const parser = new RegexLogParser();
 // Apache/Nginx combined log format
 parser.addRule({
   name: 'combined',
-  pattern: /^(?<client_ip>\S+) (?<ident>\S+) (?<user>\S+) \[(?<timestamp>[^\]]+)\] "(?<method>\w+) (?<path>\S+) (?<protocol>\S+)" (?<status>\d+) (?<bytes>\d+) "(?<referrer>[^"]*)" "(?<user_agent>[^"]*)"/,
+  pattern: /^(?<client_ip>\S+) (?<ident>\S+) (?<user>\S+) \[(?<timestamp>[^\]]+)\] "(?<method>\w+) (?<path>\S+) (?<protocol>\S+)" (?<status>\d+) (?<bytes>\d+|-) "(?<referrer>[^"]*)" "(?<user_agent>[^"]*)"/,
   fieldTypes: {
     status: 'number',
     bytes: 'number'
@@ -199,13 +203,14 @@ class GrokParser {
 
     // Date/time patterns
     this.patterns.set('MONTH', '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)');
+    this.patterns.set('MONTHNUM', '(?:0[1-9]|1[0-2])');
     this.patterns.set('MONTHDAY', '(?:0[1-9]|[12]\\d|3[01]|[1-9])');
     this.patterns.set('YEAR', '\\d{4}');
     this.patterns.set('HOUR', '(?:[01]\\d|2[0-3])');
     this.patterns.set('MINUTE', '[0-5]\\d');
     this.patterns.set('SECOND', '[0-5]\\d');
     this.patterns.set('TIME', '%{HOUR}:%{MINUTE}:%{SECOND}');
-    this.patterns.set('TIMESTAMP_ISO8601', '%{YEAR}-%{MONTHDAY}-%{MONTHDAY}[T ]%{TIME}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:?\\d{2})?');
+    this.patterns.set('TIMESTAMP_ISO8601', '%{YEAR}-%{MONTHNUM}-%{MONTHDAY}[T ]%{TIME}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:?\\d{2})?');
 
     // HTTP patterns
     this.patterns.set('HTTPMETHOD', '(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT|TRACE)');
@@ -279,7 +284,7 @@ const parsed = grok.parse(nginxPattern, nginxLog);
 // { client_ip: '192.168.1.100', method: 'GET', path: '/api/users', status: '200', ... }
 
 // Custom application log pattern
-grok.addPattern('APPLOG', '%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} \\[%{WORD:service}\\] %{GREEDYDATA:message}');
+grok.addPattern('APPLOG', '%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} \\[%{NOTSPACE:service}\\] %{GREEDYDATA:message}');
 const appLog = '2024-01-15T10:23:45.123Z INFO [user-service] User login successful';
 const parsedApp = grok.parse('%{APPLOG}', appLog);
 ```
@@ -294,9 +299,21 @@ Add context to parsed logs:
 // enrichment/enricher.ts
 // Log enrichment pipeline
 
+import fs from 'node:fs';
+import { CityResponse, Reader } from 'maxmind';
+import { UAParser } from 'ua-parser-js';
+
 interface EnrichmentPlugin {
   name: string;
   enrich(log: ParsedLog): Promise<Record<string, unknown>>;
+}
+
+interface ServiceInfo {
+  team: string;
+  tier: string;
+  environment: string;
+  version: string;
+  oncallEmail: string;
 }
 
 class LogEnricher {
@@ -328,10 +345,10 @@ class LogEnricher {
 // GeoIP enrichment
 class GeoIPEnrichment implements EnrichmentPlugin {
   name = 'geoip';
-  private reader: maxmind.Reader<maxmind.CityResponse>;
+  private reader: Reader<CityResponse>;
 
   constructor(databasePath: string) {
-    this.reader = maxmind.openSync(databasePath);
+    this.reader = new Reader<CityResponse>(fs.readFileSync(databasePath));
   }
 
   async enrich(log: ParsedLog): Promise<Record<string, unknown>> {
@@ -493,9 +510,21 @@ interface PipelineStage {
   process(logs: ParsedLog[]): Promise<ParsedLog[]>;
 }
 
+interface PipelineMetrics {
+  recordStage(stage: string, durationMs: number, outputCount: number): void;
+  recordError(stage: string): void;
+}
+
 class LogProcessingPipeline {
   private stages: PipelineStage[] = [];
   private metrics: PipelineMetrics;
+
+  constructor(metrics: PipelineMetrics = {
+    recordStage: () => {},
+    recordError: () => {}
+  }) {
+    this.metrics = metrics;
+  }
 
   addStage(stage: PipelineStage): void {
     this.stages.push(stage);
