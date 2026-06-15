@@ -115,13 +115,14 @@ import re
 
 def extract_int(s):
     """Extract integer from string, handling various formats."""
-    # Remove everything except digits and minus sign
-    cleaned = re.sub(r"[^\d-]", "", s)
-    if cleaned and cleaned != "-":
+    # Match the first integer-like value, allowing comma separators
+    match = re.search(r"-?\d[\d,]*", s)
+    if match:
+        cleaned = match.group().replace(",", "")
         return int(cleaned)
     return None
 
-print(extract_int("$1,234.56"))  # 123456 (removes decimal too)
+print(extract_int("$1,234.56"))  # 1234
 print(extract_int("Price: 99"))   # 99
 ```
 
