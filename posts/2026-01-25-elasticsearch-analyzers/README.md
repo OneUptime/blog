@@ -110,7 +110,7 @@ curl -X POST "localhost:9200/_analyze?pretty" -H 'Content-Type: application/json
   "analyzer": "english",
   "text": "The foxes were running quickly through the forest"
 }'
-# Output: [foxes, run, quick, through, forest] - "the", "were" removed, "running" stemmed to "run"
+# Output: [fox, were, run, quickli, through, forest] - "the" removed, words stemmed
 ```
 
 ---
@@ -332,9 +332,9 @@ curl -X POST "localhost:9200/_analyze?pretty" -H 'Content-Type: application/json
 {
   "tokenizer": "standard",
   "filter": ["lowercase", "asciifolding"],
-  "text": "Cafe resume naive"
+  "text": "Café résumé naïve"
 }'
-# Also handles: cafe, resume, naive
+# Output: [cafe, resume, naive]
 
 # Synonym filter
 curl -X PUT "localhost:9200/synonym_index" -H 'Content-Type: application/json' -d'
@@ -629,15 +629,17 @@ class AnalyzerTester:
     ) -> List[str]:
         """Analyze text and return tokens"""
 
-        body = {
-            "analyzer": analyzer,
-            "text": text
-        }
-
         if index:
-            response = self.es.indices.analyze(index=index, body=body)
+            response = self.es.indices.analyze(
+                index=index,
+                analyzer=analyzer,
+                text=text
+            )
         else:
-            response = self.es.indices.analyze(body=body)
+            response = self.es.indices.analyze(
+                analyzer=analyzer,
+                text=text
+            )
 
         return [token["token"] for token in response["tokens"]]
 
@@ -649,18 +651,30 @@ class AnalyzerTester:
     ) -> List[Dict[str, Any]]:
         """Analyze text and return detailed token info"""
 
-        body = {
-            "analyzer": analyzer,
-            "text": text,
-            "explain": True
-        }
-
         if index:
-            response = self.es.indices.analyze(index=index, body=body)
+            response = self.es.indices.analyze(
+                index=index,
+                analyzer=analyzer,
+                text=text,
+                explain=True
+            )
         else:
-            response = self.es.indices.analyze(body=body)
+            response = self.es.indices.analyze(
+                analyzer=analyzer,
+                text=text,
+                explain=True
+            )
 
-        return response.get("detail", {}).get("tokenizer", {}).get("tokens", [])
+        detail = response.get("detail", {})
+        analyzer_detail = detail.get("analyzer")
+        if analyzer_detail:
+            return analyzer_detail.get("tokens", [])
+
+        tokenfilters = detail.get("tokenfilters", [])
+        if tokenfilters:
+            return tokenfilters[-1].get("tokens", [])
+
+        return detail.get("tokenizer", {}).get("tokens", [])
 
     def compare_analyzers(
         self,
@@ -688,17 +702,12 @@ class AnalyzerTester:
     ) -> List[str]:
         """Test a custom analyzer configuration"""
 
-        body = {
-            "tokenizer": tokenizer,
-            "text": text
-        }
-
-        if char_filters:
-            body["char_filter"] = char_filters
-        if token_filters:
-            body["filter"] = token_filters
-
-        response = self.es.indices.analyze(body=body)
+        response = self.es.indices.analyze(
+            tokenizer=tokenizer,
+            char_filter=char_filters,
+            filter=token_filters,
+            text=text
+        )
         return [token["token"] for token in response["tokens"]]
 
     def find_analyzer_differences(
@@ -736,10 +745,8 @@ class AnalyzerTester:
 
         self.es.indices.create(
             index=index_name,
-            body={
-                "settings": {
-                    "analysis": analyzer_config
-                }
+            settings={
+                "analysis": analyzer_config
             }
         )
         return True
