@@ -148,7 +148,7 @@ Or from command line:
 killall Docker
 
 # Remove Docker Desktop settings (keeps data)
-rm -rf ~/Library/Group\ Containers/group.com.docker/settings.json
+rm -f ~/Library/Group\ Containers/group.com.docker/settings-store.json
 
 # Start fresh
 open -a Docker
@@ -169,11 +169,11 @@ docker context use default
 ### Docker Desktop Service Not Running
 
 ```powershell
-# Check Docker Desktop service
-Get-Service *docker*
+# Check Docker Desktop privileged helper service
+Get-Service com.docker.service
 
-# Start Docker Desktop service
-Start-Service docker
+# Start Docker Desktop privileged helper service
+Start-Service com.docker.service
 
 # Or start Docker Desktop application
 Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
@@ -258,8 +258,9 @@ cat /etc/docker/daemon.json
 python3 -m json.tool /etc/docker/daemon.json
 ```
 
+Example valid daemon.json:
+
 ```json
-// Example valid daemon.json
 {
   "storage-driver": "overlay2",
   "log-driver": "json-file",
