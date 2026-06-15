@@ -122,7 +122,7 @@ Always use TLS with Basic Auth. Without it, credentials are transmitted in plain
 
 ## Digest Authentication
 
-Digest Auth is more secure than Basic Auth because it does not send passwords over the wire. Instead, it uses a challenge-response mechanism.
+Digest Auth is more secure than Basic Auth over plain HTTP because it does not send passwords over the wire in cleartext. Instead, it uses a challenge-response mechanism.
 
 ```yaml
 # digest-auth-middleware.yaml
@@ -152,15 +152,19 @@ type: Opaque
 stringData:
   # Format: username:realm:MD5(username:realm:password)
   users: |
-    admin:Secure Zone:a94a8fe5ccb19ba61c4c0873d391e987
+    admin:Secure Zone:bb1cb444afb9c38c3c98074f6592d037
 ```
 
 Generate the hash with:
 
 ```bash
-# Generate MD5 hash for Digest Auth
-# Format: username:realm:password
-echo -n "admin:Secure Zone:password123" | md5sum
+# Generate an htdigest entry for Digest Auth
+htdigest -c digest.htdigest "Secure Zone" admin
+cat digest.htdigest
+
+# Or generate the MD5 value directly:
+# MD5(username:realm:password)
+printf "admin:Secure Zone:password123" | md5sum | cut -d " " -f 1
 ```
 
 ## Combining Multiple Middlewares
@@ -309,7 +313,7 @@ curl -u admin:your-secure-password -v https://api.example.com/ 2>&1 | grep X-Aut
 
 ## Troubleshooting
 
-**401 after entering correct credentials**: Check that the password hash format matches what Traefik expects. Bcrypt hashes must start with `$2y$`.
+**401 after entering correct credentials**: Check that the password hash format matches what Traefik expects. Use `htpasswd` for Basic Auth hashes and `htdigest` for Digest Auth entries.
 
 **Middleware not applied**: Verify the middleware name matches exactly in the IngressRoute reference and both resources are in the same namespace.
 
