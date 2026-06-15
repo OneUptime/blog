@@ -308,11 +308,11 @@ SELECT
     NTILE(4) OVER (ORDER BY amount) AS quartile
 FROM sales;
 
--- Percentile calculation
+-- Percentile-style buckets
 SELECT
     salesperson,
     amount,
-    NTILE(100) OVER (ORDER BY amount) AS percentile
+    NTILE(100) OVER (ORDER BY amount) AS percentile_bucket
 FROM sales;
 ```
 
@@ -387,7 +387,7 @@ SELECT
 FROM sales;
 
 -- Common frame clauses
--- ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW (default with ORDER BY)
+-- RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW (default with ORDER BY)
 -- ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
 -- ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING (centered window)
 ```
