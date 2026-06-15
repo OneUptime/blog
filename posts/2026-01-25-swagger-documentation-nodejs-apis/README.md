@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NodeJS, Swagger, OpenAPI, Documentation, REST API
 
-Description: Generate interactive API documentation for your Node.js Express applications using Swagger UI and OpenAPI specification with automatic schema generation.
+Description: Generate interactive API documentation for your Node.js Express applications using Swagger UI and OpenAPI specifications generated from JSDoc annotations.
 
 ---
 
-Good API documentation saves time for everyone. Swagger (now OpenAPI) provides interactive documentation where developers can explore and test your API directly in the browser. Here is how to set it up properly in Express.js.
+Good API documentation saves time for everyone. Swagger UI, built around the OpenAPI Specification, provides interactive documentation where developers can explore and test your API directly in the browser. Here is how to set it up properly in Express.js.
 
 ## Quick Setup with swagger-jsdoc and swagger-ui-express
 
@@ -200,7 +200,7 @@ const router = express.Router();
  *           type: string
  *         description: Search by name or email
  *     responses:
- *       200:
+ *       "200":
  *         description: List of users
  *         content:
  *           application/json:
@@ -240,13 +240,13 @@ router.get('/', (req, res) => {
  *           type: integer
  *         description: User ID
  *     responses:
- *       200:
+ *       "200":
  *         description: User details
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/User'
- *       404:
+ *       "404":
  *         description: User not found
  *         content:
  *           application/json:
@@ -270,13 +270,13 @@ router.get('/:id', (req, res) => {
  *           schema:
  *             $ref: '#/components/schemas/CreateUser'
  *     responses:
- *       201:
+ *       "201":
  *         description: User created successfully
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/User'
- *       400:
+ *       "400":
  *         description: Validation error
  *         content:
  *           application/json:
@@ -306,13 +306,13 @@ router.post('/', (req, res) => {
  *           schema:
  *             $ref: '#/components/schemas/CreateUser'
  *     responses:
- *       200:
+ *       "200":
  *         description: User updated
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/User'
- *       404:
+ *       "404":
  *         description: User not found
  */
 router.put('/:id', (req, res) => {
@@ -332,9 +332,9 @@ router.put('/:id', (req, res) => {
  *         schema:
  *           type: integer
  *     responses:
- *       204:
+ *       "204":
  *         description: User deleted
- *       404:
+ *       "404":
  *         description: User not found
  */
 router.delete('/:id', (req, res) => {
@@ -391,9 +391,9 @@ const options = {
  *     security:
  *       - bearerAuth: []
  *     responses:
- *       200:
+ *       "200":
  *         description: Success
- *       401:
+ *       "401":
  *         description: Unauthorized
  */
 ```
@@ -427,7 +427,7 @@ const options = {
  *                 format: binary
  *                 description: Image file (JPEG, PNG)
  *     responses:
- *       200:
+ *       "200":
  *         description: Avatar uploaded
  *         content:
  *           application/json:
@@ -474,6 +474,10 @@ const options = {
 ## Generating OpenAPI Spec for CI/CD
 
 Export the spec for use in other tools:
+
+```bash
+npm install js-yaml
+```
 
 ```javascript
 // scripts/generate-openapi.js
@@ -532,7 +536,7 @@ app.use(
     })
 );
 
-// Validation errors are automatically handled
+// Validation errors are passed to this Express error handler
 app.use((err, req, res, next) => {
     res.status(err.status || 500).json({
         error: err.message,
@@ -590,4 +594,4 @@ if (process.env.NODE_ENV !== 'production') {
 
 ## Summary
 
-Swagger documentation makes your API discoverable and testable. Use JSDoc comments to document endpoints inline with your code, define reusable schemas in components, add authentication documentation, and export the OpenAPI spec for use with validation libraries and client generators. The documentation stays in sync with your code and provides an interactive testing interface at `/api-docs`.
+Swagger documentation makes your API discoverable and testable. Use JSDoc comments to document endpoints inline with your code, define reusable schemas in components, add authentication documentation, and export the OpenAPI spec for use with validation libraries and client generators. Keeping annotations alongside your routes makes it easier to keep the documentation in sync with your code and provides an interactive testing interface at `/api-docs`.
