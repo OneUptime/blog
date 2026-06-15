@@ -202,7 +202,7 @@ fn main() {
 
 ## Range Patterns
 
-Match ranges of values with `..=` (inclusive) or `..` (exclusive, in nightly).
+Match ranges of values with `..=` (inclusive), `..` (exclusive), or open-ended forms like `65..`.
 
 ```rust
 fn grade_letter(score: u32) -> char {
