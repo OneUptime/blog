@@ -31,6 +31,8 @@ Start with a schema that defines all configuration options with their types and 
 // src/config/schema.ts
 import { z } from 'zod';
 
+const booleanConfig = z.union([z.boolean(), z.stringbool()]);
+
 // Define the shape of your configuration
 // Zod validates at runtime and generates TypeScript types
 export const configSchema = z.object({
@@ -40,8 +42,8 @@ export const configSchema = z.object({
     env: z.enum(['development', 'staging', 'production']).default('development'),
     port: z.coerce.number().int().min(1).max(65535).default(3000),
     host: z.string().default('0.0.0.0'),
-    debug: z.coerce.boolean().default(false),
-  }),
+    debug: booleanConfig.default(false),
+  }).prefault({}),
 
   // Database configuration
   database: z.object({
@@ -51,7 +53,7 @@ export const configSchema = z.object({
     user: z.string(),
     password: z.string(),
     poolSize: z.coerce.number().int().min(1).max(100).default(10),
-    ssl: z.coerce.boolean().default(true),
+    ssl: booleanConfig.default(true),
     connectionTimeout: z.coerce.number().int().default(30000),
   }),
 
@@ -62,7 +64,7 @@ export const configSchema = z.object({
     password: z.string().optional(),
     db: z.coerce.number().int().default(0),
     keyPrefix: z.string().default('app:'),
-  }),
+  }).prefault({}),
 
   // JWT settings
   jwt: z.object({
@@ -76,15 +78,15 @@ export const configSchema = z.object({
   logging: z.object({
     level: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
     format: z.enum(['json', 'pretty']).default('json'),
-    includeTimestamp: z.coerce.boolean().default(true),
-  }),
+    includeTimestamp: booleanConfig.default(true),
+  }).prefault({}),
 
   // External services
   services: z.object({
     email: z.object({
       provider: z.enum(['sendgrid', 'mailgun', 'ses']).default('sendgrid'),
       apiKey: z.string(),
-      fromAddress: z.string().email(),
+      fromAddress: z.email(),
     }),
     storage: z.object({
       provider: z.enum(['s3', 'gcs', 'local']).default('s3'),
@@ -96,14 +98,18 @@ export const configSchema = z.object({
   }).optional(),
 
   // Feature flags
-  features: z.record(z.boolean()).default({}),
+  features: z.record(z.string(), booleanConfig).default({}),
 });
 
 // Extract TypeScript type from schema
 export type Config = z.infer<typeof configSchema>;
 
 // Partial config for merging
-export type PartialConfig = z.input<typeof configSchema>;
+type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends Record<string, unknown> ? DeepPartial<T[K]> : T[K];
+};
+
+export type PartialConfig = DeepPartial<z.input<typeof configSchema>>;
 ```
 
 ## Configuration Loader
@@ -115,10 +121,6 @@ The loader pulls configuration from multiple sources and merges them in priority
 import fs from 'fs';
 import path from 'path';
 import { configSchema, Config, PartialConfig } from './schema';
-
-// Configuration sources in order of priority (lowest to highest)
-// Later sources override earlier ones
-type ConfigSource = 'defaults' | 'file' | 'env' | 'secrets';
 
 interface LoaderOptions {
   configDir?: string;          // Directory containing config files
@@ -197,8 +199,8 @@ export class ConfigLoader {
     return null;
   }
 
-  // Convert environment variables to nested config object
-  // APP_DATABASE_HOST becomes { database: { host: value } }
+  // Convert environment variables to nested config object.
+  // APP_DATABASE__POOL_SIZE becomes { database: { poolSize: value } }
   private loadFromEnvVars(): PartialConfig {
     const prefix = this.options.envPrefix;
     const config: Record<string, any> = {};
@@ -206,12 +208,9 @@ export class ConfigLoader {
     for (const [key, value] of Object.entries(process.env)) {
       if (!key.startsWith(prefix) || value === undefined) continue;
 
-      // Remove prefix and convert to path
-      // APP_DATABASE_HOST -> database.host
-      const path = key
-        .slice(prefix.length)
-        .toLowerCase()
-        .split('_');
+      // Remove prefix and convert double-underscore-separated segments to a path.
+      // Single underscores inside a segment become camelCase.
+      const path = this.envKeyToPath(key.slice(prefix.length));
 
       // Set nested value
       this.setNestedValue(config, path, value);
@@ -240,7 +239,7 @@ export class ConfigLoader {
 
         if (fileStats.isFile()) {
           const value = fs.readFileSync(filePath, 'utf-8').trim();
-          const path = file.toLowerCase().split('_');
+          const path = this.envKeyToPath(file);
           this.setNestedValue(config, path, value);
         }
       }
@@ -255,6 +254,20 @@ export class ConfigLoader {
     }
 
     return Object.keys(config).length > 0 ? config : null;
+  }
+
+  private envKeyToPath(key: string): string[] {
+    return key.split('__').map(segment => this.toCamelCase(segment));
+  }
+
+  private toCamelCase(segment: string): string {
+    return segment
+      .toLowerCase()
+      .split('_')
+      .map((part, index) =>
+        index === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1)
+      )
+      .join('');
   }
 
   // Set a value in a nested object using path array
@@ -294,7 +307,7 @@ export class ConfigLoader {
     const result = configSchema.safeParse(config);
 
     if (!result.success) {
-      const errors = result.error.errors.map(e =>
+      const errors = result.error.issues.map(e =>
         `  - ${e.path.join('.')}: ${e.message}`
       ).join('\n');
 
@@ -391,7 +404,7 @@ export class ConfigManager extends EventEmitter {
   watch(configDir: string): void {
     const dir = path.resolve(configDir);
 
-    const watcher = fs.watch(dir, (eventType, filename) => {
+    const watcher = fs.watch(dir, (_eventType, filename) => {
       if (filename && (filename.endsWith('.json') || filename.endsWith('.js'))) {
         console.log(`Config file changed: ${filename}`);
         this.reload();
@@ -481,7 +494,6 @@ Create a singleton instance for easy access throughout your application.
 ```typescript
 // src/config/index.ts
 import { ConfigManager } from './manager';
-import { Config } from './schema';
 
 // Singleton instance
 let instance: ConfigManager | null = null;
@@ -511,7 +523,7 @@ export function config<T = any>(path: string): T {
 }
 
 // Export types
-export { Config } from './schema';
+export type { Config } from './schema';
 export { ConfigManager } from './manager';
 ```
 
@@ -519,9 +531,9 @@ export { ConfigManager } from './manager';
 
 Create environment-specific configuration files.
 
-```typescript
-// config/default.json
-// Base configuration shared across all environments
+`config/default.json`
+
+```json
 {
   "app": {
     "name": "my-app",
@@ -549,9 +561,11 @@ Create environment-specific configuration files.
     "betaApi": false
   }
 }
+```
 
-// config/development.json
-// Development-specific overrides
+`config/development.json`
+
+```json
 {
   "app": {
     "env": "development",
@@ -580,9 +594,11 @@ Create environment-specific configuration files.
     "betaApi": true
   }
 }
+```
 
-// config/production.json
-// Production configuration (secrets come from env vars)
+`config/production.json`
+
+```json
 {
   "app": {
     "env": "production",
@@ -605,7 +621,7 @@ Here is how to use the configuration system in your application.
 
 ```typescript
 // src/main.ts
-import { initConfig, getConfig, config } from './config';
+import { initConfig, config } from './config';
 
 // Initialize configuration at startup
 const configManager = initConfig({
@@ -631,7 +647,7 @@ if (configManager.isFeatureEnabled('newDashboard')) {
 if (configManager.isDevelopment()) {
   configManager.watch('./config');
 
-  configManager.on('reload', (newConfig, oldConfig) => {
+  configManager.on('reload', () => {
     console.log('Configuration reloaded');
   });
 
@@ -676,35 +692,35 @@ Document the environment variables your application accepts.
 ```bash
 # Application settings
 
-APP_APP_NAME=my-app
-APP_APP_ENV=production
-APP_APP_PORT=3000
-APP_APP_DEBUG=false
+APP_APP__NAME=my-app
+APP_APP__ENV=production
+APP_APP__PORT=3000
+APP_APP__DEBUG=false
 
 # Database configuration
-APP_DATABASE_HOST=db.example.com
-APP_DATABASE_PORT=5432
-APP_DATABASE_NAME=myapp
-APP_DATABASE_USER=appuser
-APP_DATABASE_PASSWORD=secretpassword
-APP_DATABASE_POOLSIZE=20
-APP_DATABASE_SSL=true
+APP_DATABASE__HOST=db.example.com
+APP_DATABASE__PORT=5432
+APP_DATABASE__NAME=myapp
+APP_DATABASE__USER=appuser
+APP_DATABASE__PASSWORD=secretpassword
+APP_DATABASE__POOL_SIZE=20
+APP_DATABASE__SSL=true
 
 # Redis configuration
-APP_REDIS_HOST=redis.example.com
-APP_REDIS_PASSWORD=redispassword
+APP_REDIS__HOST=redis.example.com
+APP_REDIS__PASSWORD=redispassword
 
 # JWT settings
-APP_JWT_SECRET=your-very-long-secret-key-at-least-32-characters
-APP_JWT_EXPIRESIN=1h
+APP_JWT__SECRET=your-very-long-secret-key-at-least-32-characters
+APP_JWT__EXPIRES_IN=1h
 
 # Logging
-APP_LOGGING_LEVEL=info
-APP_LOGGING_FORMAT=json
+APP_LOGGING__LEVEL=info
+APP_LOGGING__FORMAT=json
 
 # Feature flags
-APP_FEATURES_NEWDASHBOARD=true
-APP_FEATURES_BETAAPI=false
+APP_FEATURES__NEW_DASHBOARD=true
+APP_FEATURES__BETA_API=false
 ```
 
 ## Configuration Flow Diagram
@@ -822,8 +838,8 @@ describe('Configuration', () => {
   });
 
   it('should load from environment variables', () => {
-    process.env.APP_DATABASE_HOST = 'envhost';
-    process.env.APP_DATABASE_PORT = '5433';
+    process.env.APP_DATABASE__HOST = 'envhost';
+    process.env.APP_DATABASE__PORT = '5433';
 
     const loader = new ConfigLoader({ configDir: './test/fixtures/config' });
 
