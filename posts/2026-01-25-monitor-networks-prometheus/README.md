@@ -26,9 +26,9 @@ SNMP Exporter translates SNMP data into Prometheus metrics. It requires a config
 ```bash
 # Download SNMP Exporter
 
-wget https://github.com/prometheus/snmp_exporter/releases/download/v0.25.0/snmp_exporter-0.25.0.linux-amd64.tar.gz
-tar xvfz snmp_exporter-0.25.0.linux-amd64.tar.gz
-sudo mv snmp_exporter-0.25.0.linux-amd64/snmp_exporter /usr/local/bin/
+wget https://github.com/prometheus/snmp_exporter/releases/download/v0.30.1/snmp_exporter-0.30.1.linux-amd64.tar.gz
+tar xvfz snmp_exporter-0.30.1.linux-amd64.tar.gz
+sudo mv snmp_exporter-0.30.1.linux-amd64/snmp_exporter /usr/local/bin/
 
 # Download the default snmp.yml configuration
 wget https://raw.githubusercontent.com/prometheus/snmp_exporter/main/snmp.yml
@@ -38,8 +38,6 @@ wget https://raw.githubusercontent.com/prometheus/snmp_exporter/main/snmp.yml
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   snmp-exporter:
     image: prom/snmp-exporter:latest
@@ -182,11 +180,14 @@ auths:
 Generate the configuration:
 
 ```bash
-# Install generator
-go install github.com/prometheus/snmp_exporter/generator@latest
+# Build generator
+sudo apt-get install unzip build-essential libsnmp-dev curl golang-go git
+git clone https://github.com/prometheus/snmp_exporter.git
+cd snmp_exporter/generator
+make generator mibs
 
 # Generate snmp.yml from generator.yml
-generator generate
+./generator generate -g /path/to/generator.yml -o /path/to/snmp.yml
 ```
 
 ## Key SNMP Metrics
@@ -291,6 +292,25 @@ scrape_configs:
           - 'api.example.com:443'
         labels:
           probe_type: tcp
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  # DNS resolution monitoring
+  - job_name: 'network-dns'
+    metrics_path: /probe
+    params:
+      module: [dns_probe]
+    static_configs:
+      - targets:
+          - '8.8.8.8'
+          - '1.1.1.1'
+        labels:
+          probe_type: dns
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -426,7 +446,7 @@ groups:
           severity: warning
         annotations:
           summary: "High latency to {{ $labels.instance }}"
-          description: "Latency is {{ $value | printf \"%.0f\" }}ms"
+          description: "Latency is {{ $value | humanizeDuration }}"
 
       # DNS resolution failing
       - alert: DNSResolutionFailed
@@ -504,13 +524,13 @@ rate(ifHCOutOctets{instance="$device"}[5m]) * 8 * -1  # Negative for visual
 topk(10, interface:utilization_in:percent)
 
 # Panel: Interface Status Table
-ifOperStatus * on(ifIndex) group_left(ifDescr) ifDescr
+ifOperStatus{instance="$device"}
 
 # Panel: Device Uptime
 sysUpTime{instance="$device"} / 100 / 60 / 60 / 24
 
-# Panel: Network Latency Heatmap
-histogram_quantile(0.99, probe_duration_seconds{job="network-ping"})
+# Panel: Network Latency p99
+quantile_over_time(0.99, probe_duration_seconds{job="network-ping"}[5m])
 
 # Panel: Connectivity Status
 probe_success{job="network-ping"}
