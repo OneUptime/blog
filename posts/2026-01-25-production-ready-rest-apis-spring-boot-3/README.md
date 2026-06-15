@@ -18,7 +18,7 @@ Start with Spring Initializr or add these dependencies to your `pom.xml`:
 <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.2.0</version>
+    <version>3.5.15</version>
 </parent>
 
 <dependencies>
@@ -38,6 +38,19 @@ Start with Spring Initializr or add these dependencies to your `pom.xml`:
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-data-jpa</artifactId>
     </dependency>
+    <dependency>
+        <groupId>io.micrometer</groupId>
+        <artifactId>micrometer-registry-prometheus</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
+    </dependency>
 </dependencies>
 ```
 
@@ -52,7 +65,7 @@ public class UserController {
 
     private final UserService userService;
 
-    // Constructor injection - no need for @Autowired in Spring Boot 3
+    // Single-constructor injection - no need for @Autowired
     public UserController(UserService userService) {
         this.userService = userService;
     }
@@ -226,13 +239,14 @@ public ResponseEntity<Page<UserResponse>> listUsers(
         @RequestParam(defaultValue = "desc") String sortDir) {
 
     // Limit page size to prevent abuse
-    int safeSize = Math.min(size, 100);
+    int safePage = Math.max(page, 0);
+    int safeSize = Math.min(Math.max(size, 1), 100);
 
     Sort sort = sortDir.equalsIgnoreCase("asc")
         ? Sort.by(sortBy).ascending()
         : Sort.by(sortBy).descending();
 
-    Pageable pageable = PageRequest.of(page, safeSize, sort);
+    Pageable pageable = PageRequest.of(safePage, safeSize, sort);
     return ResponseEntity.ok(userService.findAll(pageable));
 }
 ```
@@ -251,7 +265,7 @@ management:
         include: health, info, metrics, prometheus
   endpoint:
     health:
-      show-details: when_authorized
+      show-details: when-authorized
       probes:
         enabled: true  # Enables /actuator/health/liveness and /actuator/health/readiness
   health:
@@ -337,7 +351,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
-            .csrf(csrf -> csrf.disable())  // Disable for stateless API
+            .csrf(csrf -> csrf.disable())  // Disable when using bearer tokens instead of cookies
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
@@ -365,7 +379,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     private Bucket createBucket() {
         // Allow 100 requests per minute
         return Bucket.builder()
-            .addLimit(Bandwidth.classic(100, Refill.intervally(100, Duration.ofMinutes(1))))
+            .addLimit(limit -> limit.capacity(100).refillIntervally(100, Duration.ofMinutes(1)))
             .build();
     }
 
