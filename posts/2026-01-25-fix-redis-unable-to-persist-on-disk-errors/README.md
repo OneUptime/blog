@@ -8,19 +8,17 @@ Description: Learn how to diagnose and fix Redis persistence failures, understan
 
 ---
 
-When Redis cannot write to disk, your data is at risk. The error "MISCONF Redis is configured to save RDB snapshots, but it is currently not able to persist on disk" stops write operations entirely. This is Redis protecting your data by refusing writes when persistence is broken.
+When Redis cannot write to disk, your data is at risk. The error "MISCONF Redis is configured to save RDB snapshots, but it is currently not able to persist on disk" stops commands that modify data. This is Redis protecting your data by refusing writes when RDB persistence is broken.
 
 ## Understanding the Error
 
-Redis can be configured to stop accepting writes when persistence fails. This behavior is controlled by these settings:
+Redis can be configured to stop accepting writes when RDB snapshot persistence fails. This behavior is controlled by this setting:
 
 ```bash
 # Check current configuration
 
 redis-cli CONFIG GET stop-writes-on-bgsave-error
 # "stop-writes-on-bgsave-error" "yes"
-
-redis-cli CONFIG GET stop-writes-on-bgsave-error
 ```
 
 When `stop-writes-on-bgsave-error` is `yes` and a save fails, Redis rejects writes with:
@@ -120,6 +118,9 @@ rm /var/lib/redis/dump.rdb.old
 # Remove old AOF files
 ls -la /var/lib/redis/*.aof*
 rm /var/lib/redis/appendonly.aof.old
+# Redis 7+ commonly stores AOF files under appendonlydir
+ls -la /var/lib/redis/appendonlydir/
+rm /var/lib/redis/appendonlydir/appendonly.aof.*.incr.aof.old
 
 # Clean up temp files
 rm /var/lib/redis/temp-*.rdb
@@ -197,6 +198,7 @@ def check_persistence_health(redis_client):
 
     # Get persistence info
     info = redis_client.info('persistence')
+    memory_info = redis_client.info('memory')
     config_dir = redis_client.config_get('dir')['dir']
 
     # Check RDB status
@@ -216,7 +218,7 @@ def check_persistence_health(redis_client):
 
     # Check memory for fork
     memory = psutil.virtual_memory()
-    redis_mem = int(info.get('used_memory', 0))
+    redis_mem = int(memory_info.get('used_memory', 0))
     if memory.available < redis_mem:
         issues.append("Insufficient memory for fork")
 
@@ -252,7 +254,8 @@ groups:
       description: "Redis RDB save has been failing for 5 minutes"
 
   - alert: RedisLowDiskSpace
-    expr: (node_filesystem_avail_bytes{mountpoint="/var/lib/redis"} / node_filesystem_size_bytes{mountpoint="/var/lib/redis"}) < 0.1
+    # Replace "/" with the actual filesystem mount point that contains the Redis dir.
+    expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.1
     for: 5m
     labels:
       severity: warning
@@ -281,7 +284,7 @@ if [ "$rdb_status" != "ok" ]; then
     echo "Disk free: $disk_free"
 
     # Check permissions
-    if [ -w "$dir" ]; then
+    if sudo -u redis test -w "$dir"; then
         echo "Directory is writable"
     else
         echo "Directory is NOT writable"
@@ -324,6 +327,11 @@ auto-aof-rewrite-min-size 64mb
 ### Set Up Disk Monitoring
 
 ```python
+import redis
+import shutil
+import schedule
+import time
+
 def monitor_disk_for_redis(redis_client, warning_threshold_gb=10, critical_threshold_gb=5):
     """Monitor disk space for Redis data directory."""
     config_dir = redis_client.config_get('dir')['dir']
@@ -338,8 +346,8 @@ def monitor_disk_for_redis(redis_client, warning_threshold_gb=10, critical_thres
         return ('OK', f"{free_gb:.1f}GB free disk space")
 
 # Run periodically
-import schedule
-import time
+def send_alert(status, message):
+    print(f"{status}: {message}")
 
 def check_and_alert():
     r = redis.Redis()
@@ -366,7 +374,10 @@ systemctl stop redis
 
 # 3. Check data integrity
 redis-check-rdb /var/lib/redis/dump.rdb
+# For Redis 6 and earlier single-file AOF:
 redis-check-aof /var/lib/redis/appendonly.aof
+# For Redis 7+ multi-part AOF, check the manifest in appendonlydir:
+redis-check-aof /var/lib/redis/appendonlydir/appendonly.aof.manifest
 
 # 4. Start Redis
 systemctl start redis
