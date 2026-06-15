@@ -220,7 +220,7 @@ server {
     server_name localhost;
 
     location /nginx_status {
-        stub_status on;
+        stub_status;
         allow 127.0.0.1;
         allow 10.0.0.0/8;
         deny all;
@@ -342,7 +342,7 @@ log_format json escape=json '{'
 # Conditional logging maps
 map $request_time $slow_request {
     default 0;
-    "~^[2-9]" 1;
+    "~^([2-9]|[1-9][0-9]+)" 1;
 }
 
 map $status $is_error {
@@ -360,7 +360,8 @@ upstream backend {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name app.example.com;
 
     ssl_certificate /etc/ssl/certs/app.example.com.crt;
@@ -397,15 +398,15 @@ server {
     server_name localhost;
 
     location /nginx_status {
-        stub_status on;
+        stub_status;
         allow 127.0.0.1;
         allow 10.0.0.0/8;
         deny all;
     }
 
-    location /metrics {
-        # For Prometheus exporter
-        stub_status on;
+    location /stub_status {
+        # For nginx-prometheus-exporter scrape-uri
+        stub_status;
         allow 127.0.0.1;
         deny all;
     }
