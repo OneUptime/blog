@@ -81,13 +81,19 @@ jobs:
 
       - name: Display inputs
         run: |
-          echo "Environment: ${{ github.event.inputs.environment }}"
-          echo "Version: ${{ github.event.inputs.version }}"
-          echo "Dry run: ${{ github.event.inputs.dry_run }}"
+          echo "Environment: $ENVIRONMENT"
+          echo "Version: $VERSION"
+          echo "Dry run: $DRY_RUN"
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
 
       - name: Deploy
-        if: ${{ github.event.inputs.dry_run == 'false' }}
-        run: ./deploy.sh ${{ github.event.inputs.environment }}
+        if: ${{ !inputs.dry_run }}
+        run: ./deploy.sh "$ENVIRONMENT"
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
 ```
 
 ## Input Types
@@ -128,7 +134,7 @@ on:
         required: true
 ```
 
-The `environment` type shows a dropdown of configured environments, respecting access controls.
+The `environment` type shows a dropdown of configured environments. Environment protection rules are enforced when you use the selected value as a job's `environment`.
 
 ## Triggering from the Command Line
 
@@ -160,6 +166,7 @@ Automate triggers from external systems:
 curl -X POST \
   -H "Accept: application/vnd.github+json" \
   -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
   https://api.github.com/repos/your-org/your-repo/actions/workflows/deploy.yml/dispatches \
   -d '{
     "ref": "main",
@@ -172,11 +179,11 @@ curl -X POST \
 
 ```javascript
 // Using Octokit in Node.js
-const { Octokit } = require('@octokit/rest');
+import { Octokit } from '@octokit/rest';
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-await octokit.actions.createWorkflowDispatch({
+await octokit.rest.actions.createWorkflowDispatch({
   owner: 'your-org',
   repo: 'your-repo',
   workflow_id: 'deploy.yml',
@@ -220,8 +227,9 @@ jobs:
           exit 1
 
       - name: Validate migration name
+        env:
+          MIGRATION: ${{ inputs.migration_name }}
         run: |
-          MIGRATION="${{ github.event.inputs.migration_name }}"
           # Check migration name format
           if [[ ! "$MIGRATION" =~ ^[0-9]{14}_[a-z_]+$ ]]; then
             echo "Error: Invalid migration name format"
@@ -232,7 +240,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run migration
-        run: ./run-migration.sh "${{ github.event.inputs.migration_name }}"
+        run: ./run-migration.sh "$MIGRATION"
+        env:
+          MIGRATION: ${{ inputs.migration_name }}
 ```
 
 ## Combining with Other Triggers
@@ -267,7 +277,7 @@ jobs:
 
       # Skip tests only on manual trigger with skip_tests=true
       - name: Run tests
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.skip_tests != 'true' }}
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_tests }}
         run: npm test
 ```
 
@@ -290,7 +300,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     # Dynamic environment from input
-    environment: ${{ github.event.inputs.target_env }}
+    environment: ${{ inputs.target_env }}
 
     steps:
       - uses: actions/checkout@v4
@@ -300,8 +310,9 @@ jobs:
           # Secrets resolve to the selected environment
           API_KEY: ${{ secrets.API_KEY }}
           DB_URL: ${{ secrets.DATABASE_URL }}
+          TARGET_ENV: ${{ inputs.target_env }}
         run: |
-          echo "Deploying to ${{ github.event.inputs.target_env }}"
+          echo "Deploying to $TARGET_ENV"
           ./deploy.sh
 ```
 
@@ -336,36 +347,44 @@ on:
 jobs:
   rollback:
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment }}
+    environment: ${{ inputs.environment }}
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Log rollback
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          TARGET_VERSION: ${{ inputs.target_version }}
+          REASON: ${{ inputs.reason }}
         run: |
           echo "Rollback initiated by: ${{ github.actor }}"
-          echo "Environment: ${{ github.event.inputs.environment }}"
-          echo "Target version: ${{ github.event.inputs.target_version }}"
-          echo "Reason: ${{ github.event.inputs.reason }}"
+          echo "Environment: $ENVIRONMENT"
+          echo "Target version: $TARGET_VERSION"
+          echo "Reason: $REASON"
 
       - name: Perform rollback
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          TARGET_VERSION: ${{ inputs.target_version }}
         run: |
           ./rollback.sh \
-            --env ${{ github.event.inputs.environment }} \
-            --version ${{ github.event.inputs.target_version }}
+            --env "$ENVIRONMENT" \
+            --version "$TARGET_VERSION"
 
       - name: Notify team
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v3.0.3
         with:
-          channel-id: 'deployments'
-          slack-message: |
-            :warning: Rollback performed
-            Environment: ${{ github.event.inputs.environment }}
-            Version: ${{ github.event.inputs.target_version }}
-            By: ${{ github.actor }}
-            Reason: ${{ github.event.inputs.reason }}
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ secrets.SLACK_DEPLOYMENTS_CHANNEL_ID }}
+            text: |
+              :warning: Rollback performed
+              Environment: ${{ inputs.environment }}
+              Version: ${{ inputs.target_version }}
+              By: ${{ github.actor }}
+              Reason: ${{ inputs.reason }}
 ```
 
 ## Maintenance Mode Workflow
@@ -406,8 +425,10 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
 
       - name: Toggle maintenance mode
+        env:
+          ACTION: ${{ inputs.action }}
         run: |
-          if [ "${{ github.event.inputs.action }}" == "enable" ]; then
+          if [ "$ACTION" == "enable" ]; then
             # Enable maintenance page
             aws s3 cp maintenance.html s3://my-bucket/index.html
             echo "Maintenance mode enabled"
@@ -418,16 +439,19 @@ jobs:
           fi
 
       - name: Update status page
+        env:
+          PAGE_ID: ${{ secrets.STATUSPAGE_PAGE_ID }}
+          STATUSPAGE_TOKEN: ${{ secrets.STATUSPAGE_TOKEN }}
+          STATUS: ${{ inputs.action == 'enable' && 'investigating' || 'resolved' }}
+          MESSAGE: ${{ inputs.message }}
         run: |
           curl -X POST https://api.statuspage.io/v1/pages/$PAGE_ID/incidents \
-            -H "Authorization: OAuth ${{ secrets.STATUSPAGE_TOKEN }}" \
-            -d '{
-              "incident": {
-                "name": "Scheduled Maintenance",
-                "status": "${{ github.event.inputs.action == 'enable' && 'investigating' || 'resolved' }}",
-                "body": "${{ github.event.inputs.message }}"
-              }
-            }'
+            -H "Authorization: OAuth $STATUSPAGE_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg status "$STATUS" \
+              --arg body "$MESSAGE" \
+              '{incident: {name: "Scheduled Maintenance", status: $status, body: $body}}')"
 ```
 
 ## Scheduled Tasks with Manual Override
@@ -465,13 +489,15 @@ jobs:
         run: |
           # Manual trigger uses input, scheduled uses incremental
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "type=${{ github.event.inputs.backup_type }}" >> $GITHUB_OUTPUT
+            echo "type=${{ inputs.backup_type }}" >> $GITHUB_OUTPUT
           else
             echo "type=incremental" >> $GITHUB_OUTPUT
           fi
 
       - name: Run backup
-        run: ./backup.sh --type ${{ steps.backup-type.outputs.type }}
+        run: ./backup.sh --type "$BACKUP_TYPE"
+        env:
+          BACKUP_TYPE: ${{ steps.backup-type.outputs.type }}
 ```
 
 ---
