@@ -251,8 +251,7 @@ Optimize Elasticsearch indices for log storage:
       },
       "message": {
         "type": "text",
-        "index": false,
-        "doc_values": false
+        "index": false
       },
       "message_hash": {
         "type": "keyword",
@@ -646,13 +645,8 @@ class TieredStorageManager {
       });
 
       if (logsToMove.length > 0) {
-        // Compress if moving to compressed tier
-        const processedLogs = nextTier.compressed
-          ? await this.compressLogs(logsToMove)
-          : logsToMove;
-
-        // Write to next tier
-        await nextTier.storage.write(processedLogs);
+        // Write to next tier. The backend can apply compression based on its configuration.
+        await nextTier.storage.write(logsToMove);
 
         // Delete from current tier
         const deleted = await currentTier.storage.delete(cutoff);
@@ -671,10 +665,16 @@ class TieredStorageManager {
   private getTiersForTimeRange(timeRange: TimeRange): StorageTier[] {
     const now = new Date();
     const queryStart = timeRange.start;
+    const queryEnd = timeRange.end ?? now;
 
-    return this.tiers.filter(tier => {
-      const tierStart = new Date(now.getTime() - tier.maxAgeDays * 24 * 60 * 60 * 1000);
-      return queryStart <= tierStart;
+    return this.tiers.filter((tier, index) => {
+      const tierOldest = new Date(now.getTime() - tier.maxAgeDays * 24 * 60 * 60 * 1000);
+      const previousTier = this.tiers[index - 1];
+      const tierNewest = previousTier
+        ? new Date(now.getTime() - previousTier.maxAgeDays * 24 * 60 * 60 * 1000)
+        : now;
+
+      return queryStart <= tierNewest && queryEnd >= tierOldest;
     });
   }
 
