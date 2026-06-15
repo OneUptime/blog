@@ -149,7 +149,7 @@ func createHTTPClient() *http.Client {
 
     client := &http.Client{
         Transport: transport,
-        // Total request timeout (overrides individual timeouts)
+        // Total request timeout, including redirects and response body reads
         Timeout: 30 * time.Second,
     }
 
@@ -253,8 +253,8 @@ client = redis.Redis(
     health_check_interval=30
 )
 
-# Connection pool with timeouts
-pool = redis.ConnectionPool(
+# Blocking connection pool with timeouts
+pool = redis.BlockingConnectionPool(
     host='redis.example.com',
     port=6379,
     db=0,
@@ -428,10 +428,6 @@ metadata:
 
     # For long-running connections
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
-
-    # Keepalive
-    nginx.ingress.kubernetes.io/upstream-keepalive-connections: "32"
-    nginx.ingress.kubernetes.io/upstream-keepalive-timeout: "60"
 spec:
   rules:
     - host: api.example.com
