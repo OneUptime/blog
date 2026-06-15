@@ -12,7 +12,7 @@ Decorators are one of Python's most powerful features. They let you modify or ex
 
 ## What is a Decorator?
 
-A decorator is simply a function that takes another function as an argument and returns a new function. The new function usually extends or modifies the behavior of the original function.
+A decorator is commonly a function that takes another function as an argument and returns a callable. The returned callable usually extends or modifies the behavior of the original function.
 
 ```python
 # A decorator is just a function that wraps another function
@@ -221,7 +221,7 @@ def memoize(func):
 
     @wraps(func)
     def wrapper(*args, **kwargs):
-        # Create a hashable key from arguments
+        # Create a cache key from hashable arguments
         key = (args, tuple(sorted(kwargs.items())))
         if key not in cache:
             cache[key] = func(*args, **kwargs)
@@ -239,7 +239,7 @@ def fibonacci(n):
 print(fibonacci(100))  # Instant result
 ```
 
-Note: Python 3.9+ has `functools.cache` and earlier versions have `functools.lru_cache` built in.
+Note: Python 3.9+ has `functools.cache`, and Python 3.2+ has `functools.lru_cache` built in.
 
 ### Authentication Decorator
 
