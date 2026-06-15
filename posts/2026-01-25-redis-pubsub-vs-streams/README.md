@@ -18,7 +18,7 @@ Redis offers two messaging patterns: Pub/Sub for fire-and-forget broadcasting an
 | Consumer groups | No | Yes |
 | Message acknowledgment | No | Yes |
 | Historical replay | No | Yes |
-| At-most-once delivery | Yes | No (at-least-once) |
+| Delivery semantics | At-most-once | At-most-once, or at-least-once with consumer groups |
 | Blocking reads | Yes | Yes |
 | Pattern subscriptions | Yes | No |
 | Memory usage | Low | Higher |
@@ -128,7 +128,8 @@ def process_orders(consumer_name, group_name='order_processors'):
 
                 except Exception as e:
                     print(f"Failed to process {entry_id}: {e}")
-                    # Message will be redelivered to another consumer
+                    # Message stays pending until this consumer retries it
+                    # or another consumer claims it with XCLAIM/XAUTOCLAIM
 
 def process_single_order(data):
     """Simulate order processing"""
@@ -177,6 +178,7 @@ Sometimes you need both: immediate notification via Pub/Sub and reliable process
 import redis
 import json
 import threading
+import time
 
 r = redis.Redis(host='localhost', port=6379, db=0)
 
