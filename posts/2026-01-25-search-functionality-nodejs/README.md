@@ -167,7 +167,7 @@ router.get('/products/search', async (req, res) => {
 With Knex.js and PostgreSQL:
 
 ```javascript
-const knex = require('knex');
+const knex = require('./db'); // Configured Knex instance
 
 // Create full-text search column
 await knex.raw(`
@@ -188,13 +188,10 @@ await knex.raw(`
 async function searchProducts(query, options = {}) {
     const { limit = 10, offset = 0 } = options;
 
-    // Convert query to tsquery format
-    const searchTerms = query.trim().split(/\s+/).join(' & ');
-
     const results = await knex('products')
         .select('*')
-        .select(knex.raw('ts_rank(search_vector, plainto_tsquery(?)) as rank', [query]))
-        .whereRaw('search_vector @@ plainto_tsquery(?)', [query])
+        .select(knex.raw('ts_rank(search_vector, plainto_tsquery(\'english\', ?)) as rank', [query]))
+        .whereRaw('search_vector @@ plainto_tsquery(\'english\', ?)', [query])
         .orderBy('rank', 'desc')
         .limit(limit)
         .offset(offset);
@@ -338,11 +335,13 @@ router.get('/api/search', async (req, res) => {
         limit = 20
     } = req.query;
 
+    const hasTextSearch = q && q.length >= 2;
+
     // Build base query
     const query = {};
 
     // Text search
-    if (q && q.length >= 2) {
+    if (hasTextSearch) {
         query.$text = { $search: q };
     }
 
@@ -359,7 +358,7 @@ router.get('/api/search', async (req, res) => {
     let sortQuery = {};
     switch (sort) {
         case 'relevance':
-            if (q) {
+            if (hasTextSearch) {
                 sortQuery = { score: { $meta: 'textScore' } };
             } else {
                 sortQuery = { createdAt: -1 };
@@ -384,7 +383,7 @@ router.get('/api/search', async (req, res) => {
     // Execute query
     let queryBuilder = Product.find(query);
 
-    if (q) {
+    if (hasTextSearch) {
         queryBuilder = queryBuilder.select({ score: { $meta: 'textScore' } });
     }
 
@@ -432,11 +431,12 @@ Highlight matching terms in results:
 function highlightMatches(text, query) {
     if (!text || !query) return text;
 
-    const terms = query.toLowerCase().split(/\s+/);
+    const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
     let highlighted = text;
 
     terms.forEach(term => {
-        const regex = new RegExp(`(${term})`, 'gi');
+        const regex = new RegExp(`(${escapeRegex(term)})`, 'gi');
         highlighted = highlighted.replace(regex, '<mark>$1</mark>');
     });
 
