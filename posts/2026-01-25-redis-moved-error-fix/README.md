@@ -16,11 +16,11 @@ The "MOVED" error in Redis Cluster is not really an error - it is a redirection 
 # When you send a command to the wrong node:
 
 redis-cli -p 7000 SET user:1 "Alice"
-# -> (error) MOVED 5474 127.0.0.1:7001
+# -> (error) MOVED 10778 127.0.0.1:7001
 
 # This means:
-# - Key 'user:1' hashes to slot 5474
-# - Slot 5474 is served by node at 127.0.0.1:7001
+# - Key 'user:1' hashes to slot 10778
+# - Slot 10778 is served by node at 127.0.0.1:7001
 # - You should resend the command there
 ```
 
@@ -36,7 +36,7 @@ try:
     r.set('user:1', 'Alice')
 except redis.ResponseError as e:
     print(f"Error: {e}")
-    # MOVED 5474 127.0.0.1:7001
+    # MOVED 10778 127.0.0.1:7001
 
 # The regular client does not follow redirections
 ```
@@ -97,8 +97,8 @@ cluster.get('user:1').then(console.log);
 ## Java/Jedis Configuration
 
 ```java
-import redis.clients.jedis.JedisCluster;
 import redis.clients.jedis.HostAndPort;
+import redis.clients.jedis.RedisClusterClient;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -110,8 +110,10 @@ public class RedisClusterExample {
         nodes.add(new HostAndPort("localhost", 7001));
         nodes.add(new HostAndPort("localhost", 7002));
 
-        // JedisCluster handles MOVED automatically
-        JedisCluster cluster = new JedisCluster(nodes);
+        // RedisClusterClient handles MOVED automatically
+        RedisClusterClient cluster = RedisClusterClient.builder()
+                .nodes(nodes)
+                .build();
 
         cluster.set("user:1", "Alice");
         String value = cluster.get("user:1");
@@ -132,7 +134,7 @@ sequenceDiagram
 
     C->>C: Calculate slot for key
     C->>N1: SET user:1 Alice
-    N1-->>C: MOVED 5474 127.0.0.1:7001
+    N1-->>C: MOVED 10778 127.0.0.1:7001
     C->>C: Update slot map
     C->>N2: SET user:1 Alice
     N2-->>C: OK
@@ -144,6 +146,8 @@ During resharding or failover, you may see more MOVED responses:
 
 ```python
 from redis.cluster import RedisCluster
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
 import time
 
 def get_resilient_cluster():
@@ -153,9 +157,9 @@ def get_resilient_cluster():
         port=7000,
         decode_responses=True,
         # Retry configuration
-        cluster_error_retry_attempts=3,
-        # Skip checking if all slots are covered
-        skip_full_coverage_check=True,
+        retry=Retry(ExponentialBackoff(), 3),
+        # Do not require all slots to be covered during client startup
+        require_full_coverage=False,
     )
 
 def execute_with_retry(cluster, method, *args, max_retries=3, **kwargs):
@@ -185,19 +189,33 @@ from redis.cluster import RedisCluster
 
 rc = RedisCluster(host='localhost', port=7000)
 
+def get_field(mapping, name):
+    """Read redis-py cluster fields with bytes or string keys"""
+    return mapping.get(name, mapping.get(name.encode()))
+
+def slot_ranges(slots):
+    """Normalize CLUSTER SHARDS slot ranges"""
+    if slots and isinstance(slots[0], int):
+        return zip(slots[0::2], slots[1::2])
+    return slots
+
 def debug_key_location(key):
     """Find which node serves a key"""
     slot = rc.cluster_keyslot(key)
-    slots_info = rc.cluster_slots()
+    shards = rc.cluster_shards()
 
-    for slot_range in slots_info:
-        start, end = slot_range[0], slot_range[1]
-        if start <= slot <= end:
-            master = slot_range[2]
-            print(f"Key '{key}':")
-            print(f"  Slot: {slot}")
-            print(f"  Node: {master[0]}:{master[1]}")
-            return
+    for shard in shards:
+        for start, end in slot_ranges(get_field(shard, 'slots')):
+            if start <= slot <= end:
+                for node in get_field(shard, 'nodes'):
+                    role = get_field(node, 'role')
+                    if role in ('master', 'primary', b'master', b'primary'):
+                        host = get_field(node, 'endpoint') or get_field(node, 'ip')
+                        port = get_field(node, 'port')
+                        print(f"Key '{key}':")
+                        print(f"  Slot: {slot}")
+                        print(f"  Node: {host}:{port}")
+                        return
 
     print(f"No node found for slot {slot}")
 
@@ -207,16 +225,16 @@ debug_key_location('user:2')
 # Check cluster slot distribution
 def show_cluster_topology():
     """Display cluster slot distribution"""
-    nodes = rc.cluster_nodes()
+    for shard in rc.cluster_shards():
+        slots = list(slot_ranges(get_field(shard, 'slots')))
+        slot_count = sum(end - start + 1 for start, end in slots)
 
-    for node_id, info in nodes.items():
-        if 'master' in info.get('flags', ''):
-            slots = info.get('slots', [])
-            slot_count = sum(
-                (s[1] - s[0] + 1) if isinstance(s, list) else 1
-                for s in slots
-            )
-            print(f"Master {info['host']}:{info['port']}: {slot_count} slots")
+        for node in get_field(shard, 'nodes'):
+            role = get_field(node, 'role')
+            if role in ('master', 'primary', b'master', b'primary'):
+                host = get_field(node, 'endpoint') or get_field(node, 'ip')
+                port = get_field(node, 'port')
+                print(f"Master {host}:{port}: {slot_count} slots")
 
 show_cluster_topology()
 ```
@@ -250,11 +268,10 @@ rc = RedisCluster(host='localhost', port=7000)
 ```python
 from redis.cluster import RedisCluster
 
-# Force refresh slot cache
 rc = RedisCluster(host='localhost', port=7000)
 
-# If you suspect stale cache
-rc.cluster_slots()  # Refresh slot information
+# If you suspect stale cache, fetch current topology
+rc.cluster_shards()
 
 # Check if nodes are reachable
 for node in rc.get_nodes():
@@ -275,7 +292,7 @@ for node in rc.get_nodes():
 | ioredis (regular) | No | No |
 | ioredis.Cluster | Yes | Yes |
 | Jedis | No | No |
-| JedisCluster | Yes | Yes |
+| Jedis RedisClusterClient | Yes | Yes |
 
 Key points:
 - MOVED is normal cluster behavior, not an error
