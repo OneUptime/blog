@@ -91,7 +91,7 @@ argocd app sync myapp --revision def5678
 2. Applies those manifests to the cluster
 3. Application shows the old revision as current
 
-Note: The Git repository itself is not changed. The Application just points to an older commit.
+Note: The Git repository itself is not changed. ArgoCD syncs the manifests from the older revision without changing the Application's configured `targetRevision`.
 
 ## Method 3: Manual Sync to Specific Revision
 
@@ -132,10 +132,11 @@ metadata:
   name: myapp
 spec:
   syncPolicy:
-    # Temporarily disabled for rollback
-    # automated:
-    #   prune: true
-    #   selfHeal: true
+    automated:
+      # Temporarily disabled for rollback
+      enabled: false
+      prune: true
+      selfHeal: true
 ```
 
 ## Rolling Back Helm Releases
@@ -242,7 +243,7 @@ If using Argo Rollouts for progressive delivery:
 # View rollout status
 kubectl argo rollouts get rollout myapp -n myapp
 
-# Abort current rollout (automatic rollback)
+# Abort current rollout and keep the previous ReplicaSet active
 kubectl argo rollouts abort myapp -n myapp
 
 # Manual rollback to previous
@@ -345,7 +346,7 @@ data:
     - description: Application was rolled back
       send:
         - rollback-alert
-      when: app.status.history | length > 1 and app.status.sync.revision != app.status.history[1].revision
+      when: len(app.status.history) > 1 and app.status.sync.revision != app.status.history[1].revision
 
   template.rollback-alert: |
     message: |
