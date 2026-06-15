@@ -148,10 +148,10 @@ Each workspace stores state in a separate path:
 
 terraform {
   backend "s3" {
-    bucket         = "mycompany-terraform-state"
-    key            = "infrastructure/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    bucket       = "mycompany-terraform-state"
+    key          = "infrastructure/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
 
     # Workspaces create paths like:
     # env:/dev/infrastructure/terraform.tfstate
@@ -170,7 +170,7 @@ terraform {
     key                  = "infrastructure/terraform.tfstate"
     region               = "us-east-1"
     workspace_key_prefix = "environments"
-    dynamodb_table       = "terraform-locks"
+    use_lockfile         = true
 
     # Results in:
     # environments/dev/infrastructure/terraform.tfstate
@@ -381,12 +381,19 @@ terraform apply prod.plan
 
 ### 1. Validate Workspace Before Apply
 
-Add a check to prevent accidental production deploys:
+Add a check to prevent accidental applies in the default workspace:
 
 ```hcl
 # Prevent using default workspace
-resource "null_resource" "workspace_check" {
-  count = terraform.workspace == "default" ? "ERROR: Do not use default workspace" : 0
+resource "terraform_data" "workspace_check" {
+  input = terraform.workspace
+
+  lifecycle {
+    precondition {
+      condition     = terraform.workspace != "default"
+      error_message = "Do not use default workspace."
+    }
+  }
 }
 ```
 
