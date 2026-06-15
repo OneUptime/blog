@@ -20,7 +20,7 @@ Standard round-robin load balancing works for stateless workloads. Telemetry has
 |-----------|--------|----------|
 | Tail sampling | Spans from same trace go to different collectors | Trace-aware routing |
 | Connection persistence | gRPC connections stick to one backend | Client-side load balancing |
-| Hot spots | Some services generate more telemetry | Weighted distribution |
+| Hot spots | Some services generate more telemetry | Attribute-based routing or more backend capacity |
 
 ```mermaid
 flowchart TD
@@ -70,7 +70,7 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         timeout: 10s
@@ -88,7 +88,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 ### DNS-Based Discovery
@@ -98,7 +98,7 @@ For dynamic environments, use DNS discovery:
 ```yaml
 # agent-config-dns.yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         timeout: 10s
@@ -115,7 +115,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 ### Kubernetes Headless Service
@@ -146,8 +146,9 @@ The routing key determines how telemetry is distributed:
 | Routing Key | Use Case | Behavior |
 |-------------|----------|----------|
 | traceID | Tail sampling | All spans from a trace go to same collector |
-| service | Service isolation | Each service's telemetry goes to dedicated collector |
-| resource | Resource grouping | Group by any resource attribute |
+| service | Service isolation | Telemetry with the same `service.name` goes to the same collector |
+| resource | Resource grouping | Telemetry with the same full set of resource attributes goes to the same collector |
+| attributes | Custom grouping | Group by selected resource, scope, span, log, metric, or datapoint attributes |
 
 ### Trace ID Routing
 
@@ -155,7 +156,7 @@ Essential for tail sampling:
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     routing_key: traceID  # Hash trace ID to pick backend
     resolver:
       dns:
@@ -168,7 +169,7 @@ Route by service name:
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     routing_key: service  # Hash service.name attribute
     resolver:
       static:
@@ -183,11 +184,14 @@ Route by any resource attribute:
 
 ```yaml
 exporters:
-  loadbalancing:
-    routing_key: "resource.attributes.k8s.namespace.name"
+  load_balancing:
+    routing_key: attributes
+    routing_attributes:
+      - k8s.namespace.name
     resolver:
       dns:
-        hostname: gateway-headless:4317
+        hostname: gateway-headless
+        port: 4317
 ```
 
 ## Multi-Tier Architecture
@@ -208,7 +212,7 @@ processors:
     timeout: 5s
 
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         timeout: 10s
@@ -222,7 +226,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 ```yaml
@@ -256,7 +260,7 @@ processors:
     timeout: 10s
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: "https://oneuptime.com/otlp"
     headers:
       "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
@@ -266,7 +270,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [tail_sampling, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ## Handling Backend Failures
@@ -275,7 +279,17 @@ Configure retry and failover:
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 120s
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 10000
     protocol:
       otlp:
         timeout: 10s
@@ -290,26 +304,27 @@ exporters:
           queue_size: 10000
     resolver:
       dns:
-        hostname: gateway-headless:4317
+        hostname: gateway-headless
+        port: 4317
         interval: 10s  # Fast DNS refresh for failover
 ```
 
 ## Metrics Load Balancing
 
-For metrics, you can use round-robin since there is no trace correlation requirement:
+For metrics, there is no trace correlation requirement, but keep the OpenTelemetry single-writer principle in mind. Service or resource routing is safer than round-robin when downstream aggregation depends on a stable writer:
 
 ```yaml
 # metrics-load-balancing.yaml
 exporters:
   # Use standard OTLP exporter with Kubernetes service
-  # Service provides round-robin by default
+  # Service discovery selects a backend for the exporter connection
   otlp/metrics:
     endpoint: gateway-service.collectors.svc.cluster.local:4317
     tls:
       insecure: true
 
   # Or use load balancing exporter with service routing
-  loadbalancing/metrics:
+  load_balancing/metrics:
     protocol:
       otlp:
         timeout: 10s
@@ -322,7 +337,7 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      exporters: [otlp/metrics]  # Or loadbalancing/metrics
+      exporters: [otlp/metrics]  # Or load_balancing/metrics
 ```
 
 ## Kubernetes Deployment
@@ -439,7 +454,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Key metrics:
@@ -462,7 +482,7 @@ When collectors scale up or down, consistent hashing minimizes redistribution:
 ```yaml
 # agent-config-resilient.yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         timeout: 10s
