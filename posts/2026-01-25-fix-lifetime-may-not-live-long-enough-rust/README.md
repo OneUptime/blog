@@ -25,15 +25,11 @@ fn get_str<'a>() -> &'a str {
 Error message:
 
 ```text
-error[E0597]: `s` does not live long enough
+error[E0515]: cannot return reference to local variable `s`
  --> src/main.rs:3:5
   |
-2 |     let s = String::from("hello");
-  |         - binding `s` declared here
 3 |     &s
-  |     ^^ borrowed value does not live long enough
-4 | }
-  | - `s` dropped here while still borrowed
+  |     ^^ returns a reference to data owned by the current function
 ```
 
 ## Common Causes and Fixes
@@ -42,7 +38,7 @@ error[E0597]: `s` does not live long enough
 
 ```rust
 // Error: local variable doesn't live long enough
-// fn bad() -> &String {
+// fn bad<'a>() -> &'a String {
 //     let s = String::from("hello");
 //     &s
 // }
@@ -155,11 +151,11 @@ trait Processor {
     fn process(&self) -> String;
 }
 
-struct SimpleProcessor {
-    name: String,
+struct SimpleProcessor<'a> {
+    name: &'a str,
 }
 
-impl Processor for SimpleProcessor {
+impl Processor for SimpleProcessor<'_> {
     fn process(&self) -> String {
         format!("Processed by {}", self.name)
     }
@@ -169,13 +165,23 @@ impl Processor for SimpleProcessor {
 fn get_processor<'a>(name: &'a str) -> Box<dyn Processor + 'a> {
     // Error without 'a bound on dyn Processor
     Box::new(SimpleProcessor {
-        name: name.to_string(),
+        name,
     })
 }
 
 // Or use 'static for owned data
+struct OwnedProcessor {
+    name: String,
+}
+
+impl Processor for OwnedProcessor {
+    fn process(&self) -> String {
+        format!("Processed by {}", self.name)
+    }
+}
+
 fn get_static_processor(name: &str) -> Box<dyn Processor + 'static> {
-    Box::new(SimpleProcessor {
+    Box::new(OwnedProcessor {
         name: name.to_string(),
     })
 }
@@ -220,21 +226,16 @@ impl Container {
 ### Cause 7: Async and Lifetimes
 
 ```rust
-use std::future::Future;
-
 // Async functions with references need care
 async fn process(data: &str) -> String {
     // Reference must live until future completes
     format!("Processed: {}", data)
 }
 
-// Error pattern: reference might not live across await
-// async fn bad() {
-//     let result;
-//     {
-//         let temp = String::from("temp");
-//         result = process(&temp).await;  // temp dropped before await completes
-//     }
+// Error pattern: returning a future that borrows local data
+// fn bad() -> impl std::future::Future<Output = String> {
+//     let temp = String::from("temp");
+//     process(&temp)  // Error: temp doesn't live long enough
 // }
 
 // Fix: ensure data lives long enough
@@ -294,6 +295,7 @@ fn store<'a, T: 'a>(item: T) -> Box<T> {
 // T must be 'static (no non-static references)
 fn send_to_thread<T: Send + 'static>(item: T) {
     std::thread::spawn(move || {
+        let _ = item;
         println!("Got item in thread");
     });
 }
