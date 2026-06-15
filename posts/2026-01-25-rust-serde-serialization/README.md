@@ -260,7 +260,7 @@ struct Profile {
     #[serde(default)]
     bio: Option<String>,
 
-    // Distinguishes between missing and null
+    // Omit None values when serializing
     #[serde(default, skip_serializing_if = "Option::is_none")]
     website: Option<String>,
 
@@ -409,7 +409,7 @@ Serde works with many formats beyond JSON.
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yaml = "0.9"
+serde_norway = "0.9"
 toml = "0.8"
 ```
 
@@ -453,7 +453,7 @@ fn main() {
     println!("JSON:\n{}\n", json);
 
     // YAML
-    let yaml = serde_yaml::to_string(&config).unwrap();
+    let yaml = serde_norway::to_string(&config).unwrap();
     println!("YAML:\n{}\n", yaml);
 
     // TOML
