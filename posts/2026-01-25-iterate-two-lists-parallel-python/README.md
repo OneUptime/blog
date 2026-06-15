@@ -133,7 +133,7 @@ Combine `enumerate()` with `zip()` when you need the index as well.
 names = ['Alice', 'Bob', 'Charlie']
 ages = [25, 30, 35]
 
-for index, (name, age) in enumerate(names):
+for index, name in enumerate(names):
     print(f"{index}: {name}")
 
 # With zip for multiple lists
