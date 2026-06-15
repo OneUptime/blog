@@ -50,8 +50,8 @@ print(f"__package__: {__package__}")
 # __name__: __main__
 # __package__: None
 
-# When run as module:
-# __name__: mypackage.mymodule
+# When run with python -m:
+# __name__: __main__
 # __package__: mypackage
 ```
 
@@ -114,9 +114,9 @@ For this to work, the package must be importable. You can either:
 import sys
 from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+# Add the parent of the package directory to path
+package_parent = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(package_parent))
 
 # Now absolute imports work
 from myproject.utils import helper
@@ -166,7 +166,7 @@ from mypackage.utils import helper
 
 ## Solution 4: Use if __name__ == "__main__" Pattern
 
-Structure your modules to be importable but also runnable.
+Structure your modules to be importable but also runnable with `python -m`.
 
 ```python
 # utils/processor.py
@@ -179,7 +179,7 @@ def process():
     return helper.do_something()
 
 def main():
-    """Entry point when run directly."""
+    """Entry point when run with python -m."""
     result = process()
     print(result)
 
@@ -310,7 +310,7 @@ from .. import other_module    # Parent package
 from ..utils import helper     # Sibling package
 ```
 
-Relative imports only work inside packages (directories with `__init__.py`) when Python knows the package context.
+Relative imports only work when Python knows the package context. Regular package directories use `__init__.py`; namespace packages can work without it.
 
 ## Quick Reference
 
