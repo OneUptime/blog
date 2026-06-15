@@ -54,7 +54,7 @@ Host dev-server
     ServerAliveCountMax 3
     # Multiplex connections for speed
     ControlMaster auto
-    ControlPath ~/.ssh/sockets/%r@%h-%p
+    ControlPath ~/.ssh/cm-%C
     ControlPersist 600
 
 Host dev-server-jump
@@ -108,10 +108,11 @@ curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 
 # Install Node.js via nvm
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-source ~/.bashrc
-nvm install 20
-nvm use 20
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+nvm install --lts
+nvm use --lts
 
 # Install Python
 sudo apt install -y python3 python3-pip python3-venv
@@ -246,35 +247,29 @@ Use managed cloud development environments:
 
 ### AWS Cloud9
 
+For existing AWS Cloud9 customers:
+
 ```bash
 # Create Cloud9 environment via AWS CLI
 aws cloud9 create-environment-ec2 \
     --name dev-environment \
     --instance-type t3.large \
-    --image-id amazonlinux-2-x86_64 \
+    --image-id amazonlinux-2023-x86_64 \
     --automatic-stop-time-minutes 30
 ```
 
 ### Google Cloud Workstations
 
-```yaml
-# workstation-config.yaml
-apiVersion: workstations.googleapis.com/v1
-kind: WorkstationConfig
-metadata:
-  name: dev-config
-spec:
-  idleTimeout: 1200s
-  runningTimeout: 43200s
-  host:
-    gceInstance:
-      machineType: n1-standard-4
-      poolSize: 1
-      bootDiskSizeGb: 50
-      confidentialInstanceConfig:
-        enableConfidentialCompute: false
-  container:
-    image: us-central1-docker.pkg.dev/cloud-workstations-images/predefined/code-oss:latest
+```bash
+gcloud workstations configs create dev-config \
+    --cluster=dev-cluster \
+    --region=us-central1 \
+    --machine-type=e2-standard-4 \
+    --pool-size=1 \
+    --boot-disk-size=50 \
+    --idle-timeout=1200 \
+    --running-timeout=43200 \
+    --container-predefined-image=codeoss
 ```
 
 ## Remote Development Workflow
