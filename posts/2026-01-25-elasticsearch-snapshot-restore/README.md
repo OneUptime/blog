@@ -57,9 +57,7 @@ Snapshots are:
 ### S3 Repository
 
 ```bash
-# First, install the S3 repository plugin on all nodes
-
-# sudo bin/elasticsearch-plugin install repository-s3
+# In Elasticsearch 8.x, S3 repository support is bundled by default
 
 # Add S3 credentials to keystore on all nodes
 bin/elasticsearch-keystore add s3.client.default.access_key
@@ -83,8 +81,7 @@ curl -X PUT "localhost:9200/_snapshot/s3_backup" -H 'Content-Type: application/j
 ### Google Cloud Storage Repository
 
 ```bash
-# Install GCS plugin
-# sudo bin/elasticsearch-plugin install repository-gcs
+# In Elasticsearch 8.x, GCS repository support is bundled by default
 
 # Add service account credentials
 bin/elasticsearch-keystore add-file gcs.client.default.credentials_file /path/to/service-account.json
@@ -104,8 +101,7 @@ curl -X PUT "localhost:9200/_snapshot/gcs_backup" -H 'Content-Type: application/
 ### Azure Blob Storage Repository
 
 ```bash
-# Install Azure plugin
-# sudo bin/elasticsearch-plugin install repository-azure
+# In Elasticsearch 8.x, Azure repository support is bundled by default
 
 # Add Azure credentials to keystore
 bin/elasticsearch-keystore add azure.client.default.account
@@ -189,8 +185,14 @@ curl -X PUT "localhost:9200/_snapshot/s3_backup/logs_snapshot_20240115?wait_for_
 # Check snapshot progress
 curl -X GET "localhost:9200/_snapshot/s3_backup/logs_snapshot_20240115/_status?pretty"
 
-# Wait for snapshot completion
-curl -X GET "localhost:9200/_snapshot/s3_backup/logs_snapshot_20240115?wait_for_completion=true&pretty"
+# To block until completion, set wait_for_completion=true when creating the snapshot
+curl -X PUT "localhost:9200/_snapshot/s3_backup/logs_snapshot_blocking_20240115?wait_for_completion=true" \
+  -H 'Content-Type: application/json' -d'
+{
+  "indices": "logs-*",
+  "ignore_unavailable": true,
+  "include_global_state": false
+}'
 ```
 
 ---
@@ -365,10 +367,19 @@ curl -X POST "localhost:9200/_snapshot/s3_backup/daily-snap-2024.01.15/_restore"
 ```bash
 # 1. Stop all indexing to the cluster
 
-# 2. Close all indices that will be restored
-curl -X POST "localhost:9200/_all/_close"
+# 2. Allow wildcard deletes for full-cluster recovery
+curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
+{
+  "persistent": {
+    "action.destructive_requires_name": false
+  }
+}'
 
-# 3. Restore from latest snapshot
+# 3. Delete existing data streams and indices before a full restore
+curl -X DELETE "localhost:9200/_data_stream/*?expand_wildcards=all"
+curl -X DELETE "localhost:9200/*?expand_wildcards=all"
+
+# 4. Restore from latest snapshot
 curl -X POST "localhost:9200/_snapshot/s3_backup/latest_snapshot/_restore?wait_for_completion=true" \
   -H 'Content-Type: application/json' -d'
 {
@@ -377,10 +388,10 @@ curl -X POST "localhost:9200/_snapshot/s3_backup/latest_snapshot/_restore?wait_f
   "include_global_state": true
 }'
 
-# 4. Verify cluster health
+# 5. Verify cluster health
 curl -X GET "localhost:9200/_cluster/health?wait_for_status=green&timeout=5m"
 
-# 5. Resume indexing
+# 6. Resume indexing
 ```
 
 ### Point-in-Time Recovery
@@ -438,8 +449,8 @@ class SnapshotManager:
         """Create an S3 snapshot repository"""
 
         self.es.snapshot.create_repository(
-            repository=repo_name,
-            body={
+            name=repo_name,
+            repository={
                 "type": "s3",
                 "settings": {
                     "bucket": bucket,
@@ -460,8 +471,8 @@ class SnapshotManager:
         """Create a filesystem snapshot repository"""
 
         self.es.snapshot.create_repository(
-            repository=repo_name,
-            body={
+            name=repo_name,
+            repository={
                 "type": "fs",
                 "settings": {
                     "location": location,
@@ -475,7 +486,7 @@ class SnapshotManager:
         """Verify repository is accessible from all nodes"""
 
         try:
-            self.es.snapshot.verify_repository(repository=repo_name)
+            self.es.snapshot.verify_repository(name=repo_name)
             return True
         except Exception as e:
             print(f"Repository verification failed: {e}")
