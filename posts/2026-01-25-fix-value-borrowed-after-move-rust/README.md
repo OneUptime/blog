@@ -308,7 +308,7 @@ fn main() {
 
 ## Struct Field Moves
 
-Moving a field out of a struct requires special handling:
+Moving a non-Copy field out of a struct leaves the struct partially moved:
 
 ```rust
 struct Container {
@@ -322,9 +322,10 @@ fn main() {
         count: 5,
     };
 
-    // Moving one field makes entire struct unusable
+    // Moving one field makes the whole struct value unusable
     let data = c.data;  // data moved
-    // println!("{}", c.count);  // Error: c partially moved
+    println!("{}, {}", data, c.count);  // OK: remaining fields still usable
+    // let whole = c;  // Error: c is partially moved
 
     // Fix 1: Use references
     let c = Container {
