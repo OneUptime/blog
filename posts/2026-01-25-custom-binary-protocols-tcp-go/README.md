@@ -95,6 +95,10 @@ The encoder writes the header followed by the payload. Using `encoding/binary` k
 ```go
 // Encode writes a message to the given writer
 func Encode(w io.Writer, msg *Message) error {
+    if len(msg.Payload) > MaxPayloadSize {
+        return ErrPayloadTooLarge
+    }
+
     header := make([]byte, HeaderSize)
 
     // Magic bytes for protocol identification
@@ -182,6 +186,7 @@ With encoding and decoding in place, the server becomes straightforward:
 package main
 
 import (
+    "io"
     "log"
     "net"
     "protocol" // import your protocol package
@@ -222,9 +227,16 @@ func handleConnection(conn net.Conn) {
                 Type:    protocol.TypeAck,
                 Payload: nil,
             }
-            protocol.Encode(conn, ack)
+            if err := protocol.Encode(conn, ack); err != nil {
+                log.Printf("encode error: %v", err)
+                return
+            }
         }
     }
+}
+
+func processData(payload []byte) {
+    log.Printf("received %d bytes", len(payload))
 }
 
 func main() {
@@ -294,7 +306,9 @@ func main() {
         Type:    protocol.TypeData,
         Payload: []byte("Hello, binary world!"),
     }
-    protocol.Encode(conn, data)
+    if err := protocol.Encode(conn, data); err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
@@ -322,7 +336,7 @@ protocol.Encode(writer, response)
 writer.Flush() // Do not forget to flush
 ```
 
-**Checksums** - For unreliable networks, add a CRC32 or similar checksum to detect corruption.
+**Checksums** - For end-to-end integrity beyond TCP's per-segment checksum, add a CRC32 or similar checksum to detect corruption in your application payload.
 
 **Protocol versioning** - Plan for backwards compatibility from the start. The version byte in the header enables graceful upgrades.
 
