@@ -36,7 +36,7 @@ SELECT * FROM users;
 -- 3  | charlie@example.com | NULL
 ```
 
-This is the SQL standard behavior: NULL is never equal to anything, including another NULL.
+This is PostgreSQL's default behavior. In ordinary comparisons, NULL represents an unknown value, so comparing NULL to NULL does not produce true. The SQL standard leaves the default NULL treatment in unique constraints implementation-defined, so other database systems can behave differently.
 
 ## PostgreSQL 15+: NULLS NOT DISTINCT
 
@@ -63,9 +63,9 @@ ALTER TABLE employees ADD CONSTRAINT employees_badge_number_key
     UNIQUE NULLS NOT DISTINCT (badge_number);
 ```
 
-## Partial Unique Indexes for Pre-PostgreSQL 15
+## Partial Unique Indexes for Optional Values
 
-Before PostgreSQL 15, use partial indexes to achieve similar behavior.
+Use partial indexes when you want to enforce uniqueness only for rows that meet a condition, such as optional values that should be unique only when present.
 
 ```sql
 -- Table without special constraint
@@ -152,9 +152,9 @@ CREATE TABLE product_variants_v2 (
     UNIQUE NULLS NOT DISTINCT (product_id, color, size)
 );
 
--- Pre-15 solution: COALESCE with sentinel value
+-- Pre-15 solution: COALESCE with a sentinel value that cannot appear in real data
 CREATE UNIQUE INDEX idx_variants_unique
-ON product_variants (product_id, COALESCE(color, '___NULL___'), COALESCE(size, '___NULL___'));
+ON product_variants (product_id, (COALESCE(color, '___NULL___')), (COALESCE(size, '___NULL___')));
 ```
 
 ## Pattern: Unique Constraint with Optional Field
@@ -301,7 +301,7 @@ WHERE social_security IS NOT NULL;
 
 ## Performance Considerations
 
-Partial indexes are smaller and faster than full indexes.
+Partial indexes can be smaller than full indexes and faster for queries that use the same predicate.
 
 ```sql
 -- Check index size
