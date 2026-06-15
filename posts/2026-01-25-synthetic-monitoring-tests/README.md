@@ -429,7 +429,7 @@ groups:
       # Alert when tests fail
       - alert: SyntheticTestFailing
         expr: |
-          increase(synthetic_test_results_total{status="failed"}[15m]) > 2
+          increase(synthetic_test_results_total{status=~"failed|timedOut|interrupted"}[15m]) > 2
         for: 5m
         labels:
           severity: critical
@@ -475,7 +475,7 @@ histogram_quantile(0.95,
 )
 
 # Failed tests in last hour
-sum(increase(synthetic_test_results_total{status="failed"}[1h])) by (test_name)
+sum(increase(synthetic_test_results_total{status=~"failed|timedOut|interrupted"}[1h])) by (test_name)
 ```
 
 ## Summary
