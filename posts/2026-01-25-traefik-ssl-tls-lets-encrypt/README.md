@@ -206,9 +206,8 @@ metadata:
   namespace: traefik
 type: Opaque
 stringData:
-  # Use API Token (recommended) or Global API Key
-  CF_API_EMAIL: your-email@example.com
-  CF_API_KEY: your-cloudflare-api-key
+  # API Token with Zone:Read and DNS:Edit permissions
+  CF_DNS_API_TOKEN: your-cloudflare-api-token
 ```
 
 ### Step 2: Configure DNS Challenge
@@ -354,10 +353,8 @@ spec:
   # Allowed cipher suites - modern and secure
   cipherSuites:
     - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-    - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+    - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
     - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-  # Prefer server cipher suite order
-  preferServerCipherSuites: true
   # Enable ALPN for HTTP/2
   alpnProtocols:
     - h2
@@ -381,7 +378,7 @@ spec:
       kind: Rule
       services:
         - name: secure-app
-          port: 443
+          port: 80
   tls:
     certResolver: letsencrypt
     options:
@@ -406,7 +403,7 @@ openssl s_client -connect app.example.com:443 -servername app.example.com
 ## Production Checklist
 
 1. **Switch to production CA**: Remove or change the staging caServer URL
-2. **Enable certificate storage**: Use PVC or distributed storage like Consul/etcd
+2. **Enable certificate storage**: Use PVC-backed `acme.json` storage; for multiple Traefik replicas, use cert-manager or Traefik Enterprise for certificate management
 3. **Set up monitoring**: Alert on certificate expiration (< 14 days)
 4. **Configure redirects**: Force HTTPS on all routes
 5. **Harden TLS**: Set minimum TLS 1.2, disable weak ciphers
