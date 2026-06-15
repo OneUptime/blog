@@ -19,8 +19,8 @@ Start by adding the Spring Kafka dependency to your `pom.xml`:
 ```xml
 <dependencies>
     <dependency>
-        <groupId>org.springframework.kafka</groupId>
-        <artifactId>spring-kafka</artifactId>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-kafka</artifactId>
     </dependency>
     <dependency>
         <groupId>org.springframework.boot</groupId>
@@ -33,8 +33,8 @@ Start by adding the Spring Kafka dependency to your `pom.xml`:
     </dependency>
     <!-- For testing -->
     <dependency>
-        <groupId>org.springframework.kafka</groupId>
-        <artifactId>spring-kafka-test</artifactId>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-kafka-test</artifactId>
         <scope>test</scope>
     </dependency>
 </dependencies>
@@ -52,12 +52,12 @@ spring:
       group-id: my-application
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
       properties:
         spring.json.trusted.packages: "com.example.events"
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
 ```
 
 ## Building a Producer
@@ -224,7 +224,7 @@ public class KafkaProducerConfig {
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
             StringSerializer.class);
         config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
-            JsonSerializer.class);
+            JacksonJsonSerializer.class);
 
         // Reliability settings - "all" means wait for all replicas
         config.put(ProducerConfig.ACKS_CONFIG, "all");
@@ -271,8 +271,8 @@ public class KafkaConsumerConfig {
         config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
             StringDeserializer.class);
         config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
-            JsonDeserializer.class);
-        config.put(JsonDeserializer.TRUSTED_PACKAGES, "com.example.events");
+            JacksonJsonDeserializer.class);
+        config.put(JacksonJsonDeserializer.TRUSTED_PACKAGES, "com.example.events");
 
         // Start from earliest offset if no committed offset exists
         config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
@@ -329,8 +329,7 @@ public ConcurrentKafkaListenerContainerFactory<String, OrderEvent>
 
     // Don't retry these exceptions - they won't succeed on retry
     errorHandler.addNotRetryableExceptions(
-        ValidationException.class,
-        DeserializationException.class
+        ValidationException.class
     );
 
     factory.setCommonErrorHandler(errorHandler);
@@ -347,8 +346,7 @@ Spring Kafka provides an embedded Kafka broker for integration tests:
 @SpringBootTest
 @EmbeddedKafka(
     partitions = 1,
-    topics = {"order-events"},
-    brokerProperties = {"listeners=PLAINTEXT://localhost:9092"}
+    topics = {"order-events"}
 )
 class OrderEventIntegrationTest {
 
@@ -367,12 +365,12 @@ class OrderEventIntegrationTest {
     void setUp() {
         Map<String, Object> consumerProps = KafkaTestUtils.consumerProps(
             "test-group", "true", embeddedKafka);
-        consumerProps.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
+        consumerProps.put(JacksonJsonDeserializer.TRUSTED_PACKAGES, "*");
 
         consumer = new DefaultKafkaConsumerFactory<String, OrderEvent>(
             consumerProps,
             new StringDeserializer(),
-            new JsonDeserializer<>(OrderEvent.class)
+            new JacksonJsonDeserializer<>(OrderEvent.class)
         ).createConsumer();
 
         embeddedKafka.consumeFromAllEmbeddedTopics(consumer);
@@ -437,7 +435,8 @@ public ConcurrentKafkaListenerContainerFactory<String, OrderEvent>
     factory.setConsumerFactory(consumerFactory());
     factory.setBatchListener(true);
 
-    // Fetch up to 500 records per poll
+    // To change the batch size, set ConsumerConfig.MAX_POLL_RECORDS_CONFIG
+    // in the consumer factory; Kafka's default is 500 records per poll.
     factory.getContainerProperties().setIdleBetweenPolls(0);
 
     return factory;
@@ -446,7 +445,7 @@ public ConcurrentKafkaListenerContainerFactory<String, OrderEvent>
 
 ## Manual Offset Commits
 
-For exactly-once processing semantics, control when offsets are committed:
+For at-least-once processing with explicit offset control, commit offsets only after processing succeeds:
 
 ```java
 @KafkaListener(
@@ -488,6 +487,6 @@ Spring Kafka simplifies Kafka integration while giving you control over the deta
 - Implement dead letter queues for messages that fail repeatedly
 - Use embedded Kafka for reliable integration tests
 - Consider batch processing when throughput is critical
-- Use manual offset commits when you need exactly-once semantics
+- Use manual offset commits when you need explicit control over when records are acknowledged
 
 Start with the simple configurations and add complexity only when you need it. The defaults in Spring Kafka are sensible for most use cases, and you can tune them as your requirements become clearer.
