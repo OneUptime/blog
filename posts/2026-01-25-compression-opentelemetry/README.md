@@ -24,7 +24,7 @@ Consider a service generating 10,000 spans per minute:
 | Per day | 28.8 GB | 2.9-5.8 GB |
 | Monthly transfer | 864 GB | 86-174 GB |
 
-At cloud egress rates of $0.08-0.12 per GB, compression can save hundreds of dollars monthly.
+At cloud egress rates of $0.08-0.12 per GB, compression can save tens of dollars monthly for this service, and hundreds across larger fleets.
 
 ```mermaid
 flowchart LR
@@ -43,6 +43,7 @@ flowchart LR
 // tracing.js
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
+const { CompressionAlgorithm } = require('@opentelemetry/otlp-exporter-base');
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 
@@ -53,7 +54,7 @@ const traceExporter = new OTLPTraceExporter({
     'x-oneuptime-token': process.env.ONEUPTIME_TOKEN
   },
   // Enable gzip compression
-  compression: 'gzip'
+  compression: CompressionAlgorithm.GZIP
 });
 
 const metricExporter = new OTLPMetricExporter({
@@ -61,7 +62,7 @@ const metricExporter = new OTLPMetricExporter({
   headers: {
     'x-oneuptime-token': process.env.ONEUPTIME_TOKEN
   },
-  compression: 'gzip'
+  compression: CompressionAlgorithm.GZIP
 });
 
 const sdk = new NodeSDK({
@@ -80,12 +81,12 @@ sdk.start();
 ```javascript
 // grpc-tracing.js
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { CompressionAlgorithm } = require('@grpc/grpc-js');
+const { CompressionAlgorithm } = require('@opentelemetry/otlp-exporter-base');
 
 const traceExporter = new OTLPTraceExporter({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
   // gRPC compression options
-  compression: CompressionAlgorithm.gzip
+  compression: CompressionAlgorithm.GZIP
 });
 ```
 
@@ -194,6 +195,9 @@ exporters:
     endpoint: "https://backup.example.com/otlp"
     compression: gzip
 
+processors:
+  batch:
+
 service:
   pipelines:
     traces:
@@ -219,6 +223,14 @@ Combine batching with compression for maximum efficiency:
 
 ```yaml
 # collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
 processors:
   batch:
     # Larger batches compress better
@@ -254,20 +266,30 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Key metrics to monitor:
 
 ```text
-# Bytes exported (after compression)
-otelcol_exporter_sent_bytes_total
+# Exporter send attempts and failures
+otelcol_exporter_send_failed_spans
+otelcol_exporter_sent_spans
 
-# Original size before compression
-otelcol_exporter_send_bytes_total
+# Queue and retry behavior
+otelcol_exporter_queue_size
+otelcol_exporter_enqueue_failed_spans
 
-# Calculate compression ratio
-compression_ratio = original_bytes / sent_bytes
+# The Collector does not expose compressed and uncompressed byte totals
+# as standard internal metrics, so calculate exact compression ratios from
+# backend ingest metrics, load balancer byte counters, or custom instrumentation.
 ```
 
 ### Custom Compression Monitoring
