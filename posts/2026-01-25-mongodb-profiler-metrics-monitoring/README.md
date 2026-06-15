@@ -32,13 +32,13 @@ db.setProfilingLevel(0)
 
 ## Configuring the Profiler
 
-Configure profiling at startup or dynamically per database.
+Configure profiling at startup or dynamically. The profiling level is per database when changed with `db.setProfilingLevel()`, but `slowms` and `sampleRate` apply to the whole `mongod` process.
 
 ```yaml
 # mongod.conf - startup configuration
 
 operationProfiling:
-  # 0=off, 1=slowOps, 2=all
+  # off, slowOp, or all
   mode: slowOp
   # Threshold in milliseconds
   slowOpThresholdMs: 100
@@ -47,7 +47,8 @@ operationProfiling:
 ```
 
 ```javascript
-// Dynamic configuration per database
+// Dynamic configuration for the current database's profiling level
+// and the mongod process's slowms/sampleRate settings
 // Profile queries slower than 50ms, sample 50% of them
 db.setProfilingLevel(1, {
   slowms: 50,
@@ -115,7 +116,7 @@ db.system.profile.aggregate([
 
 ## Key Server Metrics
 
-MongoDB exposes metrics through `serverStatus` and `currentOp` commands.
+MongoDB exposes metrics through `serverStatus`, and active operation details through the `$currentOp` aggregation stage.
 
 ```javascript
 // Get comprehensive server statistics
@@ -157,10 +158,15 @@ if (stats.wiredTiger) {
 
 ```javascript
 // View currently running operations
-db.currentOp({
-  active: true,
-  secs_running: { $gt: 5 }  // Running longer than 5 seconds
-}).inprog.forEach(op => {
+db.getSiblingDB("admin").aggregate([
+  { $currentOp: { allUsers: true, idleConnections: false } },
+  {
+    $match: {
+      active: true,
+      secs_running: { $gt: 5 }  // Running longer than 5 seconds
+    }
+  }
+]).forEach(op => {
   print(`\n--- Active Operation ---`);
   print(`OpId: ${op.opid}`);
   print(`Type: ${op.op}`);
@@ -173,7 +179,7 @@ db.currentOp({
 });
 
 // Kill a long-running operation
-// db.killOp(opid)  // Use with caution!
+// db.getSiblingDB("admin").killOp(opid)  // Use with caution!
 ```
 
 ## Building a Monitoring Dashboard
@@ -186,7 +192,7 @@ Create a script that collects key metrics for dashboards.
 
 async function collectMetrics() {
   const stats = db.serverStatus();
-  const replStatus = rs.status ? rs.status() : null;
+  const replStatus = getReplicaSetStatus();
 
   const metrics = {
     timestamp: new Date().toISOString(),
@@ -244,12 +250,20 @@ function calculateReplicationLag(replStatus) {
   return (primaryOptime - selfOptime) / 1000;  // Lag in seconds
 }
 
+function getReplicaSetStatus() {
+  try {
+    return rs.status();
+  } catch (e) {
+    return null;
+  }
+}
+
 async function getIndexUsage() {
   const collections = await db.getCollectionNames();
   const usage = [];
 
   for (const coll of collections.slice(0, 10)) {  // Limit for performance
-    const stats = await db[coll].aggregate([{ $indexStats: {} }]).toArray();
+    const stats = await db.getCollection(coll).aggregate([{ $indexStats: {} }]).toArray();
     for (const idx of stats) {
       if (idx.accesses.ops === 0) {
         usage.push({
@@ -265,7 +279,7 @@ async function getIndexUsage() {
 }
 
 // Output metrics as JSON
-printjson(collectMetrics());
+printjson(await collectMetrics());
 ```
 
 ## Setting Up Alerts
@@ -279,8 +293,7 @@ Define thresholds for alerting based on metrics.
 const THRESHOLDS = {
   connectionUtilization: 80,      // Alert if >80% connections used
   replicationLagSeconds: 10,      // Alert if lag >10 seconds
-  slowQueriesPerMinute: 50,       // Alert if >50 slow queries/min
-  cacheEvictionRate: 1000         // Alert if >1000 evictions/sec
+  slowQueriesPerMinute: 50        // Alert if >50 slow queries/min
 };
 
 function checkAlerts() {
@@ -353,13 +366,13 @@ Monitor which indexes are being used and which are wasting resources.
 ```javascript
 // Analyze index usage across collections
 async function analyzeIndexUsage(db) {
-  const collections = await db.listCollections().toArray();
+  const collections = await db.getCollectionInfos();
   const report = [];
 
   for (const coll of collections) {
     if (coll.name.startsWith('system.')) continue;
 
-    const indexStats = await db.collection(coll.name)
+    const indexStats = await db.getCollection(coll.name)
       .aggregate([{ $indexStats: {} }])
       .toArray();
 
