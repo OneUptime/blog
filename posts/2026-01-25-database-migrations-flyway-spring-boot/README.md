@@ -16,7 +16,7 @@ I have worked on projects where database changes were handled through a shared d
 
 ## Why Flyway?
 
-Flyway is a database migration tool that tracks which changes have been applied and ensures they run in the correct order. It stores migration history in a schema_history table, so you always know the current state of your database.
+Flyway is a database migration tool that tracks which changes have been applied and ensures they run in the correct order. It stores migration history in a `flyway_schema_history` table by default, so you always know the current state of your database.
 
 Here is what makes Flyway practical:
 
@@ -42,10 +42,16 @@ Add the Flyway dependency to your `pom.xml`. Spring Boot auto-configures Flyway 
         <artifactId>spring-boot-starter-data-jpa</artifactId>
     </dependency>
 
-    <!-- Flyway Core - database migration tool -->
+    <!-- Spring Boot Starter for Flyway migrations -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-flyway</artifactId>
+    </dependency>
+
+    <!-- Flyway PostgreSQL support - swap for your database -->
     <dependency>
         <groupId>org.flywaydb</groupId>
-        <artifactId>flyway-core</artifactId>
+        <artifactId>flyway-database-postgresql</artifactId>
     </dependency>
 
     <!-- PostgreSQL driver - swap for your database -->
@@ -63,7 +69,8 @@ For Gradle projects, add these to your `build.gradle`:
 // build.gradle
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    implementation 'org.flywaydb:flyway-database-postgresql'
     runtimeOnly 'org.postgresql:postgresql'
 }
 ```
@@ -250,8 +257,8 @@ FROM users u
 LEFT JOIN orders o ON o.user_id = u.id
 GROUP BY u.id, u.email, u.status;
 
--- Grant read access to the reporting role
-GRANT SELECT ON user_statistics TO reporting_role;
+-- Grant read access to an existing reporting role if your deployment creates one
+-- GRANT SELECT ON user_statistics TO reporting_role;
 ```
 
 Repeatable migrations run after all versioned migrations and rerun whenever their checksum changes.
@@ -414,16 +421,28 @@ WHERE users.id = user_profiles.user_id
 
 ### Use Transactions Wisely
 
-Flyway wraps each migration in a transaction by default. For DDL statements that cannot run in transactions (like `CREATE INDEX CONCURRENTLY` in PostgreSQL), disable transactions for that migration.
+Flyway wraps each migration in a transaction by default. For DDL statements that cannot run in transactions (like `CREATE INDEX CONCURRENTLY` in PostgreSQL), disable transactions for that migration with a matching script configuration file.
 
 ```sql
 -- V8__add_index_concurrently.sql
 -- Disable transaction for concurrent index creation
 -- This prevents table locks during index build
 
--- flyway:executeInTransaction=false
-
 CREATE INDEX CONCURRENTLY idx_orders_created_at ON orders(created_at);
+```
+
+```properties
+# V8__add_index_concurrently.sql.conf
+executeInTransaction=false
+```
+
+For PostgreSQL, also use session-level Flyway locking when running migrations with `CREATE INDEX CONCURRENTLY`.
+
+```yaml
+spring:
+  flyway:
+    postgresql:
+      transactional-lock: false
 ```
 
 ### Environment-Specific Configuration
