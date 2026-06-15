@@ -44,19 +44,36 @@ Let's build a coalescer that handles concurrent requests for the same key. The c
 ```rust
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::sync::Arc;
-use tokio::sync::{Mutex, broadcast};
-use tokio::sync::broadcast::Receiver;
+use std::sync::{Arc, Mutex};
+use tokio::sync::broadcast;
 
 // The coalescer tracks in-flight requests
-pub struct Coalescer<K, V> {
-    in_flight: Arc<Mutex<HashMap<K, broadcast::Sender<Arc<V>>>>>,
+pub struct Coalescer<K, V, E> {
+    in_flight: Arc<Mutex<HashMap<K, broadcast::Sender<Result<Arc<V>, E>>>>>,
 }
 
-impl<K, V> Coalescer<K, V>
+struct Cleanup<K: Eq + Hash, V, E> {
+    key: Option<K>,
+    in_flight: Arc<Mutex<HashMap<K, broadcast::Sender<Result<Arc<V>, E>>>>>,
+}
+
+impl<K, V, E> Drop for Cleanup<K, V, E>
+where
+    K: Eq + Hash,
+{
+    fn drop(&mut self) {
+        if let Some(key) = self.key.take() {
+            let mut guard = self.in_flight.lock().unwrap();
+            guard.remove(&key);
+        }
+    }
+}
+
+impl<K, V, E> Coalescer<K, V, E>
 where
     K: Eq + Hash + Clone,
-    V: Clone + Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    E: Clone,
 {
     pub fn new() -> Self {
         Self {
@@ -65,7 +82,7 @@ where
     }
 
     // Execute a function, coalescing concurrent calls with the same key
-    pub async fn execute<F, Fut, E>(
+    pub async fn execute<F, Fut>(
         &self,
         key: K,
         f: F,
@@ -73,48 +90,57 @@ where
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<V, E>>,
-        E: Clone,
     {
-        // Check if there's already an in-flight request for this key
-        let mut guard = self.in_flight.lock().await;
+        let tx = loop {
+            // Check if there's already an in-flight request for this key
+            let receiver = {
+                let mut guard = self.in_flight.lock().unwrap();
 
-        if let Some(sender) = guard.get(&key) {
-            // Another request is already fetching this data
-            // Subscribe to its result instead of making a new request
-            let mut receiver = sender.subscribe();
-            drop(guard); // Release the lock while waiting
+                if let Some(sender) = guard.get(&key) {
+                    // Another request is already fetching this data
+                    // Subscribe to its result instead of making a new request
+                    Some(sender.subscribe())
+                } else {
+                    // We're the first request for this key
+                    let (tx, _) = broadcast::channel(1);
+                    guard.insert(key.clone(), tx.clone());
+                    break tx;
+                }
+            };
 
             // Wait for the result from the original request
-            match receiver.recv().await {
-                Ok(value) => return Ok(value),
-                Err(_) => {
-                    // Sender dropped, likely due to an error
-                    // Fall through to retry
+            if let Some(mut receiver) = receiver {
+                match receiver.recv().await {
+                    Ok(result) => return result,
+                    Err(_) => {
+                        // Sender dropped before publishing, likely due to
+                        // cancellation. Retry and become the leader if needed.
+                        continue;
+                    }
                 }
             }
-            guard = self.in_flight.lock().await;
-        }
+        };
 
-        // We're the first request for this key, or the previous one failed
-        // Create a broadcast channel for sharing our result
-        let (tx, _) = broadcast::channel(1);
-        guard.insert(key.clone(), tx.clone());
-        drop(guard);
+        // Ensure in-flight state is removed even if this future is canceled
+        let mut cleanup = Cleanup {
+            key: Some(key.clone()),
+            in_flight: Arc::clone(&self.in_flight),
+        };
 
         // Execute the actual work
-        let result = f().await;
+        let result = f().await.map(Arc::new);
 
         // Clean up and broadcast the result
-        let mut guard = self.in_flight.lock().await;
-        guard.remove(&key);
-
-        if let Ok(ref value) = result {
-            // Broadcast to any waiting requests
-            // Ignore errors - receivers may have timed out
-            let _ = tx.send(Arc::new(value.clone()));
+        {
+            let mut guard = self.in_flight.lock().unwrap();
+            guard.remove(&key);
+            cleanup.key.take();
         }
 
-        result.map(Arc::new)
+        // Ignore errors - receivers may have timed out
+        let _ = tx.send(result.clone());
+
+        result
     }
 }
 ```
@@ -130,7 +156,7 @@ use std::sync::Arc;
 // Our user service with coalescing built in
 pub struct UserService {
     pool: PgPool,
-    coalescer: Coalescer<i64, User>,
+    coalescer: Coalescer<i64, User, Error>,
 }
 
 impl UserService {
