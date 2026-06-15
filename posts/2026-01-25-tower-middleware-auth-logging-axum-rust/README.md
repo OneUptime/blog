@@ -27,10 +27,10 @@ First, add the necessary dependencies to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-axum = "0.7"
+axum = "0.8"
 tokio = { version = "1", features = ["full"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["trace"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 http = "1"
@@ -118,7 +118,9 @@ where
 
         if is_authorized {
             // Token is valid, proceed to the inner service
-            AuthFuture::Authorized(self.inner.call(req))
+            AuthFuture::Authorized {
+                future: self.inner.call(req),
+            }
         } else {
             // Token is missing or invalid, return 401
             AuthFuture::Unauthorized
@@ -161,6 +163,7 @@ Next, let's build a logging layer that captures request details and response tim
 
 ```rust
 use axum::{body::Body, http::Request};
+use pin_project_lite::pin_project;
 use std::{
     future::Future,
     pin::Pin,
@@ -322,7 +325,7 @@ async fn main() {
 }
 ```
 
-The `ServiceBuilder` applies layers in order from bottom to top. In this example, requests first hit the logging layer, then the auth layer. This means every request gets logged, even failed authentication attempts.
+The `ServiceBuilder` calls layers in the order they are added. In this example, requests first hit the logging layer, then the auth layer. This means every request gets logged, even failed authentication attempts.
 
 ## Testing Your Middleware
 
@@ -360,7 +363,7 @@ A few things I've learned from running Tower middleware in production:
 **Consider using `from_fn` for simple cases.** Axum provides `axum::middleware::from_fn` for simpler middleware that doesn't need the full Tower machinery:
 
 ```rust
-use axum::{middleware, extract::Request, http::StatusCode};
+use axum::{extract::Request, http::StatusCode, middleware, response::IntoResponse};
 
 async fn simple_auth(
     req: Request,
