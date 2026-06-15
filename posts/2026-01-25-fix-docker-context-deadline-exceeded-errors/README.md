@@ -100,7 +100,6 @@ docker run --rm alpine wget -q -O- https://registry-1.docker.io/v2/
 Configure Docker DNS:
 
 ```json
-// /etc/docker/daemon.json
 {
   "dns": ["8.8.8.8", "8.8.4.4"]
 }
@@ -188,7 +187,6 @@ cat ~/.docker/config.json | jq '.auths'
 Use a registry mirror:
 
 ```json
-// /etc/docker/daemon.json
 {
   "registry-mirrors": ["https://mirror.gcr.io"]
 }
@@ -198,28 +196,29 @@ Use a registry mirror:
 
 Large images on slow connections timeout before completing:
 
-### Increase Docker Timeouts
+### Reduce Concurrent Transfers and Increase Pull Retries
 
 ```json
-// /etc/docker/daemon.json
 {
   "max-concurrent-downloads": 3,
-  "max-concurrent-uploads": 3
+  "max-concurrent-uploads": 3,
+  "max-download-attempts": 5
 }
 ```
 
 For Buildkit builds:
 
 ```bash
-# Increase timeout for builds
-BUILDKIT_STEP_LOG_MAX_SIZE=10485760 docker build -t myapp .
+# Pre-pull the base image, then retry the build
+docker pull nginx:alpine
+docker build -t myapp .
 ```
 
-### Pull Layers Individually
+### Inspect Layers and Retry Pulls
 
 ```bash
 # Get manifest to see layers
-docker manifest inspect nginx:alpine
+docker manifest inspect --verbose nginx:alpine
 
 # Pull might succeed with retries
 docker pull nginx:alpine --quiet
@@ -343,7 +342,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Pull with retry
-        uses: nick-fields/retry@v2
+        uses: nick-fields/retry@v4
         with:
           timeout_minutes: 10
           max_attempts: 3
