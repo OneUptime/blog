@@ -35,13 +35,13 @@ Kubernetes 1.25+ supports ephemeral containers for debugging running pods:
 ```bash
 # Add a debug container to a running pod
 
-# This container shares the network namespace of the target container
+# This container joins the same Pod, so it shares the Pod network namespace
 kubectl debug -it my-app-xyz -n production \
   --image=nicolaka/netshoot \
   --target=my-app \
   -- tcpdump -i any -n port 8080
 
-# The --target flag ensures network namespace sharing
+# The --target flag targets the process namespace of the named container
 # -i any captures on all interfaces
 # -n skips DNS lookups for faster output
 # port 8080 filters for specific traffic
@@ -61,7 +61,7 @@ metadata:
   name: network-debug
   namespace: production
 spec:
-  # Use host network to see all node traffic
+  # Use the host network namespace to capture from node interfaces
   hostNetwork: true
   # Schedule on a specific node
   nodeName: worker-1
@@ -332,7 +332,7 @@ echo "Capture complete"
 
 3. **Capture on both ends**: When debugging connection issues, capture on both source and destination.
 
-4. **Remove debug containers**: Clean up debug pods and sidecars after troubleshooting.
+4. **Clean up debug resources**: Delete debug pods and remove debug sidecars after troubleshooting. Ephemeral containers cannot be removed from an existing Pod; they go away when the Pod is deleted or replaced.
 
 5. **Document findings**: Save captures and notes for future reference.
 
