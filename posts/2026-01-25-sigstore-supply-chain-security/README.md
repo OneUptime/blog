@@ -98,12 +98,15 @@ gitsign --version
 docker build -t ghcr.io/myorg/myapp:v1.0 .
 docker push ghcr.io/myorg/myapp:v1.0
 
+# Resolve the immutable digest and sign that reference
+IMAGE_DIGEST=ghcr.io/myorg/myapp@sha256:abc123...
+
 # Sign using your OIDC identity (opens browser)
-cosign sign ghcr.io/myorg/myapp:v1.0
+cosign sign $IMAGE_DIGEST
 
 # In CI, use workload identity (no browser needed)
 # GitHub Actions provides OIDC tokens automatically
-cosign sign --yes ghcr.io/myorg/myapp:v1.0
+cosign sign --yes $IMAGE_DIGEST
 ```
 
 The signature is stored in the registry alongside the image.
@@ -115,13 +118,13 @@ The signature is stored in the registry alongside the image.
 cosign verify \
   --certificate-identity=user@example.com \
   --certificate-oidc-issuer=https://accounts.google.com \
-  ghcr.io/myorg/myapp:v1.0
+  ghcr.io/myorg/myapp@sha256:abc123...
 
 # For CI-signed images
 cosign verify \
   --certificate-identity="https://github.com/myorg/myapp/.github/workflows/build.yml@refs/heads/main" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  ghcr.io/myorg/myapp:v1.0
+  ghcr.io/myorg/myapp@sha256:abc123...
 ```
 
 ## Signing with Attestations
@@ -135,16 +138,16 @@ Attestations provide structured metadata about artifacts:
 syft ghcr.io/myorg/myapp:v1.0 -o spdx-json > sbom.spdx.json
 
 # Attach as signed attestation
-cosign attest --predicate sbom.spdx.json \
+cosign attest --yes --predicate sbom.spdx.json \
   --type spdxjson \
-  ghcr.io/myorg/myapp:v1.0
+  ghcr.io/myorg/myapp@sha256:abc123...
 
 # Verify attestation
 cosign verify-attestation \
   --type spdxjson \
   --certificate-identity=user@example.com \
   --certificate-oidc-issuer=https://accounts.google.com \
-  ghcr.io/myorg/myapp:v1.0
+  ghcr.io/myorg/myapp@sha256:abc123...
 ```
 
 ### SLSA Provenance Attestation
@@ -195,11 +198,16 @@ on:
 
 jobs:
   build:
+    permissions:
+      contents: read
+      packages: write
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Build and push
         id: build
         run: |
@@ -213,10 +221,13 @@ jobs:
       actions: read
       id-token: write
       packages: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v1.9.0
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
     with:
       image: ghcr.io/myorg/myapp
       digest: ${{ needs.build.outputs.digest }}
+      registry-username: ${{ github.actor }}
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## Signing Git Commits with Gitsign
@@ -234,11 +245,15 @@ git config --global gpg.format x509
 git commit -m "Add new feature"
 # Opens browser for OIDC authentication
 
-# Verify a commit
-git verify-commit HEAD
+# Verify a commit and validate the signing identity
+gitsign verify \
+  --certificate-identity=user@example.com \
+  --certificate-oidc-issuer=https://accounts.google.com \
+  HEAD
 # Good signature from CN=sigstore-intermediate,O=sigstore.dev
 # Validated Git signature: true
 # Validated Rekor entry: true
+# Validated Certificate claims: true
 ```
 
 ## Using the Transparency Log
@@ -256,37 +271,40 @@ rekor-cli search --sha sha256:abc123...
 rekor-cli get --uuid 24296fb24b8ad77a1234567890abcdef
 
 # Verify inclusion
-rekor-cli verify --artifact myfile.tar.gz --signature myfile.tar.gz.sig
+rekor-cli verify --uuid 24296fb24b8ad77a1234567890abcdef
 ```
 
 ### Monitoring for Suspicious Signatures
 
 Set up alerts for unexpected signing activity:
 
-```python
-# monitor_rekor.py
-import requests
-import time
+```yaml
+# .github/workflows/rekor-monitor.yml
+name: Rekor log and identity monitor
 
-def check_rekor_for_identity(identity_email, last_index):
-    """Check for new signatures from a specific identity."""
-    url = f"https://rekor.sigstore.dev/api/v1/log/entries?logIndex={last_index}"
-    response = requests.get(url)
+on:
+  schedule:
+    - cron: '0 * * * *'
 
-    for entry in response.json():
-        body = entry.get('body', {})
-        if identity_email in str(body):
-            print(f"Alert: New signature from {identity_email}")
-            # Send alert to security team
-            notify_security_team(entry)
+permissions: read-all
 
-    return response.json()[-1].get('logIndex', last_index)
-
-# Poll for new entries
-last_index = 0
-while True:
-    last_index = check_rekor_for_identity("builder@mycompany.com", last_index)
-    time.sleep(60)
+jobs:
+  monitor:
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    uses: sigstore/rekor-monitor/.github/workflows/reusable_monitoring.yml@main
+    with:
+      file_issue: true
+      artifact_retention_days: 14
+      config: |
+        monitoredValues:
+          certIdentities:
+            - certSubject: builder@mycompany\.com
+            - certSubject: https://github\.com/myorg/myapp/\.github/workflows/build\.yml@.*
+              issuers:
+                - https://token\.actions\.githubusercontent\.com
 ```
 
 ## Kubernetes Policy Enforcement
@@ -305,7 +323,7 @@ Create a policy requiring signatures:
 
 ```yaml
 # cluster-image-policy.yaml
-apiVersion: policy.sigstore.dev/v1beta1
+apiVersion: policy.sigstore.dev/v1alpha1
 kind: ClusterImagePolicy
 metadata:
   name: require-sigstore-signatures
@@ -320,8 +338,8 @@ spec:
         url: https://fulcio.sigstore.dev
       ctlog:
         url: https://rekor.sigstore.dev
-    # Require SLSA provenance
-    - attestations:
+      # Require SLSA provenance
+      attestations:
         - name: slsa-provenance
           predicateType: https://slsa.dev/provenance/v1
           policy:
@@ -385,14 +403,26 @@ Configure clients to use your private instance:
 
 ```bash
 # Initialize TUF root
-cosign initialize --mirror=https://tuf.internal.example.com --root=https://tuf.internal.example.com/root.json
+cosign initialize \
+  --mirror=https://tuf.internal.example.com \
+  --root=/path/to/trusted-root.json
 
-# Sign using private Fulcio and Rekor
+# Create a signing configuration for private Fulcio, Rekor, and OIDC services
+cosign signing-config create \
+  --no-default-fulcio \
+  --no-default-rekor \
+  --no-default-oidc \
+  --fulcio="url=https://fulcio.internal.example.com,api-version=1,start-time=2026-01-01T00:00:00Z,operator=internal.example.com" \
+  --rekor="url=https://rekor.internal.example.com,api-version=1,start-time=2026-01-01T00:00:00Z,operator=internal.example.com" \
+  --rekor-config=ANY \
+  --oidc-provider="url=https://dex.internal.example.com,api-version=1,start-time=2026-01-01T00:00:00Z,operator=internal.example.com" \
+  --out private-signing-config.json
+
+# Sign using the private signing configuration
 cosign sign \
-  --fulcio-url=https://fulcio.internal.example.com \
-  --rekor-url=https://rekor.internal.example.com \
-  --oidc-issuer=https://dex.internal.example.com \
-  ghcr.io/myorg/myapp:v1.0
+  --yes \
+  --signing-config private-signing-config.json \
+  ghcr.io/myorg/myapp@sha256:abc123...
 ```
 
 ## CI/CD Integration
