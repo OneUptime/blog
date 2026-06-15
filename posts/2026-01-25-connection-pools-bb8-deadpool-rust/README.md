@@ -215,7 +215,7 @@ use bb8_postgres::PostgresConnectionManager;
 use tokio_postgres::NoTls;
 
 // bb8 automatically tests connections before returning them
-// You can also configure custom test queries
+// For bb8-postgres this runs a lightweight validation query
 let pool = Pool::builder()
     .max_size(20)
     .test_on_check_out(true)  // Verify connection health when borrowing
@@ -226,7 +226,7 @@ let pool = Pool::builder()
 deadpool has explicit recycling configuration:
 
 ```rust
-use deadpool_postgres::{Config, RecyclingMethod};
+use deadpool_postgres::{Config, ManagerConfig, RecyclingMethod, Runtime};
 
 // Configure how deadpool validates connections
 let mut cfg = Config::new();
@@ -234,12 +234,14 @@ cfg.host = Some("localhost".to_string());
 cfg.user = Some("postgres".to_string());
 
 // Choose recycling method
-// Fast: No validation (trusts the connection)
+// Fast: Checks whether the client is closed
 // Verified: Runs a test query
-// Clean: Runs DISCARD ALL to reset session state
-let pool = cfg.builder(NoTls)?
-    .recycling_method(RecyclingMethod::Verified)
-    .build()?;
+// Clean: Runs a reset sequence similar to DISCARD ALL while preserving statement cache
+cfg.manager = Some(ManagerConfig {
+    recycling_method: RecyclingMethod::Verified,
+});
+
+let pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls)?;
 ```
 
 ## Integrating with Web Frameworks
@@ -304,7 +306,7 @@ async fn main() {
 |---------|-----|----------|
 | Generic pool | Yes | Yes |
 | Config file support | Manual | Built-in |
-| Runtime support | Any async | Tokio, async-std |
+| Runtime support | Tokio-based | Runtime abstraction; PostgreSQL adapter uses Tokio |
 | Connection recycling | Basic | Configurable |
 | Metrics | External | Built-in hooks |
 
