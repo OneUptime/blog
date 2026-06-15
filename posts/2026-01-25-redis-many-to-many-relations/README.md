@@ -389,16 +389,12 @@ class OrderedRelationship:
     def get_ordered(self, type_name, id, relation, limit=10, desc=True):
         """Get related items ordered by score"""
         key = f'{type_name}:{id}:{relation}'
-
-        if desc:
-            return r.zrevrange(key, 0, limit - 1, withscores=True)
-        else:
-            return r.zrange(key, 0, limit - 1, withscores=True)
+        return r.zrange(key, 0, limit - 1, desc=desc, withscores=True)
 
     def get_by_score_range(self, type_name, id, relation, min_score, max_score):
         """Get related items within score range"""
         key = f'{type_name}:{id}:{relation}'
-        return r.zrangebyscore(key, min_score, max_score, withscores=True)
+        return r.zrange(key, min_score, max_score, byscore=True, withscores=True)
 
 # Usage: Playlist tracks with play order
 rel = OrderedRelationship()
