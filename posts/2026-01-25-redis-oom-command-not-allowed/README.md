@@ -99,7 +99,7 @@ redis-cli CONFIG GET maxmemory
 # Increase temporarily (in bytes)
 redis-cli CONFIG SET maxmemory 4294967296  # 4GB
 
-# Or human readable (Redis 7+)
+# Or human readable
 redis-cli CONFIG SET maxmemory 4gb
 
 # Make permanent in redis.conf
@@ -119,6 +119,8 @@ redis-cli CONFIG SET maxmemory-policy allkeys-lru
 # noeviction      - Return errors on write (default)
 # allkeys-lru     - Evict least recently used keys
 # volatile-lru    - Evict LRU keys with TTL set
+# allkeys-lrm     - Evict least recently modified keys (Redis 8.6+)
+# volatile-lrm    - Evict least recently modified keys with TTL (Redis 8.6+)
 # allkeys-random  - Evict random keys
 # volatile-random - Evict random keys with TTL
 # volatile-ttl    - Evict keys with shortest TTL
@@ -135,9 +137,6 @@ r = redis.Redis(host='localhost', port=6379, db=0)
 
 def delete_old_keys(pattern, older_than_days=30):
     """Delete keys that are too old"""
-    import time
-
-    threshold = time.time() - (older_than_days * 86400)
     deleted = 0
 
     cursor = 0
@@ -145,11 +144,14 @@ def delete_old_keys(pattern, older_than_days=30):
         cursor, keys = r.scan(cursor, match=pattern, count=100)
 
         for key in keys:
-            # Check last access time
-            idle_time = r.object('idletime', key)
-            if idle_time and idle_time > (older_than_days * 86400):
-                r.delete(key)
-                deleted += 1
+            try:
+                # Check idle time. OBJECT IDLETIME is not available with LFU policies.
+                idle_time = r.object('idletime', key)
+                if idle_time and idle_time > (older_than_days * 86400):
+                    r.delete(key)
+                    deleted += 1
+            except redis.exceptions.ResponseError:
+                pass
 
         if cursor == 0:
             break
@@ -277,15 +279,13 @@ def alert_high_memory(pct, info):
     """Send alert for high memory usage"""
     print(f"WARNING: Memory at {pct:.1f}%!")
     print(f"  Used: {info['used_memory_human']}")
-    print(f"  Evicted keys: {info.get('evicted_keys', 0)}")
+    stats = r.info('stats')
+    print(f"  Evicted keys: {stats.get('evicted_keys', 0)}")
     # Send to monitoring system, Slack, etc.
 
 def emergency_cleanup():
     """Emergency memory cleanup"""
     print("EMERGENCY: Running cleanup...")
-
-    # Delete expired keys aggressively
-    r.execute_command('DEBUG', 'QUICKLIST-FORCE-FREE')
 
     # Clear cache namespace
     cursor = 0
@@ -295,6 +295,12 @@ def emergency_cleanup():
             r.delete(*keys)
         if cursor == 0:
             break
+
+    try:
+        # Ask the allocator to release freed dirty pages where supported.
+        r.execute_command('MEMORY', 'PURGE')
+    except redis.exceptions.ResponseError:
+        pass
 ```
 
 ## Eviction Policy Comparison
@@ -313,6 +319,9 @@ flowchart TD
     D -->|allkeys-lfu| H[Evict Least Frequently Used]
     D -->|volatile-lfu| I[Evict LFU with TTL]
 
+    D -->|allkeys-lrm| N[Evict Least Recently Modified]
+    D -->|volatile-lrm| O[Evict LRM with TTL]
+
     D -->|allkeys-random| J[Evict Random Key]
     D -->|volatile-ttl| K[Evict Shortest TTL]
 
@@ -320,6 +329,8 @@ flowchart TD
     G --> L
     H --> L
     I --> L
+    N --> L
+    O --> L
     J --> L
     K --> L
 
