@@ -17,7 +17,7 @@ A crosstab query transforms data from a normalized row format into a denormalize
 Before using crosstab, you need to enable the tablefunc extension.
 
 ```sql
--- Enable the tablefunc extension (requires superuser or create extension privilege)
+-- Enable the tablefunc extension (requires CREATE privilege on the database)
 -- This extension provides crosstab and other pivot-related functions
 CREATE EXTENSION IF NOT EXISTS tablefunc;
 ```
@@ -52,7 +52,7 @@ INSERT INTO monthly_sales (product_name, sale_month, revenue) VALUES
 
 ## Basic Crosstab Query
 
-The crosstab function takes a SQL query as input and produces pivoted output. The input query must return exactly three columns: row identifier, category, and value.
+The single-parameter crosstab function takes a SQL query as input and produces pivoted output. The input query must return exactly three columns: row identifier, category, and value.
 
 ```sql
 -- Basic crosstab: pivot monthly sales into columns
@@ -60,7 +60,13 @@ The crosstab function takes a SQL query as input and produces pivoted output. Th
 SELECT * FROM crosstab(
     'SELECT product_name, sale_month, revenue
      FROM monthly_sales
-     ORDER BY product_name, sale_month'
+     ORDER BY product_name,
+        CASE sale_month
+            WHEN ''January'' THEN 1
+            WHEN ''February'' THEN 2
+            WHEN ''March'' THEN 3
+            WHEN ''April'' THEN 4
+        END'
 ) AS pivot_table (
     product_name VARCHAR(50),
     january DECIMAL(10,2),
@@ -90,14 +96,21 @@ One limitation of the basic crosstab is that it assigns values positionally. If 
 SELECT * FROM crosstab(
     'SELECT product_name, sale_month, revenue
      FROM monthly_sales
-     ORDER BY product_name, sale_month',
-    'SELECT DISTINCT sale_month FROM monthly_sales ORDER BY sale_month'
+     ORDER BY product_name',
+    'SELECT month_name
+     FROM (VALUES
+        (1, ''January''),
+        (2, ''February''),
+        (3, ''March''),
+        (4, ''April'')
+     ) AS months(month_num, month_name)
+     ORDER BY month_num'
 ) AS pivot_table (
     product_name VARCHAR(50),
-    april DECIMAL(10,2),
-    february DECIMAL(10,2),
     january DECIMAL(10,2),
-    march DECIMAL(10,2)
+    february DECIMAL(10,2),
+    march DECIMAL(10,2),
+    april DECIMAL(10,2)
 );
 ```
 
@@ -155,16 +168,17 @@ DECLARE
 BEGIN
     -- Build the column list dynamically from distinct pivot values
     EXECUTE format(
-        'SELECT string_agg(DISTINCT quote_ident(%I)::TEXT, '', '' ORDER BY quote_ident(%I)::TEXT)
-         FROM %I',
-        pivot_field, pivot_field, source_table
+        'SELECT string_agg(format(''%%I TEXT'', %I), '', '' ORDER BY %I)
+         FROM (SELECT DISTINCT %I FROM %I) AS categories',
+        pivot_field, pivot_field, pivot_field, source_table
     ) INTO pivot_columns;
 
-    -- Construct the crosstab query
+    -- Construct the crosstab query. Cast the value to TEXT so the dynamic
+    -- output columns all have a known type.
     final_query := format(
         'SELECT * FROM crosstab(
-            ''SELECT %I, %I, %I FROM %I ORDER BY 1, 2'',
-            ''SELECT DISTINCT %I FROM %I ORDER BY 1''
+            ''SELECT %I::TEXT, %I::TEXT, %I::TEXT FROM %I ORDER BY 1, 2'',
+            ''SELECT DISTINCT %I::TEXT FROM %I ORDER BY 1''
         ) AS ct (%I TEXT, %s)',
         row_field, pivot_field, value_field, source_table,
         pivot_field, source_table,
@@ -207,11 +221,11 @@ Sometimes you need to pivot multiple values simultaneously. Use nested crosstabs
 -- Pivot both revenue and quantity using CASE expressions
 SELECT
     product_name,
-    SUM(CASE WHEN sale_month = 'January' THEN revenue END) AS jan_revenue,
-    SUM(CASE WHEN sale_month = 'January' THEN quantity END) AS jan_qty,
-    SUM(CASE WHEN sale_month = 'February' THEN revenue END) AS feb_revenue,
-    SUM(CASE WHEN sale_month = 'February' THEN quantity END) AS feb_qty
-FROM sales_with_quantity
+    SUM(CASE WHEN EXTRACT(MONTH FROM sale_date) = 1 THEN quantity * unit_price END) AS jan_revenue,
+    SUM(CASE WHEN EXTRACT(MONTH FROM sale_date) = 1 THEN quantity END) AS jan_qty,
+    SUM(CASE WHEN EXTRACT(MONTH FROM sale_date) = 2 THEN quantity * unit_price END) AS feb_revenue,
+    SUM(CASE WHEN EXTRACT(MONTH FROM sale_date) = 2 THEN quantity END) AS feb_qty
+FROM sales_transactions
 GROUP BY product_name;
 ```
 
@@ -225,15 +239,19 @@ CREATE INDEX idx_sales_pivot ON monthly_sales (product_name, sale_month);
 
 -- For very large tables, materialize the aggregated data first
 CREATE MATERIALIZED VIEW sales_summary AS
-SELECT product_name, sale_month, SUM(revenue) as total_revenue
+SELECT
+    product_name,
+    EXTRACT(MONTH FROM sale_date)::INT AS sale_month,
+    SUM(quantity * unit_price) as total_revenue
 FROM sales_transactions
-GROUP BY product_name, sale_month;
+GROUP BY product_name, EXTRACT(MONTH FROM sale_date);
 
 -- Then pivot the materialized view
 SELECT * FROM crosstab(
     'SELECT product_name, sale_month, total_revenue
      FROM sales_summary
-     ORDER BY 1, 2'
+     ORDER BY 1',
+    'SELECT generate_series(1,3)'
 ) AS ct (product_name VARCHAR, jan DECIMAL, feb DECIMAL, mar DECIMAL);
 
 -- Refresh the materialized view periodically
@@ -252,7 +270,13 @@ The most frequent issues with crosstab involve column ordering and type mismatch
 SELECT * FROM crosstab(
     'SELECT product_name, sale_month, revenue
      FROM monthly_sales
-     ORDER BY product_name, sale_month'  -- ORDER BY is essential
+     ORDER BY product_name,
+        CASE sale_month
+            WHEN ''January'' THEN 1
+            WHEN ''February'' THEN 2
+            WHEN ''March'' THEN 3
+            WHEN ''April'' THEN 4
+        END'  -- ORDER BY is essential
 ) AS ct (product VARCHAR, m1 DECIMAL, m2 DECIMAL, m3 DECIMAL, m4 DECIMAL);
 ```
 
