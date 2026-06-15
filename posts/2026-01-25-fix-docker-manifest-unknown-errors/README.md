@@ -78,7 +78,7 @@ Multi-platform images may not have a manifest for your platform:
 ```bash
 # Error when pulling on ARM Mac
 docker pull myimage:latest
-# manifest unknown: manifest unknown for linux/arm64
+# no matching manifest for linux/arm64 in the manifest list entries
 ```
 
 Diagnose:
@@ -163,8 +163,8 @@ Solutions:
 # Pull by current tag instead of digest
 docker pull myapp:latest
 
-# Find current digest
-docker manifest inspect myapp:latest | jq '.config.digest'
+# Find current manifest or index digest
+docker buildx imagetools inspect myapp:latest
 
 # Use immutable tags in production
 docker pull myapp:v1.2.3  # Better than myapp:latest
@@ -256,9 +256,8 @@ curl -I https://registry.example.com/v2/namespace/myapp/manifests/v1.0.0
 curl -s "https://registry.hub.docker.com/v2/repositories/library/nginx/tags?page_size=100" | \
   jq -r '.results[].name' | sort
 
-# Private registry (with auth)
-TOKEN=$(curl -s -u user:pass "https://registry.example.com/v2/token" | jq -r .token)
-curl -s -H "Authorization: Bearer $TOKEN" \
+# Private registry (with basic auth)
+curl -s -u user:pass \
   "https://registry.example.com/v2/myapp/tags/list" | jq
 ```
 
@@ -268,9 +267,11 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 # Get manifest for specific tag
 docker manifest inspect registry.example.com/myapp:v1.0.0
 
-# Check manifest type and layers
+# Check manifest type
 docker manifest inspect registry.example.com/myapp:v1.0.0 | jq '.mediaType'
-docker manifest inspect registry.example.com/myapp:v1.0.0 | jq '.layers | length'
+
+# Count entries in a multi-platform manifest list, or layers in a single-platform manifest
+docker manifest inspect registry.example.com/myapp:v1.0.0 | jq 'if has("manifests") then .manifests | length else .layers | length end'
 ```
 
 ## CI/CD Pipeline Fixes
@@ -284,7 +285,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           push: true
           tags: registry.example.com/myapp:${{ github.sha }}
@@ -320,7 +321,7 @@ TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=r
 curl -sI -H "Authorization: Bearer $TOKEN" https://registry-1.docker.io/v2/library/nginx/manifests/latest | grep -i rate
 
 # Use official image names
-docker pull nginx:alpine  # Not library/nginx:alpine
+docker pull nginx:alpine  # Equivalent to docker.io/library/nginx:alpine
 ```
 
 ### AWS ECR
@@ -399,4 +400,4 @@ docker pull $IMAGE 2>&1 | tail -5
 
 ---
 
-The "manifest unknown" error always means the exact image reference you requested does not exist in the registry. Verify the image name, tag, and registry are correct. Check if the image was actually pushed, if you have the right permissions, and if you are requesting a platform that exists in the manifest list. When in doubt, use `docker manifest inspect` to see exactly what is available.
+The "manifest unknown" error means the registry could not return the requested manifest. Verify the image name, tag, and registry are correct. Check if the image was actually pushed, if you have the right permissions, and if you are requesting a platform that exists in the manifest list. When in doubt, use `docker manifest inspect` to see exactly what is available.
