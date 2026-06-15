@@ -72,7 +72,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
 The broker prefixes matter:
 - `/topic` is for broadcasting to multiple subscribers (one-to-many)
-- `/queue` is for point-to-point messaging (one-to-one)
+- `/queue` is commonly used for point-to-point or user-specific messaging
 - `/app` routes messages to your controller methods
 
 ---
@@ -271,41 +271,50 @@ public class WebSocketEventListener {
 
 ## Adding Security
 
-WebSocket connections should be secured just like HTTP endpoints. Configure Spring Security to authenticate WebSocket connections.
+WebSocket connections should be secured just like HTTP endpoints. Configure Spring Security to authenticate WebSocket connections. This example requires Spring Security's web and messaging support on the classpath.
 
 ```java
 // WebSocketSecurityConfig.java
 // Security configuration for WebSocket endpoints
 package com.example.realtime.config;
 
+import static org.springframework.messaging.simp.SimpMessageType.MESSAGE;
+import static org.springframework.messaging.simp.SimpMessageType.SUBSCRIBE;
+
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.web.messaging.MessageSecurityMetadataSourceRegistry;
-import org.springframework.security.config.annotation.web.socket.AbstractSecurityWebSocketMessageBrokerConfigurer;
+import org.springframework.messaging.Message;
+import org.springframework.security.authorization.AuthorizationManager;
+import org.springframework.security.config.annotation.web.socket.EnableWebSocketSecurity;
+import org.springframework.security.messaging.access.intercept.MessageMatcherDelegatingAuthorizationManager;
 
 @Configuration
-public class WebSocketSecurityConfig extends AbstractSecurityWebSocketMessageBrokerConfigurer {
+@EnableWebSocketSecurity
+public class WebSocketSecurityConfig {
 
-    @Override
-    protected void configureInbound(MessageSecurityMetadataSourceRegistry messages) {
+    @Bean
+    AuthorizationManager<Message<?>> messageAuthorizationManager(
+            MessageMatcherDelegatingAuthorizationManager.Builder messages) {
         messages
-            // Allow anyone to connect to the WebSocket endpoint
+            // Require authentication for CONNECT, DISCONNECT, and other messages without a destination
+            .nullDestMatcher().authenticated()
+            // Require authentication to send messages to application handlers
             .simpDestMatchers("/app/**").authenticated()
             // Require authentication to subscribe to topics
-            .simpSubscribeDestMatchers("/topic/**").authenticated()
-            .simpSubscribeDestMatchers("/queue/**").authenticated()
+            .simpSubscribeDestMatchers("/topic/**", "/queue/**").authenticated()
             // User-specific destinations require authentication
             .simpSubscribeDestMatchers("/user/**").authenticated()
+            // Reject any other client SEND or SUBSCRIBE messages
+            .simpTypeMatchers(MESSAGE, SUBSCRIBE).denyAll()
             // Deny everything else by default
             .anyMessage().denyAll();
-    }
 
-    @Override
-    protected boolean sameOriginDisabled() {
-        // Disable CSRF for WebSocket - handle CORS in your configuration
-        return true;
+        return messages.build();
     }
 }
 ```
+
+With `@EnableWebSocketSecurity`, Spring Security requires a CSRF token in inbound STOMP `CONNECT` frames by default. Include that token in the STOMP headers when using browser clients with CSRF protection enabled.
 
 ---
 
@@ -394,7 +403,7 @@ public void configureMessageBroker(MessageBrokerRegistry registry) {
 Spring's WebSocket support with STOMP provides a solid foundation for building real-time applications. The key takeaways:
 
 - STOMP adds structure to WebSocket communication with clear message routing
-- Use `/topic` for broadcast and `/queue` for direct messaging
+- Use `/topic` for broadcast and `/queue` for point-to-point or user-specific messaging
 - `SimpMessagingTemplate` enables programmatic message sending
 - Event listeners help track user presence
 - External message brokers are essential for horizontal scaling
