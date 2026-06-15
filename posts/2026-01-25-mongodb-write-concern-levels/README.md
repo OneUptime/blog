@@ -18,7 +18,7 @@ graph LR
     B --> |w:0| C[Fire and Forget]
     B --> |w:1| D[Primary Acknowledged]
     B --> |w:majority| E[Majority Acknowledged]
-    B --> |w:all| F[All Members Acknowledged]
+    B --> |w:N| F[N Members Acknowledged]
 
     C --> G[Fastest, Least Durable]
     F --> H[Slowest, Most Durable]
@@ -29,36 +29,36 @@ graph LR
 | w: 0 | None | Lowest | Lowest | Fire-and-forget logging |
 | w: 1 | Primary only | Low | Low | Non-critical data |
 | w: "majority" | Majority of voting members | High | Medium | Default for most apps |
-| w: N | N specific members | Configurable | Higher | Custom requirements |
+| w: N | Primary plus enough data-bearing secondaries to reach N members | Configurable | Higher | Custom requirements |
 
 ## Configuring Write Concern
 
 ```javascript
-const { MongoClient, WriteConcern } = require('mongodb');
+const { MongoClient } = require('mongodb');
 
 // Connection-level write concern
 const client = new MongoClient('mongodb://localhost:27017/mydb?replicaSet=rs0', {
   writeConcern: {
     w: 'majority',
-    j: true,           // Wait for journal write
-    wtimeout: 5000     // Timeout in milliseconds
+    journal: true,     // Wait for journal write
+    wtimeoutMS: 5000   // Timeout in milliseconds
   }
 });
 
 // Database-level write concern
 const db = client.db('mydb', {
-  writeConcern: new WriteConcern('majority', 5000, true)
+  writeConcern: { w: 'majority', wtimeoutMS: 5000, journal: true }
 });
 
 // Collection-level write concern
 const collection = db.collection('orders', {
-  writeConcern: { w: 'majority', j: true }
+  writeConcern: { w: 'majority', journal: true }
 });
 
 // Operation-level write concern (most specific)
 await collection.insertOne(
   { orderId: '12345', total: 99.99 },
-  { writeConcern: { w: 2, wtimeout: 3000 } }
+  { writeConcern: { w: 2, wtimeoutMS: 3000 } }
 );
 ```
 
@@ -73,14 +73,14 @@ await collection.insertOne(doc, { writeConcern: { w: 1 } });
 // This is the recommended default for most applications
 await collection.insertOne(doc, { writeConcern: { w: 'majority' } });
 
-// j: true - wait for journal write on primary
-// Survives mongod restart but adds latency
-await collection.insertOne(doc, { writeConcern: { w: 1, j: true } });
+// journal: true - wait for journal write
+// Survives a mongod restart, but can still roll back after failover
+await collection.insertOne(doc, { writeConcern: { w: 1, journal: true } });
 
-// wtimeout: milliseconds - maximum time to wait
+// wtimeoutMS: milliseconds - maximum time to wait
 // Prevents indefinite blocking if members are unavailable
 await collection.insertOne(doc, {
-  writeConcern: { w: 'majority', wtimeout: 5000 }
+  writeConcern: { w: 'majority', wtimeoutMS: 5000 }
 });
 
 // w: 0 - no acknowledgment (fire and forget)
@@ -97,8 +97,8 @@ class PaymentService {
     this.collection = db.collection('payments', {
       writeConcern: {
         w: 'majority',
-        j: true,        // Journal for crash recovery
-        wtimeout: 10000 // Allow more time for important writes
+        journal: true,  // Journal for crash recovery
+        wtimeoutMS: 10000 // Allow more time for important writes
       }
     });
   }
@@ -116,7 +116,7 @@ class SessionService {
     this.collection = db.collection('sessions', {
       writeConcern: {
         w: 1,        // Primary acknowledgment only
-        j: false     // Memory is fine, journals add latency
+        journal: false // Memory is fine, journals add latency
       }
     });
   }
@@ -156,7 +156,7 @@ class UserService {
     this.collection = db.collection('users', {
       writeConcern: {
         w: 'majority',
-        wtimeout: 5000
+        wtimeoutMS: 5000
       }
     });
   }
@@ -165,7 +165,7 @@ class UserService {
     try {
       return await this.collection.insertOne(userData);
     } catch (error) {
-      if (error.code === 64) {  // WriteConcernError
+      if (error.code === 64) {  // MongoWriteConcernError
         // Majority not reached within timeout
         // Data may still exist on primary
         throw new Error('Write timeout - please retry');
@@ -179,30 +179,31 @@ class UserService {
 ## Handling Write Concern Errors
 
 ```javascript
+const { ObjectId } = require('mongodb');
+
 async function safeWrite(collection, document, options = {}) {
+  const documentToInsert = { _id: new ObjectId(), ...document };
   const writeConcern = {
     w: 'majority',
-    wtimeout: 5000,
+    wtimeoutMS: 5000,
     ...options.writeConcern
   };
 
   try {
-    const result = await collection.insertOne(document, { writeConcern });
+    const result = await collection.insertOne(documentToInsert, { writeConcern });
     return { success: true, id: result.insertedId };
 
   } catch (error) {
-    // WriteConcernError: write succeeded on primary but concern not met
-    if (error.code === 64 || error.name === 'WriteConcernError') {
+    // MongoWriteConcernError: write succeeded on primary but concern not met
+    if (error.code === 64 || error.name === 'MongoWriteConcernError') {
       console.warn('Write concern not met:', error.message);
 
-      // Check if write actually succeeded on primary
-      if (error.result?.insertedId) {
-        return {
-          success: true,
-          id: error.result.insertedId,
-          warning: 'Write concern timeout - data may not be fully replicated'
-        };
-      }
+      // The primary write succeeded, but replication guarantees were not met
+      return {
+        success: true,
+        id: documentToInsert._id,
+        warning: 'Write concern timeout - data may not be fully replicated'
+      };
     }
 
     // WriteError: write failed entirely
@@ -214,22 +215,38 @@ async function safeWrite(collection, document, options = {}) {
   }
 }
 
-// Retry with degraded write concern
+// Retry with degraded write concern only for idempotent writes
 async function writeWithFallback(collection, document) {
+  const documentToInsert = { _id: new ObjectId(), ...document };
+
   try {
     // Try with majority first
-    return await collection.insertOne(document, {
-      writeConcern: { w: 'majority', wtimeout: 3000 }
+    return await collection.insertOne(documentToInsert, {
+      writeConcern: { w: 'majority', wtimeoutMS: 3000 }
     });
   } catch (error) {
     if (error.code === 64) {
       console.warn('Majority unavailable, falling back to w:1');
 
-      // Fall back to primary-only acknowledgment
-      return await collection.insertOne(document, {
-        writeConcern: { w: 1 }
-      });
+      // The original insert may already exist on the primary, so preserve _id
+      return await collection.replaceOne(
+        { _id: documentToInsert._id },
+        documentToInsert,
+        {
+          upsert: true,
+          writeConcern: { w: 1 }
+        }
+      );
     }
+
+    if (error.code === 11000) {
+      return {
+        acknowledged: true,
+        insertedId: documentToInsert._id,
+        warning: 'Document already existed after write concern timeout'
+      };
+    }
+
     throw error;
   }
 }
@@ -238,13 +255,13 @@ async function writeWithFallback(collection, document) {
 ## Write Concern with Transactions
 
 ```javascript
-// Transactions inherit write concern from session or use majority by default
+// Transactions use the transaction-level write concern at commit time
 async function transferFunds(client, fromAccount, toAccount, amount) {
   const session = client.startSession();
 
   // Transaction-level write concern
   const transactionOptions = {
-    writeConcern: { w: 'majority', j: true },
+    writeConcern: { w: 'majority', journal: true },
     readConcern: { level: 'majority' }
   };
 
@@ -285,7 +302,7 @@ async function measureWriteLatency(collection) {
     { w: 0 },
     { w: 1 },
     { w: 'majority' },
-    { w: 'majority', j: true }
+    { w: 'majority', journal: true }
   ];
 
   const results = [];
@@ -329,39 +346,40 @@ Use tags to require acknowledgment from specific members.
 ```javascript
 // Configure replica set with custom write concern
 // Run on primary:
-rs.reconfig({
-  _id: "rs0",
-  members: [
-    { _id: 0, host: "mongo1:27017", tags: { dc: "east" } },
-    { _id: 1, host: "mongo2:27017", tags: { dc: "east" } },
-    { _id: 2, host: "mongo3:27017", tags: { dc: "west" } }
-  ],
-  settings: {
-    getLastErrorModes: {
-      // Custom write concern: must acknowledge in both datacenters
-      multiDC: { dc: 2 }
-    }
+const conf = rs.conf();
+
+conf.members[0].tags = { dc: "east" };
+conf.members[1].tags = { dc: "east" };
+conf.members[2].tags = { dc: "west" };
+conf.settings = {
+  ...conf.settings,
+  getLastErrorModes: {
+    ...conf.settings.getLastErrorModes,
+    // Custom write concern: must acknowledge in both datacenters
+    multiDC: { dc: 2 }
   }
-});
+};
+
+rs.reconfig(conf);
 
 // Use custom write concern
 await collection.insertOne(document, {
-  writeConcern: { w: 'multiDC', wtimeout: 10000 }
+  writeConcern: { w: 'multiDC', wtimeoutMS: 10000 }
 });
 
-// This ensures the write is acknowledged by at least one member
-// in each datacenter before returning
+// This ensures the write is acknowledged by members with two distinct
+// dc tag values before returning
 ```
 
 ## Best Practices
 
 **Choose write concern based on data importance:**
-- Critical data: `w: "majority"` with `j: true`
-- Important data: `w: "majority"` without journal
+- Critical data: `w: "majority"` with `journal: true`
+- Important data: `w: "majority"` without explicit journal
 - Non-critical data: `w: 1` is often sufficient
 - Ephemeral data: `w: 0` for maximum throughput
 
-**Always set wtimeout:**
+**Always set wtimeoutMS:**
 - Prevents indefinite blocking
 - 5000ms is a reasonable starting point
 - Adjust based on network latency and replica set size
@@ -381,7 +399,7 @@ async function durableWrite(collection, document, options = {}) {
   const {
     retries = 3,
     retryDelay = 100,
-    writeConcern = { w: 'majority', wtimeout: 5000 }
+    writeConcern = { w: 'majority', wtimeoutMS: 5000 }
   } = options;
 
   let lastError;
@@ -392,8 +410,12 @@ async function durableWrite(collection, document, options = {}) {
     } catch (error) {
       lastError = error;
 
-      if (error.code === 64 && attempt < retries) {
-        console.warn(`Write concern timeout, retry ${attempt}/${retries}`);
+      if (error.code === 64) {
+        throw error;
+      }
+
+      if (error.code !== 11000 && attempt < retries) {
+        console.warn(`Write failed, retry ${attempt}/${retries}`);
         await new Promise(r => setTimeout(r, retryDelay * attempt));
         continue;
       }
@@ -411,8 +433,8 @@ async function durableWrite(collection, document, options = {}) {
 Write concern is the dial between durability and performance:
 
 - `w: "majority"` should be your default for important data
-- Add `j: true` when data must survive crashes
-- Always set `wtimeout` to prevent indefinite blocking
+- Add `journal: true` when data must survive crashes
+- Always set `wtimeoutMS` to prevent indefinite blocking
 - Use `w: 0` only for truly disposable data
 - Handle write concern errors appropriately since timeouts do not mean failure
 
