@@ -77,7 +77,7 @@ spec:
               memory: "6Gi"
               cpu: "4"
           env:
-            - name: JAVA_OPTS
+            - name: JAVA_TOOL_OPTIONS
               value: >-
                 -Xms4g
                 -Xmx4g
@@ -150,7 +150,7 @@ Settings explained:
 ZGC provides sub-millisecond pause times, ideal for latency-sensitive applications.
 
 ```bash
-# ZGC configuration (Java 15+)
+# Generational ZGC configuration (Java 21+)
 java -XX:+UseZGC \
      -XX:+ZGenerational \
      -XX:SoftMaxHeapSize=4g \
@@ -160,7 +160,7 @@ java -XX:+UseZGC \
 
 ZGC characteristics:
 - Pause times under 1ms regardless of heap size
-- Handles heaps from 8MB to 16TB
+- Works well with heap sizes from a few hundred megabytes to many terabytes
 - Some throughput overhead compared to G1
 - Best for applications requiring consistent response times
 
@@ -220,6 +220,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
 public class ThreadPoolConfig {
@@ -249,7 +250,7 @@ public class ThreadPoolConfig {
 Configure thread stack size for applications with many threads.
 
 ```bash
-# Reduce thread stack size (default is 1MB)
+# Reduce thread stack size (default is platform-specific, often 1MB on 64-bit Linux)
 java -Xss512k \
      -Xms4g -Xmx4g \
      -jar application.jar
@@ -343,14 +344,10 @@ For applications requiring fast startup (serverless, scale-to-zero).
 
 ```bash
 # Faster startup with CDS (Class Data Sharing)
-# Step 1: Generate class list
-java -XX:DumpLoadedClassList=classes.lst -jar application.jar
+# Step 1: Generate a dynamic archive during a representative training run
+java -XX:ArchiveClassesAtExit=app-cds.jsa -jar application.jar
 
-# Step 2: Create shared archive
-java -Xshare:dump -XX:SharedClassListFile=classes.lst \
-     -XX:SharedArchiveFile=app-cds.jsa -jar application.jar
-
-# Step 3: Use shared archive
+# Step 2: Use shared archive
 java -Xshare:on -XX:SharedArchiveFile=app-cds.jsa \
      -jar application.jar
 ```
@@ -364,7 +361,7 @@ For minimal startup time and memory footprint, consider GraalVM native image.
 <plugin>
     <groupId>org.graalvm.buildtools</groupId>
     <artifactId>native-maven-plugin</artifactId>
-    <version>0.9.28</version>
+    <version>1.1.2</version>
     <configuration>
         <buildArgs>
             <buildArg>--no-fallback</buildArg>
@@ -416,10 +413,11 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
+  metrics:
     distribution:
       percentiles-histogram:
         http.server.requests: true
