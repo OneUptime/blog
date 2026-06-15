@@ -101,11 +101,11 @@ impl RingBuffer {
 }
 ```
 
-This ring buffer lets you accumulate incoming bytes and parse messages directly from the buffer without intermediate copies. The `readable_slice` method returns a reference to the data in place.
+This buffer lets you accumulate incoming bytes and parse messages directly from the buffer without intermediate copies on the read path. The `readable_slice` method returns a reference to the data in place, while `consume` occasionally compacts the unread bytes so future reads still have contiguous space.
 
-## Lock-Free Channels for Multi-Threaded Processing
+## Low-Overhead Channels for Multi-Threaded Processing
 
-When you need to fan out events across multiple processing threads, standard `mpsc` channels introduce mutex contention. Lock-free alternatives like `crossbeam-channel` or custom SPSC (Single Producer Single Consumer) queues eliminate this overhead.
+When you need to fan out events across multiple processing threads, channel choice affects both throughput and tail latency. High-performance alternatives like `crossbeam-channel`, or custom SPSC (Single Producer Single Consumer) queues when your topology allows them, reduce coordination overhead in hot paths.
 
 ```rust
 use crossbeam_channel::{bounded, Receiver, Sender};
@@ -129,7 +129,6 @@ fn run_producer(tx: Sender<Event>, mut source: impl FnMut() -> Option<Event>) {
 
 // Consumer thread - processes events with minimal overhead
 fn run_consumer(rx: Receiver<Event>, mut handler: impl FnMut(Event)) {
-    // recv_batch would be even faster for batched processing
     for event in rx {
         handler(event);
     }
@@ -278,7 +277,11 @@ impl LatencyHistogram {
 
     pub fn percentile(&self, p: f64) -> usize {
         let total: u64 = self.buckets.iter().sum::<u64>() + self.overflow;
-        let target = (total as f64 * p / 100.0) as u64;
+        if total == 0 {
+            return 0;
+        }
+
+        let target = ((total as f64 * p / 100.0).ceil() as u64).max(1);
         let mut cumulative = 0u64;
 
         for (micros, count) in self.buckets.iter().enumerate() {
