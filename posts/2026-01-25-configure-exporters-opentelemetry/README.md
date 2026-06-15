@@ -27,23 +27,23 @@ The OTLP HTTP exporter is the most common choice for sending telemetry to backen
 
 ```yaml
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: "https://your-backend.example.com"
     headers:
-      Authorization: "Bearer ${API_TOKEN}"
+      Authorization: "Bearer ${env:API_TOKEN}"
 ```
 
 ### Complete Production Configuration
 
 ```yaml
 exporters:
-  otlphttp:
+  otlp_http:
     # Backend endpoint
     endpoint: "https://otlp.example.com"
 
     # Custom headers for authentication
     headers:
-      Authorization: "Bearer ${OTEL_API_KEY}"
+      Authorization: "Bearer ${env:OTEL_API_KEY}"
       X-Custom-Header: "custom-value"
 
     # TLS configuration
@@ -82,35 +82,38 @@ Some backends use different endpoints for traces, metrics, and logs:
 
 ```yaml
 exporters:
-  otlphttp/traces:
-    endpoint: "https://traces.example.com/v1/traces"
+  otlp_http/traces:
+    endpoint: "https://traces.example.com"
+    traces_endpoint: "https://traces.example.com/v1/traces"
     headers:
-      Authorization: "Bearer ${TRACES_API_KEY}"
+      Authorization: "Bearer ${env:TRACES_API_KEY}"
 
-  otlphttp/metrics:
-    endpoint: "https://metrics.example.com/v1/metrics"
+  otlp_http/metrics:
+    endpoint: "https://metrics.example.com"
+    metrics_endpoint: "https://metrics.example.com/v1/metrics"
     headers:
-      Authorization: "Bearer ${METRICS_API_KEY}"
+      Authorization: "Bearer ${env:METRICS_API_KEY}"
 
-  otlphttp/logs:
-    endpoint: "https://logs.example.com/v1/logs"
+  otlp_http/logs:
+    endpoint: "https://logs.example.com"
+    logs_endpoint: "https://logs.example.com/v1/logs"
     headers:
-      Authorization: "Bearer ${LOGS_API_KEY}"
+      Authorization: "Bearer ${env:LOGS_API_KEY}"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/traces]
+      exporters: [otlp_http/traces]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/metrics]
+      exporters: [otlp_http/metrics]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/logs]
+      exporters: [otlp_http/logs]
 ```
 
 ## OTLP gRPC Exporter
@@ -129,7 +132,7 @@ exporters:
 
     # Headers for authentication
     headers:
-      api-key: "${OTEL_API_KEY}"
+      api-key: "${env:OTEL_API_KEY}"
 
     # Compression (gzip, snappy, zstd, or none)
     compression: gzip
@@ -200,8 +203,8 @@ exporters:
     # Format: json or proto
     format: json
 
-    # Compress rotated files
-    compression: gzip
+    # Compress telemetry data
+    compression: zstd
 ```
 
 ## Prometheus Exporter
@@ -245,12 +248,12 @@ Push metrics to Prometheus-compatible backends.
 
 ```yaml
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "https://prometheus.example.com/api/v1/write"
 
     # Authentication
     headers:
-      Authorization: "Bearer ${PROMETHEUS_TOKEN}"
+      Authorization: "Bearer ${env:PROMETHEUS_TOKEN}"
 
     # TLS configuration
     tls:
@@ -265,6 +268,11 @@ exporters:
       enabled: true
       initial_interval: 5s
       max_interval: 30s
+
+    # Remote write queue settings
+    remote_write_queue:
+      enabled: true
+      queue_size: 10000
 ```
 
 ## Kafka Exporter
@@ -279,13 +287,13 @@ exporters:
       - kafka-2:9092
       - kafka-3:9092
 
-    # Topic per signal type
-    topic: otel-traces
+    # Topic and encoding per signal type
+    traces:
+      topic: otel-traces
+      # Encoding: otlp_proto, otlp_json, jaeger_proto, jaeger_json
+      encoding: otlp_proto
 
-    # Encoding: otlp_proto, otlp_json, jaeger_proto, jaeger_json
-    encoding: otlp_proto
-
-    # Partition strategy
+    # Producer settings
     producer:
       max_message_bytes: 10000000
       required_acks: 1
@@ -294,11 +302,11 @@ exporters:
     # Authentication
     auth:
       sasl:
-        username: ${KAFKA_USERNAME}
-        password: ${KAFKA_PASSWORD}
+        username: ${env:KAFKA_USERNAME}
+        password: ${env:KAFKA_PASSWORD}
         mechanism: SCRAM-SHA-256
-      tls:
-        ca_file: /etc/ssl/certs/kafka-ca.crt
+    tls:
+      ca_file: /etc/ssl/certs/kafka-ca.crt
 ```
 
 ## Load Balancing Exporter
@@ -307,7 +315,7 @@ Distribute telemetry across multiple backend instances.
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         timeout: 10s
@@ -337,15 +345,15 @@ Send telemetry to multiple backends simultaneously.
 
 ```yaml
 exporters:
-  otlphttp/primary:
+  otlp_http/primary:
     endpoint: "https://primary-backend.example.com"
     headers:
-      Authorization: "Bearer ${PRIMARY_API_KEY}"
+      Authorization: "Bearer ${env:PRIMARY_API_KEY}"
 
-  otlphttp/backup:
+  otlp_http/backup:
     endpoint: "https://backup-backend.example.com"
     headers:
-      Authorization: "Bearer ${BACKUP_API_KEY}"
+      Authorization: "Bearer ${env:BACKUP_API_KEY}"
 
   file/archive:
     path: /var/otel/archive.json
@@ -357,7 +365,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/primary, otlphttp/backup, file/archive]
+      exporters: [otlp_http/primary, otlp_http/backup, file/archive]
 ```
 
 ## Sending Queue Configuration
@@ -366,7 +374,7 @@ The sending queue buffers data when the backend is slow or unavailable.
 
 ```yaml
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: "https://backend.example.com"
 
     sending_queue:
@@ -401,7 +409,7 @@ Configure how exporters handle transient failures.
 
 ```yaml
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: "https://backend.example.com"
 
     retry_on_failure:
@@ -433,7 +441,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 Key metrics to monitor:
@@ -442,6 +455,8 @@ Key metrics to monitor:
 - `otelcol_exporter_queue_size` - Current queue depth
 - `otelcol_exporter_queue_capacity` - Maximum queue capacity
 - `otelcol_exporter_enqueue_failed_spans` - Items dropped due to full queue
+- `otelcol_exporter_sent_metric_points` - Successfully exported metric points
+- `otelcol_exporter_send_failed_log_records` - Failed log exports
 
 ## Complete Production Example
 
@@ -465,10 +480,10 @@ processors:
     timeout: 5s
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: "https://otlp.backend.example.com"
     headers:
-      Authorization: "Bearer ${OTEL_API_KEY}"
+      Authorization: "Bearer ${env:OTEL_API_KEY}"
     compression: gzip
     timeout: 30s
     retry_on_failure:
@@ -499,17 +514,17 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp, debug]
+      exporters: [otlp_http, debug]
 
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ## Conclusion
