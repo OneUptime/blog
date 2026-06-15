@@ -197,7 +197,7 @@ struct Invariant<'a, T: 'a> {
     _marker: PhantomData<fn(&'a T) -> &'a T>,
 }
 
-// Owned semantics (covariant over T, drop check)
+// Owned semantics (covariant over T, affects auto traits and some drop-check cases)
 struct OwnedMarker<T> {
     _marker: PhantomData<T>,
 }
@@ -475,7 +475,7 @@ PhantomData enables type-level programming without runtime cost:
 | Use Case | PhantomData Pattern |
 |----------|---------------------|
 | Unused type parameter | `PhantomData<T>` |
-| Ownership semantics | `PhantomData<T>` (drop check) |
+| Ownership semantics | `PhantomData<T>` (ownership/auto-trait marker) |
 | Borrowed semantics | `PhantomData<&'a T>` |
 | Type state machine | States as phantom types |
 | Unit types | Marker structs in PhantomData |
