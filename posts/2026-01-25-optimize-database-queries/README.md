@@ -50,12 +50,14 @@ The query planner decides the execution strategy based on:
 
 -- Log queries taking more than 100ms
 ALTER SYSTEM SET log_min_duration_statement = '100ms';
+SELECT pg_reload_conf();
 
 -- For detailed analysis, log all queries temporarily
 SET log_statement = 'all';
 SET log_duration = on;
 
 -- Check pg_stat_statements for query performance
+-- Requires pg_stat_statements in shared_preload_libraries and a server restart first
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 -- Find slowest queries by total time
@@ -164,7 +166,7 @@ LIMIT 10;
 CREATE INDEX idx_orders_user_id ON orders(user_id);
 
 -- Composite index for queries filtering on multiple columns
--- Column order matters: most selective first, or match query pattern
+-- Column order matters: match the query pattern, often equality columns before range/sort columns
 CREATE INDEX idx_orders_user_status_date ON orders(user_id, status, created_at);
 
 -- Partial index for queries on subset of data (very efficient)
@@ -249,16 +251,16 @@ FROM (
 INNER JOIN orders o ON o.user_id = u.id;
 ```
 
-### Use EXISTS Instead of IN for Subqueries
+### Consider EXISTS for Subqueries
 
 ```sql
--- Slower: IN with subquery (executes subquery fully)
+-- May be less efficient on some engines or query shapes
 SELECT * FROM orders
 WHERE user_id IN (
     SELECT id FROM users WHERE country = 'US'
 );
 
--- Faster: EXISTS (stops at first match)
+-- Often better for correlated existence checks
 SELECT * FROM orders o
 WHERE EXISTS (
     SELECT 1 FROM users u
@@ -364,12 +366,12 @@ WHERE n_dead_tup > n_live_tup * 0.1;  -- >10% dead tuples
 -- PostgreSQL: Check table and index bloat
 SELECT
     tablename,
-    pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename)) as total_size,
-    pg_size_pretty(pg_relation_size(schemaname || '.' || tablename)) as table_size,
-    pg_size_pretty(pg_indexes_size(schemaname || '.' || tablename)) as index_size
+    pg_size_pretty(pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass)) as total_size,
+    pg_size_pretty(pg_relation_size(format('%I.%I', schemaname, tablename)::regclass)) as table_size,
+    pg_size_pretty(pg_indexes_size(format('%I.%I', schemaname, tablename)::regclass)) as index_size
 FROM pg_tables
 WHERE schemaname = 'public'
-ORDER BY pg_total_relation_size(schemaname || '.' || tablename) DESC;
+ORDER BY pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass) DESC;
 
 -- Rebuild bloated indexes
 REINDEX INDEX CONCURRENTLY idx_orders_user_id;
