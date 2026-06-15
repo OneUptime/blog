@@ -8,7 +8,7 @@ Description: Learn how to use Redis transactions with MULTI/EXEC to execute mult
 
 ---
 
-> Redis transactions let you execute multiple commands as a single atomic operation. Unlike database transactions with rollback capabilities, Redis transactions guarantee that either all commands execute or none do, and that no other client can interrupt the sequence.
+> Redis transactions let you execute multiple commands as a single isolated operation. Unlike database transactions with rollback capabilities, Redis transactions guarantee that queued commands execute without another client interrupting the sequence, but Redis does not roll back commands if one command fails during EXEC.
 
 Understanding Redis transactions is essential for building reliable applications that need to modify multiple keys consistently. This guide covers MULTI/EXEC basics, optimistic locking with WATCH, and practical patterns for concurrent operations.
 
@@ -119,44 +119,47 @@ class BankAccount:
 
         for attempt in range(max_retries):
             try:
-                # WATCH the keys we're going to modify
-                # If another client modifies them, EXEC will fail
-                self.redis.watch(from_key, to_key)
+                with self.redis.pipeline() as pipe:
+                    # WATCH the keys we're going to modify
+                    # If another client modifies them, EXEC will fail
+                    pipe.watch(from_key, to_key)
 
-                # Get current balances
-                from_balance = float(self.redis.get(from_key) or 0)
-                to_balance = float(self.redis.get(to_key) or 0)
+                    # Get current balances
+                    # After WATCH, pipeline commands execute immediately
+                    # until pipe.multi() starts the transaction.
+                    from_balance = float(pipe.get(from_key) or 0)
+                    to_balance = float(pipe.get(to_key) or 0)
 
-                # Validate transfer
-                if from_balance < amount:
-                    self.redis.unwatch()
-                    return TransferResult(
-                        success=False,
-                        message="Insufficient funds"
+                    # Validate transfer
+                    if from_balance < amount:
+                        pipe.unwatch()
+                        return TransferResult(
+                            success=False,
+                            message="Insufficient funds"
+                        )
+
+                    # Calculate new balances
+                    new_from_balance = from_balance - amount
+                    new_to_balance = to_balance + amount
+
+                    # Start transaction
+                    pipe.multi()
+
+                    # Queue the commands
+                    pipe.set(from_key, new_from_balance)
+                    pipe.set(to_key, new_to_balance)
+                    pipe.lpush(
+                        self._history_key(from_account),
+                        f"transfer_out:{to_account}:{amount}"
+                    )
+                    pipe.lpush(
+                        self._history_key(to_account),
+                        f"transfer_in:{from_account}:{amount}"
                     )
 
-                # Calculate new balances
-                new_from_balance = from_balance - amount
-                new_to_balance = to_balance + amount
-
-                # Start transaction
-                pipe = self.redis.pipeline()
-
-                # Queue the commands
-                pipe.set(from_key, new_from_balance)
-                pipe.set(to_key, new_to_balance)
-                pipe.lpush(
-                    self._history_key(from_account),
-                    f"transfer_out:{to_account}:{amount}"
-                )
-                pipe.lpush(
-                    self._history_key(to_account),
-                    f"transfer_in:{from_account}:{amount}"
-                )
-
-                # Execute transaction
-                # This will raise WatchError if watched keys changed
-                pipe.execute()
+                    # Execute transaction
+                    # This will raise WatchError if watched keys changed
+                    pipe.execute()
 
                 return TransferResult(
                     success=True,
@@ -215,20 +218,21 @@ def increment_with_check(redis_client: redis.Redis, key: str, max_value: int) ->
 
     for _ in range(max_retries):
         try:
-            # Watch the key for changes
-            redis_client.watch(key)
+            with redis_client.pipeline() as pipe:
+                # Watch the key for changes
+                pipe.watch(key)
 
-            # Read current value
-            current = int(redis_client.get(key) or 0)
+                # Read current value
+                current = int(pipe.get(key) or 0)
 
-            if current >= max_value:
-                redis_client.unwatch()
-                return False
+                if current >= max_value:
+                    pipe.unwatch()
+                    return False
 
-            # Start transaction
-            pipe = redis_client.pipeline()
-            pipe.incr(key)
-            pipe.execute()
+                # Start transaction
+                pipe.multi()
+                pipe.incr(key)
+                pipe.execute()
 
             return True
 
@@ -255,25 +259,26 @@ def reserve_inventory(
 
     for attempt in range(max_retries):
         try:
-            redis_client.watch(stock_key, reserved_key)
+            with redis_client.pipeline() as pipe:
+                pipe.watch(stock_key, reserved_key)
 
-            # Get current inventory state
-            available = int(redis_client.get(stock_key) or 0)
-            reserved = int(redis_client.get(reserved_key) or 0)
-            actual_available = available - reserved
+                # Get current inventory state
+                available = int(pipe.get(stock_key) or 0)
+                reserved = int(pipe.get(reserved_key) or 0)
+                actual_available = available - reserved
 
-            if actual_available < quantity:
-                redis_client.unwatch()
-                return {
-                    'success': False,
-                    'error': 'Insufficient inventory',
-                    'available': actual_available
-                }
+                if actual_available < quantity:
+                    pipe.unwatch()
+                    return {
+                        'success': False,
+                        'error': 'Insufficient inventory',
+                        'available': actual_available
+                    }
 
-            # Reserve the inventory
-            pipe = redis_client.pipeline()
-            pipe.incrby(reserved_key, quantity)
-            pipe.execute()
+                # Reserve the inventory
+                pipe.multi()
+                pipe.incrby(reserved_key, quantity)
+                pipe.execute()
 
             return {
                 'success': True,
@@ -311,7 +316,7 @@ class BankAccount {
     }
 
     async createAccount(accountId, initialBalance) {
-        const pipeline = this.redis.pipeline();
+        const pipeline = this.redis.multi();
 
         pipeline.set(this.balanceKey(accountId), initialBalance);
         pipeline.lpush(this.historyKey(accountId),
@@ -445,16 +450,17 @@ def safe_increment(redis_client: redis.Redis, key: str, max_val: int) -> int:
     """
     while True:
         try:
-            redis_client.watch(key)
-            current = int(redis_client.get(key) or 0)
+            with redis_client.pipeline() as pipe:
+                pipe.watch(key)
+                current = int(pipe.get(key) or 0)
 
-            if current >= max_val:
-                redis_client.unwatch()
-                return current
+                if current >= max_val:
+                    pipe.unwatch()
+                    return current
 
-            pipe = redis_client.pipeline()
-            pipe.incr(key)
-            pipe.execute()
+                pipe.multi()
+                pipe.incr(key)
+                pipe.execute()
 
             return current + 1
 
@@ -476,19 +482,20 @@ def move_between_lists(
     """
     while True:
         try:
-            redis_client.watch(source_list)
+            with redis_client.pipeline() as pipe:
+                pipe.watch(source_list)
 
-            # Check if value exists in source
-            items = redis_client.lrange(source_list, 0, -1)
-            if value not in items:
-                redis_client.unwatch()
-                return False
+                # Check if value exists in source
+                items = pipe.lrange(source_list, 0, -1)
+                if value not in items:
+                    pipe.unwatch()
+                    return False
 
-            # Move atomically
-            pipe = redis_client.pipeline()
-            pipe.lrem(source_list, 1, value)
-            pipe.rpush(dest_list, value)
-            pipe.execute()
+                # Move atomically
+                pipe.multi()
+                pipe.lrem(source_list, 1, value)
+                pipe.rpush(dest_list, value)
+                pipe.execute()
 
             return True
 
@@ -510,16 +517,17 @@ def set_if_higher(
     """
     while True:
         try:
-            redis_client.watch(key)
-            current = float(redis_client.get(key) or 0)
+            with redis_client.pipeline() as pipe:
+                pipe.watch(key)
+                current = float(pipe.get(key) or 0)
 
-            if new_value <= current:
-                redis_client.unwatch()
-                return False
+                if new_value <= current:
+                    pipe.unwatch()
+                    return False
 
-            pipe = redis_client.pipeline()
-            pipe.set(key, new_value)
-            pipe.execute()
+                pipe.multi()
+                pipe.set(key, new_value)
+                pipe.execute()
 
             return True
 
@@ -555,13 +563,12 @@ def demonstrate_no_rollback():
     pipe.incr('string_key')  # Will fail (can't INCR a string)
     pipe.incr('counter')  # Will succeed
 
-    try:
-        results = pipe.execute()
-        # results[0] = 11 (success)
-        # results[1] = ResponseError (failure)
-        # results[2] = 12 (success - NOT rolled back)
-    except redis.ResponseError as e:
-        # Handle the error
+    results = pipe.execute(raise_on_error=False)
+    # results[0] = 11 (success)
+    # results[1] = ResponseError (failure)
+    # results[2] = 12 (success - NOT rolled back)
+    if isinstance(results[1], redis.ResponseError):
+        # Handle the command error
         pass
 ```
 
