@@ -67,13 +67,13 @@ func main() {
 
     // Access values with type assertions
     name := result["name"].(string)
-    age := result["age"].(float64) // JSON numbers become float64
+    age := result["age"].(float64) // JSON numbers in interface values become float64
 
     fmt.Printf("Name: %s, Age: %.0f\n", name, age)
 }
 ```
 
-The catch with this approach is that JSON numbers always become `float64` in Go, and you need type assertions to work with the values. This is where reflection helps.
+The catch with this approach is that JSON numbers become `float64` when unmarshaled into interface values by `json.Unmarshal`, and you need type assertions to work with the values. This is where reflection helps.
 
 ---
 
@@ -104,10 +104,10 @@ func GetField[T any](data map[string]interface{}, key string) (T, bool) {
     rv := reflect.ValueOf(val)
 
     // Get the target type from the generic parameter
-    targetType := reflect.TypeOf(zero)
+    targetType := reflect.TypeFor[T]()
 
     // Check if direct conversion is possible
-    if rv.Type().ConvertibleTo(targetType) {
+    if rv.CanConvert(targetType) {
         converted := rv.Convert(targetType)
         return converted.Interface().(T), true
     }
@@ -272,7 +272,6 @@ import (
     "encoding/json"
     "fmt"
     "reflect"
-    "strings"
 )
 
 // JSONVisitor is called for each value in the JSON structure.
@@ -348,7 +347,7 @@ func main() {
 }
 ```
 
-Output:
+Example output (map iteration order may vary):
 ```text
 active                    = true (bool)
 loginCount                = 42 (float64)
@@ -453,7 +452,7 @@ func setFieldValue(field reflect.Value, val interface{}) error {
         return nil
     }
 
-    // Handle numeric conversions (JSON numbers are float64)
+    // Handle numeric conversions (JSON numbers in interface values are float64)
     if jsonVal.Kind() == reflect.Float64 {
         switch field.Kind() {
         case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -573,7 +572,7 @@ Typical results show static parsing is 2-3x faster than dynamic parsing. Reflect
 
 ## Common Pitfalls
 
-**1. Forgetting that JSON numbers are float64**
+**1. Forgetting that JSON numbers in interface values are float64 by default**
 
 ```go
 // Wrong - will panic
