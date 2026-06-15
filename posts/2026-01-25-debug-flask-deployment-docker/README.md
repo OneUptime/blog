@@ -36,7 +36,7 @@ docker run -it flask-app
 # Bad: Missing system dependencies for some Python packages
 FROM python:3.11-slim
 COPY requirements.txt .
-RUN pip install -r requirements.txt  # psycopg2 fails silently
+RUN pip install -r requirements.txt  # psycopg2 build may fail without libpq-dev and gcc
 
 # Good: Install system dependencies first
 FROM python:3.11-slim
@@ -175,7 +175,7 @@ gunicorn "app:create_app()"
 
 ## Issue 4: Static Files Not Found
 
-Flask serves static files in development, but in production with Gunicorn, you might see 404 errors.
+Flask can serve static files through the app, but in production with Gunicorn, you might see 404 errors if the files are not copied into the image or the static path is misconfigured.
 
 ### Check Static File Configuration
 
@@ -212,8 +212,6 @@ For production, serve static files with Nginx:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   web:
     build: ./flask-app
@@ -269,8 +267,6 @@ class Config:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   web:
     build: .
@@ -318,6 +314,7 @@ DATABASE_URL = os.environ.get(
 
 ```python
 # app.py
+import os
 import time
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -333,7 +330,8 @@ def wait_for_db(max_retries=10):
         try:
             # Try to connect
             with app.app_context():
-                db.engine.connect()
+                with db.engine.connect():
+                    pass
             print("Database is ready!")
             return True
         except OperationalError:
