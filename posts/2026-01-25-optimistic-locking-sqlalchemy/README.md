@@ -10,7 +10,7 @@ Description: Learn how to implement optimistic locking in SQLAlchemy to handle c
 
 > When multiple users or processes try to update the same database record simultaneously, you have a concurrency problem. Without proper handling, one update can silently overwrite another, leading to lost data. Optimistic locking is a pattern that detects these conflicts and lets you handle them gracefully.
 
-The term "optimistic" comes from the assumption that conflicts are rare. Instead of locking records before reading them, you let updates proceed and check for conflicts at commit time. This approach scales better than pessimistic locking because you are not holding database locks while users fill out forms or while background jobs process data.
+The term "optimistic" comes from the assumption that conflicts are rare. Instead of locking records before reading them, you let updates proceed and check for conflicts when the session flushes changes, such as during commit. This approach scales better than pessimistic locking because you are not holding database locks while users fill out forms or while background jobs process data.
 
 ---
 
@@ -45,9 +45,8 @@ The most common optimistic locking implementation uses a version column. Every u
 # models.py
 
 # SQLAlchemy models with optimistic locking support
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, event
-from sqlalchemy.orm import declarative_base, validates
-from sqlalchemy.exc import StaleDataError
+from sqlalchemy import Column, Integer, String, Numeric, DateTime
+from sqlalchemy.orm import declarative_base, declared_attr
 from datetime import datetime
 
 Base = declarative_base()
@@ -69,25 +68,15 @@ class VersionedMixin:
         onupdate=datetime.utcnow
     )
 
-    @staticmethod
-    def _increment_version(mapper, connection, target):
-        """Event listener to increment version on update"""
-        target.version += 1
-
-    @classmethod
-    def __declare_last__(cls):
-        """Register event listener after class is fully configured"""
-        event.listen(cls, 'before_update', cls._increment_version)
+    @declared_attr
+    def __mapper_args__(cls):
+        """Configure SQLAlchemy to use the version column for optimistic locking"""
+        return {'version_id_col': cls.version}
 
 
 class Account(VersionedMixin, Base):
     """Account model with optimistic locking"""
     __tablename__ = 'accounts'
-
-    # Configure SQLAlchemy to use version column for optimistic locking
-    __mapper_args__ = {
-        'version_id_col': version  # This tells SQLAlchemy to use this column
-    }
 
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -114,10 +103,6 @@ class Account(VersionedMixin, Base):
 class Product(VersionedMixin, Base):
     """Product model with optimistic locking for inventory"""
     __tablename__ = 'products'
-
-    __mapper_args__ = {
-        'version_id_col': version
-    }
 
     id = Column(Integer, primary_key=True)
     sku = Column(String(50), unique=True, nullable=False)
@@ -150,10 +135,8 @@ When SQLAlchemy detects a version mismatch, it raises `StaleDataError`. You need
 # repository.py
 # Repository pattern with optimistic locking error handling
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import StaleDataError
-from typing import Optional, TypeVar, Generic, Callable
-from contextlib import contextmanager
-import time
+from sqlalchemy.orm.exc import StaleDataError
+from typing import Optional, TypeVar, Callable
 import logging
 
 logger = logging.getLogger(__name__)
@@ -206,7 +189,7 @@ class AccountRepository:
             # Apply the operation
             operation(account)
 
-            # Commit will fail if version changed
+            # Commit flushes pending changes and will fail if the version changed
             self.session.commit()
 
             logger.info(
@@ -459,7 +442,9 @@ Sometimes you need more control over version handling. Here is a pattern for man
 # Manual version checking for complex scenarios
 from sqlalchemy import update, and_
 from sqlalchemy.orm import Session
-from typing import Optional, Dict, Any
+from typing import Callable, Dict, Any
+from datetime import datetime
+import time
 
 class ManualVersionRepository:
     """
@@ -598,9 +583,9 @@ An alternative to integer versions is using timestamps. This approach provides a
 # timestamp_versioning.py
 # Timestamp-based optimistic locking
 from sqlalchemy import Column, DateTime, Integer, String, Numeric
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import Session, declarative_base, declared_attr
+from sqlalchemy.orm.exc import StaleDataError
 from datetime import datetime
-from typing import Optional
 
 Base = declarative_base()
 
@@ -624,15 +609,18 @@ class TimestampVersionedMixin:
         default=datetime.utcnow
     )
 
+    @declared_attr
+    def __mapper_args__(cls):
+        """Configure SQLAlchemy to use the timestamp column for optimistic locking"""
+        return {
+            'version_id_col': cls.updated_at,
+            'version_id_generator': lambda v: datetime.utcnow()
+        }
+
 
 class Document(TimestampVersionedMixin, Base):
     """Document with timestamp-based versioning"""
     __tablename__ = 'documents'
-
-    __mapper_args__ = {
-        'version_id_col': updated_at,
-        'version_id_generator': lambda v: datetime.utcnow()
-    }
 
     id = Column(Integer, primary_key=True)
     title = Column(String(200), nullable=False)
@@ -642,7 +630,7 @@ class Document(TimestampVersionedMixin, Base):
     def update_content(self, new_content: str):
         """Update document content"""
         self.content = new_content
-        # updated_at is automatically set by SQLAlchemy
+        # updated_at is automatically set by SQLAlchemy's version generator
 
 
 class DocumentRepository:
@@ -702,9 +690,9 @@ import threading
 import time
 
 @pytest.fixture
-def engine():
+def engine(tmp_path):
     """Create test database"""
-    engine = create_engine('sqlite:///:memory:')
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
     Base.metadata.create_all(engine)
     return engine
 
@@ -730,7 +718,7 @@ def test_concurrent_updates_detected(session_factory):
         """First session updates slowly"""
         try:
             with session_factory() as session:
-                account = session.query(Account).get(account_id)
+                account = session.get(Account, account_id)
                 time.sleep(0.2)  # Simulate slow processing
                 account.deposit(50)
                 session.commit()
@@ -743,7 +731,7 @@ def test_concurrent_updates_detected(session_factory):
         try:
             time.sleep(0.1)  # Start slightly after session1
             with session_factory() as session:
-                account = session.query(Account).get(account_id)
+                account = session.get(Account, account_id)
                 account.withdraw(30)
                 session.commit()
                 results['session2'] = account.balance
@@ -762,7 +750,10 @@ def test_concurrent_updates_detected(session_factory):
 
     # One should succeed, one should fail with StaleDataError
     # (Which one depends on timing)
-    assert (errors['session1'] is not None) or (errors['session2'] is not None)
+    assert (
+        isinstance(errors['session1'], StaleDataError)
+        or isinstance(errors['session2'], StaleDataError)
+    )
 
 def test_retry_succeeds_after_conflict(session_factory):
     """Test that retry mechanism handles conflicts"""
@@ -799,7 +790,7 @@ def test_retry_succeeds_after_conflict(session_factory):
 
     # Final balance should be 100 + (5 * 10) = 150
     with session_factory() as session:
-        account = session.query(Account).get(account_id)
+        account = session.get(Account, account_id)
         assert account.balance == 150
 ```
 
