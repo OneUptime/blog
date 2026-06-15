@@ -17,7 +17,7 @@ The two flush commands differ in scope:
 | Command | Scope | Use Case |
 |---------|-------|----------|
 | FLUSHDB | Current database only | Clear test data while preserving other DBs |
-| FLUSHALL | All 16 databases | Complete reset of Redis instance |
+| FLUSHALL | All configured databases | Complete reset of Redis instance |
 
 ```python
 import redis
@@ -47,7 +47,7 @@ print(f"DB 1 after FLUSHALL: {r1.dbsize()} keys")  # 0
 
 ## Synchronous vs Asynchronous Flush
 
-By default, flush commands block Redis while deleting keys. For large datasets, use the ASYNC option to delete in the background:
+By default, flush commands block Redis while deleting keys. Starting with Redis 6.2, setting `lazyfree-lazy-user-flush yes` changes the default flush mode to asynchronous. For large datasets, use the ASYNC option to explicitly delete in the background:
 
 ```python
 import redis
@@ -63,7 +63,7 @@ print(f"Keys before flush: {r.dbsize()}")
 
 # Synchronous flush - blocks until complete
 start = time.time()
-r.flushdb()  # Blocks
+r.flushdb()  # Blocks unless lazyfree-lazy-user-flush is enabled
 print(f"Sync flush took: {time.time() - start:.3f}s")
 
 # Recreate test data
@@ -139,14 +139,19 @@ def safe_flushdb(host, port, db, require_confirmation=True):
     print(f"Deleted {before} keys from database {db}")
     return True
 
-# Disable FLUSHALL in production via Redis config
-# rename-command FLUSHALL ""
-# rename-command FLUSHDB ""
+# Disable FLUSHALL in production with ACLs
+# redis-cli ACL SETUSER appuser -FLUSHALL -FLUSHDB
 ```
 
 ## Disabling Flush Commands in Production
 
-Rename or disable dangerous commands in redis.conf:
+Prefer ACLs to block dangerous commands for application users:
+
+```bash
+redis-cli ACL SETUSER appuser -FLUSHALL -FLUSHDB
+```
+
+Renaming commands in redis.conf is deprecated, but may still be available on older deployments:
 
 ```bash
 # redis.conf
@@ -187,19 +192,19 @@ r = redis.Redis(host='localhost', port=6379, db=0)
 
 def delete_by_pattern(pattern, batch_size=1000):
     """
-    Delete keys matching a pattern without blocking.
-    Uses SCAN to iterate without blocking the server.
+    Delete keys matching a pattern without blocking on memory reclamation.
+    Uses SCAN to iterate incrementally and UNLINK to free memory asynchronously.
     """
     cursor = 0
     deleted = 0
 
     while True:
-        # SCAN is non-blocking, unlike KEYS
+        # SCAN is incremental, unlike KEYS
         cursor, keys = r.scan(cursor, match=pattern, count=batch_size)
 
         if keys:
-            # Delete in batches
-            r.delete(*keys)
+            # Unlink in batches
+            r.unlink(*keys)
             deleted += len(keys)
             print(f"Deleted {deleted} keys...")
 
@@ -291,18 +296,18 @@ time.sleep(5)
 
 ## Flush in Redis Cluster
 
-In Redis Cluster, FLUSHALL must be executed on each node:
+In Redis Cluster, only database 0 is supported, so FLUSHDB is identical to FLUSHALL. To flush the whole cluster, run the command on each primary node:
 
 ```python
 from redis.cluster import RedisCluster
 
 rc = RedisCluster(host='localhost', port=7000)
 
-# FLUSHALL on cluster affects all nodes
+# FLUSHALL on cluster affects all primary nodes through redis-py
 rc.flushall()
 
-# Or target specific nodes
-for node in rc.get_nodes():
+# Or target specific primary nodes
+for node in rc.get_primaries():
     print(f"Flushing {node.host}:{node.port}")
     node_client = node.redis_connection
     node_client.flushdb()
@@ -314,8 +319,8 @@ Using redis-cli:
 # Flush all nodes in cluster
 redis-cli --cluster call redis-1:7000 FLUSHALL
 
-# Or connect to each node
-for port in 7000 7001 7002 7003 7004 7005; do
+# Or connect to each primary node
+for port in 7000 7001 7002; do
     redis-cli -p $port FLUSHDB
 done
 ```
@@ -325,23 +330,21 @@ done
 If you accidentally flush production data:
 
 ```bash
-# If you have RDB snapshots
-# Stop Redis to prevent overwriting the dump
+# Stop Redis to prevent overwriting good snapshots or rewriting AOF
 redis-cli SHUTDOWN NOSAVE
 
-# Find latest backup
+# If you have RDB snapshots, find the latest backup
 ls -la /var/lib/redis/dump.rdb
 
 # Restore from backup
 cp /backup/dump.rdb /var/lib/redis/dump.rdb
 
-# Restart Redis
-systemctl start redis
-
-# If using AOF, check for recent AOF file
+# If using AOF, inspect the file and remove the accidental FLUSH command
+# before restarting, or restore an AOF backup from before the flush
 ls -la /var/lib/redis/appendonly.aof
 
-# Redis will replay AOF on startup if configured
+# Restart Redis after restoring a clean RDB or AOF
+systemctl start redis
 ```
 
 ## Summary
@@ -352,10 +355,10 @@ ls -la /var/lib/redis/appendonly.aof
 | FLUSHDB ASYNC | Single DB | No | Clear large database |
 | FLUSHALL | All DBs | Yes (default) | Complete reset |
 | FLUSHALL ASYNC | All DBs | No | Reset large instance |
-| SCAN + DELETE | Pattern | No | Selective cleanup |
+| SCAN + UNLINK | Pattern | Incremental | Selective cleanup |
 
 Best practices:
-- Disable or rename flush commands in production
+- Disable flush commands with ACLs in production
 - Use ASYNC for large datasets
 - Prefer SCAN-based deletion for selective cleanup
 - Always have backups before maintenance operations
