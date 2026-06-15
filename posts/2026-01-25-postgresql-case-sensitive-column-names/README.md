@@ -128,18 +128,21 @@ Most ORMs provide configuration to control identifier quoting. For example, with
 ```python
 # SQLAlchemy configuration to use lowercase names
 
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
+from typing import Optional
 
-Base = declarative_base()
+from sqlalchemy import Integer, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+class Base(DeclarativeBase):
+    pass
 
 class User(Base):
     # Explicitly set lowercase table and column names
     __tablename__ = 'users'
 
-    id = Column('id', Integer, primary_key=True)
-    first_name = Column('first_name', String(50))
-    last_name = Column('last_name', String(50))
+    id: Mapped[int] = mapped_column('id', Integer, primary_key=True)
+    first_name: Mapped[Optional[str]] = mapped_column('first_name', String(50))
+    last_name: Mapped[Optional[str]] = mapped_column('last_name', String(50))
 ```
 
 ## Escaping Quotes in Identifiers
@@ -228,7 +231,7 @@ WHERE table_name = 'your_table'
 
 ## Dynamic SQL with Case-Sensitive Names
 
-When building dynamic queries, use `quote_ident()` to safely quote identifiers.
+When building dynamic queries, use `quote_ident()` or `format()` with `%I` to safely quote identifiers.
 
 ```sql
 -- Function that safely quotes identifiers
@@ -240,7 +243,7 @@ CREATE OR REPLACE FUNCTION get_column_value(
 DECLARE
     result TEXT;
 BEGIN
-    -- quote_ident() adds quotes only when necessary
+    -- %I quotes identifiers like quote_ident()
     EXECUTE format(
         'SELECT %I::TEXT FROM %I WHERE id = $1',
         column_name,
@@ -263,7 +266,8 @@ If you need to standardize naming in an existing database:
 ```sql
 -- Generate ALTER statements to rename all mixed-case columns
 SELECT format(
-    'ALTER TABLE %I RENAME COLUMN %I TO %I;',
+    'ALTER TABLE %I.%I RENAME COLUMN %I TO %I;',
+    table_schema,
     table_name,
     column_name,
     lower(column_name)
