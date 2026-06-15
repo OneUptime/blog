@@ -209,6 +209,12 @@ func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     }
 
     log.Printf("Forwarding request to %s", backend.URL.String())
+
+    if lb.algorithm == "least-connections" {
+        connTracker.Increment(backend)
+        defer connTracker.Decrement(backend)
+    }
+
     backend.ServeHTTP(w, r)
 }
 ```
