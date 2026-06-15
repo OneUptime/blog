@@ -65,7 +65,7 @@ Solution without rebuilding:
 
 ```bash
 # Override entrypoint to fix permissions and run
-docker run --rm myapp:latest sh -c "chmod +x /app/start.sh && /app/start.sh"
+docker run --rm --entrypoint sh myapp:latest -c "chmod +x /app/start.sh && /app/start.sh"
 ```
 
 ## Cause 2: Executable Not Found
@@ -139,7 +139,7 @@ OCI runtime create failed: ... exec: "/app/start.sh": no such file or directory
 
 Check for Windows line endings:
 
-```bash
+```text
 # Show line endings
 docker run --rm --entrypoint cat myapp:latest -A /app/start.sh
 # #!/bin/bash^M$  <- ^M indicates Windows line ending
@@ -173,8 +173,8 @@ docker run --security-opt apparmor=unconfined myapp:latest
 For production, use appropriate security profiles:
 
 ```bash
-# Use default Docker seccomp profile
-docker run --security-opt seccomp=default myapp:latest
+# Use Docker's built-in seccomp profile
+docker run --security-opt seccomp=builtin myapp:latest
 
 # Or custom profile
 docker run --security-opt seccomp=/path/to/profile.json myapp:latest
@@ -202,7 +202,7 @@ docker run --userns=host myapp:latest
 ```
 
 ```dockerfile
-RUN chown -R 100000:100000 /app  # Use remapped UID
+RUN chown -R 1000:1000 /app  # Use the container UID/GID your app runs as
 ```
 
 ## Cause 7: Cgroup Configuration
@@ -240,7 +240,7 @@ Invalid resource constraints:
 OCI runtime create failed: ... invalid argument
 
 # Check your resource limits
-docker run --memory=0 myapp:latest  # Invalid: memory cannot be 0
+docker run --memory=4m myapp:latest  # Invalid: memory must be at least 6m when set
 ```
 
 Fix resource configurations:
@@ -282,7 +282,7 @@ sestatus
 # Check for SELinux denials
 ausearch -m avc -ts recent
 
-# Run with SELinux label
+# Disable SELinux label confinement for debugging
 docker run --security-opt label=disable myapp:latest
 
 # Or fix volumes with :z or :Z suffix
@@ -324,7 +324,7 @@ docker run --rm --entrypoint sh myapp:latest -c "echo Hello"
 docker run --rm --user root myapp:latest
 
 # Try without resource limits
-docker run --rm --memory=0 --cpus=0 myapp:latest
+docker run --rm myapp:latest
 ```
 
 ### Step 4: Compare with Working Container
@@ -336,8 +336,9 @@ docker run --rm alpine echo "Hello"
 # Check runc directly
 sudo runc --version
 
-# Test runc directly (advanced)
-sudo runc spec  # Generate config
+# Test runc directly from an existing OCI bundle (advanced)
+cd /path/to/oci-bundle
+sudo runc spec  # Generate config.json
 sudo runc run test-container
 ```
 
@@ -368,7 +369,7 @@ RUN which node && node --version
 RUN /app/start.sh --help || true
 
 # Document expected runtime requirements
-LABEL runtime.requirements="seccomp=default"
+LABEL runtime.requirements="seccomp=builtin"
 ```
 
 ---
