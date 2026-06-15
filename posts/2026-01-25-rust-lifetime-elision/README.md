@@ -48,13 +48,13 @@ fn foo<'a, 'b>(x: &'a str, y: &'b str) {}
 
 ```rust
 // When there is exactly one input lifetime:
-fn first_char(s: &str) -> &str {
-    &s[0..1]
+fn trimmed(s: &str) -> &str {
+    s.trim()
 }
 
 // The compiler infers:
-fn first_char<'a>(s: &'a str) -> &'a str {
-    &s[0..1]
+fn trimmed<'a>(s: &'a str) -> &'a str {
+    s.trim()
 }
 ```
 
@@ -109,8 +109,8 @@ struct Context<'a> {
     data: &'a str,
 }
 
-// Output lifetime tied to context, not the other input
-fn extract<'a, 'b>(ctx: &'a Context, _pattern: &'b str) -> &'a str {
+// Output lifetime tied to context data, not the other input
+fn extract<'a, 'b>(ctx: &Context<'a>, _pattern: &'b str) -> &'a str {
     ctx.data
 }
 
@@ -137,7 +137,7 @@ struct Excerpt<'a> {
 }
 
 impl<'a> Excerpt<'a> {
-    // Method returning reference with struct's lifetime
+    // Method returning a reference to the struct's data
     fn content(&self) -> &str {
         self.part
     }
@@ -249,18 +249,20 @@ When you get a lifetime error, follow these steps:
 
 ```rust
 // Find all references in the function signature
-fn process(
-    input: &str,      // Reference 1
-    config: &Config,  // Reference 2
-) -> &str            // Output reference
+// fn process(
+//     input: &str,      // Reference 1
+//     config: &Config,  // Reference 2
+// ) -> &str            // Output reference
 ```
 
 ### Step 2: Determine Where Output Comes From
 
 ```rust
+struct Config;
+
 fn process<'a>(input: &'a str, _config: &Config) -> &'a str {
     // Output comes from input, so they share lifetime
-    &input[0..5]
+    input
 }
 ```
 
@@ -288,7 +290,7 @@ fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
 
 ```rust
 // String literals have 'static lifetime
-let s: &'static str = "I never die";
+const S: &'static str = "I never die";
 
 // Owned data can be leaked to get 'static reference (usually don't do this)
 fn make_static(s: String) -> &'static str {
