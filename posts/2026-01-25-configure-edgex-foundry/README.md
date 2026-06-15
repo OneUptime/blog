@@ -80,12 +80,9 @@ Before installing EdgeX:
 
 mkdir edgex-deployment && cd edgex-deployment
 
-# Download the docker-compose file for the latest release
-# Check https://github.com/edgexfoundry/edgex-compose for versions
-curl -O https://raw.githubusercontent.com/edgexfoundry/edgex-compose/main/docker-compose.yml
-
-# Download the environment file
-curl -O https://raw.githubusercontent.com/edgexfoundry/edgex-compose/main/.env
+# Download the non-secure Docker Compose file for the EdgeX 3.1 Napa release
+# Check https://github.com/edgexfoundry/edgex-compose for other release branches
+curl -L -o docker-compose.yml https://raw.githubusercontent.com/edgexfoundry/edgex-compose/v3.1/docker-compose-no-secty.yml
 ```
 
 ### Basic Docker Compose Configuration
@@ -104,9 +101,9 @@ volumes:
 services:
   # Consul for service registry and configuration
   consul:
-    image: hashicorp/consul:1.16
-    container_name: edgex-consul
-    hostname: edgex-consul
+    image: hashicorp/consul:1.16.6
+    container_name: edgex-core-consul
+    hostname: edgex-core-consul
     ports:
       - "8500:8500"
     volumes:
@@ -117,8 +114,8 @@ services:
       - edgex-network
 
   # Redis for message bus and persistence
-  redis:
-    image: redis:7-alpine
+  database:
+    image: redis:7.0.15-alpine
     container_name: edgex-redis
     hostname: edgex-redis
     ports:
@@ -128,106 +125,122 @@ services:
     networks:
       - edgex-network
 
+  # Seeds common configuration into Consul
+  core-common-config-bootstrapper:
+    image: edgexfoundry/core-common-config-bootstrapper:3.1.1
+    container_name: edgex-core-common-config-bootstrapper
+    hostname: edgex-core-common-config-bootstrapper
+    environment:
+      EDGEX_SECURITY_SECRET_STORE: "false"
+      ALL_SERVICES_DATABASE_HOST: edgex-redis
+      ALL_SERVICES_MESSAGEBUS_HOST: edgex-redis
+      ALL_SERVICES_REGISTRY_HOST: edgex-core-consul
+      APP_SERVICES_CLIENTS_CORE_METADATA_HOST: edgex-core-metadata
+      DEVICE_SERVICES_CLIENTS_CORE_METADATA_HOST: edgex-core-metadata
+    depends_on:
+      - consul
+    networks:
+      - edgex-network
+
   # Core Data Service
   core-data:
-    image: edgexfoundry/core-data:3.1.0
+    image: edgexfoundry/core-data:3.1.1
     container_name: edgex-core-data
     hostname: edgex-core-data
     ports:
       - "59880:59880"
     environment:
       EDGEX_SECURITY_SECRET_STORE: "false"
-      MESSAGEBUS_HOST: edgex-redis
-      DATABASE_HOST: edgex-redis
+      SERVICE_HOST: edgex-core-data
     depends_on:
       - consul
-      - redis
+      - database
+      - core-metadata
     networks:
       - edgex-network
 
   # Core Metadata Service
   core-metadata:
-    image: edgexfoundry/core-metadata:3.1.0
+    image: edgexfoundry/core-metadata:3.1.1
     container_name: edgex-core-metadata
     hostname: edgex-core-metadata
     ports:
       - "59881:59881"
     environment:
       EDGEX_SECURITY_SECRET_STORE: "false"
-      MESSAGEBUS_HOST: edgex-redis
-      DATABASE_HOST: edgex-redis
+      SERVICE_HOST: edgex-core-metadata
     depends_on:
       - consul
-      - redis
+      - database
     networks:
       - edgex-network
 
   # Core Command Service
   core-command:
-    image: edgexfoundry/core-command:3.1.0
+    image: edgexfoundry/core-command:3.1.1
     container_name: edgex-core-command
     hostname: edgex-core-command
     ports:
       - "59882:59882"
     environment:
       EDGEX_SECURITY_SECRET_STORE: "false"
-      MESSAGEBUS_HOST: edgex-redis
-      DATABASE_HOST: edgex-redis
+      SERVICE_HOST: edgex-core-command
     depends_on:
       - consul
-      - redis
+      - database
       - core-metadata
     networks:
       - edgex-network
 
   # Support Notifications Service
   support-notifications:
-    image: edgexfoundry/support-notifications:3.1.0
+    image: edgexfoundry/support-notifications:3.1.1
     container_name: edgex-support-notifications
     hostname: edgex-support-notifications
     ports:
       - "59860:59860"
     environment:
       EDGEX_SECURITY_SECRET_STORE: "false"
-      MESSAGEBUS_HOST: edgex-redis
-      DATABASE_HOST: edgex-redis
+      SERVICE_HOST: edgex-support-notifications
     depends_on:
       - consul
-      - redis
+      - database
     networks:
       - edgex-network
 
   # Rules Engine (eKuiper)
   rules-engine:
-    image: lfedge/ekuiper:1.11-alpine
+    image: lfedge/ekuiper:1.11.4-alpine
     container_name: edgex-kuiper
     hostname: edgex-kuiper
     ports:
       - "59720:59720"
     environment:
       KUIPER__BASIC__CONSOLELOG: "true"
-      EDGEX__DEFAULT__SERVER: edgex-redis
-      EDGEX__DEFAULT__PORT: 6379
-      EDGEX__DEFAULT__PROTOCOL: redis
-      EDGEX__DEFAULT__TOPIC: edgex/events/#
+      KUIPER__BASIC__RESTPORT: 59720
+      CONNECTION__EDGEX__REDISMSGBUS__PORT: 6379
+      CONNECTION__EDGEX__REDISMSGBUS__PROTOCOL: redis
+      CONNECTION__EDGEX__REDISMSGBUS__SERVER: edgex-redis
+      CONNECTION__EDGEX__REDISMSGBUS__TYPE: redis
+      EDGEX__DEFAULT__CONNECTIONSELECTOR: edgex.redisMsgBus
     depends_on:
-      - redis
+      - database
     networks:
       - edgex-network
 
   # Device Service - Virtual (for testing)
   device-virtual:
-    image: edgexfoundry/device-virtual:3.1.0
+    image: edgexfoundry/device-virtual:3.1.1
     container_name: edgex-device-virtual
     hostname: edgex-device-virtual
     ports:
       - "59900:59900"
     environment:
       EDGEX_SECURITY_SECRET_STORE: "false"
-      MESSAGEBUS_HOST: edgex-redis
+      SERVICE_HOST: edgex-device-virtual
     depends_on:
       - consul
-      - redis
+      - database
       - core-data
       - core-metadata
     networks:
@@ -235,19 +248,19 @@ services:
 
   # Device Service - MQTT
   device-mqtt:
-    image: edgexfoundry/device-mqtt:3.1.0
+    image: edgexfoundry/device-mqtt:3.1.1
     container_name: edgex-device-mqtt
     hostname: edgex-device-mqtt
     ports:
       - "59982:59982"
     environment:
       EDGEX_SECURITY_SECRET_STORE: "false"
-      MESSAGEBUS_HOST: edgex-redis
+      SERVICE_HOST: edgex-device-mqtt
     volumes:
       - ./mqtt-config:/res
     depends_on:
       - consul
-      - redis
+      - database
       - core-data
       - core-metadata
     networks:
@@ -255,7 +268,7 @@ services:
 
   # Application Service - HTTP Export
   app-service-http:
-    image: edgexfoundry/app-service-configurable:3.1.0
+    image: edgexfoundry/app-service-configurable:3.1.1
     container_name: edgex-app-http-export
     hostname: edgex-app-http-export
     ports:
@@ -263,11 +276,11 @@ services:
     environment:
       EDGEX_SECURITY_SECRET_STORE: "false"
       EDGEX_PROFILE: http-export
-      MESSAGEBUS_HOST: edgex-redis
+      SERVICE_HOST: edgex-app-http-export
       WRITABLE_PIPELINE_FUNCTIONS_HTTPEXPORT_PARAMETERS_URL: "http://cloud-endpoint:8080/api/data"
     depends_on:
       - consul
-      - redis
+      - database
       - core-data
     networks:
       - edgex-network
@@ -383,43 +396,42 @@ deviceCommands:
       - deviceResource: "sample_interval"
 ```
 
-```toml
-# mqtt-config/configuration.toml
+```yaml
+# mqtt-config/configuration.yaml
 # MQTT device service configuration
 
-[Writable]
-LogLevel = "INFO"
+Writable:
+  LogLevel: "INFO"
+  InsecureSecrets:
+    MQTT:
+      SecretName: "credentials"
+      SecretData:
+        username: "mqtt-user"
+        password: "mqtt-password"
 
-[Service]
-Host = "edgex-device-mqtt"
-Port = 59982
-StartupMsg = "MQTT device service started"
+Service:
+  Host: "edgex-device-mqtt"
+  Port: 59982
+  StartupMsg: "MQTT device service started"
 
-[Registry]
-Host = "edgex-consul"
-Port = 8500
-Type = "consul"
+Device:
+  ProfilesDir: "./res/profiles"
+  DevicesDir: "./res/devices"
 
-[MessageBus]
-Protocol = "redis"
-Host = "edgex-redis"
-Port = 6379
-Type = "redis"
+MQTTBrokerInfo:
+  Schema: "tcp"
+  Host: "mqtt-broker"
+  Port: 1883
+  Qos: 0
+  KeepAlive: 3600
+  ClientId: "device-mqtt"
+  AuthMode: "usernamepassword"
+  CredentialsName: "credentials"
+  IncomingTopic: "edgex/devices/+/data"
+  ResponseTopic: "edgex/devices/response/#"
 
-[MQTTBrokerInfo]
-Schema = "tcp"
-Host = "mqtt-broker"
-Port = 1883
-AuthMode = "usernamepassword"
-CredentialsPath = "/tmp/mqtt-credentials"
-
-[MQTTBrokerInfo.Topics]
-# Topic for incoming data
-IncomingTopic = "edgex/devices/+/data"
-# Topic for responses
-ResponseTopic = "edgex/devices/response"
-# Topic for commands
-CommandTopic = "edgex/devices/+/command"
+  Writable:
+    ResponseFetchInterval: 500
 ```
 
 ---
@@ -446,11 +458,12 @@ Writable:
           FilterOut: "false"
       HTTPExport:
         Parameters:
-          Method: POST
-          URL: "https://cloud-api.example.com/api/telemetry"
+          Method: post
+          Url: "https://cloud-api.example.com/api/telemetry"
           MimeType: "application/json"
           PersistOnError: "true"
           HeaderName: "Authorization"
+          SecretName: "http"
           SecretValueKey: "api-key"
 
 Trigger:
@@ -478,7 +491,8 @@ Writable:
           Topic: "edgex/telemetry"
           ClientId: "edgex-gateway-001"
           AuthMode: "usernamepassword"
-          QoS: "1"
+          SecretName: "mqtt"
+          QOS: "1"
           Retain: "false"
           SkipVerify: "false"
           PersistOnError: "true"
@@ -491,38 +505,34 @@ Writable:
 ### Create Streams and Rules
 
 ```bash
-# Access eKuiper CLI
-docker exec -it edgex-kuiper /kuiper/bin/kuiper
+# Create a stream from EdgeX events with the eKuiper CLI
+docker exec -it edgex-kuiper /kuiper/bin/kuiper create stream edgex_stream '() WITH (FORMAT="JSON", TYPE="edgex")'
 
-# Create a stream from EdgeX events
-CREATE STREAM edgex_stream () WITH (
-  DATASOURCE="edgex/events/#",
-  FORMAT="json",
-  TYPE="edgex"
-);
+# Or create the same stream with the REST API
+curl -X POST http://localhost:59720/streams \
+  -H 'Content-Type: application/json' \
+  -d '{"sql":"CREATE STREAM edgex_stream () WITH (FORMAT=\"JSON\", TYPE=\"edgex\")"}'
 ```
 
 ### Temperature Alert Rule
 
-```sql
--- rules/temperature-alert.sql
--- Rule to detect high temperature and send notifications
-
-CREATE RULE temperature_alert ON edgex_stream
-WHEN temperature > 30
-DO (
-  SELECT
-    deviceName,
-    temperature,
-    'high_temperature' as alert_type,
-    format_time(event_time(), 'yyyy-MM-dd HH:mm:ss') as timestamp
-  FROM edgex_stream
-)
-INTO
-  mqtt://edgex-redis:6379/edgex/alerts
-WITH
-  datasource = "edgex/alerts",
-  format = "json";
+```json
+{
+  "id": "temperature_alert",
+  "sql": "SELECT meta(deviceName) AS deviceName, temperature, 'high_temperature' AS alert_type, meta(origin) AS event_origin FROM edgex_stream WHERE temperature > 30",
+  "actions": [
+    {
+      "mqtt": {
+        "server": "tcp://mqtt-broker:1883",
+        "topic": "edgex/alerts",
+        "clientId": "edgex-temperature-alert"
+      }
+    },
+    {
+      "log": {}
+    }
+  ]
+}
 ```
 
 ### Python Rule Configuration
@@ -541,8 +551,7 @@ def create_stream():
     stream_config = {
         "sql": """
             CREATE STREAM edgex_events () WITH (
-                DATASOURCE="edgex/events/#",
-                FORMAT="json",
+                FORMAT="JSON",
                 TYPE="edgex"
             )
         """
@@ -562,22 +571,27 @@ def create_temperature_rule():
         "id": "temperature_threshold",
         "sql": """
             SELECT
-                deviceName,
-                readings.temperature as temperature,
-                readings.humidity as humidity,
+                meta(deviceName) AS deviceName,
+                meta(*) AS edgex_meta,
+                temperature,
+                humidity,
                 'threshold_exceeded' as alert_type
             FROM edgex_events
-            WHERE readings.temperature > 35
+            WHERE temperature > 35
         """,
         "actions": [
             {
-                # Send to EdgeX command service
+                # Publish an EdgeX application event back to the message bus
                 "edgex": {
                     "protocol": "redis",
                     "host": "edgex-redis",
                     "port": 6379,
                     "topic": "edgex/alerts",
                     "type": "redis",
+                    "messageType": "event",
+                    "metadata": "edgex_meta",
+                    "deviceName": "edgex-kuiper",
+                    "profileName": "Temperature-Alert",
                     "contentType": "application/json"
                 }
             },
@@ -604,14 +618,14 @@ def create_aggregation_rule():
         "id": "temperature_5min_avg",
         "sql": """
             SELECT
-                deviceName,
-                AVG(readings.temperature) as avg_temperature,
-                MAX(readings.temperature) as max_temperature,
-                MIN(readings.temperature) as min_temperature,
+                meta(deviceName) AS deviceName,
+                AVG(temperature) as avg_temperature,
+                MAX(temperature) as max_temperature,
+                MIN(temperature) as min_temperature,
                 COUNT(*) as reading_count,
                 window_end() as window_end
             FROM edgex_events
-            GROUP BY deviceName, TUMBLINGWINDOW(mi, 5)
+            GROUP BY meta(deviceName), TUMBLINGWINDOW(mi, 5)
         """,
         "actions": [
             {
@@ -670,7 +684,6 @@ if __name__ == "__main__":
 # EdgeX Foundry REST API client
 
 import requests
-from datetime import datetime, timedelta
 
 CORE_DATA_URL = "http://localhost:59880/api/v3"
 CORE_METADATA_URL = "http://localhost:59881/api/v3"
@@ -762,20 +775,20 @@ import requests
 from typing import Dict, List
 
 SERVICES = {
-    "core-data": "http://localhost:59880",
-    "core-metadata": "http://localhost:59881",
-    "core-command": "http://localhost:59882",
-    "support-notifications": "http://localhost:59860",
-    "device-virtual": "http://localhost:59900",
-    "device-mqtt": "http://localhost:59982",
-    "app-http-export": "http://localhost:59704",
+    "core-data": "http://localhost:59880/api/v3/ping",
+    "core-metadata": "http://localhost:59881/api/v3/ping",
+    "core-command": "http://localhost:59882/api/v3/ping",
+    "support-notifications": "http://localhost:59860/api/v3/ping",
+    "device-virtual": "http://localhost:59900/api/v3/ping",
+    "device-mqtt": "http://localhost:59982/api/v3/ping",
+    "app-http-export": "http://localhost:59704/api/v3/ping",
     "rules-engine": "http://localhost:59720",
 }
 
-def check_service_health(name: str, url: str) -> Dict:
+def check_service_health(name: str, health_url: str) -> Dict:
     """Check health of an EdgeX service"""
     try:
-        response = requests.get(f"{url}/api/v3/ping", timeout=5)
+        response = requests.get(health_url, timeout=5)
         return {
             "service": name,
             "status": "healthy" if response.status_code == 200 else "unhealthy",
