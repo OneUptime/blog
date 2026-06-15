@@ -46,8 +46,6 @@ async function bootstrap() {
     new ClassSerializerInterceptor(app.get(Reflector), {
       // Exclude properties that are not explicitly exposed
       strategy: 'excludeAll',
-      // Transform nested objects
-      enableImplicitConversion: true,
     })
   );
 
@@ -72,7 +70,7 @@ Create entities with serialization decorators to control field exposure.
 ```typescript
 // src/users/entities/user.entity.ts
 
-import { Exclude, Expose, Transform, Type } from 'class-transformer';
+import { Exclude, Expose, Transform } from 'class-transformer';
 
 export class User {
   @Expose()
@@ -245,7 +243,7 @@ export class SerializeInterceptor implements NestInterceptor {
 
         return instanceToPlain(data, {
           groups,
-          excludeExtraneousValues: true,
+          strategy: 'excludeAll',
         });
       })
     );
@@ -419,7 +417,7 @@ Create separate DTOs for different API responses.
 ```typescript
 // src/users/dto/user-response.dto.ts
 
-import { Expose, Transform, Type } from 'class-transformer';
+import { Expose, Transform } from 'class-transformer';
 
 // Minimal user info for lists
 export class UserListItemDto {
@@ -567,7 +565,15 @@ export class PaginatedResponse<T> {
 ```typescript
 // src/users/users.controller.ts
 
-import { Controller, Get, Query, UseInterceptors, ClassSerializerInterceptor } from '@nestjs/common';
+import {
+  ClassSerializerInterceptor,
+  Controller,
+  DefaultValuePipe,
+  Get,
+  ParseIntPipe,
+  Query,
+  UseInterceptors,
+} from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UserListItemDto } from './dto/user-response.dto';
 import { PaginatedResponse } from '../common/dto/paginated-response.dto';
@@ -579,8 +585,8 @@ export class UsersController {
 
   @Get()
   async findAll(
-    @Query('page') page = 1,
-    @Query('perPage') perPage = 10
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('perPage', new DefaultValuePipe(10), ParseIntPipe) perPage: number
   ): Promise<PaginatedResponse<UserListItemDto>> {
     const { users, total } = await this.usersService.findPaginated(page, perPage);
 
