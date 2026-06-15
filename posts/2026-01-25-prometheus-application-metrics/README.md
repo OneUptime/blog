@@ -15,7 +15,7 @@ Prometheus supports four core metric types, each suited for different measuremen
 - **Counter**: A cumulative value that only increases (e.g., total requests, errors)
 - **Gauge**: A value that can go up or down (e.g., current memory usage, active connections)
 - **Histogram**: Samples observations and counts them in configurable buckets (e.g., request latency)
-- **Summary**: Similar to histogram but calculates quantiles client-side
+- **Summary**: Similar to histogram for observations; some clients expose client-side quantiles, while others expose only count and sum
 
 Choosing the right type depends on what you want to measure and how you want to query it.
 
@@ -37,7 +37,7 @@ db_connections_active         # Gauge: active database connections
 
 Key rules:
 - Use snake_case
-- Include the unit as a suffix (bytes, seconds, total)
+- Include the base unit as a suffix where applicable (bytes, seconds)
 - Use `_total` suffix for counters
 - Keep names descriptive but concise
 
@@ -49,6 +49,7 @@ Key rules:
 # requirements.txt
 prometheus-client==0.19.0
 flask==3.0.0
+psutil==5.9.8
 ```
 
 ```python
@@ -185,7 +186,7 @@ inventory_items = Gauge(
 )
 
 users_online = Gauge(
-    'users_online_total',
+    'users_online',
     'Number of users currently online'
 )
 
@@ -284,17 +285,26 @@ func instrumentHandler(endpoint string, handler http.HandlerFunc) http.HandlerFu
             r.Method,
             endpoint,
         ).Observe(duration)
+
+        responseSize.WithLabelValues(endpoint).Observe(float64(wrapper.size))
     }
 }
 
 type responseWrapper struct {
     http.ResponseWriter
     statusCode int
+    size       int
 }
 
 func (w *responseWrapper) WriteHeader(code int) {
     w.statusCode = code
     w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *responseWrapper) Write(b []byte) (int, error) {
+    size, err := w.ResponseWriter.Write(b)
+    w.size += size
+    return size, err
 }
 
 func handleUsers(w http.ResponseWriter, r *http.Request) {
