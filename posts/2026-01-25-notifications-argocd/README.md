@@ -134,13 +134,13 @@ data:
     - description: Application is synced and healthy
       send:
         - app-deployed
-      when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+      when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
 
   trigger.on-sync-failed: |
     - description: Application sync failed
       send:
         - app-sync-failed
-      when: app.status.operationState.phase in ['Error', 'Failed']
+      when: app.status?.operationState.phase in ['Error', 'Failed']
 ```
 
 Apply the configuration:
@@ -183,14 +183,14 @@ metadata:
 
 ```yaml
 data:
-  service.teams: |
+  service.teams-workflows: |
     recipientUrls:
-      deployments: https://outlook.office.com/webhook/xxx
-      alerts: https://outlook.office.com/webhook/yyy
+      deployments: https://api.powerautomate.com/webhook/xxx
+      alerts: https://api.powerautomate.com/webhook/yyy
 
   template.app-deployed-teams: |
-    teams:
-      themeColor: "#18be52"
+    teams-workflows:
+      themeColor: "Good"
       title: "Deployment Successful"
       sections: |
         [{
@@ -215,7 +215,7 @@ Subscribe using Teams:
 
 ```yaml
 annotations:
-  notifications.argoproj.io/subscribe.on-deployed.teams: deployments
+  notifications.argoproj.io/subscribe.on-deployed.teams-workflows: deployments
 ```
 
 ## Configuring Email Notifications
@@ -281,22 +281,18 @@ data:
 
 ```yaml
 data:
-  service.pagerduty: |
+  service.pagerdutyv2: |
     serviceKeys:
       production: $pagerduty-key
 
   template.app-degraded-pagerduty: |
-    pagerduty:
-      routingKey: production
-      eventAction: trigger
-      payload:
-        summary: "{{.app.metadata.name}} is degraded"
-        severity: critical
-        source: argocd
-        customDetails:
-          application: "{{.app.metadata.name}}"
-          health: "{{.app.status.health.status}}"
-          message: "{{.app.status.health.message}}"
+    pagerdutyv2:
+      summary: "{{.app.metadata.name}} is degraded"
+      severity: critical
+      source: argocd
+      component: "{{.app.metadata.name}}"
+      dedupKey: "{{.app.metadata.name}}-health-degraded"
+      url: "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}"
 
   trigger.on-health-degraded: |
     - description: Application health degraded
@@ -316,7 +312,7 @@ data:
     - description: New image deployed
       send:
         - app-deployed
-      when: app.status.operationState.phase == 'Succeeded'
+      when: app.status?.operationState.phase == 'Succeeded'
       oncePer: app.status.sync.revision
 
   # Trigger on drift detected
@@ -331,7 +327,7 @@ data:
     - description: Production deployment
       send:
         - prod-deployed
-      when: app.status.operationState.phase == 'Succeeded' and app.spec.destination.namespace == 'production'
+      when: app.status?.operationState.phase == 'Succeeded' and app.spec.destination.namespace == 'production'
 ```
 
 ## Template Functions
@@ -381,7 +377,7 @@ data:
     - description: Send once per revision
       send:
         - app-deployed
-      when: app.status.operationState.phase == 'Succeeded'
+      when: app.status?.operationState.phase == 'Succeeded'
       oncePer: app.status.sync.revision
 ```
 
@@ -391,16 +387,15 @@ data:
 
 ```bash
 # List all triggers
-argocd admin notifications trigger list
+argocd admin notifications trigger get
 
 # List all templates
-argocd admin notifications template list
+argocd admin notifications template get
 
 # Test a notification
-argocd admin notifications test \
-  --template app-deployed \
-  --recipient slack:deployments \
-  myapp
+argocd admin notifications template notify \
+  app-deployed myapp \
+  --recipient slack:deployments
 ```
 
 ### Debug Configuration
@@ -440,7 +435,7 @@ kubectl get application myapp -n argocd -o yaml | grep notifications
 annotations:
   notifications.argoproj.io/subscribe.on-deployed.slack: deployments
   notifications.argoproj.io/subscribe.on-sync-failed.slack: alerts
-  notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: production
+  notifications.argoproj.io/subscribe.on-health-degraded.pagerdutyv2: production
 ```
 
 ### Include Actionable Information
