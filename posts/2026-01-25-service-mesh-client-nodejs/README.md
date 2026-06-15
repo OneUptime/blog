@@ -32,7 +32,7 @@ Our service mesh client needs these capabilities:
 2. Load Balancer - Distribute requests across instances
 3. Circuit Breaker - Prevent cascade failures
 4. Retry Logic - Handle transient failures
-5. Observability - Metrics and distributed tracing
+5. Observability - Metrics and request correlation
 
 ## Service Registry Implementation
 
@@ -54,7 +54,7 @@ export interface ServiceInstance {
 
 export interface ServiceDefinition {
   name: string;
-  instances: ServiceInstance[];
+  instances: Array<Omit<ServiceInstance, 'id' | 'healthy' | 'lastHealthCheck'>>;
 }
 
 export class ServiceRegistry {
@@ -152,7 +152,7 @@ export class ServiceRegistry {
     }
   }
 
-  // Load services from Kubernetes-style config
+  // Load services from static config
   loadFromConfig(config: ServiceDefinition[]): void {
     for (const service of config) {
       for (const instance of service.instances) {
@@ -165,7 +165,7 @@ export class ServiceRegistry {
 
 ## Load Balancer Strategies
 
-Different load balancing strategies suit different scenarios. Here are three common ones.
+Different load balancing strategies suit different scenarios. Here are four common ones.
 
 ```typescript
 // LoadBalancer.ts
@@ -359,6 +359,14 @@ export class CircuitBreaker {
     }
   }
 
+  // Record that a half-open probe request is starting
+  recordAttempt(instanceId: string): void {
+    const circuit = this.getCircuit(instanceId);
+    if (circuit.state === 'HALF_OPEN') {
+      circuit.halfOpenAttempts++;
+    }
+  }
+
   // Record a successful request
   recordSuccess(instanceId: string): void {
     const circuit = this.getCircuit(instanceId);
@@ -387,10 +395,6 @@ export class CircuitBreaker {
     } else if (circuit.failures >= this.options.failureThreshold) {
       circuit.state = 'OPEN';
       console.log(`Circuit for ${instanceId}: CLOSED -> OPEN (${circuit.failures} failures)`);
-    }
-
-    if (circuit.state === 'HALF_OPEN') {
-      circuit.halfOpenAttempts++;
     }
   }
 
@@ -469,7 +473,6 @@ export class MeshClient {
   private registry: ServiceRegistry;
   private loadBalancer: LoadBalancer;
   private circuitBreaker: CircuitBreaker;
-  private leastConnections: LeastConnectionsBalancer;
   private defaultTimeout: number;
   private defaultRetries: number;
 
@@ -485,7 +488,6 @@ export class MeshClient {
     this.registry = options.registry;
     this.loadBalancer = options.loadBalancer || new RoundRobinBalancer();
     this.circuitBreaker = options.circuitBreaker || new CircuitBreaker();
-    this.leastConnections = new LeastConnectionsBalancer();
     this.defaultTimeout = options.defaultTimeout || 5000;
     this.defaultRetries = options.defaultRetries || 2;
   }
@@ -529,7 +531,8 @@ export class MeshClient {
       if (!instance) break;
 
       triedInstances.add(instance.id);
-      this.leastConnections.acquire(instance.id);
+      this.circuitBreaker.recordAttempt(instance.id);
+      this.acquire(instance.id);
 
       try {
         const result = await this.executeRequest<T>(instance, {
@@ -546,7 +549,7 @@ export class MeshClient {
 
         // Success
         this.circuitBreaker.recordSuccess(instance.id);
-        this.leastConnections.release(instance.id);
+        this.release(instance.id);
         this.requestMetrics.success++;
         this.requestMetrics.latencies.push(Date.now() - startTime);
 
@@ -554,7 +557,7 @@ export class MeshClient {
       } catch (error) {
         lastError = error as Error;
         this.circuitBreaker.recordFailure(instance.id);
-        this.leastConnections.release(instance.id);
+        this.release(instance.id);
 
         console.log(
           `Request to ${instance.id} failed (attempt ${attempt + 1}/${retries + 1}): ${lastError.message}`
@@ -564,6 +567,18 @@ export class MeshClient {
 
     this.requestMetrics.failure++;
     throw lastError || new Error(`All retries exhausted for ${serviceName}`);
+  }
+
+  private acquire(instanceId: string): void {
+    if (this.loadBalancer instanceof LeastConnectionsBalancer) {
+      this.loadBalancer.acquire(instanceId);
+    }
+  }
+
+  private release(instanceId: string): void {
+    if (this.loadBalancer instanceof LeastConnectionsBalancer) {
+      this.loadBalancer.release(instanceId);
+    }
   }
 
   // Execute HTTP request to a specific instance
@@ -611,9 +626,9 @@ export class MeshClient {
     }
   }
 
-  // Generate unique request ID for tracing
+  // Generate unique request ID for request correlation
   private generateRequestId(): string {
-    return `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 9)}`;
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
   }
 
   // Get metrics for monitoring
@@ -642,6 +657,8 @@ import { MeshClient } from './MeshClient';
 import { LeastConnectionsBalancer } from './LoadBalancer';
 
 const app = express();
+
+app.use(express.json());
 
 // Initialize registry with service configuration
 const registry = new ServiceRegistry({ healthCheckPeriod: 10000 });
