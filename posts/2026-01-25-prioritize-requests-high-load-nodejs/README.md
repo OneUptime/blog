@@ -22,7 +22,7 @@ Under normal conditions, your service handles all requests equally. But during t
 
 ## Basic Priority Queue Implementation
 
-The foundation of request prioritization is a priority queue. This implementation uses a min-heap to efficiently serve higher-priority requests first. Priority 1 is highest, priority 10 is lowest.
+The foundation of request prioritization is a priority queue. This implementation uses a min-heap to efficiently serve higher-priority requests first. Priority 1 is highest, priority 5 is lowest.
 
 ```typescript
 // PriorityQueue.ts
@@ -156,6 +156,44 @@ export enum RequestPriority {
   BULK = 5,        // Batch operations, exports
 }
 
+export function getPriorityForRequest(req: Request): number {
+  // Health checks are always critical
+  if (req.path === '/health' || req.path === '/ready') {
+    return RequestPriority.CRITICAL;
+  }
+
+  // Check for explicit priority header
+  const headerPriority = req.headers['x-request-priority'];
+  if (typeof headerPriority === 'string') {
+    const parsed = parseInt(headerPriority, 10);
+    if (parsed >= RequestPriority.CRITICAL && parsed <= RequestPriority.BULK) {
+      return parsed;
+    }
+  }
+
+  // Payment and checkout endpoints are critical
+  if (req.path.includes('/payment') || req.path.includes('/checkout')) {
+    return RequestPriority.CRITICAL;
+  }
+
+  // User authentication is high priority
+  if (req.path.includes('/auth') || req.path.includes('/login')) {
+    return RequestPriority.HIGH;
+  }
+
+  // Bulk operations are low priority
+  if (req.path.includes('/bulk') || req.path.includes('/export')) {
+    return RequestPriority.BULK;
+  }
+
+  // Analytics and tracking are low priority
+  if (req.path.includes('/analytics') || req.path.includes('/track')) {
+    return RequestPriority.LOW;
+  }
+
+  return RequestPriority.NORMAL;
+}
+
 export class PriorityRequestHandler {
   private queue: PriorityQueue<PendingRequest>;
   private activeRequests: number = 0;
@@ -168,56 +206,22 @@ export class PriorityRequestHandler {
     this.queueTimeout = options.queueTimeout || 30000;
   }
 
-  // Determine request priority based on path, headers, or method
-  private getPriority(req: Request): number {
-    // Health checks are always critical
-    if (req.path === '/health' || req.path === '/ready') {
-      return RequestPriority.CRITICAL;
-    }
-
-    // Check for explicit priority header
-    const headerPriority = req.headers['x-request-priority'];
-    if (headerPriority && typeof headerPriority === 'string') {
-      const parsed = parseInt(headerPriority, 10);
-      if (parsed >= 1 && parsed <= 5) {
-        return parsed;
-      }
-    }
-
-    // Payment and checkout endpoints are high priority
-    if (req.path.includes('/payment') || req.path.includes('/checkout')) {
-      return RequestPriority.CRITICAL;
-    }
-
-    // User authentication is high priority
-    if (req.path.includes('/auth') || req.path.includes('/login')) {
-      return RequestPriority.HIGH;
-    }
-
-    // Bulk operations are low priority
-    if (req.path.includes('/bulk') || req.path.includes('/export')) {
-      return RequestPriority.BULK;
-    }
-
-    // Analytics and tracking are low priority
-    if (req.path.includes('/analytics') || req.path.includes('/track')) {
-      return RequestPriority.LOW;
-    }
-
-    return RequestPriority.NORMAL;
-  }
-
   // Express middleware function
   middleware = (req: Request, res: Response, next: NextFunction): void => {
-    const priority = this.getPriority(req);
+    const priority = getPriorityForRequest(req);
 
     // If we have capacity, process immediately
     if (this.activeRequests < this.maxConcurrent) {
       this.activeRequests++;
-      res.on('finish', () => {
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
         this.activeRequests--;
         this.processQueue();
-      });
+      };
+      res.once('finish', release);
+      res.once('close', release);
       next();
       return;
     }
@@ -255,10 +259,15 @@ export class PriorityRequestHandler {
     }
 
     this.activeRequests++;
-    pendingRequest.res.on('finish', () => {
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
       this.activeRequests--;
       this.processQueue();
-    });
+    };
+    pendingRequest.res.once('finish', release);
+    pendingRequest.res.once('close', release);
 
     pendingRequest.next();
   }
@@ -282,6 +291,9 @@ When the queue grows too large, we need to start rejecting requests. Load sheddi
 // LoadShedder.ts
 // Implements adaptive load shedding based on queue depth and system load
 
+import { Request, Response, NextFunction } from 'express';
+import { PriorityRequestHandler, RequestPriority, getPriorityForRequest } from './PriorityRequestHandler';
+
 interface LoadShedderOptions {
   maxQueueSize: number;       // Start shedding when queue exceeds this
   shedThresholds: number[];   // Queue sizes at which to shed each priority level
@@ -293,8 +305,8 @@ export class LoadShedder {
   constructor(options: Partial<LoadShedderOptions> = {}) {
     this.options = {
       maxQueueSize: options.maxQueueSize || 1000,
-      // Default: shed BULK at 200, LOW at 400, NORMAL at 600
-      shedThresholds: options.shedThresholds || [0, 800, 600, 400, 200],
+      // Default: shed BULK at 200, LOW at 400, NORMAL at 600, HIGH at 800
+      shedThresholds: options.shedThresholds || [0, Number.POSITIVE_INFINITY, 800, 600, 400, 200],
     };
   }
 
@@ -322,7 +334,7 @@ export function createPriorityMiddleware(options: {
   queueTimeout?: number;
 }) {
   const handler = new PriorityRequestHandler(options);
-  const loadShedder = new LoadShedder({ maxQueueSize: options.maxQueueSize });
+  const loadShedder = new LoadShedder({ maxQueueSize: options.maxQueueSize || 1000 });
 
   return (req: Request, res: Response, next: NextFunction): void => {
     const stats = handler.getStats();
@@ -391,9 +403,10 @@ interface WeightedQueueOptions {
 export class WeightedFairQueue<T> {
   private queues: Map<number, T[]> = new Map();
   private weights: Record<number, number>;
-  private counters: Map<number, number> = new Map();
+  private schedule: number[] = [];
+  private scheduleIndex: number = 0;
 
-  constructor(options: WeightedQueueOptions) {
+  constructor(options: Partial<WeightedQueueOptions> = {}) {
     // Default weights: P1 gets 50%, P2 gets 25%, P3 gets 15%, P4/P5 get 10%
     this.weights = options.weights || {
       1: 50,
@@ -403,10 +416,13 @@ export class WeightedFairQueue<T> {
       5: 5,
     };
 
-    // Initialize queues and counters for each priority level
+    // Initialize queues and weighted schedule for each priority level
     for (let i = 1; i <= 5; i++) {
       this.queues.set(i, []);
-      this.counters.set(i, 0);
+      const weight = this.weights[i] || 0;
+      for (let count = 0; count < weight; count++) {
+        this.schedule.push(i);
+      }
     }
   }
 
@@ -419,23 +435,12 @@ export class WeightedFairQueue<T> {
 
   // Select next item using weighted round-robin
   dequeue(): T | undefined {
-    const totalWeight = Object.values(this.weights).reduce((a, b) => a + b, 0);
-
-    // Try each priority level, weighted by its share
-    for (let priority = 1; priority <= 5; priority++) {
+    for (let attempts = 0; attempts < this.schedule.length; attempts++) {
+      const priority = this.schedule[this.scheduleIndex];
+      this.scheduleIndex = (this.scheduleIndex + 1) % this.schedule.length;
       const queue = this.queues.get(priority);
-      const weight = this.weights[priority] || 0;
-      const counter = this.counters.get(priority) || 0;
-
       if (queue && queue.length > 0) {
-        // Check if this priority should be served based on its weight
-        const threshold = (counter * totalWeight) / weight;
-        const minCounter = Math.min(...Array.from(this.counters.values()));
-
-        if (counter <= minCounter + 1 || priority === 1) {
-          this.counters.set(priority, counter + 1);
-          return queue.shift();
-        }
+        return queue.shift();
       }
     }
 
@@ -566,12 +571,12 @@ export class AdaptiveConcurrencyLimiter {
 
 ## Putting It All Together
 
-Here is a complete Express setup combining all the patterns.
+Here is an Express setup combining priority handling and load shedding, with adaptive concurrency metrics exposed for monitoring.
 
 ```typescript
 // server.ts
 import express from 'express';
-import { PriorityRequestHandler, RequestPriority } from './PriorityRequestHandler';
+import { PriorityRequestHandler, getPriorityForRequest } from './PriorityRequestHandler';
 import { LoadShedder } from './LoadShedder';
 import { AdaptiveConcurrencyLimiter } from './AdaptiveConcurrency';
 
@@ -585,7 +590,7 @@ const priorityHandler = new PriorityRequestHandler({
 
 const loadShedder = new LoadShedder({
   maxQueueSize: 500,
-  shedThresholds: [0, 400, 300, 200, 100],
+  shedThresholds: [0, Number.POSITIVE_INFINITY, 400, 300, 200, 100],
 });
 
 const concurrencyLimiter = new AdaptiveConcurrencyLimiter({
@@ -598,7 +603,7 @@ const concurrencyLimiter = new AdaptiveConcurrencyLimiter({
 // Middleware: check load shedding before queuing
 app.use((req, res, next) => {
   const stats = priorityHandler.getStats();
-  const priority = parseInt(req.headers['x-request-priority'] as string) || RequestPriority.NORMAL;
+  const priority = getPriorityForRequest(req);
 
   if (loadShedder.shouldShed(priority, stats.queueSize)) {
     return res.status(503).json({
