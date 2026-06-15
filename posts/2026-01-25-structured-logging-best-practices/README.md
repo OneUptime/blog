@@ -19,7 +19,7 @@ The difference between "User login failed" and a JSON object with user_id, error
 Traditional logging produces output like this:
 
 ```text
-2024-01-15 10:23:45 ERROR - User john@example.com failed to login: invalid password attempt 3 from IP 192.168.1.100
+2024-01-15 10:23:45 ERROR - User user-123 failed to login: invalid password attempt 3 from IP 192.168.1.100
 ```
 
 This is readable by humans but difficult for machines. To answer "How many failed logins occurred in the last hour?" you need regex parsing and hope the format stays consistent.
@@ -31,7 +31,7 @@ Structured logging produces:
   "timestamp": "2024-01-15T10:23:45.123Z",
   "level": "error",
   "message": "User login failed",
-  "user_email": "john@example.com",
+  "user_id": "user-123",
   "error_reason": "invalid_password",
   "attempt_count": 3,
   "client_ip": "192.168.1.100",
@@ -125,10 +125,16 @@ Here is a complete logging implementation in Node.js:
 // logger.ts
 // Structured logging implementation with context management
 
-import { AsyncLocalStorage } from 'async_hooks';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 // Context storage for request-scoped data
 const contextStorage = new AsyncLocalStorage<LogContext>();
+
+interface LoggerConfig {
+  service: string;
+  version: string;
+  environment?: string;
+}
 
 interface LogContext {
   requestId: string;
@@ -137,6 +143,20 @@ interface LogContext {
   userId?: string;
   tenantId?: string;
   [key: string]: unknown;
+}
+
+interface HttpRequestInfo {
+  method: string;
+  path: string;
+  userAgent?: string;
+  clientIp?: string;
+  contentLength?: number;
+}
+
+interface HttpResponseInfo {
+  status: number;
+  duration: number;
+  contentLength?: number;
 }
 
 class StructuredLogger {
@@ -162,7 +182,7 @@ class StructuredLogger {
 
   // Core logging method
   private log(level: string, message: string, attributes: Record<string, unknown> = {}): void {
-    const context = this.getContext() || {};
+    const context = this.getContext();
 
     const entry = {
       // Standard fields
@@ -174,11 +194,11 @@ class StructuredLogger {
       environment: this.environment,
 
       // Context fields
-      request_id: context.requestId,
-      trace_id: context.traceId,
-      span_id: context.spanId,
-      user_id: context.userId,
-      tenant_id: context.tenantId,
+      request_id: context?.requestId,
+      trace_id: context?.traceId,
+      span_id: context?.spanId,
+      user_id: context?.userId,
+      tenant_id: context?.tenantId,
 
       // Custom attributes
       ...attributes
@@ -195,19 +215,19 @@ class StructuredLogger {
 
   // Level-specific methods
   trace(message: string, attributes?: Record<string, unknown>): void {
-    this.log('trace', message, attributes);
+    this.log('trace', message, attributes ?? {});
   }
 
   debug(message: string, attributes?: Record<string, unknown>): void {
-    this.log('debug', message, attributes);
+    this.log('debug', message, attributes ?? {});
   }
 
   info(message: string, attributes?: Record<string, unknown>): void {
-    this.log('info', message, attributes);
+    this.log('info', message, attributes ?? {});
   }
 
   warn(message: string, attributes?: Record<string, unknown>): void {
-    this.log('warn', message, attributes);
+    this.log('warn', message, attributes ?? {});
   }
 
   error(message: string, error?: Error, attributes?: Record<string, unknown>): void {
@@ -216,11 +236,11 @@ class StructuredLogger {
         type: error.constructor.name,
         message: error.message,
         stack: error.stack,
-        code: (error as any).code
+        code: (error as Error & { code?: string }).code
       }
     } : {};
 
-    this.log('error', message, { ...errorInfo, ...attributes });
+    this.log('error', message, { ...errorInfo, ...(attributes ?? {}) });
   }
 
   fatal(message: string, error?: Error, attributes?: Record<string, unknown>): void {
@@ -229,11 +249,11 @@ class StructuredLogger {
         type: error.constructor.name,
         message: error.message,
         stack: error.stack,
-        code: (error as any).code
+        code: (error as Error & { code?: string }).code
       }
     } : {};
 
-    this.log('fatal', message, { ...errorInfo, ...attributes });
+    this.log('fatal', message, { ...errorInfo, ...(attributes ?? {}) });
   }
 
   // Specialized logging methods
@@ -321,7 +341,7 @@ logger.warn('Rate limit approaching threshold', {
 
 // ERROR: An operation failed and could not be completed
 // These need investigation and possibly immediate attention
-logger.error('Payment processing failed', new PaymentError('Card declined'), {
+logger.error('Payment processing failed', new Error('Card declined'), {
   payment_id: 'pay-456',
   amount: 99.99,
   payment_method: 'credit_card',
@@ -476,12 +496,12 @@ logger.info('User authenticated', {
 });
 ```
 
-### 2. High Cardinality Labels
+### 2. Unbounded Indexed Fields
 
 ```typescript
-// BAD: Unbounded values as searchable fields
+// BAD: Unbounded values as indexed or faceted fields
 logger.info('Request processed', {
-  unique_request_id: uuidv4(),    // Creates millions of unique values
+  search_query: req.query.q,      // Arbitrary user input
   timestamp_nano: Date.now() * 1000000,  // Too granular
   full_request_body: req.body    // Unbounded size
 });
@@ -596,7 +616,7 @@ Structured logging is foundational to effective observability. Follow these prin
 2. **Use levels consistently**: Match the level to the importance and actionability
 3. **Include context automatically**: Request IDs and trace IDs should flow through every log
 4. **Avoid sensitive data**: Never log passwords, tokens, or PII
-5. **Watch cardinality**: High-cardinality fields hurt query performance
+5. **Watch indexed field cardinality**: Unbounded indexed fields can hurt query performance and storage costs
 6. **Log at boundaries**: HTTP requests, database calls, and external service interactions
 
 The investment in proper structured logging pays off quickly when you need to debug a production issue at 3 AM. Good logs turn a multi-hour investigation into a few well-crafted queries.
