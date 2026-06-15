@@ -77,9 +77,13 @@ class ProbabilisticSampler {
   // Sample with consistent hashing for related logs
   shouldSampleByKey(key: string): boolean {
     // Hash the key to get consistent sampling for related events
-    const hash = this.hashCode(key);
-    const threshold = Math.floor(this.sampleRate * 0xFFFFFFFF);
-    return (hash & 0xFFFFFFFF) < threshold;
+    const hash = this.hashCode(key) >>> 0;
+    const threshold = Math.floor(this.sampleRate * 0x100000000);
+    return hash < threshold;
+  }
+
+  getSampleRate(): number {
+    return this.sampleRate;
   }
 
   private hashCode(str: string): number {
@@ -95,32 +99,34 @@ class ProbabilisticSampler {
 
 // Usage in logger
 class SampledLogger {
-  private sampler: ProbabilisticSampler;
+  private debugSampler: ProbabilisticSampler;
+  private infoSampler: ProbabilisticSampler;
   private baseLogger: Logger;
 
-  constructor(baseLogger: Logger, sampleRate: number) {
+  constructor(baseLogger: Logger, debugSampleRate: number = 0.01, infoSampleRate: number = 0.1) {
     this.baseLogger = baseLogger;
-    this.sampler = new ProbabilisticSampler(sampleRate);
+    this.debugSampler = new ProbabilisticSampler(debugSampleRate);
+    this.infoSampler = new ProbabilisticSampler(infoSampleRate);
   }
 
   debug(message: string, attributes?: Record<string, unknown>): void {
     // Sample debug logs aggressively
-    if (this.sampler.shouldSample()) {
+    if (this.debugSampler.shouldSample()) {
       this.baseLogger.debug(message, {
         ...attributes,
         _sampled: true,
-        _sample_rate: 0.01
+        _sample_rate: this.debugSampler.getSampleRate()
       });
     }
   }
 
   info(message: string, attributes?: Record<string, unknown>): void {
     // Sample info logs moderately
-    if (this.sampler.shouldSample()) {
+    if (this.infoSampler.shouldSample()) {
       this.baseLogger.info(message, {
         ...attributes,
         _sampled: true,
-        _sample_rate: 0.1
+        _sample_rate: this.infoSampler.getSampleRate()
       });
     }
   }
@@ -228,6 +234,16 @@ class HeadSampledLogger {
   log(level: string, message: string, attributes?: Record<string, unknown>): void {
     const context = this.sampler.getContext();
 
+    // Always log errors regardless of sampling
+    if (level === 'error') {
+      this.baseLogger.error(message, {
+        ...attributes,
+        trace_id: context?.traceId,
+        _sampled: false
+      });
+      return;
+    }
+
     // Always log if no context or if sampled
     if (!context || context.shouldSample) {
       this.baseLogger[level](message, {
@@ -235,15 +251,6 @@ class HeadSampledLogger {
         trace_id: context?.traceId,
         _sampled: true,
         _sample_rate: context?.sampleRate
-      });
-    }
-
-    // Always log errors regardless of sampling
-    if (level === 'error') {
-      this.baseLogger.error(message, {
-        ...attributes,
-        trace_id: context?.traceId,
-        _sampled: false
       });
     }
   }
@@ -295,9 +302,10 @@ class TailBasedSampler {
   finalize(traceId: string, hasError: boolean): BufferedLog[] {
     const buffer = this.buffers.get(traceId) || [];
     this.buffers.delete(traceId);
+    const containsErrorLog = buffer.some((log) => log.level === 'error' || log.level === 'fatal');
 
     // Always emit if there was an error
-    if (hasError) {
+    if (hasError || containsErrorLog) {
       return buffer;
     }
 
