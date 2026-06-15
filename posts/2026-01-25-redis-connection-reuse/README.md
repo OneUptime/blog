@@ -145,7 +145,7 @@ r.set('key', 'value')
 
 ## Node.js Connection Management
 
-ioredis handles connection pooling internally and supports connection reuse:
+ioredis maintains a persistent connection per client instance and supports connection reuse:
 
 ```javascript
 // redisClient.js
@@ -153,6 +153,7 @@ const Redis = require('ioredis');
 
 // Singleton instance
 let client = null;
+let cluster = null;
 
 function getRedisClient() {
     if (!client) {
@@ -160,7 +161,7 @@ function getRedisClient() {
             host: 'localhost',
             port: 6379,
             db: 0,
-            // Connection pool settings
+            // Command retry settings
             maxRetriesPerRequest: 3,
             enableReadyCheck: true,
             // Auto reconnect
@@ -196,19 +197,23 @@ function getRedisClient() {
 
 // For cluster mode
 function getRedisCluster() {
-    return new Redis.Cluster([
-        { host: 'redis-1', port: 6379 },
-        { host: 'redis-2', port: 6379 },
-        { host: 'redis-3', port: 6379 }
-    ], {
-        redisOptions: {
-            password: process.env.REDIS_PASSWORD
-        },
-        // Cluster-specific settings
-        clusterRetryStrategy(times) {
-            return Math.min(times * 100, 3000);
-        }
-    });
+    if (!cluster) {
+        cluster = new Redis.Cluster([
+            { host: 'redis-1', port: 6379 },
+            { host: 'redis-2', port: 6379 },
+            { host: 'redis-3', port: 6379 }
+        ], {
+            redisOptions: {
+                password: process.env.REDIS_PASSWORD
+            },
+            // Cluster-specific settings
+            clusterRetryStrategy(times) {
+                return Math.min(times * 100, 3000);
+            }
+        });
+    }
+
+    return cluster;
 }
 
 module.exports = { getRedisClient, getRedisCluster };
@@ -226,12 +231,12 @@ async function getUser(userId) {
 
 ```python
 # app.py
-from flask import Flask, g
+from flask import Flask, g, request
 import redis
 
 app = Flask(__name__)
 
-# Create pool at module level (shared across workers)
+# Create pool at module level (shared within each worker process)
 redis_pool = redis.ConnectionPool(
     host='localhost',
     port=6379,
@@ -247,9 +252,9 @@ def get_redis():
 
 @app.teardown_appcontext
 def close_redis(exception):
-    """Return connection to pool at end of request"""
-    redis_client = g.pop('redis', None)
-    # Connection automatically returned to pool when client goes out of scope
+    """Remove request-local Redis client wrapper"""
+    g.pop('redis', None)
+    # Redis command connections are returned to the shared pool after each command
 
 @app.route('/user/<int:user_id>')
 def get_user(user_id):
@@ -284,6 +289,7 @@ CACHES = {
 
 # Usage in views
 from django.core.cache import cache
+from django.http import JsonResponse
 from django_redis import get_redis_connection
 
 def get_user(request, user_id):
@@ -292,7 +298,10 @@ def get_user(request, user_id):
 
     # Or get raw Redis connection for advanced operations
     r = get_redis_connection('default')
-    user = r.hgetall(f'user:{user_id}')
+    user = {
+        key.decode(): value.decode()
+        for key, value in r.hgetall(f'user:{user_id}').items()
+    }
 
     return JsonResponse({'user': user})
 ```
