@@ -112,7 +112,7 @@ WHERE r.amount > 100;
 
 ### Optimize Remote Queries
 
-PostgreSQL can push down WHERE clauses, joins, and aggregations to the remote server:
+PostgreSQL can push down WHERE clauses, joins between compatible foreign tables on the same foreign server, and aggregations to the remote server:
 
 ```sql
 -- Check what gets pushed to remote
@@ -128,7 +128,7 @@ GROUP BY customer_id;
 Enable additional pushdown options:
 
 ```sql
--- Allow more operations to be pushed to remote
+-- Allow immutable functions/operators from pg_trgm to be pushed to remote
 ALTER SERVER remote_db OPTIONS (
     ADD fetch_size '10000',
     ADD extensions 'pg_trgm'
@@ -319,6 +319,7 @@ SELECT * FROM remote_orders
 WHERE created_at > current_date - interval '30 days';
 
 -- Create indexes on the materialized view
+CREATE UNIQUE INDEX ON cached_remote_orders (id);
 CREATE INDEX ON cached_remote_orders (customer_id);
 CREATE INDEX ON cached_remote_orders (created_at);
 
@@ -334,9 +335,9 @@ SELECT cron.schedule('refresh-remote-orders', '0 * * * *',
     'REFRESH MATERIALIZED VIEW CONCURRENTLY cached_remote_orders');
 ```
 
-## Advanced: Custom FDW for REST APIs
+## Advanced: REST APIs
 
-You can use wrappers like `multicorn` or `http` to query REST APIs:
+You can use an extension like `http` or a custom FDW built with a wrapper library like `multicorn` to query REST APIs:
 
 ### Using the http Extension
 
@@ -355,7 +356,7 @@ DECLARE
     result http_response;
 BEGIN
     SELECT * INTO result
-    FROM http_get('https://api.weather.com/current?city=' || city);
+    FROM http_get('https://api.weather.com/current?city=' || urlencode(city));
     RETURN result.content::json;
 END;
 $$ LANGUAGE plpgsql;
@@ -445,7 +446,7 @@ SELECT * FROM pg_user_mappings;
 ```
 
 For better security:
-- Use `.pgpass` file on the server
+- For `postgres_fdw`, use a service file or `.pgpass` on the server only for trusted mappings where `password_required 'false'` is appropriate
 - Use SSL for connections
 - Restrict access to the foreign server definition
 
