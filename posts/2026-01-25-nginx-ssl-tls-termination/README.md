@@ -100,6 +100,7 @@ ssl_dhparam /etc/nginx/dhparam.pem;
 # OCSP Stapling
 ssl_stapling on;
 ssl_stapling_verify on;
+# Configure ssl_trusted_certificate in each server block for OCSP verification
 resolver 8.8.8.8 8.8.4.4 valid=300s;
 resolver_timeout 5s;
 ```
@@ -142,13 +143,15 @@ server {
 
 # HTTPS server
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com www.example.com;
 
     # Certificates
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/example.com/chain.pem;
 
     # Include shared SSL settings
     include /etc/nginx/conf.d/ssl-settings.conf;
@@ -183,7 +186,7 @@ server {
 
 ## Automated Certificate Renewal
 
-Let's Encrypt certificates expire after 90 days. Set up automatic renewal:
+Default Let's Encrypt certificates currently expire after 90 days, with shorter lifetimes being rolled out. Set up automatic renewal:
 
 ```bash
 # Test renewal (dry run)
@@ -218,8 +221,8 @@ Verify your SSL configuration is correct:
 openssl s_client -connect example.com:443 -servername example.com < /dev/null 2>/dev/null | openssl x509 -noout -dates
 
 # Verify certificate matches private key
-openssl x509 -noout -modulus -in /path/to/cert.crt | openssl md5
-openssl rsa -noout -modulus -in /path/to/key.key | openssl md5
+openssl x509 -in /path/to/cert.crt -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256
+openssl pkey -in /path/to/key.key -pubout -outform DER | openssl dgst -sha256
 # Both commands should output the same hash
 ```
 
@@ -230,7 +233,8 @@ Server Name Indication (SNI) allows multiple SSL sites on one IP address:
 ```nginx
 # First site
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name site1.example.com;
 
     ssl_certificate /etc/letsencrypt/live/site1.example.com/fullchain.pem;
@@ -243,7 +247,8 @@ server {
 
 # Second site
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name site2.example.com;
 
     ssl_certificate /etc/letsencrypt/live/site2.example.com/fullchain.pem;
@@ -269,7 +274,8 @@ Configure Nginx to use it:
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name *.example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
