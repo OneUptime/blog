@@ -113,7 +113,7 @@ func (s *Stack[T]) IsEmpty() bool {
 Using the stack is straightforward - the type parameter is inferred or explicit:
 
 ```go
-// Type inferred from the first Push
+// Type specified explicitly because NewStack's arguments do not mention T
 intStack := NewStack[int](10)
 intStack.Push(1)
 intStack.Push(2)
@@ -165,8 +165,8 @@ func (q *Queue[T]) Dequeue() (T, bool) {
     // Get first element
     item := q.items[0]
 
-    // Remove it - this is O(n) but simple
-    // For high-performance, use a ring buffer instead
+    // Remove it - this is simple, but it can keep the underlying array alive
+    // For high-performance queues, use a ring buffer instead
     q.items = q.items[1:]
 
     return item, true
@@ -378,6 +378,8 @@ Go 1.21 added the `cmp` package with useful constraints. Use these when your dat
 
 This example shows a sorted set that maintains elements in order:
 
+For floating-point types, avoid storing NaN values or define explicit NaN handling with `cmp.Compare` or `cmp.Less`, since ordinary comparison operators have special NaN behavior.
+
 ```go
 package collections
 
@@ -497,7 +499,7 @@ func (s *Stack[T any]) Push(item T) { }  // compilation error
 
 **4. Interfaces with generics**
 
-If you want an interface that your generic types implement, define it without type parameters.
+If the interface does not depend on the element type, you can define it without type parameters.
 
 ```go
 // Interface for any collection
