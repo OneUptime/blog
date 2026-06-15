@@ -30,17 +30,17 @@ The solution depends on where your cluster runs:
 
 | Environment | Solution |
 |-------------|----------|
-| AWS (EKS) | AWS Load Balancer Controller |
+| AWS (EKS) | AWS Load Balancer Controller, EKS Auto Mode, or legacy AWS cloud provider |
 | GCP (GKE) | Built-in (usually works automatically) |
 | Azure (AKS) | Azure Load Balancer (usually automatic) |
 | Bare metal | MetalLB or similar |
 | Minikube | `minikube tunnel` |
-| Kind | MetalLB or port forwarding |
+| Kind | Cloud Provider KIND, MetalLB, or port forwarding |
 | K3s | Built-in ServiceLB or MetalLB |
 
 ## Step 2: Check Cloud Controller Manager
 
-In cloud environments, the cloud controller manager provisions load balancers. Verify it is running:
+In cloud environments, the cloud controller manager or provider-specific load balancer controller provisions load balancers. If your provider runs this as a managed control plane component, check the Service events and the provider's cluster status instead of expecting a pod in `kube-system`.
 
 ```bash
 # Check for cloud controller manager pods
@@ -62,7 +62,7 @@ Look at the Events section for messages like:
 
 ### AWS EKS
 
-EKS requires the AWS Load Balancer Controller for LoadBalancer Services:
+For most EKS clusters, use the AWS Load Balancer Controller for new LoadBalancer Services. Older clusters can still fall back to the legacy AWS cloud provider, and EKS Auto Mode provisions Network Load Balancers automatically:
 
 ```bash
 # Check if AWS Load Balancer Controller is installed
@@ -102,11 +102,14 @@ gcloud container clusters describe your-cluster --zone=your-zone
 ### Azure AKS
 
 ```bash
-# Check Azure cloud controller logs
+# Check Service events for Azure provisioning errors
+kubectl describe svc my-service
+
+# If your cluster exposes cloud controller manager pods, check their logs
 kubectl logs -n kube-system -l component=cloud-controller-manager
 
-# Verify the cluster's service principal has permissions
-az role assignment list --assignee <service-principal-id>
+# Verify the cluster's service principal or managed identity has permissions
+az role assignment list --assignee <principal-or-client-id>
 ```
 
 ## Step 4: Install MetalLB for Bare Metal
@@ -115,7 +118,7 @@ On bare metal, on-premises, or local clusters, install MetalLB to handle LoadBal
 
 ```bash
 # Install MetalLB
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.3/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
 
 # Wait for pods to be ready
 kubectl wait --namespace metallb-system \
