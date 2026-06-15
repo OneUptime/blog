@@ -8,13 +8,13 @@ Description: Learn how to build efficient ETL pipelines in .NET using System.Thr
 
 ---
 
-Extract, Transform, Load (ETL) pipelines are fundamental to data engineering. In .NET, System.Threading.Channels provides a high-performance, thread-safe mechanism for building these pipelines. Channels enable producer-consumer patterns where different stages of your pipeline can run concurrently while managing backpressure automatically.
+Extract, Transform, Load (ETL) pipelines are fundamental to data engineering. In .NET, System.Threading.Channels provides a high-performance, thread-safe mechanism for building these pipelines. Channels enable producer-consumer patterns where different stages of your pipeline can run concurrently, and bounded channels can manage backpressure automatically.
 
 ## Why Channels for ETL?
 
 Channels offer several advantages over traditional approaches like BlockingCollection or manual thread synchronization:
 
-- Built-in backpressure handling prevents memory exhaustion
+- Built-in backpressure with bounded channels helps prevent memory exhaustion
 - Async/await support throughout the pipeline
 - Bounded and unbounded capacity options
 - Multiple producers and consumers supported
@@ -209,7 +209,7 @@ public class MultiStagePipeline
         }
     }
 
-    private async Task TransformAsync(
+    public async Task TransformAsync(
         ChannelReader<RawRecord> reader,
         ChannelWriter<TransformedRecord> writer,
         CancellationToken cancellationToken)
@@ -456,14 +456,15 @@ public class PipelineWithErrorHandling
             {
                 try
                 {
+                    attempts++;
                     var processed = await TransformAsync(record);
                     await output.WriteAsync(processed, cancellationToken);
+                    lastException = null;
                     break; // Success, move to next record
                 }
                 catch (TransientException ex)
                 {
                     lastException = ex;
-                    attempts++;
 
                     if (attempts < maxRetries)
                     {
@@ -529,7 +530,7 @@ public class MonitoredPipeline
 {
     private readonly Counter<long> _recordsProcessed;
     private readonly Histogram<double> _processingDuration;
-    private readonly UpDownCounter<long> _queueDepth;
+    private readonly UpDownCounter<long> _recordsInProgress;
 
     public MonitoredPipeline(IMeterFactory meterFactory)
     {
@@ -545,10 +546,10 @@ public class MonitoredPipeline
             "ms",
             "Time to process each record");
 
-        _queueDepth = meter.CreateUpDownCounter<long>(
-            "etl_queue_depth",
+        _recordsInProgress = meter.CreateUpDownCounter<long>(
+            "etl_records_in_progress",
             "records",
-            "Current queue depth");
+            "Records currently being processed");
     }
 
     public async Task ProcessAsync(
@@ -558,7 +559,7 @@ public class MonitoredPipeline
     {
         await foreach (var record in input.ReadAllAsync(cancellationToken))
         {
-            _queueDepth.Add(1, new KeyValuePair<string, object>("stage", "transform"));
+            _recordsInProgress.Add(1, new KeyValuePair<string, object>("stage", "transform"));
 
             var stopwatch = Stopwatch.StartNew();
 
@@ -578,7 +579,7 @@ public class MonitoredPipeline
             {
                 stopwatch.Stop();
                 _processingDuration.Record(stopwatch.ElapsedMilliseconds);
-                _queueDepth.Add(-1, new KeyValuePair<string, object>("stage", "transform"));
+                _recordsInProgress.Add(-1, new KeyValuePair<string, object>("stage", "transform"));
             }
         }
     }
@@ -611,7 +612,7 @@ public class BackpressureStrategies
         });
     }
 
-    // Drop newest: Useful when you want to process what you have
+    // Drop newest: Removes the most recently buffered item to make room
     public Channel<T> CreateDropNewestChannel<T>(int capacity)
     {
         return Channel.CreateBounded<T>(new BoundedChannelOptions(capacity)
@@ -629,7 +630,7 @@ public class BackpressureStrategies
         });
     }
 
-    // Adaptive producer that slows down based on queue depth
+    // Adaptive producer that slows down after repeated waits
     public async Task AdaptiveProducerAsync<T>(
         ChannelWriter<T> writer,
         IAsyncEnumerable<T> source,
@@ -678,7 +679,16 @@ public class PipelineTests
         var outputChannel = Channel.CreateUnbounded<TransformedRecord>();
 
         var records = Enumerable.Range(1, 100)
-            .Select(i => new RawRecord { Id = i, Data = $"Data-{i}" })
+            .Select(i => new RawRecord
+            {
+                Source = "Test",
+                Data = new CsvRecord
+                {
+                    Id = i,
+                    Name = $"Name-{i}",
+                    DateString = "2026-01-25"
+                }
+            })
             .ToList();
 
         // Write test data
