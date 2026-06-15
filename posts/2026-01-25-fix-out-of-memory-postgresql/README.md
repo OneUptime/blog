@@ -87,7 +87,7 @@ SELECT
 ### Monitor Memory Usage
 
 ```sql
--- Check memory usage by backend
+-- Check active backend queries
 SELECT
     pid,
     usename,
@@ -206,19 +206,25 @@ max_connections = 50
 
 ### Solution 5: Configure Linux OOM Killer
 
-Prevent the OOM killer from targeting PostgreSQL:
+Prevent the OOM killer from targeting the PostgreSQL postmaster while still allowing the OOM killer to terminate child backends if needed:
 
 ```bash
 # Find postgres main process PID
 PGPID=$(head -1 /var/lib/postgresql/14/main/postmaster.pid)
 
-# Set OOM score adjustment (lower = less likely to be killed)
-echo -1000 > /proc/${PGPID}/oom_score_adj
+# Set OOM score adjustment for the postmaster (lower = less likely to be killed)
+sudo sh -c "echo -1000 > /proc/${PGPID}/oom_score_adj"
+
+# In startup scripts, reset child backends to the normal OOM score
+export PG_OOM_ADJUST_FILE=/proc/self/oom_score_adj
+export PG_OOM_ADJUST_VALUE=0
 
 # Or in systemd service file
 # /etc/systemd/system/postgresql.service.d/override.conf
 [Service]
 OOMScoreAdjust=-1000
+Environment=PG_OOM_ADJUST_FILE=/proc/self/oom_score_adj
+Environment=PG_OOM_ADJUST_VALUE=0
 ```
 
 ### Solution 6: Configure Linux Memory Overcommit
@@ -232,8 +238,8 @@ cat /proc/sys/vm/overcommit_memory
 # Option 2: Don't overcommit more than swap + ratio of physical RAM
 
 # Recommended for PostgreSQL:
-echo 2 > /proc/sys/vm/overcommit_memory
-echo 80 > /proc/sys/vm/overcommit_ratio
+sudo sysctl -w vm.overcommit_memory=2
+sudo sysctl -w vm.overcommit_ratio=80
 
 # Make permanent in /etc/sysctl.conf:
 vm.overcommit_memory = 2
@@ -247,7 +253,8 @@ vm.overcommit_ratio = 80
 ### Identify Memory-Hungry Queries
 
 ```sql
--- Install pg_stat_statements extension
+-- First add pg_stat_statements to shared_preload_libraries in postgresql.conf
+-- and restart PostgreSQL, then install the extension in the database:
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 -- Find queries with most temporary file usage (indicates memory pressure)
@@ -275,10 +282,10 @@ LIMIT 100;
 
 -- Look for:
 -- "Sort Method: external merge Disk" - needs more work_mem
--- "Hash Batch" - hash join spilling to disk
+-- "Batches: N" where N > 1 - hash join spilling to disk
 
 -- Fix: Add appropriate indexes
-CREATE INDEX idx_orders_customer_created ON orders (customer_id, created_at DESC);
+CREATE INDEX idx_orders_created_customer ON orders (created_at DESC, customer_id);
 
 -- Or rewrite the query to use less memory
 -- Instead of ORDER BY on full result, use a subquery
@@ -293,7 +300,7 @@ WHERE o.id IN (
 ### Limit Result Sets
 
 ```sql
--- Bad: Fetches entire table into memory
+-- Bad: Returns the entire table; client code that buffers all rows can run out of memory
 SELECT * FROM large_table;
 
 -- Better: Paginate results
