@@ -12,7 +12,7 @@ Virtual hosts allow a single Nginx server to host multiple websites, each with i
 
 ## Understanding Virtual Hosts
 
-Nginx uses the `server_name` directive to route requests to the appropriate server block:
+Nginx uses the `listen` and `server_name` directives to route requests to the appropriate server block:
 
 ```mermaid
 flowchart LR
@@ -124,7 +124,7 @@ Define a default server for unmatched requests:
 
 server {
     listen 80 default_server;
-    server_name _;  # Catch-all
+    server_name _;  # Invalid name convention for a default server
 
     # Return 444 to close connection without response
     return 444;
@@ -146,12 +146,13 @@ Configure HTTPS for each virtual host:
 server {
     listen 80;
     server_name site1.com www.site1.com;
-    return 301 https://$server_name$request_uri;
+    return 301 https://$host$request_uri;
 }
 
 # HTTPS server
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name site1.com www.site1.com;
 
     ssl_certificate /etc/letsencrypt/live/site1.com/fullchain.pem;
@@ -227,7 +228,7 @@ server {
 
     # Extract subdomain from host
     set $subdomain "";
-    if ($host ~* ^([^.]+)\.example\.com$) {
+    if ($host ~* ^(.+)\.example\.com$) {
         set $subdomain $1;
     }
 
@@ -377,7 +378,8 @@ A production setup for multiple sites:
 # Default server (catch unknown hosts)
 server {
     listen 80 default_server;
-    listen 443 ssl http2 default_server;
+    listen 443 ssl default_server;
+    http2 on;
     server_name _;
 
     ssl_certificate /etc/ssl/certs/default.crt;
@@ -390,11 +392,12 @@ server {
 server {
     listen 80;
     server_name company.com www.company.com;
-    return 301 https://$server_name$request_uri;
+    return 301 https://$host$request_uri;
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name company.com www.company.com;
 
     ssl_certificate /etc/letsencrypt/live/company.com/fullchain.pem;
@@ -421,11 +424,12 @@ server {
 server {
     listen 80;
     server_name portal.company.com;
-    return 301 https://$server_name$request_uri;
+    return 301 https://$host$request_uri;
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name portal.company.com;
 
     ssl_certificate /etc/letsencrypt/live/portal.company.com/fullchain.pem;
@@ -448,11 +452,12 @@ server {
 server {
     listen 80;
     server_name docs.company.com;
-    return 301 https://$server_name$request_uri;
+    return 301 https://$host$request_uri;
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name docs.company.com;
 
     ssl_certificate /etc/letsencrypt/live/docs.company.com/fullchain.pem;
