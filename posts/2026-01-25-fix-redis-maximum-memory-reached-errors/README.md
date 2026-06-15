@@ -48,6 +48,11 @@ redis-cli INFO memory
 # used_memory_human:3.98G
 # maxmemory_human:4.00G
 # maxmemory_policy:noeviction
+
+# Check eviction counters
+redis-cli INFO stats
+
+# Key metric:
 # evicted_keys:0
 
 # Check what is using memory
@@ -148,6 +153,7 @@ print(f"Hash: {r.memory_usage('user:123')} bytes")
 ### 2. Enable Compression for Large Values
 
 ```python
+import json
 import zlib
 
 class CompressedCache:
@@ -200,7 +206,7 @@ r.set("s:12345678", data)
 ### 5. Configure Memory-Efficient Encodings
 
 ```bash
-# Small hashes use ziplist encoding
+# Small hashes use listpack encoding
 CONFIG SET hash-max-listpack-entries 512
 CONFIG SET hash-max-listpack-value 64
 
@@ -256,8 +262,11 @@ class MemoryMonitor:
     def run(self, interval=60):
         while True:
             stats, alerts = self.check_health()
-            print(f"Memory: {stats['used_mb']:.1f}MB / {stats['max_mb']:.1f}MB "
-                  f"({stats['usage_pct']:.1f}%)")
+            if stats['max_mb'] is not None:
+                print(f"Memory: {stats['used_mb']:.1f}MB / {stats['max_mb']:.1f}MB "
+                      f"({stats['usage_pct']:.1f}%)")
+            else:
+                print(f"Memory: {stats['used_mb']:.1f}MB / unlimited")
 
             for level, msg in alerts:
                 print(f"  {level}: {msg}")
@@ -362,6 +371,7 @@ rc.set('key1', 'value1')  # Goes to appropriate shard
 
 ```python
 import hashlib
+import redis
 
 class ShardedRedis:
     def __init__(self, hosts):
