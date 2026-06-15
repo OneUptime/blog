@@ -21,7 +21,7 @@ sequenceDiagram
 
     Note over App,DB: Connection Establishment
     App->>DB: TCP Handshake (1 RTT)
-    App->>DB: TLS Handshake (2 RTT)
+    App->>DB: TLS Handshake (1-2 RTT)
     App->>DB: Authentication
     DB->>App: Connection Ready
 
@@ -115,6 +115,7 @@ setInterval(() => {
 from sqlalchemy import create_engine, event
 from sqlalchemy.pool import QueuePool
 import logging
+import time
 
 # Configure engine with optimized pool settings
 engine = create_engine(
@@ -136,7 +137,7 @@ engine = create_engine(
     }
 )
 
-# Log slow checkouts (indicates pool exhaustion)
+# Log connections held for a long time
 @event.listens_for(engine, 'checkout')
 def receive_checkout(dbapi_connection, connection_record, connection_proxy):
     connection_record.info['checkout_time'] = time.time()
