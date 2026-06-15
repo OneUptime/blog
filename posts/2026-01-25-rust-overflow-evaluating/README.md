@@ -8,14 +8,14 @@ Description: Learn how to fix 'overflow evaluating the requirement' errors in Ru
 
 ---
 
-The "overflow evaluating the requirement" error occurs when the Rust compiler encounters infinite recursion while evaluating types or trait bounds. This usually happens with recursive type definitions or deeply nested generics. This guide explains why it happens and how to fix it.
+The "overflow evaluating the requirement" error occurs when the Rust compiler encounters infinite recursion while evaluating trait bounds or type-level requirements. Related errors can also happen with recursive type definitions or deeply nested generics. This guide explains why it happens and how to fix it.
 
 ## Understanding the Error
 
-Rust evaluates types at compile time. When a type definition refers to itself without indirection, or trait bounds create circular dependencies, the compiler cannot finish evaluating.
+Rust evaluates types at compile time. When a type definition refers to itself without indirection, the compiler cannot compute a finite size for the type. When trait bounds create unbounded recursive requirements, the compiler cannot finish evaluating them.
 
 ```rust
-// This causes overflow - the struct directly contains itself
+// This causes an infinite-size recursive type - the struct directly contains itself
 // struct Node {
 //     value: i32,
 //     next: Node,  // Error: recursive type has infinite size
@@ -66,12 +66,14 @@ fn main() {
 Trait bounds that reference themselves can cause overflow.
 
 ```rust
-// Problem: Trait bound refers to itself infinitely
-// trait Recursive: Recursive {}  // Error!
+// Problem: Trait implementation creates an unbounded recursive requirement
+// trait Foo {}
+// struct Bar<T>(T);
+// impl<T> Foo for T where Bar<T>: Foo {}  // Error: overflow evaluating the requirement
 
 // Another problematic pattern:
 // trait A where Self: B {}
-// trait B where Self: A {}  // Circular dependency
+// trait B where Self: A {}  // Error: dependency cycle
 
 // Solution: Design traits without circular dependencies
 trait Printable {
@@ -116,7 +118,7 @@ type Level1 = Wrapper<i32>;
 type Level2 = Wrapper<Level1>;
 type Level3 = Wrapper<Level2>;
 
-// Solution 2: Use trait objects for dynamic types
+// Solution 2: Use a concrete, fixed-depth value
 fn main() {
     let w = Wrapper(Wrapper(Wrapper(42)));
     println!("Created: {:?}", w.0.0.0);
@@ -128,9 +130,13 @@ fn main() {
 Associated types can create cycles in trait evaluation.
 
 ```rust
-// Problem: Associated type references create cycle
+// Problem: Associated type requirements can still create recursive obligations
 // trait Cyclic {
 //     type Next: Cyclic;
+// }
+// struct Loop;
+// impl Cyclic for Loop {
+//     type Next = Loop;  // Valid by itself, but recursive bounds using Next can overflow
 // }
 
 // Solution: Break the cycle with a termination condition
@@ -207,14 +213,14 @@ fn main() {
 Break infinite size with heap-allocated pointers.
 
 ```rust
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::cell::RefCell;
 
 // Tree with shared ownership
 struct TreeNode {
     value: i32,
     children: Vec<Rc<RefCell<TreeNode>>>,
-    parent: Option<Rc<RefCell<TreeNode>>>,
+    parent: Option<Weak<RefCell<TreeNode>>>,
 }
 
 impl TreeNode {
@@ -232,8 +238,8 @@ fn main() {
     let child = TreeNode::new(2);
 
     root.borrow_mut().children.push(Rc::clone(&child));
-    // Note: Setting parent creates a reference cycle
-    // Use Weak<RefCell<TreeNode>> for parent to avoid memory leaks
+    child.borrow_mut().parent = Some(Rc::downgrade(&root));
+    // Weak<RefCell<TreeNode>> avoids a strong reference cycle
 
     println!("Root value: {}", root.borrow().value);
 }
@@ -397,7 +403,7 @@ fn main() {
 |-------|----------|
 | Direct struct recursion | Use `Box`, `Rc`, or `Arc` |
 | Circular trait bounds | Redesign trait hierarchy |
-| Deep generic nesting | Use type aliases |
+| Deep generic nesting | Limit nesting depth or use dynamic dispatch |
 | Associated type cycles | Add termination conditions |
 | Blanket impl conflicts | Avoid circular impls |
 
@@ -405,7 +411,7 @@ Best practices:
 
 - Use heap indirection (Box) for recursive types
 - Design traits without circular dependencies
-- Break complex types into named aliases
+- Break complex types into named aliases for readability
 - Use enums with base cases for recursive data
 - Consider trait objects for deeply nested generics
 
