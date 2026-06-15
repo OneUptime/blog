@@ -19,7 +19,7 @@ Here are the most important security headers and what they protect against:
 | Strict-Transport-Security | Forces HTTPS connections |
 | X-Content-Type-Options | Prevents MIME sniffing |
 | X-Frame-Options | Prevents clickjacking |
-| X-XSS-Protection | Legacy XSS filter |
+| X-XSS-Protection | Disables legacy XSS filter |
 | Content-Security-Policy | Controls resource loading |
 | Referrer-Policy | Controls referrer information |
 | Permissions-Policy | Controls browser features |
@@ -30,7 +30,8 @@ Add essential headers to your Nginx configuration:
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     # Force HTTPS for 1 year, include subdomains
@@ -42,8 +43,8 @@ server {
     # Prevent clickjacking
     add_header X-Frame-Options "SAMEORIGIN" always;
 
-    # Enable XSS filter (legacy, but still useful)
-    add_header X-XSS-Protection "1; mode=block" always;
+    # Disable deprecated XSS filter; use CSP instead
+    add_header X-XSS-Protection "0" always;
 
     # Control referrer information
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
@@ -100,8 +101,10 @@ Start with a report-only header to test without breaking functionality:
 
 ```nginx
 # Report violations without blocking
+add_header Reporting-Endpoints 'csp-endpoint="https://example.com/csp-reports"' always;
 add_header Content-Security-Policy-Report-Only "
     default-src 'self';
+    report-to csp-endpoint;
     report-uri /csp-violation-report;
 " always;
 ```
@@ -133,12 +136,9 @@ add_header X-Frame-Options "SAMEORIGIN" always;
 
 # Deny all framing
 add_header X-Frame-Options "DENY" always;
-
-# Allow specific origin (deprecated, use CSP instead)
-add_header X-Frame-Options "ALLOW-FROM https://trusted.com" always;
 ```
 
-For modern browsers, use CSP frame-ancestors instead:
+For specific origins in modern browsers, use CSP frame-ancestors instead:
 
 ```nginx
 add_header Content-Security-Policy "frame-ancestors 'self' https://trusted.com" always;
@@ -219,8 +219,8 @@ add_header X-Content-Type-Options "nosniff" always;
 # Clickjacking protection
 add_header X-Frame-Options "SAMEORIGIN" always;
 
-# XSS filter
-add_header X-XSS-Protection "1; mode=block" always;
+# Disable deprecated XSS filter
+add_header X-XSS-Protection "0" always;
 
 # Referrer policy
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
@@ -239,7 +239,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com www.example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -296,7 +297,7 @@ server {
 
 ## Header Inheritance Warning
 
-Nginx headers do not inherit into nested locations. When you use `add_header` in a location block, it replaces all headers from the parent:
+By default, Nginx headers do not inherit into nested locations that define their own `add_header`. When you use `add_header` in a location block, it replaces all headers from the parent unless you use `add_header_inherit merge` in Nginx 1.29.3 or later:
 
 ```nginx
 server {
