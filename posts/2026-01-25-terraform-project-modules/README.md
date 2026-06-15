@@ -266,9 +266,17 @@ module "everything" {
 }
 
 # Good: Separate concerns
-module "networking" { ... }
-module "compute" { ... }
-module "database" { ... }
+module "networking" {
+  source = "./modules/networking"
+}
+
+module "compute" {
+  source = "./modules/compute"
+}
+
+module "database" {
+  source = "./modules/database"
+}
 ```
 
 ### 2. Sensible Defaults
@@ -396,8 +404,8 @@ modules/networking/
 ├── main.tf
 ├── variables.tf
 ├── outputs.tf
-└── test/
-    └── networking_test.go
+└── tests/
+    └── valid_vpc.tftest.hcl
 ```
 
 Use tools like Terratest or the built-in `terraform test`:
@@ -409,7 +417,7 @@ run "vpc_creation" {
   command = plan
 
   variables {
-    environment          = "test"
+    environment          = "dev"
     vpc_cidr             = "10.0.0.0/16"
     availability_zones   = ["us-east-1a"]
     public_subnet_cidrs  = ["10.0.1.0/24"]
