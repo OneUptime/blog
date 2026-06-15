@@ -30,16 +30,16 @@ builder.Services.AddControllers();
 
 var app = builder.Build();
 
-// Expose metrics at /metrics endpoint
-app.UseMetricServer();
-
 // Collect HTTP request metrics automatically
+app.UseRouting();
 app.UseHttpMetrics(options =>
 {
     // Include path labels (be careful with high cardinality)
     options.AddCustomLabel("service", context => "my-api");
 });
 
+// Expose metrics at /metrics endpoint
+app.MapMetrics();
 app.MapControllers();
 app.Run();
 ```
@@ -246,7 +246,7 @@ public class RequestMetrics
     };
 
     private static readonly Histogram RequestDuration = Metrics.CreateHistogram(
-        "http_request_duration_seconds",
+        "app_http_request_duration_seconds",
         "Duration of HTTP requests in seconds",
         new HistogramConfiguration
         {
@@ -451,7 +451,7 @@ public class PrometheusMetricsService : IMetricsService
             });
 
         _httpDuration = Metrics.CreateHistogram(
-            "http_request_duration_seconds",
+            "app_http_request_duration_seconds",
             "HTTP request duration",
             new HistogramConfiguration
             {
@@ -532,20 +532,26 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddSingleton<IMetricsService, PrometheusMetricsService>();
 
+// Use a separate port for metrics (recommended for production)
+builder.Services.AddMetricServer(options =>
+{
+    options.Port = 9090;
+});
+
 var app = builder.Build();
 
-// Use a separate port for metrics (recommended for production)
-app.UseMetricServer(port: 9090);
-
 // Or use the same port with a specific path
-// app.UseMetricServer(url: "/metrics");
+// app.MapMetrics("/metrics");
 
+app.UseRouting();
 app.UseHttpMetrics();
 app.MapControllers();
 app.Run();
 ```
 
 Kubernetes ServiceMonitor for Prometheus Operator:
+
+This assumes your Kubernetes Service exposes a named port called `metrics` that points to port 9090.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
