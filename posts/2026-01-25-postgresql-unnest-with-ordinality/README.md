@@ -143,7 +143,8 @@ INSERT INTO survey_responses VALUES
     (1, ARRAY['Q1', 'Q2', 'Q3'], ARRAY['Yes', 'No', 'Maybe']),
     (2, ARRAY['Q1', 'Q2', 'Q3'], ARRAY['No', 'Yes', 'Yes']);
 
--- Method 1: unnest multiple arrays together (assumes equal lengths)
+-- Method 1: unnest multiple arrays together
+-- If arrays have different lengths, shorter arrays are padded with NULLs
 SELECT
     respondent_id,
     question,
@@ -239,15 +240,23 @@ WITH expanded AS (
     SELECT
         shelf_id,
         slot_num,
-        ordinality,
-        slot_num - ordinality AS gap_indicator
+        ordinality
     FROM inventory_slots
     CROSS JOIN LATERAL unnest(slot_numbers) WITH ORDINALITY AS s(slot_num, ordinality)
+),
+gaps AS (
+    SELECT
+        shelf_id,
+        slot_num,
+        LEAD(slot_num) OVER (PARTITION BY shelf_id ORDER BY ordinality) AS next_slot
+    FROM expanded
 )
-SELECT shelf_id, slot_num
-FROM expanded
-WHERE slot_num != ordinality
-ORDER BY shelf_id, slot_num;
+SELECT
+    shelf_id,
+    generate_series(slot_num + 1, next_slot - 1) AS missing_slot
+FROM gaps
+WHERE next_slot > slot_num + 1
+ORDER BY shelf_id, missing_slot;
 ```
 
 ## Weighted Calculations Using Position
@@ -352,7 +361,7 @@ SELECT array_element_at(ARRAY['a', 'b', 'c'], 2);  -- Returns 'b'
 
 -- Convert array to numbered rows for joins
 SELECT
-    u.user_id,
+    up.user_id,
     u.genre,
     u.rank,
     g.genre_details
