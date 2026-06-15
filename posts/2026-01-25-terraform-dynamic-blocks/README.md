@@ -190,9 +190,9 @@ resource "aws_autoscaling_group" "app" {
 }
 ```
 
-## Nested Dynamic Blocks
+## Dynamic Blocks with Resource for_each
 
-Dynamic blocks can be nested for complex structures.
+Dynamic blocks can be combined with resource-level `for_each` for complex structures.
 
 ```hcl
 variable "load_balancer_config" {
@@ -219,8 +219,8 @@ variable "load_balancer_config" {
         ]
       },
       {
-        port     = 443
-        protocol = "HTTPS"
+        port     = 8080
+        protocol = "HTTP"
         actions = [
           {
             type             = "forward"
@@ -233,7 +233,7 @@ variable "load_balancer_config" {
 }
 
 resource "aws_lb_listener" "main" {
-  for_each = { for l in var.load_balancer_config.listeners : l.port => l }
+  for_each = { for l in var.load_balancer_config.listeners : tostring(l.port) => l }
 
   load_balancer_arn = aws_lb.main.arn
   port              = each.value.port
@@ -252,45 +252,47 @@ resource "aws_lb_listener" "main" {
 
 ## Conditional Dynamic Blocks
 
-Combine dynamic blocks with conditionals to optionally include configurations.
+Combine dynamic blocks with conditionals to optionally include nested configurations.
 
 ```hcl
-variable "enable_encryption" {
+variable "enable_admin_ssh" {
   type    = bool
-  default = true
+  default = false
 }
 
-variable "encryption_settings" {
+variable "admin_ssh_rule" {
   type = object({
-    kms_key_id = string
-    algorithm  = string
+    cidr_blocks = list(string)
+    description = string
   })
   default = {
-    kms_key_id = ""
-    algorithm  = "aws:kms"
+    cidr_blocks = ["10.0.0.0/8"]
+    description = "Admin SSH access"
   }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "main" {
-  bucket = aws_s3_bucket.main.id
+resource "aws_security_group" "admin" {
+  name   = "admin-access"
+  vpc_id = aws_vpc.main.id
 
-  # Only include encryption rule if enabled
-  dynamic "rule" {
-    for_each = var.enable_encryption ? [1] : []
+  # Only include this ingress rule if enabled
+  dynamic "ingress" {
+    for_each = var.enable_admin_ssh ? [var.admin_ssh_rule] : []
 
     content {
-      apply_server_side_encryption_by_default {
-        sse_algorithm     = var.encryption_settings.algorithm
-        kms_master_key_id = var.encryption_settings.kms_key_id != "" ? var.encryption_settings.kms_key_id : null
-      }
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      cidr_blocks = ingress.value.cidr_blocks
+      description = ingress.value.description
     }
   }
 }
 ```
 
-## Dynamic Blocks in Modules
+## Repeatable Configuration in Modules
 
-Modules can expose dynamic block configuration through variables.
+Modules can expose repeatable configuration through variables.
 
 ```hcl
 # modules/vpc/variables.tf
@@ -440,8 +442,9 @@ resource "google_compute_firewall" "rules" {
   direction = each.value.direction
   priority  = each.value.priority
 
-  source_ranges = each.value.direction == "INGRESS" ? each.value.ranges : null
-  target_tags   = each.value.target_tags
+  source_ranges      = each.value.direction == "INGRESS" ? each.value.ranges : null
+  destination_ranges = each.value.direction == "EGRESS" ? each.value.ranges : null
+  target_tags        = each.value.target_tags
 
   dynamic "allow" {
     for_each = each.value.allow
@@ -456,7 +459,7 @@ resource "google_compute_firewall" "rules" {
 
 ## Custom Iterator Names
 
-Use the `iterator` argument for clearer code when nesting.
+Use the `iterator` argument for clearer references inside generated blocks.
 
 ```hcl
 variable "services" {
@@ -470,18 +473,29 @@ variable "services" {
   ]
 }
 
+locals {
+  service_ports = flatten([
+    for service in var.services : [
+      for port in service.ports : {
+        name = service.name
+        port = port
+      }
+    ]
+  ])
+}
+
 resource "aws_security_group" "services" {
   name   = "services-sg"
   vpc_id = aws_vpc.main.id
 
   dynamic "ingress" {
-    for_each = var.services
-    iterator = service  # Custom name instead of "ingress"
+    for_each = local.service_ports
+    iterator = service_port  # Custom name instead of "ingress"
 
     content {
-      description = "Allow traffic to ${service.value.name}"
-      from_port   = service.value.ports[0]
-      to_port     = service.value.ports[length(service.value.ports) - 1]
+      description = "Allow traffic to ${service_port.value.name}"
+      from_port   = service_port.value.port
+      to_port     = service_port.value.port
       protocol    = "tcp"
       cidr_blocks = ["0.0.0.0/0"]
     }
