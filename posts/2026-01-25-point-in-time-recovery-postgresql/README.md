@@ -41,7 +41,7 @@ First, enable continuous WAL archiving on your production server.
 -- Enable WAL archiving
 ALTER SYSTEM SET wal_level = 'replica';
 ALTER SYSTEM SET archive_mode = on;
-ALTER SYSTEM SET archive_command = 'cp %p /var/lib/postgresql/wal_archive/%f';
+ALTER SYSTEM SET archive_command = 'test ! -f /var/lib/postgresql/wal_archive/%f && cp %p /var/lib/postgresql/wal_archive/%f';
 
 -- Optional: Compress archives to save space
 -- ALTER SYSTEM SET archive_command = 'gzip < %p > /var/lib/postgresql/wal_archive/%f.gz';
@@ -73,8 +73,10 @@ SELECT * FROM pg_stat_archiver;
 
 -- Force a WAL switch to test archiving
 SELECT pg_switch_wal();
+```
 
--- Check the archive directory
+```bash
+# Check the archive directory
 ls -la /var/lib/postgresql/wal_archive/
 ```
 
@@ -88,11 +90,11 @@ The base backup is a consistent snapshot of your entire PostgreSQL data director
 # Create a base backup to local directory
 
 pg_basebackup -D /var/lib/postgresql/backups/base_2026-01-25 \
-    -Ft \            # tar format
-    -z \             # gzip compression
-    -P \             # show progress
-    -X stream \      # include WAL during backup
-    -c fast          # fast checkpoint
+    -Ft \
+    -z \
+    -P \
+    -X stream \
+    -c fast
 
 # For remote backup server
 pg_basebackup -h prod-db.example.com -D /backups/base_2026-01-25 \
@@ -103,7 +105,7 @@ pg_basebackup -h prod-db.example.com -D /backups/base_2026-01-25 \
 
 ```bash
 # Stream backup directly to S3
-pg_basebackup -D - -Ft | aws s3 cp - s3://my-bucket/backups/base_2026-01-25.tar
+pg_basebackup -D - -Ft -X fetch | aws s3 cp - s3://my-bucket/backups/base_2026-01-25.tar
 ```
 
 ### Schedule Regular Base Backups
@@ -134,7 +136,7 @@ sudo mv /var/lib/postgresql/16/main /var/lib/postgresql/16/main.corrupted
 
 # Restore the base backup
 sudo mkdir /var/lib/postgresql/16/main
-sudo tar -xzf /backups/base_2026-01-25.tar.gz -C /var/lib/postgresql/16/main
+sudo tar -xzf /backups/base_2026-01-25/base.tar.gz -C /var/lib/postgresql/16/main
 sudo chown -R postgres:postgres /var/lib/postgresql/16/main
 ```
 
@@ -149,22 +151,22 @@ sudo touch /var/lib/postgresql/16/main/recovery.signal
 
 Add recovery settings to `postgresql.auto.conf`:
 
-```sql
--- Specify recovery target time
+```conf
+# Specify recovery target time
 restore_command = 'cp /var/lib/postgresql/wal_archive/%f %p'
 recovery_target_time = '2026-01-25 14:34:00'
 recovery_target_action = 'promote'
 
--- Alternative targets:
--- recovery_target_xid = '12345'        # Recover to specific transaction
--- recovery_target_lsn = '0/15D68C50'   # Recover to specific WAL position
--- recovery_target_name = 'before_migration'  # Recover to named restore point
+# Alternative targets:
+# recovery_target_xid = '12345'        # Recover to specific transaction
+# recovery_target_lsn = '0/15D68C50'   # Recover to specific WAL position
+# recovery_target_name = 'before_migration'  # Recover to named restore point
 ```
 
 Or add directly:
 
 ```bash
-cat >> /var/lib/postgresql/16/main/postgresql.auto.conf << EOF
+sudo -u postgres tee -a /var/lib/postgresql/16/main/postgresql.auto.conf << EOF
 restore_command = 'cp /var/lib/postgresql/wal_archive/%f %p'
 recovery_target_time = '2026-01-25 14:34:00'
 recovery_target_action = 'promote'
@@ -228,8 +230,9 @@ Set up a monthly recovery drill:
 #!/bin/bash
 # recovery_test.sh - Test PITR on a standby server
 
-# Restore to a test server
-pg_basebackup -h prod-db -D /tmp/recovery_test
+# Restore a base backup to a test server
+mkdir -p /tmp/recovery_test
+tar -xzf /backups/base_2026-01-25/base.tar.gz -C /tmp/recovery_test
 
 # Configure recovery
 cat > /tmp/recovery_test/recovery.signal << EOF
@@ -260,14 +263,15 @@ Alert if archiving falls behind:
 ```sql
 -- Check for archive lag
 SELECT
-    now() - pg_last_wal_receive_lsn() AS archive_lag,
+    now() - last_archived_time AS time_since_last_archive,
     last_archived_wal,
+    last_archived_time,
     last_failed_wal,
     last_failed_time
 FROM pg_stat_archiver;
 ```
 
-Set up an alert if `last_failed_wal` is not null or if archive lag exceeds your threshold.
+Set up an alert if `last_failed_wal` is not null or if `time_since_last_archive` exceeds your threshold.
 
 ### Retention Policy
 
@@ -289,7 +293,8 @@ PITR recovers the entire database. To recover just one table:
 
 ```bash
 # Recover to a separate instance on a different port
-pg_basebackup -D /tmp/recovery -Fp -P
+mkdir -p /tmp/recovery
+tar -xzf /backups/base_2026-01-25/base.tar.gz -C /tmp/recovery
 
 # Configure recovery
 cat > /tmp/recovery/recovery.signal << EOF
@@ -348,8 +353,8 @@ After recovery, PostgreSQL creates a new timeline. If you need to recover again:
 -- Check current timeline
 SELECT timeline_id FROM pg_control_checkpoint();
 
--- You may need to specify the timeline in restore_command
--- restore_command = 'cp /archive/%f %p || cp /archive/%f.partial %p'
+-- You may need to specify a timeline for another recovery
+-- recovery_target_timeline = 'latest'
 ```
 
 ## Summary
