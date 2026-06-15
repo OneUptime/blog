@@ -33,7 +33,7 @@ Click "Add dashboard link" and configure:
 ```yaml
 Type: dashboards
 Title: Related Services
-Tags: Grafana, Dashboard Links, Navigation, Monitoring, Observability, User Experience
+Tags: api, backend
 Include current time range: true
 Include current template variable values: true
 Open in new tab: false
@@ -70,13 +70,13 @@ Tag-based links scale better than hardcoded lists. When you create a new service
 # Tag strategy for automatic linking
 
 Dashboard: API Gateway Overview
-Tags: Grafana, Dashboard Links, Navigation, Monitoring, Observability, User Experience
+Tags: api, backend
 
 Dashboard: Payment Service
-Tags: Grafana, Dashboard Links, Navigation, Monitoring, Observability, User Experience
+Tags: api, backend
 
 Dashboard: User Service
-Tags: Grafana, Dashboard Links, Navigation, Monitoring, Observability, User Experience
+Tags: api, backend
 ```
 
 A dashboard link filtering by tag "api" shows all three dashboards in its dropdown.
@@ -91,31 +91,31 @@ Edit your panel, then navigate to the "Panel links" section under "Panel options
 
 ```yaml
 Title: View Detailed Metrics
-URL: /d/abc123/service-details?var-service=${__field.labels.service}
+URL: /d/abc123/service-details?var-service=${service}&from=${__from}&to=${__to}
 ```
 
 The link appears as an icon in the panel header. Users click to navigate while keeping context from the current view.
 
-### Using Field Variables in Panel Links
+### Using Template Variables in Panel Links
 
-Panel links can reference data from your queries using field variables:
+Panel links can reference template variables and time variables:
 
 ```yaml
-# Available field variables
-${__field.name}          # Field name
-${__field.labels}        # All labels as JSON
-${__field.labels.X}      # Specific label value
-${__value.time}          # Timestamp of the data point
-${__value.numeric}       # Numeric value
-${__value.text}          # String value
+# Available variables in panel links
+${service}               # Dashboard template variable
+${environment}           # Dashboard template variable
+${__from}                # Start of current time range
+${__to}                  # End of current time range
 ```
 
 Example linking to logs filtered by the selected service:
 
 ```yaml
 Title: View Logs
-URL: /explore?left={"queries":[{"expr":"{service=\"${__field.labels.service}\"}"}]}
+URL: /explore?orgId=1&schemaVersion=1&panes={"logs":{"datasource":"loki","queries":[{"refId":"A","datasource":{"uid":"loki","type":"loki"},"expr":"{service=\"${service}\"}"}],"range":{"from":"${__from}","to":"${__to}"}}}
 ```
+
+URL-encode the `panes` JSON when entering the link in Grafana.
 
 ## Data Links
 
@@ -127,7 +127,7 @@ In the panel editor, find "Data links" under field overrides or the panel's fiel
 
 ```yaml
 Title: Drill down to traces
-URL: /explore?left={"queries":[{"query":"${__data.fields.traceID}","queryType":"traceql"}]}
+URL: /explore?orgId=1&schemaVersion=1&panes={"traces":{"datasource":"tempo","queries":[{"refId":"A","datasource":{"uid":"tempo","type":"tempo"},"query":"${__data.fields[\"traceID\"]}","queryType":"traceql"}],"range":{"from":"${__from}","to":"${__to}"}}}
 ```
 
 When users click a data point, Grafana substitutes the actual value from that point into the URL.
@@ -137,7 +137,7 @@ When users click a data point, Grafana substitutes the actual value from that po
 Data links support these variables:
 
 ```yaml
-${__data.fields.fieldName}     # Value of a specific field
+${__data.fields["fieldName"]}  # Value of a specific field
 ${__data.fields[0]}            # Value of first field
 ${__series.name}               # Series name
 ${__value.raw}                 # Raw value at click point
@@ -152,12 +152,14 @@ Connect your metrics dashboard to trace exploration:
 
 ```yaml
 # Panel showing request latency
-Query: histogram_quantile(0.99, rate(http_duration_seconds_bucket{service="$service"}[5m]))
+Query: histogram_quantile(0.99, sum by (le, service) (rate(http_duration_seconds_bucket{service="$service"}[5m])))
 
 # Data link configuration
 Title: Find slow traces
-URL: /explore?orgId=1&left={"datasource":"tempo","queries":[{"query":"{service.name=\"${__field.labels.service}\"} | duration > 500ms"}],"range":{"from":"${__value.time:date:iso}","to":"now"}}
+URL: /explore?orgId=1&schemaVersion=1&panes={"traces":{"datasource":"tempo","queries":[{"refId":"A","datasource":{"uid":"tempo","type":"tempo"},"query":"{resource.service.name=\"${__field.labels.service}\" && span:duration > 500ms}","queryType":"traceql"}],"range":{"from":"${__value.time}","to":"now"}}}
 ```
+
+URL-encode the `panes` JSON when entering the link in Grafana.
 
 Clicking a spike in latency opens Tempo with a query for slow traces from that service around the time of the spike.
 
@@ -200,9 +202,9 @@ Dashboard Links:
     Type: link
     URL: /d/platform-overview?var-service=${service}
 
-Panel Links on Pod Table:
+Data Links on Pod Table:
   - Title: Pod Details
-    URL: /d/pod-dashboard?var-pod=${__data.fields.pod}&var-namespace=${__data.fields.namespace}
+    URL: /d/pod-dashboard?var-pod=${__data.fields["pod"]}&var-namespace=${__data.fields["namespace"]}
 ```
 
 ## Variable Passthrough
@@ -231,9 +233,10 @@ When a variable can have multiple values, format them appropriately:
 
 ```yaml
 # For variables with multiple selections
-URL: /d/target-dashboard?var-service=${service:csv}
+URL: /d/target-dashboard?${service:queryparam}
 
 # Available formats:
+${variable:queryparam}  # var-variable=value1&var-variable=value2
 ${variable:csv}     # value1,value2,value3
 ${variable:pipe}    # value1|value2|value3
 ${variable:json}    # ["value1","value2","value3"]
@@ -247,7 +250,7 @@ Dashboard links can connect Grafana to your broader tooling ecosystem.
 
 ```yaml
 Title: Create Incident
-URL: https://oneuptime.com/incidents/new?service=${service}&severity=${__value.numeric > 0.99 ? "critical" : "warning"}
+URL: https://oneuptime.com/incidents/new?service=${service}&severity=${severity}
 Icon: bell
 ```
 
@@ -263,15 +266,15 @@ Icon: github
 
 ```yaml
 Title: Runbook
-URL: https://wiki.example.com/runbooks/${service}/${__field.labels.alert_name}
+URL: https://wiki.example.com/runbooks/${service}/${alert_name}
 Icon: book
 ```
 
-## Conditional Links with Transformations
+## Field-Specific Links with Overrides
 
-Sometimes you need links that only appear under certain conditions.
+Sometimes you need links that only apply to specific fields.
 
-### Using Overrides for Conditional Data Links
+### Using Overrides for Field-Specific Data Links
 
 ```yaml
 Field Override:
@@ -280,7 +283,7 @@ Field Override:
     - Data links:
         - Title: View Error Details
           URL: /d/errors?error_code=${__value.text}
-          # Only meaningful when status indicates an error
+          # Applies to the status field matched by the override
 ```
 
 ### Separate Panels for Different Link Needs
