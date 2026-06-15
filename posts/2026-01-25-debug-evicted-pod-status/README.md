@@ -21,9 +21,9 @@ flowchart TD
     B --> D[Disk Pressure]
     B --> E[PID Pressure]
 
-    C --> F[Evict pods exceeding memory]
-    D --> G[Evict pods using most disk]
-    E --> H[Evict pods with most processes]
+    C --> F[Evict pods by requests, priority, and usage]
+    D --> G[Reclaim disk, then evict by disk usage]
+    E --> H[Evict pods by priority]
 
     F --> I[Pod Status: Evicted]
     G --> I
@@ -138,8 +138,8 @@ kubectl describe node <node-name> | grep -A 5 "Conditions:"
 # Look for:
 # DiskPressure   True
 
-# Check disk usage on node
-kubectl debug node/<node-name> -it --image=busybox -- df -h
+# Check disk usage on node root filesystem
+kubectl debug node/<node-name> -it --image=busybox -- df -h /host
 ```
 
 ### Solutions
@@ -196,11 +196,11 @@ kubectl debug node/<node-name> -it --image=busybox -- sh -c 'cat /proc/sys/kerne
 
 ### Solutions
 
-**Limit Container PIDs**:
+**Limit Pod PIDs**:
 
 ```yaml
-# In container runtime config
-pids_limit: 100
+# In kubelet config
+podPidsLimit: 100
 ```
 
 **Fix Runaway Processes**:
@@ -219,7 +219,7 @@ evictionHard:
   memory.available: "100Mi"
   nodefs.available: "10%"
   nodefs.inodesFree: "5%"
-  imagefs.available: "15%
+  imagefs.available: "15%"
 evictionSoft:
   memory.available: "200Mi"
   nodefs.available: "15%"
@@ -246,7 +246,7 @@ spec:
 
 ### Set Appropriate Resource Requests
 
-Pods without requests are evicted first:
+Pods with no requests, or pods using more than their requests, are more likely to be evicted first:
 
 ```yaml
 # Burstable QoS - can be evicted
@@ -337,7 +337,9 @@ Evicted pods remain in Failed state. Clean them up:
 
 ```bash
 # Delete evicted pods in a namespace
-kubectl delete pods -n production --field-selector=status.phase=Failed
+kubectl get pods -n production --field-selector=status.phase=Failed -o json | \
+  jq -r '.items[] | select(.status.reason=="Evicted") | .metadata.name' | \
+  xargs -r kubectl delete pod -n production
 
 # Delete all evicted pods cluster-wide
 kubectl get pods -A --field-selector=status.phase=Failed -o json | \
@@ -367,8 +369,8 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  kubectl get pods -A --field-selector=status.phase=Failed -o json | \
-                  jq -r '.items[] | select(.status.reason=="Evicted") | "\(.metadata.namespace) \(.metadata.name)"' | \
+                  kubectl get pods -A --field-selector=status.phase=Failed --no-headers | \
+                  awk '$4=="Evicted" {print $1, $2}' | \
                   while read ns name; do kubectl delete pod $name -n $ns; done
           restartPolicy: OnFailure
 ```
