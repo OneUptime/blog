@@ -52,7 +52,7 @@ When you inject these into your logs, you create the link between your logging s
 
 ## Node.js Implementation
 
-Let us start with a practical Node.js example using Pino logger.
+Let us start with a practical Node.js example using Pino logger. This assumes OpenTelemetry tracing is already initialized in your application so that there is an active span in the current context.
 
 ### Setting Up the Logger
 
@@ -161,7 +161,7 @@ Here is how to achieve the same thing in Python using the standard logging modul
 
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from opentelemetry import trace
 
 class TraceContextFilter(logging.Filter):
@@ -193,7 +193,7 @@ class JSONFormatter(logging.Formatter):
 
     def format(self, record):
         log_data = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             'level': record.levelname.lower(),
             'message': record.getMessage(),
             'trace_id': getattr(record, 'trace_id', 'no-trace'),
@@ -219,9 +219,10 @@ def get_logger(name):
     logger.addFilter(TraceContextFilter())
 
     # Set up JSON handler for stdout
-    handler = logging.StreamHandler()
-    handler.setFormatter(JSONFormatter())
-    logger.addHandler(handler)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(JSONFormatter())
+        logger.addHandler(handler)
 
     return logger
 ```
@@ -258,7 +259,7 @@ def get_user(user_id):
 
 ## OpenTelemetry Collector Log Processing
 
-Once your applications emit correlated logs, you can use the OpenTelemetry Collector to process and export them.
+Once your applications send correlated logs over OTLP, you can use the OpenTelemetry Collector to process and export them. If your application only writes JSON logs to stdout, configure a log receiver such as the Collector Contrib `filelog` receiver to read those logs first.
 
 ```yaml
 # otel-collector-config.yaml
@@ -293,7 +294,7 @@ service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [batch, resource]
+      processors: [resource, batch]
       exporters: [otlphttp]
 ```
 
