@@ -236,7 +236,7 @@ spec:
       # Scrape only running pods
       relabelings:
         - sourceLabels: [__meta_kubernetes_pod_phase]
-          regex: Pending|Succeeded|Failed
+          regex: Pending|Succeeded|Failed|Unknown
           action: drop
 ```
 
@@ -531,6 +531,7 @@ metadata:
   name: my-application
   namespace: production
 spec:
+  jobLabel: app
   selector:
     matchLabels:
       app: my-application
@@ -568,11 +569,11 @@ spec:
 
 5. **Use recording rules**: Precompute expensive queries to improve dashboard performance.
 
-6. **Test rules before deployment**: Use `promtool` to validate PrometheusRules.
+6. **Test rules before deployment**: Use server-side dry runs to validate PrometheusRules before applying them.
 
 ```bash
-# Validate PrometheusRule syntax
-promtool check rules prometheusrule.yaml
+# Validate the PrometheusRule with the Kubernetes API server
+kubectl apply --dry-run=server -f prometheusrule.yaml
 ```
 
 ## Conclusion
