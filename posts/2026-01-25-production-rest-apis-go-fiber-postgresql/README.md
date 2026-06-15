@@ -17,7 +17,7 @@ This guide walks you through building a complete REST API from scratch, focusing
 ## Prerequisites
 
 Before diving in, make sure you have:
-- Go 1.21 or higher installed
+- Go 1.25 or higher installed
 - PostgreSQL running locally or remotely
 - Basic familiarity with Go syntax
 - A code editor (VS Code with Go extension recommended)
@@ -45,7 +45,7 @@ myapi/
 │   ├── repository/
 │   │   └── user.go          # Database operations
 │   └── middleware/
-│       └── auth.go          # Custom middleware
+│       └── logging.go       # Request logging middleware
 ├── go.mod
 ├── go.sum
 └── .env
@@ -55,7 +55,7 @@ myapi/
 
 ## Getting Started
 
-Initialize your Go module and install the required dependencies. Fiber v2 is the current stable version with the best performance characteristics:
+Initialize your Go module and install the required dependencies. This guide uses Fiber v2, which remains widely used; Fiber v3 is now the latest stable major version but has breaking API changes:
 
 ```bash
 # Initialize the Go module
@@ -84,7 +84,6 @@ package config
 
 import (
     "os"
-    "strconv"
 )
 
 type Config struct {
@@ -284,6 +283,9 @@ func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]models.
         }
         users = append(users, user)
     }
+    if err := rows.Err(); err != nil {
+        return nil, fmt.Errorf("failed to iterate users: %w", err)
+    }
 
     return users, nil
 }
@@ -316,13 +318,17 @@ Handlers should be thin - validate input, call the repository, and format the re
 package handlers
 
 import (
+    "context"
     "errors"
     "strconv"
+    "time"
 
     "github.com/gofiber/fiber/v2"
     "myapi/internal/models"
     "myapi/internal/repository"
 )
+
+const dbTimeout = 5 * time.Second
 
 type UserHandler struct {
     repo *repository.UserRepository
@@ -348,7 +354,10 @@ func (h *UserHandler) Create(c *fiber.Ctx) error {
         })
     }
 
-    user, err := h.repo.Create(c.Context(), &req)
+    ctx, cancel := context.WithTimeout(c.Context(), dbTimeout)
+    defer cancel()
+
+    user, err := h.repo.Create(ctx, &req)
     if err != nil {
         return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
             "error": "Failed to create user",
@@ -367,7 +376,10 @@ func (h *UserHandler) Get(c *fiber.Ctx) error {
         })
     }
 
-    user, err := h.repo.GetByID(c.Context(), id)
+    ctx, cancel := context.WithTimeout(c.Context(), dbTimeout)
+    defer cancel()
+
+    user, err := h.repo.GetByID(ctx, id)
     if err != nil {
         if errors.Is(err, repository.ErrNotFound) {
             return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -391,8 +403,17 @@ func (h *UserHandler) List(c *fiber.Ctx) error {
     if limit > 100 {
         limit = 100
     }
+    if limit < 1 {
+        limit = 20
+    }
+    if offset < 0 {
+        offset = 0
+    }
 
-    users, err := h.repo.List(c.Context(), limit, offset)
+    ctx, cancel := context.WithTimeout(c.Context(), dbTimeout)
+    defer cancel()
+
+    users, err := h.repo.List(ctx, limit, offset)
     if err != nil {
         return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
             "error": "Failed to list users",
@@ -415,7 +436,10 @@ func (h *UserHandler) Delete(c *fiber.Ctx) error {
         })
     }
 
-    if err := h.repo.Delete(c.Context(), id); err != nil {
+    ctx, cancel := context.WithTimeout(c.Context(), dbTimeout)
+    defer cancel()
+
+    if err := h.repo.Delete(ctx, id); err != nil {
         if errors.Is(err, repository.ErrNotFound) {
             return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
                 "error": "User not found",
