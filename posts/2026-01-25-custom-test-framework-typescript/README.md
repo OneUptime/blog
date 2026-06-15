@@ -73,10 +73,7 @@ export type HookFunction = () => void | Promise<void>;
 
 // Configuration options for the test runner
 export interface TestRunnerOptions {
-  timeout: number;       // Maximum time for a single test
   bail: boolean;         // Stop on first failure
-  parallel: boolean;     // Run tests in parallel
-  filter?: string;       // Filter tests by name pattern
 }
 ```
 
@@ -143,17 +140,25 @@ export class TestCase {
 
   // Execute the test function with a timeout
   private async executeWithTimeout(): Promise<void> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         reject(new Error(`Test timed out after ${this.timeout}ms`));
       }, this.timeout);
     });
 
     // Race between the test execution and the timeout
-    await Promise.race([
-      Promise.resolve(this.fn()),
-      timeoutPromise,
-    ]);
+    try {
+      await Promise.race([
+        Promise.resolve(this.fn()),
+        timeoutPromise,
+      ]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
   }
 
   getName(): string {
@@ -389,6 +394,8 @@ export class Assertion<T> {
         ? message.includes(expectedError)
         : expectedError.test(message);
       this.assert(matches, `Expected error message to match ${expectedError}`);
+    } else {
+      this.assert(true, 'Expected function to throw');
     }
   }
 
@@ -515,10 +522,7 @@ export class TestRunner {
 
   constructor(options: Partial<TestRunnerOptions> = {}) {
     this.options = {
-      timeout: options.timeout || 5000,
       bail: options.bail || false,
-      parallel: options.parallel || false,
-      filter: options.filter,
     };
   }
 
@@ -699,7 +703,7 @@ main();
 
 ## Advanced Features: Test Decorators
 
-For a more modern approach, you can use TypeScript decorators to define tests.
+For a more declarative approach, you can use legacy TypeScript decorators to define tests. This example requires `experimentalDecorators` to be enabled in `tsconfig.json`.
 
 ```typescript
 // src/decorators/TestDecorators.ts
@@ -707,14 +711,37 @@ For a more modern approach, you can use TypeScript decorators to define tests.
 import { TestSuite } from '../core/TestSuite';
 import { TestCase } from '../core/TestCase';
 
-const suiteRegistry = new Map<string, TestSuite>();
+interface DecoratedTest {
+  name: string;
+  methodName: string;
+  options?: { timeout?: number };
+}
+
+const testRegistry = new Map<Function, DecoratedTest[]>();
+const suiteRegistry = new Map<Function, TestSuite>();
 
 // Class decorator for test suites
 export function Suite(name?: string) {
-  return function <T extends new (...args: unknown[]) => object>(constructor: T) {
+  return function <T extends new () => object>(constructor: T) {
     const suiteName = name || constructor.name;
     const suite = new TestSuite(suiteName);
-    suiteRegistry.set(suiteName, suite);
+    const tests = testRegistry.get(constructor) || [];
+
+    for (const test of tests) {
+      suite.addTest(
+        new TestCase(
+          test.name,
+          async () => {
+            const instance = new constructor();
+            const method = instance[test.methodName as keyof typeof instance] as () => void | Promise<void>;
+            await method.call(instance);
+          },
+          test.options
+        )
+      );
+    }
+
+    suiteRegistry.set(constructor, suite);
     return constructor;
   };
 }
@@ -727,14 +754,17 @@ export function Test(name?: string, options?: { timeout?: number }) {
     descriptor: PropertyDescriptor
   ) {
     const testName = name || propertyKey;
-    const suite = suiteRegistry.get(target.constructor.name);
-
-    if (suite) {
-      suite.addTest(new TestCase(testName, descriptor.value, options));
-    }
+    const constructor = target.constructor;
+    const tests = testRegistry.get(constructor) || [];
+    tests.push({ name: testName, methodName: propertyKey, options });
+    testRegistry.set(constructor, tests);
 
     return descriptor;
   };
+}
+
+export function getDecoratedSuites(): TestSuite[] {
+  return Array.from(suiteRegistry.values());
 }
 
 // Example usage with decorators
