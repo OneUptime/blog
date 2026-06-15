@@ -8,7 +8,7 @@ Description: A practical guide to deploying Apache Kafka in production using KRa
 
 ---
 
-Apache Kafka 3.3+ introduced KRaft (Kafka Raft) as the production-ready replacement for ZooKeeper. This simplifies operations significantly by consolidating metadata management into Kafka itself. In this guide, we will walk through deploying a production-grade Kafka cluster using KRaft mode.
+Apache Kafka 3.3 marked KRaft (Kafka Raft) as the production-ready replacement for ZooKeeper for new clusters, and Kafka 4.0 removed ZooKeeper mode. This simplifies operations significantly by consolidating metadata management into Kafka itself. In this guide, we will walk through deploying a production-grade Kafka cluster using KRaft mode.
 
 ## Why KRaft Over ZooKeeper?
 
@@ -26,12 +26,12 @@ For production, you need at least three nodes to maintain quorum. Here is a typi
 ```mermaid
 graph TB
     subgraph "Kafka KRaft Cluster"
-        C1[Controller 1<br/>broker.id=1]
-        C2[Controller 2<br/>broker.id=2]
-        C3[Controller 3<br/>broker.id=3]
-        B1[Broker 1<br/>broker.id=101]
-        B2[Broker 2<br/>broker.id=102]
-        B3[Broker 3<br/>broker.id=103]
+        C1[Controller 1<br/>node.id=1]
+        C2[Controller 2<br/>node.id=2]
+        C3[Controller 3<br/>node.id=3]
+        B1[Broker 1<br/>node.id=101]
+        B2[Broker 2<br/>node.id=102]
+        B3[Broker 3<br/>node.id=103]
     end
 
     C1 <--> C2
@@ -59,9 +59,14 @@ Every KRaft cluster needs a unique identifier. Generate it once and use it acros
 KAFKA_CLUSTER_ID=$(kafka-storage.sh random-uuid)
 echo $KAFKA_CLUSTER_ID
 # Example output: MkU3OEVBNTcwNTJENDM2Qk
+
+# Generate one directory ID for each initial controller
+CONTROLLER_1_DIRECTORY_ID=$(kafka-storage.sh random-uuid)
+CONTROLLER_2_DIRECTORY_ID=$(kafka-storage.sh random-uuid)
+CONTROLLER_3_DIRECTORY_ID=$(kafka-storage.sh random-uuid)
 ```
 
-Store this ID securely. You will need it when formatting storage on each node.
+Store these IDs securely. You will need the cluster ID when formatting storage on each node, and the controller directory IDs when bootstrapping the initial controller quorum.
 
 ## Step 2: Configure Controller Nodes
 
@@ -76,9 +81,8 @@ node.id=1
 # This node acts as a controller only
 process.roles=controller
 
-# Quorum voters: all controllers in the cluster
-# Format: node.id@host:port
-controller.quorum.voters=1@controller1:9093,2@controller2:9093,3@controller3:9093
+# Controller bootstrap endpoints
+controller.quorum.bootstrap.servers=controller1:9093,controller2:9093,controller3:9093
 
 # Controller listener configuration
 listeners=CONTROLLER://:9093
@@ -87,8 +91,8 @@ controller.listener.names=CONTROLLER
 # Inter-controller security (use SSL in production)
 listener.security.protocol.map=CONTROLLER:PLAINTEXT
 
-# Metadata log directory (separate from broker logs)
-log.dirs=/var/kafka-metadata
+# Metadata log directory
+metadata.log.dir=/var/kafka-metadata
 
 # Replication settings for metadata
 metadata.log.segment.bytes=1073741824
@@ -112,8 +116,8 @@ node.id=101
 # This node acts as a broker only
 process.roles=broker
 
-# Controller quorum for metadata
-controller.quorum.voters=1@controller1:9093,2@controller2:9093,3@controller3:9093
+# Controller bootstrap endpoints
+controller.quorum.bootstrap.servers=controller1:9093,controller2:9093,controller3:9093
 
 # Listener configuration for client connections
 listeners=PLAINTEXT://:9092,SSL://:9093
@@ -156,16 +160,16 @@ Before starting Kafka, format the storage directories with the cluster ID on eac
 kafka-storage.sh format \
     --config /opt/kafka/config/kraft/controller.properties \
     --cluster-id MkU3OEVBNTcwNTJENDM2Qk \
-    --ignore-formatted
+    --initial-controllers "1@controller1:9093:${CONTROLLER_1_DIRECTORY_ID},2@controller2:9093:${CONTROLLER_2_DIRECTORY_ID},3@controller3:9093:${CONTROLLER_3_DIRECTORY_ID}"
 
 # On each broker node
 kafka-storage.sh format \
     --config /opt/kafka/config/kraft/broker.properties \
     --cluster-id MkU3OEVBNTcwNTJENDM2Qk \
-    --ignore-formatted
+    --no-initial-controllers
 ```
 
-The `--ignore-formatted` flag is safe for automation; it skips already-formatted directories.
+Do not reformat storage directories that already contain cluster data. The `--ignore-formatted` flag should only be used when you intentionally need to skip directories that are already formatted, not as a default automation flag.
 
 ## Step 5: Create Systemd Service Files
 
@@ -226,14 +230,15 @@ sudo systemctl enable kafka-broker
 Use the Kafka admin tools to verify your cluster is operational.
 
 ```bash
-# Check cluster metadata
-kafka-metadata.sh --snapshot /var/kafka-metadata/__cluster_metadata-0/00000000000000000000.log --command "cat"
+# Check metadata quorum status
+kafka-metadata-quorum.sh --bootstrap-server broker1:9092 describe --status
 
-# List brokers in the cluster
+# Check broker API connectivity
 kafka-broker-api-versions.sh --bootstrap-server broker1:9092
 
-# Describe cluster
-kafka-metadata.sh --bootstrap-server broker1:9092 --command "describe cluster"
+# Decode the metadata log if you need to inspect records
+kafka-dump-log.sh --cluster-metadata-decoder \
+    --files /var/kafka-metadata/__cluster_metadata-0/00000000000000000000.log
 
 # Create a test topic with replication
 kafka-topics.sh --bootstrap-server broker1:9092 \
@@ -257,26 +262,34 @@ Before going live, verify these items:
 3. **JVM tuning**: Set heap sizes based on workload testing
 4. **TLS encryption**: Enable SSL for all inter-broker and client connections
 5. **Authentication**: Configure SASL for client authentication
-6. **Backup strategy**: Regularly backup `__cluster_metadata` topic
+6. **Recovery strategy**: Document controller metadata recovery procedures and avoid restoring stale metadata copies
 7. **Monitoring**: Export JMX metrics to Prometheus or your observability platform
 
 ## Handling Controller Failures
 
-KRaft uses Raft consensus, so the cluster tolerates `(n-1)/2` controller failures. With three controllers, one can fail without impacting availability. To replace a failed controller:
+KRaft uses Raft consensus, so the cluster tolerates `(n-1)/2` controller failures. With three controllers, one can fail without impacting availability. To replace a failed controller in a dynamic controller quorum:
 
 ```bash
-# Remove the failed controller from voters (from any healthy controller)
-kafka-metadata.sh --bootstrap-server broker1:9092 \
-    --command "remove-controller --controller-id 2"
+# Find the controller ID and directory ID
+kafka-metadata-quorum.sh --bootstrap-server broker1:9092 describe --status
+
+# Remove the failed controller from voters
+kafka-metadata-quorum.sh --bootstrap-server broker1:9092 remove-controller \
+    --controller-id 2 \
+    --controller-directory-id <directory-id>
 
 # Format storage on the new node
 kafka-storage.sh format \
     --config /opt/kafka/config/kraft/controller.properties \
-    --cluster-id MkU3OEVBNTcwNTJENDM2Qk
+    --cluster-id MkU3OEVBNTcwNTJENDM2Qk \
+    --no-initial-controllers
 
-# Add the new controller to voters
-kafka-metadata.sh --bootstrap-server broker1:9092 \
-    --command "add-controller --controller-id 4 --controller-endpoint controller4:9093"
+# Start the new controller and wait for it to catch up
+kafka-metadata-quorum.sh --bootstrap-server broker1:9092 describe --replication
+
+# Add the new controller to voters from the new controller node
+kafka-metadata-quorum.sh --command-config /opt/kafka/config/kraft/controller.properties \
+    --bootstrap-server broker1:9092 add-controller
 ```
 
 ---
