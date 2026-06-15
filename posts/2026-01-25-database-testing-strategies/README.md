@@ -339,7 +339,7 @@ Test transaction behavior:
 
 ```typescript
 // transactions.test.ts
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 
 describe('Transaction Behavior', () => {
     let pool: Pool;
@@ -506,7 +506,7 @@ describe('Query Performance', () => {
 
         const start = Date.now();
 
-        // Use COPY for bulk insert
+        // Use a single transaction for bulk insert
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
@@ -664,7 +664,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:testpass@localhost:5432/testdb
 
       - name: Run database tests
-        run: npm test -- --testPathPattern=database
+        run: npm test -- --testPathPatterns=database
         env:
           DATABASE_URL: postgresql://postgres:testpass@localhost:5432/testdb
 ```
