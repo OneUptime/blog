@@ -119,7 +119,7 @@ variable "environment" {
 variable "cluster_version" {
   description = "Kubernetes version for EKS"
   type        = string
-  default     = "1.28"
+  default     = "1.33"
 }
 
 variable "vpc_cidr" {
@@ -151,6 +151,24 @@ variable "node_max_size" {
   type        = number
   default     = 5
 }
+
+variable "allowed_cidrs" {
+  description = "CIDR blocks allowed to access the EKS public API endpoint in production"
+  type        = list(string)
+  default     = []
+}
+
+variable "enable_fargate" {
+  description = "Whether to create an optional Fargate profile"
+  type        = bool
+  default     = false
+}
+
+variable "hosted_zone_arns" {
+  description = "Route 53 hosted zone ARNs that External DNS can manage"
+  type        = list(string)
+  default     = []
+}
 ```
 
 ## VPC Configuration
@@ -168,7 +186,7 @@ locals {
   cluster_name = "${var.project_name}-${var.environment}"
 }
 
-# VPC using the official AWS module
+# VPC using the community Terraform AWS module
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.1.0"
@@ -238,9 +256,8 @@ module "eks" {
       most_recent = true
     }
     vpc-cni = {
-      most_recent              = true
-      before_compute           = true  # Deploy before nodes
-      service_account_role_arn = module.vpc_cni_irsa.iam_role_arn
+      most_recent    = true
+      before_compute = true  # Deploy before nodes
       configuration_values = jsonencode({
         env = {
           ENABLE_PREFIX_DELEGATION = "true"
@@ -264,23 +281,6 @@ module "eks" {
       ]
     }
   } : {}
-}
-
-# IRSA for VPC CNI
-module "vpc_cni_irsa" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version = "5.30.0"
-
-  role_name             = "${local.cluster_name}-vpc-cni"
-  attach_vpc_cni_policy = true
-  vpc_cni_enable_ipv4   = true
-
-  oidc_providers = {
-    main = {
-      provider_arn               = module.eks.oidc_provider_arn
-      namespace_service_accounts = ["kube-system:aws-node"]
-    }
-  }
 }
 ```
 
@@ -309,8 +309,8 @@ resource "aws_eks_node_group" "general" {
     max_unavailable = 1
   }
 
-  # Use latest EKS-optimized AMI
-  ami_type = "AL2_x86_64"
+  # Use the current x86_64 EKS-optimized AMI family
+  ami_type = "AL2023_x86_64_STANDARD"
 
   labels = {
     role        = "general"
