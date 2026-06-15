@@ -46,26 +46,26 @@ Explore shines when you need to narrow down issues. Start broad:
 
 ```promql
 # All services experiencing high latency
-histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 0.5
+histogram_quantile(0.99, sum by (service, le) (rate(http_request_duration_seconds_bucket[5m]))) > 0.5
 ```
 
 Then narrow based on results:
 
 ```promql
 # Focus on the problematic service
-histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service="checkout"}[5m]))
+histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{service="checkout"}[5m])))
 ```
 
 Add more granularity:
 
 ```promql
 # Break down by endpoint
-histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service="checkout"}[5m])) by (endpoint)
+histogram_quantile(0.99, sum by (endpoint, le) (rate(http_request_duration_seconds_bucket{service="checkout"}[5m])))
 ```
 
 ### Using Query History
 
-Explore saves your query history automatically. Click the clock icon next to the query editor to access previous queries. This is invaluable when returning to an investigation or refining a complex query through multiple iterations.
+Explore saves your query history automatically. Click Query history to access previous queries. This is invaluable when returning to an investigation or refining a complex query through multiple iterations.
 
 ## Querying Logs
 
@@ -111,7 +111,7 @@ With Tempo or Jaeger as your trace data source, Explore becomes a powerful trace
 ### Search by Service
 
 ```traceql
-{service.name="checkout"}
+{resource.service.name="checkout"}
 ```
 
 Results show a trace list with duration, service counts, and span counts.
@@ -121,7 +121,7 @@ Results show a trace list with duration, service counts, and span counts.
 Find slow traces:
 
 ```traceql
-{service.name="checkout"} | duration > 1s
+{resource.service.name="checkout" && trace:duration > 1s}
 ```
 
 ### Search by Attributes
@@ -129,7 +129,7 @@ Find slow traces:
 Look for traces with specific characteristics:
 
 ```traceql
-{service.name="checkout" && http.status_code >= 500}
+{resource.service.name="checkout" && span.http.status_code >= 500}
 ```
 
 ### Trace Detail View
@@ -156,18 +156,18 @@ Right panel (Loki):
 {service="checkout"} |= "error" | json
 ```
 
-Now you can see error rates alongside the actual error messages. Adjust time ranges on one side and watch how the other changes.
+Now you can see error rates alongside the actual error messages. Link the time pickers to keep both panes on the same time range.
 
 ### Metrics to Traces Flow
 
 Left panel (Prometheus):
 ```promql
-histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service="checkout"}[5m]))
+histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{service="checkout"}[5m])))
 ```
 
 Right panel (Tempo):
 ```traceql
-{service.name="checkout"} | duration > 2s
+{resource.service.name="checkout" && trace:duration > 2s}
 ```
 
 When you spot a latency spike in metrics, immediately examine the slow traces from that period.
@@ -183,9 +183,9 @@ Explore's time controls work across split views:
 ### Keyboard Shortcuts
 
 ```text
-Shift + Click + Drag: Zoom to selection
-Ctrl + Z: Undo time range change
-Arrow keys: Navigate through time (when time picker is focused)
+Click + Drag: Zoom to selection on time series visualizations
+t+: Zoom in
+t-: Zoom out
 ```
 
 ## Query Inspector
@@ -194,7 +194,7 @@ For complex queries or performance issues, the Query Inspector reveals what is h
 
 Click the "Query Inspector" button to see:
 
-### Request Tab
+### Query Tab
 ```json
 {
   "queries": [
@@ -210,8 +210,7 @@ Click the "Query Inspector" button to see:
 }
 ```
 
-### Response Tab
-Shows raw data returned by your data source, useful for debugging unexpected results.
+Shows raw request and response data for the query, useful for debugging unexpected results.
 
 ### Stats Tab
 Displays query execution time, bytes transferred, and processing metrics.
@@ -224,7 +223,7 @@ When something is wrong, start with the four golden signals:
 
 ```promql
 # Latency
-histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service="$service"}[5m]))
+histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{service="$service"}[5m])))
 
 # Traffic
 rate(http_requests_total{service="$service"}[5m])
@@ -256,7 +255,7 @@ Check upstream dependencies when a service fails:
 
 ```promql
 # Outbound request failures
-rate(http_client_requests_total{service="checkout", status=~"5.."}[5m]) by (target_service)
+sum by (target_service) (rate(http_client_requests_total{service="checkout", status=~"5.."}[5m]))
 ```
 
 Then examine those dependencies:
@@ -278,21 +277,21 @@ Found a useful query? Click "Add to dashboard" to create a panel on an existing 
 The URL in Explore includes your query, time range, and data source. Share it with teammates:
 
 ```text
-https://grafana.example.com/explore?orgId=1&left={"datasource":"prometheus","queries":[{"expr":"rate(http_requests_total[5m])"}],"range":{"from":"now-1h","to":"now"}}
+https://grafana.example.com/explore?panes=%7B%22pane-1%22%3A%7B%22datasource%22%3A%22prometheus%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22prometheus%22%2C%22type%22%3A%22prometheus%22%7D%2C%22expr%22%3A%22rate(http_requests_total%5B5m%5D)%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-1h%22%2C%22to%22%3A%22now%22%7D%7D%7D&schemaVersion=1&orgId=1
 ```
 
 ### Export Results
 
-For reporting or offline analysis, export query results:
-- CSV download for metrics
-- JSON download for structured data
-- Copy to clipboard for quick sharing
+For reporting or offline analysis, use Query inspector to export query results:
+- CSV download for data frames
+- TXT download for log results
+- JSON download for trace results
 
 ## Advanced Features
 
 ### Mixed Data Source Queries
 
-In split view, each panel can use a different data source. This enables:
+In split view, each panel can use a different data source. Within a single panel, select the Mixed data source to run queries across multiple data sources. This enables:
 - Correlating application metrics (Prometheus) with infrastructure metrics (CloudWatch)
 - Comparing production logs (Loki) with staging logs (different Loki instance)
 
@@ -307,12 +306,12 @@ rate(http_requests_total{service=~"$service"}[5m])
 
 Some data sources support ad-hoc filters that work like variables.
 
-### Annotations
+### Correlations
 
-Add annotations directly from Explore to mark important events:
-1. Select a time point on a graph
-2. Add annotation with description
-3. Annotations appear across dashboards using the same time range
+Add correlations from Explore to connect related data:
+1. Click "+ Add" in the Explore toolbar
+2. Select "Add correlation"
+3. Configure the target query that should run from selected source data
 
 ## Tips for Efficient Investigation
 
@@ -341,7 +340,7 @@ High-cardinality queries can be slow or fail. Start with constrained queries and
 rate(http_requests_total{service="api"}[5m])
 
 # Then expand if needed
-rate(http_requests_total[5m]) by (service)
+sum by (service) (rate(http_requests_total[5m]))
 ```
 
 ## Conclusion
