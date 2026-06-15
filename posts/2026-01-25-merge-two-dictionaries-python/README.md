@@ -245,7 +245,7 @@ print(merged)
 | `d1 \|= d2` | 3.9+ | Yes | No | No (shallow) |
 | `{**d1, **d2}` | 3.5+ | No | Yes | No (shallow) |
 | `d1.update(d2)` | All | Yes | No | No (shallow) |
-| `ChainMap` | All | No | No (view) | No |
+| `ChainMap` | 3.3+ | No | No (view) | No |
 | Custom deep merge | All | Configurable | Configurable | Yes |
 
 ## Practical Examples
