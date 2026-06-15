@@ -12,12 +12,12 @@ Rust's module system can be confusing when you need to import code from sibling 
 
 ## Module Basics
 
-Every Rust file is a module. The module hierarchy follows your file structure:
+Rust source files can provide the contents of modules, but they only become part of the module tree when loaded from a crate root or declared with `mod`. The module hierarchy is defined by those declarations and usually mirrors your file structure:
 
 ```text
 src/
-  main.rs       # Root module (crate)
-  lib.rs        # Library root (if library crate)
+  main.rs       # Binary crate root module
+  lib.rs        # Library crate root module (if library crate)
   models/
     mod.rs      # models module
     user.rs     # models::user submodule
@@ -266,7 +266,7 @@ pub fn find_by_id(id: u64) -> Option<User> {
 
 ```rust
 // src/services/order_service.rs
-use crate::models::{Order, User};
+use crate::models::Order;
 use super::user_service;  // Import sibling service via super
 
 pub fn create_order(user_id: u64, total: f64) -> Option<Order> {
@@ -295,7 +295,8 @@ pub fn format_currency(amount: f64) -> String {
 
 | From | To | Path |
 |------|-----|------|
-| main.rs | models::User | `crate::models::User` or `models::User` |
+| main.rs with `mod models;` | models::User | `crate::models::User` or `models::User` |
+| main.rs using a library crate | library models::User | `myproject::models::User` |
 | services/auth.rs | models::User | `crate::models::User` |
 | models/order.rs | models::user::User | `super::user::User` |
 | services/order_service.rs | services::user_service | `super::user_service` |
