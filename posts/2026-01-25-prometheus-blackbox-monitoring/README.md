@@ -218,7 +218,7 @@ probe_duration_seconds{instance="https://example.com", job="blackbox_http"}
 # HTTP-specific metrics
 probe_http_status_code{instance="https://example.com"}
 probe_http_content_length{instance="https://example.com"}
-probe_http_ssl_earliest_cert_expiry{instance="https://example.com"}
+probe_ssl_earliest_cert_expiry{instance="https://example.com"}
 
 # DNS phase timing breakdown
 probe_dns_lookup_time_seconds{instance="https://example.com"}
@@ -258,7 +258,7 @@ groups:
 
       # Alert on SSL certificate expiring soon
       - alert: SSLCertificateExpiringSoon
-        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 30
+        expr: (probe_ssl_earliest_cert_expiry - time()) > 0 and (probe_ssl_earliest_cert_expiry - time()) < 30 * 86400
         for: 1h
         labels:
           severity: warning
