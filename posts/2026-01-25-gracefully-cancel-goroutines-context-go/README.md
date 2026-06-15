@@ -33,20 +33,22 @@ package main
 import (
     "context"
     "fmt"
+    "sync"
     "time"
 )
 
-func worker(ctx context.Context, id int) {
+func worker(ctx context.Context, id int, wg *sync.WaitGroup) {
+    defer wg.Done()
+
     for {
         select {
         case <-ctx.Done():
             // Context was cancelled - clean up and exit
             fmt.Printf("Worker %d: stopping, reason: %v\n", id, ctx.Err())
             return
-        default:
+        case <-time.After(500 * time.Millisecond):
             // Do actual work here
             fmt.Printf("Worker %d: working...\n", id)
-            time.Sleep(500 * time.Millisecond)
         }
     }
 }
@@ -54,10 +56,12 @@ func worker(ctx context.Context, id int) {
 func main() {
     // Create a cancellable context
     ctx, cancel := context.WithCancel(context.Background())
+    var wg sync.WaitGroup
 
     // Start workers
     for i := 1; i <= 3; i++ {
-        go worker(ctx, i)
+        wg.Add(1)
+        go worker(ctx, i, &wg)
     }
 
     // Let workers run for 2 seconds
@@ -67,8 +71,8 @@ func main() {
     fmt.Println("Cancelling workers...")
     cancel()
 
-    // Give workers time to clean up
-    time.Sleep(100 * time.Millisecond)
+    // Wait for workers to clean up
+    wg.Wait()
     fmt.Println("Done")
 }
 ```
