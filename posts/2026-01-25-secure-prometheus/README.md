@@ -160,14 +160,13 @@ datasources:
     basicAuthUser: grafana
     secureJsonData:
       basicAuthPassword: grafana-password
-    jsonData:
-      tlsAuth: false
-      tlsAuthWithCACert: true
-    secureJsonData:
       tlsCACert: |
         -----BEGIN CERTIFICATE-----
         ... CA certificate content ...
         -----END CERTIFICATE-----
+    jsonData:
+      tlsAuth: false
+      tlsAuthWithCACert: true
 ```
 
 ## Network Security
@@ -200,7 +199,7 @@ spec:
       ports:
         - protocol: TCP
           port: 9090
-    # Allow Alertmanager to receive alerts
+    # Allow Alertmanager to query Prometheus if needed
     - from:
         - namespaceSelector:
             matchLabels:
@@ -262,8 +261,12 @@ upstream prometheus {
     server 127.0.0.1:9090;
 }
 
+# Rate limiting (define zones in the http context)
+limit_req_zone $binary_remote_addr zone=prometheus:10m rate=10r/s;
+
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name prometheus.example.com;
 
     # TLS configuration
@@ -282,9 +285,6 @@ server {
     # Basic authentication
     auth_basic "Prometheus";
     auth_basic_user_file /etc/nginx/.htpasswd;
-
-    # Rate limiting
-    limit_req_zone $binary_remote_addr zone=prometheus:10m rate=10r/s;
 
     location / {
         limit_req zone=prometheus burst=20 nodelay;
@@ -428,7 +428,7 @@ scrape_configs:
       # Remove sensitive label values
       - regex: '(password|token|secret|key)'
         action: labeldrop
-      # Hash sensitive values
+      # Replace sensitive values with a placeholder
       - source_labels: [email]
         target_label: email_hash
         replacement: 'hashed'
@@ -486,19 +486,19 @@ groups:
     rules:
       - alert: PrometheusConfigReloaded
         expr: |
-          increase(prometheus_config_last_reload_successful[5m]) > 0
+          changes(prometheus_config_last_reload_success_timestamp_seconds[5m]) > 0
         labels:
           severity: info
         annotations:
           summary: "Prometheus configuration was reloaded"
 
-      - alert: UnauthorizedScrapeAttempts
+      - alert: TargetScrapeFailures
         expr: |
-          increase(prometheus_target_scrape_pools_failed_total[5m]) > 10
+          up == 0
         labels:
           severity: warning
         annotations:
-          summary: "Multiple failed scrape attempts detected"
+          summary: "A scrape target is failing; check for TLS or authentication errors"
 
       - alert: HighRateOfAPIRequests
         expr: |
