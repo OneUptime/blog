@@ -8,7 +8,7 @@ Description: Build reliable message queues with Redis lists. Learn LPUSH/BRPOP p
 
 ---
 
-Redis lists provide simple yet powerful building blocks for message queues. With blocking operations like BRPOP and atomic commands like RPOPLPUSH, you can build anything from basic task queues to reliable message delivery systems. This guide covers practical queue patterns.
+Redis lists provide simple yet powerful building blocks for message queues. With blocking operations like BRPOP and atomic commands like LMOVE/BLMOVE, you can build anything from basic task queues to reliable message delivery systems. This guide covers practical queue patterns.
 
 ## Basic Queue Operations
 
@@ -110,19 +110,35 @@ class ReliableQueue:
     def dequeue(self, timeout=0):
         """
         Get message and move to processing list.
-        Uses BRPOPLPUSH for atomicity.
+        Uses BLMOVE for atomicity.
         """
-        # BRPOPLPUSH atomically moves item
-        result = r.brpoplpush(self.queue, self.processing, timeout=timeout)
+        # BLMOVE RIGHT LEFT atomically moves the next item
+        result = r.blmove(
+            self.queue,
+            self.processing,
+            timeout=timeout,
+            src='RIGHT',
+            dest='LEFT'
+        )
 
         if result:
             message = json.loads(result)
             message['attempts'] += 1
             message['started_at'] = time.time()
 
-            # Update in processing list
-            r.lrem(self.processing, 1, result)
-            r.lpush(self.processing, json.dumps(message))
+            # Atomically replace the processing entry with updated metadata
+            updated = json.dumps(message)
+            replaced = r.eval("""
+                local removed = redis.call('LREM', KEYS[1], 1, ARGV[1])
+                if removed == 1 then
+                    redis.call('LPUSH', KEYS[1], ARGV[2])
+                    return 1
+                end
+                return 0
+            """, 1, self.processing, result, updated)
+
+            if not replaced:
+                return None
 
             return message
 
@@ -301,25 +317,27 @@ class DelayedQueue:
         """Move due messages from delayed to ready queue"""
         now = time.time()
 
-        # Get messages due for delivery
-        messages = r.zrangebyscore(
-            self.delayed,
-            '-inf',
-            now,
-            start=0,
-            num=100
-        )
-
-        moved = 0
-        for msg in messages:
-            # Atomic move using transaction
-            pipe = r.pipeline()
-            pipe.zrem(self.delayed, msg)
-            pipe.lpush(self.ready, msg)
-            pipe.execute()
-            moved += 1
-
-        return moved
+        # Atomically move messages due for delivery
+        return r.eval("""
+            local messages = redis.call(
+                'ZRANGE',
+                KEYS[1],
+                '-inf',
+                ARGV[1],
+                'BYSCORE',
+                'LIMIT',
+                0,
+                ARGV[2]
+            )
+            local moved = 0
+            for _, msg in ipairs(messages) do
+                if redis.call('ZREM', KEYS[1], msg) == 1 then
+                    redis.call('LPUSH', KEYS[2], msg)
+                    moved = moved + 1
+                end
+            end
+            return moved
+        """, 2, self.delayed, self.ready, now, 100)
 
     def dequeue(self, timeout=0):
         """Get message from ready queue"""
@@ -463,20 +481,20 @@ Use lists for:
 Use streams for:
 - Consumer groups
 - Message replay
-- Guaranteed delivery
+- Built-in delivery tracking
 
 ## Summary
 
 | Pattern | Use Case |
 |---------|----------|
 | LPUSH/BRPOP | Basic task queue |
-| BRPOPLPUSH | Reliable delivery |
+| BLMOVE | Reliable delivery |
 | Multiple lists + BRPOP | Priority queue |
 | Sorted set + list | Delayed queue |
 
 Key points:
 - BRPOP blocks efficiently without polling
-- BRPOPLPUSH provides atomic move for reliability
+- BLMOVE provides atomic move for reliability
 - Use processing list to handle worker crashes
 - Consider Redis Streams for advanced features
 - Implement retry logic with attempt counters
