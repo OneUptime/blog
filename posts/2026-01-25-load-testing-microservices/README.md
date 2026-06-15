@@ -20,9 +20,7 @@ Install k6 on your system:
 brew install k6
 
 # Linux (Debian/Ubuntu)
-sudo gpg -k
-sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
-    --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | \
     sudo tee /etc/apt/sources.list.d/k6.list
 sudo apt-get update
@@ -387,39 +385,26 @@ Run k6 in distributed mode for higher load:
 
 ```yaml
 # k6-distributed.yaml
-apiVersion: batch/v1
-kind: Job
+apiVersion: k6.io/v1alpha1
+kind: TestRun
 metadata:
   name: k6-load-test
   namespace: testing
 spec:
-  parallelism: 10  # Run 10 k6 instances in parallel
-  template:
-    spec:
-      containers:
-        - name: k6
-          image: grafana/k6:latest
-          command: ['k6', 'run', '--out', 'influxdb=http://influxdb:8086/k6', '/scripts/load-test.js']
-          env:
-            - name: K6_VUS
-              value: "100"
-            - name: K6_DURATION
-              value: "10m"
-          volumeMounts:
-            - name: scripts
-              mountPath: /scripts
-          resources:
-            requests:
-              cpu: 500m
-              memory: 512Mi
-            limits:
-              cpu: 1000m
-              memory: 1Gi
-      volumes:
-        - name: scripts
-          configMap:
-            name: k6-scripts
-      restartPolicy: Never
+  parallelism: 10  # Split the test across 10 k6 runner pods
+  script:
+    configMap:
+      name: k6-scripts
+      file: load-test.js
+  arguments: --out influxdb=http://influxdb:8086/k6
+  runner:
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
 ```
 
 ## Metrics and Reporting
@@ -430,6 +415,9 @@ Export metrics to InfluxDB and visualize in Grafana:
 // Run with InfluxDB output
 // k6 run --out influxdb=http://localhost:8086/k6 load-test.js
 
+import http from 'k6/http';
+import { Counter, Rate, Trend } from 'k6/metrics';
+
 export const options = {
     // Custom metrics
     tags: {
@@ -438,17 +426,22 @@ export const options = {
     },
 };
 
-import { Trend, Rate, Counter } from 'k6/metrics';
-
 // Custom metrics for business logic
-const orderLatency = new Trend('order_latency');
+const orderLatency = new Trend('order_latency', true);
 const orderSuccess = new Rate('order_success_rate');
 const ordersCreated = new Counter('orders_created');
 
 export default function () {
+    const orderData = JSON.stringify({
+        productId: 123,
+        quantity: 1,
+    });
+
     const start = Date.now();
 
-    const response = http.post('http://api.example.com/orders', orderData);
+    const response = http.post('http://api.example.com/orders', orderData, {
+        headers: { 'Content-Type': 'application/json' },
+    });
 
     const duration = Date.now() - start;
 
@@ -484,10 +477,7 @@ jobs:
 
       - name: Install k6
         run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
-              --keyserver hkp://keyserver.ubuntu.com:80 \
-              --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | \
               sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update
