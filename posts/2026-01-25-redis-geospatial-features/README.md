@@ -20,11 +20,11 @@ r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 # Add locations: GEOADD key longitude latitude member
 
 r.geoadd('restaurants', [
-    (-73.985428, 40.748817, 'empire_state'),      # NYC
-    (-73.968285, 40.785091, 'central_park'),
-    (-74.044500, 40.689247, 'statue_of_liberty'),
-    (-73.986226, 40.757969, 'times_square'),
-    (-73.963244, 40.779436, 'metropolitan_museum'),
+    -73.985428, 40.748817, 'empire_state',      # NYC
+    -73.968285, 40.785091, 'central_park',
+    -74.044500, 40.689247, 'statue_of_liberty',
+    -73.986226, 40.757969, 'times_square',
+    -73.963244, 40.779436, 'metropolitan_museum',
 ])
 
 # Get position of a location
@@ -49,11 +49,11 @@ r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
 # Add sample locations
 r.geoadd('stores', [
-    (-122.4194, 37.7749, 'store_sf'),        # San Francisco
-    (-122.2711, 37.8044, 'store_oakland'),   # Oakland
-    (-122.0322, 37.3688, 'store_sanjose'),   # San Jose
-    (-122.4783, 37.8199, 'store_sausalito'), # Sausalito
-    (-121.8863, 37.3382, 'store_milpitas'),  # Milpitas
+    -122.4194, 37.7749, 'store_sf',        # San Francisco
+    -122.2711, 37.8044, 'store_oakland',   # Oakland
+    -122.0322, 37.3688, 'store_sanjose',   # San Jose
+    -122.4783, 37.8199, 'store_sausalito', # Sausalito
+    -121.8863, 37.3382, 'store_milpitas',  # Milpitas
 ])
 
 # Find locations within radius
@@ -102,6 +102,7 @@ for item in nearby:
 ```python
 import redis
 import json
+import math
 from typing import List, Tuple, Optional
 
 class StoreFinder:
@@ -115,7 +116,7 @@ class StoreFinder:
     def add_store(self, store_id: str, lat: float, lon: float, data: dict):
         """Add store with location and metadata"""
         # Add to geospatial index
-        self.r.geoadd(self.geo_key, [(lon, lat, store_id)])
+        self.r.geoadd(self.geo_key, [lon, lat, store_id])
 
         # Store metadata
         self.r.hset(f'{self.data_prefix}{store_id}', mapping={
@@ -168,7 +169,7 @@ class StoreFinder:
             self.geo_key,
             longitude=(lon1 + lon2) / 2,
             latitude=(lat1 + lat2) / 2,
-            width=abs(lon2 - lon1) * 111,  # Approximate km
+            width=abs(lon2 - lon1) * 111 * math.cos(math.radians((lat1 + lat2) / 2)),
             height=abs(lat2 - lat1) * 111,
             unit='km',
             withcoord=True
@@ -220,8 +221,7 @@ for store in nearby:
 
 ```python
 import redis
-from shapely.geometry import Point, Polygon
-import json
+from typing import List, Optional
 
 r = redis.Redis(decode_responses=True)
 
@@ -235,7 +235,7 @@ class DeliveryZones:
                  radius_km: float, data: dict = None):
         """Add circular delivery zone"""
         # Store zone center in geo index
-        self.r.geoadd('delivery:zones', [(center_lon, center_lat, zone_id)])
+        self.r.geoadd('delivery:zones', [center_lon, center_lat, zone_id])
 
         # Store zone metadata
         zone_data = {
@@ -327,6 +327,7 @@ if fee_info:
 import redis
 import time
 import random
+from typing import List, Optional
 
 r = redis.Redis(decode_responses=True)
 
@@ -342,7 +343,7 @@ class RideMatching:
                                status: str = 'available'):
         """Update driver's current location"""
         if status == 'available':
-            self.r.geoadd(self.drivers_key, [(lon, lat, driver_id)])
+            self.r.geoadd(self.drivers_key, [lon, lat, driver_id])
         else:
             self.r.zrem(self.drivers_key, driver_id)
 
