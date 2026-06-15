@@ -17,7 +17,7 @@ ECK manages the complete lifecycle of Elasticsearch clusters including deploymen
 ## Prerequisites
 
 Before starting, ensure you have:
-- Kubernetes cluster (1.25+) with sufficient resources
+- Kubernetes cluster (1.31-1.35) with sufficient resources
 - kubectl configured and working
 - Helm 3.x installed (optional)
 - Storage class with dynamic provisioning
@@ -76,10 +76,10 @@ Install the ECK operator using kubectl:
 ```bash
 # Install ECK Custom Resource Definitions
 
-kubectl create -f https://download.elastic.co/downloads/eck/2.11.0/crds.yaml
+kubectl create -f https://download.elastic.co/downloads/eck/3.4.0/crds.yaml
 
 # Install ECK operator with RBAC
-kubectl apply -f https://download.elastic.co/downloads/eck/2.11.0/operator.yaml
+kubectl apply -f https://download.elastic.co/downloads/eck/3.4.0/operator.yaml
 
 # Verify operator is running
 kubectl -n elastic-system get pods
@@ -98,8 +98,7 @@ helm repo update
 # Install ECK operator
 helm install elastic-operator elastic/eck-operator \
   -n elastic-system \
-  --create-namespace \
-  --set webhook.enabled=true
+  --create-namespace
 ```
 
 ---
@@ -116,7 +115,7 @@ metadata:
   name: elasticsearch-dev
   namespace: elastic
 spec:
-  version: 8.12.0
+  version: 9.4.2
   nodeSets:
   - name: default
     count: 1
@@ -174,8 +173,10 @@ kind: Elasticsearch
 metadata:
   name: elasticsearch-prod
   namespace: elastic
+  annotations:
+    eck.k8s.elastic.co/downward-node-labels: "topology.kubernetes.io/zone"
 spec:
-  version: 8.12.0
+  version: 9.4.2
   http:
     tls:
       selfSignedCertificate:
@@ -186,7 +187,8 @@ spec:
     count: 3
     config:
       node.roles: ["master"]
-      cluster.routing.allocation.awareness.attributes: zone
+      node.attr.zone: ${ZONE}
+      cluster.routing.allocation.awareness.attributes: k8s_node_name,zone
     podTemplate:
       spec:
         affinity:
@@ -207,6 +209,10 @@ spec:
               memory: 4Gi
               cpu: 2
           env:
+          - name: ZONE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.annotations['topology.kubernetes.io/zone']
           - name: ES_JAVA_OPTS
             value: "-Xms2g -Xmx2g"
         initContainers:
@@ -214,7 +220,7 @@ spec:
           securityContext:
             privileged: true
             runAsUser: 0
-          command: ['sh', '-c', 'sysctl -w vm.max_map_count=262144']
+          command: ['sh', '-c', 'sysctl -w vm.max_map_count=1048576']
     volumeClaimTemplates:
     - metadata:
         name: elasticsearch-data
@@ -231,7 +237,8 @@ spec:
     count: 3
     config:
       node.roles: ["data", "ingest"]
-      cluster.routing.allocation.awareness.attributes: zone
+      node.attr.zone: ${ZONE}
+      cluster.routing.allocation.awareness.attributes: k8s_node_name,zone
     podTemplate:
       spec:
         affinity:
@@ -254,6 +261,10 @@ spec:
               memory: 16Gi
               cpu: 8
           env:
+          - name: ZONE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.annotations['topology.kubernetes.io/zone']
           - name: ES_JAVA_OPTS
             value: "-Xms8g -Xmx8g"
         initContainers:
@@ -261,7 +272,7 @@ spec:
           securityContext:
             privileged: true
             runAsUser: 0
-          command: ['sh', '-c', 'sysctl -w vm.max_map_count=262144']
+          command: ['sh', '-c', 'sysctl -w vm.max_map_count=1048576']
     volumeClaimTemplates:
     - metadata:
         name: elasticsearch-data
@@ -297,7 +308,7 @@ spec:
           securityContext:
             privileged: true
             runAsUser: 0
-          command: ['sh', '-c', 'sysctl -w vm.max_map_count=262144']
+          command: ['sh', '-c', 'sysctl -w vm.max_map_count=1048576']
     volumeClaimTemplates:
     - metadata:
         name: elasticsearch-data
@@ -348,6 +359,8 @@ spec:
   selector:
     elasticsearch.k8s.elastic.co/cluster-name: elasticsearch-prod
     elasticsearch.k8s.elastic.co/node-master: "false"
+    elasticsearch.k8s.elastic.co/node-data: "false"
+    elasticsearch.k8s.elastic.co/node-ingest: "false"
   ports:
   - port: 9200
     targetPort: 9200
@@ -363,18 +376,10 @@ spec:
 # Edit the Elasticsearch resource
 kubectl -n elastic edit elasticsearch elasticsearch-prod
 
-# Or patch to scale data nodes
-kubectl -n elastic patch elasticsearch elasticsearch-prod --type='merge' -p '
-{
-  "spec": {
-    "nodeSets": [
-      {
-        "name": "data",
-        "count": 5
-      }
-    ]
-  }
-}'
+# Or patch to scale data nodes when the data nodeSet is the second entry
+kubectl -n elastic patch elasticsearch elasticsearch-prod --type='json' -p='[
+  {"op": "replace", "path": "/spec/nodeSets/1/count", "value": 5}
+]'
 ```
 
 ### Vertical Scaling
@@ -418,7 +423,7 @@ metadata:
   name: elasticsearch-prod
   namespace: elastic
 spec:
-  version: 8.12.0
+  version: 9.4.2
   secureSettings:
   - secretName: s3-credentials
   nodeSets:
@@ -470,21 +475,14 @@ curl -k -u elastic:$ES_PASSWORD -X PUT "https://localhost:9200/_snapshot/s3_back
 ## Step 7: Monitoring with Prometheus
 
 ```yaml
-# Enable metrics endpoint
+# Scrape Elasticsearch metrics with the Prometheus Elasticsearch exporter
 apiVersion: elasticsearch.k8s.elastic.co/v1
 kind: Elasticsearch
 metadata:
   name: elasticsearch-prod
   namespace: elastic
 spec:
-  version: 8.12.0
-  monitoring:
-    metrics:
-      elasticsearchRefs:
-      - name: elasticsearch-prod
-    logs:
-      elasticsearchRefs:
-      - name: elasticsearch-prod
+  version: 9.4.2
   nodeSets:
   - name: data
     count: 3
@@ -498,7 +496,7 @@ spec:
         - name: elasticsearch
           # ... resources
         - name: exporter
-          image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.6.0
+          image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.9.0
           args:
           - --es.uri=https://localhost:9200
           - --es.all
@@ -547,7 +545,7 @@ class ECKManager:
         self,
         name: str,
         namespace: str,
-        version: str = "8.12.0",
+        version: str = "9.4.2",
         master_count: int = 3,
         data_count: int = 3,
         data_storage: str = "100Gi",
@@ -595,7 +593,7 @@ class ECKManager:
                                         "privileged": True,
                                         "runAsUser": 0
                                     },
-                                    "command": ["sh", "-c", "sysctl -w vm.max_map_count=262144"]
+                                    "command": ["sh", "-c", "sysctl -w vm.max_map_count=1048576"]
                                 }]
                             }
                         },
@@ -633,7 +631,7 @@ class ECKManager:
                                         "privileged": True,
                                         "runAsUser": 0
                                     },
-                                    "command": ["sh", "-c", "sysctl -w vm.max_map_count=262144"]
+                                    "command": ["sh", "-c", "sysctl -w vm.max_map_count=1048576"]
                                 }]
                             }
                         },
@@ -713,13 +711,16 @@ class ECKManager:
     ) -> Dict[str, Any]:
         """Scale the number of data nodes"""
 
-        patch = {
-            "spec": {
-                "nodeSets": [
-                    {"name": "data", "count": count}
-                ]
-            }
-        }
+        es = self.get_elasticsearch(name, namespace)
+        node_sets = es["spec"]["nodeSets"]
+        for node_set in node_sets:
+            if node_set["name"] == "data":
+                node_set["count"] = count
+                break
+        else:
+            raise ValueError("data nodeSet not found")
+
+        patch = {"spec": {"nodeSets": node_sets}}
 
         return self.custom_api.patch_namespaced_custom_object(
             group="elasticsearch.k8s.elastic.co",
@@ -798,7 +799,7 @@ if __name__ == "__main__":
     manager.create_elasticsearch(
         name="my-cluster",
         namespace="elastic",
-        version="8.12.0",
+        version="9.4.2",
         master_count=3,
         data_count=3,
         data_storage="100Gi",
