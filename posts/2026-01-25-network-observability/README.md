@@ -105,7 +105,7 @@ eBPF (extended Berkeley Packet Filter) allows you to run sandboxed programs in t
 ```python
 #!/usr/bin/env python3
 # tcp_latency.py - Measure TCP connection latency using BCC/eBPF
-# Requires: pip install bcc
+# Requires: sudo apt-get install bpfcc-tools python3-bpfcc linux-headers-$(uname -r)
 
 from bcc import BPF
 from time import strftime
@@ -120,44 +120,48 @@ bpf_program = """
 struct conn_info {
     u64 ts;
     u32 pid;
-    u32 saddr;
-    u32 daddr;
-    u16 dport;
+    u64 latency_ns;
 };
 
-// Hash map to track connection start times
-BPF_HASH(start, struct sock *, struct conn_info);
+// Hash map to track connection start times by thread
+BPF_HASH(start, u64, struct conn_info);
 
 // Perf buffer for sending events to userspace
 BPF_PERF_OUTPUT(events);
 
 // Trace when TCP connect is initiated
 int trace_connect(struct pt_regs *ctx, struct sock *sk) {
+    u64 pid_tgid = bpf_get_current_pid_tgid();
     struct conn_info info = {};
     info.ts = bpf_ktime_get_ns();
-    info.pid = bpf_get_current_pid_tgid() >> 32;
+    info.pid = pid_tgid >> 32;
 
-    // Store start time keyed by socket pointer
-    start.update(&sk, &info);
+    // Store start time keyed by thread ID
+    start.update(&pid_tgid, &info);
     return 0;
 }
 
 // Trace when TCP connection is established
 int trace_connect_return(struct pt_regs *ctx) {
-    struct sock *sk = (struct sock *)PT_REGS_PARM1(ctx);
-    struct conn_info *infop = start.lookup(&sk);
+    u64 pid_tgid = bpf_get_current_pid_tgid();
+    struct conn_info *infop = start.lookup(&pid_tgid);
 
     if (infop == 0) {
         return 0;
     }
 
+    if (PT_REGS_RC(ctx) != 0) {
+        start.delete(&pid_tgid);
+        return 0;
+    }
+
     // Calculate connection latency
-    u64 latency = bpf_ktime_get_ns() - infop->ts;
+    infop->latency_ns = bpf_ktime_get_ns() - infop->ts;
 
     // Send event to userspace via perf buffer
     events.perf_submit(ctx, infop, sizeof(*infop));
 
-    start.delete(&sk);
+    start.delete(&pid_tgid);
     return 0;
 }
 """
@@ -170,7 +174,8 @@ b.attach_kretprobe(event="tcp_v4_connect", fn_name="trace_connect_return")
 # Process events from the kernel
 def print_event(cpu, data, size):
     event = b["events"].event(data)
-    print(f"{strftime('%H:%M:%S')} PID={event.pid} latency event captured")
+    latency_ms = event.latency_ns / 1_000_000
+    print(f"{strftime('%H:%M:%S')} PID={event.pid} latency={latency_ms:.2f}ms")
 
 b["events"].open_perf_buffer(print_event)
 
@@ -207,26 +212,33 @@ Create a simple exporter for custom network metrics:
 ```python
 # network_exporter.py - Export custom network metrics to Prometheus
 from prometheus_client import start_http_server, Gauge, Counter
-import subprocess
 import time
 
 # Define metrics
 tcp_connections = Gauge(
-    'tcp_connections_total',
-    'Total TCP connections by state',
+    'tcp_connections',
+    'Current TCP connections by state',
     ['state']
 )
 
 packets_dropped = Counter(
-    'network_packets_dropped_total',
+    'network_packets_dropped',
     'Total dropped packets by interface',
     ['interface']
 )
 
 retransmits = Counter(
-    'tcp_retransmits_total',
+    'tcp_retransmits',
     'Total TCP retransmissions'
 )
+
+segments_sent = Counter(
+    'tcp_segments_sent',
+    'Total TCP segments sent'
+)
+
+previous_interface_drops = {}
+previous_tcp_counters = {}
 
 def collect_tcp_states():
     """Parse /proc/net/tcp to count connection states"""
@@ -257,9 +269,41 @@ def collect_interface_stats():
         for line in lines:
             parts = line.split()
             interface = parts[0].rstrip(':')
-            # Column 4 is drop count for receive
+            # Column 4 is the cumulative receive drop count
             drops = int(parts[4])
-            packets_dropped.labels(interface=interface).inc(drops)
+            previous = previous_interface_drops.get(interface)
+            if previous is not None:
+                delta = drops - previous if drops >= previous else drops
+                if delta > 0:
+                    packets_dropped.labels(interface=interface).inc(delta)
+            previous_interface_drops[interface] = drops
+
+def collect_tcp_counters():
+    """Read cumulative TCP counters from /proc/net/snmp"""
+    with open('/proc/net/snmp', 'r') as f:
+        lines = [line.split() for line in f if line.startswith('Tcp:')]
+
+    if len(lines) < 2:
+        return
+
+    headers = lines[0][1:]
+    values = [int(value) for value in lines[1][1:]]
+    counters = dict(zip(headers, values))
+
+    for field, metric in (
+        ('RetransSegs', retransmits),
+        ('OutSegs', segments_sent),
+    ):
+        value = counters.get(field)
+        if value is None:
+            continue
+
+        previous = previous_tcp_counters.get(field)
+        if previous is not None:
+            delta = value - previous if value >= previous else value
+            if delta > 0:
+                metric.inc(delta)
+        previous_tcp_counters[field] = value
 
 if __name__ == '__main__':
     # Start metrics server on port 9101
@@ -268,6 +312,7 @@ if __name__ == '__main__':
     while True:
         collect_tcp_states()
         collect_interface_stats()
+        collect_tcp_counters()
         time.sleep(15)
 ```
 
@@ -334,13 +379,13 @@ groups:
     rules:
       # Alert when connection establishment rate spikes
       - alert: HighConnectionRate
-        expr: rate(tcp_connections_total{state="SYN_RECV"}[5m]) > 1000
+        expr: tcp_connections{state="SYN_RECV"} > 1000
         for: 2m
         labels:
           severity: warning
         annotations:
-          summary: "High rate of incoming connections"
-          description: "Connection rate is {{ $value }}/s on {{ $labels.instance }}"
+          summary: "High number of half-open TCP connections"
+          description: "SYN_RECV connection count is {{ $value }} on {{ $labels.instance }}"
 
       # Alert on packet drops indicating congestion
       - alert: PacketDropsDetected
