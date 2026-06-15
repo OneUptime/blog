@@ -47,7 +47,6 @@ The `--memory-swap` flag controls total memory plus swap. Setting it equal to `-
 
 ```yaml
 # docker-compose.yml with memory constraints
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -57,7 +56,7 @@ services:
           # Hard limit - container killed if exceeded
           memory: 512M
         reservations:
-          # Soft limit - guaranteed minimum
+          # Reserved capacity for platforms that support reservations
           memory: 256M
 ```
 
@@ -148,7 +147,6 @@ docker run -d --name high-io-priority \
 Here is a complete example showing all resource constraints in Docker Compose:
 
 ```yaml
-version: '3.8'
 services:
   web:
     image: nginx:alpine
@@ -158,7 +156,7 @@ services:
           cpus: '0.5'      # Half a CPU core
           memory: 256M     # 256 megabytes
         reservations:
-          cpus: '0.25'     # Guaranteed minimum
+          cpus: '0.25'     # Reserved capacity
           memory: 128M
     # For Compose V2 without Swarm mode
     mem_limit: 256m
@@ -194,16 +192,24 @@ docker stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}
 docker stats --no-stream
 ```
 
-For programmatic access, query the cgroup files directly:
+For programmatic access, query the cgroup files directly. On cgroup v2 hosts, use:
 
 ```bash
 # Check current memory usage inside container
-docker exec api-server cat /sys/fs/cgroup/memory/memory.usage_in_bytes
+docker exec api-server cat /sys/fs/cgroup/memory.current
 
 # Check memory limit
-docker exec api-server cat /sys/fs/cgroup/memory/memory.limit_in_bytes
+docker exec api-server cat /sys/fs/cgroup/memory.max
 
 # Check CPU throttling statistics
+docker exec api-server cat /sys/fs/cgroup/cpu.stat
+```
+
+On cgroup v1 hosts, the equivalent files are under controller-specific directories:
+
+```bash
+docker exec api-server cat /sys/fs/cgroup/memory/memory.usage_in_bytes
+docker exec api-server cat /sys/fs/cgroup/memory/memory.limit_in_bytes
 docker exec api-server cat /sys/fs/cgroup/cpu/cpu.stat
 ```
 
@@ -243,9 +249,9 @@ docker events --filter 'event=oom'
 
 2. **Start conservative, then adjust** - Monitor actual usage for a week before loosening limits.
 
-3. **Match reservations to typical usage** - Reservations guarantee resources during contention.
+3. **Match reservations to typical usage** - Reservations tell supported schedulers how much capacity to set aside during placement.
 
-4. **Avoid disabling OOM killer** - A killed container restarts; a hung container blocks forever.
+4. **Avoid disabling OOM killer** - A killed container can restart under a restart policy; a hung container blocks forever.
 
 5. **Use CPU shares for mixed workloads** - They provide fair sharing without hard caps.
 
@@ -253,7 +259,6 @@ docker events --filter 'event=oom'
 
 ```yaml
 # Production-ready service configuration
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -281,12 +286,14 @@ When containers behave unexpectedly, check if they are hitting limits:
 
 ```bash
 # Check for CPU throttling
-docker exec mycontainer cat /sys/fs/cgroup/cpu/cpu.stat
+docker exec mycontainer cat /sys/fs/cgroup/cpu.stat
 # Look for nr_throttled and throttled_time
 
 # Check memory pressure
-docker exec mycontainer cat /sys/fs/cgroup/memory/memory.stat
+docker exec mycontainer cat /sys/fs/cgroup/memory.stat
 # Look for pgfault and pgmajfault counts
+
+# On cgroup v1 hosts, use /sys/fs/cgroup/cpu/cpu.stat and /sys/fs/cgroup/memory/memory.stat
 
 # View resource events
 docker events --since 1h --filter 'type=container'
