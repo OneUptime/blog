@@ -8,7 +8,7 @@ Description: Diagnose and resolve Docker 'No such container' errors including st
 
 ---
 
-The "No such container" error occurs when you reference a container that Docker cannot find. The container may have been removed, stopped, renamed, or the identifier you are using does not match any existing container.
+The "No such container" error occurs when you reference a container that Docker cannot find. The container may have been removed, renamed, or the identifier you are using does not match any existing container.
 
 ## Understanding the Error
 
@@ -21,7 +21,7 @@ Error response from daemon: No such container: abc123def456
 # Commands that trigger this error
 docker stop mycontainer      # Container doesn't exist
 docker logs mycontainer      # Container was removed
-docker exec mycontainer sh   # Container stopped or removed
+docker exec mycontainer sh   # Container removed or wrong name/ID
 docker inspect mycontainer   # Wrong container name/ID
 ```
 
@@ -61,7 +61,7 @@ docker ps -a --filter "name=mycontainer" --format "{{.Status}}"
 # Up 2 hours       - Running
 # Exited (0)       - Stopped normally
 # Exited (1)       - Stopped with error
-# Dead             - Container failed to stop properly
+# Dead             - Defunct container; remove and recreate it
 # Paused           - Temporarily suspended
 ```
 
@@ -76,7 +76,7 @@ docker exec mycontainer sh
 docker start mycontainer
 docker exec mycontainer sh
 
-# Or start with interactive shell
+# Or attach interactively to the container's main process
 docker start -ai mycontainer
 ```
 
@@ -89,21 +89,21 @@ Container names and IDs must match exactly (though IDs can be partial).
 docker ps -a --format "{{.Names}}"
 
 # Common naming issues:
-# - Docker Compose prefixes: project_service_1 vs service
+# - Docker Compose prefixes: project-service-1 vs service
 # - Typos in container names
 # - Case sensitivity (container names are case-sensitive)
 
 # With Docker Compose, container names include project name
 docker compose ps --format "table {{.Name}}\t{{.Service}}"
 # NAME               SERVICE
-# myproject_api_1    api
-# myproject_db_1     db
+# myproject-api-1    api
+# myproject-db-1     db
 
 # Reference by service name within compose
 docker compose exec api sh
 
 # Or by full container name
-docker exec myproject_api_1 sh
+docker exec myproject-api-1 sh
 ```
 
 ### Container ID Shortcuts
@@ -153,7 +153,7 @@ services:
 
 ```bash
 # Container name depends on project name and numbering
-# Default project name is the directory name
+# If not otherwise set, the default project name is the directory name
 
 # Wrong: Service name alone doesn't work
 docker exec api sh
@@ -296,8 +296,8 @@ docker ps -a --filter "name=partial"
 # Find container by label
 docker ps -a --filter "label=app=myapp"
 
-# Get container ID by name
-docker ps -qf "name=exact-name"
+# Get running container ID by name pattern
+docker ps -qf "name=myapp"
 
 # Check if container exists
 docker inspect container-name > /dev/null 2>&1 && echo "exists" || echo "missing"
@@ -308,4 +308,4 @@ docker events --since "1h" --filter "event=destroy" --format "{{.Actor.Attribute
 
 ---
 
-"No such container" errors typically mean the container was removed, stopped, or you are using the wrong identifier. Start by checking `docker ps -a` to see all containers including stopped ones. Use meaningful container names instead of relying on IDs, and prefer Docker Compose service commands when working with multi-container applications. For scripts, always verify container existence before attempting operations.
+"No such container" errors typically mean the container was removed or you are using the wrong identifier. Start by checking `docker ps -a` to see all containers including stopped ones. Use meaningful container names instead of relying on IDs, and prefer Docker Compose service commands when working with multi-container applications. For scripts, always verify container existence before attempting operations.
