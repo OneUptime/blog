@@ -171,6 +171,7 @@ Create scripts to handle state changes:
 # /usr/local/bin/notify_master.sh
 
 echo "$(date): Becoming MASTER" >> /var/log/keepalived_state.log
+echo "MASTER" > /run/keepalived.state
 
 # Optional: Send alert
 curl -X POST https://alerts.example.com/webhook \
@@ -182,6 +183,7 @@ curl -X POST https://alerts.example.com/webhook \
 # /usr/local/bin/notify_backup.sh
 
 echo "$(date): Becoming BACKUP" >> /var/log/keepalived_state.log
+echo "BACKUP" > /run/keepalived.state
 ```
 
 ```bash
@@ -189,10 +191,17 @@ echo "$(date): Becoming BACKUP" >> /var/log/keepalived_state.log
 # /usr/local/bin/notify_fault.sh
 
 echo "$(date): Entering FAULT state" >> /var/log/keepalived_state.log
+echo "FAULT" > /run/keepalived.state
 
 # Send critical alert
 curl -X POST https://alerts.example.com/webhook \
     -d '{"message": "CRITICAL: Nginx entered FAULT state"}'
+```
+
+Make them executable:
+
+```bash
+sudo chmod +x /usr/local/bin/notify_master.sh /usr/local/bin/notify_backup.sh /usr/local/bin/notify_fault.sh
 ```
 
 ## Nginx Configuration for HA
@@ -261,8 +270,8 @@ server {
     # Health check endpoint for Keepalived
     location /health {
         access_log off;
+        default_type text/plain;
         return 200 "OK\n";
-        add_header Content-Type text/plain;
     }
 }
 ```
@@ -418,7 +427,7 @@ Create a monitoring script:
 # /usr/local/bin/monitor_ha.sh
 
 # Check Keepalived state
-STATE=$(cat /var/run/keepalived.state 2>/dev/null || echo "UNKNOWN")
+STATE=$(cat /run/keepalived.state 2>/dev/null || echo "UNKNOWN")
 
 # Check if we have the VIP
 if ip addr show | grep -q "192.168.1.100"; then
@@ -461,8 +470,8 @@ vrrp_instance VI_1 {
         192.168.1.2              # Peer server's IP
     }
 
-    # Prevent both becoming master
-    nopreempt                    # On backup only
+    # Prevent failback after the peer has become master
+    nopreempt                    # Use with initial state BACKUP
 }
 ```
 
