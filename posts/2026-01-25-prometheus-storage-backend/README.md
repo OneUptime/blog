@@ -16,7 +16,7 @@ The TSDB stores data in blocks, where each block contains samples for a specific
 
 ## Local Storage Configuration
 
-The simplest storage setup uses Prometheus's built-in local storage. Configure it through command-line flags when starting Prometheus.
+The simplest storage setup uses Prometheus's built-in local storage. Configure the storage path and WAL behavior through command-line flags when starting Prometheus, and configure retention in `prometheus.yml`.
 
 ```bash
 # Start Prometheus with custom storage settings
@@ -24,11 +24,18 @@ The simplest storage setup uses Prometheus's built-in local storage. Configure i
 prometheus \
   --config.file=/etc/prometheus/prometheus.yml \
   --storage.tsdb.path=/var/lib/prometheus/data \
-  --storage.tsdb.retention.time=30d \
-  --storage.tsdb.retention.size=50GB \
   --storage.tsdb.min-block-duration=2h \
   --storage.tsdb.max-block-duration=24h \
   --storage.tsdb.wal-compression
+```
+
+```yaml
+# prometheus.yml - TSDB retention configuration
+storage:
+  tsdb:
+    retention:
+      time: 30d
+      size: 50GB
 ```
 
 ### Key Storage Flags Explained
@@ -40,17 +47,13 @@ services:
   prometheus:
     image: prom/prometheus:latest
     command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
       # Path where Prometheus stores its data
       - '--storage.tsdb.path=/prometheus'
-      # Keep data for 15 days
-      - '--storage.tsdb.retention.time=15d'
-      # Or limit by size (uses whichever limit is hit first)
-      - '--storage.tsdb.retention.size=100GB'
       # Enable WAL compression to reduce disk I/O
       - '--storage.tsdb.wal-compression'
-      # Allow out-of-order samples (useful for remote write scenarios)
-      - '--storage.tsdb.out-of-order-time-window=30m'
     volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
@@ -58,6 +61,19 @@ services:
 volumes:
   prometheus_data:
     driver: local
+```
+
+```yaml
+# prometheus.yml
+storage:
+  tsdb:
+    # Keep data for 15 days
+    retention:
+      time: 15d
+      # Or limit by size (uses whichever limit is hit first)
+      size: 100GB
+    # Allow out-of-order samples within this window
+    out_of_order_time_window: 30m
 ```
 
 ## Calculating Storage Requirements
@@ -198,12 +214,19 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=2d'  # Short local retention
     depends_on:
       - victoriametrics
 
 volumes:
   vm_data:
+```
+
+```yaml
+# prometheus.yml - Short local retention with remote storage
+storage:
+  tsdb:
+    retention:
+      time: 2d
 ```
 
 ## Remote Read Configuration
@@ -215,6 +238,7 @@ Enable remote read to query historical data from long-term storage:
 remote_read:
   - url: "http://remote-storage:9090/api/v1/read"
     # Read timeout
+    remote_timeout: 1m
     read_recent: false  # Don't use remote for recent data (use local)
     # Filter which queries go to remote storage
     required_matchers:
@@ -266,7 +290,6 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=2d'
       # Required for Thanos sidecar
       - '--storage.tsdb.min-block-duration=2h'
       - '--storage.tsdb.max-block-duration=2h'
@@ -314,6 +337,14 @@ volumes:
   thanos_store:
 ```
 
+```yaml
+# prometheus.yml - Short local retention for Thanos sidecar
+storage:
+  tsdb:
+    retention:
+      time: 2d
+```
+
 ### Object Storage Configuration
 
 ```yaml
@@ -341,7 +372,7 @@ global:
 
 storage:
   tsdb:
-    # Increase chunk encoding efficiency
+    # Allow out-of-order samples within this window
     out_of_order_time_window: 30m
 
 # Kubernetes deployment with resource tuning
@@ -362,15 +393,34 @@ spec:
               memory: "8Gi"
               cpu: "4"
           args:
+            - '--config.file=/etc/prometheus/prometheus.yml'
             - '--storage.tsdb.path=/prometheus'
-            - '--storage.tsdb.retention.time=15d'
             - '--storage.tsdb.wal-compression'
-            # Memory-mapped chunks for faster queries
+            # Queue head chunk writes before they are memory-mapped (experimental)
             - '--storage.tsdb.head-chunks-write-queue-size=1000'
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus
+            - name: prometheus-storage
+              mountPath: /prometheus
       volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
         - name: prometheus-storage
           persistentVolumeClaim:
             claimName: prometheus-pvc
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    storage:
+      tsdb:
+        retention:
+          time: 15d
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
