@@ -8,7 +8,7 @@ Description: Learn how to use Kafka transactions to atomically write messages ac
 
 ---
 
-Kafka transactions allow you to write messages to multiple partitions and topics atomically. Either all messages are visible to consumers, or none are. This is essential for scenarios like updating an order and its associated inventory in a single atomic operation. This guide covers implementing multi-partition transactions with practical examples.
+Kafka transactions allow you to write messages to multiple partitions and topics atomically. Either all messages are visible to `read_committed` consumers, or none are. This is essential for scenarios like publishing an order and its associated inventory events in a single atomic operation. This guide covers implementing multi-partition transactions with practical examples.
 
 ## When You Need Transactions
 
@@ -36,7 +36,7 @@ sequenceDiagram
         P->>I: Inventory reserved
         P->>N: Notification queued
         P->>K: Commit transaction
-        Note over O,N: All messages visible<br/>atomically or none
+        Note over O,N: All messages visible<br/>atomically to read_committed<br/>consumers or none
     end
 ```
 
@@ -147,12 +147,11 @@ public class OrderService {
 
             System.out.println("Order " + orderId + " processed successfully");
 
-        } catch (ProducerFencedException e) {
-            // Another producer with the same transactional.id is active
-            // This producer instance should be closed
-            System.err.println("Producer fenced, shutting down: " + e.getMessage());
+        } catch (ProducerFencedException | OutOfOrderSequenceException | AuthorizationException e) {
+            // Fatal errors - this producer instance should be closed
+            System.err.println("Fatal transaction error, shutting down: " + e.getMessage());
             producer.close();
-            throw new RuntimeException("Producer fenced", e);
+            throw new RuntimeException("Producer must be recreated", e);
 
         } catch (KafkaException e) {
             // Transaction failed, abort and retry or handle error
@@ -269,8 +268,13 @@ public class TransactionalProcessor {
                 System.err.println("Transaction failed: " + e.getMessage());
                 producer.abortTransaction();
 
-                // Reset consumer position to re-read uncommitted messages
-                // This happens automatically on the next poll after abort
+                // Reset consumer position to re-read the failed batch
+                for (TopicPartition partition : records.partitions()) {
+                    List<ConsumerRecord<String, String>> partitionRecords = records.records(partition);
+                    if (!partitionRecords.isEmpty()) {
+                        consumer.seek(partition, partitionRecords.get(0).offset());
+                    }
+                }
             }
         }
     }
@@ -306,7 +310,7 @@ public void processWithErrorHandling(Order order) {
             producer.commitTransaction();
             return; // Success
 
-        } catch (ProducerFencedException | OutOfOrderSequenceException e) {
+        } catch (ProducerFencedException | OutOfOrderSequenceException | AuthorizationException e) {
             // Fatal errors - producer is no longer usable
             // These indicate a zombie producer or serious state corruption
             System.err.println("Fatal transaction error: " + e.getMessage());
@@ -349,14 +353,11 @@ Ensure your brokers support transactions:
 transaction.state.log.replication.factor=3
 transaction.state.log.min.isr=2
 
-# Maximum time for a transaction before automatic abort
+# Maximum client transaction timeout brokers allow
 transaction.max.timeout.ms=900000
 
 # Cleanup interval for aborted transactions
 transaction.abort.timed.out.transaction.cleanup.interval.ms=10000
-
-# Required for idempotent producers
-enable.idempotence=true
 ```
 
 ## Transaction Performance Tuning
