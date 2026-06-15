@@ -90,7 +90,7 @@ print("During this time, Redis was BLOCKED for all clients!")
 
 ## The SCAN Command
 
-SCAN iterates through keys incrementally without blocking. It returns a cursor and a batch of keys on each call.
+SCAN iterates through keys incrementally, avoiding the single long blocking scan caused by KEYS. It returns a cursor and a batch of keys on each call.
 
 ```python
 import redis
@@ -100,7 +100,7 @@ r = redis.Redis(host='localhost', port=6379, db=0)
 def scan_keys(pattern, count=100):
     """
     Iterate through all keys matching pattern.
-    Non-blocking, safe for production use.
+    Incremental, safer for production use than KEYS.
     """
     cursor = 0
     all_keys = []
@@ -384,10 +384,10 @@ flowchart TD
 
 | Aspect | KEYS | SCAN |
 |--------|------|------|
-| Blocking | Yes - blocks entire server | No - incremental |
+| Blocking | Yes - blocks entire server | Incremental - avoids one long blocking scan |
 | Performance | O(N) single operation | O(N) spread over time |
-| Production safe | No | Yes |
-| Guaranteed complete | Yes | Yes (may have duplicates) |
+| Production safe | No | Yes, when batched and rate-limited |
+| Guaranteed complete | Yes | Full iteration returns keys present throughout the scan (may have duplicates) |
 | Use case | Development only | Production use |
 
 Key recommendations:
