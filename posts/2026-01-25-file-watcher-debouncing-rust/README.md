@@ -35,6 +35,7 @@ Start with the dependencies. The `notify` crate is the standard choice for cross
 [dependencies]
 notify = "6.1"
 notify-debouncer-mini = "0.4"
+glob = "0.3"
 ```
 
 The `notify-debouncer-mini` crate provides a simple debouncer built on top of `notify`. For more control, we will also build a custom debouncer from scratch.
@@ -93,7 +94,7 @@ Run this and save a file in the watched directory. You will likely see multiple 
 The simplest approach is using `notify-debouncer-mini`, which handles the timing logic for you.
 
 ```rust
-use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
+use notify_debouncer_mini::new_debouncer;
 use std::path::Path;
 use std::sync::mpsc::channel;
 use std::time::Duration;
@@ -131,7 +132,7 @@ fn main() -> notify::Result<()> {
 }
 ```
 
-This works well for simple cases. The debouncer waits 500ms after the last event before delivering a batch of unique paths that changed.
+This works well for simple cases. The debouncer emits one event per path per debounce window, and continuous writes can produce periodic `AnyContinuous` events.
 
 ## Building a Custom Debouncer
 
@@ -141,20 +142,18 @@ Sometimes you need more control. Maybe you want different debounce times for dif
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{channel, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
-// Tracks pending events with their first and last occurrence times
+// Tracks pending events with their last occurrence time
 struct PendingEvent {
-    first_seen: Instant,
     last_seen: Instant,
     event: Event,
 }
 
 pub struct DebouncedWatcher {
     watcher: RecommendedWatcher,
-    event_rx: Receiver<Event>,
 }
 
 impl DebouncedWatcher {
@@ -163,7 +162,6 @@ impl DebouncedWatcher {
         callback: impl Fn(Vec<Event>) + Send + 'static,
     ) -> notify::Result<Self> {
         let (raw_tx, raw_rx) = channel::<Event>();
-        let (debounced_tx, debounced_rx) = channel::<Event>();
 
         // Watcher sends raw events to the debounce thread
         let watcher = RecommendedWatcher::new(
@@ -182,7 +180,6 @@ impl DebouncedWatcher {
 
         Ok(Self {
             watcher,
-            event_rx: debounced_rx,
         })
     }
 
@@ -210,7 +207,6 @@ impl DebouncedWatcher {
                             p.event = event.clone();
                         })
                         .or_insert(PendingEvent {
-                            first_seen: now,
                             last_seen: now,
                             event: event.clone(),
                         });
@@ -221,7 +217,7 @@ impl DebouncedWatcher {
             let now = Instant::now();
             let mut ready_events = Vec::new();
 
-            pending.retain(|path, pending_event| {
+            pending.retain(|_, pending_event| {
                 if now.duration_since(pending_event.last_seen) >= debounce_duration {
                     // Event has settled - add to ready batch
                     ready_events.push(pending_event.event.clone());
@@ -255,7 +251,6 @@ Real file watchers need to ignore certain paths and event types. Build tools sho
 
 ```rust
 use notify::{Event, EventKind};
-use std::path::Path;
 
 struct EventFilter {
     // Glob patterns to ignore
@@ -338,35 +333,47 @@ File watchers in production need to handle several tricky scenarios.
 ```rust
 // Handle atomic saves by tracking renames
 fn track_renames(events: &[Event]) -> Vec<PathBuf> {
-    let mut final_paths = Vec::new();
     let mut rename_targets: HashMap<PathBuf, PathBuf> = HashMap::new();
 
+    // First collect all known source -> destination rename pairs.
     for event in events {
-        match &event.kind {
+        if matches!(
+            event.kind,
             EventKind::Modify(notify::event::ModifyKind::Name(
                 notify::event::RenameMode::Both,
-            )) => {
-                // Rename event with both source and destination
-                if event.paths.len() >= 2 {
-                    rename_targets.insert(
-                        event.paths[0].clone(),
-                        event.paths[1].clone(),
-                    );
-                }
-            }
-            _ => {
-                for path in &event.paths {
-                    // Check if this path was renamed
-                    if let Some(final_path) = rename_targets.get(path) {
-                        final_paths.push(final_path.clone());
-                    } else {
-                        final_paths.push(path.clone());
-                    }
-                }
+            ))
+        ) && event.paths.len() >= 2
+        {
+            rename_targets.insert(event.paths[0].clone(), event.paths[1].clone());
+        }
+    }
+
+    let mut final_paths = Vec::new();
+
+    for event in events {
+        if matches!(
+            event.kind,
+            EventKind::Modify(notify::event::ModifyKind::Name(
+                notify::event::RenameMode::Both,
+            ))
+        ) && event.paths.len() >= 2
+        {
+            final_paths.push(event.paths[1].clone());
+            continue;
+        }
+
+        for path in &event.paths {
+            // Check if this path was renamed
+            if let Some(final_path) = rename_targets.get(path) {
+                final_paths.push(final_path.clone());
+            } else {
+                final_paths.push(path.clone());
             }
         }
     }
 
+    final_paths.sort();
+    final_paths.dedup();
     final_paths
 }
 ```
@@ -381,7 +388,6 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::channel;
-use std::thread;
 use std::time::{Duration, Instant};
 
 fn main() -> notify::Result<()> {
