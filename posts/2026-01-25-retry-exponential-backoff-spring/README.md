@@ -85,10 +85,13 @@ import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class PaymentService {
 
+    private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
     private final RestTemplate restTemplate;
 
     public PaymentService(RestTemplate restTemplate) {
@@ -140,45 +143,42 @@ public class PaymentService {
 Jitter adds randomness to backoff delays. Without jitter, multiple clients that fail at the same time will retry at the same time, creating synchronized spikes.
 
 ```java
-// JitterBackoffPolicy.java
-// Custom backoff policy that adds randomness to exponential delays
-package com.example.retry;
-
-import org.springframework.retry.backoff.ExponentialBackOffPolicy;
-import org.springframework.retry.backoff.Sleeper;
-
-import java.util.Random;
-
-public class JitterBackoffPolicy extends ExponentialBackOffPolicy {
-
-    private final Random random = new Random();
-    private final double jitterFactor;  // 0.0 to 1.0
-
-    public JitterBackoffPolicy(double jitterFactor) {
-        this.jitterFactor = jitterFactor;
-    }
-
-    @Override
-    protected long getSleepAndIncrement() {
-        long baseDelay = super.getSleepAndIncrement();
-
-        // Add jitter: randomly reduce delay by up to jitterFactor percent
-        // For example, with jitterFactor=0.25 and baseDelay=1000ms,
-        // actual delay will be between 750ms and 1000ms
-        double jitter = baseDelay * jitterFactor * random.nextDouble();
-        return (long) (baseDelay - jitter);
-    }
-}
-```
-
-Configure the custom backoff policy in your retry template:
-
-```java
 // RetryTemplateConfig.java
 // Configure a RetryTemplate with exponential backoff and jitter
 package com.example.config;
 
-import com.example.retry.JitterBackoffPolicy;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.retry.backoff.ExponentialRandomBackOffPolicy;
+import org.springframework.retry.support.RetryTemplate;
+
+@Configuration
+public class RetryTemplateConfig {
+
+    @Bean
+    public RetryTemplate retryTemplate() {
+        // Create built-in exponential backoff policy with random jitter
+        ExponentialRandomBackOffPolicy backoffPolicy = new ExponentialRandomBackOffPolicy();
+        backoffPolicy.setInitialInterval(1000);  // Start with 1 second
+        backoffPolicy.setMultiplier(2.0);        // Double each time
+        backoffPolicy.setMaxInterval(30000);     // Cap at 30 seconds
+
+        // Build the retry template
+        return RetryTemplate.builder()
+            .maxAttempts(5)
+            .customBackoff(backoffPolicy)
+            .retryOn(Exception.class)
+            .build();
+    }
+}
+```
+
+You can also configure random exponential backoff directly in the builder:
+
+```java
+// RetryTemplateConfig.java
+package com.example.config;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.retry.support.RetryTemplate;
@@ -188,16 +188,9 @@ public class RetryTemplateConfig {
 
     @Bean
     public RetryTemplate retryTemplate() {
-        // Create custom backoff policy with 25% jitter
-        JitterBackoffPolicy backoffPolicy = new JitterBackoffPolicy(0.25);
-        backoffPolicy.setInitialInterval(1000);  // Start with 1 second
-        backoffPolicy.setMultiplier(2.0);        // Double each time
-        backoffPolicy.setMaxInterval(30000);     // Cap at 30 seconds
-
-        // Build the retry template
         return RetryTemplate.builder()
             .maxAttempts(5)
-            .customBackoff(backoffPolicy)
+            .exponentialBackoff(1000, 2.0, 30000, true)
             .retryOn(Exception.class)
             .build();
     }
@@ -217,7 +210,19 @@ Add the dependency:
 <dependency>
     <groupId>io.github.resilience4j</groupId>
     <artifactId>resilience4j-spring-boot3</artifactId>
-    <version>2.2.0</version>
+    <version>2.4.0</version>
+</dependency>
+
+<!-- Required for Resilience4j's annotation-based Spring AOP integration -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-aop</artifactId>
+</dependency>
+
+<!-- Required for Resilience4j's Spring Boot metrics and actuator endpoints -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
 </dependency>
 ```
 
@@ -269,10 +274,13 @@ package com.example.service;
 
 import io.github.resilience4j.retry.annotation.Retry;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class InventoryService {
 
+    private static final Logger log = LoggerFactory.getLogger(InventoryService.class);
     private final InventoryClient inventoryClient;
 
     public InventoryService(InventoryClient inventoryClient) {
@@ -315,12 +323,16 @@ package com.example.client;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryRegistry;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.function.Supplier;
 
 @Component
 public class ResilientApiClient {
 
+    private static final Logger log = LoggerFactory.getLogger(ResilientApiClient.class);
     private final Retry retry;
     private final RestTemplate restTemplate;
 
@@ -375,11 +387,13 @@ package com.example.service;
 
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
+import io.github.resilience4j.core.IntervalFunction;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.Duration;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 @Service
 public class SmartRetryService {
@@ -388,10 +402,9 @@ public class SmartRetryService {
 
     public SmartRetryService() {
         // Build custom retry configuration
-        RetryConfig config = RetryConfig.custom()
+        RetryConfig<ApiResponse> config = RetryConfig.<ApiResponse>custom()
             .maxAttempts(3)
-            .waitDuration(Duration.ofMillis(500))
-            .exponentialBackoffMultiplier(2)
+            .intervalFunction(IntervalFunction.ofExponentialBackoff(Duration.ofMillis(500), 2.0))
             // Only retry these specific transient failures
             .retryExceptions(
                 IOException.class,
@@ -438,22 +451,27 @@ package com.example.service;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class ResilientOrderService {
 
+    private static final Logger log = LoggerFactory.getLogger(ResilientOrderService.class);
     private final OrderClient orderClient;
+    private final OrderCache orderCache;
 
-    public ResilientOrderService(OrderClient orderClient) {
+    public ResilientOrderService(OrderClient orderClient, OrderCache orderCache) {
         this.orderClient = orderClient;
+        this.orderCache = orderCache;
     }
 
     // Order of execution: Retry wraps CircuitBreaker
-    // First, Retry attempts the call
-    // If CircuitBreaker is open, Retry sees an exception and may retry
+    // Each retry attempt calls through the CircuitBreaker
+    // If CircuitBreaker is open, Retry sees the exception and may retry
     // But when circuit is open, retries fail fast
-    @Retry(name = "orderService")
-    @CircuitBreaker(name = "orderService", fallbackMethod = "getOrderFallback")
+    @Retry(name = "orderService", fallbackMethod = "getOrderFallback")
+    @CircuitBreaker(name = "orderService")
     public Order getOrder(String orderId) {
         return orderClient.getOrder(orderId);
     }
