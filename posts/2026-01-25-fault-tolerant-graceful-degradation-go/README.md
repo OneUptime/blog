@@ -214,7 +214,6 @@ package resilience
 
 import (
     "context"
-    "sync"
     "time"
 )
 
@@ -235,12 +234,8 @@ func GatherWithTimeout[T any](
     results := make([]PartialResult[T], 0, len(sources))
     resultChan := make(chan PartialResult[T], len(sources))
 
-    var wg sync.WaitGroup
     for name, fn := range sources {
-        wg.Add(1)
         go func(name string, fn func(context.Context) (T, error)) {
-            defer wg.Done()
-
             data, err := fn(ctx)
             resultChan <- PartialResult[T]{
                 Data:   data,
@@ -250,15 +245,14 @@ func GatherWithTimeout[T any](
         }(name, fn)
     }
 
-    // Close channel when all goroutines complete
-    go func() {
-        wg.Wait()
-        close(resultChan)
-    }()
-
     // Collect results until timeout or all complete
-    for result := range resultChan {
-        results = append(results, result)
+    for received := 0; received < len(sources); received++ {
+        select {
+        case result := <-resultChan:
+            results = append(results, result)
+        case <-ctx.Done():
+            return results
+        }
     }
 
     return results
