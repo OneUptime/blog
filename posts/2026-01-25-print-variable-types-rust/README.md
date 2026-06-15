@@ -16,31 +16,32 @@ The simplest technique is to cause a deliberate type error:
 
 ```rust
 fn main() {
-    let x = vec![1, 2, 3].iter().map(|n| n * 2);
+    let numbers: Vec<i32> = vec![1, 2, 3];
+    let x = numbers.iter().map(|n| n * 2);
 
     // Deliberately assign to wrong type to see actual type
     let _: () = x;
 }
 ```
 
-The compiler error reveals the type:
+The compiler error reveals the type with a message like:
 
 ```text
 error[E0308]: mismatched types
- --> src/main.rs:4:17
+ --> src/main.rs:6:17
   |
-4 |     let _: () = x;
-  |            --   ^ expected `()`, found struct `Map`
+6 |     let _: () = x;
+  |            --   ^ expected `()`, found `Map<Iter<'_, i32>, {closure@...}>`
   |            |
   |            expected due to this
   |
   = note: expected unit type `()`
-             found struct `Map<std::slice::Iter<'_, i32>, [closure]>`
+             found struct `Map<std::slice::Iter<'_, i32>, {closure@...}>`
 ```
 
 ## Method 2: Using std::any::type_name
 
-The `type_name` function returns a string representation of the type:
+The `type_name` function returns a diagnostic string representation of the type:
 
 ```rust
 use std::any::type_name;
@@ -68,15 +69,15 @@ fn main() {
 }
 ```
 
-Output:
+Example output (exact module paths and lifetimes can vary between compiler versions):
 
 ```text
 x: i32
 y: f64
 z: &str
 v: alloc::vec::Vec<i32>
-closure: main::{{closure}}
-iter: core::iter::adapters::filter::Filter<core::slice::iter::Iter<i32>, main::{{closure}}>
+closure: type_name::main::{{closure}}
+iter: core::iter::adapters::filter::Filter<core::slice::iter::Iter<'_, i32>, type_name::main::{{closure}}>
 ```
 
 ## Method 3: Type Name with Size
@@ -114,12 +115,12 @@ fn main() {
 
 ## Method 4: Debug Printing with dbg!
 
-The `dbg!` macro prints expressions with file and line info:
+The `dbg!` macro prints expressions to stderr with file and line info:
 
 ```rust
 fn main() {
     let x = 5;
-    let y = dbg!(x * 2);  // Prints: [src/main.rs:3] x * 2 = 10
+    let y = dbg!(x * 2);  // Prints something like: [src/main.rs:3:13] x * 2 = 10
 
     let v = dbg!(vec![1, 2, 3]);
 
@@ -192,7 +193,7 @@ Use TypeId for runtime type comparisons:
 ```rust
 use std::any::{Any, TypeId};
 
-fn is_string<T: 'static>(value: &T) -> bool {
+fn is_string<T: 'static>(_value: &T) -> bool {
     TypeId::of::<T>() == TypeId::of::<String>()
 }
 
@@ -219,22 +220,22 @@ fn main() {
 }
 ```
 
-## Method 8: Compiler Diagnostics
+## Method 8: Type Name of a Value
 
-Use compiler attributes to see inferred types:
+Use `type_name_of_val` when the type of a value is not easy to write explicitly:
 
 ```rust
-#![feature(core_intrinsics)]  // Nightly only
+use std::any::type_name_of_val;
 
 fn main() {
-    let x = vec![1, 2, 3].iter().map(|n| n * 2);
+    let numbers: Vec<i32> = vec![1, 2, 3];
+    let x = numbers.iter().map(|n| n * 2);
 
-    // Nightly: print type at compile time
-    // println!("{}", std::intrinsics::type_name::<typeof(x)>());
+    println!("{}", type_name_of_val(&x));
 }
 ```
 
-For stable Rust, use the type error trick or `type_name`.
+For stable Rust, use the type error trick, `type_name`, or `type_name_of_val`. Avoid `std::intrinsics`; compiler intrinsics are nightly-only implementation details, and Rust does not have a `typeof(x)` expression.
 
 ## Practical Debugging Example
 
@@ -272,17 +273,17 @@ fn main() {
 }
 ```
 
-Output:
+Example output (exact module paths and lifetimes can vary between compiler versions):
 
 ```text
 Step 1: Initial data
   Type: alloc::vec::Vec<&str>
 
 Step 2: After iter()
-  Type: core::slice::iter::Iter<&str>
+  Type: core::slice::iter::Iter<'_, &str>
 
 Step 3: After filter_map()
-  Type: core::iter::adapters::filter_map::FilterMap<core::slice::iter::Iter<&str>, ...>
+  Type: core::iter::adapters::filter_map::FilterMap<core::slice::iter::Iter<'_, &str>, debug_pipeline::{{closure}}>
 
 Step 4: After collect()
   Type: alloc::vec::Vec<i32>
@@ -294,10 +295,10 @@ Step 4: After collect()
 | Method | When to Use | Works At |
 |--------|-------------|----------|
 | Type error trick | Quick check during development | Compile time |
-| `type_name::<T>()` | Runtime type inspection | Runtime |
+| `type_name::<T>()` | Diagnostic type name output | Runtime output |
 | `dbg!` macro | Print values with context | Runtime |
 | IDE hover | Continuous type info | Development |
 | `TypeId` | Runtime type comparison | Runtime |
 | Custom Debug | Your own types | Runtime |
 
-The intentional type error method is fastest for one-off checks during development. For logging or runtime inspection, `type_name` provides readable type information. Use the appropriate technique based on whether you need compile-time or runtime information.
+The intentional type error method is fastest for one-off checks during development. For logging or runtime diagnostics, `type_name` provides readable type information. Use the appropriate technique based on whether you need compile-time diagnostics or runtime output.
