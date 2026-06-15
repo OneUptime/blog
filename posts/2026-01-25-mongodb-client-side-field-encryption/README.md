@@ -89,8 +89,10 @@ async function setupKeyVault() {
 
 Define which fields to encrypt and how in a JSON schema.
 
+Automatic encryption requires MongoDB Enterprise or MongoDB Atlas. MongoDB Community supports explicit encryption and automatic decryption, but not automatic encryption.
+
 ```javascript
-const { MongoClient, Binary } = require('mongodb');
+const { MongoClient } = require('mongodb');
 
 // Schema defining encrypted fields
 function createEncryptedFieldsSchema(dataKeyId) {
@@ -275,18 +277,20 @@ async function setupWithAWSKMS() {
 }
 
 // Client configuration for AWS KMS
-const autoEncryptionOptions = {
-  keyVaultNamespace: 'encryption.__keyVault',
-  kmsProviders: {
-    aws: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+function createAWSAutoEncryptionOptions(dataKeyId) {
+  return {
+    keyVaultNamespace: 'encryption.__keyVault',
+    kmsProviders: {
+      aws: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+      }
+    },
+    schemaMap: {
+      'mydb.users': createEncryptedFieldsSchema(dataKeyId)
     }
-  },
-  schemaMap: {
-    'mydb.users': userSchema
-  }
-};
+  };
+}
 ```
 
 ## Encryption Algorithms
@@ -336,7 +340,6 @@ from pymongo import MongoClient
 from pymongo.encryption import ClientEncryption, Algorithm
 from pymongo.encryption_options import AutoEncryptionOpts
 from bson.codec_options import CodecOptions
-from bson import Binary
 import os
 
 # Local master key (use KMS in production)
@@ -348,6 +351,12 @@ def setup_encryption():
     client = MongoClient('mongodb://localhost:27017')
 
     key_vault_namespace = 'encryption.__keyVault'
+    key_vault = client['encryption']['__keyVault']
+    key_vault.create_index(
+        'keyAltNames',
+        unique=True,
+        partialFilterExpression={'keyAltNames': {'$exists': True}}
+    )
 
     client_encryption = ClientEncryption(
         kms_providers={'local': {'key': local_master_key}},
@@ -410,7 +419,7 @@ print(f"SSN: {user['ssn']}")  # Automatically decrypted
 Periodically rotate data encryption keys for security.
 
 ```javascript
-async function rotateDataKey(encryption, oldKeyAltName, newKeyAltName) {
+async function rotateDataKey(encryption, collection, newKeyAltName) {
   // Create new data key
   const newKeyId = await encryption.createDataKey('aws', {
     masterKey: {
@@ -424,14 +433,12 @@ async function rotateDataKey(encryption, oldKeyAltName, newKeyAltName) {
 
   // Re-encrypt existing data with new key
   // This requires reading, decrypting with old key, encrypting with new key
-  const client = encryption._client;
-  const collection = client.db('mydb').collection('users');
-
-  const cursor = collection.find({});
+  // Use a collection from a regular MongoClient so encrypted values are returned as Binary.
+  const cursor = collection.find({ ssn: { $exists: true } });
 
   for await (const doc of cursor) {
-    // Decrypt with old key (automatic if using encrypted client)
-    const plaintext = doc.ssn;
+    // Decrypt with old key
+    const plaintext = await encryption.decrypt(doc.ssn);
 
     // Encrypt with new key
     const newEncrypted = await encryption.encrypt(plaintext, {
