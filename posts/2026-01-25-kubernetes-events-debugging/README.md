@@ -62,7 +62,7 @@ kubectl get events -A
 kubectl get events --sort-by='.lastTimestamp'
 
 # Most recent events first
-kubectl get events --sort-by='.metadata.creationTimestamp' | tac
+kubectl get events --sort-by='.lastTimestamp' --no-headers | tac
 ```
 
 ### Watch Events in Real Time
@@ -130,7 +130,7 @@ kubectl get events --field-selector reason=Pulled
 kubectl get events -n production \
   --field-selector type=Warning,involvedObject.kind=Pod
 
-# Failed scheduling in the last hour
+# Recent failed scheduling events
 kubectl get events --field-selector reason=FailedScheduling \
   --sort-by='.lastTimestamp' | tail -20
 ```
@@ -196,7 +196,7 @@ Resource Issues
 ```text
 Type     Reason    Message
 Warning  Evicted   The node was low on resource: memory
-Warning  OOMKilled Container myapp was OOMKilled
+Warning  OOMKilling  Container myapp was OOMKilled
 ```
 
 ## Event-Based Debugging Workflow
@@ -229,8 +229,13 @@ kubectl get events -A --field-selector type=Warning --sort-by='.lastTimestamp' |
 
 ```bash
 # Events in the last 5 minutes
-kubectl get events -A --sort-by='.lastTimestamp' | \
-  awk -v cutoff="$(date -d '5 minutes ago' -Iseconds)" '$1 > cutoff'
+cutoff="$(date -u -d '5 minutes ago' +%s)"
+kubectl get events -A -o json | jq -r --argjson cutoff "$cutoff" '
+  .items[]
+  | (.lastTimestamp // .eventTime // .metadata.creationTimestamp) as $ts
+  | select(($ts | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) > $cutoff)
+  | [.metadata.namespace, $ts, .type, .reason, .involvedObject.kind + "/" + .involvedObject.name, .message]
+  | @tsv'
 ```
 
 ## Event Retention
@@ -283,7 +288,7 @@ groups:
     rules:
       - alert: PodFailedScheduling
         expr: |
-          increase(kube_pod_status_scheduled_time{condition="false"}[5m]) > 0
+          max_over_time(kube_pod_status_unschedulable[5m]) > 0
         for: 10m
         labels:
           severity: warning
