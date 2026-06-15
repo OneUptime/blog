@@ -77,7 +77,7 @@ public class Product {
 }
 ```
 
-When you run your application, Envers automatically creates an audit table named `products_aud` with columns for all your entity fields plus revision metadata.
+When Hibernate schema generation is enabled, Envers automatically creates an audit table named `products_AUD` with columns for all your entity fields plus revision metadata.
 
 ## Understanding the Audit Tables
 
@@ -93,7 +93,7 @@ The audit table includes a `REVTYPE` column indicating the operation type:
 
 ## Adding Custom Revision Information
 
-The default revision table only stores a timestamp. In real applications, you usually want to track who made the change. Here is how to extend the revision entity:
+The default revision table only stores the revision number and timestamp. In real applications, you usually want to track who made the change. Here is how to extend the revision entity:
 
 ```java
 import jakarta.persistence.*;
@@ -167,6 +167,11 @@ public class CustomRevisionListener implements RevisionListener {
 Sometimes you have fields that change frequently but are not worth tracking, like a "lastAccessTime" field. Use `@NotAudited` to exclude them:
 
 ```java
+import jakarta.persistence.*;
+import org.hibernate.envers.Audited;
+import org.hibernate.envers.NotAudited;
+import java.time.LocalDateTime;
+
 @Entity
 @Audited
 public class User {
@@ -188,7 +193,7 @@ public class User {
 
 ## Querying Historical Data
 
-The real power of Envers comes from querying historical data. Inject `AuditReader` through the `AuditReaderFactory`:
+The real power of Envers comes from querying historical data. Inject an `EntityManager` and obtain an `AuditReader` through the `AuditReaderFactory`:
 
 ```java
 import org.hibernate.envers.AuditReader;
@@ -196,6 +201,7 @@ import org.hibernate.envers.AuditReaderFactory;
 import org.hibernate.envers.query.AuditEntity;
 import org.springframework.stereotype.Service;
 import jakarta.persistence.EntityManager;
+import java.util.Date;
 import java.util.List;
 
 @Service
@@ -253,6 +259,10 @@ public class ProductAuditService {
 A common use case is showing users what changed between two versions. Here is how to build that:
 
 ```java
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
 public record FieldChange(String fieldName, Object oldValue, Object newValue) {}
 
 public List<FieldChange> compareRevisions(Long productId, Number rev1, Number rev2) {
@@ -305,7 +315,7 @@ Envers adds overhead to every write operation since it needs to insert records i
 
 2. **Consider table partitioning** - For high-volume tables, partition the audit tables by revision date to improve query performance and simplify archival.
 
-3. **Batch operations** - When doing bulk updates, Envers creates individual audit records. For massive data migrations, you might want to temporarily disable auditing.
+3. **Batch operations** - Envers tracks changes made through normal Hibernate entity operations. JPQL, HQL, or native SQL bulk updates bypass Hibernate entity events, so for massive data migrations you need to handle audit rows separately or intentionally run the migration outside Envers auditing.
 
 4. **Archive old revisions** - Implement a retention policy to move old audit data to cold storage.
 
