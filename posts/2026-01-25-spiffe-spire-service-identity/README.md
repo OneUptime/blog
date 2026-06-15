@@ -83,33 +83,36 @@ Deploy the SPIRE Server using Helm:
 
 # Helm values for SPIRE Server
 
-# Trust domain configuration
-trustDomain: example.org
+# Global SPIRE configuration
+global:
+  spire:
+    trustDomain: example.org
+    clusterName: production-cluster
+    caSubject:
+      country: US
+      organization: Example
+      commonName: example.org
+    namespaces:
+      create: true
+    recommendations:
+      enabled: true
+      namespaceLayout: false
 
 # Server configuration
-server:
-  # Number of replicas for HA
-  replicaCount: 2
+spire-server:
+  # Keep one replica with the default SQLite datastore. Use an external datastore before scaling out.
+  replicaCount: 1
 
   # Data storage
-  dataStorage:
-    enabled: true
+  persistence:
+    type: pvc
     storageClass: standard
     size: 1Gi
 
   # CA configuration
-  ca:
-    # Key type and size
-    keyType: ec-p256
-    # CA certificate TTL (10 years)
-    caTTL: 87600h
-
-  # SVID configuration
-  svid:
-    # Default SVID TTL (1 hour)
-    defaultTTL: 1h
-    # Maximum SVID TTL
-    maxTTL: 24h
+  caKeyType: ec-p256
+  # CA certificate TTL
+  caTTL: 24h
 
   # Federation configuration (for multi-cluster)
   federation:
@@ -117,13 +120,13 @@ server:
 
   # Node attestation
   nodeAttestor:
-    k8s:
+    k8sPSAT:
       enabled: true
       # Service account allowed to attest nodes
       serviceAccountAllowList:
       - spire:spire-agent
 
-  # Notifier for SVID rotation
+  # Notifier for bundle publication
   notifier:
     k8sBundle:
       enabled: true
@@ -138,15 +141,13 @@ server:
       cpu: 500m
       memory: 512Mi
 
-# Controller for automatic registration
-controller:
-  enabled: true
+  # Controller for automatic registration
+  controllerManager:
+    enabled: true
 
 # OIDC Discovery for JWT-SVID validation
-oidcDiscovery:
+spiffe-oidc-discovery-provider:
   enabled: true
-  # Domain for OIDC endpoint
-  domain: oidc.example.org
 ```
 
 Deploy the server:
@@ -156,19 +157,19 @@ Deploy the server:
 helm repo add spiffe https://spiffe.github.io/helm-charts-hardened
 helm repo update
 
-# Create namespace
-kubectl create namespace spire
+# Install CRDs
+helm upgrade --install --create-namespace -n spire spire-crds spiffe/spire-crds
 
-# Install SPIRE Server
-helm install spire-server spiffe/spire-server \
+# Install the SPIRE stack
+helm upgrade --install spire spiffe/spire \
   --namespace spire \
   --values spire-server-values.yaml
 
 # Verify deployment
-kubectl get pods -n spire -l app.kubernetes.io/name=spire-server
+kubectl get pods -n spire -l app.kubernetes.io/name=server
 
 # Check server health
-kubectl exec -n spire spire-server-0 -- \
+kubectl exec -n spire spire-server-0 -c spire-server -- \
   /opt/spire/bin/spire-server healthcheck
 ```
 
@@ -182,30 +183,26 @@ Deploy SPIRE Agents as a DaemonSet:
 # spire-agent-values.yaml
 # Helm values for SPIRE Agent
 
-# Connect to server
-server:
-  address: spire-server.spire.svc.cluster.local
-  port: 8081
-
-# Trust domain must match server
-trustDomain: example.org
-
 # Agent configuration
-agent:
+spire-agent:
+  # Trust domain must match server
+  trustDomain: example.org
+
   # Socket path for workload API
-  socketPath: /run/spire/sockets/agent.sock
+  socketPath: /run/spire/agent-sockets/spire-agent.sock
 
   # Workload attestation
-  workloadAttestor:
+  workloadAttestors:
     k8s:
       enabled: true
       # Verify pod service account
-      skipKubeletVerification: false
+      verification:
+        type: auto
 
   # Enable SDS for Envoy integration
   sds:
     enabled: true
-    defaultSvidName: default
+    defaultSVIDName: default
 
   # Resource limits
   resources:
@@ -216,24 +213,25 @@ agent:
       cpu: 200m
       memory: 128Mi
 
-# CSI driver for SVID injection
-csiDriver:
+# CSI driver for Workload API socket injection
+spiffe-csi-driver:
   enabled: true
 ```
 
 Deploy the agent:
 
 ```bash
-# Install SPIRE Agent
-helm install spire-agent spiffe/spire-agent \
+# Apply agent settings to the SPIRE stack
+helm upgrade --install spire spiffe/spire \
   --namespace spire \
+  --values spire-server-values.yaml \
   --values spire-agent-values.yaml
 
 # Verify agent deployment
-kubectl get pods -n spire -l app.kubernetes.io/name=spire-agent
+kubectl get pods -n spire -l app.kubernetes.io/name=agent
 
 # Check agent health
-kubectl exec -n spire -l app.kubernetes.io/name=spire-agent -- \
+kubectl exec -n spire -l app.kubernetes.io/name=agent -c spire-agent -- \
   /opt/spire/bin/spire-agent healthcheck
 ```
 
@@ -245,13 +243,22 @@ Register workloads to receive SPIFFE identities:
 
 ```bash
 # Get SPIRE Server pod
-SPIRE_SERVER=$(kubectl get pod -n spire -l app.kubernetes.io/name=spire-server -o jsonpath='{.items[0].metadata.name}')
+SPIRE_SERVER=$(kubectl get pod -n spire -l app.kubernetes.io/name=server -o jsonpath='{.items[0].metadata.name}')
+
+# Create a node entry for agents attested by Kubernetes PSAT
+kubectl exec -n spire $SPIRE_SERVER -- \
+  /opt/spire/bin/spire-server entry create \
+  -spiffeID spiffe://example.org/ns/spire/sa/spire-agent \
+  -selector k8s_psat:cluster:production-cluster \
+  -selector k8s_psat:agent_ns:spire \
+  -selector k8s_psat:agent_sa:spire-agent \
+  -node
 
 # Register a workload by service account
 kubectl exec -n spire $SPIRE_SERVER -- \
   /opt/spire/bin/spire-server entry create \
   -spiffeID spiffe://example.org/ns/production/sa/api-server \
-  -parentID spiffe://example.org/spire/agent/k8s_psat/production-cluster/$(uuidgen) \
+  -parentID spiffe://example.org/ns/spire/sa/spire-agent \
   -selector k8s:ns:production \
   -selector k8s:sa:api-server \
   -ttl 3600
@@ -260,7 +267,7 @@ kubectl exec -n spire $SPIRE_SERVER -- \
 kubectl exec -n spire $SPIRE_SERVER -- \
   /opt/spire/bin/spire-server entry create \
   -spiffeID spiffe://example.org/workload/payment-service \
-  -parentID spiffe://example.org/spire/agent/k8s_psat/production-cluster/$(uuidgen) \
+  -parentID spiffe://example.org/ns/spire/sa/spire-agent \
   -selector k8s:ns:production \
   -selector k8s:pod-label:app:payment-service \
   -ttl 3600
@@ -345,7 +352,7 @@ kubectl label pod my-pod spiffe.io/spire-managed-identity=true
 
 ## Integrating with Applications
 
-Mount SVIDs into pods using the CSI driver:
+Mount the SPIFFE Workload API socket into pods using the CSI driver:
 
 ```yaml
 # pod-with-spiffe.yaml
@@ -364,25 +371,17 @@ spec:
   - name: app
     image: myapp:1.0
     env:
-    # Path to SVID bundle
+    # Path to the Workload API socket mounted by the CSI driver
     - name: SPIFFE_ENDPOINT_SOCKET
-      value: unix:///run/spire/sockets/agent.sock
+      value: unix:///spiffe-workload-api/spire-agent.sock
     volumeMounts:
-    # Mount SPIRE agent socket
-    - name: spire-agent-socket
-      mountPath: /run/spire/sockets
-      readOnly: true
-    # Mount SVIDs via CSI driver
-    - name: spiffe-svid
-      mountPath: /var/run/secrets/spiffe.io
+    # Mount Workload API socket via CSI driver
+    - name: spiffe-workload-api
+      mountPath: /spiffe-workload-api
       readOnly: true
 
   volumes:
-  - name: spire-agent-socket
-    hostPath:
-      path: /run/spire/sockets
-      type: Directory
-  - name: spiffe-svid
+  - name: spiffe-workload-api
     csi:
       driver: csi.spiffe.io
       readOnly: true
@@ -402,20 +401,17 @@ package main
 
 import (
     "context"
-    "crypto/tls"
-    "crypto/x509"
     "log"
     "net/http"
     "time"
 
     "github.com/spiffe/go-spiffe/v2/spiffeid"
-    "github.com/spiffe/go-spiffe/v2/spiffetls"
     "github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
     "github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
 const (
-    socketPath = "unix:///run/spire/sockets/agent.sock"
+    socketPath = "unix:///spiffe-workload-api/spire-agent.sock"
 )
 
 func main() {
@@ -467,7 +463,7 @@ func startServer(ctx context.Context, client *workloadapi.Client) {
 
 func handler(w http.ResponseWriter, r *http.Request) {
     // Extract peer SPIFFE ID from TLS connection
-    if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+    if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 && len(r.TLS.PeerCertificates[0].URIs) > 0 {
         peerID, err := spiffeid.FromURI(r.TLS.PeerCertificates[0].URIs[0])
         if err == nil {
             log.Printf("Request from: %s", peerID)
@@ -580,7 +576,7 @@ static_resources:
         - endpoint:
             address:
               pipe:
-                path: /run/spire/sockets/agent.sock
+                path: /spiffe-workload-api/spire-agent.sock
 
   - name: local_service
     connect_timeout: 1s
@@ -620,6 +616,7 @@ data:
         bundle_endpoint {
           address = "0.0.0.0"
           port = 8443
+          profile "https_spiffe" {}
         }
 
         # Trust cluster B
