@@ -254,9 +254,17 @@ class ChatServer {
 
   async handleLeave(connectionId, message) {
     const connection = this.connections.get(connectionId);
-    if (!connection) return;
+    if (!connection || !connection.userId) {
+      this.sendError(connectionId, 'Not authenticated');
+      return;
+    }
 
     const { roomId } = message;
+
+    if (!connection.rooms.has(roomId)) {
+      this.sendError(connectionId, 'Not in room');
+      return;
+    }
 
     this.removeFromRoom(connectionId, roomId);
 
@@ -309,9 +317,17 @@ class ChatServer {
 
   handleTyping(connectionId, message) {
     const connection = this.connections.get(connectionId);
-    if (!connection) return;
+    if (!connection || !connection.userId) {
+      this.sendError(connectionId, 'Not authenticated');
+      return;
+    }
 
     const { roomId, isTyping } = message;
+
+    if (!connection.rooms.has(roomId)) {
+      this.sendError(connectionId, 'Not in room');
+      return;
+    }
 
     const typingMessage = {
       type: 'typing',
@@ -425,7 +441,7 @@ class ChatServer {
   // Get room history from Redis
   async getRoomHistory(roomId, limit = 50) {
     const key = `room:${roomId}:messages`;
-    const messages = await redis.zrevrange(key, 0, limit - 1);
+    const messages = await redis.zrange(key, 0, limit - 1, 'REV');
 
     return messages
       .map((m) => JSON.parse(m))
