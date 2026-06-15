@@ -45,7 +45,13 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
       - name: api
@@ -65,6 +71,7 @@ spec:
             valueFrom:
               resourceFieldRef:
                 resource: limits.memory
+                divisor: 1Mi
 ```
 
 ### Understanding OOMKilled
@@ -124,7 +131,7 @@ java \
   -XX:InitiatingHeapOccupancyPercent=45 \
   -jar app.jar
 
-# ZGC (Java 15+, low latency, good for large heaps)
+# ZGC (Java 21+ for generational ZGC, low latency, good for large heaps)
 java \
   -XX:+UseZGC \
   -XX:+ZGenerational \
@@ -200,7 +207,7 @@ print(calculate_jvm_memory(2048))
 ### Heap Size Configuration
 
 ```bash
-# Set max heap size (default is ~1.5GB)
+# Set max V8 old-space size (default depends on Node.js version and available memory)
 # For a 2GB container, set to ~1.5GB
 node --max-old-space-size=1536 app.js
 
@@ -218,7 +225,7 @@ const v8 = require('v8');
 function getMemoryConfig() {
   // Get container memory limit (if available)
   const containerLimit = process.env.MEMORY_LIMIT
-    ? parseInt(process.env.MEMORY_LIMIT) / (1024 * 1024)  // Convert to MB
+    ? parseInt(process.env.MEMORY_LIMIT, 10)  // MEMORY_LIMIT is exposed in MiB
     : null;
 
   // Get system memory
@@ -234,15 +241,15 @@ function getMemoryConfig() {
     containerLimitMB: containerLimit,
     systemMemoryMB: Math.round(systemMemory),
     effectiveLimitMB: Math.round(effectiveLimit),
-    heapSizeLimitMB: Math.round(heapStats.heap_size_limit / (1024 * 1024)),
+    v8HeapSizeLimitMB: Math.round(heapStats.heap_size_limit / (1024 * 1024)),
     heapUsedMB: Math.round(heapStats.used_heap_size / (1024 * 1024)),
     heapTotalMB: Math.round(heapStats.total_heap_size / (1024 * 1024)),
     externalMB: Math.round(heapStats.external_memory / (1024 * 1024))
   };
 }
 
-// Recommended heap size (75% of container limit)
-function recommendedHeapSize(containerLimitMB) {
+// Recommended old-space size (75% of container limit)
+function recommendedOldSpaceSize(containerLimitMB) {
   return Math.floor(containerLimitMB * 0.75);
 }
 
@@ -252,7 +259,7 @@ console.log(getMemoryConfig());
 //   containerLimitMB: 1024,
 //   systemMemoryMB: 16384,
 //   effectiveLimitMB: 1024,
-//   heapSizeLimitMB: 768,
+//   v8HeapSizeLimitMB: 768,
 //   heapUsedMB: 45,
 //   heapTotalMB: 52,
 //   externalMB: 2
@@ -362,6 +369,8 @@ def set_memory_limit(limit_mb: int):
     """Set soft memory limit for the process"""
     limit_bytes = limit_mb * 1024 * 1024
     soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+    if hard != resource.RLIM_INFINITY and limit_bytes > hard:
+        raise ValueError("soft limit cannot exceed hard limit")
     resource.setrlimit(resource.RLIMIT_AS, (limit_bytes, hard))
 
 def get_memory_usage():
@@ -391,9 +400,7 @@ def optimize_gc():
 
 def force_gc():
     """Force garbage collection"""
-    gc.collect()
-    gc.collect()  # Second pass for cyclic references
-    gc.collect()  # Third pass for weak references
+    return gc.collect()
 ```
 
 ### Memory-Efficient Data Structures
@@ -501,7 +508,7 @@ const path = require('path');
 
 function takeHeapSnapshot(filename) {
   const snapshotPath = path.join('/tmp', filename || `heap-${Date.now()}.heapsnapshot`);
-  const snapshotStream = v8.writeHeapSnapshot(snapshotPath);
+  v8.writeHeapSnapshot(snapshotPath);
   console.log(`Heap snapshot written to: ${snapshotPath}`);
   return snapshotPath;
 }
