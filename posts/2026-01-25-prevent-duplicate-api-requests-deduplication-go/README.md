@@ -26,9 +26,12 @@ The most common approach uses idempotency keys - unique identifiers that clients
 package main
 
 import (
+    "bytes"
     "crypto/sha256"
     "encoding/hex"
     "encoding/json"
+    "errors"
+    "io"
     "net/http"
     "sync"
     "time"
@@ -38,7 +41,7 @@ import (
 type CachedResponse struct {
     StatusCode int
     Body       []byte
-    Headers    map[string]string
+    Headers    http.Header
     CreatedAt  time.Time
 }
 
@@ -108,9 +111,12 @@ func (d *Deduplicator) Process(key string, handler func() (*CachedResponse, erro
         <-waitChan
         // Now fetch the cached result
         d.mu.RLock()
-        cached := d.cache[key]
+        cached, exists := d.cache[key]
         d.mu.RUnlock()
-        return cached, true, nil
+        if exists {
+            return cached, true, nil
+        }
+        return nil, false, errors.New("request failed before response was cached")
     }
 
     // Mark this request as in-flight
@@ -165,8 +171,7 @@ func DeduplicationMiddleware(dedup *Deduplicator) func(http.Handler) http.Handle
             response, wasDuplicate, err := dedup.Process(cacheKey, func() (*CachedResponse, error) {
                 // Capture the response using a custom ResponseWriter
                 recorder := &responseRecorder{
-                    ResponseWriter: w,
-                    headers:        make(map[string]string),
+                    headers: make(http.Header),
                 }
                 next.ServeHTTP(recorder, r)
 
@@ -182,13 +187,20 @@ func DeduplicationMiddleware(dedup *Deduplicator) func(http.Handler) http.Handle
                 return
             }
 
+            if response == nil {
+                http.Error(w, "Internal server error", http.StatusInternalServerError)
+                return
+            }
+
             if wasDuplicate {
                 w.Header().Set("X-Idempotent-Replay", "true")
             }
 
             // Write the cached response
-            for key, value := range response.Headers {
-                w.Header().Set(key, value)
+            for key, values := range response.Headers {
+                for _, value := range values {
+                    w.Header().Add(key, value)
+                }
             }
             w.WriteHeader(response.StatusCode)
             w.Write(response.Body)
@@ -198,20 +210,28 @@ func DeduplicationMiddleware(dedup *Deduplicator) func(http.Handler) http.Handle
 
 // responseRecorder captures the response for caching
 type responseRecorder struct {
-    http.ResponseWriter
     statusCode int
     body       []byte
-    headers    map[string]string
+    headers    http.Header
+}
+
+func (r *responseRecorder) Header() http.Header {
+    return r.headers
 }
 
 func (r *responseRecorder) WriteHeader(code int) {
+    if r.statusCode != 0 {
+        return
+    }
     r.statusCode = code
-    r.ResponseWriter.WriteHeader(code)
 }
 
 func (r *responseRecorder) Write(b []byte) (int, error) {
+    if r.statusCode == 0 {
+        r.statusCode = http.StatusOK
+    }
     r.body = append(r.body, b...)
-    return r.ResponseWriter.Write(b)
+    return len(b), nil
 }
 ```
 
@@ -282,11 +302,20 @@ package main
 
 import (
     "context"
+    "crypto/rand"
+    "encoding/hex"
     "encoding/json"
     "time"
 
     "github.com/redis/go-redis/v9"
 )
+
+const releaseLockScript = `
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+end
+return 0
+`
 
 type RedisDeduplicator struct {
     client *redis.Client
@@ -313,9 +342,14 @@ func (d *RedisDeduplicator) Process(ctx context.Context, key string, handler fun
         }
     }
 
+    lockValue, err := newLockValue()
+    if err != nil {
+        return nil, false, err
+    }
+
     // Try to acquire lock using SETNX
     // This prevents concurrent duplicate processing across instances
-    acquired, err := d.client.SetNX(ctx, lockKey, "1", 30*time.Second).Result()
+    acquired, err := d.client.SetNX(ctx, lockKey, lockValue, 30*time.Second).Result()
     if err != nil {
         return nil, false, err
     }
@@ -326,7 +360,7 @@ func (d *RedisDeduplicator) Process(ctx context.Context, key string, handler fun
     }
 
     // We have the lock - process the request
-    defer d.client.Del(ctx, lockKey)
+    defer d.client.Eval(ctx, releaseLockScript, []string{lockKey}, lockValue)
 
     response, err := handler()
     if err != nil {
@@ -334,10 +368,23 @@ func (d *RedisDeduplicator) Process(ctx context.Context, key string, handler fun
     }
 
     // Cache the response
-    data, _ := json.Marshal(response)
-    d.client.Set(ctx, cacheKey, data, d.ttl)
+    data, err := json.Marshal(response)
+    if err != nil {
+        return nil, false, err
+    }
+    if err := d.client.Set(ctx, cacheKey, data, d.ttl).Err(); err != nil {
+        return nil, false, err
+    }
 
     return response, false, nil
+}
+
+func newLockValue() (string, error) {
+    b := make([]byte, 16)
+    if _, err := rand.Read(b); err != nil {
+        return "", err
+    }
+    return hex.EncodeToString(b), nil
 }
 
 func (d *RedisDeduplicator) waitForResult(ctx context.Context, cacheKey string, timeout time.Duration) (*CachedResponse, bool, error) {
