@@ -360,10 +360,10 @@ cat > lifecycle.json <<EOF
 EOF
 
 # Apply lifecycle rules to bucket
-mc ilm import local/temp-backups < lifecycle.json
+mc ilm rule import local/temp-backups < lifecycle.json
 
 # View current lifecycle rules
-mc ilm export local/temp-backups
+mc ilm rule export local/temp-backups
 ```
 
 ## Distributed MinIO Setup
@@ -454,23 +454,25 @@ rclone sync /data/files minio:my-bucket/files
 MinIO exposes Prometheus metrics:
 
 ```bash
-# Enable metrics
-mc admin prometheus generate local
+# Generate a Prometheus scrape config
+mc admin prometheus generate local --api-version v3
 
-# Scrape config for Prometheus
+# Metrics endpoints require authentication by default; use the generated
+# scrape config, or configure MINIO_PROMETHEUS_AUTH_TYPE=public before
+# using an unauthenticated scrape config like this:
 scrape_configs:
   - job_name: minio
     static_configs:
       - targets: ['minio.example.com:9000']
-    metrics_path: /minio/v2/metrics/cluster
+    metrics_path: /minio/metrics/v3
     scheme: http
 ```
 
 Key metrics to monitor:
 - `minio_bucket_usage_total_bytes`: Storage used per bucket
-- `minio_s3_requests_total`: Request counts by operation
-- `minio_s3_errors_total`: Error counts
-- `minio_node_disk_free_bytes`: Available disk space
+- `minio_api_requests_total`: Request counts by operation
+- `minio_api_requests_errors_total`: Error counts
+- `minio_node_drive_free_bytes`: Available disk space per drive
 
 ## Wrapping Up
 
