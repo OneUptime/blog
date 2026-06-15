@@ -8,11 +8,11 @@ Description: Learn how to build real-time dashboards using SignalR and Blazor in
 
 ---
 
-Polling wastes resources. Users refresh pages hoping for updates. Real-time dashboards solve this by pushing data to clients the moment it changes. SignalR handles the WebSocket connections while Blazor renders the UI reactively. Together they create dashboards that update instantly without page refreshes.
+Polling wastes resources. Users refresh pages hoping for updates. Real-time dashboards solve this by pushing data to clients the moment it changes. SignalR handles persistent real-time connections, using WebSockets when available and falling back to other transports when needed, while Blazor renders the UI reactively. Together they create dashboards that update instantly without page refreshes.
 
 ## Architecture Overview
 
-SignalR establishes persistent connections between the server and all connected clients. When data changes on the server, it broadcasts to relevant clients through these connections. Blazor components re-render automatically when their state changes.
+SignalR establishes persistent connections between the server and all connected clients. When data changes on the server, it broadcasts to relevant clients through these connections. Blazor components re-render when they are notified that their state has changed.
 
 ```mermaid
 flowchart TB
@@ -273,6 +273,11 @@ public class MetricsCollectorService : BackgroundService
             }
             catch (Exception ex)
             {
+                if (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
                 _logger.LogError(ex, "Error collecting metrics");
             }
         }
@@ -448,14 +453,7 @@ Create a Blazor component that connects to the SignalR hub and displays real-tim
             await _hubConnection!.StartAsync();
             _isConnected = true;
 
-            // Subscribe to metrics we want to display
-            await _hubConnection.SendAsync("SubscribeToMetric", "requests_per_second");
-            await _hubConnection.SendAsync("SubscribeToMetric", "response_time_ms");
-            await _hubConnection.SendAsync("SubscribeToMetric", "error_rate");
-            await _hubConnection.SendAsync("SubscribeToMetric", "active_users");
-
-            // Subscribe to all alerts
-            await _hubConnection.SendAsync("SubscribeToAlerts", AlertSeverity.Info);
+            await SubscribeToDashboardStreams();
 
             StateHasChanged();
         }
@@ -464,6 +462,18 @@ Create a Blazor component that connects to the SignalR hub and displays real-tim
             Console.WriteLine($"Connection failed: {ex.Message}");
             _isConnected = false;
         }
+    }
+
+    private async Task SubscribeToDashboardStreams()
+    {
+        // Subscribe to metrics we want to display
+        await _hubConnection!.SendAsync("SubscribeToMetric", "requests_per_second");
+        await _hubConnection.SendAsync("SubscribeToMetric", "response_time_ms");
+        await _hubConnection.SendAsync("SubscribeToMetric", "error_rate");
+        await _hubConnection.SendAsync("SubscribeToMetric", "active_users");
+
+        // Subscribe to all alerts
+        await _hubConnection.SendAsync("SubscribeToAlerts", AlertSeverity.Info);
     }
 
     private void OnSystemStatusReceived(SystemStatus status)
@@ -498,11 +508,11 @@ Create a Blazor component that connects to the SignalR hub and displays real-tim
         return Task.CompletedTask;
     }
 
-    private Task OnReconnected(string? connectionId)
+    private async Task OnReconnected(string? connectionId)
     {
         _isConnected = true;
-        InvokeAsync(StateHasChanged);
-        return Task.CompletedTask;
+        await SubscribeToDashboardStreams();
+        await InvokeAsync(StateHasChanged);
     }
 
     private Task OnReconnecting(Exception? ex)
@@ -610,6 +620,12 @@ Add a chart component that updates in real-time as data arrives.
         {
             _minValue = _points.Min(p => p.Value) * 0.9;
             _maxValue = _points.Max(p => p.Value) * 1.1;
+
+            if (_maxValue <= _minValue)
+            {
+                _minValue -= 1;
+                _maxValue += 1;
+            }
         }
 
         StateHasChanged();
