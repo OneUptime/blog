@@ -224,9 +224,8 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: myapp-ingress
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
     - host: myapp.example.com
       http:
@@ -297,9 +296,10 @@ spec:
     - name: success-rate
       # Run every 5 minutes
       interval: 5m
-      # Need at least 3 successful measurements
+      # Require 3 successful measurements
+      count: 3
       successCondition: result[0] >= 0.95
-      failureLimit: 3
+      failureLimit: 0
       provider:
         prometheus:
           address: http://prometheus:9090
@@ -488,7 +488,7 @@ spec:
         - analysis:
             templates:
               - templateName: success-rate
-      # Automatically rollback on failure
+      # Keep the aborted canary ReplicaSet for 30 seconds before scaling down
       abortScaleDownDelaySeconds: 30
 ```
 
@@ -538,7 +538,7 @@ progressDeadlineSeconds: 600
 
 ### Notify on Rollout Events
 
-Combine with ArgoCD notifications:
+Combine with Argo Rollouts notifications:
 
 ```yaml
 metadata:
