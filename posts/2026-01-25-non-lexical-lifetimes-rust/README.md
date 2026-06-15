@@ -8,11 +8,11 @@ Description: Learn how Non-Lexical Lifetimes (NLL) in Rust make the borrow check
 
 ---
 
-Non-Lexical Lifetimes (NLL) is a significant improvement to Rust's borrow checker introduced in Rust 2018. Before NLL, lifetimes extended to the end of their lexical scope (the closing brace). With NLL, the compiler tracks where references are actually used and ends their lifetimes earlier when possible. This allows code patterns that were previously rejected.
+Non-Lexical Lifetimes (NLL) is a significant improvement to Rust's borrow checker introduced in Rust 2018. Before NLL, references stored in local variables often had lifetimes tied to their lexical scope (the closing brace), even when the reference was no longer used. With NLL, the compiler tracks where references are actually used and ends their lifetimes earlier when possible. This allows code patterns that were previously rejected.
 
 ## The Problem NLL Solves
 
-In early Rust, the borrow checker was overly conservative. It would reject code that was actually safe because it assumed references lived until the end of their scope.
+In early Rust, the borrow checker was overly conservative. It would reject code that was actually safe because references stored in variables could be treated as living until the end of their scope.
 
 ```rust
 // Before NLL, this would fail to compile
@@ -97,10 +97,8 @@ struct Database {
 impl Database {
     fn get_or_compute(&mut self, index: usize) -> &str {
         // Check cache first
-        if let Some(ref cached) = self.cache {
-            if !cached.is_empty() {
-                return cached;
-            }
+        if self.cache.as_ref().is_some_and(|cached| !cached.is_empty()) {
+            return self.cache.as_ref().unwrap();
         }
         // NLL: the borrow from cache check ends here
 
@@ -247,15 +245,14 @@ fn scope_still_needed() {
     let mut data = vec![1, 2, 3];
 
     // When the borrow is stored in a variable used later
-    let reference;
-    {
-        reference = &data[0];
-        // If we need mutation before using reference,
-        // we need explicit scoping
-    }
+    let index = 0;
+    // let reference = &data[0];
+    // data.push(4);
+    // println!("{}", reference);  // Error: reference used after mutation
 
-    // This pattern requires careful handling
-    println!("{}", reference);
+    // Use an index or copy the value instead of keeping the reference alive.
+    data.push(4);
+    println!("{}", data[index]);
 }
 ```
 
