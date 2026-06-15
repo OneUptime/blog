@@ -69,7 +69,7 @@ grep -i "bgsave\|rdb\|fork" /var/log/redis/redis-server.log
 # Try BGSAVE and watch for errors
 redis-cli BGSAVE
 
-# Check status
+# Check that the timestamp advances after the background save completes
 redis-cli LASTSAVE
 ```
 
@@ -134,7 +134,8 @@ Change data directory if needed:
 # In redis.conf
 dir /mnt/large-disk/redis
 
-# Or at runtime (careful - affects where Redis looks for files)
+# Or at runtime if protected configuration changes are enabled
+# (careful - affects where Redis looks for files)
 redis-cli CONFIG SET dir /mnt/large-disk/redis
 redis-cli CONFIG REWRITE
 ```
@@ -174,12 +175,12 @@ iostat -x 1 10
 redis-cli CONFIG GET save
 
 # Default save rules:
-# save 900 1    - Save if at least 1 key changed in 900 seconds
-# save 300 10   - Save if at least 10 keys changed in 300 seconds
-# save 60 10000 - Save if at least 10000 keys changed in 60 seconds
+# save 3600 1    - Save if at least 1 key changed in 3600 seconds
+# save 300 100   - Save if at least 100 keys changed in 300 seconds
+# save 60 10000  - Save if at least 10000 keys changed in 60 seconds
 
 # Adjust for your needs
-redis-cli CONFIG SET save "900 1 300 10 60 10000"
+redis-cli CONFIG SET save "3600 1 300 100 60 10000"
 
 # Or disable automatic saves (manual only)
 redis-cli CONFIG SET save ""
@@ -254,6 +255,8 @@ exit 0
 ### Pre-flight Checks Before BGSAVE
 
 ```python
+import redis
+
 def safe_bgsave(redis_client, min_free_disk_gb=10, min_free_memory_pct=30):
     """Trigger BGSAVE only if safe to do so."""
     import shutil
@@ -338,7 +341,7 @@ cp /backups/redis/dump.rdb /var/lib/redis/dump.rdb
 redis-server /etc/redis/redis.conf
 
 # 3. If you have AOF, use that instead
-redis-server --appendonly yes --dbfilename ""
+redis-server /etc/redis/redis.conf --appendonly yes
 ```
 
 ---
