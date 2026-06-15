@@ -61,7 +61,8 @@ app.config['COMPRESS_MIMETYPES'] = [
     'text/html', 'text/css', 'text/xml', 'text/javascript',
     'application/json', 'application/javascript', 'application/xml'
 ]
-app.config['COMPRESS_LEVEL'] = 6  # 1-9, higher = better compression, slower
+app.config['COMPRESS_LEVEL'] = 6  # Gzip level: 1-9, higher = better compression, slower
+app.config['COMPRESS_BR_LEVEL'] = 4  # Brotli level: 0-11
 app.config['COMPRESS_MIN_SIZE'] = 500  # Don't compress tiny responses
 app.config['COMPRESS_ALGORITHM'] = ['br', 'gzip']  # Prefer Brotli
 
@@ -74,24 +75,28 @@ def large_data():
     json_data = json.dumps(data)
 
     # Check client's accepted encodings
-    accept_encoding = request.headers.get('Accept-Encoding', '')
+    encoding = request.accept_encodings.best_match(['br', 'gzip'])
 
-    if 'br' in accept_encoding:
+    if encoding == 'br':
         compressed = brotli.compress(json_data.encode('utf-8'))
         return Response(
             compressed,
             content_type='application/json',
-            headers={'Content-Encoding': 'br'}
+            headers={'Content-Encoding': 'br', 'Vary': 'Accept-Encoding'}
         )
-    elif 'gzip' in accept_encoding:
+    elif encoding == 'gzip':
         compressed = gzip.compress(json_data.encode('utf-8'))
         return Response(
             compressed,
             content_type='application/json',
-            headers={'Content-Encoding': 'gzip'}
+            headers={'Content-Encoding': 'gzip', 'Vary': 'Accept-Encoding'}
         )
     else:
-        return Response(json_data, content_type='application/json')
+        return Response(
+            json_data,
+            content_type='application/json',
+            headers={'Vary': 'Accept-Encoding'}
+        )
 ```
 
 ### Express.js Compression Middleware
@@ -124,11 +129,8 @@ app.use(compression({
 
   // Use Brotli when supported
   brotli: {
-    enabled: true,
-    zlib: {
-      params: {
-        [zlib.constants.BROTLI_PARAM_QUALITY]: 4,  // 0-11
-      }
+    params: {
+      [zlib.constants.BROTLI_PARAM_QUALITY]: 4,  // 0-11
     }
   }
 }));
@@ -143,6 +145,12 @@ app.get('/api/products', async (req, res) => {
 app.get('/api/export', async (req, res) => {
   const data = await getExportData();
   const jsonString = JSON.stringify(data);
+
+  res.vary('Accept-Encoding');
+
+  if (!req.acceptsEncodings('br')) {
+    return res.type('application/json').send(jsonString);
+  }
 
   // Manual Brotli compression for maximum ratio
   const compressed = zlib.brotliCompressSync(Buffer.from(jsonString), {
@@ -181,9 +189,10 @@ import (
 func CompressionMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         acceptEncoding := r.Header.Get("Accept-Encoding")
+        w.Header().Add("Vary", "Accept-Encoding")
 
         // Check for Brotli support
-        if strings.Contains(acceptEncoding, "br") {
+        if acceptsEncoding(acceptEncoding, "br") {
             w.Header().Set("Content-Encoding", "br")
             bw := brotli.NewWriter(w)
             defer bw.Close()
@@ -192,7 +201,7 @@ func CompressionMiddleware(next http.Handler) http.Handler {
         }
 
         // Fall back to gzip
-        if strings.Contains(acceptEncoding, "gzip") {
+        if acceptsEncoding(acceptEncoding, "gzip") {
             w.Header().Set("Content-Encoding", "gzip")
             gw := gzip.NewWriter(w)
             defer gw.Close()
@@ -203,6 +212,26 @@ func CompressionMiddleware(next http.Handler) http.Handler {
         // No compression
         next.ServeHTTP(w, r)
     })
+}
+
+func acceptsEncoding(header string, encoding string) bool {
+    for _, part := range strings.Split(header, ",") {
+        fields := strings.Split(part, ";")
+        if !strings.EqualFold(strings.TrimSpace(fields[0]), encoding) {
+            continue
+        }
+
+        for _, param := range fields[1:] {
+            kv := strings.SplitN(strings.TrimSpace(param), "=", 2)
+            if len(kv) == 2 && strings.EqualFold(kv[0], "q") && strings.TrimSpace(kv[1]) == "0" {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    return false
 }
 
 type compressedResponseWriter struct {
@@ -233,11 +262,10 @@ func main() {
 
 ```python
 # storage_compression.py
-import zlib
+import gzip
 import lz4.frame
 import zstandard as zstd
 import json
-from typing import Any, Tuple
 import time
 
 class CompressionHelper:
@@ -246,12 +274,12 @@ class CompressionHelper:
     @staticmethod
     def compress_gzip(data: bytes, level: int = 6) -> bytes:
         """Gzip compression (good compatibility)"""
-        return zlib.compress(data, level)
+        return gzip.compress(data, compresslevel=level)
 
     @staticmethod
     def decompress_gzip(data: bytes) -> bytes:
         """Gzip decompression"""
-        return zlib.decompress(data)
+        return gzip.decompress(data)
 
     @staticmethod
     def compress_lz4(data: bytes) -> bytes:
@@ -281,9 +309,9 @@ def benchmark_compression(data: bytes) -> dict:
     results = {}
 
     algorithms = [
-        ('gzip-1', lambda d: zlib.compress(d, 1)),
-        ('gzip-6', lambda d: zlib.compress(d, 6)),
-        ('gzip-9', lambda d: zlib.compress(d, 9)),
+        ('gzip-1', lambda d: gzip.compress(d, compresslevel=1)),
+        ('gzip-6', lambda d: gzip.compress(d, compresslevel=6)),
+        ('gzip-9', lambda d: gzip.compress(d, compresslevel=9)),
         ('lz4', lz4.frame.compress),
         ('zstd-1', lambda d: zstd.ZstdCompressor(level=1).compress(d)),
         ('zstd-3', lambda d: zstd.ZstdCompressor(level=3).compress(d)),
@@ -323,6 +351,7 @@ import gzip
 import zstandard as zstd
 from typing import Iterator, BinaryIO
 import io
+import json
 
 class StreamingCompressor:
     """Compress large files/streams without loading into memory"""
@@ -375,7 +404,9 @@ class StreamingCompressor:
 
 
 # Usage for HTTP streaming response
-from flask import Response
+from flask import Flask, Response
+
+app = Flask(__name__)
 
 @app.route('/api/large-export')
 def large_export():
@@ -435,8 +466,8 @@ CREATE TABLE logs (
     metadata JSONB
 );
 
--- Force external storage (always compress large values)
-ALTER TABLE logs ALTER COLUMN message SET STORAGE EXTERNAL;
+-- Prefer compressed TOAST storage for large values
+ALTER TABLE logs ALTER COLUMN message SET STORAGE EXTENDED;
 ALTER TABLE logs ALTER COLUMN metadata SET STORAGE EXTENDED;
 
 -- Use TimescaleDB for automatic compression (time-series data)
