@@ -54,7 +54,7 @@ Or install with kubectl:
 
 ```bash
 # Apply the manifest
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.4/deploy/static/provider/cloud/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/cloud/deploy.yaml
 
 # Wait for the controller to be ready
 kubectl wait --namespace ingress-nginx \
@@ -113,8 +113,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: multi-path-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
   ingressClassName: nginx
   rules:
@@ -258,7 +256,7 @@ Automate certificate management with cert-manager:
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 Create a ClusterIssuer:
@@ -279,7 +277,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 Use automatic TLS in Ingress:
@@ -342,7 +340,7 @@ metadata:
     nginx.ingress.kubernetes.io/cors-allow-origin: "https://app.example.com"
 
     # URL rewriting
-    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/rewrite-target: /
 
     # Authentication
     nginx.ingress.kubernetes.io/auth-type: basic
@@ -406,7 +404,7 @@ metadata:
 data:
   # Worker settings
   worker-processes: "auto"
-  worker-connections: "65536"
+  max-worker-connections: "65536"
 
   # Timeouts
   keep-alive: "75"
@@ -482,6 +480,7 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 
     # Security
+    # Requires controller.allowSnippetAnnotations=true on the ingress-nginx controller.
     nginx.ingress.kubernetes.io/configuration-snippet: |
       more_set_headers "X-Frame-Options: SAMEORIGIN";
       more_set_headers "X-Content-Type-Options: nosniff";
@@ -589,7 +588,10 @@ Deploy multiple controller replicas:
 helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
     --set controller.replicaCount=3 \
-    --set controller.podAntiAffinity.type=hard
+    --set 'controller.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].labelSelector.matchExpressions[0].key=app.kubernetes.io/component' \
+    --set 'controller.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].labelSelector.matchExpressions[0].operator=In' \
+    --set 'controller.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].labelSelector.matchExpressions[0].values[0]=controller' \
+    --set 'controller.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].topologyKey=kubernetes.io/hostname'
 ```
 
 Or with values file:
