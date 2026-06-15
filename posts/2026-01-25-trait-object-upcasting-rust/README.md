@@ -45,9 +45,9 @@ fn main() {
 }
 ```
 
-## Rust 1.76+ Trait Upcasting
+## Rust 1.86+ Trait Upcasting
 
-Starting with Rust 1.76, trait upcasting is supported natively:
+Starting with Rust 1.86, trait upcasting is supported natively:
 
 ```rust
 trait Animal {
@@ -82,7 +82,7 @@ fn main() {
 
     dog.bark();
 
-    // Upcast to Animal - works in Rust 1.76+
+    // Upcast to Animal - works in Rust 1.86+
     let animal: Box<dyn Animal> = dog;
     println!("Animal name: {}", animal.name());
 }
@@ -218,7 +218,7 @@ fn main() {
 
 ## Multiple Trait Bounds
 
-When working with multiple traits, you can use trait objects with multiple bounds:
+When working with multiple traits, you can use generic parameters with multiple bounds:
 
 ```rust
 trait Read {
@@ -288,7 +288,7 @@ trait CloneableBoxed {
     fn clone_boxed(&self) -> Box<dyn CloneableBoxed>;
 }
 
-impl<T: Clone + CloneableBoxed + 'static> CloneableBoxed for T {
+impl<T: Clone + 'static> CloneableBoxed for T {
     fn clone_boxed(&self) -> Box<dyn CloneableBoxed> {
         Box::new(self.clone())
     }
@@ -298,8 +298,6 @@ impl<T: Clone + CloneableBoxed + 'static> CloneableBoxed for T {
 struct Data {
     value: i32,
 }
-
-impl CloneableBoxed for Data {}
 
 fn main() {
     let original: Box<dyn CloneableBoxed> = Box::new(Data { value: 42 });
@@ -357,10 +355,10 @@ fn main() {
 
 | Approach | Use Case | Rust Version |
 |----------|----------|--------------|
-| Native upcasting | Direct `dyn Derived` to `dyn Base` | 1.76+ |
+| Native upcasting | Direct `dyn Derived` to `dyn Base` | 1.86+ |
 | `as_base()` method | Manual conversion method | Any |
 | `Any` trait | Need downcasting too | Any |
 | Blanket impls | Automatic trait implementation | Any |
 | Enums | Fixed set of variants | Any |
 
-Trait object upcasting is now natively supported in Rust 1.76+. For older versions or more complex scenarios, explicit conversion methods or alternative designs like enums can achieve similar goals. Choose the approach that best fits your Rust version and design requirements.
+Trait object upcasting is now natively supported in Rust 1.86+. For older versions or more complex scenarios, explicit conversion methods or alternative designs like enums can achieve similar goals. Choose the approach that best fits your Rust version and design requirements.
