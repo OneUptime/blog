@@ -60,6 +60,14 @@ First, the Maven dependencies:
         <artifactId>spring-kafka</artifactId>
     </dependency>
     <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-aop</artifactId>
+    </dependency>
+    <dependency>
         <groupId>com.h2database</groupId>
         <artifactId>h2</artifactId>
         <scope>runtime</scope>
@@ -140,6 +148,12 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
+    public PaymentService(PaymentRepository paymentRepository,
+                          KafkaTemplate<String, Object> kafkaTemplate) {
+        this.paymentRepository = paymentRepository;
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
     @KafkaListener(topics = "order-events", groupId = "payment-service")
     public void handleOrderEvent(OrderEvent event) {
         if (!"ORDER_CREATED".equals(event.getEventType())) {
@@ -205,7 +219,16 @@ public class PaymentService {
 public class InventoryService {
 
     private final InventoryRepository inventoryRepository;
+    private final ReservationRepository reservationRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+
+    public InventoryService(InventoryRepository inventoryRepository,
+                            ReservationRepository reservationRepository,
+                            KafkaTemplate<String, Object> kafkaTemplate) {
+        this.inventoryRepository = inventoryRepository;
+        this.reservationRepository = reservationRepository;
+        this.kafkaTemplate = kafkaTemplate;
+    }
 
     @KafkaListener(topics = "payment-events", groupId = "inventory-service")
     public void handlePaymentEvent(PaymentEvent event) {
@@ -230,6 +253,12 @@ public class InventoryService {
                 inventory.getReservedQuantity() + event.getQuantity()
             );
             inventoryRepository.save(inventory);
+
+            Reservation reservation = new Reservation();
+            reservation.setOrderId(event.getOrderId());
+            reservation.setProductId(event.getProductId());
+            reservation.setQuantity(event.getQuantity());
+            reservationRepository.save(reservation);
 
             // Saga completed successfully
             SagaCompleteEvent complete = new SagaCompleteEvent(
@@ -258,7 +287,7 @@ public class InventoryService {
 }
 ```
 
-The choreography approach keeps services decoupled, but tracking the overall saga state becomes tricky. You need good observability to debug failures.
+The choreography approach keeps services decoupled, but tracking the overall saga state becomes tricky. You need good observability to debug failures. In production, publish domain events through a transactional outbox or another after-commit mechanism so a database rollback does not leave a stale Kafka event behind.
 
 ---
 
@@ -273,10 +302,23 @@ With orchestration, a central service coordinates the entire flow. This makes th
 @Service
 public class OrderSagaOrchestrator {
 
+    private static final Logger log =
+        LoggerFactory.getLogger(OrderSagaOrchestrator.class);
+
     private final OrderServiceClient orderClient;
     private final PaymentServiceClient paymentClient;
     private final InventoryServiceClient inventoryClient;
     private final SagaStateRepository sagaStateRepository;
+
+    public OrderSagaOrchestrator(OrderServiceClient orderClient,
+                                 PaymentServiceClient paymentClient,
+                                 InventoryServiceClient inventoryClient,
+                                 SagaStateRepository sagaStateRepository) {
+        this.orderClient = orderClient;
+        this.paymentClient = paymentClient;
+        this.inventoryClient = inventoryClient;
+        this.sagaStateRepository = sagaStateRepository;
+    }
 
     @Transactional
     public SagaResult executeSaga(OrderRequest request) {
@@ -394,8 +436,18 @@ public class SagaStep<T> {
                         "Failed to compensate step: " + name, e);
                 }
                 // Exponential backoff
-                sleep(1000 * (long) Math.pow(2, attempts));
+                sleep(1000L * (long) Math.pow(2, attempts));
             }
+        }
+    }
+
+    private void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new CompensationFailedException(
+                "Interrupted while compensating step: " + name, e);
         }
     }
 }
@@ -468,13 +520,22 @@ public Payment processPayment(String idempotencyKey, PaymentRequest request) {
 Without visibility into saga execution, debugging failures becomes painful. Add metrics and tracing:
 
 ```java
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface SagaStepMetric {
+}
+
 @Aspect
 @Component
 public class SagaMetricsAspect {
 
     private final MeterRegistry meterRegistry;
 
-    @Around("@annotation(SagaStep)")
+    public SagaMetricsAspect(MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
+    }
+
+    @Around("@annotation(SagaStepMetric)")
     public Object measureStep(ProceedingJoinPoint joinPoint) throws Throwable {
         String stepName = joinPoint.getSignature().getName();
         Timer.Sample sample = Timer.start(meterRegistry);
