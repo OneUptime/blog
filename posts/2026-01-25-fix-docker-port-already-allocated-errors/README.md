@@ -23,7 +23,7 @@ Error response from daemon: Ports are not available: exposing port TCP 0.0.0.0:3
 listen tcp 0.0.0.0:3000: bind: address already in use
 ```
 
-The error means something else on your system has claimed that port. It could be another Docker container, a local service, or even a zombie process.
+The error means something else on your system has claimed that port. It could be another Docker container, a local service, or a lingering process.
 
 ## Step 1: Identify What Is Using the Port
 
@@ -72,7 +72,7 @@ Get-NetTCPConnection -LocalPort 8080 | Select-Object LocalPort, OwningProcess, @
 
 ## Step 2: Check for Stale Docker Containers
 
-The most common cause is a previous container still running or not properly cleaned up.
+The most common cause is a previous container still running or a Docker Desktop port binding not properly cleaned up.
 
 ```bash
 # List ALL containers including stopped ones
@@ -81,7 +81,7 @@ docker ps -a
 # Look for containers using the port
 docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
-# Find containers by port
+# Find running containers by published port
 docker ps --filter "publish=8080"
 
 # Check if a specific container is using the port
@@ -199,8 +199,6 @@ For container-to-container communication, use Docker networks instead of publish
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   api:
     image: myapp/api:latest
@@ -318,13 +316,10 @@ Windows has reserved port ranges that can conflict with Docker.
 # Check Windows reserved port ranges
 netsh interface ipv4 show excludedportrange protocol=tcp
 
-# If your port is in a reserved range, choose a different port
-# or exclude it from the Hyper-V reserved range
+# If your port is in a reserved range, choose a different port.
+# If you intentionally created the exclusion, delete that exact exclusion.
 
-# Stop winnat service, set exclusion, restart
-net stop winnat
-netsh int ipv4 add excludedportrange protocol=tcp startport=8080 numberofports=1
-net start winnat
+netsh int ipv4 delete excludedportrange protocol=tcp startport=8080 numberofports=1
 ```
 
 ## Quick Reference
