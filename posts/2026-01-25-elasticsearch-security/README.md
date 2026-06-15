@@ -99,6 +99,7 @@ Create certificates for secure communication:
 ```bash
 # Generate a certificate authority
 cd /usr/share/elasticsearch
+sudo mkdir -p /etc/elasticsearch/certs
 sudo bin/elasticsearch-certutil ca --out /etc/elasticsearch/certs/elastic-stack-ca.p12 --pass ""
 
 # Generate node certificates
@@ -117,9 +118,14 @@ sudo bin/elasticsearch-certutil http
 # - Generate certificate per node? Yes for production
 # - Set hostnames and IPs for each node
 
+# Extract the generated archive and copy each node's http.p12 to its config directory
+sudo unzip elasticsearch-ssl-http.zip -d /etc/elasticsearch/certs/http
+sudo cp /etc/elasticsearch/certs/http/elasticsearch/http.p12 /etc/elasticsearch/certs/http.p12
+
 # Set permissions
 sudo chown -R elasticsearch:elasticsearch /etc/elasticsearch/certs/
-sudo chmod 640 /etc/elasticsearch/certs/*
+sudo find /etc/elasticsearch/certs -type d -exec chmod 750 {} \;
+sudo find /etc/elasticsearch/certs -type f -exec chmod 640 {} \;
 
 # Copy certificates to all nodes
 # Use scp or your configuration management tool
@@ -132,11 +138,11 @@ sudo chmod 640 /etc/elasticsearch/certs/*
 Reset passwords for built-in users after enabling security:
 
 ```bash
-# Interactive password setup for all built-in users
-sudo /usr/share/elasticsearch/bin/elasticsearch-setup-passwords interactive
+# Reset the elastic user's password interactively
+sudo /usr/share/elasticsearch/bin/elasticsearch-reset-password --username elastic -i
 
-# Or auto-generate passwords
-sudo /usr/share/elasticsearch/bin/elasticsearch-setup-passwords auto
+# Or auto-generate a password for a built-in user
+sudo /usr/share/elasticsearch/bin/elasticsearch-reset-password --username kibana_system
 
 # Reset a specific user's password
 curl -X POST "https://localhost:9200/_security/user/elastic/_password" \
@@ -386,10 +392,8 @@ curl -X PUT "https://localhost:9200/_security/role/restricted_analyst" \
           "except": ["customer_ssn", "credit_card_number"]
         },
         "query": {
-          "range": {
-            "date": {
-              "gte": "now-90d"
-            }
+          "term": {
+            "category": "approved"
           }
         }
       }
@@ -407,9 +411,6 @@ Enable audit logging to track security events:
 # /etc/elasticsearch/elasticsearch.yml
 
 xpack.security.audit.enabled: true
-
-# Log to file
-xpack.security.audit.outputs: [ logfile ]
 
 # Configure what to log
 xpack.security.audit.logfile.events.include:
@@ -555,7 +556,7 @@ class SecurityManager:
             body["name"] = name
 
         response = self.es.security.invalidate_api_key(body=body)
-        return response.get("invalidated_api_keys", 0)
+        return len(response.get("invalidated_api_keys", []))
 
     def list_users(self) -> List[Dict[str, Any]]:
         """List all users"""
