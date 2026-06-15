@@ -202,7 +202,7 @@ Common built-ins that get accidentally shadowed:
 ```python
 # Avoid using these as variable names:
 # id, list, dict, set, str, int, float, type, input, print, len, sum, max, min
-# file, open, range, filter, map, sorted, reversed, next, iter
+# open, range, filter, map, sorted, reversed, next, iter
 
 # BAD
 id = 42
