@@ -103,7 +103,7 @@ build-docker:
     - docker push ${IMAGE_TAG}
 ```
 
-Variable expansion happens before job execution, so all references resolve correctly.
+Variable expansion happens before job execution for variables GitLab can resolve at pipeline creation time. Masked or hidden variables cannot reference other variables.
 
 ## Protecting Sensitive Variables
 
@@ -214,15 +214,17 @@ The dotenv report format automatically exports variables to dependent jobs witho
 
 When the same variable is defined in multiple places, GitLab uses this precedence order (highest to lowest):
 
-1. Trigger variables (from API or manual pipeline)
-2. Scheduled pipeline variables
-3. Project-level variables
-4. Group-level variables
-5. Instance-level variables
-6. Job-level variables in YAML
-7. Global variables in YAML
-8. Deployment variables
-9. Predefined variables
+1. Pipeline execution policy variables
+2. Scan execution policy variables
+3. Pipeline variables, including trigger variables, scheduled pipeline variables, manual pipeline variables, API variables, and downstream pipeline variables
+4. Project-level variables
+5. Group-level variables
+6. Instance-level variables
+7. Variables from dotenv reports
+8. Job-level variables in YAML
+9. Global variables in YAML
+10. Deployment variables
+11. Predefined variables
 
 Understanding precedence helps debug unexpected variable values.
 
