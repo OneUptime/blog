@@ -40,7 +40,7 @@ Before deploying Teleport:
 - Helm 3.x installed
 - DNS name for Teleport proxy (e.g., teleport.example.com)
 - TLS certificate (Let's Encrypt or your CA)
-- OIDC provider for SSO (optional but recommended)
+- OIDC provider for SSO (optional; requires Teleport Enterprise)
 
 ---
 
@@ -103,7 +103,7 @@ authentication:
   # Use local users initially, switch to OIDC later
   type: local
   localAuth: true
-  secondFactor: "otp"  # Enable TOTP 2FA
+  secondFactors: ["otp"]  # Enable TOTP 2FA
 
 # Proxy service configuration
 proxyListenerMode: multiplex
@@ -123,10 +123,8 @@ persistence:
 
 # TLS configuration
 acme: false  # Set true for Let's Encrypt
-highAvailability:
-  certSecret:
-    name: teleport-tls
-    create: false  # Create secret manually or use cert-manager
+tls:
+  existingSecretName: teleport-tls  # Create secret manually or use cert-manager
 
 # Ingress configuration
 ingress:
@@ -134,7 +132,8 @@ ingress:
 
 service:
   type: LoadBalancer
-  annotations:
+annotations:
+  service:
     # Cloud provider specific annotations
     service.beta.kubernetes.io/aws-load-balancer-type: nlb
 
@@ -144,7 +143,6 @@ resources:
     cpu: 500m
     memory: 512Mi
   limits:
-    cpu: 2000m
     memory: 2Gi
 ```
 
@@ -179,7 +177,9 @@ After deployment, create an administrative user:
 
 ```bash
 # Get the Teleport pod name
-TELEPORT_POD=$(kubectl get pods -n teleport -l app=teleport -o jsonpath='{.items[0].metadata.name}')
+TELEPORT_POD=$(kubectl get pods -n teleport \
+  -l app.kubernetes.io/instance=teleport,app.kubernetes.io/component=auth \
+  -o jsonpath='{.items[0].metadata.name}')
 
 # Create admin user with all permissions
 kubectl exec -n teleport $TELEPORT_POD -- tctl users add admin \
@@ -199,7 +199,7 @@ Define roles for different access patterns:
 # teleport-roles.yaml
 # Developer role with limited access
 kind: role
-version: v5
+version: v8
 metadata:
   name: developer
 spec:
@@ -241,7 +241,7 @@ spec:
 ---
 # SRE role with production access
 kind: role
-version: v5
+version: v8
 metadata:
   name: sre
 spec:
@@ -269,7 +269,7 @@ spec:
     - readonly
 
     rules:
-    - resources: ["session", "audit"]
+    - resources: ["session", "event"]
       verbs: ["list", "read"]
 
   options:
@@ -279,14 +279,14 @@ spec:
     record_session:
       default: best_effort
       desktop: true
-      ssh: true
+      ssh: best_effort
 ```
 
 Apply the roles:
 
 ```bash
 # Apply roles via tctl
-kubectl exec -n teleport $TELEPORT_POD -- tctl create -f - <<EOF
+kubectl exec -i -n teleport $TELEPORT_POD -- tctl create -f - <<EOF
 $(cat teleport-roles.yaml)
 EOF
 ```
@@ -350,7 +350,7 @@ Deploy Teleport node agents on SSH servers:
 # install-teleport-node.sh
 # Installs Teleport SSH agent on a server
 
-TELEPORT_VERSION="14.0.0"
+TELEPORT_VERSION="18.8.3"
 PROXY_ADDR="teleport.example.com:443"
 JOIN_TOKEN="${1}"
 
@@ -418,7 +418,7 @@ echo "Teleport node agent installed and started"
 
 ## Configuring SSO with OIDC
 
-Integrate with your identity provider:
+Integrate Teleport Enterprise with your identity provider:
 
 ```yaml
 # oidc-connector.yaml
@@ -464,12 +464,12 @@ Apply and set as default:
 
 ```bash
 # Create the OIDC connector
-kubectl exec -n teleport $TELEPORT_POD -- tctl create -f - <<EOF
+kubectl exec -i -n teleport $TELEPORT_POD -- tctl create -f - <<EOF
 $(cat oidc-connector.yaml)
 EOF
 
 # Update cluster auth preference
-kubectl exec -n teleport $TELEPORT_POD -- tctl create -f - <<EOF
+kubectl exec -i -n teleport $TELEPORT_POD -- tctl create -f - <<EOF
 kind: cluster_auth_preference
 version: v2
 metadata:
@@ -477,7 +477,8 @@ metadata:
 spec:
   type: oidc
   connector_name: google
-  second_factor: otp
+  second_factors:
+  - otp
   webauthn:
     rp_id: teleport.example.com
 EOF
@@ -495,7 +496,7 @@ Install and configure the Teleport client (tsh):
 brew install teleport
 
 # Linux
-curl https://get.gravitational.com/teleport-v14.0.0-linux-amd64-bin.tar.gz \
+curl https://get.gravitational.com/teleport-v18.8.3-linux-amd64-bin.tar.gz \
   -o teleport.tar.gz
 tar -xzf teleport.tar.gz
 sudo mv teleport/tsh /usr/local/bin/
@@ -527,56 +528,44 @@ Configure session recording storage:
 
 ```yaml
 # session-recording.yaml
-# Store recordings in S3
-kind: cluster_recording_config
-version: v2
-metadata:
-  name: cluster-recording-config
-spec:
-  mode: best_effort
-  proxy_checks_host_keys: true
-
----
-# External audit storage
-kind: cluster_audit_config
-version: v2
-metadata:
-  name: cluster-audit-config
-spec:
-  # Store audit events in S3
-  audit_events_uri:
-  - s3://teleport-audit-logs/events
-  # Store session recordings in S3
-  audit_sessions_uri: s3://teleport-audit-logs/sessions
-  # Retention period
-  retention:
-    max_age: 365d
+# Static Auth Service configuration for external audit storage
+auth:
+  teleportConfig:
+    teleport:
+      storage:
+        # Store audit events in DynamoDB
+        audit_events_uri:
+        - dynamodb://teleport-audit-events?retention_period=365d
+        # Store session recordings in S3
+        audit_sessions_uri: s3://teleport-audit-logs/sessions?region=us-east-1
+    auth_service:
+      session_recording_config:
+        mode: node
+        proxy_checks_host_keys: true
 ```
 
 Query audit logs:
 
 ```bash
 # Search audit logs for specific user
-kubectl exec -n teleport $TELEPORT_POD -- tctl events ls \
-  --from=2024-01-01 \
-  --to=2024-01-31 \
-  --user=developer@example.com
+kubectl exec -n teleport $TELEPORT_POD -- tctl audit query exec \
+  "SELECT DISTINCT identity_client_ip FROM cert_create WHERE identity_user = 'developer@example.com'"
 
-# Export events to JSON
-kubectl exec -n teleport $TELEPORT_POD -- tctl events ls \
-  --format=json > audit-export.json
+# Export query results
+kubectl exec -n teleport $TELEPORT_POD -- tctl audit query exec \
+  "SELECT * FROM user_login LIMIT 100" > audit-export.txt
 ```
 
 ---
 
 ## Access Requests and Approvals
 
-Enable just-in-time access with approval workflows:
+Enable just-in-time access with Teleport Enterprise approval workflows:
 
 ```yaml
 # access-request-role.yaml
 kind: role
-version: v5
+version: v8
 metadata:
   name: contractor
 spec:
@@ -596,7 +585,7 @@ spec:
 ---
 # Role that can approve requests
 kind: role
-version: v5
+version: v8
 metadata:
   name: approver
 spec:
