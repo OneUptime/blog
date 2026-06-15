@@ -281,6 +281,7 @@ print(type(data['time']))  # <class 'datetime.datetime'>
 
 ```python
 import json
+from datetime import datetime
 
 class User:
     def __init__(self, name, email, created_at=None):
