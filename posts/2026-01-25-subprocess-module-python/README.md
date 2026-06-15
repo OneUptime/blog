@@ -14,7 +14,7 @@ The `subprocess` module lets you spawn new processes, connect to their input/out
 
 ### Using subprocess.run()
 
-`subprocess.run()` is the recommended approach for most use cases (Python 3.5+):
+`subprocess.run()` is the recommended approach for most use cases (Python 3.5+; `text=True` requires Python 3.7+):
 
 ```python
 import subprocess
@@ -74,7 +74,7 @@ import subprocess
 
 # Shell features like pipes, wildcards
 result = subprocess.run(
-    "ls -la | grep .py",
+    "ls -la | grep -F .py",
     shell=True,
     capture_output=True,
     text=True
@@ -100,7 +100,7 @@ subprocess.run(f"cat {filename}", shell=True)  # Shell injection!
 
 # SAFE - Use list form without shell
 filename = "file.txt"
-subprocess.run(["cat", filename])  # No shell injection possible
+subprocess.run(["cat", filename])  # No shell parsing of metacharacters
 ```
 
 ## Input and Output Handling
@@ -181,7 +181,7 @@ import subprocess
 process = subprocess.Popen(
     ["ping", "-c", "5", "google.com"],
     stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
     text=True
 )
 
@@ -223,6 +223,8 @@ p3 = subprocess.Popen(
 p2.stdout.close()
 
 output, _ = p3.communicate()
+p2.wait()
+p1.wait()
 print(f"Error count: {output.strip()}")
 ```
 
@@ -431,7 +433,7 @@ user_input = "file.txt; rm -rf /"
 # GOOD:
 subprocess.run(["cat", user_input])
 
-# 2. Use shlex.quote() if you must use shell
+# 2. On POSIX shells, use shlex.quote() if you must use shell
 safe_input = shlex.quote(user_input)
 subprocess.run(f"cat {safe_input}", shell=True)
 
@@ -474,15 +476,16 @@ class BackupManager:
             stderr=subprocess.PIPE
         )
 
-        gzip = subprocess.Popen(
-            ["gzip"],
-            stdin=pg_dump.stdout,
-            stdout=open(filename, "wb"),
-            stderr=subprocess.PIPE
-        )
-        pg_dump.stdout.close()
+        with open(filename, "wb") as backup_file:
+            gzip = subprocess.Popen(
+                ["gzip"],
+                stdin=pg_dump.stdout,
+                stdout=backup_file,
+                stderr=subprocess.PIPE
+            )
+            pg_dump.stdout.close()
 
-        _, gzip_stderr = gzip.communicate()
+            _, gzip_stderr = gzip.communicate()
         _, pg_stderr = pg_dump.communicate()
 
         if pg_dump.returncode != 0:
