@@ -38,7 +38,7 @@ These tests pass, but they miss edge cases:
 - Strings with special characters
 - null or undefined input
 
-Property-based testing would catch these automatically.
+Property-based testing can catch these when your generators and properties cover them.
 
 ## Getting Started with fast-check (JavaScript)
 
@@ -95,7 +95,7 @@ Run the tests:
 npm test
 ```
 
-fast-check generates hundreds of random strings and checks each property.
+By default, fast-check runs 100 generated cases for each property; you can configure more.
 
 ## Generators (Arbitraries)
 
@@ -108,11 +108,11 @@ const fc = require('fast-check');
 fc.integer()                    // Any integer
 fc.integer({ min: 0, max: 100 }) // Bounded integer
 fc.nat()                        // Natural numbers (>= 0)
-fc.float()                      // Floating point
+fc.float()                      // 32-bit floating point
 fc.boolean()                    // true or false
 fc.string()                     // Any string
 fc.string({ minLength: 1, maxLength: 10 }) // Bounded string
-fc.char()                       // Single character
+fc.string({ minLength: 1, maxLength: 1 }) // Single-character string
 
 // Collection generators
 fc.array(fc.integer())          // Array of integers
@@ -175,11 +175,11 @@ const validOrderArb = fc.record({
     fc.record({
       productId: fc.uuid(),
       quantity: fc.integer({ min: 1, max: 100 }),
-      price: fc.float({ min: 0.01, max: 10000, noNaN: true })
+      price: fc.double({ min: 0.01, max: 10000, noNaN: true })
     }),
     { minLength: 1, maxLength: 20 }
   ),
-  discount: fc.float({ min: 0, max: 0.5, noNaN: true }) // 0-50% discount
+  discount: fc.double({ min: 0, max: 0.5, noNaN: true }) // 0-50% discount
 }).filter(order => {
   // Additional constraint: total must be positive
   const total = order.items.reduce(
@@ -301,9 +301,7 @@ def test_reverse_twice_is_identity(s):
     assert s[::-1][::-1] == s
 
 # Custom strategy for valid users
-from hypothesis import composite
-
-@composite
+@st.composite
 def users(draw):
     return {
         'name': draw(st.text(min_size=1, max_size=100)),
@@ -321,7 +319,7 @@ def test_user_validation(user):
 
 ## Shrinking
 
-When a property fails, the framework automatically shrinks the failing case to the smallest example:
+When a property fails, the framework automatically shrinks the failing case to a simpler example:
 
 ```javascript
 test('finds minimal failing case', () => {
@@ -339,7 +337,7 @@ test('finds minimal failing case', () => {
 // Counterexample: [0, 0, 0, 0, 0, 0]
 ```
 
-The shrinker reduces [4829, -192, 0, 48, 12, 99, -4] to [0, 0, 0, 0, 0, 0] - the smallest array that still fails.
+The shrinker reduces [4829, -192, 0, 48, 12, 99, -4] to [0, 0, 0, 0, 0, 0] - a simpler array that still fails.
 
 ## Reproducing Failures
 
@@ -349,10 +347,10 @@ Save and replay failing seeds:
 // Reproduce a specific failure
 test('reproducible test', () => {
   fc.assert(
-    fc.property(fc.integer(), (n) => {
-      return n !== 42;
+    fc.property(fc.integer({ min: 0, max: 10 }), (n) => {
+      return n !== 10;
     }),
-    { seed: 1234567890 } // Use seed from failure output
+    { seed: 1234567890, path: "0" } // Use seed and path from failure output
   );
 });
 ```
@@ -376,7 +374,7 @@ const fc = require('fast-check');
 fc.configureGlobal({
   numRuns: 100,           // Number of test cases per property
   verbose: true,          // Show generated values on failure
-  seed: Date.now()        // Reproducible by default
+  seed: Date.now()        // Record the printed seed to replay failures
 });
 ```
 
