@@ -26,7 +26,7 @@ flowchart LR
 Testing becomes complex because:
 - Events are asynchronous
 - Multiple consumers react to the same event
-- Order is not guaranteed
+- Global order is not guaranteed
 - Failures may be silent
 
 ## Event Schema Testing
@@ -300,8 +300,8 @@ describe('Inventory Consumer', () => {
             },
         };
 
-        // Should not throw, but should handle the error
-        await expect(consumer.handleOrderCreated(event)).resolves.not.toThrow();
+        // Should resolve, but should handle the error
+        await expect(consumer.handleOrderCreated(event)).resolves.toBeUndefined();
 
         // Verify compensation logic was triggered
         expect(mockInventoryService.releaseStock).not.toHaveBeenCalled();
@@ -544,7 +544,7 @@ describe('End-to-End Event Flow', () => {
         expect(duration).toBeLessThan(5000); // SLA: 5 seconds
     });
 
-    test('events are processed in correct order', async () => {
+    test('expected events are observed for the order', async () => {
         const orderId = `order-${Date.now()}`;
         const eventSequence: string[] = [];
 
@@ -578,7 +578,12 @@ describe('End-to-End Event Flow', () => {
                 value: JSON.stringify({
                     eventId: `evt-${Date.now()}`,
                     eventType: 'order.created',
-                    payload: { orderId, userId: 'user-123', items: [], total: 0 },
+                    payload: {
+                        orderId,
+                        userId: 'user-123',
+                        items: [{ productId: 'prod-1', quantity: 1, price: 50 }],
+                        total: 50,
+                    },
                 }),
             }],
         });
@@ -591,13 +596,13 @@ describe('End-to-End Event Flow', () => {
 
         await orderConsumer.disconnect();
 
-        // Verify event order
-        expect(eventSequence).toEqual([
+        // Kafka preserves order within a topic partition, but not globally across topics
+        expect(eventSequence).toEqual(expect.arrayContaining([
             'order.created',
             'inventory.reserved',
             'payment.processed',
             'order.confirmed',
-        ]);
+        ]));
     });
 });
 
@@ -643,6 +648,7 @@ jobs:
           KAFKA_BROKER_ID: 1
           KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
           KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
       zookeeper:
         image: confluentinc/cp-zookeeper:7.5.0
@@ -667,7 +673,7 @@ jobs:
           timeout 60 bash -c 'until nc -z localhost 9092; do sleep 1; done'
 
       - name: Run event tests
-        run: npm test -- --testPathPattern=event
+        run: npm test -- --testPathPatterns=event
 ```
 
 ## Summary
