@@ -12,13 +12,22 @@ Azure Functions present unique observability challenges. The serverless executio
 
 ## Azure Functions and OpenTelemetry
 
-Azure Functions have built-in integration with Application Insights, but OpenTelemetry provides vendor-neutral observability and greater control. You can use OpenTelemetry to send telemetry to any backend that supports OTLP, including Application Insights through its OTLP endpoint.
+Azure Functions have built-in integration with Application Insights, but OpenTelemetry provides vendor-neutral observability and greater control. You can use OpenTelemetry to send telemetry to any backend that supports OTLP, including Azure Monitor through its OTLP ingestion options or through the Azure Monitor exporter.
 
 Key considerations for Azure Functions:
 - Cold starts add initialization overhead
 - Short execution times require fast export
 - Consumption plan may freeze execution after response
 - Different runtimes (.NET, Node.js, Python) have different SDK capabilities
+
+Enable OpenTelemetry output from the Azure Functions host by adding `telemetryMode` to `host.json`:
+
+```json
+{
+  "version": "2.0",
+  "telemetryMode": "OpenTelemetry"
+}
+```
 
 ## .NET Azure Functions with OpenTelemetry
 
@@ -33,6 +42,7 @@ Add the required packages to your project:
 <ItemGroup>
   <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="1.21.0" />
   <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="1.17.0" />
+  <PackageReference Include="Microsoft.Azure.Functions.Worker.OpenTelemetry" Version="1.0.0" />
   <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="3.1.0" />
   <PackageReference Include="Azure.Monitor.OpenTelemetry.Exporter" Version="1.2.0" />
   <PackageReference Include="OpenTelemetry" Version="1.7.0" />
@@ -59,6 +69,7 @@ var host = new HostBuilder()
     {
         // Configure OpenTelemetry
         services.AddOpenTelemetry()
+            .UseFunctionsWorkerDefaults()
             .ConfigureResource(resource =>
             {
                 resource.AddService(
@@ -105,6 +116,8 @@ var host = new HostBuilder()
                     .AddHttpClientInstrumentation()
                     .AddOtlpExporter();
             });
+
+        services.AddHttpClient();
     })
     .Build();
 
@@ -115,6 +128,7 @@ host.Run();
 
 ```csharp
 using System.Diagnostics;
+using System.Net.Http.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -214,6 +228,13 @@ public class OrderFunction
         return false;
     }
 }
+
+public record OrderRequest(string Id, decimal Total, object[] Items);
+public record OrderResult
+{
+    public string OrderId { get; init; }
+    public string Status { get; init; }
+}
 ```
 
 ## Node.js Azure Functions with OpenTelemetry
@@ -225,54 +246,52 @@ For Node.js Azure Functions, manually initialize OpenTelemetry before the functi
 ```bash
 npm install @opentelemetry/api \
   @opentelemetry/sdk-node \
-  @opentelemetry/sdk-trace-node \
+  @opentelemetry/sdk-trace-base \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/resources \
   @opentelemetry/semantic-conventions \
-  @opentelemetry/instrumentation-http
+  @opentelemetry/instrumentation-http \
+  @azure/functions-opentelemetry-instrumentation
 ```
 
 ### Tracing Initialization
 
 ```javascript
 // tracing.js
-const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
-const { registerInstrumentations } = require('@opentelemetry/instrumentation');
+const { AzureFunctionsInstrumentation } = require('@azure/functions-opentelemetry-instrumentation');
 
 // Initialize on module load (cold start)
 const exporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
-  headers: {
-    'Authorization': `Bearer ${process.env.OTEL_API_TOKEN}`,
-  },
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
 });
 
-const provider = new NodeTracerProvider({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]:
+const sdk = new NodeSDK({
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]:
       process.env.OTEL_SERVICE_NAME || 'my-azure-function',
-    [SemanticResourceAttributes.FAAS_NAME]:
+    'faas.name':
       process.env.WEBSITE_SITE_NAME || 'unknown',
-    [SemanticResourceAttributes.CLOUD_PROVIDER]: 'azure',
-    [SemanticResourceAttributes.CLOUD_REGION]:
+    'cloud.provider': 'azure',
+    'cloud.region':
       process.env.REGION_NAME || 'unknown',
   }),
+  // Use SimpleSpanProcessor for immediate export (important for serverless)
+  spanProcessors: [new SimpleSpanProcessor(exporter)],
+  instrumentations: [
+    new HttpInstrumentation(),
+    new AzureFunctionsInstrumentation(),
+  ],
 });
 
-// Use SimpleSpanProcessor for immediate export (important for serverless)
-provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
-provider.register();
+sdk.start();
 
-registerInstrumentations({
-  instrumentations: [new HttpInstrumentation()],
-});
-
-module.exports = { provider };
+module.exports = { sdk };
 ```
 
 ### Function with Tracing
@@ -404,10 +423,7 @@ def init_tracing():
     })
 
     exporter = OTLPSpanExporter(
-        endpoint=os.environ.get('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://localhost:4318/v1/traces'),
-        headers={
-            'Authorization': f"Bearer {os.environ.get('OTEL_API_TOKEN', '')}",
-        },
+        endpoint=os.environ.get('OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'http://localhost:4318/v1/traces'),
     )
 
     provider = TracerProvider(resource=resource)
@@ -515,9 +531,13 @@ Set these application settings in your Azure Function App:
 ```json
 {
   "OTEL_SERVICE_NAME": "my-azure-function",
-  "OTEL_EXPORTER_OTLP_ENDPOINT": "https://your-backend.example.com/v1/traces",
-  "OTEL_API_TOKEN": "your-api-token",
-  "APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=xxx"
+  "OTEL_EXPORTER_OTLP_ENDPOINT": "https://your-backend.example.com",
+  "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "https://your-backend.example.com/v1/traces",
+  "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "https://your-backend.example.com/v1/metrics",
+  "OTEL_EXPORTER_OTLP_HEADERS": "api-key=your-api-token",
+  "APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=xxx;IngestionEndpoint=https://your-region.in.applicationinsights.azure.com/",
+  "PYTHON_ENABLE_OPENTELEMETRY": "true",
+  "PYTHON_APPLICATIONINSIGHTS_ENABLE_TELEMETRY": "true"
 }
 ```
 
@@ -529,7 +549,10 @@ az functionapp config appsettings set \
   --resource-group my-resource-group \
   --settings \
     OTEL_SERVICE_NAME="my-azure-function" \
-    OTEL_EXPORTER_OTLP_ENDPOINT="https://your-backend.example.com"
+    OTEL_EXPORTER_OTLP_ENDPOINT="https://your-backend.example.com" \
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="https://your-backend.example.com/v1/traces" \
+    OTEL_EXPORTER_OTLP_METRICS_ENDPOINT="https://your-backend.example.com/v1/metrics" \
+    OTEL_EXPORTER_OTLP_HEADERS="api-key=your-api-token"
 ```
 
 ## Trace Structure
