@@ -39,7 +39,7 @@ Let's start with a minimal async event bus:
 # event_bus.py
 
 import asyncio
-from typing import Callable, Dict, List, Any, Coroutine
+from typing import Callable, Dict, List, Any, Coroutine, Optional
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import uuid
@@ -68,7 +68,7 @@ class EventBus:
     def __init__(self):
         # Map event types to list of handlers
         self._handlers: Dict[str, List[EventHandler]] = {}
-        # Lock for thread-safe handler registration
+        # Lock for coordinating handler registration between asyncio tasks
         self._lock = asyncio.Lock()
 
     async def subscribe(self, event_type: str, handler: EventHandler) -> None:
@@ -82,13 +82,14 @@ class EventBus:
     async def unsubscribe(self, event_type: str, handler: EventHandler) -> None:
         """Unsubscribe a handler from an event type"""
         async with self._lock:
-            if event_type in self._handlers:
+            if event_type in self._handlers and handler in self._handlers[event_type]:
                 self._handlers[event_type].remove(handler)
                 logger.info(f"Handler unsubscribed from '{event_type}'")
 
     async def publish(self, event: Event) -> None:
         """Publish an event to all subscribed handlers"""
-        handlers = self._handlers.get(event.event_type, [])
+        async with self._lock:
+            handlers = self._handlers.get(event.event_type, []).copy()
 
         if not handlers:
             logger.debug(f"No handlers for event type: {event.event_type}")
@@ -106,12 +107,12 @@ class EventBus:
                 logger.error(f"Handler error for event {event.event_id}: {result}")
 
     def publish_sync(self, event: Event) -> None:
-        """Publish an event from synchronous code"""
+        """Schedule an event publish from code running inside the event loop"""
         asyncio.create_task(self.publish(event))
 
 
 # Singleton instance for application-wide event bus
-_event_bus: EventBus = None
+_event_bus: Optional[EventBus] = None
 
 
 def get_event_bus() -> EventBus:
@@ -132,8 +133,10 @@ Type safety helps catch errors early. Define your events as dataclasses:
 # events.py
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import List
 import uuid
+
+from event_bus import Event
 
 
 @dataclass
@@ -193,8 +196,11 @@ Handlers are async functions that process events. Group related handlers into se
 
 ```python
 # handlers.py
+import asyncio
 import logging
 from typing import Dict, Any
+
+from event_bus import Event
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +294,9 @@ Wire up your handlers when the application starts:
 ```python
 # app_setup.py
 import asyncio
+import logging
 from event_bus import get_event_bus
+from events import UserCreatedEvent, OrderPlacedEvent
 from handlers import EmailService, AnalyticsService, AuditService
 
 
@@ -338,8 +346,7 @@ async def main():
     )
     await bus.publish(order_event.to_event())
 
-    # Give handlers time to complete
-    await asyncio.sleep(1)
+    # No extra wait is needed because publish awaits all handlers
 
 
 if __name__ == "__main__":
@@ -357,10 +364,11 @@ Production systems need retry logic and dead letter queues for failed events:
 # advanced_event_bus.py
 import asyncio
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Any, Coroutine, Optional
+from typing import Dict, List, Optional
 from datetime import datetime, timezone
-import uuid
 import logging
+
+from event_bus import Event, EventHandler
 
 logger = logging.getLogger(__name__)
 
@@ -448,9 +456,11 @@ class AdvancedEventBus:
 
     async def retry_dead_letters(self) -> int:
         """Retry all events in the dead letter queue"""
+        dead_letters = self._dead_letter_queue.copy()
+        self._dead_letter_queue.clear()
+
         count = 0
-        while self._dead_letter_queue:
-            envelope = self._dead_letter_queue.pop(0)
+        for envelope in dead_letters:
             # Reset attempt count for retry
             envelope.attempt = 0
             await self._deliver(envelope)
@@ -474,10 +484,11 @@ Sometimes certain events need to be processed before others:
 # priority_event_bus.py
 import asyncio
 from dataclasses import dataclass, field
-from typing import Dict, List, Any
+from typing import Dict, List
 from enum import IntEnum
-import heapq
 import logging
+
+from event_bus import Event, EventHandler
 
 logger = logging.getLogger(__name__)
 
@@ -503,7 +514,7 @@ class PriorityEventBus:
 
     def __init__(self, workers: int = 5):
         self._handlers: Dict[str, List[EventHandler]] = {}
-        self._queue: List[PrioritizedEvent] = []
+        self._queue: asyncio.PriorityQueue[PrioritizedEvent] = asyncio.PriorityQueue()
         self._sequence = 0
         self._lock = asyncio.Lock()
         self._workers = workers
@@ -547,17 +558,13 @@ class PriorityEventBus:
                 sequence=self._sequence,
                 event=event
             )
-            heapq.heappush(self._queue, prioritized)
+            await self._queue.put(prioritized)
 
     async def _worker(self, worker_id: int) -> None:
         """Worker task that processes events from the queue"""
         while self._running:
             try:
-                async with self._lock:
-                    if not self._queue:
-                        await asyncio.sleep(0.01)
-                        continue
-                    prioritized = heapq.heappop(self._queue)
+                prioritized = await self._queue.get()
 
                 event = prioritized.event
                 handlers = self._handlers.get(event.event_type, [])
@@ -567,6 +574,8 @@ class PriorityEventBus:
                         await handler(event)
                     except Exception as e:
                         logger.error(f"Worker {worker_id} handler error: {e}")
+
+                self._queue.task_done()
 
             except asyncio.CancelledError:
                 break
@@ -578,7 +587,6 @@ class PriorityEventBus:
 # Usage example
 async def priority_example():
     bus = PriorityEventBus(workers=3)
-    await bus.start()
 
     async def handle_event(event: Event):
         logger.info(f"Processing: {event.event_type}")
@@ -596,7 +604,9 @@ async def priority_example():
         priority=Priority.CRITICAL
     )
 
-    # Critical event will be processed first despite being published second
+    # Start workers after both events are queued.
+    # CriticalEvent will be processed first despite being published second.
+    await bus.start()
 
     await asyncio.sleep(1)
     await bus.stop()
@@ -610,9 +620,11 @@ Here is how to integrate the event bus with FastAPI:
 
 ```python
 # fastapi_integration.py
+import uuid
 from fastapi import FastAPI, Depends
 from contextlib import asynccontextmanager
 from event_bus import EventBus, Event, get_event_bus
+from events import UserCreatedEvent, OrderPlacedEvent
 from handlers import EmailService, AnalyticsService
 
 # Application lifespan management
