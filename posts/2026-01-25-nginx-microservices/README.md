@@ -224,7 +224,7 @@ server {
 
 ## Service Health Checks
 
-Monitor service health and route around failures:
+Use passive failure handling and route around failures:
 
 ```nginx
 upstream orders_service {
@@ -253,8 +253,8 @@ server {
     # Health check endpoint
     location /health {
         access_log off;
+        default_type application/json;
         return 200 '{"status": "healthy"}';
-        add_header Content-Type application/json;
     }
 }
 ```
@@ -434,7 +434,8 @@ upstream notifications_service {
 # /etc/nginx/conf.d/api-gateway.conf
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     ssl_certificate /etc/ssl/certs/api.example.com.crt;
@@ -507,8 +508,8 @@ server {
     # Health check
     location /health {
         access_log off;
+        default_type application/json;
         return 200 '{"status":"healthy","timestamp":"$time_iso8601"}';
-        add_header Content-Type application/json;
     }
 
     # Handle OPTIONS preflight
@@ -518,8 +519,8 @@ server {
 
     # Default 404
     location / {
+        default_type application/json;
         return 404 '{"error":"Not Found"}';
-        add_header Content-Type application/json;
     }
 }
 ```
@@ -529,21 +530,23 @@ server {
 Add request tracing headers:
 
 ```nginx
-server {
-    listen 80;
-
+http {
     # Generate trace ID if not provided
     map $http_x_trace_id $trace_id {
         default $http_x_trace_id;
         ""      $request_id;
     }
 
-    location /api/ {
-        proxy_set_header X-Trace-ID $trace_id;
-        proxy_set_header X-Span-ID $request_id;
-        proxy_set_header X-Request-Start "t=$msec";
+    server {
+        listen 80;
 
-        proxy_pass http://api_backend/;
+        location /api/ {
+            proxy_set_header X-Trace-ID $trace_id;
+            proxy_set_header X-Span-ID $request_id;
+            proxy_set_header X-Request-Start "t=$msec";
+
+            proxy_pass http://api_backend/;
+        }
     }
 }
 ```
