@@ -182,7 +182,7 @@ Common actions you can grant:
 - **Query**: `find`
 - **Write**: `insert`, `update`, `remove`
 - **Index**: `createIndex`, `dropIndex`
-- **Aggregation**: `aggregate` (implied by find)
+- **Aggregation**: covered by `find` for aggregation pipelines except stages such as `$collStats`, `$out`, and `$indexStats`
 - **Admin**: `collStats`, `dbStats`, `createCollection`, `dropCollection`
 
 ### Example: Order Processing Role
@@ -285,7 +285,7 @@ db.updateUser("appService", {
 // Change another user's password (requires userAdmin)
 db.changeUserPassword("appService", passwordPrompt());
 
-// User changes their own password
+// User changes their own password (requires changeOwnPassword)
 db.updateUser("appService", { pwd: passwordPrompt() });
 ```
 
@@ -363,6 +363,8 @@ db.changeUserPassword("apiService", newPassword);
 ```
 
 ### 4. Enable Audit Logging
+
+Audit logging is available in MongoDB Enterprise and MongoDB Atlas:
 
 ```yaml
 # mongod.conf
