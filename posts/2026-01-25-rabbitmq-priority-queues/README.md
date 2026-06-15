@@ -12,17 +12,17 @@ Not all messages are created equal. A password reset request should jump ahead o
 
 ## How Priority Queues Work
 
-RabbitMQ implements priority queues as a single queue with multiple internal sub-queues, one for each priority level. When a consumer asks for a message, RabbitMQ delivers from the highest priority sub-queue first.
+RabbitMQ classic queues implement priority queues as a single queue with multiple internal sub-queues, one for each priority level. When a consumer asks for a message, RabbitMQ delivers from the highest priority sub-queue first.
 
 ```mermaid
 flowchart TB
-    P1[Producer 1] -->|"priority: 10"| Q[Priority Queue]
-    P2[Producer 2] -->|"priority: 5"| Q
+    P1[Producer 1] -->|"priority: 4"| Q[Priority Queue]
+    P2[Producer 2] -->|"priority: 2"| Q
     P3[Producer 3] -->|"priority: 1"| Q
 
-    subgraph Q["Order Queue (max priority: 10)"]
-        S10[Priority 10]
-        S5[Priority 5]
+    subgraph Q["Order Queue (max priority: 4)"]
+        S4[Priority 4]
+        S2[Priority 2]
         S1[Priority 1]
     end
 
@@ -37,8 +37,6 @@ Priority queues require declaring the queue with a maximum priority level.
 
 ```python
 import pika
-import json
-import random
 
 def setup_priority_queue():
     connection = pika.BlockingConnection(
@@ -47,12 +45,12 @@ def setup_priority_queue():
     channel = connection.channel()
 
     # Declare a priority queue
-    # x-max-priority sets the maximum priority level (1-255, recommended max 10)
+    # x-max-priority sets the maximum priority level (1-255, 2-4 recommended)
     channel.queue_declare(
         queue='tasks',
         durable=True,
         arguments={
-            'x-max-priority': 10  # Priority levels 0-10
+            'x-max-priority': 4  # Priority levels 0-4
         }
     )
 
@@ -75,7 +73,7 @@ async function setupPriorityQueue() {
     await channel.assertQueue('tasks', {
         durable: true,
         arguments: {
-            'x-max-priority': 10
+            'x-max-priority': 4
         }
     });
 
@@ -99,9 +97,9 @@ import json
 class PriorityPublisher:
     # Define priority levels as constants
     PRIORITY_LOW = 1
-    PRIORITY_NORMAL = 5
-    PRIORITY_HIGH = 8
-    PRIORITY_CRITICAL = 10
+    PRIORITY_NORMAL = 2
+    PRIORITY_HIGH = 3
+    PRIORITY_CRITICAL = 4
 
     def __init__(self):
         self.connection = pika.BlockingConnection(
@@ -109,7 +107,7 @@ class PriorityPublisher:
         )
         self.channel = self.connection.channel()
 
-    def publish(self, task, priority=5):
+    def publish(self, task, priority=PRIORITY_NORMAL):
         """Publish a task with specified priority"""
         message = json.dumps(task)
 
@@ -164,9 +162,9 @@ const amqp = require('amqplib');
 // Priority level constants
 const Priority = {
     LOW: 1,
-    NORMAL: 5,
-    HIGH: 8,
-    CRITICAL: 10
+    NORMAL: 2,
+    HIGH: 3,
+    CRITICAL: 4
 };
 
 async function publishTask(task, priority = Priority.NORMAL) {
@@ -302,8 +300,8 @@ channel.basic_qos(prefetch_count=100)  # Priority less effective
 Each priority level uses a separate internal queue. Higher maximum priority values use more memory:
 
 ```python
-# 10 priority levels - reasonable memory use
-arguments={'x-max-priority': 10}
+# 4 priority levels - reasonable memory use
+arguments={'x-max-priority': 4}
 
 # 255 priority levels - high memory overhead
 arguments={'x-max-priority': 255}  # Usually unnecessary
@@ -314,11 +312,13 @@ arguments={'x-max-priority': 255}  # Usually unnecessary
 ### Pattern 1: Notification System
 
 ```python
+from datetime import UTC, datetime
+
 class NotificationPriority:
-    SECURITY_ALERT = 10    # Password changed, suspicious login
-    TRANSACTIONAL = 8      # Order confirmation, shipping update
-    ACCOUNT = 5            # Welcome email, profile update
-    MARKETING = 2          # Newsletter, promotions
+    SECURITY_ALERT = 4     # Password changed, suspicious login
+    TRANSACTIONAL = 3      # Order confirmation, shipping update
+    ACCOUNT = 2            # Welcome email, profile update
+    MARKETING = 1          # Newsletter, promotions
     ANALYTICS = 1          # Tracking, metrics
 
 def send_notification(notification_type, recipient, content, priority):
@@ -326,7 +326,7 @@ def send_notification(notification_type, recipient, content, priority):
         'type': notification_type,
         'recipient': recipient,
         'content': content,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(UTC).isoformat()
     }
 
     channel.basic_publish(
@@ -352,9 +352,9 @@ send_notification(
 
 ```python
 class TaskPriority:
-    PLATINUM = 10  # < 1 minute SLA
-    GOLD = 7       # < 5 minute SLA
-    SILVER = 4     # < 30 minute SLA
+    PLATINUM = 4   # < 1 minute SLA
+    GOLD = 3       # < 5 minute SLA
+    SILVER = 2     # < 30 minute SLA
     BRONZE = 1     # Best effort
 
 def get_priority_for_customer(customer_tier):
@@ -386,7 +386,7 @@ Failed tasks can be retried with lower priority to prevent them from blocking ne
 
 ```python
 def process_with_priority_decay(channel, method, properties, body):
-    priority = properties.priority or 5
+    priority = properties.priority or 2
     retry_count = (properties.headers or {}).get('x-retry-count', 0)
 
     try:
@@ -397,7 +397,7 @@ def process_with_priority_decay(channel, method, properties, body):
     except Exception as e:
         if retry_count < 3:
             # Republish with lower priority
-            new_priority = max(1, priority - 2)
+            new_priority = max(1, priority - 1)
 
             channel.basic_publish(
                 exchange='',
@@ -418,17 +418,9 @@ def process_with_priority_decay(channel, method, properties, body):
 
 ## Performance Considerations
 
-### Benchmark Results
+### Benchmarking
 
-Priority queues have overhead compared to regular queues:
-
-| Queue Type | Messages/sec | Memory per 10K messages |
-|------------|--------------|-------------------------|
-| Regular | 50,000 | 10 MB |
-| Priority (max 5) | 35,000 | 15 MB |
-| Priority (max 10) | 30,000 | 20 MB |
-
-*Results vary based on message size and hardware*
+Priority queues have overhead compared to regular queues. RabbitMQ maintains extra per-priority state, so higher `x-max-priority` values increase CPU and memory usage. Benchmark your own workload rather than relying on universal messages-per-second numbers.
 
 ### When Not to Use Priority Queues
 
@@ -457,32 +449,33 @@ def publish_task(task, is_high_priority):
 
 ## Monitoring Priority Queues
 
-Monitor the breakdown of messages by priority:
+Monitor queue depth and message rates:
 
 ```python
 import requests
 
-def get_queue_priority_breakdown(host, queue_name, user, password):
-    """Get message counts by priority level"""
+def get_queue_metrics(host, queue_name, user, password):
+    """Get aggregate queue metrics"""
     url = f"http://{host}:15672/api/queues/%2F/{queue_name}"
     response = requests.get(url, auth=(user, password))
+    response.raise_for_status()
     data = response.json()
 
-    # Check backing queue mode
     print(f"Queue: {queue_name}")
     print(f"Total messages: {data.get('messages', 0)}")
-    print(f"Backing queue mode: {data.get('backing_queue_status', {}).get('mode', 'unknown')}")
+    print(f"Ready messages: {data.get('messages_ready', 0)}")
+    print(f"Unacknowledged messages: {data.get('messages_unacknowledged', 0)}")
 
-    # Priority queues report priority distribution in certain versions
+    # Message stats include aggregate publish, deliver, ack, and redelivery counters when available
     if 'message_stats' in data:
         print(f"Message stats: {data['message_stats']}")
 
-get_queue_priority_breakdown('localhost', 'tasks', 'guest', 'guest')
+get_queue_metrics('localhost', 'tasks', 'guest', 'guest')
 ```
 
 ## Best Practices
 
-1. **Keep priority levels small**: 5-10 levels are sufficient for most use cases
+1. **Keep priority levels small**: 2-4 levels are sufficient for most use cases
 2. **Use meaningful constants**: Define priority levels with descriptive names
 3. **Set low prefetch**: Use `prefetch_count=1` for strict priority ordering
 4. **Monitor queue depth**: Priority only matters when there is a backlog
@@ -491,4 +484,4 @@ get_queue_priority_breakdown('localhost', 'tasks', 'guest', 'guest')
 
 ## Conclusion
 
-Priority queues help ensure critical messages get processed first during high load. Set up a queue with a reasonable maximum priority, publish messages with appropriate priority values, and keep your prefetch count low to maintain ordering. For extreme throughput needs, consider using multiple queues instead of a single priority queue.
+Priority queues help ensure critical messages get processed first during high load. Set up a queue with a small maximum priority, publish messages with appropriate priority values, and keep your prefetch count low to maintain ordering. For extreme throughput needs, consider using multiple queues instead of a single priority queue.
