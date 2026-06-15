@@ -195,13 +195,13 @@ services:
 
 ```promql
 # Memory usage percentage
-(redis_memory_used_bytes / redis_memory_max_bytes) * 100
+(redis_memory_used_bytes / redis_memory_max_bytes) * 100 and redis_memory_max_bytes > 0
 
 # Operations per second
 rate(redis_commands_total[1m])
 
 # Cache hit rate
-redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total) * 100
+rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) * 100
 
 # Connected clients
 redis_connected_clients
@@ -217,7 +217,7 @@ groups:
 - name: redis_alerts
   rules:
   - alert: RedisHighMemoryUsage
-    expr: (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 80
+    expr: (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 80 and redis_memory_max_bytes > 0
     for: 5m
     labels:
       severity: warning
@@ -225,7 +225,7 @@ groups:
       summary: "Redis memory usage above 80%"
 
   - alert: RedisHighMemoryUsageCritical
-    expr: (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 95
+    expr: (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 95 and redis_memory_max_bytes > 0
     for: 2m
     labels:
       severity: critical
@@ -233,7 +233,7 @@ groups:
       summary: "Redis memory usage above 95%"
 
   - alert: RedisLowHitRate
-    expr: redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total) < 0.9
+    expr: rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) < 0.9
     for: 10m
     labels:
       severity: warning
@@ -398,7 +398,7 @@ monitor.run(interval=10)
       "type": "gauge",
       "targets": [
         {
-          "expr": "(redis_memory_used_bytes / redis_memory_max_bytes) * 100"
+          "expr": "(redis_memory_used_bytes / redis_memory_max_bytes) * 100 and redis_memory_max_bytes > 0"
         }
       ],
       "thresholds": {
@@ -423,7 +423,7 @@ monitor.run(interval=10)
       "type": "stat",
       "targets": [
         {
-          "expr": "redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total) * 100"
+          "expr": "rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) * 100"
         }
       ]
     }
