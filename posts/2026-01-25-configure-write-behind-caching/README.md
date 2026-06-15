@@ -58,12 +58,22 @@ const { Pool } = require('pg');
 const redis = new Redis();
 const pool = new Pool();
 
+const SAFE_IDENTIFIER = /^[a-z_][a-z0-9_]*$/i;
+
+function quoteIdentifier(identifier) {
+  if (!SAFE_IDENTIFIER.test(identifier)) {
+    throw new Error(`Invalid SQL identifier: ${identifier}`);
+  }
+  return `"${identifier}"`;
+}
+
 class WriteBehindCache {
   constructor(options = {}) {
     this.writeQueueKey = 'write_behind:queue';
     this.batchSize = options.batchSize || 100;
     this.flushInterval = options.flushInterval || 1000;
     this.maxQueueSize = options.maxQueueSize || 10000;
+    this.flushPromise = null;
 
     // Start background flush process
     this.startFlushLoop();
@@ -79,18 +89,20 @@ class WriteBehindCache {
       operation: 'upsert'
     });
 
-    // Pipeline: update cache and add to write queue atomically
-    const pipeline = redis.pipeline();
-    pipeline.set(cacheKey, JSON.stringify(data));
-    pipeline.lpush(this.writeQueueKey, queueEntry);
-    pipeline.llen(this.writeQueueKey);
+    // Transaction: update cache and add to write queue atomically in Redis
+    const transaction = redis.multi();
+    transaction.set(cacheKey, JSON.stringify(data));
+    transaction.lpush(this.writeQueueKey, queueEntry);
+    transaction.llen(this.writeQueueKey);
 
-    const results = await pipeline.exec();
+    const results = await transaction.exec();
     const queueLength = results[2][1];
 
     // Trigger immediate flush if queue is getting large
     if (queueLength > this.maxQueueSize * 0.8) {
-      this.flushQueue();
+      this.flushQueue().catch(err => {
+        console.error('Flush error:', err);
+      });
     }
 
     return { cached: true, queuePosition: queueLength };
@@ -105,14 +117,15 @@ class WriteBehindCache {
       operation: 'delete'
     });
 
-    const pipeline = redis.pipeline();
-    pipeline.del(cacheKey);
-    pipeline.lpush(this.writeQueueKey, queueEntry);
-    await pipeline.exec();
+    const transaction = redis.multi();
+    transaction.del(cacheKey);
+    transaction.lpush(this.writeQueueKey, queueEntry);
+    await transaction.exec();
   }
 
   async read(entity, id) {
     const cacheKey = `${entity}:${id}`;
+    const tableName = quoteIdentifier(entity);
 
     // Try cache first
     const cached = await redis.get(cacheKey);
@@ -122,7 +135,7 @@ class WriteBehindCache {
 
     // Fall back to database
     const result = await pool.query(
-      `SELECT * FROM ${entity} WHERE id = $1`,
+      `SELECT * FROM ${tableName} WHERE id = $1`,
       [id]
     );
 
@@ -144,12 +157,26 @@ class WriteBehindCache {
   }
 
   async flushQueue() {
+    if (this.flushPromise) {
+      return this.flushPromise;
+    }
+
+    this.flushPromise = this.drainQueue();
+
+    try {
+      return await this.flushPromise;
+    } finally {
+      this.flushPromise = null;
+    }
+  }
+
+  async drainQueue() {
     // Get batch of pending writes
-    const entries = await redis.lrange(
+    const entries = (await redis.lrange(
       this.writeQueueKey,
       -this.batchSize,
       -1
-    );
+    )).reverse();
 
     if (entries.length === 0) {
       return;
@@ -177,6 +204,7 @@ class WriteBehindCache {
       await client.query('ROLLBACK');
       console.error('Batch write failed:', error);
       // Entries remain in queue for retry
+      throw error;
     } finally {
       client.release();
     }
@@ -194,6 +222,8 @@ class WriteBehindCache {
   }
 
   async processBatch(client, entity, operations) {
+    const tableName = quoteIdentifier(entity);
+
     // Deduplicate - keep only latest operation per id
     const latest = new Map();
     for (const op of operations) {
@@ -219,7 +249,7 @@ class WriteBehindCache {
     // Batch delete
     if (deletes.length > 0) {
       await client.query(
-        `DELETE FROM ${entity} WHERE id = ANY($1)`,
+        `DELETE FROM ${tableName} WHERE id = ANY($1)`,
         [deletes]
       );
     }
@@ -230,6 +260,12 @@ class WriteBehindCache {
 
     // Build bulk upsert query
     const columns = Object.keys(operations[0].data);
+    const tableName = quoteIdentifier(entity);
+    const columnNames = columns.map(quoteIdentifier);
+    const updateColumns = columns.filter(c => c !== 'id');
+    const conflictAction = updateColumns.length > 0
+      ? `DO UPDATE SET ${updateColumns.map(c => `${quoteIdentifier(c)} = EXCLUDED.${quoteIdentifier(c)}`).join(', ')}`
+      : 'DO NOTHING';
     const values = [];
     const placeholders = [];
 
@@ -241,10 +277,9 @@ class WriteBehindCache {
     }
 
     const query = `
-      INSERT INTO ${entity} (${columns.join(', ')})
+      INSERT INTO ${tableName} (${columnNames.join(', ')})
       VALUES ${placeholders.join(', ')}
-      ON CONFLICT (id) DO UPDATE SET
-      ${columns.filter(c => c !== 'id').map(c => `${c} = EXCLUDED.${c}`).join(', ')}
+      ON CONFLICT ("id") ${conflictAction}
     `;
 
     await client.query(query, values);
@@ -294,8 +329,9 @@ process.on('SIGTERM', async () => {
 ### Write-Ahead Log
 
 ```javascript
-class DurableWriteBehindCache {
-  constructor(options) {
+class DurableWriteBehindCache extends WriteBehindCache {
+  constructor(options = {}) {
+    super(options);
     this.walKey = 'write_behind:wal';
     this.processedKey = 'write_behind:processed';
     this.sequenceKey = 'write_behind:sequence';
@@ -314,7 +350,7 @@ class DurableWriteBehindCache {
       timestamp: Date.now()
     };
 
-    // Write to WAL first (durable)
+    // Write to WAL first (durable when Redis persistence is enabled)
     await redis.zadd(this.walKey, sequence, JSON.stringify(walEntry));
 
     // Then update cache
@@ -328,10 +364,11 @@ class DurableWriteBehindCache {
     const lastProcessed = parseInt(await redis.get(this.processedKey) || '0');
 
     // Get pending WAL entries
-    const entries = await redis.zrangebyscore(
+    const entries = await redis.zrange(
       this.walKey,
       lastProcessed + 1,
       '+inf',
+      'BYSCORE',
       'LIMIT', 0, this.batchSize
     );
 
@@ -345,7 +382,10 @@ class DurableWriteBehindCache {
       await client.query('BEGIN');
 
       // Process entries
-      await this.processBatch(client, parsed);
+      const grouped = this.groupByEntity(parsed);
+      for (const [entity, operations] of Object.entries(grouped)) {
+        await this.processBatch(client, entity, operations);
+      }
 
       // Update processed marker
       await client.query('COMMIT');
@@ -410,14 +450,19 @@ class HybridWriteCache {
 
     // Write to database first
     const columns = Object.keys(data);
+    const tableName = quoteIdentifier(entity);
+    const columnNames = columns.map(quoteIdentifier);
     const values = columns.map(c => data[c]);
     const placeholders = columns.map((_, i) => `$${i + 1}`);
+    const updateColumns = columns.filter(c => c !== 'id');
+    const conflictAction = updateColumns.length > 0
+      ? `DO UPDATE SET ${updateColumns.map(c => `${quoteIdentifier(c)} = EXCLUDED.${quoteIdentifier(c)}`).join(', ')}`
+      : 'DO NOTHING';
 
     await pool.query(`
-      INSERT INTO ${entity} (${columns.join(', ')})
+      INSERT INTO ${tableName} (${columnNames.join(', ')})
       VALUES (${placeholders.join(', ')})
-      ON CONFLICT (id) DO UPDATE SET
-      ${columns.filter(c => c !== 'id').map((c, i) => `${c} = $${i + 1}`).join(', ')}
+      ON CONFLICT ("id") ${conflictAction}
     `, values);
 
     // Update cache
@@ -481,7 +526,8 @@ class MonitoredWriteBehindCache extends WriteBehindCache {
       ...stats,
       metrics: this.metrics,
       healthy: stats.pendingWrites < this.maxQueueSize * 0.8 &&
-               this.metrics.flushErrors < this.metrics.flushes * 0.01
+               (this.metrics.flushes === 0 ||
+                this.metrics.flushErrors < this.metrics.flushes * 0.01)
     };
   }
 }
