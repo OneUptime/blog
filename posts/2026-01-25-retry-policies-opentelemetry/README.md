@@ -48,7 +48,7 @@ sequenceDiagram
 
 ### Node.js SDK
 
-The OTLP exporters in Node.js support retry configuration through the `OTLPExporterNodeConfigBase` options.
+The OTLP exporters in Node.js include a built-in retry policy for transient OTLP errors. You can configure related exporter options such as timeout and concurrency through the `OTLPExporterNodeConfigBase` options, but the retry backoff settings themselves are not currently customizable.
 
 ```javascript
 // tracing.js
@@ -57,7 +57,7 @@ const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http')
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 
-// Configure trace exporter with retry settings
+// Configure trace exporter with export timeout and concurrency settings
 const traceExporter = new OTLPTraceExporter({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/traces',
   headers: {
@@ -112,16 +112,15 @@ resource = Resource.create({
 # Create trace provider
 provider = TracerProvider(resource=resource)
 
-# Configure OTLP exporter with retry settings
-# The gRPC exporter has built-in retry with exponential backoff
+# Configure OTLP exporter timeout. The gRPC exporter has built-in
+# retry for transient gRPC status codes with exponential backoff.
 exporter = OTLPSpanExporter(
-    endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
+    endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
     # Timeout in seconds for each export attempt
     timeout=30
 )
 
 # BatchSpanProcessor handles batching and export scheduling
-# It has its own retry logic for failed exports
 processor = BatchSpanProcessor(
     exporter,
     max_queue_size=2048,        # Maximum spans to queue
@@ -139,8 +138,9 @@ trace.set_tracer_provider(provider)
 Both Node.js and Python SDKs respect standard OpenTelemetry environment variables:
 
 ```bash
-# Export endpoint
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://collector.example.com:4317"
+# Export endpoint. Use an endpoint that matches your exporter transport:
+# HTTP exporters commonly use 4318; gRPC exporters commonly use 4317.
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://collector.example.com:4318"
 
 # Timeout for export operations (in milliseconds)
 export OTEL_EXPORTER_OTLP_TIMEOUT=30000
@@ -180,7 +180,7 @@ exporters:
     sending_queue:
       enabled: true
       num_consumers: 10       # Parallel export workers
-      queue_size: 5000        # Maximum items to queue
+      queue_size: 5000        # Maximum requests/batches to queue
 ```
 
 ### Understanding Exponential Backoff
@@ -278,27 +278,29 @@ The Collector handles different HTTP status codes differently:
 |-------------|----------|
 | 2xx         | Success, no retry needed |
 | 429         | Rate limited, retry with backoff |
-| 500-503     | Server error, retry with backoff |
+| 502-504     | Retryable gateway/service errors, retry with backoff |
 | 400-499     | Client error (except 429), no retry |
+| Other 5xx   | Not retryable by the OTLP/HTTP specification unless your exporter documents different behavior |
 
 ### Custom Retry Behavior
 
-For more control, you can use the `headers_setter` extension to add retry-specific headers:
+Retry behavior is configured on each exporter with `retry_on_failure`. If you need different retry behavior for different destinations, define separate exporters with separate retry settings:
 
 ```yaml
-extensions:
-  headers_setter:
-    headers:
-      - action: insert
-        key: X-Retry-Count
-        from_context: retry_count
-
 exporters:
-  otlphttp:
+  otlphttp/low-latency:
     endpoint: "https://backend.example.com"
     retry_on_failure:
       enabled: true
       initial_interval: 2s
+      max_interval: 15s
+      max_elapsed_time: 120s
+
+  otlphttp/bulk:
+    endpoint: "https://bulk-backend.example.com"
+    retry_on_failure:
+      enabled: true
+      initial_interval: 10s
       max_interval: 60s
       max_elapsed_time: 600s
 ```
@@ -312,7 +314,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     # Your existing pipelines
@@ -329,7 +336,7 @@ Key metrics to watch:
 
 1. **Start with conservative settings**: Begin with longer intervals and adjust based on observed behavior.
 
-2. **Size queues appropriately**: Queue size should handle expected burst duration. If your backend can be down for 5 minutes and you generate 100 spans/second, you need a queue of at least 30,000.
+2. **Size queues appropriately**: Queue size should handle expected burst duration. By default, Collector sending queues are measured in requests/batches. If you configure the queue `sizer` as `items` and your backend can be down for 5 minutes while you generate 100 spans/second, you need a queue of at least 30,000 items.
 
 3. **Set reasonable max_elapsed_time**: Do not retry indefinitely. At some point, the data becomes stale and should be dropped.
 
