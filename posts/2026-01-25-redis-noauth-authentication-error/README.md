@@ -8,7 +8,7 @@ Description: Resolve Redis NOAUTH authentication errors by understanding Redis a
 
 ---
 
-The "NOAUTH Authentication required" error means Redis requires a password but your client did not provide one. This error also appears when using an incorrect password. This guide covers how to configure and troubleshoot Redis authentication.
+The "NOAUTH Authentication required" error means Redis requires authentication but your client did not authenticate before sending a command. If you authenticate with an incorrect password, Redis returns a related "WRONGPASS" error. This guide covers how to configure and troubleshoot Redis authentication.
 
 ## Understanding the Error
 
@@ -60,7 +60,7 @@ Redis 6 introduced Access Control Lists for fine-grained permissions:
 
 ```bash
 # Create user with specific permissions
-redis-cli ACL SETUSER myapp on >app_password ~app:* +@all
+redis-cli ACL SETUSER myapp on '>app_password' '~app:*' +@all
 
 # List users
 redis-cli ACL LIST
@@ -118,10 +118,10 @@ except redis.AuthenticationError as e:
 const Redis = require('ioredis');
 
 // Method 1: Password in URL
-const redis = new Redis('redis://:your_password@localhost:6379');
+const redisFromUrl = new Redis('redis://:your_password@localhost:6379');
 
 // Method 2: Password in options
-const redis = new Redis({
+const redisWithPassword = new Redis({
     host: 'localhost',
     port: 6379,
     password: 'your_password',
@@ -129,7 +129,7 @@ const redis = new Redis({
 });
 
 // Method 3: ACL authentication (Redis 6+)
-const redis = new Redis({
+const redisWithAcl = new Redis({
     host: 'localhost',
     port: 6379,
     username: 'myapp',
@@ -137,14 +137,14 @@ const redis = new Redis({
 });
 
 // Method 4: From environment
-const redis = new Redis({
+const redisFromEnv = new Redis({
     host: process.env.REDIS_HOST || 'localhost',
     port: process.env.REDIS_PORT || 6379,
     password: process.env.REDIS_PASSWORD
 });
 
 // Handle authentication errors
-redis.on('error', (err) => {
+redisFromEnv.on('error', (err) => {
     if (err.message.includes('NOAUTH')) {
         console.error('Redis authentication required');
     } else if (err.message.includes('WRONGPASS')) {
@@ -249,7 +249,7 @@ redis-cli -a old_password CONFIG SET requirepass new_password
 redis-cli CONFIG SET requirepass mypassword
 
 # After restart, password is lost unless saved to config
-redis-cli CONFIG REWRITE  # Writes current config to file
+redis-cli -a mypassword CONFIG REWRITE  # Writes current config to file
 
 # Or add to redis.conf directly
 echo "requirepass mypassword" >> /etc/redis/redis.conf
