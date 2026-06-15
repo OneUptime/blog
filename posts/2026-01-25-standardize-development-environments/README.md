@@ -34,10 +34,10 @@ Pin runtime versions to ensure consistency:
 # .mise.toml - Runtime version management
 
 [tools]
-node = "20.11.0"
-python = "3.11.7"
-go = "1.22.0"
-java = "21.0.2"
+node = "24.16.0"
+python = "3.13.14"
+go = "1.26.4"
+java = "21.0.11"
 
 [env]
 NODE_ENV = "development"
@@ -46,18 +46,18 @@ NODE_ENV = "development"
 Alternative: `.nvmrc` for Node-only projects:
 
 ```text
-20.11.0
+24.16.0
 ```
 
 For Python, use `.python-version`:
 
 ```text
-3.11.7
+3.13.14
 ```
 
 Document the version management tool in your README:
 
-```markdown
+````markdown
 ## Prerequisites
 
 This project uses [mise](https://mise.jdx.dev/) for version management.
@@ -68,27 +68,26 @@ curl https://mise.run | sh
 
 ## Install project runtimes
 mise install
-```bash
-```text
+```
+````
 
 ## Layer 2: Package Dependencies
 
 Lock dependency versions precisely:
 
 ```json
-// package.json - Specify exact versions
 {
   "engines": {
-    "node": ">=20.0.0",
-    "npm": ">=10.0.0"
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
   },
   "dependencies": {
-    "express": "4.18.2",
-    "pg": "8.11.3"
+    "express": "5.2.1",
+    "pg": "8.21.0"
   },
   "devDependencies": {
-    "typescript": "5.3.3",
-    "eslint": "8.56.0"
+    "typescript": "6.0.3",
+    "eslint": "10.5.0"
   }
 }
 ```
@@ -118,12 +117,12 @@ Create a template for required environment variables:
 # Copy this to .env.local and fill in values
 
 # Database
-DATABASE_URL=postgresql://localhost:5432/myapp_dev
+DATABASE_URL=postgresql://dev:dev@localhost:5432/myapp_dev
 REDIS_URL=redis://localhost:6379
 
 # Authentication
 JWT_SECRET=generate-a-secure-secret-for-local-dev
-SESSION_SECRET=another-secure-secret
+SESSION_SECRET=another-secure-secret-for-local-dev
 
 # External Services (get from team password manager)
 STRIPE_API_KEY=
@@ -176,8 +175,6 @@ Define local services with Docker Compose:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -258,7 +255,7 @@ indent_style = tab
 
 For VS Code, add workspace settings:
 
-```json
+```jsonc
 // .vscode/settings.json
 {
   "editor.formatOnSave": true,
@@ -278,7 +275,7 @@ For VS Code, add workspace settings:
 
 Recommend extensions:
 
-```json
+```jsonc
 // .vscode/extensions.json
 {
   "recommendations": [
@@ -364,7 +361,7 @@ setup:
 	@echo "Setting up environment..."
 	cp -n .env.example .env.local || true
 	@echo "Starting services..."
-	docker-compose up -d
+	docker compose up -d
 	@echo "Waiting for services..."
 	sleep 5
 	@echo "Running migrations..."
@@ -373,7 +370,7 @@ setup:
 
 # Start development server
 dev:
-	docker-compose up -d
+	docker compose up -d
 	npm run dev
 
 # Run tests
@@ -396,7 +393,7 @@ lint-fix:
 # Clean build artifacts
 clean:
 	rm -rf dist node_modules .next coverage
-	docker-compose down -v
+	docker compose down -v
 
 # Database commands
 db-migrate:
@@ -435,7 +432,7 @@ check_version() {
 
     if ! command -v ${cmd%% *} &> /dev/null; then
         echo "✗ $name not installed"
-        ((errors++))
+        ((++errors))
         return
     fi
 
@@ -447,9 +444,9 @@ check_version() {
     fi
 }
 
-check_version "Node.js" "node --version" "v20"
-check_version "npm" "npm --version" "10"
-check_version "Docker" "docker --version" "24"
+check_version "Node.js" "node --version" "v24"
+check_version "npm" "npm --version" "11"
+check_version "Docker" "docker --version" "Docker version"
 
 # Check required files
 check_file() {
@@ -457,7 +454,7 @@ check_file() {
         echo "✓ $1 exists"
     else
         echo "✗ $1 missing"
-        ((errors++))
+        ((++errors))
     fi
 }
 
@@ -473,7 +470,7 @@ check_service() {
         echo "✓ $name is running"
     else
         echo "✗ $name is not running"
-        ((errors++))
+        ((++errors))
     fi
 }
 
