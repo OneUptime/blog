@@ -26,7 +26,7 @@ options ndots:5
 ```
 
 This means:
-- DNS queries go to CoreDNS at 10.96.0.10
+- DNS queries go to the cluster DNS service (10.96.0.10 in this example)
 - Short names get search domains appended
 - Names with fewer than 5 dots trigger search domain lookups
 
@@ -251,14 +251,32 @@ Use the hosts plugin for static entries:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: coredns-custom
+  name: coredns
   namespace: kube-system
 data:
-  custom.server: |
-    hosts {
-      192.168.1.50 legacy-db.internal
-      192.168.1.51 legacy-api.internal
-      fallthrough
+  Corefile: |
+    .:53 {
+        errors
+        health {
+           lameduck 5s
+        }
+        ready
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+           pods insecure
+           fallthrough in-addr.arpa ip6.arpa
+           ttl 30
+        }
+        prometheus :9153
+        hosts {
+          192.168.1.50 legacy-db.internal
+          192.168.1.51 legacy-api.internal
+          fallthrough
+        }
+        forward . /etc/resolv.conf
+        cache 30
+        loop
+        reload
+        loadbalance
     }
 ```
 
@@ -330,8 +348,9 @@ kubectl get endpoints kube-dns -n kube-system
 **Issue: External domains not resolving**
 
 ```bash
-# Check CoreDNS can reach upstream DNS
-kubectl exec -n kube-system -it <coredns-pod> -- nslookup google.com 8.8.8.8
+# Check upstream DNS directly from the cluster
+kubectl run dns-upstream-test --namespace=kube-system --image=registry.k8s.io/e2e-test-images/agnhost:2.39 \
+  --rm -it --restart=Never -- nslookup google.com 8.8.8.8
 
 # Check CoreDNS forward configuration
 kubectl get configmap coredns -n kube-system -o yaml | grep forward
