@@ -40,8 +40,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'migrations/**'
-      - 'db/**'
+      - 'prisma/migrations/**'
 
 jobs:
   migrate:
@@ -125,7 +124,7 @@ jobs:
       - name: Check for destructive migrations
         run: |
           # Look for DROP TABLE, DROP COLUMN in new migrations
-          git diff origin/main...HEAD -- migrations/ | grep -iE "(DROP TABLE|DROP COLUMN)" && {
+          git diff origin/main...HEAD -- migrations/ prisma/migrations/ | grep -iE "(DROP TABLE|DROP COLUMN)" && {
             echo "Warning: Destructive migration detected!"
             echo "Ensure you have a backup plan and data migration strategy."
           } || echo "No destructive changes found"
@@ -159,6 +158,7 @@ jobs:
       - name: Check migration status
         run: |
           docker run --rm \
+            -v ${{ github.workspace }}/sql:/flyway/sql \
             flyway/flyway:latest \
             -url="${{ secrets.JDBC_URL }}" \
             -user="${{ secrets.DB_USER }}" \
@@ -235,6 +235,7 @@ jobs:
             -U ${{ secrets.DB_USER }} \
             -d ${{ secrets.DB_NAME }} \
             --clean \
+            --if-exists \
             restore.dump
 
           exit 1  # Fail the workflow after restore
