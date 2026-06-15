@@ -140,11 +140,14 @@ repos:
           - '@typescript-eslint/parser@6.19.0'
 
   # Prettier for formatting
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.1.0
+  - repo: local
     hooks:
       - id: prettier
-        types_or: [javascript, jsx, ts, tsx, json, yaml, markdown, css]
+        name: prettier
+        entry: npx prettier --write
+        language: system
+        files: \.(js|jsx|ts|tsx|json|md|yaml|yml|css)$
+        pass_filenames: true
 ```
 
 ## Using Husky for npm Projects
@@ -159,14 +162,10 @@ npm install husky --save-dev
 npx husky init
 ```
 
-This creates a `.husky/` directory. Add a pre-commit hook:
+This creates a `.husky/` directory. Replace the generated pre-commit hook:
 
 ```bash
 # .husky/pre-commit
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
-
-# Run lint-staged for staged files only
 npx lint-staged
 ```
 
@@ -364,11 +363,11 @@ repos:
     hooks:
       # Run on commit
       - id: trailing-whitespace
-        stages: [commit]
+        stages: [pre-commit]
 
       # Run on push (slower checks)
       - id: check-added-large-files
-        stages: [push]
+        stages: [pre-push]
         args: ['--maxkb=1000']
 
   - repo: local
@@ -378,7 +377,7 @@ repos:
         name: lint
         entry: npm run lint
         language: system
-        stages: [commit]
+        stages: [pre-commit]
         pass_filenames: false
 
       # Slower tests on push
@@ -386,7 +385,7 @@ repos:
         name: test
         entry: npm test
         language: system
-        stages: [push]
+        stages: [pre-push]
         pass_filenames: false
 ```
 
@@ -447,7 +446,7 @@ jobs:
           python-version: '3.11'
 
       - name: Run pre-commit
-        uses: pre-commit/action@v3.0.0
+        uses: pre-commit/action@v3.0.1
 ```
 
 ## Best Practices
