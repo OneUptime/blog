@@ -16,9 +16,9 @@ Capped collections have several unique properties:
 
 - **Fixed size**: Documents are inserted until the size limit is reached
 - **Automatic cleanup**: Oldest documents are removed to make room for new ones
-- **Insert order preserved**: Documents maintain insertion order
-- **High write throughput**: Simplified storage allocation improves write performance
-- **No manual deletion**: You cannot delete individual documents (only drop the whole collection)
+- **Insert order preserved**: Documents are returned in insertion order for typical single-writer workloads
+- **Efficient ordered reads**: Natural-order queries make recent-document reads efficient
+- **Circular buffer behavior**: Manual cleanup is usually unnecessary because MongoDB overwrites old entries
 
 ```mermaid
 graph LR
@@ -46,13 +46,13 @@ await db.createCollection('app_logs', {
 });
 
 // Verify collection properties
-const stats = await db.collection('app_logs').stats();
-console.log('Capped:', stats.capped);
-console.log('Max size:', stats.maxSize);
-console.log('Max docs:', stats.max);
+const [info] = await db.listCollections({ name: 'app_logs' }).toArray();
+console.log('Capped:', info.options.capped);
+console.log('Max size:', info.options.size);
+console.log('Max docs:', info.options.max);
 
 // Create index for efficient queries (optional)
-// Note: capped collections have a natural _id index
+// Note: capped collections have a default _id index
 await db.collection('app_logs').createIndex({ timestamp: 1 });
 await db.collection('app_logs').createIndex({ level: 1, timestamp: 1 });
 ```
@@ -239,19 +239,32 @@ Capped collections support tailable cursors, which keep reading new documents as
 // Real-time log streaming with tailable cursor
 async function streamLogs(db, callback) {
   const collection = db.collection('app_logs');
+  const startedAt = new Date();
 
-  // Start from the current position
+  // Send a small snapshot first
+  const recent = await collection
+    .find({})
+    .sort({ $natural: -1 })
+    .limit(10)
+    .toArray();
+
+  recent.reverse().forEach(callback);
+
+  // Then tail in natural order; filter out older documents client-side
   const cursor = collection.find({}, {
     tailable: true,
-    awaitData: true,
-    // Start from recent documents
-    sort: { $natural: -1 },
-    limit: 10
+    awaitData: true
   });
 
   // Process documents as they arrive
-  cursor.forEach(doc => {
-    callback(doc);
+  (async () => {
+    for await (const doc of cursor) {
+      if (doc.timestamp >= startedAt) {
+        callback(doc);
+      }
+    }
+  })().catch(error => {
+    console.error('Log stream error:', error);
   });
 
   return cursor;  // Return cursor for later closing
@@ -267,10 +280,12 @@ function createLogStreamServer(db, port) {
     console.log('Client connected for log streaming');
 
     const collection = db.collection('app_logs');
+    const startedAt = new Date();
 
     // Create tailable cursor
+    // Tailable cursors read in natural order and wait for new matching documents
     const cursor = collection.find(
-      { timestamp: { $gte: new Date() } },  // Only new logs
+      {},
       { tailable: true, awaitData: true }
     );
 
@@ -278,7 +293,7 @@ function createLogStreamServer(db, port) {
     const stream = cursor.stream();
 
     stream.on('data', (doc) => {
-      if (ws.readyState === WebSocket.OPEN) {
+      if (doc.timestamp >= startedAt && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
           timestamp: doc.timestamp,
           level: doc.level,
@@ -349,7 +364,7 @@ class EventBuffer {
     for await (const event of cursor) {
       try {
         await handler(event);
-        // Note: Can't update documents in capped collection
+        // Avoid updating documents in capped collections
         // Track processed state elsewhere if needed
       } catch (error) {
         console.error('Event handler error:', error);
@@ -428,10 +443,10 @@ async function migrateToCapped(db, sourceName, targetName, sizeBytes, recentDocs
 
 Keep these constraints in mind:
 
-- **No document deletion**: Cannot delete individual documents
-- **No document growth**: Updates cannot increase document size
+- **Serialized writes**: Capped collections serialize writes, so TTL indexes on regular collections may perform better for many logging workloads
+- **Avoid document updates**: Updates can expand documents beyond the allocated collection space and cause unexpected behavior
 - **No sharding**: Capped collections cannot be sharded
-- **Limited indexes**: Some index types are not supported
+- **Limited write contexts**: You cannot write to capped collections in transactions, and `$out` cannot write to a capped collection
 
 ```javascript
 // Workaround: Use TTL index on regular collection for time-based expiration
@@ -444,7 +459,7 @@ await db.collection('flexible_logs').createIndex(
 );
 
 // Unlike capped collections, you can:
-// - Delete specific documents
+// - Use TTL-based expiration
 // - Update documents freely
 // - Shard the collection
 ```
@@ -457,4 +472,4 @@ Capped collections are perfect for:
 - Event buffers for async processing
 - Cache of recent data
 
-Choose capped collections when you need high write throughput and automatic cleanup. Use TTL indexes on regular collections when you need more flexibility with document operations.
+Choose capped collections when you need circular-buffer behavior and efficient natural-order reads. Use TTL indexes on regular collections when you need better concurrent write performance or more flexibility with document operations.
