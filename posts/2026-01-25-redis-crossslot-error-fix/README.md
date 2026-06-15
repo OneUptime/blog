@@ -42,9 +42,9 @@ def show_slots(*keys):
         print(f"'{key}' -> slot {slot}")
 
 show_slots('user:1', 'user:2', 'user:3')
-# 'user:1' -> slot 5474
-# 'user:2' -> slot 5765
-# 'user:3' -> slot 9852
+# 'user:1' -> slot 10778
+# 'user:2' -> slot 6777
+# 'user:3' -> slot 2648
 
 # Different slots = cannot use multi-key commands together
 ```
@@ -67,9 +67,9 @@ def show_hash_tag_slots():
         print(f"'{key}' -> slot {slot}")
 
 show_hash_tag_slots()
-# '{user:1}:profile' -> slot 5474
-# '{user:1}:settings' -> slot 5474
-# '{user:1}:orders' -> slot 5474
+# '{user:1}:profile' -> slot 10778
+# '{user:1}:settings' -> slot 10778
+# '{user:1}:orders' -> slot 10778
 
 # Now multi-key operations work!
 rc.mset({
@@ -271,20 +271,25 @@ def analyze_keys(pattern, sample_size=100):
     """Analyze slot distribution of keys matching pattern"""
     slot_counts = {}
 
-    cursor = 0
     count = 0
 
-    while count < sample_size:
-        cursor, keys = rc.scan(cursor, match=pattern, count=100)
+    for node in rc.get_primaries():
+        cursor = 0
 
-        for key in keys:
-            slot = rc.cluster_keyslot(key.decode() if isinstance(key, bytes) else key)
-            slot_counts[slot] = slot_counts.get(slot, 0) + 1
-            count += 1
-            if count >= sample_size:
+        while count < sample_size:
+            cursor, keys = node.redis_connection.scan(cursor, match=pattern, count=100)
+
+            for key in keys:
+                slot = rc.cluster_keyslot(key.decode() if isinstance(key, bytes) else key)
+                slot_counts[slot] = slot_counts.get(slot, 0) + 1
+                count += 1
+                if count >= sample_size:
+                    break
+
+            if cursor == 0:
                 break
 
-        if cursor == 0:
+        if count >= sample_size:
             break
 
     print(f"Keys analyzed: {count}")
