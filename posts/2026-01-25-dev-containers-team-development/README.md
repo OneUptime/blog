@@ -14,7 +14,7 @@ Every developer has experienced the frustration of joining a new project only to
 
 Dev Containers, officially known as Development Containers, provide a specification for defining reproducible development environments. Visual Studio Code, JetBrains IDEs, and GitHub Codespaces all support this standard. When a developer opens a project with a Dev Container configuration, their IDE automatically builds and connects to the containerized environment.
 
-The core benefit is consistency. When every team member develops inside the same container image, you eliminate environment-related bugs entirely. Code that works in one developer's container works in everyone else's container.
+The core benefit is consistency. When every team member develops inside the same container image, you reduce environment-related bugs significantly. Code that works in one developer's container is much more likely to work in everyone else's container.
 
 ## Project Structure
 
@@ -34,14 +34,14 @@ project/
 
 The `devcontainer.json` file defines your development environment. Here is a configuration for a Node.js project:
 
-```json
+```jsonc
 {
   // Name displayed in the IDE when the container is running
   "name": "Node.js Development",
 
   // Base image from Microsoft's Dev Container registry
   // These images include common development tools pre-installed
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:18",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24",
 
   // Features add additional tools without modifying the Dockerfile
   // This modular approach keeps configurations clean
@@ -87,7 +87,7 @@ When base images do not include everything you need, create a custom Dockerfile:
 # .devcontainer/Dockerfile
 
 # Start from the official Node.js dev container image
-FROM mcr.microsoft.com/devcontainers/javascript-node:18
+FROM mcr.microsoft.com/devcontainers/javascript-node:24
 
 # Install system dependencies your project requires
 # Combining commands reduces image layers
@@ -109,7 +109,7 @@ WORKDIR /workspace
 
 Reference the Dockerfile in your configuration:
 
-```json
+```jsonc
 {
   "name": "Custom Node.js Environment",
 
@@ -139,8 +139,6 @@ Real applications often need databases and other services. Use Docker Compose fo
 
 ```yaml
 # .devcontainer/docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build:
@@ -185,7 +183,7 @@ networks:
 
 Update `devcontainer.json` to use Docker Compose:
 
-```json
+```jsonc
 {
   "name": "Full Stack Development",
 
@@ -222,12 +220,12 @@ Update `devcontainer.json` to use Docker Compose:
 
 Dev Containers support multiple lifecycle hooks for different stages:
 
-```json
+```jsonc
 {
   "name": "Project with Lifecycle Hooks",
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:18",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24",
 
-  // Runs once after container is created (before first start)
+  // Runs once after the container has started for the first time
   // Good for one-time setup like cloning submodules
   "postCreateCommand": "git submodule update --init",
 
@@ -245,10 +243,10 @@ Dev Containers support multiple lifecycle hooks for different stages:
 
 Handle sensitive configuration without committing secrets:
 
-```json
+```jsonc
 {
   "name": "Secure Development",
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:18",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24",
 
   // Reference a local env file that is gitignored
   "runArgs": ["--env-file", ".devcontainer/.env.local"],
@@ -294,7 +292,7 @@ flowchart LR
 
 Container builds can be slow. Use these techniques to speed them up:
 
-```json
+```jsonc
 {
   "name": "Optimized Build",
 
@@ -305,9 +303,8 @@ Container builds can be slow. Use these techniques to speed them up:
     "cacheFrom": "ghcr.io/yourorg/devcontainer-cache:latest"
   },
 
-  // Pre-build the image in CI and publish to registry
-  // Developers pull the pre-built image instead of building locally
-  "initializeCommand": "docker pull ghcr.io/yourorg/devcontainer:latest || true"
+  // Pre-pull the cache image so Docker can reuse layers during local builds
+  "initializeCommand": "docker pull ghcr.io/yourorg/devcontainer-cache:latest || true"
 }
 ```
 
@@ -315,10 +312,10 @@ Container builds can be slow. Use these techniques to speed them up:
 
 Include debug configurations so the team has consistent debugging setups:
 
-```json
+```jsonc
 {
   "name": "Debug-Ready Environment",
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:18",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:24",
 
   "customizations": {
     "vscode": {
