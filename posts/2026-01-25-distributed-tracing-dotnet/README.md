@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: .NET, C#, OpenTelemetry, Distributed Tracing, Observability, Microservice, ASP.NET Core
 
-Description: Learn how to implement distributed tracing in .NET applications using OpenTelemetry, with context propagation across HTTP, gRPC, and message queues for complete request visibility.
+Description: Learn how to implement distributed tracing in .NET applications using OpenTelemetry, with context propagation across HTTP and message queues for complete request visibility.
 
 ---
 
@@ -95,12 +95,12 @@ builder.Services.AddOpenTelemetry()
         // SQL Server instrumentation
         .AddSqlClientInstrumentation(options =>
         {
-            options.SetDbStatementForText = true;
             options.RecordException = true;
         })
         // Add custom activity sources
         .AddSource("OrderService")
         .AddSource("PaymentService")
+        .AddSource("Messaging.RabbitMQ")
         // Export to OTLP collector
         .AddOtlpExporter(options =>
         {
@@ -292,12 +292,15 @@ builder.Services.AddHttpClient<IPaymentService, PaymentServiceClient>(client =>
 
 ## Context Propagation with Message Queues
 
-Message queues require manual context propagation since there is no built-in support.
+When you use a queue client without an OpenTelemetry instrumentation package, message queues require manual context propagation.
 
 ```csharp
 // Messaging/RabbitMqPublisher.cs
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
+using OpenTelemetry;
+using OpenTelemetry.Context.Propagation;
 using RabbitMQ.Client;
 
 public class TracedMessagePublisher
@@ -306,13 +309,15 @@ public class TracedMessagePublisher
         new("Messaging.RabbitMQ");
 
     private readonly IConnection _connection;
+    private static readonly TextMapPropagator Propagator =
+        Propagators.DefaultTextMapPropagator;
 
     public TracedMessagePublisher(IConnection connection)
     {
         _connection = connection;
     }
 
-    public void Publish<T>(string exchange, string routingKey, T message)
+    public async Task PublishAsync<T>(string exchange, string routingKey, T message)
     {
         using var activity = ActivitySource.StartActivity(
             $"publish {exchange}",
@@ -322,58 +327,73 @@ public class TracedMessagePublisher
         activity?.SetTag("messaging.destination", exchange);
         activity?.SetTag("messaging.rabbitmq.routing_key", routingKey);
 
-        using var channel = _connection.CreateModel();
+        await using var channel = await _connection.CreateChannelAsync();
 
-        var properties = channel.CreateBasicProperties();
-        properties.Headers = new Dictionary<string, object>();
+        var headers = new Dictionary<string, object?>();
+        var properties = new BasicProperties
+        {
+            Headers = headers
+        };
 
         // Inject trace context into message headers
         if (activity != null)
         {
-            properties.Headers["traceparent"] = activity.Id;
-            if (activity.TraceStateString != null)
-            {
-                properties.Headers["tracestate"] = activity.TraceStateString;
-            }
+            Propagator.Inject(
+                new PropagationContext(activity.Context, Baggage.Current),
+                headers,
+                InjectTraceContextIntoHeaders);
         }
 
         var body = Encoding.UTF8.GetBytes(
             JsonSerializer.Serialize(message));
 
-        channel.BasicPublish(exchange, routingKey, properties, body);
+        await channel.BasicPublishAsync(
+            exchange,
+            routingKey,
+            mandatory: false,
+            basicProperties: properties,
+            body: body);
+    }
+
+    private static void InjectTraceContextIntoHeaders(
+        IDictionary<string, object?> headers,
+        string key,
+        string value)
+    {
+        headers[key] = Encoding.UTF8.GetBytes(value);
     }
 }
 ```
 
 ```csharp
 // Messaging/RabbitMqConsumer.cs
+using System.Diagnostics;
+using System.Text;
+using OpenTelemetry;
+using OpenTelemetry.Context.Propagation;
+using RabbitMQ.Client.Events;
+
 public class TracedMessageConsumer
 {
     private static readonly ActivitySource ActivitySource =
         new("Messaging.RabbitMQ");
+    private static readonly TextMapPropagator Propagator =
+        Propagators.DefaultTextMapPropagator;
 
     public void ProcessMessage(BasicDeliverEventArgs args)
     {
         // Extract trace context from message headers
-        ActivityContext parentContext = default;
+        var parentContext = Propagator.Extract(
+            default,
+            args.BasicProperties.Headers ?? new Dictionary<string, object?>(),
+            ExtractTraceContextFromHeaders);
+        Baggage.Current = parentContext.Baggage;
 
-        if (args.BasicProperties.Headers?.TryGetValue(
-            "traceparent", out var traceparentObj) == true)
-        {
-            var traceparent = Encoding.UTF8.GetString(
-                (byte[])traceparentObj);
-
-            if (ActivityContext.TryParse(traceparent, null, out var context))
-            {
-                parentContext = context;
-            }
-        }
-
-        // Start a new span linked to the producer span
+        // Start a new consumer span with the producer span as its parent
         using var activity = ActivitySource.StartActivity(
             $"process {args.Exchange}",
             ActivityKind.Consumer,
-            parentContext);
+            parentContext.ActivityContext);
 
         activity?.SetTag("messaging.system", "rabbitmq");
         activity?.SetTag("messaging.destination", args.Exchange);
@@ -393,6 +413,23 @@ public class TracedMessageConsumer
             activity?.RecordException(ex);
             throw;
         }
+    }
+
+    private static IEnumerable<string> ExtractTraceContextFromHeaders(
+        IDictionary<string, object?> headers,
+        string key)
+    {
+        if (!headers.TryGetValue(key, out var value))
+        {
+            return Enumerable.Empty<string>();
+        }
+
+        return value switch
+        {
+            byte[] bytes => new[] { Encoding.UTF8.GetString(bytes) },
+            string text => new[] { text },
+            _ => Enumerable.Empty<string>()
+        };
     }
 }
 ```
@@ -449,11 +486,11 @@ builder.Services.AddOpenTelemetry()
         // Sample 10% of traces in production
         .SetSampler(new ParentBasedSampler(
             new TraceIdRatioBasedSampler(0.1)))
-
-        // Or use a custom sampler
-        .SetSampler(new CustomSampler())
         .AddAspNetCoreInstrumentation()
         .AddOtlpExporter());
+
+// Or replace the sampler above with:
+// .SetSampler(new ParentBasedSampler(new CustomSampler()))
 ```
 
 ```csharp
@@ -463,25 +500,10 @@ public class CustomSampler : Sampler
     public override SamplingResult ShouldSample(
         in SamplingParameters samplingParameters)
     {
-        // Always sample errors
-        if (samplingParameters.Tags?.Any(t =>
-            t.Key == "error" && t.Value?.ToString() == "true") == true)
-        {
-            return new SamplingResult(SamplingDecision.RecordAndSample);
-        }
-
-        // Always sample specific endpoints
-        var httpTarget = samplingParameters.Tags?
-            .FirstOrDefault(t => t.Key == "http.target").Value?.ToString();
-
-        if (httpTarget?.StartsWith("/api/orders") == true)
-        {
-            return new SamplingResult(SamplingDecision.RecordAndSample);
-        }
-
-        // Sample 5% of other traffic
-        var traceIdHash = samplingParameters.TraceId.GetHashCode();
-        var shouldSample = Math.Abs(traceIdHash % 100) < 5;
+        // Sample about 5% of root traces
+        var traceId = samplingParameters.TraceId.ToString();
+        var lastByte = Convert.ToByte(traceId.Substring(30, 2), 16);
+        var shouldSample = lastByte < 13;
 
         return new SamplingResult(
             shouldSample ? SamplingDecision.RecordAndSample : SamplingDecision.Drop);
