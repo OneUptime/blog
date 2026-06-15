@@ -384,7 +384,7 @@ struct User {
     username: String,
 }
 
-// Must implement Named before Entity
+// Must also implement Named because Entity requires it
 impl Named for User {
     fn name(&self) -> &str {
         &self.username
