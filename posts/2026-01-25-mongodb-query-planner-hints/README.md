@@ -66,7 +66,7 @@ const query = {
 };
 
 // Without hint - planner might choose createdAt index
-// because it sees createdAt has more selective range
+// because candidate plan evaluation or a cached plan favors it
 const badPlan = await collection.find(query).explain();
 console.log('Without hint:', badPlan.queryPlanner.winningPlan.inputStage.indexName);
 
@@ -138,9 +138,8 @@ const aggExplain = await collection.aggregate([
   { $match: { status: 'active', region: 'us-east' } },
   { $group: { _id: '$category', count: { $sum: 1 } } }
 ], {
-  hint: { status: 1, region: 1 },
-  explain: true
-});
+  hint: { status: 1, region: 1 }
+}).explain('executionStats');
 ```
 
 ## Hint with Update and Delete Operations
@@ -214,16 +213,16 @@ await compareIndexPerformance(
 
 ## Natural Order Hint
 
-Force MongoDB to scan documents in natural (insertion) order.
+Force MongoDB to scan documents in natural storage order. For regular collections, natural order is an internal implementation detail; for capped collections, natural order matches insertion order.
 
 ```javascript
-// Scan in insertion order
+// Scan in forward natural order
 const oldestFirst = await collection.find({})
   .hint({ $natural: 1 })
   .limit(10)
   .toArray();
 
-// Scan in reverse insertion order
+// Scan in reverse natural order
 const newestFirst = await collection.find({})
   .hint({ $natural: -1 })
   .limit(10)
@@ -286,7 +285,7 @@ const untested = await collection.find(query)
 // DON'T: Hardcode hints that may become invalid
 // If index is dropped, query will fail
 try {
-  await collection.find(query).hint('nonexistent_index');
+  await collection.find(query).hint('nonexistent_index').toArray();
 } catch (error) {
   // Error: hint index not found
   console.error('Hint index missing:', error.message);
