@@ -8,7 +8,7 @@ Description: Learn how to configure MongoDB read preferences to balance consiste
 
 ---
 
-In a MongoDB replica set, you have one primary that handles writes and multiple secondaries that replicate data. Read preferences control which members handle read operations, letting you trade consistency for availability and latency. Understanding these trade-offs is essential for building reliable applications.
+In a MongoDB replica set, you have one primary that handles writes and multiple secondaries that replicate data. Read preferences control which members handle read operations, letting you trade consistency for availability and latency. Read concern and write concern still determine the visibility and durability guarantees of the data you read and write. Understanding these trade-offs is essential for building reliable applications.
 
 ## Read Preference Modes
 
@@ -31,11 +31,11 @@ graph TB
 
 | Mode | Reads From | Consistency | Use Case |
 |------|-----------|-------------|----------|
-| primary | Primary only | Strong | Financial transactions |
-| primaryPreferred | Primary, fallback to secondary | Strong (usually) | Read-heavy with fallback |
+| primary | Primary only | Strongest with appropriate read concern | Financial transactions |
+| primaryPreferred | Primary, fallback to secondary | Strong while primary is available | Read-heavy with fallback |
 | secondary | Secondaries only | Eventual | Analytics, reporting |
 | secondaryPreferred | Secondaries, fallback to primary | Eventual (usually) | Distributed reads |
-| nearest | Lowest latency member | Eventual | Geo-distributed apps |
+| nearest | Eligible member within the latency threshold | Eventual | Geo-distributed apps |
 
 ## Configuring Read Preferences
 
@@ -59,7 +59,7 @@ const collection = db.collection('logs', {
 
 // Query-level read preference (most specific)
 const results = await collection.find({ status: 'active' })
-  .readPreference(ReadPreference.PRIMARY)
+  .withReadPreference(ReadPreference.PRIMARY)
   .toArray();
 ```
 
@@ -70,14 +70,11 @@ Tags allow routing reads to specific replica set members based on location, hard
 ```javascript
 // Replica set configuration with member tags
 // Run on primary:
-rs.reconfig({
-  _id: "rs0",
-  members: [
-    { _id: 0, host: "mongo1:27017", tags: { dc: "east", role: "primary" } },
-    { _id: 1, host: "mongo2:27017", tags: { dc: "east", role: "analytics" } },
-    { _id: 2, host: "mongo3:27017", tags: { dc: "west", role: "disaster-recovery" } }
-  ]
-});
+const conf = rs.conf();
+conf.members[0].tags = { dc: "east", role: "app" };
+conf.members[1].tags = { dc: "east", role: "analytics" };
+conf.members[2].tags = { dc: "west", role: "disaster-recovery" };
+rs.reconfig(conf);
 
 // Read from analytics node
 const analyticsPreference = new ReadPreference(
@@ -118,7 +115,7 @@ const freshSecondary = new ReadPreference(
   { maxStalenessSeconds: 90 }  // Max 90 seconds behind primary
 );
 
-// Minimum value is 90 seconds (or your heartbeat interval + 10s)
+// Minimum value is 90 seconds
 // Set based on your tolerance for stale data
 
 const collection = db.collection('inventory', {
@@ -155,7 +152,8 @@ async function getInventoryWithFreshness(productId) {
 ```javascript
 // Pattern 1: Financial transactions - always read from primary
 class AccountService {
-  constructor(db) {
+  constructor(client, db) {
+    this.client = client;
     // Force primary for all account operations
     this.collection = db.collection('accounts', {
       readPreference: ReadPreference.PRIMARY
@@ -278,7 +276,7 @@ async function getReadDistribution(db) {
 
 ## Causal Consistency with Read Preferences
 
-When reading from secondaries, use causal consistency to ensure read-your-writes semantics.
+When reading from secondaries, use causal consistency with majority read concern and majority write concern to ensure read-your-writes semantics.
 
 ```javascript
 // Enable causal consistency for session
@@ -290,7 +288,10 @@ try {
   // Write to primary
   const result = await collection.insertOne(
     { customerId: 'abc', total: 99.99, status: 'pending' },
-    { session }
+    {
+      session,
+      writeConcern: { w: 'majority' }
+    }
   );
 
   // Read from secondary - guaranteed to see the write we just made
@@ -298,7 +299,8 @@ try {
     { _id: result.insertedId },
     {
       session,
-      readPreference: ReadPreference.SECONDARY
+      readPreference: ReadPreference.SECONDARY,
+      readConcern: { level: 'majority' }
     }
   );
 
@@ -316,7 +318,7 @@ try {
 - User-facing content: `secondaryPreferred` or `nearest`
 - Analytics: `secondary` with dedicated node tags
 
-**Always set maxStalenessSeconds:**
+**Set maxStalenessSeconds for secondary reads:**
 - Prevents reads from severely lagging members
 - Minimum 90 seconds, set based on your tolerance
 
@@ -339,11 +341,11 @@ async function checkReplicationLag(db) {
     return;
   }
 
-  const primaryOptime = primary.optime.ts.getTime();
+  const primaryOptime = primary.optimeDate.getTime();
 
   status.members.forEach(member => {
     if (member.stateStr === 'SECONDARY') {
-      const secondaryOptime = member.optime.ts.getTime();
+      const secondaryOptime = member.optimeDate.getTime();
       const lagMs = primaryOptime - secondaryOptime;
       console.log(`${member.name}: ${lagMs}ms behind primary`);
 
@@ -359,11 +361,11 @@ async function checkReplicationLag(db) {
 
 Read preferences let you optimize for your application's specific needs:
 
-- Use `primary` for strong consistency requirements
+- Use `primary` with appropriate read concern for strong consistency requirements
 - Use `secondaryPreferred` for high availability reads
 - Use `secondary` with tags for analytics workloads
 - Use `nearest` for latency-sensitive global applications
 - Always consider maxStalenessSeconds to prevent stale reads
 - Enable causal consistency when you need read-your-writes semantics
 
-Start with `primaryPreferred` as a safe default, then optimize based on actual requirements and observed patterns.
+Start with MongoDB's default `primary` read preference, then optimize based on actual requirements and observed patterns.
