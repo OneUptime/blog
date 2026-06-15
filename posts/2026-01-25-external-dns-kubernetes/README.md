@@ -55,7 +55,7 @@ helm repo update
 helm install external-dns external-dns/external-dns \
   --namespace external-dns \
   --create-namespace \
-  --set provider=aws \
+  --set provider.name=aws \
   --set txtOwnerId=my-cluster \
   --set policy=sync
 ```
@@ -71,7 +71,9 @@ helm install external-dns external-dns/external-dns \
         {
             "Effect": "Allow",
             "Action": [
-                "route53:ChangeResourceRecordSets"
+                "route53:ChangeResourceRecordSets",
+                "route53:ListResourceRecordSets",
+                "route53:ListTagsForResources"
             ],
             "Resource": [
                 "arn:aws:route53:::hostedzone/ZONE_ID"
@@ -80,8 +82,7 @@ helm install external-dns external-dns/external-dns \
         {
             "Effect": "Allow",
             "Action": [
-                "route53:ListHostedZones",
-                "route53:ListResourceRecordSets"
+                "route53:ListHostedZones"
             ],
             "Resource": ["*"]
         }
@@ -111,7 +112,7 @@ spec:
       serviceAccountName: external-dns
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.14.0
+          image: registry.k8s.io/external-dns/external-dns:v0.21.0
           args:
             - --source=service
             - --source=ingress
@@ -178,7 +179,7 @@ spec:
       serviceAccountName: external-dns
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.14.0
+          image: registry.k8s.io/external-dns/external-dns:v0.21.0
           args:
             - --source=service
             - --source=ingress
@@ -243,7 +244,7 @@ spec:
     spec:
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.14.0
+          image: registry.k8s.io/external-dns/external-dns:v0.21.0
           args:
             - --source=service
             - --source=ingress
@@ -388,8 +389,6 @@ metadata:
 
 # Namespace filtering
 --namespace=production
-# Or multiple
---namespace=production,staging
 ```
 
 ### TXT Registry
@@ -422,14 +421,17 @@ metadata:
   name: external-dns
 rules:
   - apiGroups: [""]
-    resources: ["services", "endpoints", "pods"]
+    resources: ["services", "pods"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
     verbs: ["get", "watch", "list"]
   - apiGroups: ["extensions", "networking.k8s.io"]
     resources: ["ingresses"]
     verbs: ["get", "watch", "list"]
   - apiGroups: [""]
     resources: ["nodes"]
-    verbs: ["list"]
+    verbs: ["list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
