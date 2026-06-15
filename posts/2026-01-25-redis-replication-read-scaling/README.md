@@ -8,9 +8,9 @@ Description: Learn how to configure Redis replication to scale read operations a
 
 ---
 
-> As your application grows, a single Redis instance may struggle to handle all read requests. Redis replication allows you to distribute reads across multiple replica nodes while maintaining a single source of truth for writes. This architecture scales read capacity linearly with each replica you add.
+> As your application grows, a single Redis instance may struggle to handle all read requests. Redis replication allows you to distribute reads across multiple replica nodes while maintaining a single source of truth for writes. This architecture can increase read capacity as you add replicas.
 
-Redis replication is asynchronous by default, meaning replicas receive updates shortly after the master processes them. This provides excellent performance for read-heavy workloads while maintaining high availability through automatic failover.
+Redis replication is asynchronous by default, meaning replicas receive updates shortly after the master processes them. This provides excellent performance for read-heavy workloads and, when combined with Redis Sentinel, supports high availability through automatic failover.
 
 ---
 
@@ -57,7 +57,7 @@ port 6379
 protected-mode yes
 
 # Require authentication
-requirepass your_strong_master_password
+requirepass your_strong_redis_password
 
 # Persistence settings for data durability
 appendonly yes
@@ -69,8 +69,8 @@ save 300 10
 save 60 10000
 
 # Replication settings
-# Password replicas must use to connect
-masterauth your_strong_master_password
+# Password this instance uses if Sentinel later reconfigures it as a replica
+masterauth your_strong_redis_password
 
 # Allow replicas to serve stale data during sync
 # Set to 'no' if you need strict consistency
@@ -113,7 +113,7 @@ port 6380
 protected-mode yes
 
 # Local authentication
-requirepass your_strong_replica_password
+requirepass your_strong_redis_password
 
 # Persistence (replicas should also persist data)
 appendonly yes
@@ -124,7 +124,7 @@ appendfsync everysec
 replicaof master.example.com 6379
 
 # Authentication to connect to master
-masterauth your_strong_master_password
+masterauth your_strong_redis_password
 
 # Serve stale data while syncing
 replica-serve-stale-data yes
@@ -151,7 +151,7 @@ Verify replication status:
 
 ```bash
 # On the master
-redis-cli -a your_strong_master_password INFO replication
+redis-cli -a your_strong_redis_password INFO replication
 
 # Output should show connected replicas:
 # role:master
@@ -176,7 +176,7 @@ port 26379
 sentinel monitor mymaster master.example.com 6379 2
 
 # Master password
-sentinel auth-pass mymaster your_strong_master_password
+sentinel auth-pass mymaster your_strong_redis_password
 
 # Consider master down after 5 seconds of no response
 sentinel down-after-milliseconds mymaster 5000
@@ -262,7 +262,8 @@ class RedisReplicationClient:
                 self.master_name,
                 socket_timeout=0.5,
                 password=self.password,
-                db=self.db
+                db=self.db,
+                decode_responses=True
             )
         return self._master
 
@@ -272,7 +273,8 @@ class RedisReplicationClient:
             self.master_name,
             socket_timeout=0.5,
             password=self.password,
-            db=self.db
+            db=self.db,
+            decode_responses=True
         )
 
     def write(self, key: str, value: Any, ex: Optional[int] = None) -> bool:
@@ -395,7 +397,7 @@ if __name__ == '__main__':
     client = RedisReplicationClient(
         sentinel_hosts=sentinel_hosts,
         master_name='mymaster',
-        password='your_strong_password'
+        password='your_strong_redis_password'
     )
 
     # Write goes to master
@@ -459,8 +461,8 @@ class RedisReplicationClient {
             console.error('Replica connection error:', err.message);
         });
 
-        this.master.on('+switch-master', () => {
-            console.log('Master switched due to failover');
+        this.master.on('reconnecting', () => {
+            console.log('Master connection reconnecting');
         });
     }
 
@@ -509,7 +511,7 @@ const client = new RedisReplicationClient({
         { host: 'sentinel3.example.com', port: 26379 }
     ],
     masterName: 'mymaster',
-    password: 'your_strong_password'
+    password: 'your_strong_redis_password'
 });
 
 async function example() {
@@ -551,11 +553,13 @@ def check_replication_health(master_client: redis.Redis) -> dict:
     # Parse each replica's status
     for i in range(info['connected_slaves']):
         replica_key = f'slave{i}'
-        replica_info = info.get(replica_key, '')
+        replica_info = info.get(replica_key, {})
 
         if replica_info:
-            # Parse the comma-separated values
-            parts = dict(item.split('=') for item in replica_info.split(','))
+            if isinstance(replica_info, str):
+                parts = dict(item.split('=', 1) for item in replica_info.split(','))
+            else:
+                parts = replica_info
 
             replica_status = {
                 'ip': parts.get('ip'),
@@ -587,6 +591,6 @@ def check_replication_health(master_client: redis.Redis) -> dict:
 
 5. **Use separate connection pools**: Keep master and replica connections independent for better failure isolation
 
-6. **Configure min-replicas-to-write**: Prevents data loss if all replicas fail, but trades availability for consistency
+6. **Configure min-replicas-to-write**: Reduces the risk of lost writes during failures, but trades availability for consistency
 
 Redis replication provides a straightforward way to scale read capacity and improve availability. Combined with Sentinel for automatic failover, it forms a robust foundation for high-traffic applications.
