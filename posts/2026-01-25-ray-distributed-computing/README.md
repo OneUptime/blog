@@ -31,8 +31,8 @@ Install Ray with the components you need:
 
 pip install ray
 
-# All ML libraries
-pip install "ray[all]"
+# Common ML libraries
+pip install "ray[data,train,tune,serve]"
 
 # Specific components
 pip install "ray[tune]"       # Hyperparameter tuning
@@ -49,7 +49,7 @@ Ray turns Python functions into distributed tasks with decorators:
 import ray
 import time
 
-# Initialize Ray (uses all available cores by default)
+# Initialize Ray (detects available resources by default)
 ray.init()
 
 # Define a regular function
@@ -217,7 +217,7 @@ def train_model(config):
     accuracy = scores.mean()
 
     # Report metrics to Ray Tune
-    tune.report(accuracy=accuracy)
+    tune.report({"accuracy": accuracy})
 
 # Define search space
 search_space = {
@@ -236,19 +236,22 @@ scheduler = ASHAScheduler(
 )
 
 # Run hyperparameter search
-analysis = tune.run(
-    train_model,
-    config=search_space,
-    num_samples=50,
-    scheduler=scheduler,
-    resources_per_trial={"cpu": 2},
-    verbose=1
+tuner = tune.Tuner(
+    tune.with_resources(train_model, {"cpu": 2}),
+    tune_config=tune.TuneConfig(
+        metric="accuracy",
+        mode="max",
+        num_samples=50,
+        scheduler=scheduler,
+    ),
+    param_space=search_space,
 )
+results = tuner.fit()
 
 # Get best result
-best_config = analysis.get_best_config(metric="accuracy", mode="max")
-print(f"Best config: {best_config}")
-print(f"Best accuracy: {analysis.best_result['accuracy']}")
+best_result = results.get_best_result(metric="accuracy", mode="max")
+print(f"Best config: {best_result.config}")
+print(f"Best accuracy: {best_result.metrics['accuracy']}")
 ```
 
 ## Ray Serve for Model Serving
@@ -315,12 +318,15 @@ Scale training across multiple GPUs or machines:
 ```python
 import ray
 from ray.train.torch import TorchTrainer
+import ray.train.torch
 from ray.train import ScalingConfig
 import torch
 import torch.nn as nn
 
 def train_loop(config):
     """Training loop that runs on each worker."""
+    import os
+    import tempfile
     import ray.train as train
 
     # Model and data setup
@@ -351,8 +357,13 @@ def train_loop(config):
         loss.backward()
         optimizer.step()
 
-        # Report metrics
-        train.report({"loss": loss.item(), "epoch": epoch})
+        # Report metrics with a checkpoint
+        with tempfile.TemporaryDirectory() as checkpoint_dir:
+            torch.save(model.state_dict(), os.path.join(checkpoint_dir, "model.pt"))
+            train.report(
+                {"loss": loss.item(), "epoch": epoch},
+                checkpoint=train.Checkpoint.from_directory(checkpoint_dir),
+            )
 
 # Configure distributed training
 scaling_config = ScalingConfig(
@@ -409,12 +420,12 @@ print(ray.cluster_resources())
 
 ```yaml
 # ray-cluster.yaml
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayCluster
 metadata:
   name: ml-cluster
 spec:
-  rayVersion: '2.9.0'
+  rayVersion: '2.55.1'
   headGroupSpec:
     rayStartParams:
       dashboard-host: '0.0.0.0'
@@ -422,10 +433,10 @@ spec:
       spec:
         containers:
           - name: ray-head
-            image: rayproject/ray-ml:2.9.0-py310-gpu
+            image: rayproject/ray-ml:2.55.1-py310-gpu
             ports:
               - containerPort: 6379
-                name: redis
+                name: gcs
               - containerPort: 8265
                 name: dashboard
               - containerPort: 10001
@@ -447,7 +458,7 @@ spec:
         spec:
           containers:
             - name: ray-worker
-              image: rayproject/ray-ml:2.9.0-py310-gpu
+              image: rayproject/ray-ml:2.55.1-py310-gpu
               resources:
                 limits:
                   cpu: "8"
@@ -463,7 +474,9 @@ Deploy with kubectl:
 
 ```bash
 # Install KubeRay operator
-kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default"
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update
+helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0
 
 # Deploy Ray cluster
 kubectl apply -f ray-cluster.yaml
