@@ -370,7 +370,7 @@ app.use(errorHandler);
 
 ## Async Error Handling
 
-Wrap async route handlers to catch errors:
+Express 5 automatically forwards rejected promises from async route handlers to your error middleware. If you need to support Express 4, wrap async route handlers to catch errors:
 
 ```javascript
 // src/utils/asyncHandler.js
@@ -379,7 +379,9 @@ const asyncHandler = (fn) => (req, res, next) => {
 };
 
 module.exports = asyncHandler;
+```
 
+```javascript
 // Usage in routes
 const asyncHandler = require('../utils/asyncHandler');
 const { AppError } = require('../middleware/errorHandler');
@@ -426,8 +428,10 @@ router.get('/', asyncHandler(async (req, res) => {
     sortObj[sortField] = sort.startsWith('-') ? -1 : 1;
 
     // Pagination
-    const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const parsedPage = parseInt(page, 10);
+    const parsedLimit = parseInt(limit, 10);
+    const pageNum = Number.isNaN(parsedPage) ? 1 : Math.max(1, parsedPage);
+    const limitNum = Number.isNaN(parsedLimit) ? 10 : Math.min(100, Math.max(1, parsedLimit));
     const skip = (pageNum - 1) * limitNum;
 
     const [users, total] = await Promise.all([
@@ -471,7 +475,9 @@ const sendPaginated = (res, data, pagination) => {
 };
 
 module.exports = { sendResponse, sendPaginated };
+```
 
+```javascript
 // Usage
 const { sendResponse } = require('../utils/response');
 
@@ -492,15 +498,21 @@ Version your API for backward compatibility:
 
 ```javascript
 // src/routes/v1/users.js
+const express = require('express');
 const router = express.Router();
 // v1 routes
 module.exports = router;
+```
 
+```javascript
 // src/routes/v2/users.js
+const express = require('express');
 const router = express.Router();
 // v2 routes with changes
 module.exports = router;
+```
 
+```javascript
 // src/index.js
 const usersV1 = require('./routes/v1/users');
 const usersV2 = require('./routes/v2/users');
