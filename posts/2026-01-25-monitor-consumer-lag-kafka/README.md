@@ -12,12 +12,12 @@ Consumer lag is the most important metric for Kafka operational health. It tells
 
 ## Understanding Consumer Lag
 
-Lag is calculated per partition as the difference between the log end offset (latest message) and the consumer's committed offset.
+Lag is calculated per partition as the difference between the log end offset (the next offset after the latest message) and the consumer's committed offset.
 
 ```mermaid
 graph LR
     subgraph "Partition 0"
-        O1[Offset 0] --> O2[Offset 1] --> O3[Offset 2] --> O4[Offset 3] --> O5[Offset 4] --> O6[Offset 5]
+        O1[Offset 0] --> O2[Offset 1] --> O3[Offset 2] --> O4[Offset 3] --> O5[Offset 4]
     end
 
     CO[Committed Offset: 3]
@@ -28,7 +28,7 @@ graph LR
     O5 -.->|Latest message| LEO
 ```
 
-A lag of 2 means the consumer has 2 messages to process before catching up.
+A lag of 2 means the consumer has 2 messages to process before catching up: offsets 3 and 4.
 
 ## Using kafka-consumer-groups CLI
 
@@ -67,7 +67,7 @@ export KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote \
   -Dcom.sun.management.jmxremote.authenticate=false \
   -Dcom.sun.management.jmxremote.ssl=false"
 
-java -jar my-consumer.jar
+java $KAFKA_JMX_OPTS -jar my-consumer.jar
 ```
 
 Key JMX metrics to monitor:
@@ -107,13 +107,13 @@ sum by (consumergroup) (kafka_consumergroup_lag)
 # Lag per topic and partition
 kafka_consumergroup_lag{consumergroup="order-processor"}
 
-# Rate of lag change (positive means falling behind)
-rate(kafka_consumergroup_lag[5m])
+# Lag trend in messages per second (positive means falling behind)
+deriv(kafka_consumergroup_lag[5m])
 
 # Consumer groups with lag over 10000
 kafka_consumergroup_lag > 10000
 
-# Topics with no active consumers
+# Topics with no committed consumer offsets
 kafka_topic_partition_current_offset unless on(topic)
   kafka_consumergroup_current_offset
 ```
@@ -169,7 +169,7 @@ curl http://burrow:8000/v3/kafka/production/consumer
 # Get lag status for a group
 curl http://burrow:8000/v3/kafka/production/consumer/order-processor/lag
 
-# Response includes status: OK, WARNING, ERROR, or STOP
+# Response includes statuses such as OK, WARN, ERR, STOP, or STALL
 {
   "status": "OK",
   "complete": 1.0,
@@ -195,6 +195,7 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 public class LagMonitor {
 
@@ -323,7 +324,7 @@ groups:
 
       # Lag is growing continuously
       - alert: KafkaConsumerLagGrowing
-        expr: rate(kafka_consumergroup_lag[10m]) > 100
+        expr: deriv(kafka_consumergroup_lag[10m]) > 100
         for: 15m
         labels:
           severity: warning
@@ -333,7 +334,7 @@ groups:
 
       # Consumer group has stopped
       - alert: KafkaConsumerGroupInactive
-        expr: changes(kafka_consumergroup_current_offset[10m]) == 0 AND kafka_consumergroup_lag > 0
+        expr: changes(kafka_consumergroup_current_offset[10m]) == 0 and kafka_consumergroup_lag > 0
         for: 10m
         labels:
           severity: critical
