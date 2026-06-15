@@ -16,10 +16,16 @@ Despite being decades old, syslog remains essential because it is ubiquitous. Yo
 
 ## Understanding Syslog
 
-Syslog messages have a standard structure:
+Traditional BSD syslog messages have a common structure:
 
 ```text
 <priority>timestamp hostname app-name[pid]: message
+```
+
+RFC 5424 messages use a stricter format with a version, structured data, and an optional message body:
+
+```text
+<priority>version timestamp hostname app-name procid msgid structured-data message
 ```
 
 The priority combines facility (type of system) and severity (importance level):
@@ -93,12 +99,18 @@ rsyslog is the most common syslog implementation on Linux. Configure it as a cen
 module(load="imudp")
 module(load="imtcp")
 
-# Enable TLS for secure transport
-module(load="imtcp" StreamDriver.Name="gtls" StreamDriver.Mode="1" StreamDriver.Authmode="x509/name")
-
 # Load output modules
 module(load="omfile" DirCreateMode="0755" FileCreateMode="0644")
 module(load="omelasticsearch")
+module(load="mmpstrucdata")
+
+# TLS certificate settings
+global(
+    DefaultNetstreamDriver="gtls"
+    DefaultNetstreamDriverCAFile="/etc/rsyslog/certs/ca.crt"
+    DefaultNetstreamDriverCertFile="/etc/rsyslog/certs/server.crt"
+    DefaultNetstreamDriverKeyFile="/etc/rsyslog/certs/server.key"
+)
 
 ###########################
 #### NETWORK LISTENERS ####
@@ -114,7 +126,7 @@ input(type="imtcp" port="514" ruleset="remote")
 input(type="imtcp" port="6514" ruleset="remote"
     StreamDriver.Name="gtls"
     StreamDriver.Mode="1"
-    StreamDriver.Authmode="x509/name"
+    StreamDriver.AuthMode="x509/name"
     PermittedPeer=["*.example.com"]
 )
 
@@ -159,7 +171,7 @@ ruleset(name="remote") {
         server="elasticsearch.example.com"
         serverport="9200"
         searchIndex="syslog"
-        searchType="_doc"
+        searchType=""
         template="json-template"
         bulkmode="on"
         queue.type="linkedlist"
@@ -269,7 +281,6 @@ destination d_elasticsearch {
     elasticsearch-http(
         url("http://elasticsearch.example.com:9200/_bulk")
         index("syslog-${YEAR}.${MONTH}.${DAY}")
-        type("")
         template("$(format-json --scope rfc5424 --key ISODATE)")
     );
 };
@@ -333,9 +344,6 @@ Configure Linux servers to send logs to the central server:
 # /etc/rsyslog.d/50-remote.conf
 # Client configuration to send logs to central server
 
-# Load TCP output module
-module(load="omfwd")
-
 # Queue configuration for reliability
 $ActionQueueFileName fwdRule1
 $ActionQueueMaxDiskSpace 1g
@@ -347,7 +355,16 @@ $ActionResumeRetryCount -1
 *.* @@syslog.example.com:514
 
 # Or use TLS for encryption
-# *.* @@(o)syslog.example.com:6514
+# action(
+#     type="omfwd"
+#     target="syslog.example.com"
+#     port="6514"
+#     protocol="tcp"
+#     StreamDriver="gtls"
+#     StreamDriverMode="1"
+#     StreamDriverAuthMode="x509/name"
+#     StreamDriverPermittedPeers="syslog.example.com"
+# )
 
 # Forward only important logs
 *.err @@syslog.example.com:514
@@ -365,8 +382,8 @@ destination d_remote {
         "syslog.example.com"
         port(514)
         disk-buffer(
-            mem-buf-size(10000)
-            disk-buf-size(2000000000)
+            flow-control-window-bytes(10000)
+            capacity-bytes(2000000000)
             reliable(yes)
             dir("/var/syslog-ng-buffer")
         )
@@ -427,10 +444,17 @@ system {
 ### Palo Alto
 
 ```text
-set deviceconfig system logging syslog-server 10.0.0.100
-set deviceconfig system logging syslog-server 10.0.0.100 transport TCP
-set deviceconfig system logging syslog-server 10.0.0.100 port 514
-set deviceconfig system logging syslog-server 10.0.0.100 format BSD
+Device > Server Profiles > Syslog:
+  Profile name: central-syslog
+  Server name: syslog-1
+  Syslog Server: 10.0.0.100
+  Transport: TCP
+  Port: 514
+  Format: BSD
+
+Objects > Log Forwarding:
+  Add a log forwarding profile that uses the central-syslog server profile,
+  then assign it to the policies or zones that should forward logs.
 ```
 
 ---
@@ -446,6 +470,7 @@ Parse structured data from syslog messages:
 # Load parsing modules
 module(load="mmjsonparse")
 module(load="mmpstrucdata")
+module(load="mmexternal")
 
 # Parse JSON in message body
 action(type="mmjsonparse")
@@ -466,7 +491,10 @@ template(name="parsed-json" type="list") {
 # Parse specific application logs
 if $programname == 'nginx' then {
     # Parse nginx combined log format
-    action(type="mmexternal" binary="/usr/local/bin/parse-nginx.py")
+    action(type="mmexternal"
+        binary="/usr/local/bin/parse-nginx.py"
+        interface.input="fulljson"
+        interface.output="fulljson")
 }
 ```
 
@@ -608,10 +636,9 @@ if ! systemctl is-active --quiet rsyslog; then
     exit 2
 fi
 
-# Check queue size
-QUEUE_SIZE=$(rsyslogd -N1 2>&1 | grep -c "queue")
-if [ "$QUEUE_SIZE" -gt 10000 ]; then
-    echo "WARNING: Large queue size: $QUEUE_SIZE"
+# Check configuration syntax
+if ! rsyslogd -N1 >/dev/null 2>&1; then
+    echo "CRITICAL: rsyslog configuration validation failed"
     exit 1
 fi
 
