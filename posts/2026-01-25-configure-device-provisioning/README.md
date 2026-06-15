@@ -59,7 +59,7 @@ graph TB
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional, Dict, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 import hashlib
 import hmac
@@ -106,19 +106,18 @@ def generate_challenge(device_id: str) -> str:
     challenge = str(uuid.uuid4())
     pending_challenges[device_id] = {
         "challenge": challenge,
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     }
     return challenge
 
 def verify_challenge(device_id: str, response: str, serial_number: str) -> bool:
     """Verify challenge response from device"""
-    if device_id not in pending_challenges:
+    challenge_data = pending_challenges.pop(device_id, None)
+    if challenge_data is None:
         return False
 
-    challenge_data = pending_challenges[device_id]
-
     # Check challenge hasn't expired (5 minute window)
-    if datetime.utcnow() - challenge_data["created_at"] > timedelta(minutes=5):
+    if datetime.now(timezone.utc) - challenge_data["created_at"] > timedelta(minutes=5):
         return False
 
     # Calculate expected response
@@ -158,9 +157,9 @@ async def discover(registration: DeviceRegistration):
     # Store pending registration
     device_registry[device_id] = {
         "device_id": device_id,
-        "registration": registration.dict(),
+        "registration": registration.model_dump(),
         "state": ProvisioningState.PENDING.value,
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat()
     }
 
     return {
@@ -200,14 +199,14 @@ async def enroll(request: ProvisioningRequest, x_device_id: str = Header(...)):
 
     # Update device state
     device["state"] = ProvisioningState.ACTIVE.value
-    device["provisioned_at"] = datetime.utcnow().isoformat()
+    device["provisioned_at"] = datetime.now(timezone.utc).isoformat()
     device["credentials_issued"] = True
 
     return {
         "status": "provisioned",
         "device_id": device_id,
         "credentials": credentials,
-        "config": config.dict(),
+        "config": config.model_dump(),
         "certificate_url": f"/api/provision/certificate/{device_id}"
     }
 
@@ -242,7 +241,7 @@ async def generate_device_credentials(device_id: str, registration) -> dict:
 
     # Generate API key for device communication
     api_key = hashlib.sha256(
-        f"{device_id}{datetime.utcnow().isoformat()}".encode()
+        f"{device_id}{datetime.now(timezone.utc).isoformat()}".encode()
     ).hexdigest()
 
     return {
@@ -309,14 +308,15 @@ async def generate_device_certificate(device_id: str) -> dict:
     ])
 
     # Self-signed for demo (use CA in production)
+    now = datetime.now(timezone.utc)
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
         .issuer_name(subject)
         .public_key(device_key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.utcnow())
-        .not_valid_after(datetime.utcnow() + timedelta(days=365))
+        .not_valid_before(now)
+        .not_valid_after(now + timedelta(days=365))
         .sign(device_key, hashes.SHA256())
     )
 
@@ -553,7 +553,7 @@ async def main():
     # Create provisioning client
     client = ProvisioningClient(
         provisioning_url="https://provision.example.com",
-        device_secret=b"device-secret-key"
+        device_secret=b"your-secret-key-here"
     )
 
     # Provision device
@@ -579,6 +579,7 @@ import subprocess
 import os
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 @dataclass
 class ZeroTouchConfig:
@@ -663,7 +664,7 @@ class ZeroTouchProvisioner:
         os.makedirs(os.path.dirname(self.provisioned_flag), exist_ok=True)
         with open(self.provisioned_flag, 'w') as f:
             f.write(json.dumps({
-                "provisioned_at": datetime.utcnow().isoformat(),
+                "provisioned_at": datetime.now(timezone.utc).isoformat(),
                 "version": "1.0"
             }))
 ```
