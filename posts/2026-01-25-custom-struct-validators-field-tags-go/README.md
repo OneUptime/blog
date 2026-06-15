@@ -163,7 +163,7 @@ func (v *Validator) Validate(s interface{}) error {
         fieldVal := val.Field(i)
         fieldType := typ.Field(i)
 
-        // Skip unexported fields - they can't be validated via reflection
+        // Skip unexported fields to avoid panics when converting to interface{}
         if !fieldVal.CanInterface() {
             continue
         }
@@ -221,6 +221,17 @@ func parseRule(rule string) (name, param string) {
     }
     return
 }
+
+// hasRule reports whether a comma-separated tag contains a rule name
+func hasRule(tag, target string) bool {
+    for _, rule := range strings.Split(tag, ",") {
+        name, _ := parseRule(strings.TrimSpace(rule))
+        if name == target {
+            return true
+        }
+    }
+    return false
+}
 ```
 
 ## Built-in Validation Rules
@@ -258,7 +269,7 @@ func isZero(val reflect.Value) bool {
     }
 }
 
-// validateMin checks minimum length for strings or minimum value for numbers
+// validateMin checks minimum length for strings or minimum value for signed integers
 func validateMin(val reflect.Value, param string) string {
     min, err := strconv.Atoi(param)
     if err != nil {
@@ -282,7 +293,7 @@ func validateMin(val reflect.Value, param string) string {
     return ""
 }
 
-// validateMax checks maximum length or value
+// validateMax checks maximum length for strings or maximum value for signed integers
 func validateMax(val reflect.Value, param string) string {
     max, err := strconv.Atoi(param)
     if err != nil {
@@ -361,6 +372,8 @@ import (
     "reflect"
     "regexp"
     "unicode"
+
+    "example.com/myapp/validator"
 )
 
 func main() {
@@ -435,7 +448,7 @@ func main() {
 
 ## Handling Nested Structs
 
-Real applications have nested structures. Let's add support for validating embedded structs.
+Real applications have nested structures. Let's add support for validating nested structs.
 
 ```go
 // ValidateNested recursively validates nested structs
@@ -476,7 +489,7 @@ func (v *Validator) validateValue(val reflect.Value, prefix string) error {
         tag := fieldType.Tag.Get("validate")
 
         // Validate nested struct if it's a struct type
-        if fieldVal.Kind() == reflect.Struct && strings.Contains(tag, "dive") {
+        if fieldVal.Kind() == reflect.Struct && hasRule(tag, "dive") {
             if err := v.validateValue(fieldVal, fieldName); err != nil {
                 if vErrs, ok := err.(ValidationErrors); ok {
                     errs = append(errs, vErrs...)
@@ -486,7 +499,7 @@ func (v *Validator) validateValue(val reflect.Value, prefix string) error {
         }
 
         // Validate slice of structs
-        if fieldVal.Kind() == reflect.Slice && strings.Contains(tag, "dive") {
+        if fieldVal.Kind() == reflect.Slice && hasRule(tag, "dive") {
             for j := 0; j < fieldVal.Len(); j++ {
                 elem := fieldVal.Index(j)
                 if elem.Kind() == reflect.Struct {
@@ -539,6 +552,8 @@ package main
 
 import (
     "fmt"
+
+    "example.com/myapp/validator"
 )
 
 type Address struct {
