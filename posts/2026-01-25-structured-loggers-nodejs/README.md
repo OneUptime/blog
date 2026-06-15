@@ -142,6 +142,7 @@ Tracking requests across your application requires correlation IDs. Node.js Asyn
 // context-logger.ts
 import { AsyncLocalStorage } from 'async_hooks';
 import { randomUUID } from 'crypto';
+import { StructuredLogger } from './logger';
 
 // Storage for request-scoped data
 interface RequestContext {
@@ -165,8 +166,8 @@ function withContext<T>(
   fn: () => T
 ): T {
   const fullContext: RequestContext = {
-    requestId: context.requestId || randomUUID(),
     ...context,
+    requestId: context.requestId || randomUUID(),
   };
   return asyncLocalStorage.run(fullContext, fn);
 }
@@ -223,7 +224,8 @@ Connect the logger to your Express application with middleware that sets up requ
 ```typescript
 // middleware.ts
 import { Request, Response, NextFunction } from 'express';
-import { withContext, addToContext, ContextAwareLogger } from './context-logger';
+import { randomUUID } from 'crypto';
+import { withContext, ContextAwareLogger } from './context-logger';
 import { StructuredLogger } from './logger';
 
 const baseLogger = new StructuredLogger({
@@ -299,6 +301,8 @@ Errors need special handling to capture stack traces without losing structure.
 
 ```typescript
 // error-logging.ts
+import { ContextAwareLogger } from './context-logger';
+
 interface SerializedError {
   name: string;
   message: string;
@@ -308,7 +312,7 @@ interface SerializedError {
 }
 
 // Serialize an error to a loggable object
-function serializeError(error: unknown): SerializedError {
+export function serializeError(error: unknown): SerializedError {
   if (error instanceof Error) {
     const serialized: SerializedError = {
       name: error.name,
@@ -461,13 +465,13 @@ Production logs should never contain passwords, tokens, or other sensitive data.
 const SENSITIVE_KEYS = new Set([
   'password',
   'token',
-  'apiKey',
+  'apikey',
   'api_key',
   'secret',
   'authorization',
   'cookie',
   'credit_card',
-  'creditCard',
+  'creditcard',
   'ssn',
   'social_security',
 ]);
@@ -515,7 +519,7 @@ function redactSensitiveData(
 }
 
 // Redacting logger wrapper
-class RedactingLogger {
+export class RedactingLogger {
   private logger: ContextAwareLogger;
   private sensitiveKeys: Set<string>;
 
@@ -524,7 +528,10 @@ class RedactingLogger {
     additionalKeys: string[] = []
   ) {
     this.logger = logger;
-    this.sensitiveKeys = new Set([...SENSITIVE_KEYS, ...additionalKeys]);
+    this.sensitiveKeys = new Set([
+      ...SENSITIVE_KEYS,
+      ...additionalKeys.map(key => key.toLowerCase()),
+    ]);
   }
 
   private redact(data?: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -553,7 +560,7 @@ Here is how all the pieces fit together.
 import { StructuredLogger } from './logger';
 import { ContextAwareLogger, withContext } from './context-logger';
 import { RedactingLogger } from './redaction';
-import { SampledLogger } from './sampled-logger';
+import { serializeError } from './error-logging';
 
 // Build the logger chain
 function createLogger(): RedactingLogger {
