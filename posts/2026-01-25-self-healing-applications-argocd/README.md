@@ -85,6 +85,8 @@ syncPolicy:
     - CreateNamespace=true
     # Apply resources using server-side apply
     - ServerSideApply=true
+    # Respect ignoreDifferences during sync, not only during diff
+    - RespectIgnoreDifferences=true
     # Prune resources after sync completes
     - PruneLast=true
     # Replace resources instead of patching
@@ -109,11 +111,11 @@ syncPolicy:
 
 ## Understanding Drift Detection
 
-ArgoCD compares resources using a three-way diff:
+ArgoCD detects drift by comparing the desired manifests from Git with the live resources in the cluster. During a normal client-side apply sync, the patch is calculated using the desired state, the live state, and the `last-applied-configuration` annotation:
 
 1. **Git state**: What should exist
 2. **Live state**: What currently exists
-3. **Last applied state**: What ArgoCD last applied
+3. **Last applied state**: What was last applied to the cluster
 
 ### What Triggers Self-Healing
 
@@ -124,8 +126,21 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: myapp
+  labels:
+    app: myapp
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: myapp
+          image: nginx:1.27
 ```
 
 If someone runs:
@@ -157,6 +172,10 @@ spec:
       kind: "*"
       managedFieldsManagers:
         - kube-controller-manager
+  syncPolicy:
+    syncOptions:
+      # Also preserve ignored fields when another change triggers a sync
+      - RespectIgnoreDifferences=true
 ```
 
 ### Common Fields to Ignore
@@ -202,6 +221,8 @@ spec:
   syncPolicy:
     automated:
       selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true
 ```
 
 Or remove replicas from your Git manifest entirely when using HPA:
@@ -257,22 +278,22 @@ argocd app get myapp
 
 ### ArgoCD Metrics
 
-Monitor self-healing with Prometheus:
+Monitor frequent syncs that may include self-healing with Prometheus:
 
 ```yaml
-# Prometheus alert for frequent self-healing
+# Prometheus alert for frequent successful syncs
 groups:
   - name: argocd-self-healing
     rules:
-      - alert: FrequentSelfHealing
+      - alert: FrequentArgoCDSyncs
         expr: |
           increase(argocd_app_sync_total{phase="Succeeded",dest_server=~".*"}[1h]) > 10
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Application {{ $labels.name }} is self-healing frequently"
-          description: "This may indicate someone is making manual changes"
+          summary: "Application {{ $labels.name }} is syncing frequently"
+          description: "This may include self-healing and should be investigated"
 ```
 
 ### Notifications
@@ -299,7 +320,7 @@ data:
     - description: Application was self-healed
       send:
         - self-healed
-      when: app.status.operationState.phase == 'Succeeded' and app.status.operationState.operation.initiatedBy.automated == true
+      when: app.status?.operationState?.phase == 'Succeeded' and app.status?.operationState?.operation?.initiatedBy?.automated == true
 ```
 
 ## Selective Self-Healing
@@ -369,6 +390,8 @@ spec:
     - kind: allow
       schedule: '* * * * *'
       duration: 24h
+      applications:
+        - '*'
       manualSync: true
 ```
 
