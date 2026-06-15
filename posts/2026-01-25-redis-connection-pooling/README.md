@@ -43,7 +43,7 @@ from redis import ConnectionPool, BlockingConnectionPool
 
 # Basic pooling (default behavior)
 
-# Creates a pool with default settings (max 50 connections)
+# Creates a pool with default settings (no explicit max_connections limit)
 r = redis.Redis(host='localhost', port=6379, db=0)
 
 # Explicit pool configuration
@@ -107,7 +107,7 @@ def get_redis():
 
 ## BlockingConnectionPool for Request Queuing
 
-The standard `ConnectionPool` raises an error when exhausted. `BlockingConnectionPool` makes requests wait for an available connection.
+The standard `ConnectionPool` raises an error when a configured `max_connections` limit is exhausted. `BlockingConnectionPool` makes requests wait for an available connection.
 
 ```python
 from redis import BlockingConnectionPool
@@ -217,7 +217,7 @@ def check_pool_health(pool):
 
 ## Node.js: ioredis Connection Pooling
 
-The ioredis library handles pooling differently than redis-py. A single ioredis client multiplexes commands over one connection. For true pooling, use a cluster or create multiple clients.
+The ioredis library handles pooling differently than redis-py. A single ioredis client uses one connection for regular commands and can pipeline commands for efficiency. For multiple connections, use a cluster or create multiple clients.
 
 ```javascript
 const Redis = require('ioredis');
@@ -243,8 +243,10 @@ const redis = new Redis({
   // Maximum reconnection attempts before giving up
   maxRetriesPerRequest: 3,
 
-  // Enable read-only mode if connection is lost
+  // Wait for Redis to finish loading before the client is ready
   enableReadyCheck: true,
+
+  // Queue commands issued before the connection is ready
   enableOfflineQueue: true,
 });
 
@@ -329,7 +331,7 @@ For Redis Cluster or Sentinel setups, connection pooling works differently.
 
 ```python
 # Python: Redis Cluster with pooling
-from rediscluster import RedisCluster
+from redis.cluster import RedisCluster, ClusterNode
 
 def create_cluster_client():
     """
@@ -337,15 +339,14 @@ def create_cluster_client():
     Each node gets its own connection pool automatically.
     """
     startup_nodes = [
-        {'host': 'redis-1.example.com', 'port': 6379},
-        {'host': 'redis-2.example.com', 'port': 6379},
-        {'host': 'redis-3.example.com', 'port': 6379},
+        ClusterNode('redis-1.example.com', 6379),
+        ClusterNode('redis-2.example.com', 6379),
+        ClusterNode('redis-3.example.com', 6379),
     ]
 
     return RedisCluster(
         startup_nodes=startup_nodes,
         decode_responses=True,
-        skip_full_coverage_check=True,
 
         # Pool settings apply to each node
         max_connections=20,
@@ -479,9 +480,9 @@ def audit_connections(r):
 
 | Language | Library | Default Pool | Recommendation |
 |----------|---------|--------------|----------------|
-| Python | redis-py | Yes (50 connections) | Use BlockingConnectionPool for production |
-| Node.js | ioredis | No (single multiplexed) | Use generic-pool for high concurrency |
-| Java | Jedis | JedisPool | Configure min/max carefully |
+| Python | redis-py | Yes (no explicit default cap) | Set max_connections; use BlockingConnectionPool when you want queued waits |
+| Node.js | ioredis | No (single connection per client) | Use generic-pool for high concurrency |
+| Java | Jedis | Yes (RedisClient; older JedisPool) | Configure min/max carefully |
 | Go | go-redis | Yes | Set PoolSize based on GOMAXPROCS |
 
 Proper connection pool configuration prevents the most common Redis performance issues. Start with conservative settings, monitor utilization, and adjust based on actual usage patterns.
