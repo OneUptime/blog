@@ -45,18 +45,37 @@ Before implementing Pod Security Standards:
 
 ## Enabling Pod Security Admission
 
-Pod Security Admission (PSA) is enabled by default in Kubernetes 1.23+. Verify it is active:
+Pod Security Admission (PSA) is available by default in Kubernetes 1.23+ and generally available in 1.25+. Verify your server version and smoke-test admission with a server-side dry run:
 
 ```bash
-# Check if the admission controller is enabled
+# Check the Kubernetes server version
+kubectl version
 
-kubectl api-resources | grep pods
+# Create a temporary namespace with restricted enforcement
+kubectl create namespace psa-check --dry-run=client -o yaml | kubectl apply -f -
+kubectl label namespace psa-check \
+    pod-security.kubernetes.io/enforce=restricted \
+    --overwrite
 
-# Verify PSA webhook is registered
-kubectl get validatingwebhookconfigurations | grep pod-security
+# This dry run should be rejected by Pod Security Admission
+kubectl apply --dry-run=server -f - <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: psa-check-root
+  namespace: psa-check
+spec:
+  containers:
+  - name: app
+    image: nginx:1.25
+    securityContext:
+      runAsUser: 0
+EOF
+
+kubectl delete namespace psa-check --ignore-not-found
 ```
 
-For clusters running 1.22, enable the feature gate:
+For clusters running 1.22, Pod Security Admission was alpha. Enable the feature gate and admission plugin:
 
 ```yaml
 # kube-apiserver configuration
@@ -66,6 +85,7 @@ apiServer:
   extraArgs:
     # Enable Pod Security Admission feature gate
     feature-gates: "PodSecurity=true"
+    enable-admission-plugins: "NodeRestriction,PodSecurity"
 ```
 
 ---
@@ -89,7 +109,7 @@ metadata:
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/audit-version: latest
 
-    # Warn users about baseline violations too
+    # Warn users about restricted violations too
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: latest
 ```
@@ -209,7 +229,7 @@ spec:
         - ALL
       # Cannot gain new privileges
       allowPrivilegeEscalation: false
-      # Read-only root filesystem
+      # Optional hardening beyond the Restricted profile
       readOnlyRootFilesystem: true
 
     # Writable directories must use emptyDir
@@ -289,13 +309,15 @@ metadata:
 
 ### Phase 3: Review Audit Logs
 
-Check the audit logs for violations:
+Check your Kubernetes audit backend for violations. For clusters using the API server log audit backend:
 
 ```bash
 # Query audit logs for PSA violations
-kubectl logs -n kube-system -l component=kube-apiserver | \
-    grep "pod-security.kubernetes.io" | \
-    jq -r '.objectRef.name + " - " + .annotations["pod-security.kubernetes.io/audit-violations"]'
+sudo jq -r '
+  select(.annotations["pod-security.kubernetes.io/audit-violations"] != null) |
+  (.objectRef.namespace // "-") + "/" + (.objectRef.name // "-") + " - " +
+  .annotations["pod-security.kubernetes.io/audit-violations"]
+' /var/log/kubernetes/audit/audit.log
 ```
 
 ### Phase 4: Remediate and Enforce
@@ -318,7 +340,7 @@ kubectl label namespace my-namespace \
 
 ## Handling Exemptions
 
-Some workloads legitimately need elevated permissions. Handle exemptions through the API server configuration:
+Some workloads legitimately need elevated permissions. For Kubernetes 1.25+, handle exemptions through the API server configuration:
 
 ```yaml
 # psa-config.yaml
@@ -374,12 +396,12 @@ graph TD
         B2[No Privileged Mode]
         B3[No hostPath Volumes]
         B4[Limited Capabilities]
-        B5[No Host Ports < 1024]
+        B5[No unrestricted hostPorts]
     end
 
     subgraph "Restricted (Hardened)"
         R1[Non-root Required]
-        R2[Read-only Root FS]
+        R2[Allowed Volume Types]
         R3[Drop ALL Capabilities]
         R4[No Privilege Escalation]
         R5[Seccomp Required]
