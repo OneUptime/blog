@@ -8,7 +8,7 @@ Description: Learn how to integrate the OpenAI API into your applications, from 
 
 ---
 
-The OpenAI API provides access to powerful language models like GPT-4. Integrating it into your applications enables features like chat interfaces, content generation, code assistance, and data extraction. This guide covers everything from basic usage to production-ready patterns.
+The OpenAI API provides access to powerful language models like GPT-4o. Integrating it into your applications enables features like chat interfaces, content generation, code assistance, and data extraction. This guide covers everything from basic usage to production-ready patterns.
 
 ## Getting Started
 
@@ -44,13 +44,13 @@ client = OpenAI()
 
 # Simple completion
 response = client.chat.completions.create(
-    model="gpt-4",
+    model="gpt-4o",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": "Explain Kubernetes in simple terms."}
     ],
     temperature=0.7,
-    max_tokens=500
+    max_completion_tokens=500
 )
 
 print(response.choices[0].message.content)
@@ -80,7 +80,7 @@ class Conversation:
 
         # Get response
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=self.messages,
             temperature=0.7
         )
@@ -116,7 +116,7 @@ client = OpenAI()
 def stream_response(prompt: str):
     """Stream the response token by token."""
     stream = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         stream=True
     )
@@ -220,7 +220,7 @@ def chat_with_tools(user_message: str):
     messages = [{"role": "user", "content": user_message}]
 
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=messages,
         tools=tools,
         tool_choice="auto"
@@ -249,7 +249,7 @@ def chat_with_tools(user_message: str):
 
         # Get final response with function results
         final_response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=messages
         )
         return final_response.choices[0].message.content
@@ -274,7 +274,7 @@ client = OpenAI()
 def extract_structured_data(text: str) -> dict:
     """Extract structured data from unstructured text."""
     response = client.chat.completions.create(
-        model="gpt-4-turbo-preview",
+        model="gpt-4o",
         messages=[
             {
                 "role": "system",
@@ -307,7 +307,7 @@ print(json.dumps(data, indent=2))
 
 ## Vision Capabilities
 
-Analyze images with GPT-4 Vision:
+Analyze images with GPT-4o:
 
 ```python
 from openai import OpenAI
@@ -316,13 +316,13 @@ import base64
 client = OpenAI()
 
 def analyze_image(image_path: str, prompt: str) -> str:
-    """Analyze an image with GPT-4 Vision."""
+    """Analyze an image with GPT-4o."""
     # Read and encode image
     with open(image_path, "rb") as f:
         image_data = base64.b64encode(f.read()).decode("utf-8")
 
     response = client.chat.completions.create(
-        model="gpt-4-vision-preview",
+        model="gpt-4o",
         messages=[
             {
                 "role": "user",
@@ -338,7 +338,7 @@ def analyze_image(image_path: str, prompt: str) -> str:
                 ]
             }
         ],
-        max_tokens=1000
+        max_completion_tokens=1000
     )
 
     return response.choices[0].message.content
@@ -347,7 +347,7 @@ def analyze_image(image_path: str, prompt: str) -> str:
 def analyze_image_url(url: str, prompt: str) -> str:
     """Analyze an image from URL."""
     response = client.chat.completions.create(
-        model="gpt-4-vision-preview",
+        model="gpt-4o",
         messages=[
             {
                 "role": "user",
@@ -357,7 +357,7 @@ def analyze_image_url(url: str, prompt: str) -> str:
                 ]
             }
         ],
-        max_tokens=1000
+        max_completion_tokens=1000
     )
     return response.choices[0].message.content
 
@@ -469,7 +469,7 @@ def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0):
 def safe_completion(prompt: str) -> str:
     """Make a completion request with automatic retries."""
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         timeout=30.0
     )
@@ -507,9 +507,9 @@ class OpenAIClient:
     def complete(
         self,
         messages: list,
-        model: str = "gpt-4",
+        model: str = "gpt-4o",
         temperature: float = 0.7,
-        max_tokens: int = 1000,
+        max_completion_tokens: int = 1000,
         timeout: float = 30.0
     ) -> str:
         """Make a completion request with monitoring."""
@@ -520,7 +520,7 @@ class OpenAIClient:
                 model=model,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=max_tokens,
+                max_completion_tokens=max_completion_tokens,
                 timeout=timeout
             )
 
