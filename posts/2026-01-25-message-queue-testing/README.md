@@ -30,19 +30,21 @@ Use Testcontainers to spin up RabbitMQ for testing:
 ```typescript
 // setup.ts
 import { GenericContainer, StartedTestContainer } from 'testcontainers';
-import amqp, { Connection, Channel } from 'amqplib';
+import amqp, { Connection, Channel, ConfirmChannel } from 'amqplib';
 
 let container: StartedTestContainer;
 let connection: Connection;
 let channel: Channel;
+let confirmChannel: ConfirmChannel;
 
 export async function setupRabbitMQ(): Promise<{
     connection: Connection;
     channel: Channel;
+    confirmChannel: ConfirmChannel;
     url: string;
 }> {
     // Start RabbitMQ container
-    container = await new GenericContainer('rabbitmq:3.12-management')
+    container = await new GenericContainer('rabbitmq:4.3-management')
         .withExposedPorts(5672, 15672)
         .withEnvironment({
             RABBITMQ_DEFAULT_USER: 'test',
@@ -57,11 +59,13 @@ export async function setupRabbitMQ(): Promise<{
     // Connect to RabbitMQ
     connection = await amqp.connect(url);
     channel = await connection.createChannel();
+    confirmChannel = await connection.createConfirmChannel();
 
-    return { connection, channel, url };
+    return { connection, channel, confirmChannel, url };
 }
 
 export async function teardownRabbitMQ(): Promise<void> {
+    if (confirmChannel) await confirmChannel.close();
     if (channel) await channel.close();
     if (connection) await connection.close();
     if (container) await container.stop();
@@ -95,19 +99,21 @@ Test that messages are published correctly:
 
 ```typescript
 // producer.test.ts
-import { Channel } from 'amqplib';
+import { Channel, ConfirmChannel } from 'amqplib';
 import { setupRabbitMQ, teardownRabbitMQ, setupTestTopology } from './setup';
 import { OrderProducer } from '../producers/order.producer';
 
 describe('Order Producer', () => {
     let channel: Channel;
+    let confirmChannel: ConfirmChannel;
     let producer: OrderProducer;
 
     beforeAll(async () => {
         const setup = await setupRabbitMQ();
         channel = setup.channel;
+        confirmChannel = setup.confirmChannel;
         await setupTestTopology(channel);
-        producer = new OrderProducer(channel);
+        producer = new OrderProducer(confirmChannel);
     });
 
     afterAll(async () => {
@@ -170,12 +176,9 @@ describe('Order Producer', () => {
     });
 
     test('handles publish confirmation', async () => {
-        // Enable publisher confirms
-        await channel.confirmSelect();
-
         const order = { id: 'order-confirm', userId: 'user-1', items: [], total: 0 };
 
-        // Publish and wait for confirmation
+        // Publish on a ConfirmChannel and wait for confirmation
         const confirmed = await producer.publishWithConfirmation(order);
 
         expect(confirmed).toBe(true);
@@ -207,7 +210,7 @@ Test message consumption and processing:
 
 ```typescript
 // consumer.test.ts
-import { Channel, ConsumeMessage } from 'amqplib';
+import { Channel } from 'amqplib';
 import { setupRabbitMQ, teardownRabbitMQ, setupTestTopology } from './setup';
 import { OrderConsumer } from '../consumers/order.consumer';
 import { OrderService } from '../services/order.service';
@@ -592,7 +595,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       rabbitmq:
-        image: rabbitmq:3.12-management
+        image: rabbitmq:4.3-management
         ports:
           - 5672:5672
           - 15672:15672
@@ -611,13 +614,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install dependencies
         run: npm ci
 
       - name: Run queue tests
-        run: npm test -- --testPathPattern=queue
+        run: npm test -- --testPathPatterns=queue
         env:
           RABBITMQ_URL: amqp://test:test@localhost:5672
 ```
