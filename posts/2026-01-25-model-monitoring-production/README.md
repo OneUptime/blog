@@ -71,7 +71,7 @@ feature_value = Histogram(
     'ml_feature_value',
     'Distribution of feature values',
     ['model_name', 'feature_name'],
-    buckets=[-np.inf, -2, -1, -0.5, 0, 0.5, 1, 2, np.inf],
+    buckets=[-2, -1, -0.5, 0, 0.5, 1, 2],
     registry=ml_registry
 )
 
@@ -338,6 +338,7 @@ Track model accuracy using delayed ground truth labels.
 ```python
 from datetime import datetime, timedelta
 import sqlite3
+import threading
 from typing import Optional
 
 class PredictionLogger:
@@ -350,6 +351,7 @@ class PredictionLogger:
 
     def __init__(self, db_path: str = "predictions.db"):
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        self.lock = threading.Lock()
         self._init_db()
 
     def _init_db(self):
@@ -377,34 +379,36 @@ class PredictionLogger:
         prediction: float
     ):
         """Log a prediction for later quality analysis."""
-        self.conn.execute(
-            """
-            INSERT INTO predictions
-            (prediction_id, model_name, model_version, features, prediction, predicted_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                prediction_id,
-                model_name,
-                model_version,
-                json.dumps(features),
-                prediction,
-                datetime.now().isoformat()
+        with self.lock:
+            self.conn.execute(
+                """
+                INSERT INTO predictions
+                (prediction_id, model_name, model_version, features, prediction, predicted_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    prediction_id,
+                    model_name,
+                    model_version,
+                    json.dumps(features),
+                    prediction,
+                    datetime.now().isoformat()
+                )
             )
-        )
-        self.conn.commit()
+            self.conn.commit()
 
     def record_outcome(self, prediction_id: str, actual_outcome: float):
         """Record the actual outcome for a prediction."""
-        self.conn.execute(
-            """
-            UPDATE predictions
-            SET actual_outcome = ?, outcome_at = ?
-            WHERE prediction_id = ?
-            """,
-            (actual_outcome, datetime.now().isoformat(), prediction_id)
-        )
-        self.conn.commit()
+        with self.lock:
+            self.conn.execute(
+                """
+                UPDATE predictions
+                SET actual_outcome = ?, outcome_at = ?
+                WHERE prediction_id = ?
+                """,
+                (actual_outcome, datetime.now().isoformat(), prediction_id)
+            )
+            self.conn.commit()
 
     def get_accuracy_metrics(
         self,
@@ -416,18 +420,18 @@ class PredictionLogger:
         """
         cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
 
-        cursor = self.conn.execute(
-            """
-            SELECT prediction, actual_outcome
-            FROM predictions
-            WHERE model_name = ?
-              AND predicted_at > ?
-              AND actual_outcome IS NOT NULL
-            """,
-            (model_name, cutoff)
-        )
-
-        rows = cursor.fetchall()
+        with self.lock:
+            cursor = self.conn.execute(
+                """
+                SELECT prediction, actual_outcome
+                FROM predictions
+                WHERE model_name = ?
+                  AND predicted_at > ?
+                  AND actual_outcome IS NOT NULL
+                """,
+                (model_name, cutoff)
+            )
+            rows = cursor.fetchall()
 
         if not rows:
             return {"status": "no_data"}
@@ -612,6 +616,13 @@ def metrics():
         mimetype=CONTENT_TYPE_LATEST
     )
 
+model_accuracy = Gauge(
+    'ml_model_accuracy',
+    'Current model accuracy',
+    ['model_name', 'window_hours'],
+    registry=ml_registry
+)
+
 # Periodic metrics collection
 def collect_model_metrics():
     """Collect and export model quality metrics periodically."""
@@ -622,13 +633,6 @@ def collect_model_metrics():
     )
 
     if "accuracy" in metrics:
-        # Export as gauge
-        model_accuracy = Gauge(
-            'ml_model_accuracy',
-            'Current model accuracy',
-            ['model_name', 'window_hours'],
-            registry=ml_registry
-        )
         model_accuracy.labels(
             model_name="fraud_detector",
             window_hours="24"
@@ -637,9 +641,12 @@ def collect_model_metrics():
     # Check drift
     drift_results = drift_detector.check_drift()
     max_psi = max(
-        r.get("psi", 0)
-        for r in drift_results.values()
-        if isinstance(r.get("psi"), (int, float))
+        (
+            r.get("psi", 0)
+            for r in drift_results.values()
+            if isinstance(r.get("psi"), (int, float))
+        ),
+        default=0.0
     )
 
     # Alert on drift
