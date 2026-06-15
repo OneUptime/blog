@@ -78,8 +78,7 @@ aws s3api put-bucket-encryption \
         "Rules": [{
             "ApplyServerSideEncryptionByDefault": {
                 "SSEAlgorithm": "AES256"
-            },
-            "BucketKeyEnabled": true
+            }
         }]
     }'
 
@@ -185,12 +184,12 @@ aws s3api put-bucket-lifecycle-configuration \
 
 ## Storage Classes Comparison
 
-| Storage Class | Use Case | Retrieval Time | Cost per GB/month |
+| Storage Class | Use Case | Retrieval Time | Cost per GB/month (US East) |
 |---------------|----------|----------------|-------------------|
 | S3 Standard | Frequent access | Instant | $0.023 |
 | S3 Standard-IA | Infrequent access (30+ days) | Instant | $0.0125 |
 | S3 Glacier Instant | Archive with instant access | Instant | $0.004 |
-| S3 Glacier Flexible | Archive, flexible retrieval | 1-12 hours | $0.0036 |
+| S3 Glacier Flexible | Archive, flexible retrieval | Minutes to 12 hours | $0.0036 |
 | S3 Glacier Deep Archive | Long-term archive | 12-48 hours | $0.00099 |
 
 Choose based on your recovery time objectives (RTO). Critical backups should stay in Standard or Standard-IA for fast recovery.
@@ -210,7 +209,24 @@ aws s3api put-bucket-versioning \
     --versioning-configuration Status=Enabled
 ```
 
-Create an IAM role for replication:
+Create an IAM role that Amazon S3 can assume:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "s3.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+        }
+    ]
+}
+```
+
+Attach a permissions policy to the replication role:
 
 ```json
 {
@@ -385,14 +401,25 @@ fi
 Set up CloudWatch alarms for backup monitoring:
 
 ```bash
-# Create metric filter for backup logs
+# Create log group and stream for backup logs
 aws logs create-log-group --log-group-name /backup/s3
+aws logs create-log-stream \
+    --log-group-name /backup/s3 \
+    --log-stream-name "$(hostname)"
 
 # Put log events from backup script
 aws logs put-log-events \
     --log-group-name /backup/s3 \
     --log-stream-name "$(hostname)" \
     --log-events timestamp=$(date +%s000),message="Backup completed"
+
+# Create metric filter for successful backups
+aws logs put-metric-filter \
+    --log-group-name /backup/s3 \
+    --filter-name "BackupCompleted" \
+    --filter-pattern '"Backup completed"' \
+    --metric-transformations \
+        metricName=BackupCount,metricNamespace=CustomBackup,metricValue=1
 
 # Create alarm for missing backups
 aws cloudwatch put-metric-alarm \
