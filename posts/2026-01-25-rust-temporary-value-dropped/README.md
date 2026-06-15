@@ -12,14 +12,14 @@ The "temporary value dropped while borrowed" error occurs when you try to keep a
 
 ## Understanding the Problem
 
-A temporary value is created during expression evaluation and destroyed at the end of the statement. If you take a reference to it, that reference becomes invalid.
+A temporary value is created during expression evaluation and is usually destroyed at the end of the statement. If you take a reference to it and Rust cannot extend the temporary's lifetime, that reference would become invalid.
 
 ```rust
 fn main() {
     // Problem: String::from creates a temporary value
     // The reference outlives the temporary
 
-    // let s: &str = &String::from("hello"); // Error!
+    // let s: &str = String::from("hello").as_str(); // Error!
 
     // The temporary String is created and immediately dropped
     // leaving 's' pointing to freed memory
@@ -32,10 +32,10 @@ The error message looks like this:
 error[E0716]: temporary value dropped while borrowed
  --> src/main.rs:2:19
   |
-2 |     let s: &str = &String::from("hello");
-  |                    ^^^^^^^^^^^^^^^^^^^^^ - temporary value is freed at the end of this statement
-  |                    |
-  |                    creates a temporary value which is freed while still in use
+2 |     let s: &str = String::from("hello").as_str();
+  |                   ^^^^^^^^^^^^^^^^^^^^^         - temporary value is freed at the end of this statement
+  |                   |
+  |                   creates a temporary value which is freed while still in use
 3 |     println!("{}", s);
   |                    - borrow later used here
 ```
@@ -64,10 +64,10 @@ In some cases, Rust extends the lifetime of temporaries assigned to a `let` bind
 ```rust
 fn main() {
     // This works because the temporary's lifetime is extended
-    let s: &str = "hello";  // String literals have 'static lifetime
+    let s: &str = &String::from("hello");
     println!("{}", s);
 
-    // For non-literals, use owned value
+    // Method calls like as_str() do not get the same extension
     let s: String = format!("hello {}", "world");
     let reference: &str = &s;
     println!("{}", reference);
@@ -163,9 +163,12 @@ use std::collections::HashMap;
 fn main() {
     let mut map: HashMap<&str, String> = HashMap::new();
 
-    // Problem: Temporary key
-    // let key = String::from("key");
-    // map.insert(&key, String::from("value")); // Error if key is dropped
+    // Problem: Borrowed key does not live long enough
+    // {
+    //     let key = String::from("key");
+    //     map.insert(&key, String::from("value"));
+    // }
+    // println!("{:?}", map); // Error: key is dropped before map is used
 
     // Solution 1: Use owned keys
     let mut map: HashMap<String, String> = HashMap::new();
@@ -189,7 +192,7 @@ fn main() {
 ```rust
 fn main() {
     // Problem: format! creates a temporary String
-    // let s: &str = &format!("hello {}", 42); // Error!
+    // let s: &str = format!("hello {}", 42).as_str(); // Error!
 
     // Solution 1: Store the String
     let formatted = format!("hello {}", 42);
@@ -207,12 +210,10 @@ fn main() {
 fn main() {
     let numbers = vec![1, 2, 3, 4, 5];
 
-    // Problem: filter creates a temporary iterator
-    // let first = numbers.iter()
-    //     .filter(|x| **x > 2)
-    //     .next(); // This works
+    // Problem: vec! creates a temporary Vec
+    // let first = vec![1, 2, 3].iter().next(); // Error!
 
-    // But this pattern can cause issues:
+    // This works because numbers owns the Vec:
     fn get_filtered<'a>(nums: &'a [i32]) -> impl Iterator<Item = &'a i32> {
         nums.iter().filter(|x| **x > 2)
     }
@@ -236,7 +237,7 @@ struct Config<'a> {
 
 fn main() {
     // Error: Temporary String
-    // let config = Config { name: &String::from("app") };
+    // let config = Config { name: String::from("app").as_str() };
 
     // Solution 1: Use owned data
     struct ConfigOwned {
@@ -260,7 +261,7 @@ fn main() {
 ```rust
 use std::borrow::Cow;
 
-fn process(input: &str) -> Cow<str> {
+fn process(input: &str) -> Cow<'_, str> {
     if input.contains("bad") {
         // Return owned when modification needed
         Cow::Owned(input.replace("bad", "good"))
@@ -328,7 +329,7 @@ fn main() {
     let data = RefCell::new(String::from("hello"));
 
     // Problem: Borrow from RefCell is temporary
-    // let s: &str = &data.borrow(); // Error: Ref<String> is dropped
+    // let s: &str = data.borrow().as_str(); // Error: Ref<String> is dropped
 
     // Solution 1: Use the borrow in a smaller scope
     {
@@ -360,8 +361,8 @@ fn main() {
     //
     // error[E0716]: temporary value dropped while borrowed
     //    |
-    //    |     let s: &str = &String::from("hello");
-    //    |                    ^^^^^^^^^^^^^^^^^^^^^ creates temporary
+    //    |     let s: &str = String::from("hello").as_str();
+    //    |                   ^^^^^^^^^^^^^^^^^^^^^ creates temporary
     //    |     println!("{}", s);
     //    |                    - borrow used here
 
