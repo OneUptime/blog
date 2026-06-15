@@ -92,7 +92,7 @@ CREATE EXTENSION pgcrypto;
 -- Generate secure random bytes
 SELECT encode(gen_random_bytes(32), 'hex') AS api_key;
 
--- Generate UUID v4
+-- Generate UUID v4 (built into modern PostgreSQL)
 SELECT gen_random_uuid();
 
 -- Hash passwords with bcrypt
@@ -108,24 +108,20 @@ WHERE email = 'user@example.com'
 -- Symmetric encryption
 -- Encrypt
 SELECT encode(
-    encrypt('sensitive data', 'secret_key', 'aes'),
+    pgp_sym_encrypt('sensitive data', 'secret_key'),
     'base64'
 ) AS encrypted;
 
 -- Decrypt
-SELECT convert_from(
-    decrypt(
-        decode('encrypted_base64_string', 'base64'),
-        'secret_key',
-        'aes'
-    ),
-    'UTF8'
+SELECT pgp_sym_decrypt(
+    decode('encrypted_base64_string', 'base64'),
+    'secret_key'
 ) AS decrypted;
 ```
 
 ## uuid-ossp: UUID Generation
 
-Standard UUID generation (though `pgcrypto` has `gen_random_uuid()` for v4).
+Standard UUID generation (though modern PostgreSQL has `gen_random_uuid()` for v4).
 
 ```sql
 CREATE EXTENSION "uuid-ossp";
@@ -160,19 +156,19 @@ CREATE TABLE stores (
 -- Insert location data
 INSERT INTO stores (name, location)
 VALUES
-    ('Downtown Store', ST_MakePoint(-122.4194, 37.7749)),
-    ('Airport Store', ST_MakePoint(-122.3750, 37.6213));
+    ('Downtown Store', ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography),
+    ('Airport Store', ST_SetSRID(ST_MakePoint(-122.3750, 37.6213), 4326)::geography);
 
 -- Find stores within 10km of a point
 SELECT name,
        ST_Distance(
            location,
-           ST_MakePoint(-122.4000, 37.7800)::geography
+           ST_SetSRID(ST_MakePoint(-122.4000, 37.7800), 4326)::geography
        ) / 1000 AS distance_km
 FROM stores
 WHERE ST_DWithin(
     location,
-    ST_MakePoint(-122.4000, 37.7800)::geography,
+    ST_SetSRID(ST_MakePoint(-122.4000, 37.7800), 4326)::geography,
     10000  -- 10km in meters
 )
 ORDER BY distance_km;
@@ -194,7 +190,7 @@ CREATE INDEX idx_products_name_trgm ON products USING gin (name gin_trgm_ops);
 -- Find similar product names (handles typos)
 SELECT name, similarity(name, 'Laptop') AS sim
 FROM products
-WHERE similarity(name, 'Laptop') > 0.3
+WHERE name % 'Laptop'
 ORDER BY sim DESC;
 
 -- Fuzzy search with LIKE acceleration
@@ -205,7 +201,7 @@ WHERE name ILIKE '%lapt%';
 -- Word similarity (matches word boundaries better)
 SELECT name, word_similarity('laptop', name) AS sim
 FROM products
-WHERE word_similarity('laptop', name) > 0.4;
+WHERE 'laptop' <% name;
 ```
 
 ## hstore: Key-Value Storage
@@ -355,6 +351,7 @@ ORDER BY hour DESC;
 SELECT add_retention_policy('metrics', INTERVAL '30 days');
 
 -- Compression policy
+ALTER TABLE metrics SET (timescaledb.compress);
 SELECT add_compression_policy('metrics', INTERVAL '7 days');
 ```
 
@@ -418,7 +415,7 @@ LIMIT 10;
 -- Semantic search with embedding from application
 SELECT id, content
 FROM documents
-ORDER BY embedding <=> '[0.1, 0.2, ...]'::vector
+ORDER BY embedding <=> $1::vector
 LIMIT 5;
 ```
 
@@ -431,7 +428,7 @@ LIMIT 5;
 | PostGIS | 9.6 | Geographic data |
 | pg_trgm | 8.4 | Fuzzy search |
 | TimescaleDB | 12 | Time-series |
-| pgvector | 11 | AI/ML embeddings |
+| pgvector | 13 | AI/ML embeddings |
 | pg_cron | 10 | Scheduled jobs |
 
 ## Checking Extension Impact
