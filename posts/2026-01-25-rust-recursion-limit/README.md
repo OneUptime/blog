@@ -8,11 +8,11 @@ Description: Learn how to fix 'recursion limit reached' errors in Rust. This gui
 
 ---
 
-The "recursion limit reached" error occurs when the Rust compiler exceeds its recursion depth while expanding macros, evaluating types, or processing trait implementations. The default limit is 128. This guide explains why this happens and how to resolve it.
+The "recursion limit reached" error occurs when the Rust compiler exceeds its recursion depth while expanding macros, performing auto-dereference, or processing trait implementations. The default limit is 128. This guide explains why this happens and how to resolve it.
 
 ## Understanding the Error
 
-Rust limits recursion to prevent infinite loops during compilation. The error appears when macro expansion, type resolution, or trait evaluation exceeds this limit.
+Rust limits recursion to prevent infinite loops during compilation. The error appears when macro expansion, auto-dereference, or trait evaluation exceeds this limit.
 
 ```text
 error: recursion limit reached while expanding the macro `recursive_macro`
@@ -29,17 +29,17 @@ error: recursion limit reached while expanding the macro `recursive_macro`
 Macros that call themselves can exceed the recursion limit.
 
 ```rust
-// Problem: This macro recurses too deeply
-macro_rules! count_to {
-    (0) => {};
-    ($n:expr) => {
-        println!("{}", $n);
-        count_to!($n - 1);  // Recursion!
+// Problem: This macro recurses once per input item
+macro_rules! count_items {
+    () => {};
+    ($head:expr $(, $tail:expr)*) => {
+        println!("{}", $head);
+        count_items!($($tail),*);  // Recursion!
     };
 }
 
 // This would fail:
-// count_to!(200);  // Error: recursion limit reached
+// count_items!(/* more than 128 items */);  // Error: recursion limit reached
 
 // Solution 1: Iterative approach instead of recursion
 macro_rules! count_to_iter {
@@ -92,24 +92,22 @@ fn main() {
 
 ## Common Cause 3: Type-Level Recursion
 
-Recursive type definitions can exceed limits during type checking.
+Deeply nested types can contribute to compile-time overflows or type-length issues.
 
 ```rust
 // Problem: Deeply nested generics
 // type Deep<T> = Option<Option<Option<Option<...T...>>>>;
 
-// Solution: Use type aliases to break up nesting
+// Solution: Use type aliases to make the nesting easier to manage
 type L1<T> = Option<T>;
 type L2<T> = L1<L1<T>>;
 type L3<T> = L2<L2<T>>;
 type L4<T> = L3<L3<T>>;
 
 fn main() {
-    let value: L4<i32> = Some(Some(Some(Some(Some(Some(Some(Some(
-        Some(Some(Some(Some(Some(Some(Some(Some(42))))))))
-    )))))));
+    let value: L4<i32> = Some(Some(Some(Some(Some(Some(Some(Some(42))))))));
 
-    println!("Created nested type");
+    println!("Created nested type: {:?}", value);
 }
 ```
 
@@ -118,7 +116,7 @@ fn main() {
 Complex trait bounds can cause recursive evaluation.
 
 ```rust
-// Problem: Traits that reference each other
+// Problem: Traits that reference each other can cause cycle errors
 // trait A: B {}
 // trait B: A {}  // Circular!
 
@@ -177,10 +175,10 @@ fn main() {
 ```rust
 // Recursive macro (can hit limit)
 macro_rules! repeat_recursive {
-    (0, $e:expr) => {};
-    ($n:expr, $e:expr) => {
+    ($e:expr;) => {};
+    ($e:expr; $_marker:tt $($rest:tt)*) => {
         $e;
-        repeat_recursive!($n - 1, $e);
+        repeat_recursive!($e; $($rest)*);
     };
 }
 
@@ -201,7 +199,7 @@ fn main() {
 ### Solution 2: Tail Recursion Pattern
 
 ```rust
-// Accumulator pattern reduces stack depth
+// Accumulator pattern keeps the generated expression manageable
 macro_rules! sum_list {
     // Base case
     (@acc $acc:expr) => { $acc };
@@ -321,6 +319,8 @@ cargo expand module_name
 
 ### Trace Macro Expansion
 
+On nightly Rust, you can use `trace_macros!`:
+
 ```rust
 #![feature(trace_macros)]
 
@@ -336,20 +336,20 @@ fn main() {
 ```rust
 // Start with a small case
 macro_rules! test_macro {
-    (1) => { println!("1"); };
-    ($n:expr) => {
-        println!("{}", $n);
-        test_macro!($n - 1);
+    () => {};
+    ($_marker:tt $($rest:tt)*) => {
+        println!("step");
+        test_macro!($($rest)*);
     };
 }
 
 fn main() {
     // Test with small numbers first
-    test_macro!(5);
+    test_macro!(_ _ _ _ _);
 
     // Gradually increase to find the limit
-    // test_macro!(100);  // Still works?
-    // test_macro!(200);  // Hits limit?
+    // test_macro!(_ _ _ /* more markers */);  // Still works?
+    // test_macro!(_ _ _ /* hundreds of markers */);  // Hits limit?
 }
 ```
 
@@ -360,8 +360,8 @@ fn main() {
 | Cause | Solution |
 |-------|----------|
 | Recursive macros | Use iteration or accumulator pattern |
-| Deep type nesting | Break into type aliases |
-| Circular traits | Redesign trait hierarchy |
+| Deep type nesting | Simplify nesting or use aliases for readability |
+| Problematic trait bounds | Redesign trait hierarchy |
 | Complex expansion | Use procedural macros |
 
 Best practices:
