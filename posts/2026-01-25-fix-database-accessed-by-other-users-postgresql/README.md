@@ -8,7 +8,7 @@ Description: Learn how to fix 'database is being accessed by other users' errors
 
 ---
 
-The error "database is being accessed by other users" occurs when you try to perform operations that require exclusive access to a database, such as DROP DATABASE, ALTER DATABASE, or certain maintenance operations. PostgreSQL refuses to proceed because other sessions are connected to the database. This guide shows you how to safely resolve this situation.
+The error "database is being accessed by other users" occurs when you try to perform operations that require exclusive access to a database, such as DROP DATABASE, renaming a database with ALTER DATABASE, or certain maintenance operations. PostgreSQL refuses to proceed because other sessions are connected to the database. This guide shows you how to safely resolve this situation.
 
 ---
 
@@ -64,6 +64,8 @@ ORDER BY connections DESC;
 ### Solution 1: Terminate Connections and Drop Database
 
 ```sql
+-- Run these commands while connected to a different database, such as postgres
+
 -- Step 1: Prevent new connections to the database
 ALTER DATABASE mydb WITH ALLOW_CONNECTIONS = false;
 
@@ -83,12 +85,16 @@ DROP DATABASE mydb;
 -- PostgreSQL 13+ has DROP DATABASE ... FORCE option
 DROP DATABASE mydb WITH (FORCE);
 
--- This automatically terminates all connections and drops the database
+-- This attempts to terminate existing connections and then drops the database.
+-- It will still fail if connections remain, or if prepared transactions,
+-- active logical replication slots, or subscriptions exist in the target database.
 ```
 
 ### Solution 3: Graceful Termination
 
 ```sql
+-- Run these commands while connected to a different database, such as postgres
+
 -- First, send cancel request (graceful)
 SELECT pg_cancel_backend(pid)
 FROM pg_stat_activity
@@ -125,19 +131,22 @@ fi
 
 echo "Terminating connections to $DB_NAME..."
 
-psql -h "$DB_HOST" -U "$DB_USER" -d postgres <<EOF
+psql -h "$DB_HOST" -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 -v db_name="$DB_NAME" <<'SQL'
 -- Prevent new connections
-ALTER DATABASE $DB_NAME WITH ALLOW_CONNECTIONS = false;
+ALTER DATABASE :"db_name" WITH ALLOW_CONNECTIONS = false;
 
 -- Terminate existing connections
 SELECT pg_terminate_backend(pid)
 FROM pg_stat_activity
-WHERE datname = '$DB_NAME';
-EOF
+WHERE datname = :'db_name'
+AND pid != pg_backend_pid();
+SQL
 
 echo "Dropping database $DB_NAME..."
 
-psql -h "$DB_HOST" -U "$DB_USER" -d postgres -c "DROP DATABASE $DB_NAME;"
+psql -h "$DB_HOST" -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 -v db_name="$DB_NAME" <<'SQL'
+DROP DATABASE :"db_name";
+SQL
 
 if [ $? -eq 0 ]; then
     echo "Database $DB_NAME dropped successfully."
@@ -154,6 +163,8 @@ fi
 ### Renaming a Database
 
 ```sql
+-- Run these commands while connected to a different database, such as postgres
+
 -- You cannot rename a database with active connections
 ALTER DATABASE mydb RENAME TO mydb_new;
 -- ERROR: database "mydb" is being accessed by other users
@@ -335,7 +346,7 @@ RETURNS void AS $$
 DECLARE
     r RECORD;
 BEGIN
-    -- Send notice to all connections
+    -- Log a notice in this session for each connection
     FOR r IN
         SELECT pid FROM pg_stat_activity
         WHERE datname = target_db AND pid != pg_backend_pid()
@@ -366,7 +377,7 @@ SELECT notify_and_terminate('mydb', 30);
 | Function | Effect | Use Case |
 |----------|--------|----------|
 | `pg_cancel_backend(pid)` | Cancels current query | Graceful, allows cleanup |
-| `pg_terminate_backend(pid)` | Kills connection | Forceful, immediate |
+| `pg_terminate_backend(pid)` | Terminates the session | Forceful, disconnects the client |
 
 ```sql
 -- Graceful: Cancel query but keep connection open
@@ -391,46 +402,29 @@ WHERE datname = 'mydb';
 
 ## Automation Script
 
-```sql
--- Create a function to safely drop a database
-CREATE OR REPLACE FUNCTION safe_drop_database(db_name TEXT)
-RETURNS void AS $$
-DECLARE
-    connection_count INT;
-BEGIN
-    -- Check if database exists
-    IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = db_name) THEN
-        RAISE EXCEPTION 'Database % does not exist', db_name;
-    END IF;
+```bash
+# Run from a different database, like postgres
+psql -d postgres -v ON_ERROR_STOP=1 -v db_name="mydb" <<'SQL'
+-- Prevent new connections
+ALTER DATABASE :"db_name" WITH ALLOW_CONNECTIONS = false;
 
-    -- Prevent new connections
-    EXECUTE format('ALTER DATABASE %I WITH ALLOW_CONNECTIONS = false', db_name);
+-- Count existing connections
+SELECT count(*) AS connection_count
+FROM pg_stat_activity
+WHERE datname = :'db_name';
 
-    -- Count and terminate existing connections
-    SELECT count(*) INTO connection_count
-    FROM pg_stat_activity
-    WHERE datname = db_name;
+-- Terminate existing connections
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = :'db_name'
+AND pid != pg_backend_pid();
 
-    IF connection_count > 0 THEN
-        RAISE NOTICE 'Terminating % connections to %', connection_count, db_name;
+-- Wait for connections to close
+SELECT pg_sleep(2);
 
-        PERFORM pg_terminate_backend(pid)
-        FROM pg_stat_activity
-        WHERE datname = db_name;
-
-        -- Wait for connections to close
-        PERFORM pg_sleep(2);
-    END IF;
-
-    -- Drop the database
-    EXECUTE format('DROP DATABASE %I', db_name);
-
-    RAISE NOTICE 'Database % dropped successfully', db_name;
-END;
-$$ LANGUAGE plpgsql;
-
--- Usage (must be run from a different database, like postgres)
-SELECT safe_drop_database('mydb');
+-- Drop the database
+DROP DATABASE :"db_name";
+SQL
 ```
 
 ---
