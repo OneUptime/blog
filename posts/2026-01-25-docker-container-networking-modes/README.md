@@ -60,8 +60,6 @@ docker exec api ping db
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   api:
     image: myapp/api:latest
@@ -141,7 +139,7 @@ Host mode removes network isolation. The container shares the host's network sta
 docker run -d --network host nginx:alpine
 
 # nginx is directly available on host's port 80
-# No port publishing needed or allowed
+# No port publishing needed; published ports are ignored with a warning
 curl http://localhost:80
 ```
 
@@ -174,7 +172,7 @@ services:
 - No port mapping (container uses host ports directly)
 - Port conflicts if multiple containers need same port
 - Reduced security isolation
-- Not available on Docker Desktop (macOS/Windows)
+- Requires Docker Engine on Linux or Docker Desktop 4.34+ with host networking enabled
 
 ## None Mode
 
@@ -235,6 +233,7 @@ services:
     image: myapp/api:latest
     ports:
       - "3000:3000"
+      - "8080:8080"  # Publishes the sidecar proxy port
 
   # Sidecar sharing api's network namespace
   api-proxy:
@@ -286,8 +285,6 @@ docker service create \
 
 ```yaml
 # stack.yml for Docker Swarm
-version: '3.8'
-
 services:
   api:
     image: myapp/api:latest
@@ -358,11 +355,9 @@ docker run --rm -it --network myapp-network nicolaka/netshoot
 
 ```yaml
 # docker-compose.yml - Multiple network modes example
-version: '3.8'
-
 services:
   # Public-facing load balancer: host mode for performance
-  # (Only on Linux, use bridge with ports on macOS/Windows)
+  # (On Docker Desktop 4.34+, enable host networking first)
   lb:
     image: nginx:alpine
     network_mode: host  # Direct host network access
