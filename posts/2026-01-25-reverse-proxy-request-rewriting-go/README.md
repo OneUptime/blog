@@ -46,7 +46,7 @@ This works, but it just blindly forwards requests. The interesting part is what 
 
 ## Rewriting Request Paths
 
-One common use case is path rewriting. Maybe your proxy receives requests at `/api/v2/users` but needs to forward them to `/users` on the backend. The `Director` function is where this magic happens.
+One common use case is path rewriting. Maybe your proxy receives requests at `/api/v2/users` but needs to forward them to `/users` on the backend. The `Rewrite` function is where this magic happens.
 
 ```go
 package main
@@ -63,23 +63,21 @@ func main() {
     backend, _ := url.Parse("http://localhost:8080")
 
     proxy := &httputil.ReverseProxy{
-        Director: func(req *http.Request) {
+        Rewrite: func(req *httputil.ProxyRequest) {
             // Set the target host and scheme
-            req.URL.Scheme = backend.Scheme
-            req.URL.Host = backend.Host
-            req.Host = backend.Host
+            req.SetURL(backend)
 
             // Strip the /api/v2 prefix from the path
             // "/api/v2/users" becomes "/users"
-            if strings.HasPrefix(req.URL.Path, "/api/v2") {
-                req.URL.Path = strings.TrimPrefix(req.URL.Path, "/api/v2")
-                if req.URL.Path == "" {
-                    req.URL.Path = "/"
+            if strings.HasPrefix(req.Out.URL.Path, "/api/v2") {
+                req.Out.URL.Path = strings.TrimPrefix(req.Out.URL.Path, "/api/v2")
+                if req.Out.URL.Path == "" {
+                    req.Out.URL.Path = "/"
                 }
             }
 
             log.Printf("Forwarding: %s -> %s%s",
-                req.RemoteAddr, backend.Host, req.URL.Path)
+                req.In.RemoteAddr, backend.Host, req.Out.URL.Path)
         },
     }
 
@@ -87,7 +85,7 @@ func main() {
 }
 ```
 
-The `Director` function receives the incoming request and modifies it in place before forwarding. You have full control over the URL, headers, and other request properties.
+The `Rewrite` function receives the incoming request and the outbound request before forwarding. You have full control over the URL, headers, and other request properties on `req.Out`.
 
 ## Adding and Modifying Headers
 
@@ -96,28 +94,25 @@ Headers are where reverse proxies really shine. You can inject authentication to
 ```go
 func createProxy(backend *url.URL, apiKey string) *httputil.ReverseProxy {
     return &httputil.ReverseProxy{
-        Director: func(req *http.Request) {
-            req.URL.Scheme = backend.Scheme
-            req.URL.Host = backend.Host
-            req.Host = backend.Host
+        Rewrite: func(req *httputil.ProxyRequest) {
+            req.SetURL(backend)
 
             // Add authentication header for the backend
-            req.Header.Set("Authorization", "Bearer "+apiKey)
+            req.Out.Header.Set("Authorization", "Bearer "+apiKey)
 
             // Add X-Forwarded headers so the backend knows the original client
-            req.Header.Set("X-Forwarded-Host", req.Host)
-            req.Header.Set("X-Forwarded-Proto", "https")
+            req.SetXForwarded()
 
             // Generate or propagate a request ID for tracing
-            requestID := req.Header.Get("X-Request-ID")
+            requestID := req.In.Header.Get("X-Request-ID")
             if requestID == "" {
                 requestID = generateRequestID()
             }
-            req.Header.Set("X-Request-ID", requestID)
+            req.Out.Header.Set("X-Request-ID", requestID)
 
             // Remove headers that should not reach the backend
-            req.Header.Del("X-Internal-Secret")
-            req.Header.Del("Cookie") // Strip cookies if backend handles auth differently
+            req.Out.Header.Del("X-Internal-Secret")
+            req.Out.Header.Del("Cookie") // Strip cookies if backend handles auth differently
         },
     }
 }
@@ -145,32 +140,33 @@ import (
 
 func createBodyRewritingProxy(backend *url.URL) *httputil.ReverseProxy {
     return &httputil.ReverseProxy{
-        Director: func(req *http.Request) {
-            req.URL.Scheme = backend.Scheme
-            req.URL.Host = backend.Host
-            req.Host = backend.Host
+        Rewrite: func(req *httputil.ProxyRequest) {
+            req.SetURL(backend)
 
             // Only modify JSON POST/PUT requests
-            if req.Method != http.MethodPost && req.Method != http.MethodPut {
+            if req.Out.Method != http.MethodPost && req.Out.Method != http.MethodPut {
                 return
             }
-            if req.Header.Get("Content-Type") != "application/json" {
+            if req.Out.Header.Get("Content-Type") != "application/json" {
+                return
+            }
+            if req.Out.Body == nil {
                 return
             }
 
             // Read the original body
-            body, err := io.ReadAll(req.Body)
+            body, err := io.ReadAll(req.Out.Body)
             if err != nil {
                 log.Printf("Error reading body: %v", err)
                 return
             }
-            req.Body.Close()
+            req.Out.Body.Close()
 
             // Parse as JSON
             var data map[string]interface{}
             if err := json.Unmarshal(body, &data); err != nil {
                 // Not valid JSON, forward as-is
-                req.Body = io.NopCloser(bytes.NewReader(body))
+                req.Out.Body = io.NopCloser(bytes.NewReader(body))
                 return
             }
 
@@ -180,9 +176,8 @@ func createBodyRewritingProxy(backend *url.URL) *httputil.ReverseProxy {
 
             // Re-encode the modified body
             modified, _ := json.Marshal(data)
-            req.Body = io.NopCloser(bytes.NewReader(modified))
-            req.ContentLength = int64(len(modified))
-            req.Header.Set("Content-Length", string(rune(len(modified))))
+            req.Out.Body = io.NopCloser(bytes.NewReader(modified))
+            req.Out.ContentLength = int64(len(modified))
         },
     }
 }
@@ -196,10 +191,8 @@ The `ReverseProxy` also lets you intercept and modify responses from the backend
 
 ```go
 proxy := &httputil.ReverseProxy{
-    Director: func(req *http.Request) {
-        req.URL.Scheme = backend.Scheme
-        req.URL.Host = backend.Host
-        req.Host = backend.Host
+    Rewrite: func(req *httputil.ProxyRequest) {
+        req.SetURL(backend)
     },
     ModifyResponse: func(resp *http.Response) error {
         // Add security headers to all responses
@@ -247,14 +240,12 @@ func NewRouter() *Router {
 
 func (r *Router) AddRoute(prefix string, backend *url.URL) {
     proxy := &httputil.ReverseProxy{
-        Director: func(req *http.Request) {
-            req.URL.Scheme = backend.Scheme
-            req.URL.Host = backend.Host
-            req.Host = backend.Host
+        Rewrite: func(req *httputil.ProxyRequest) {
+            req.SetURL(backend)
             // Strip the routing prefix
-            req.URL.Path = strings.TrimPrefix(req.URL.Path, prefix)
-            if req.URL.Path == "" {
-                req.URL.Path = "/"
+            req.Out.URL.Path = strings.TrimPrefix(req.Out.URL.Path, prefix)
+            if req.Out.URL.Path == "" {
+                req.Out.URL.Path = "/"
             }
         },
     }
@@ -263,11 +254,17 @@ func (r *Router) AddRoute(prefix string, backend *url.URL) {
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
     // Find the matching route by longest prefix
-    for prefix, proxy := range r.routes {
-        if strings.HasPrefix(req.URL.Path, prefix) {
-            proxy.ServeHTTP(w, req)
-            return
+    var match string
+    var proxy *httputil.ReverseProxy
+    for prefix, candidate := range r.routes {
+        if strings.HasPrefix(req.URL.Path, prefix) && len(prefix) > len(match) {
+            match = prefix
+            proxy = candidate
         }
+    }
+    if proxy != nil {
+        proxy.ServeHTTP(w, req)
+        return
     }
     http.NotFound(w, req)
 }
@@ -304,11 +301,11 @@ proxy.Transport = &http.Transport{
 }
 ```
 
-**Buffering**: By default, responses are buffered. For streaming responses, set `FlushInterval` on the proxy.
+**Flushing**: `ReverseProxy` copies response bodies to the client and uses `FlushInterval` to control periodic flushing. Streaming responses and responses with an unknown content length are flushed immediately.
 
 **Hop-by-hop headers**: The proxy automatically removes hop-by-hop headers like `Connection` and `Transfer-Encoding`. Do not rely on these being forwarded.
 
-**WebSocket support**: The basic reverse proxy does not handle WebSocket upgrades. You will need additional handling for WebSocket connections.
+**WebSocket support**: `ReverseProxy` handles HTTP protocol upgrades such as WebSockets. If you rewrite headers, make sure you do not remove the upgrade headers the proxy needs.
 
 ---
 
