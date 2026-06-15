@@ -184,12 +184,12 @@ impl Processor for Reverse {
     }
 }
 
-// Static dispatch - zero runtime cost, larger binary
+// Static dispatch - zero runtime cost, may increase binary size
 fn process_static<P: Processor>(processor: &P, data: &str) -> String {
     processor.process(data)
 }
 
-// Dynamic dispatch - runtime cost, smaller binary
+// Dynamic dispatch - runtime cost, can reduce duplicated generated code
 fn process_dynamic(processor: &dyn Processor, data: &str) -> String {
     processor.process(data)
 }
@@ -217,12 +217,14 @@ fn main() {
 }
 ```
 
-## Trait Objects and Object Safety
+## Trait Objects and Dyn Compatibility
 
-Not all traits can be used as trait objects. A trait is object-safe if:
+Not all traits can be used as trait objects. A trait is dyn compatible, formerly called object-safe, only if it follows rules such as:
 
-- It does not have methods returning Self
-- It does not have generic methods
+- Its dispatchable methods do not return `Self`
+- Its dispatchable methods do not have generic type parameters
+- It does not require `Self: Sized`
+- It does not have associated constants
 
 ```rust
 // Object-safe trait
@@ -251,7 +253,7 @@ trait CloneBox {
     fn clone_box(&self) -> Box<dyn CloneBox>;
 }
 
-impl<T: Clone + CloneBox + 'static> CloneBox for T {
+impl<T: Clone + 'static> CloneBox for T {
     fn clone_box(&self) -> Box<dyn CloneBox> {
         Box::new(self.clone())
     }
