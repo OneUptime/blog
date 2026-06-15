@@ -12,20 +12,21 @@ GitLab CI runners handle the actual execution of your pipeline jobs. When your t
 
 ## Understanding GitLab Runner Architecture
 
-GitLab Runner operates in several executor modes. For auto-scaling, you'll use either the Docker Machine executor or the Kubernetes executor. Both can spin up new compute instances on demand.
+GitLab Runner operates in several executor modes. For auto-scaling, you'll use the Docker Autoscaler executor, the legacy Docker Machine executor, or the Kubernetes executor. These approaches can spin up new compute resources on demand.
 
-The Docker Machine executor provisions virtual machines in cloud providers like AWS, GCP, or Azure. Each VM runs Docker containers for job execution.
+The Docker Machine executor provisions virtual machines in cloud providers like AWS, GCP, or Azure. Each VM runs Docker containers for job execution. Docker Machine is deprecated in GitLab Runner and is scheduled for removal in GitLab 20.0, so use Docker Autoscaler for new cloud VM autoscaling deployments.
 
 The Kubernetes executor creates pods in a Kubernetes cluster. It scales by adding pods rather than VMs, which is faster and more granular.
 
 ## Setting Up Docker Machine Auto-scaling
 
-Docker Machine remains the traditional approach for auto-scaling runners. Let's configure a runner that scales on AWS.
+Docker Machine remains a common legacy approach for auto-scaling runners. Let's configure a runner that scales on AWS.
 
 First, install GitLab Runner on a small instance that will serve as the manager.
 
 ```bash
-# Install GitLab Runner on Ubuntu
+# Install GitLab Runner on Ubuntu.
+# Docker Machine autoscaling also requires Docker Engine and the GitLab fork of Docker Machine.
 
 curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh" | sudo bash
 sudo apt install gitlab-runner
@@ -38,11 +39,9 @@ Register the runner with your GitLab instance.
 sudo gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.example.com/" \
-  --registration-token "YOUR_TOKEN" \
+  --token "YOUR_RUNNER_AUTHENTICATION_TOKEN" \
   --executor "docker+machine" \
-  --docker-image "alpine:latest" \
-  --description "auto-scale-runner" \
-  --tag-list "docker,aws,autoscale"
+  --docker-image "alpine:latest"
 ```
 
 Now configure the auto-scaling behavior in `/etc/gitlab-runner/config.toml`.
@@ -57,6 +56,7 @@ check_interval = 0
   url = "https://gitlab.example.com/"
   token = "RUNNER_TOKEN"
   executor = "docker+machine"
+  limit = 50  # Maximum concurrent jobs for this runner
 
   [runners.docker]
     image = "alpine:latest"
@@ -75,11 +75,10 @@ check_interval = 0
   [runners.machine]
     # Idle count defines minimum warm instances
     IdleCount = 2
-    # Scale up to this many instances
+    # Remove a machine after this many jobs
     MaxBuilds = 100
     # Idle time before terminating instances (seconds)
     IdleTime = 1800
-    # Maximum number of machines (hard limit)
     MachineDriver = "amazonec2"
     MachineName = "gitlab-runner-%s"
 
@@ -117,7 +116,10 @@ For teams already using Kubernetes, the Kubernetes executor offers better integr
 ```yaml
 # values.yaml for GitLab Runner Helm chart
 gitlabUrl: https://gitlab.example.com/
-runnerRegistrationToken: "YOUR_TOKEN"
+runnerToken: "YOUR_RUNNER_AUTHENTICATION_TOKEN"
+
+rbac:
+  create: true
 
 # Number of runner instances (the manager pods)
 replicas: 2
@@ -142,6 +144,7 @@ runners:
       [runners.kubernetes]
         namespace = "gitlab-runner"
         image = "ubuntu:22.04"
+        privileged = true
 
         # Resource limits for job pods
         cpu_limit = "2"
@@ -161,10 +164,18 @@ runners:
           "workload" = "ci"
 
         # Tolerations for dedicated CI nodes
-        [[runners.kubernetes.node_tolerations]]
-          key = "ci"
-          operator = "Exists"
-          effect = "NoSchedule"
+        [runners.kubernetes.node_tolerations]
+          "ci" = "NoSchedule"
+
+metrics:
+  enabled: true
+  portName: metrics
+  port: 9252
+  serviceMonitor:
+    enabled: true
+
+service:
+  enabled: true
 ```
 
 Deploy with Helm:
@@ -190,7 +201,13 @@ metadata:
   name: cluster-autoscaler
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
   template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
     spec:
       containers:
         - name: cluster-autoscaler
@@ -218,7 +235,7 @@ graph TD
     C -->|Yes| D[Execute Job]
     C -->|No| E[Request New Instance]
     E --> F[Provision VM/Pod]
-    F --> G[Register with GitLab]
+    F --> G[Prepare Job Environment]
     G --> D
     D --> H[Job Complete]
     H --> I{More Jobs?}
@@ -289,25 +306,25 @@ spec:
 
 Key metrics to watch include:
 
-- `gitlab_runner_jobs`: Current running jobs
+- `gitlab_runner_jobs_running_total`: Current running jobs
 - `gitlab_runner_autoscaling_machine_states`: Machine states (idle, creating, running)
-- `gitlab_runner_job_duration_seconds`: Job execution time
+- `gitlab_runner_autoscaling_machine_creation_duration_seconds`: Machine creation time
 
-Set alerts for queue buildup.
+Set alerts for runner request saturation.
 
 ```yaml
-# Prometheus alert for job queue backup
+# Prometheus alert for runner request saturation
 groups:
   - name: gitlab-runner
     rules:
-      - alert: GitLabRunnerJobsQueued
-        expr: gitlab_runner_jobs_queued > 10
+      - alert: GitLabRunnerRequestConcurrencyExceeded
+        expr: increase(gitlab_runner_request_concurrency_exceeded_total[5m]) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: Jobs are queuing in GitLab CI
-          description: "{{ $value }} jobs waiting in queue for over 5 minutes"
+          summary: GitLab Runner request concurrency is saturated
+          description: "Runner request concurrency was exceeded {{ $value }} times in the last 5 minutes"
 ```
 
 ## Troubleshooting Common Issues
@@ -336,8 +353,20 @@ metadata:
   namespace: gitlab-runner
 rules:
   - apiGroups: [""]
-    resources: ["pods", "pods/exec", "secrets", "configmaps"]
-    verbs: ["get", "list", "watch", "create", "delete", "update"]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/attach", "pods/exec"]
+    verbs: ["create", "delete", "get", "patch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "delete", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps", "serviceaccounts"]
+    verbs: ["get", "list", "watch"]
 ```
 
 If jobs fail with "no available runner," check your tags match and increase `IdleCount` or `concurrent` settings.
