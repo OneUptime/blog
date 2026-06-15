@@ -16,7 +16,7 @@ A RabbitMQ cluster provides several benefits:
 
 - **High availability**: If one node fails, others continue serving requests
 - **Increased throughput**: Multiple nodes can handle more connections and messages
-- **Geographic distribution**: Spread nodes across availability zones
+- **Zone-level resilience**: Spread nodes across low-latency availability zones in the same region
 - **Rolling upgrades**: Update nodes one at a time without downtime
 
 ```mermaid
@@ -45,7 +45,7 @@ flowchart TB
 Before setting up your cluster, ensure you have:
 
 - Three or more servers running the same RabbitMQ version
-- Network connectivity between all nodes on ports 4369 and 25672
+- Network connectivity between all nodes on ports 4369 and 25672, plus any protocol ports you use such as 5672 for AMQP
 - Identical Erlang cookies on all nodes
 - DNS resolution or `/etc/hosts` entries for each node
 
@@ -54,16 +54,25 @@ Before setting up your cluster, ensure you have:
 Install RabbitMQ on each server. Here we use Ubuntu as an example:
 
 ```bash
-# Add RabbitMQ signing key
+# Add prerequisites and RabbitMQ signing key
+sudo apt-get install curl gnupg apt-transport-https -y
 
-curl -1sLf 'https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA' | sudo gpg --dearmor -o /usr/share/keyrings/rabbitmq-archive-keyring.gpg
+curl -1sLf 'https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA' | sudo gpg --dearmor | sudo tee /usr/share/keyrings/com.rabbitmq.team.gpg > /dev/null
 
-# Add repository
-echo "deb [signed-by=/usr/share/keyrings/rabbitmq-archive-keyring.gpg] https://ppa1.novemberain.com/rabbitmq/rabbitmq-erlang/deb/ubuntu jammy main" | sudo tee /etc/apt/sources.list.d/rabbitmq.list
+# Add Erlang and RabbitMQ repositories for Ubuntu 22.04 (Jammy)
+sudo tee /etc/apt/sources.list.d/rabbitmq.list > /dev/null <<EOF
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-erlang/ubuntu/jammy jammy main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-erlang/ubuntu/jammy jammy main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-server/ubuntu/jammy jammy main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-server/ubuntu/jammy jammy main
+EOF
 
 # Install RabbitMQ
 sudo apt-get update
-sudo apt-get install -y rabbitmq-server
+sudo apt-get install -y erlang-base erlang-asn1 erlang-crypto erlang-eldap erlang-ftp erlang-inets \
+    erlang-mnesia erlang-os-mon erlang-parsetools erlang-public-key erlang-runtime-tools \
+    erlang-snmp erlang-ssl erlang-syntax-tools erlang-tftp erlang-tools erlang-xmerl \
+    rabbitmq-server
 
 # Enable and start RabbitMQ
 sudo systemctl enable rabbitmq-server
@@ -93,9 +102,9 @@ Each node needs to resolve the hostnames of other nodes. Update `/etc/hosts` on 
 
 ```bash
 # /etc/hosts on all nodes
-192.168.1.10 node1 rabbit@node1
-192.168.1.11 node2 rabbit@node2
-192.168.1.12 node3 rabbit@node3
+192.168.1.10 node1
+192.168.1.11 node2
+192.168.1.12 node3
 ```
 
 Set the hostname for RabbitMQ in `/etc/rabbitmq/rabbitmq-env.conf`:
@@ -156,17 +165,24 @@ rabbit@node2
 rabbit@node3
 ```
 
-## Step 5: Configure Queue Mirroring
+## Step 5: Configure Replicated Queues
 
-By default, queues exist only on the node where they were declared. For high availability, configure queue mirroring with policies:
+By default, classic queues exist only on the node where they were declared. For high availability on current RabbitMQ releases, use quorum queues instead of classic queue mirroring:
+
+```ini
+# /etc/rabbitmq/rabbitmq.conf
+
+# Make newly declared queues quorum queues by default
+default_queue_type = quorum
+```
+
+Alternatively, set the default queue type on a virtual host:
 
 ```bash
-# Mirror all queues to all nodes
-sudo rabbitmqctl set_policy ha-all ".*" '{"ha-mode":"all"}' --apply-to queues
-
-# Or mirror to exactly 2 nodes for better performance
-sudo rabbitmqctl set_policy ha-two ".*" '{"ha-mode":"exactly","ha-params":2,"ha-sync-mode":"automatic"}' --apply-to queues
+sudo rabbitmqctl update_vhost_metadata / --default-queue-type quorum
 ```
+
+Quorum queues replicate across three members by default, which is the practical minimum for high availability.
 
 ## Step 6: Set Up a Load Balancer
 
@@ -212,22 +228,16 @@ backend rabbitmq_back
 
 ## Handling Network Partitions
 
-Network partitions happen when nodes lose connectivity but remain running. RabbitMQ supports three partition handling strategies:
+Network partitions happen when nodes lose connectivity but remain running. In current RabbitMQ 4.x releases, the old `cluster_partition_handling` setting is deprecated and has no effect:
 
-```bash
+```ini
 # /etc/rabbitmq/rabbitmq.conf
 
-# Pause minority nodes (recommended for most cases)
-cluster_partition_handling = pause_minority
-
-# Auto-heal by restarting the losing partition
-# cluster_partition_handling = autoheal
-
-# Ignore partitions (not recommended)
-# cluster_partition_handling = ignore
+# Do not set cluster_partition_handling on RabbitMQ 4.x.
+# Use quorum queues or streams and keep an odd number of replicas.
 ```
 
-The `pause_minority` strategy pauses nodes that cannot reach a majority of the cluster, preventing split-brain scenarios.
+Quorum queues and streams use a majority of replicas for availability and data safety. A three-member quorum queue can tolerate one node failure or a partition where a majority of replicas remains online.
 
 ## Monitoring Cluster Health
 
@@ -270,7 +280,7 @@ Three or five nodes work best. This ensures a clear majority during network part
 
 ### Distribute Across Availability Zones
 
-Place nodes in different availability zones or data centers to survive zone failures:
+Place nodes in different availability zones within the same low-latency region to survive zone failures:
 
 ```text
 Node 1: us-east-1a
@@ -289,7 +299,7 @@ vm_memory_high_watermark.relative = 0.6
 # Trigger disk alarm with 2GB free
 disk_free_limit.absolute = 2GB
 
-# Set per-connection memory limit
+# Limit channels per connection
 channel_max = 128
 ```
 
@@ -324,9 +334,9 @@ nc -zv node1 4369
 nc -zv node1 25672
 ```
 
-### Split Brain After Partition
+### Node Isolated After Partition
 
-If nodes end up in separate clusters after a partition heals:
+If a node must be re-added as a fresh cluster member after a partition or recovery event, reset it and join it again:
 
 ```bash
 # On the minority node
@@ -350,4 +360,4 @@ rabbitmqctl status | grep -A 20 "Memory"
 
 ## Conclusion
 
-A properly configured RabbitMQ cluster provides the reliability your messaging infrastructure needs. Start with three nodes, configure queue mirroring, handle network partitions gracefully, and monitor everything. Your future self will thank you when that inevitable hardware failure happens and your messages keep flowing.
+A properly configured RabbitMQ cluster provides the reliability your messaging infrastructure needs. Start with three nodes, use quorum queues for replicated data, handle network partitions gracefully, and monitor everything. Your future self will thank you when that inevitable hardware failure happens and your messages keep flowing.
