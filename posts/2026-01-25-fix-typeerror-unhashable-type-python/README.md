@@ -12,7 +12,7 @@ The error `TypeError: unhashable type: 'list'` (or `'dict'`, `'set'`) occurs whe
 
 ## What is Hashability?
 
-In Python, a hash is a fixed-size integer that uniquely identifies an object's value. Hashable objects can be used as dictionary keys and set members. For an object to be hashable, it must:
+In Python, a hash is an integer used to quickly compare and look up objects. Hashable objects can be used as dictionary keys and set members. For an object to be hashable, it must:
 
 1. Have a hash value that never changes during its lifetime
 2. Be comparable to other objects
@@ -128,6 +128,8 @@ def make_hashable(obj):
     """Recursively convert to hashable types."""
     if isinstance(obj, list):
         return tuple(make_hashable(item) for item in obj)
+    elif isinstance(obj, tuple):
+        return tuple(make_hashable(item) for item in obj)
     elif isinstance(obj, dict):
         return frozenset((k, make_hashable(v)) for k, v in obj.items())
     elif isinstance(obj, set):
@@ -211,7 +213,7 @@ print(len(unique_points))  # 2
 ```python
 from dataclasses import dataclass
 
-# Frozen dataclasses are hashable
+# Frozen dataclasses with hashable fields are hashable by default
 @dataclass(frozen=True)
 class Config:
     host: str
@@ -238,6 +240,8 @@ def hashable_args(args, kwargs):
     """Convert function arguments to hashable form."""
     def make_hashable(obj):
         if isinstance(obj, list):
+            return tuple(make_hashable(x) for x in obj)
+        if isinstance(obj, tuple):
             return tuple(make_hashable(x) for x in obj)
         if isinstance(obj, dict):
             return frozenset((k, make_hashable(v)) for k, v in obj.items())
@@ -287,10 +291,10 @@ result2 = process_data([1, 2, 3], {"multiplier": 2})  # Cached
 | Unhashable Type | Hashable Alternative |
 |-----------------|---------------------|
 | `list` | `tuple` |
-| `dict` | `frozenset(dict.items())` or JSON string |
+| `dict` | `frozenset(dict.items())` (if items are hashable) or JSON string |
 | `set` | `frozenset` |
 | Nested structures | Recursively convert |
 | Custom class | Implement `__hash__` and `__eq__` |
-| dataclass | Use `@dataclass(frozen=True)` |
+| dataclass | Use `@dataclass(frozen=True)` with hashable fields |
 
 The key insight is that Python needs hashable objects for dictionary keys and set members because it uses hashing for fast lookups. When you encounter this error, convert your mutable objects to their immutable equivalents.
