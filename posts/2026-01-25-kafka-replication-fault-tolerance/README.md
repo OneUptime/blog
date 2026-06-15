@@ -77,7 +77,7 @@ ISR is the set of replicas that are fully caught up with the leader. Only ISR me
 # Default is 30 seconds - adjust based on your latency tolerance
 replica.lag.time.max.ms=30000
 
-# Minimum replicas that must acknowledge a write
+# Minimum in-sync replicas required for acks=all writes
 # Set to 2 for strong durability with replication factor 3
 min.insync.replicas=2
 ```
@@ -94,11 +94,11 @@ props.put("value.serializer", "org.apache.kafka.common.serialization.StringSeria
 
 // acks=0: Fire and forget. No waiting. Risk of data loss.
 // acks=1: Wait for leader only. Fast but follower might not have data if leader dies.
-// acks=all: Wait for all ISR replicas. Slowest but safest.
+// acks=all: Wait for the full ISR to acknowledge. Slowest but safest.
 props.put("acks", "all");
 
 // Combined with min.insync.replicas=2, this ensures
-// at least 2 brokers have the data before returning success
+// at least 2 in-sync replicas are available before returning success
 KafkaProducer<String, String> producer = new KafkaProducer<>(props);
 
 // Send with callback to handle failures
@@ -205,20 +205,15 @@ kafka-consumer-groups.sh --describe \
 Key JMX metrics to monitor:
 
 ```yaml
-# Prometheus scrape config for Kafka metrics
-- job_name: 'kafka'
-  static_configs:
-    - targets: ['kafka1:9999', 'kafka2:9999', 'kafka3:9999']
-  metrics:
-    # Under-replicated partitions - should be 0
-    - kafka_server_replicamanager_underreplicatedpartitions
+# Under-replicated partitions - should be 0
+- kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions
 
-    # ISR shrink/expand rate - frequent changes indicate problems
-    - kafka_server_replicamanager_isrshrinkspersec
-    - kafka_server_replicamanager_isrexpandspersec
+# ISR shrink/expand rate - frequent changes indicate problems
+- kafka.server:type=ReplicaManager,name=IsrShrinksPerSec
+- kafka.server:type=ReplicaManager,name=IsrExpandsPerSec
 
-    # Replication lag in messages
-    - kafka_server_replicafetchermanager_maxlag
+# Replication lag in messages
+- kafka.server:type=ReplicaFetcherManager,name=MaxLag,clientId=Replica
 ```
 
 ## Handling Broker Failures
@@ -295,10 +290,11 @@ kafka-leader-election.sh --election-type preferred \
   --bootstrap-server localhost:9092 \
   --all-topic-partitions
 
-# Or for specific topic
+# Or for a specific topic partition
 kafka-leader-election.sh --election-type preferred \
   --bootstrap-server localhost:9092 \
-  --topic orders
+  --topic orders \
+  --partition 0
 ```
 
 Enable automatic preferred leader election:
