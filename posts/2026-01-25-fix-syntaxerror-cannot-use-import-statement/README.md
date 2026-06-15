@@ -14,7 +14,7 @@ You write `import express from 'express'` in your Node.js file, hit run, and get
 SyntaxError: Cannot use import statement outside a module
 ```
 
-This happens because Node.js defaults to CommonJS modules, but you are using ES6 module syntax. The fix depends on whether you want to use ES modules throughout your project or stick with CommonJS.
+This happens when Node.js or the tool running your file treats it as CommonJS, but you are using ES6 module syntax. In current Node.js versions, ambiguous `.js` files with ES module syntax may be reparsed as ES modules with a warning, but it is still best to mark the module type explicitly. The fix depends on whether you want to use ES modules throughout your project or stick with CommonJS.
 
 ## Understanding the Problem
 
@@ -24,7 +24,7 @@ Node.js has two module systems:
 |---------|---------------|------------------|
 | Syntax | `require()`, `module.exports` | `import`, `export` |
 | Loading | Synchronous | Asynchronous |
-| Default in Node | Yes (before v12) | Opt-in |
+| Default in Node | Yes for `.js` files unless configured otherwise or detected as ESM | Explicit via `.mjs`, `"type": "module"`, or syntax detection in current Node.js |
 | File extension | `.js`, `.cjs` | `.mjs` or `.js` with config |
 
 The error occurs when you use ESM syntax in a file that Node treats as CommonJS.
@@ -125,7 +125,7 @@ module.exports = { handler, helper };
 TypeScript compiles your ES module syntax to CommonJS (or ESM) based on configuration:
 
 ```bash
-npm install typescript ts-node @types/node --save-dev
+npm install typescript ts-node @types/node @types/express --save-dev
 npx tsc --init
 ```
 
@@ -212,8 +212,8 @@ const config = require('./config.json');
 import { readFileSync } from 'fs';
 const config = JSON.parse(readFileSync('./config.json', 'utf-8'));
 
-// Or use import assertion (Node 16.14+)
-import config from './config.json' assert { type: 'json' };
+// Or use import attributes (Node 18.20.5+, 20.18.3+, 22.12.0+)
+import config from './config.json' with { type: 'json' };
 ```
 
 ### Importing CommonJS Modules
@@ -276,16 +276,16 @@ import legacy from './legacy.cjs';
 When you see "Cannot use import statement", check these:
 
 1. **package.json has "type": "module"?** If not, add it or use .mjs extension
-2. **Using correct Node version?** ES modules need Node 12+ (14+ recommended)
+2. **Using correct Node version?** ES modules are stable in Node 12.22.0+, 14.17.0+, and later
 3. **File has correct extension?** .js (with type:module), .mjs, or .cjs
 4. **Importing local files with extension?** Add .js to local imports
-5. **Running with correct command?** Some tools need flags like `--experimental-modules` (older Node)
+5. **Running with correct command or tool config?** Transpilers and test runners may need their own ESM settings
 
 ```bash
 # Check Node version
 node --version
 
-# Should be v14.0.0 or higher for stable ESM support
+# Should be v14.17.0 or higher for stable ESM support on the Node 14 line
 ```
 
 ## Project Setup Example
