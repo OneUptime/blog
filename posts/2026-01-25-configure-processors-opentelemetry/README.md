@@ -51,7 +51,7 @@ The batch processor groups telemetry data into batches before export. This reduc
 ```yaml
 processors:
   batch:
-    # Maximum items in a batch
+    # Number of items that triggers sending a batch
     send_batch_size: 1024
     # Hard limit on batch size
     send_batch_max_size: 2048
@@ -102,9 +102,8 @@ processors:
         action: insert
 
       # Extract using regex
-      - key: user.id
+      - key: http.url
         pattern: "user_(?P<user_id>[0-9]+)"
-        from_attribute: http.url
         action: extract
 ```
 
@@ -182,17 +181,16 @@ The filter processor drops telemetry based on conditions. This reduces data volu
 processors:
   filter:
     error_mode: ignore  # Continue processing on errors
-    traces:
-      span:
-        # Drop health check spans
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/ready"'
+    trace_conditions:
+      # Drop health check spans
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/ready"'
 
-        # Drop spans shorter than 1ms
-        - 'duration < 1000000'  # nanoseconds
+      # Drop spans shorter than 1ms
+      - '(span.end_time - span.start_time) < Duration("1ms")'
 
-        # Drop spans from specific services
-        - 'resource.attributes["service.name"] == "internal-poller"'
+      # Drop spans from specific services
+      - 'resource.attributes["service.name"] == "internal-poller"'
 ```
 
 ### Filtering Metrics
@@ -200,17 +198,15 @@ processors:
 ```yaml
 processors:
   filter:
-    metrics:
-      metric:
-        # Drop specific metric names
-        - 'name == "process.runtime.go.gc.pause_ns"'
+    metric_conditions:
+      # Drop specific metric names
+      - 'metric.name == "process.runtime.go.gc.pause_ns"'
 
-        # Drop metrics with high cardinality labels
-        - 'HasLabel(attributes, "request_id")'
+      # Drop metrics with high cardinality labels
+      - 'HasAttrKeyOnDatapoint("request_id")'
 
-      datapoint:
-        # Drop zero values
-        - 'value == 0'
+      # Drop zero values
+      - 'datapoint.value_int == 0 or datapoint.value_double == 0'
 ```
 
 ### Filtering Logs
@@ -218,16 +214,15 @@ processors:
 ```yaml
 processors:
   filter:
-    logs:
-      log_record:
-        # Drop debug logs
-        - 'severity_number < 9'  # Below INFO
+    log_conditions:
+      # Drop debug logs
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'
 
-        # Drop logs from noisy component
-        - 'attributes["component"] == "health-checker"'
+      # Drop logs from noisy component
+      - 'log.attributes["component"] == "health-checker"'
 
-        # Drop logs matching pattern
-        - 'IsMatch(body, ".*heartbeat.*")'
+      # Drop logs matching pattern
+      - 'IsMatch(log.body, ".*heartbeat.*")'
 ```
 
 ## Transform Processor
@@ -241,15 +236,13 @@ processors:
   transform:
     error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Normalize span names
-          - set(name, "HTTP GET") where name == "GET"
-          - set(name, "HTTP POST") where name == "POST"
+      # Normalize span names
+      - set(span.name, "HTTP GET") where span.name == "GET"
+      - set(span.name, "HTTP POST") where span.name == "POST"
 
-          # Combine route and method
-          - set(name, Concat([attributes["http.method"], " ", attributes["http.route"]], ""))
-            where attributes["http.route"] != nil
+      # Combine route and method
+      - set(span.name, Concat([span.attributes["http.method"], span.attributes["http.route"]], " "))
+        where span.attributes["http.route"] != nil
 ```
 
 ### Truncating Large Attributes
@@ -258,15 +251,13 @@ processors:
 processors:
   transform:
     trace_statements:
-      - context: span
-        statements:
-          # Truncate large attribute values
-          - truncate_all(attributes, 256)
+      # Truncate large attribute values
+      - truncate_all(span.attributes, 256)
 
-          # Limit specific attribute
-          - set(attributes["http.request.body"],
-                Substring(attributes["http.request.body"], 0, 1000))
-            where Len(attributes["http.request.body"]) > 1000
+      # Limit specific attribute
+      - set(span.attributes["http.request.body"],
+            Substring(span.attributes["http.request.body"], 0, 1000))
+        where Len(span.attributes["http.request.body"]) > 1000
 ```
 
 ### Adding Computed Attributes
@@ -275,16 +266,16 @@ processors:
 processors:
   transform:
     trace_statements:
-      - context: span
-        statements:
-          # Add duration in milliseconds
-          - set(attributes["duration_ms"], duration / 1000000)
+      # Add duration in milliseconds
+      - set(span.attributes["duration_ms"], Milliseconds(span.end_time - span.start_time))
 
-          # Classify response times
-          - set(attributes["latency_bucket"], "fast") where duration < 100000000
-          - set(attributes["latency_bucket"], "medium")
-            where duration >= 100000000 and duration < 1000000000
-          - set(attributes["latency_bucket"], "slow") where duration >= 1000000000
+      # Classify response times
+      - set(span.attributes["latency_bucket"], "fast")
+        where (span.end_time - span.start_time) < Duration("100ms")
+      - set(span.attributes["latency_bucket"], "medium")
+        where (span.end_time - span.start_time) >= Duration("100ms") and (span.end_time - span.start_time) < Duration("1s")
+      - set(span.attributes["latency_bucket"], "slow")
+        where (span.end_time - span.start_time) >= Duration("1s")
 ```
 
 ## Span Processor
@@ -301,7 +292,7 @@ processors:
 
     # Set span status based on attributes
     status:
-      code: error
+      code: Error
       description: "HTTP error response"
 ```
 
@@ -356,18 +347,15 @@ processors:
 
   # Filter unwanted data
   filter:
-    traces:
-      span:
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/metrics"'
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/metrics"'
 
   # Transform and enrich
   transform:
     trace_statements:
-      - context: span
-        statements:
-          - truncate_all(attributes, 512)
-          - set(attributes["duration_ms"], duration / 1000000)
+      - truncate_all(span.attributes, 512)
+      - set(span.attributes["duration_ms"], Milliseconds(span.end_time - span.start_time))
 
   # Remove sensitive attributes
   attributes:
