@@ -31,7 +31,7 @@ flowchart TD
 First, install the required dependencies:
 
 ```bash
-npm install ioredis lru-cache zod
+npm install ioredis lru-cache
 npm install -D typescript @types/node
 ```
 
@@ -138,7 +138,7 @@ The second layer uses Redis for persistent, shared caching across multiple appli
 ```typescript
 // src/cache/RedisCache.ts
 
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 interface RedisCacheOptions {
   host: string;
@@ -198,7 +198,7 @@ export class RedisCache {
       const ttl = ttlSeconds || this.defaultTTL;
       const serialized = this.serialize(value);
 
-      await this.client.setex(key, ttl, serialized);
+      await this.client.set(key, serialized, 'EX', ttl);
     } catch (error) {
       console.error(`Redis set error for key ${key}:`, error);
     }
@@ -280,7 +280,7 @@ export class RedisCache {
 
       entries.forEach(({ key, value, ttl }) => {
         const serialized = this.serialize(value);
-        pipeline.setex(key, ttl || this.defaultTTL, serialized);
+        pipeline.set(key, serialized, 'EX', ttl || this.defaultTTL);
       });
 
       await pipeline.exec();
@@ -537,7 +537,7 @@ interface User {
   id: string;
   email: string;
   name: string;
-  createdAt: Date;
+  createdAt: string;
 }
 
 interface DatabaseClient {
@@ -591,7 +591,7 @@ export class UserRepository {
       const key = keys[index];
       const cachedValue = cached.get(key);
 
-      if (cachedValue !== null) {
+      if (cachedValue !== null && cachedValue !== undefined) {
         result.set(id, cachedValue);
       } else {
         missingIds.push(id);
@@ -627,13 +627,20 @@ export class UserRepository {
   // Update user and invalidate cache
   async update(id: string, data: Partial<User>): Promise<User> {
     // Update in database
-    const setClauses = Object.keys(data)
+    const allowedFields: Array<keyof Pick<User, 'email' | 'name'>> = ['email', 'name'];
+    const fieldsToUpdate = allowedFields.filter((key) => data[key] !== undefined);
+
+    if (fieldsToUpdate.length === 0) {
+      throw new Error('No valid fields to update');
+    }
+
+    const setClauses = fieldsToUpdate
       .map((key, i) => `${key} = $${i + 2}`)
       .join(', ');
 
     const results = await this.db.query<User>(
       `UPDATE users SET ${setClauses} WHERE id = $1 RETURNING *`,
-      [id, ...Object.values(data)]
+      [id, ...fieldsToUpdate.map((key) => data[key])]
     );
 
     const user = results[0];
@@ -676,6 +683,10 @@ interface WarmupConfig {
   key: string;
   fetcher: () => Promise<unknown>;
   refreshInterval?: number;  // Auto-refresh interval in seconds
+}
+
+interface DatabaseClient {
+  query<T>(sql: string, params: unknown[]): Promise<T[]>;
 }
 
 export class CacheWarmer {
@@ -815,7 +826,7 @@ export class CacheMetrics {
   getStats(): CacheStats & { l1HitRate: number; l2HitRate: number; overallHitRate: number } {
     const l1Total = this.stats.l1Hits + this.stats.l1Misses;
     const l2Total = this.stats.l2Hits + this.stats.l2Misses;
-    const overallTotal = l1Total + this.stats.sourceFetches;
+    const overallTotal = l1Total;
 
     return {
       ...this.stats,
