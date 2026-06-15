@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Nix, Reproducible Builds, Developer Experience, DevOps, Package Management
 
-Description: Learn how to use Nix and Nix Flakes to create perfectly reproducible development environments that work identically across machines, eliminating dependency conflicts forever.
+Description: Learn how to use Nix and Nix Flakes to create reproducible development environments that work consistently across machines, reducing dependency conflicts.
 
 ---
 
@@ -12,9 +12,9 @@ Package managers like npm, pip, and Homebrew try to give you reproducible enviro
 
 ## Why Nix?
 
-Consider a typical development setup: Node.js 18.17.0, PostgreSQL 15.3, and Redis 7.0.12. With traditional tools, you might install these through brew or apt, but six months later a new team member installs different patch versions. Tests pass on your machine but fail on theirs.
+Consider a typical development setup: Node.js 24.x, PostgreSQL 17.x, and Redis 8.x. With traditional tools, you might install these through brew or apt, but six months later a new team member installs different patch versions. Tests pass on your machine but fail on theirs.
 
-Nix eliminates this by creating isolated, reproducible environments. Every package includes its exact dependencies, down to the C library version. Two developers running the same Nix configuration get bit-for-bit identical environments.
+Nix eliminates this by creating isolated, reproducible environments. Every package includes its exact dependencies, down to the C library version. Two developers on the same platform using the same locked Nix configuration get the same package inputs and store paths.
 
 ## Installing Nix
 
@@ -23,8 +23,11 @@ Install Nix with the official installer:
 ```bash
 # Install Nix with flakes enabled
 
-# This script works on Linux and macOS
-sh <(curl -L https://nixos.org/nix/install) --daemon
+# Linux multi-user installation
+curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh -s -- --daemon
+
+# On macOS, use:
+# curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install | sh
 
 # Verify installation
 nix --version
@@ -48,11 +51,11 @@ pkgs.mkShell {
   # Packages available in the shell
   buildInputs = with pkgs; [
     # Node.js with specific version
-    nodejs_20
+    nodejs_24
     # Package managers
     yarn
     # Database tools
-    postgresql_15
+    postgresql_17
     redis
     # Development utilities
     git
@@ -95,7 +98,7 @@ Flakes provide locked dependencies and better composability. Create a `flake.nix
   # Input sources - these are locked to specific commits
   inputs = {
     # Main package repository
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     # Utility for easier flake configuration
     flake-utils.url = "github:numtide/flake-utils";
   };
@@ -110,9 +113,9 @@ Flakes provide locked dependencies and better composability. Create a `flake.nix
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             # Exact versions pinned via flake.lock
-            nodejs_20
+            nodejs_24
             yarn
-            postgresql_15
+            postgresql_17
             redis
 
             # Python for scripts
@@ -157,7 +160,7 @@ nix develop
 nix develop --command npm test
 ```
 
-The `flake.lock` file pins every dependency:
+The `flake.lock` file pins the flake input graph:
 
 ```json
 {
@@ -186,7 +189,7 @@ Here is a complete setup for a full-stack project:
   description = "Full-stack application development";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -211,16 +214,16 @@ Here is a complete setup for a full-stack project:
         devShells.default = pkgs.mkShell {
           buildInputs = [
             # JavaScript/TypeScript
-            pkgs.nodejs_20
+            pkgs.nodejs_24
             pkgs.yarn
-            pkgs.nodePackages.typescript
-            pkgs.nodePackages.typescript-language-server
+            pkgs.typescript
+            pkgs.typescript-language-server
 
             # Python with packages
             pythonEnv
 
             # Databases
-            pkgs.postgresql_15
+            pkgs.postgresql_17
             pkgs.redis
 
             # Development tools
@@ -231,8 +234,8 @@ Here is a complete setup for a full-stack project:
             pkgs.lazygit
 
             # Code quality
-            pkgs.nodePackages.eslint
-            pkgs.nodePackages.prettier
+            pkgs.eslint
+            pkgs.prettier
             pkgs.shellcheck
           ];
 
@@ -265,7 +268,7 @@ Here is a complete setup for a full-stack project:
         # Additional shells for specific tasks
         devShells.ci = pkgs.mkShell {
           buildInputs = [
-            pkgs.nodejs_20
+            pkgs.nodejs_24
             pkgs.yarn
             pythonEnv
           ];
@@ -283,7 +286,11 @@ Automatically activate Nix environments when entering directories:
 nix profile install nixpkgs#direnv
 
 # Add to your shell config (~/.bashrc or ~/.zshrc)
-eval "$(direnv hook bash)"  # or zsh
+# Bash
+eval "$(direnv hook bash)"
+
+# Zsh
+eval "$(direnv hook zsh)"
 ```
 
 Create `.envrc` in your project:
@@ -320,7 +327,7 @@ Nix excels at managing projects with multiple languages:
   description = "Polyglot microservices";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
   };
@@ -349,12 +356,12 @@ Nix excels at managing projects with multiple languages:
               pkgs.cargo-audit
 
               # Go
-              pkgs.go_1_22
+              pkgs.go_1_25
               pkgs.gopls
               pkgs.golangci-lint
 
               # Node
-              pkgs.nodejs_20
+              pkgs.nodejs_24
               pkgs.yarn
 
               # Shared tools
@@ -371,7 +378,7 @@ Nix excels at managing projects with multiple languages:
 
           # Go-only shell
           go = pkgs.mkShell {
-            buildInputs = [ pkgs.go_1_22 pkgs.gopls ];
+            buildInputs = [ pkgs.go_1_25 pkgs.gopls ];
           };
         };
       });
@@ -413,12 +420,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Nix
-        uses: cachix/install-nix-action@v26
+        uses: cachix/install-nix-action@v31
         with:
-          nix_path: nixpkgs=channel:nixos-24.05
+          nix_path: nixpkgs=channel:nixos-26.05
 
       - name: Setup Cachix
-        uses: cachix/cachix-action@v14
+        uses: cachix/cachix-action@v17
         with:
           name: your-cache-name
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
