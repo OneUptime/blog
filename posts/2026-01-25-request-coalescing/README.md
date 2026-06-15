@@ -90,10 +90,11 @@ class Singleflight:
             if key in self.in_flight:
                 # Request already in flight - wait for it
                 self.in_flight[key].waiters += 1
+                future = self.in_flight[key].future
                 logger.debug(f"Coalescing request for key={key}, waiters={self.in_flight[key].waiters}")
             else:
                 # First request - create future and start execution
-                future = asyncio.get_event_loop().create_future()
+                future = asyncio.get_running_loop().create_future()
                 self.in_flight[key] = InFlightRequest(future=future)
 
                 # Start the actual work
@@ -101,7 +102,7 @@ class Singleflight:
 
         # Wait for result
         try:
-            return await self.in_flight[key].future
+            return await asyncio.shield(future)
         finally:
             async with self.lock:
                 if key in self.in_flight:
@@ -113,9 +114,11 @@ class Singleflight:
         """Execute the function and set the result"""
         try:
             result = await fn()
-            future.set_result(result)
+            if not future.done():
+                future.set_result(result)
         except Exception as e:
-            future.set_exception(e)
+            if not future.done():
+                future.set_exception(e)
 
 
 # Usage
@@ -217,17 +220,18 @@ class CoalescingCache:
             # Check if request is already in flight
             if key in self.in_flight:
                 in_flight = self.in_flight[key]
+                future = in_flight.future
                 logger.debug(f"Waiting for in-flight request: {key}")
             else:
                 # Start new request
-                future = asyncio.get_event_loop().create_future()
+                future = asyncio.get_running_loop().create_future()
                 self.in_flight[key] = InFlightRequest(future=future)
                 asyncio.create_task(self._fetch_and_cache(key, fetch_fn, ttl, future))
 
         # Wait for result with timeout
         try:
             return await asyncio.wait_for(
-                self.in_flight[key].future,
+                asyncio.shield(future),
                 timeout=timeout
             )
         except asyncio.TimeoutError:
@@ -252,9 +256,11 @@ class CoalescingCache:
                 expires_at=datetime.now() + timedelta(seconds=ttl)
             )
 
-            future.set_result(result)
+            if not future.done():
+                future.set_result(result)
         except Exception as e:
-            future.set_exception(e)
+            if not future.done():
+                future.set_exception(e)
         finally:
             # Clean up in-flight tracking
             async with self.lock:
@@ -293,7 +299,7 @@ async def get_user(user_id: int) -> dict:
 
 ## Go Singleflight
 
-Go has a built-in singleflight package that's widely used.
+Go has a widely used singleflight package in `golang.org/x/sync`.
 
 ```go
 // singleflight_example.go
@@ -329,7 +335,7 @@ func (s *ProductService) GetProduct(ctx context.Context, productID string) (*Pro
     key := fmt.Sprintf("product:%s", productID)
 
     result, err, shared := s.group.Do(key, func() (interface{}, error) {
-        log.Printf("Fetching product %s from database (shared=%v)", productID, shared)
+        log.Printf("Fetching product %s from database", productID)
 
         product, err := s.db.GetProduct(ctx, productID)
         if err != nil {
@@ -566,9 +572,16 @@ class DistributedCoalescer:
     """
 
     def __init__(self, redis_url: str, prefix: str = "coalesce"):
-        self.redis = redis.from_url(redis_url)
+        self.redis = redis.from_url(redis_url, decode_responses=True)
         self.prefix = prefix
         self.instance_id = str(uuid.uuid4())[:8]
+        self.release_lock_script = """
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+            return redis.call("del", KEYS[1])
+        else
+            return 0
+        end
+        """
 
     async def get(
         self,
@@ -614,8 +627,8 @@ class DistributedCoalescer:
 
                 return result
             finally:
-                # Release lock
-                self.redis.delete(lock_key)
+                # Release lock only if we still own it
+                self.redis.eval(self.release_lock_script, 1, lock_key, self.instance_id)
         else:
             # Another instance is fetching - wait for result
             pubsub = self.redis.pubsub()
@@ -658,6 +671,8 @@ async def get_config():
 
 ```python
 # coalescing_metrics.py
+import time
+
 from prometheus_client import Counter, Gauge, Histogram
 
 # Metrics
