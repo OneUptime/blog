@@ -108,7 +108,7 @@ declare global {
 // src/context/AsyncLocalStorage.ts
 
 import { AsyncLocalStorage } from 'async_hooks';
-import { TenantContext } from '../types';
+import { Tenant, TenantContext } from '../types';
 
 // Create async local storage for tenant context
 export const tenantStorage = new AsyncLocalStorage<TenantContext>();
@@ -150,7 +150,7 @@ import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { TenantService } from '../services/TenantService';
 import { tenantStorage } from '../context/AsyncLocalStorage';
-import { TenantContext } from '../types';
+import { Tenant, TenantContext } from '../types';
 
 export class TenantContextMiddleware {
   constructor(private tenantService: TenantService) {}
@@ -593,100 +593,106 @@ model ApiKey {
 }
 ```
 
-## Row-Level Security with Prisma Middleware
+## Tenant Enforcement with Prisma Client Extensions
 
-Add an extra layer of security with Prisma middleware.
+Add an extra layer of security with a Prisma Client query extension.
 
 ```typescript
-// src/middleware/prismaMiddleware.ts
+// src/prisma/tenantExtension.ts
 
-import { Prisma, PrismaClient } from '@prisma/client';
-import { getTenantId, getTenantContext } from '../context/AsyncLocalStorage';
+import { PrismaClient } from '@prisma/client';
+import { getTenantContext } from '../context/AsyncLocalStorage';
 
 // Models that require tenant isolation
 const tenantAwareModels = ['User', 'Project', 'ProjectMember', 'Task', 'ApiKey'];
+const readOperations = [
+  'findUnique',
+  'findUniqueOrThrow',
+  'findFirst',
+  'findFirstOrThrow',
+  'findMany',
+  'count',
+  'aggregate',
+  'groupBy',
+];
+const writeOperations = ['update', 'updateMany', 'updateManyAndReturn', 'delete', 'deleteMany'];
+const createManyOperations = ['createMany', 'createManyAndReturn'];
 
-export function setupPrismaMiddleware(prisma: PrismaClient): void {
-  // Middleware to enforce tenant isolation on reads
-  prisma.$use(async (params, next) => {
-    const context = getTenantContext();
+export function createTenantAwarePrismaClient() {
+  return new PrismaClient().$extends({
+    name: 'tenantIsolation',
+    query: {
+      $allModels: {
+        async $allOperations({ model, operation, args, query }) {
+          const context = getTenantContext();
+          const startTime = Date.now();
 
-    // Skip middleware if no tenant context (admin operations)
-    if (!context) {
-      return next(params);
-    }
+          if (context && tenantAwareModels.includes(model)) {
+            const tenantId = context.tenant.id;
+            const queryArgs = args as any;
 
-    const modelName = params.model;
+            // Inject tenantId into read operations
+            if (readOperations.includes(operation)) {
+              queryArgs.where = {
+                ...queryArgs.where,
+                tenantId,
+              };
+            }
 
-    // Only apply to tenant-aware models
-    if (!modelName || !tenantAwareModels.includes(modelName)) {
-      return next(params);
-    }
+            // Inject tenantId into create operations
+            if (operation === 'create') {
+              queryArgs.data = {
+                ...queryArgs.data,
+                tenantId,
+              };
+            }
 
-    const tenantId = context.tenant.id;
+            // Inject tenantId into createMany operations
+            if (createManyOperations.includes(operation)) {
+              queryArgs.data = Array.isArray(queryArgs.data)
+                ? queryArgs.data.map((item: any) => ({ ...item, tenantId }))
+                : { ...queryArgs.data, tenantId };
+            }
 
-    // Inject tenantId into read operations
-    if (['findUnique', 'findFirst', 'findMany', 'count', 'aggregate'].includes(params.action)) {
-      params.args = params.args || {};
-      params.args.where = {
-        ...params.args.where,
-        tenantId,
-      };
-    }
+            // Inject tenantId into update and delete operations
+            if (writeOperations.includes(operation)) {
+              queryArgs.where = {
+                ...queryArgs.where,
+                tenantId,
+              };
+            }
 
-    // Inject tenantId into create operations
-    if (params.action === 'create') {
-      params.args = params.args || {};
-      params.args.data = {
-        ...params.args.data,
-        tenantId,
-      };
-    }
+            // Inject tenantId into both sides of upsert operations
+            if (operation === 'upsert') {
+              queryArgs.where = {
+                ...queryArgs.where,
+                tenantId,
+              };
+              queryArgs.create = {
+                ...queryArgs.create,
+                tenantId,
+              };
+            }
+          }
 
-    // Inject tenantId into createMany operations
-    if (params.action === 'createMany') {
-      params.args = params.args || {};
-      if (Array.isArray(params.args.data)) {
-        params.args.data = params.args.data.map((item: any) => ({
-          ...item,
-          tenantId,
-        }));
-      }
-    }
+          const result = await query(args);
+          const duration = Date.now() - startTime;
 
-    // Inject tenantId into update and delete operations
-    if (['update', 'updateMany', 'delete', 'deleteMany'].includes(params.action)) {
-      params.args = params.args || {};
-      params.args.where = {
-        ...params.args.where,
-        tenantId,
-      };
-    }
+          if (context && duration > 100) {
+            console.log({
+              type: 'slow_query',
+              tenant: context.tenant.slug,
+              model,
+              action: operation,
+              duration,
+              requestId: context.requestId,
+            });
+          }
 
-    return next(params);
-  });
-
-  // Middleware to log tenant operations (optional)
-  prisma.$use(async (params, next) => {
-    const context = getTenantContext();
-    const startTime = Date.now();
-
-    const result = await next(params);
-
-    const duration = Date.now() - startTime;
-
-    if (context && duration > 100) {
-      console.log({
-        type: 'slow_query',
-        tenant: context.tenant.slug,
-        model: params.model,
-        action: params.action,
-        duration,
-        requestId: context.requestId,
-      });
-    }
-
-    return result;
+          return result;
+        },
+      },
+    },
   });
 }
 ```
@@ -698,7 +704,7 @@ Build services that respect tenant boundaries.
 ```typescript
 // src/services/ProjectService.ts
 
-import { PrismaClient, Project, ProjectMember } from '@prisma/client';
+import { Prisma, Project, ProjectMember } from '@prisma/client';
 import { getTenantId, requireTenantContext } from '../context/AsyncLocalStorage';
 
 interface CreateProjectInput {
@@ -712,7 +718,7 @@ interface AddMemberInput {
 }
 
 export class ProjectService {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: Prisma.TransactionClient) {}
 
   async create(input: CreateProjectInput): Promise<Project> {
     const context = requireTenantContext();
@@ -822,17 +828,13 @@ Set up Express routes with tenant middleware.
 // src/app.ts
 
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
 import { TenantContextMiddleware } from './middleware/tenantContext';
 import { TenantService } from './services/TenantService';
 import { ProjectService } from './services/ProjectService';
-import { setupPrismaMiddleware } from './middleware/prismaMiddleware';
+import { createTenantAwarePrismaClient } from './prisma/tenantExtension';
 
 const app = express();
-const prisma = new PrismaClient();
-
-// Set up Prisma middleware for tenant isolation
-setupPrismaMiddleware(prisma);
+const prisma = createTenantAwarePrismaClient();
 
 const tenantService = new TenantService(prisma);
 const tenantMiddleware = new TenantContextMiddleware(tenantService);
@@ -913,7 +915,7 @@ Write tests that verify tenant isolation.
 ```typescript
 // src/__tests__/tenantIsolation.test.ts
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Tenant } from '@prisma/client';
 import { tenantStorage } from '../context/AsyncLocalStorage';
 import { ProjectService } from '../services/ProjectService';
 
@@ -999,7 +1001,7 @@ Building multi-tenant APIs requires careful attention to data isolation at every
 | Request | Tenant identification middleware |
 | Context | AsyncLocalStorage for request-scoped tenant |
 | Repository | Base repository with automatic tenant filtering |
-| Database | Prisma middleware for row-level security |
+| Database access | Prisma Client extension for tenant enforcement |
 | Schema | Tenant ID on all tenant-scoped tables |
 
 Key takeaways:
@@ -1007,7 +1009,7 @@ Key takeaways:
 1. Use AsyncLocalStorage to propagate tenant context without passing it through every function
 2. Choose your isolation model based on compliance and security requirements
 3. Add tenant ID to every tenant-scoped table with proper indexes
-4. Use middleware at both the application and database layers for defense in depth
+4. Use tenant-aware repositories and Prisma Client extensions for defense in depth
 5. Test tenant isolation explicitly to catch cross-tenant data leaks
 6. Implement tenant-specific limits based on subscription plans
 
