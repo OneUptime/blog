@@ -111,10 +111,6 @@ curl -X PUT "localhost:9200/articles" -H 'Content-Type: application/json' -d'
         "fields": {
           "keyword": {
             "type": "keyword"
-          },
-          "autocomplete": {
-            "type": "text",
-            "analyzer": "autocomplete_analyzer"
           }
         }
       },
@@ -131,6 +127,9 @@ curl -X PUT "localhost:9200/articles" -H 'Content-Type: application/json' -d'
       },
       "published_at": {
         "type": "date"
+      },
+      "popularity": {
+        "type": "integer"
       }
     }
   }
@@ -145,17 +144,17 @@ Add some sample documents to search:
 
 ```bash
 # Index sample articles
-curl -X POST "localhost:9200/articles/_bulk" -H 'Content-Type: application/json' -d'
+curl -X POST "localhost:9200/articles/_bulk" -H 'Content-Type: application/x-ndjson' --data-binary '
 {"index": {"_id": "1"}}
-{"title": "Introduction to Machine Learning", "content": "Machine learning is a subset of artificial intelligence that enables computers to learn from data without being explicitly programmed. This article covers supervised and unsupervised learning techniques.", "author": "John Smith", "tags": ["AI", "ML", "tutorial"], "published_at": "2024-06-15"}
+{"title": "Introduction to Machine Learning", "content": "Machine learning is a subset of artificial intelligence that enables computers to learn from data without being explicitly programmed. This article covers supervised and unsupervised learning techniques.", "author": "John Smith", "tags": ["AI", "ML", "tutorial"], "published_at": "2024-06-15", "popularity": 95}
 {"index": {"_id": "2"}}
-{"title": "Deep Learning with Neural Networks", "content": "Neural networks form the foundation of deep learning. This guide explores convolutional neural networks (CNNs) for image recognition and recurrent neural networks (RNNs) for sequence data.", "author": "Jane Doe", "tags": ["AI", "deep-learning", "neural-networks"], "published_at": "2024-07-20"}
+{"title": "Deep Learning with Neural Networks", "content": "Neural networks form the foundation of deep learning. This guide explores convolutional neural networks (CNNs) for image recognition and recurrent neural networks (RNNs) for sequence data.", "author": "Jane Doe", "tags": ["AI", "deep-learning", "neural-networks"], "published_at": "2024-07-20", "popularity": 88}
 {"index": {"_id": "3"}}
-{"title": "Natural Language Processing Basics", "content": "Natural language processing (NLP) allows computers to understand human language. Learn about tokenization, named entity recognition, and sentiment analysis in this comprehensive guide.", "author": "Bob Wilson", "tags": ["NLP", "AI", "text-processing"], "published_at": "2024-08-10"}
+{"title": "Natural Language Processing Basics", "content": "Natural language processing (NLP) allows computers to understand human language. Learn about tokenization, named entity recognition, and sentiment analysis in this comprehensive guide.", "author": "Bob Wilson", "tags": ["NLP", "AI", "text-processing"], "published_at": "2024-08-10", "popularity": 76}
 {"index": {"_id": "4"}}
-{"title": "Building Search Engines with Elasticsearch", "content": "Elasticsearch provides powerful full-text search capabilities. This tutorial covers indexing documents, writing queries, and tuning relevance for optimal search results.", "author": "Alice Brown", "tags": ["elasticsearch", "search", "tutorial"], "published_at": "2024-09-01"}
+{"title": "Building Search Engines with Elasticsearch", "content": "Elasticsearch provides powerful full-text search capabilities. This tutorial covers indexing documents, writing queries, and tuning relevance for optimal search results.", "author": "Alice Brown", "tags": ["elasticsearch", "search", "tutorial"], "published_at": "2024-09-01", "popularity": 91}
 {"index": {"_id": "5"}}
-{"title": "Data Science with Python", "content": "Python has become the go-to language for data science. Explore pandas for data manipulation, matplotlib for visualization, and scikit-learn for machine learning algorithms.", "author": "John Smith", "tags": ["python", "data-science", "tutorial"], "published_at": "2024-09-15"}
+{"title": "Data Science with Python", "content": "Python has become the go-to language for data science. Explore pandas for data manipulation, matplotlib for visualization, and scikit-learn for machine learning algorithms.", "author": "John Smith", "tags": ["python", "data-science", "tutorial"], "published_at": "2024-09-15", "popularity": 84}
 '
 ```
 
@@ -476,6 +475,12 @@ curl -X PUT "localhost:9200/articles_v2" -H 'Content-Type: application/json' -d'
         "synonym_analyzer": {
           "tokenizer": "standard",
           "filter": [
+            "lowercase"
+          ]
+        },
+        "synonym_search_analyzer": {
+          "tokenizer": "standard",
+          "filter": [
             "lowercase",
             "synonym_filter"
           ]
@@ -483,7 +488,7 @@ curl -X PUT "localhost:9200/articles_v2" -H 'Content-Type: application/json' -d'
       },
       "filter": {
         "synonym_filter": {
-          "type": "synonym",
+          "type": "synonym_graph",
           "synonyms": [
             "machine learning, ML, artificial intelligence, AI",
             "neural network, deep learning, DL",
@@ -499,7 +504,8 @@ curl -X PUT "localhost:9200/articles_v2" -H 'Content-Type: application/json' -d'
     "properties": {
       "content": {
         "type": "text",
-        "analyzer": "synonym_analyzer"
+        "analyzer": "synonym_analyzer",
+        "search_analyzer": "synonym_search_analyzer"
       }
     }
   }
@@ -569,7 +575,6 @@ Here's a production-ready search service:
 from elasticsearch import Elasticsearch
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from datetime import datetime
 
 @dataclass
 class SearchResult:
@@ -694,17 +699,11 @@ class FullTextSearchService:
         else:
             search_query = {"bool": bool_query}
 
-        # Build search body
-        body = {
-            "query": search_query,
-            "from": (page - 1) * page_size,
-            "size": page_size,
-            "_source": ["title", "author", "tags", "published_at"]
-        }
+        highlight_config = None
 
         # Add highlighting
         if highlight:
-            body["highlight"] = {
+            highlight_config = {
                 "pre_tags": ["<em>"],
                 "post_tags": ["</em>"],
                 "fields": {
@@ -717,7 +716,7 @@ class FullTextSearchService:
             }
 
         # Add suggestions
-        body["suggest"] = {
+        suggest_config = {
             "text": query,
             "spelling": {
                 "phrase": {
@@ -733,7 +732,15 @@ class FullTextSearchService:
         }
 
         # Execute search
-        response = self.es.search(index=self.index, body=body)
+        response = self.es.search(
+            index=self.index,
+            query=search_query,
+            from_=(page - 1) * page_size,
+            size=page_size,
+            source_includes=["title", "content", "author", "tags", "published_at"],
+            highlight=highlight_config,
+            suggest=suggest_config
+        )
 
         # Parse results
         results = []
@@ -794,7 +801,12 @@ class FullTextSearchService:
             "_source": ["title", "author", "published_at"]
         }
 
-        response = self.es.search(index=self.index, body=body)
+        response = self.es.search(
+            index=self.index,
+            query=body["query"],
+            size=limit,
+            source_includes=["title", "author", "published_at"]
+        )
 
         results = []
         for hit in response["hits"]["hits"]:
@@ -816,7 +828,7 @@ class FullTextSearchService:
 # Usage example
 if __name__ == "__main__":
     search = FullTextSearchService(
-        hosts=["localhost:9200"],
+        hosts=["http://localhost:9200"],
         index_name="articles"
     )
 
