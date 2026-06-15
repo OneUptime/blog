@@ -110,28 +110,37 @@ class LogCounterExtractor {
 
       for (const [labelKey, value] of counter) {
         const labels = this.keyToLabels(labelKey);
-        const labelStr = Object.entries(labels)
-          .map(([k, v]) => `${k}="${v}"`)
-          .join(',');
 
-        lines.push(`${name}{${labelStr}} ${value}`);
+        lines.push(`${name}${this.formatLabels(labels)} ${value}`);
       }
     }
 
     return lines.join('\n');
   }
 
-  private labelsToKey(labels: Record<string, string>): string {
-    return Object.entries(labels)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}=${v}`)
+  private formatLabels(labels: Record<string, string>): string {
+    const entries = Object.entries(labels);
+    if (entries.length === 0) return '';
+
+    const labelStr = entries
+      .map(([k, v]) => `${k}="${this.escapeLabelValue(v)}"`)
       .join(',');
+
+    return `{${labelStr}}`;
+  }
+
+  private escapeLabelValue(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/"/g, '\\"');
+  }
+
+  private labelsToKey(labels: Record<string, string>): string {
+    return JSON.stringify(
+      Object.entries(labels).sort(([a], [b]) => a.localeCompare(b))
+    );
   }
 
   private keyToLabels(key: string): Record<string, string> {
-    return Object.fromEntries(
-      key.split(',').map(pair => pair.split('='))
-    );
+    return Object.fromEntries(JSON.parse(key));
   }
 }
 
@@ -144,8 +153,8 @@ extractor.addRule({
   description: 'Total HTTP requests',
   match: (log) => log.http?.status !== undefined,
   labels: (log) => ({
-    method: log.http.method || 'unknown',
-    status: String(log.http.status),
+    method: log.http?.method || 'unknown',
+    status: String(log.http?.status),
     service: log.service || 'unknown'
   })
 });
@@ -178,7 +187,7 @@ extractor.addRule({
   description: 'Authentication events',
   match: (log) => log.message?.includes('login') || log.message?.includes('logout'),
   labels: (log) => ({
-    event: log.message.includes('login') ? 'login' : 'logout',
+    event: log.message?.includes('login') ? 'login' : 'logout',
     success: String(log.result?.status === 'success')
   })
 });
@@ -257,36 +266,45 @@ class LogHistogramExtractor {
 
       for (const [labelKey, data] of histogram) {
         const labels = this.keyToLabels(labelKey);
-        const labelStr = Object.entries(labels)
-          .map(([k, v]) => `${k}="${v}"`)
-          .join(',');
 
         // Bucket values
         for (const [bucket, count] of data.buckets) {
-          lines.push(`${name}_bucket{${labelStr},le="${bucket}"} ${count}`);
+          lines.push(`${name}_bucket${this.formatLabels({ ...labels, le: String(bucket) })} ${count}`);
         }
-        lines.push(`${name}_bucket{${labelStr},le="+Inf"} ${data.count}`);
+        lines.push(`${name}_bucket${this.formatLabels({ ...labels, le: '+Inf' })} ${data.count}`);
 
         // Sum and count
-        lines.push(`${name}_sum{${labelStr}} ${data.sum}`);
-        lines.push(`${name}_count{${labelStr}} ${data.count}`);
+        lines.push(`${name}_sum${this.formatLabels(labels)} ${data.sum}`);
+        lines.push(`${name}_count${this.formatLabels(labels)} ${data.count}`);
       }
     }
 
     return lines.join('\n');
   }
 
-  private labelsToKey(labels: Record<string, string>): string {
-    return Object.entries(labels)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}=${v}`)
+  private formatLabels(labels: Record<string, string>): string {
+    const entries = Object.entries(labels);
+    if (entries.length === 0) return '';
+
+    const labelStr = entries
+      .map(([k, v]) => `${k}="${this.escapeLabelValue(v)}"`)
       .join(',');
+
+    return `{${labelStr}}`;
+  }
+
+  private escapeLabelValue(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/"/g, '\\"');
+  }
+
+  private labelsToKey(labels: Record<string, string>): string {
+    return JSON.stringify(
+      Object.entries(labels).sort(([a], [b]) => a.localeCompare(b))
+    );
   }
 
   private keyToLabels(key: string): Record<string, string> {
-    return Object.fromEntries(
-      key.split(',').map(pair => pair.split('='))
-    );
+    return Object.fromEntries(JSON.parse(key));
   }
 }
 
@@ -298,10 +316,10 @@ histogramExtractor.addRule({
   name: 'http_request_duration_seconds',
   description: 'HTTP request duration in seconds',
   match: (log) => log.http?.duration_ms !== undefined,
-  value: (log) => log.http.duration_ms / 1000,
+  value: (log) => log.http?.duration_ms !== undefined ? log.http.duration_ms / 1000 : undefined,
   labels: (log) => ({
-    method: log.http.method || 'unknown',
-    path: log.http.path || 'unknown',
+    method: log.http?.method || 'unknown',
+    path: log.http?.path || 'unknown',
     service: log.service || 'unknown'
   }),
   buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
@@ -312,10 +330,10 @@ histogramExtractor.addRule({
   name: 'db_query_duration_seconds',
   description: 'Database query duration in seconds',
   match: (log) => log.db?.duration_ms !== undefined,
-  value: (log) => log.db.duration_ms / 1000,
+  value: (log) => log.db?.duration_ms !== undefined ? log.db.duration_ms / 1000 : undefined,
   labels: (log) => ({
-    operation: log.db.operation || 'unknown',
-    table: log.db.table || 'unknown'
+    operation: log.db?.operation || 'unknown',
+    table: log.db?.table || 'unknown'
   }),
   buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1]
 });
@@ -325,9 +343,9 @@ histogramExtractor.addRule({
   name: 'http_response_size_bytes',
   description: 'HTTP response size in bytes',
   match: (log) => log.http?.response_size !== undefined,
-  value: (log) => log.http.response_size,
+  value: (log) => log.http?.response_size,
   labels: (log) => ({
-    method: log.http.method || 'unknown',
+    method: log.http?.method || 'unknown',
     service: log.service || 'unknown'
   }),
   buckets: [100, 1000, 10000, 100000, 1000000, 10000000]
@@ -355,11 +373,11 @@ interface SLIConfig {
 
 class LogBasedSLICalculator {
   private configs: SLIConfig[] = [];
-  private windows: Map<string, { good: number; total: number; timestamps: number[] }> = new Map();
+  private windows: Map<string, { good: number; total: number; events: Array<{ timestamp: number; good: boolean }> }> = new Map();
 
   addSLI(config: SLIConfig): void {
     this.configs.push(config);
-    this.windows.set(config.name, { good: 0, total: 0, timestamps: [] });
+    this.windows.set(config.name, { good: 0, total: 0, events: [] });
   }
 
   process(log: LogEntry): void {
@@ -370,9 +388,10 @@ class LogBasedSLICalculator {
         const window = this.windows.get(config.name)!;
 
         window.total++;
-        window.timestamps.push(timestamp);
+        const good = config.goodEventFilter(log);
+        window.events.push({ timestamp, good });
 
-        if (config.goodEventFilter(log)) {
+        if (good) {
           window.good++;
         }
 
@@ -386,11 +405,13 @@ class LogBasedSLICalculator {
     const window = this.windows.get(config.name)!;
     const cutoff = Date.now() - config.windowMinutes * 60 * 1000;
 
-    // Remove old timestamps
-    while (window.timestamps.length > 0 && window.timestamps[0] < cutoff) {
-      window.timestamps.shift();
+    // Remove old events
+    while (window.events.length > 0 && window.events[0].timestamp < cutoff) {
+      const expired = window.events.shift()!;
       window.total--;
-      // Note: This is simplified - in practice you would track good/bad separately
+      if (expired.good) {
+        window.good--;
+      }
     }
   }
 
@@ -418,8 +439,13 @@ class LogBasedSLICalculator {
       lines.push(`# TYPE sli_${sli.name} gauge`);
       lines.push(`sli_${sli.name}{type="${sli.type}"} ${sli.value}`);
 
-      lines.push(`sli_${sli.name}_good_total{type="${sli.type}"} ${sli.good}`);
-      lines.push(`sli_${sli.name}_total{type="${sli.type}"} ${sli.total}`);
+      lines.push(`# HELP sli_${sli.name}_good_events Good events in the SLI window`);
+      lines.push(`# TYPE sli_${sli.name}_good_events gauge`);
+      lines.push(`sli_${sli.name}_good_events{type="${sli.type}"} ${sli.good}`);
+
+      lines.push(`# HELP sli_${sli.name}_total_events Total events in the SLI window`);
+      lines.push(`# TYPE sli_${sli.name}_total_events gauge`);
+      lines.push(`sli_${sli.name}_total_events{type="${sli.type}"} ${sli.total}`);
     }
 
     return lines.join('\n');
@@ -433,16 +459,16 @@ const sliCalculator = new LogBasedSLICalculator();
 sliCalculator.addSLI({
   name: 'api_availability',
   type: 'availability',
-  goodEventFilter: (log) => log.http?.status < 500,
+  goodEventFilter: (log) => (log.http?.status ?? 500) < 500,
   totalEventFilter: (log) => log.http?.status !== undefined,
   windowMinutes: 60
 });
 
 // Latency SLI: Percentage of requests under threshold
 sliCalculator.addSLI({
-  name: 'api_latency_p95',
+  name: 'api_latency_under_500ms',
   type: 'latency',
-  goodEventFilter: (log) => log.http?.duration_ms < 500,
+  goodEventFilter: (log) => (log.http?.duration_ms ?? Infinity) < 500,
   totalEventFilter: (log) => log.http?.duration_ms !== undefined,
   latencyThreshold: 500,
   windowMinutes: 60
@@ -498,7 +524,7 @@ class LogMetricsExporter {
         this.sliCalculator.toPrometheusFormat()
       ].join('\n\n');
 
-      res.set('Content-Type', 'text/plain');
+      res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
       res.send(metrics);
     });
 
