@@ -54,12 +54,12 @@ fn main() {
 ### Const Generic Overflow
 
 ```rust
-// Problem with const generic calculations
+// Problem with const generic calculations on stable Rust
 // struct Buffer<const N: usize> {
-//     data: [u8; N * 2],  // N * 2 might overflow
+//     data: [u8; N * 2],  // Error: const parameters must be standalone in array lengths
 // }
 
-// Solution: Use checked arithmetic in const context
+// Solution: Use checked arithmetic for concrete const values
 const fn safe_double(n: usize) -> usize {
     match n.checked_mul(2) {
         Some(result) => result,
@@ -104,7 +104,7 @@ fn main() {
 
 ## Const Function Limitations
 
-Const functions have restrictions on arithmetic operations.
+Const functions are evaluated under const-evaluation rules when used in constants.
 
 ```rust
 // Const functions that might overflow
@@ -127,7 +127,7 @@ fn main() {
     // const FACT_25: u64 = factorial(25);  // Error!
 
     // Runtime version can handle it differently
-    let fact_25 = factorial(25);  // Might panic or wrap depending on build mode
+    // let fact_25 = factorial(25);  // Might panic or wrap depending on build mode
 }
 ```
 
@@ -216,7 +216,7 @@ Rust's behavior differs between debug and release builds.
 ```rust
 fn main() {
     // In debug mode: panics on overflow
-    // In release mode: wraps by default
+    // In release mode: wraps by default unless overflow checks are enabled
 
     // Always check if overflow is possible
     let a: u8 = 200;
@@ -286,8 +286,8 @@ fn main() {
 ### Pattern 3: Time Calculations
 
 ```rust
-// Problem: Millisecond calculations can overflow
-// const DAYS_MS: u64 = 365 * 24 * 60 * 60 * 1000 * 100;  // 100 years
+// Problem: Millisecond calculations can overflow smaller integer types
+// const DAYS_MS: u32 = 365 * 24 * 60 * 60 * 1000 * 100;  // 100 years
 
 // Solution: Use intermediate steps with larger types
 const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
@@ -307,16 +307,16 @@ Compile-time overflow occurs when constant expressions exceed type limits:
 | Cause | Solution |
 |-------|----------|
 | Literal too large | Use larger type |
-| Expression overflow | Break into smaller steps |
-| Array size overflow | Use smaller array or Box |
+| Expression overflow | Use larger intermediate types or checked arithmetic |
+| Array size overflow | Use smaller sizes or checked calculations |
 | Const function overflow | Use checked arithmetic |
 
 Strategies:
 
 - Use checked_*, saturating_*, or wrapping_* operations
 - Choose appropriate numeric types
-- Break large calculations into steps
+- Break large calculations into steps with larger intermediate types
 - Use larger intermediate types
 - Set reasonable limits on sizes
 
-The compiler catches these errors to prevent undefined behavior. Fix them by using appropriate types and arithmetic operations.
+The compiler catches these errors in const contexts so invalid constant values do not make it into your program. Fix them by using appropriate types and arithmetic operations.
