@@ -141,22 +141,24 @@ Create a delegating handler that adds the correlation ID to all outgoing HTTP re
 // CorrelationIdDelegatingHandler.cs
 public class CorrelationIdDelegatingHandler : DelegatingHandler
 {
-    private readonly ICorrelationIdAccessor _accessor;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private const string CorrelationIdHeader = "X-Correlation-Id";
 
-    public CorrelationIdDelegatingHandler(ICorrelationIdAccessor accessor)
+    public CorrelationIdDelegatingHandler(IHttpContextAccessor httpContextAccessor)
     {
-        _accessor = accessor;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
+        var correlationId = _httpContextAccessor.HttpContext?.Items[CorrelationIdHeader]?.ToString();
+
         // Add correlation ID to outgoing request if we have one
-        if (!string.IsNullOrEmpty(_accessor.CorrelationId))
+        if (!string.IsNullOrEmpty(correlationId))
         {
-            request.Headers.TryAddWithoutValidation(CorrelationIdHeader, _accessor.CorrelationId);
+            request.Headers.TryAddWithoutValidation(CorrelationIdHeader, correlationId);
         }
 
         return await base.SendAsync(request, cancellationToken);
@@ -168,7 +170,8 @@ public class CorrelationIdDelegatingHandler : DelegatingHandler
 
 ```csharp
 // Program.cs
-builder.Services.AddScoped<CorrelationIdDelegatingHandler>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddTransient<CorrelationIdDelegatingHandler>();
 
 // Configure typed clients with the handler
 builder.Services.AddHttpClient<IOrdersClient, OrdersClient>(client =>
@@ -319,11 +322,11 @@ public class MessagePublisher : IMessagePublisher
         _correlationId = correlationId;
     }
 
-    public void Publish<T>(string exchange, string routingKey, T message)
+    public async Task PublishAsync<T>(string exchange, string routingKey, T message)
     {
-        using var channel = _connection.CreateModel();
+        await using var channel = await _connection.CreateChannelAsync();
 
-        var properties = channel.CreateBasicProperties();
+        var properties = new BasicProperties();
         properties.ContentType = "application/json";
         properties.DeliveryMode = 2; // Persistent
 
@@ -335,9 +338,10 @@ public class MessagePublisher : IMessagePublisher
 
         var body = JsonSerializer.SerializeToUtf8Bytes(message);
 
-        channel.BasicPublish(
+        await channel.BasicPublishAsync(
             exchange: exchange,
             routingKey: routingKey,
+            mandatory: false,
             basicProperties: properties,
             body: body);
     }
@@ -353,20 +357,30 @@ public class OrderCreatedConsumer : IHostedService
     private readonly IConnection _connection;
     private readonly IServiceProvider _services;
     private readonly ILogger<OrderCreatedConsumer> _logger;
-    private IModel _channel;
+    private IChannel? _channel;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _channel = _connection.CreateModel();
-        _channel.QueueDeclare("order-created", durable: true, exclusive: false);
+        _channel = await _connection.CreateChannelAsync(cancellationToken: cancellationToken);
+        var channel = _channel;
 
-        var consumer = new EventingBasicConsumer(_channel);
-        consumer.Received += async (sender, args) =>
+        await channel.QueueDeclareAsync("order-created", durable: true, exclusive: false);
+
+        var consumer = new AsyncEventingBasicConsumer(channel);
+        consumer.ReceivedAsync += async (sender, args) =>
         {
             // Extract correlation ID from message headers
-            var correlationId = args.BasicProperties.Headers?.ContainsKey("X-Correlation-Id") == true
-                ? Encoding.UTF8.GetString((byte[])args.BasicProperties.Headers["X-Correlation-Id"])
-                : Guid.NewGuid().ToString("N");
+            var correlationId = args.BasicProperties.Headers != null &&
+                args.BasicProperties.Headers.TryGetValue("X-Correlation-Id", out var value)
+                    ? value switch
+                    {
+                        byte[] bytes => Encoding.UTF8.GetString(bytes),
+                        string text => text,
+                        _ => value?.ToString()
+                    }
+                    : null;
+
+            correlationId ??= Guid.NewGuid().ToString("N");
 
             // Create a scope for this message processing
             using var scope = _services.CreateScope();
@@ -384,23 +398,26 @@ public class OrderCreatedConsumer : IHostedService
                     var handler = scope.ServiceProvider.GetRequiredService<IOrderCreatedHandler>();
                     await handler.HandleAsync(args.Body.ToArray());
 
-                    _channel.BasicAck(args.DeliveryTag, false);
+                    await channel.BasicAckAsync(args.DeliveryTag, false);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to process order created message");
-                    _channel.BasicNack(args.DeliveryTag, false, requeue: true);
+                    await channel.BasicNackAsync(args.DeliveryTag, false, requeue: true);
                 }
             }
         };
 
-        _channel.BasicConsume("order-created", autoAck: false, consumer);
+        await channel.BasicConsumeAsync("order-created", autoAck: false, consumer);
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _channel?.Close();
-        return Task.CompletedTask;
+        if (_channel != null)
+        {
+            await _channel.CloseAsync(cancellationToken: cancellationToken);
+            await _channel.DisposeAsync();
+        }
     }
 }
 ```
@@ -513,6 +530,7 @@ public class CorrelationIdMiddlewareTests
 
         // Act
         await middleware.InvokeAsync(context, accessor);
+        await context.Response.StartAsync();
 
         // Assert
         Assert.False(string.IsNullOrEmpty(accessor.CorrelationId));
