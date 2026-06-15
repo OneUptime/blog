@@ -8,7 +8,7 @@ Description: Learn how to fix 'mutable borrow occurs here' errors in Rust. This 
 
 ---
 
-The "mutable borrow occurs here" error occurs when you try to use a value while it is mutably borrowed elsewhere. Rust prevents this to ensure memory safety. This guide helps you understand the error and provides solutions for common scenarios.
+The "mutable borrow occurs here" error occurs when a mutable borrow conflicts with another active borrow or use of the same value. Rust prevents this to ensure memory safety. This guide helps you understand the error and provides solutions for common scenarios.
 
 ## Understanding the Error
 
@@ -228,10 +228,11 @@ fn main() {
     let mut map: HashMap<String, Vec<i32>> = HashMap::new();
 
     // Problem: Double mutable borrow
-    // if !map.contains_key("key") {
-    //     map.insert("key".to_string(), Vec::new());
+    // let values = map.get_mut("key");
+    // if values.is_none() {
+    //     map.insert("key".to_string(), Vec::new());  // Error!
     // }
-    // map.get_mut("key").unwrap().push(1);
+    // values.unwrap().push(1);
 
     // Solution: Use Entry API
     map.entry("key".to_string())
