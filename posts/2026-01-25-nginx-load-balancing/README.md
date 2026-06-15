@@ -181,7 +181,7 @@ server {
     location / {
         proxy_pass http://backend;
 
-        # Required for keepalive
+        # Keepalive-friendly upstream HTTP settings
         proxy_http_version 1.1;
         proxy_set_header Connection "";
 
@@ -256,7 +256,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name app.example.com;
 
     # SSL certificates
@@ -273,7 +274,7 @@ server {
     location / {
         proxy_pass http://app_backend;
 
-        # HTTP version for keepalive
+        # Keepalive-friendly upstream HTTP settings
         proxy_http_version 1.1;
         proxy_set_header Connection "";
 
@@ -344,7 +345,7 @@ Your backend application should return which server handled each request, showin
 
 ## Monitoring Connections
 
-Track upstream connection status using the stub_status module:
+Track basic Nginx connection status using the stub_status module:
 
 ```nginx
 server {
@@ -352,7 +353,7 @@ server {
     server_name localhost;
 
     location /nginx_status {
-        stub_status on;
+        stub_status;
         allow 127.0.0.1;  # Only allow local access
         deny all;
     }
