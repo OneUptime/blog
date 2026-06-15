@@ -201,7 +201,7 @@ spec:
 When you need to inspect the container environment without the application crashing:
 
 ```bash
-# Override the entrypoint to get a shell
+# Override the entrypoint to keep the container alive
 kubectl run debug-pod --image=myregistry.io/myapp:1.2.3 \
   --restart=Never \
   --command -- sleep 3600
@@ -223,7 +223,8 @@ kubectl debug -it my-app-xyz -n production \
   --image=busybox \
   --target=app
 
-# This shares the process namespace, so you can inspect the failing container
+# When supported by the container runtime, --target lets you inspect processes
+# from the failing container
 # Use ps aux to see running processes
 # Check file permissions with ls -la
 ```
