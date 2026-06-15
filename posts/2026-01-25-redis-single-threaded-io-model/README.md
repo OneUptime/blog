@@ -8,7 +8,7 @@ Description: Learn how Redis achieves exceptional performance with its single-th
 
 ---
 
-Redis processes commands using a single thread, yet it handles millions of operations per second. This might seem counterintuitive in an era of multi-core processors, but the single-threaded design is actually one of Redis's greatest strengths. Understanding this architecture will help you write better Redis applications and avoid common pitfalls.
+Redis processes commands mostly using a single thread, yet it can handle very high request rates. This might seem counterintuitive in an era of multi-core processors, but the single-threaded design is actually one of Redis's greatest strengths. Understanding this architecture will help you write better Redis applications and avoid common pitfalls.
 
 ## Why Single-Threaded?
 
@@ -21,7 +21,7 @@ Redis chose a single-threaded model for several compelling reasons:
 | **Predictable latency** | No thread contention or context switching |
 | **CPU cache efficiency** | Single thread keeps data in L1/L2 cache |
 
-The key insight is that Redis is memory-bound, not CPU-bound. Network I/O and memory access are the bottlenecks, not computation. A single thread can saturate network bandwidth before hitting CPU limits.
+The key insight is that Redis is usually memory-bound or network-bound, not CPU-bound, when you use efficient commands. Network I/O and memory access are often the bottlenecks, not computation. With pipelining and simple commands, a single Redis instance can saturate network bandwidth before hitting CPU limits.
 
 ## The Event Loop Architecture
 
@@ -148,14 +148,14 @@ Enable I/O threading in redis.conf:
 
 ```bash
 # redis.conf settings for I/O threading
-# Enable threaded I/O for reads
+# Enable threaded I/O
 io-threads 4
 
-# Also use threads for writes (recommended)
+# Also use threads for reads and protocol parsing in Redis 6/7
 io-threads-do-reads yes
 ```
 
-The main thread still executes all commands sequentially. I/O threads only handle reading requests from sockets and writing responses back. This provides better throughput on multi-core systems without sacrificing atomicity.
+The main thread still executes commands sequentially. I/O threads handle writing responses back and, when read threading is enabled in Redis 6/7, reading requests from sockets and parsing the protocol. This provides better throughput on multi-core systems without sacrificing atomicity.
 
 ## Commands That Block the Event Loop
 
@@ -234,7 +234,8 @@ print(f"Baseline - Mean: {mean(baseline):.3f}ms, StdDev: {stdev(baseline):.3f}ms
 
 # Now run a blocking command in another thread
 def run_blocking_command():
-    # DEBUG SLEEP simulates a slow command
+    # DEBUG SLEEP simulates a slow command.
+    # Modern Redis versions require enable-debug-command to allow DEBUG.
     r.execute_command('DEBUG', 'SLEEP', '0.5')
 
 blocking_thread = threading.Thread(target=run_blocking_command)
