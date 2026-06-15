@@ -123,15 +123,15 @@ app.get('/api/articles/:id', (req, res) => {
   const article = getArticle(req.params.id);
   const etag = generateETag(article);
 
-  // Check if client has current version
-  if (req.headers['if-none-match'] === etag) {
-    return res.status(304).end(); // Not Modified
-  }
-
   res.set({
     'Cache-Control': 'public, max-age=300',
     'ETag': etag
   });
+
+  // Check if client has current version
+  if (req.fresh) {
+    return res.status(304).end(); // Not Modified
+  }
 
   res.json(article);
 });
@@ -139,18 +139,19 @@ app.get('/api/articles/:id', (req, res) => {
 // Last-Modified based caching
 app.get('/api/documents/:id', (req, res) => {
   const document = getDocument(req.params.id);
-  const lastModified = new Date(document.updatedAt).toUTCString();
-
-  // Check if client has current version
-  const ifModifiedSince = req.headers['if-modified-since'];
-  if (ifModifiedSince && new Date(ifModifiedSince) >= new Date(document.updatedAt)) {
-    return res.status(304).end();
-  }
+  const updatedAt = new Date(document.updatedAt);
+  updatedAt.setMilliseconds(0); // HTTP dates have one-second precision
+  const lastModified = updatedAt.toUTCString();
 
   res.set({
     'Cache-Control': 'public, max-age=600',
     'Last-Modified': lastModified
   });
+
+  // Check if client has current version
+  if (req.fresh) {
+    return res.status(304).end();
+  }
 
   res.json(document);
 });
@@ -199,67 +200,72 @@ app.get('/api/content', (req, res) => {
 
 # Define cache zone
 
-proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=api_cache:100m
-                 max_size=10g inactive=60m use_temp_path=off;
+http {
+    proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=api_cache:100m
+                     max_size=10g inactive=60m use_temp_path=off;
 
-server {
-    listen 80;
-    server_name api.example.com;
-
-    # Default cache settings
-    proxy_cache api_cache;
-    proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
-    proxy_cache_background_update on;
-    proxy_cache_lock on;
-
-    # Add cache status header for debugging
-    add_header X-Cache-Status $upstream_cache_status;
-
-    # Cache GET requests by default
-    location /api/ {
-        proxy_pass http://backend;
-
-        # Cache based on URI and query string
-        proxy_cache_key $scheme$request_method$host$request_uri;
-
-        # Cache valid responses for 10 minutes
-        proxy_cache_valid 200 10m;
-        proxy_cache_valid 404 1m;
-
-        # Don't cache if these headers are present
-        proxy_no_cache $http_authorization;
-        proxy_cache_bypass $http_authorization;
-
-        # Respect Cache-Control from backend
-        proxy_cache_revalidate on;
+    upstream backend {
+        server 127.0.0.1:3000;
     }
 
-    # Longer cache for static-like API responses
-    location /api/products {
-        proxy_pass http://backend;
-        proxy_cache_key $scheme$request_method$host$request_uri;
-        proxy_cache_valid 200 1h;
-        proxy_cache_valid 404 5m;
-    }
+    server {
+        listen 80;
+        server_name api.example.com;
 
-    # No caching for user-specific endpoints
-    location /api/user {
-        proxy_pass http://backend;
-        proxy_cache off;
-    }
+        # Default cache settings
+        proxy_cache api_cache;
+        proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+        proxy_cache_background_update on;
+        proxy_cache_lock on;
 
-    # Cache with query string normalization
-    location /api/search {
-        proxy_pass http://backend;
+        # Add cache status header for debugging
+        add_header X-Cache-Status $upstream_cache_status;
 
-        # Sort query parameters for consistent cache keys
-        set $cache_key $scheme$request_method$host$uri;
-        if ($args != "") {
-            set $cache_key $cache_key?$args;
+        # Cache GET requests by default
+        location /api/ {
+            proxy_pass http://backend;
+
+            # Cache based on URI and query string
+            proxy_cache_key $scheme$request_method$host$request_uri;
+
+            # Cache valid responses for 10 minutes
+            proxy_cache_valid 200 10m;
+            proxy_cache_valid 404 1m;
+
+            # Don't cache if these headers are present
+            proxy_no_cache $http_authorization;
+            proxy_cache_bypass $http_authorization;
+
+            # Revalidate expired cached responses with conditional requests
+            proxy_cache_revalidate on;
         }
-        proxy_cache_key $cache_key;
 
-        proxy_cache_valid 200 5m;
+        # Longer cache for static-like API responses
+        location /api/products {
+            proxy_pass http://backend;
+            proxy_cache_key $scheme$request_method$host$request_uri;
+            proxy_cache_valid 200 1h;
+            proxy_cache_valid 404 5m;
+        }
+
+        # No caching for user-specific endpoints
+        location /api/user {
+            proxy_pass http://backend;
+            proxy_cache off;
+        }
+
+        # Cache with query string included in the key
+        location /api/search {
+            proxy_pass http://backend;
+
+            set $cache_key $scheme$request_method$host$uri;
+            if ($args != "") {
+                set $cache_key $cache_key?$args;
+            }
+            proxy_cache_key $cache_key;
+
+            proxy_cache_valid 200 5m;
+        }
     }
 }
 ```
@@ -379,7 +385,7 @@ app = Flask(__name__)
 
 # Configure cache
 cache = Cache(app, config={
-    'CACHE_TYPE': 'redis',
+    'CACHE_TYPE': 'RedisCache',
     'CACHE_REDIS_URL': 'redis://localhost:6379/0',
     'CACHE_DEFAULT_TIMEOUT': 300,
     'CACHE_KEY_PREFIX': 'api_cache:'
@@ -387,7 +393,7 @@ cache = Cache(app, config={
 
 # Simple route caching
 @app.route('/api/products')
-@cache.cached(timeout=600)
+@cache.cached(timeout=600, key_prefix='products')
 def get_products():
     return jsonify(fetch_products())
 
@@ -440,7 +446,7 @@ def create_product():
     product = create_product_in_db(request.json)
 
     # Invalidate related caches
-    cache.delete('api_cache:/api/products')
+    cache.delete('products')
     cache.delete_memoized(get_product_categories)
 
     return jsonify(product), 201
@@ -475,11 +481,27 @@ class CacheInvalidator {
 
   // Pattern-based invalidation
   async invalidatePattern(pattern) {
-    const keys = await this.redis.keys(pattern);
-    if (keys.length > 0) {
-      await this.redis.del(...keys);
-      console.log(`Invalidated ${keys.length} keys matching ${pattern}`);
-    }
+    let cursor = '0';
+    let count = 0;
+
+    do {
+      const [nextCursor, keys] = await this.redis.scan(
+        cursor,
+        'MATCH',
+        pattern,
+        'COUNT',
+        100
+      );
+
+      cursor = nextCursor;
+
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+        count += keys.length;
+      }
+    } while (cursor !== '0');
+
+    console.log(`Invalidated ${count} keys matching ${pattern}`);
   }
 
   // Tag-based invalidation
@@ -499,7 +521,7 @@ class CacheInvalidator {
     const pipeline = this.redis.pipeline();
 
     // Set the value
-    pipeline.setex(key, ttl, JSON.stringify(value));
+    pipeline.set(key, JSON.stringify(value), 'EX', ttl);
 
     // Add to tag sets
     tags.forEach(tag => {
@@ -531,7 +553,7 @@ class CacheInvalidator {
     }
 
     const data = await fetchFn();
-    await this.redis.setex(key, 3600, JSON.stringify(data));
+    await this.redis.set(key, JSON.stringify(data), 'EX', 3600);
     return data;
   }
 }
