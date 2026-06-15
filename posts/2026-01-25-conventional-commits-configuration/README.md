@@ -237,6 +237,10 @@ module.exports = {
 
 For commitizen, customize the adapter:
 
+```bash
+npm install --save-dev cz-customizable
+```
+
 ```javascript
 // .cz-config.js
 module.exports = {
@@ -280,7 +284,7 @@ Update commitizen config to use custom adapter:
 {
   "config": {
     "commitizen": {
-      "path": "cz-customizable"
+      "path": "node_modules/cz-customizable"
     }
   }
 }
@@ -357,7 +361,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: amannn/action-semantic-pull-request@v5
+      - uses: amannn/action-semantic-pull-request@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -382,7 +386,7 @@ jobs:
 Configure GitHub to use PR title for squash commits:
 
 1. Go to repository Settings > General
-2. Under "Pull Requests," select "Default to pull request title"
+2. Under "Pull Requests," enable "Allow squash merging" and select "Default to PR title for squash merge commits"
 
 ## Commit Message Examples
 
