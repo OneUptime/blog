@@ -61,6 +61,8 @@ function createUser(overrides = {}) {
 const user = createUser();
 const adminUser = createUser({ role: 'admin' });
 const users = Array.from({ length: 10 }, () => createUser());
+
+module.exports = { createUser };
 ```
 
 ### Python with Faker
@@ -282,6 +284,8 @@ const { faker } = require('@faker-js/faker');
 
 exports.seed = async function(knex) {
   // Clear existing data
+  await knex('order_items').del();
+  await knex('orders').del();
   await knex('users').del();
 
   // Generate users
@@ -302,8 +306,8 @@ exports.seed = async function(knex) {
 const { faker } = require('@faker-js/faker');
 
 exports.seed = async function(knex) {
-  await knex('orders').del();
   await knex('order_items').del();
+  await knex('orders').del();
 
   // Get user IDs
   const users = await knex('users').select('id');
@@ -355,16 +359,18 @@ const { faker } = require('@faker-js/faker');
 
 // Set seed for reproducible data
 faker.seed(12345);
+faker.setDefaultRefDate('2024-01-01T00:00:00.000Z');
 
-// These will always generate the same values
+// These will always generate the same values for this Faker version
 const user1 = {
-  name: faker.person.fullName(),  // Always "John Smith"
-  email: faker.internet.email()   // Always "john@example.com"
+  name: faker.person.fullName(),
+  email: faker.internet.email()
 };
 
-// Reset seed between test files
+// Reset to a fixed seed before each test for repeatable output
 beforeEach(() => {
-  faker.seed(Date.now());
+  faker.seed(12345);
+  faker.setDefaultRefDate('2024-01-01T00:00:00.000Z');
 });
 ```
 
@@ -398,6 +404,7 @@ fs.writeFileSync(
 ```javascript
 // factories/edgeCases.js
 const { faker } = require('@faker-js/faker');
+const { createUser } = require('./user.factory');
 
 const edgeCaseStrings = {
   empty: '',
