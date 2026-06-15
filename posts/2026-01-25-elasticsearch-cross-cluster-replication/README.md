@@ -104,7 +104,7 @@ Create roles with CCR privileges on both clusters:
 
 ```bash
 # On the leader cluster - role for CCR read access
-curl -X PUT "https://leader-cluster:9200/_security/role/ccr_read_role" \
+curl -X PUT "https://leader-cluster:9200/_security/role/remote-replication" \
   -H 'Content-Type: application/json' \
   -u elastic:password \
   -d '{
@@ -114,13 +114,13 @@ curl -X PUT "https://leader-cluster:9200/_security/role/ccr_read_role" \
     "indices": [
       {
         "names": ["*"],
-        "privileges": ["monitor", "read", "view_index_metadata"]
+        "privileges": ["monitor", "read"]
       }
     ]
   }'
 
 # On the follower cluster - role for CCR management
-curl -X PUT "https://follower-cluster:9200/_security/role/ccr_manage_role" \
+curl -X PUT "https://follower-cluster:9200/_security/role/remote-replication" \
   -H 'Content-Type: application/json' \
   -u elastic:password \
   -d '{
@@ -135,13 +135,13 @@ curl -X PUT "https://follower-cluster:9200/_security/role/ccr_manage_role" \
     ]
   }'
 
-# Create a user with CCR role on follower cluster
+# Create a user with the CCR role on the follower cluster
 curl -X PUT "https://follower-cluster:9200/_security/user/ccr_user" \
   -H 'Content-Type: application/json' \
   -u elastic:password \
   -d '{
     "password": "secure_ccr_password",
-    "roles": ["ccr_manage_role"]
+    "roles": ["remote-replication"]
   }'
 ```
 
@@ -274,12 +274,20 @@ curl -X GET "https://follower-cluster:9200/products-replica/_ccr/info?pretty" \
 When the leader cluster becomes unavailable, promote the follower:
 
 ```bash
-# Pause following (optional, automatic if leader is down)
+# Pause following
 curl -X POST "https://follower-cluster:9200/products-replica/_ccr/pause_follow" \
   -u elastic:password
 
-# Promote follower to a regular index (can now accept writes)
+# Close the follower index before unfollowing
+curl -X POST "https://follower-cluster:9200/products-replica/_close" \
+  -u elastic:password
+
+# Unfollow to convert it to a regular index
 curl -X POST "https://follower-cluster:9200/products-replica/_ccr/unfollow" \
+  -u elastic:password
+
+# Reopen the regular index so it can accept writes
+curl -X POST "https://follower-cluster:9200/products-replica/_open" \
   -u elastic:password
 
 # Now products-replica is a normal index and can accept writes
@@ -293,7 +301,7 @@ curl -X POST "https://follower-cluster:9200/products-replica/_ccr/unfollow" \
 After the leader recovers, you may need to re-establish replication:
 
 ```bash
-# Option 1: Resume following (if data hasn't diverged)
+# Option 1: Resume following if the follower was only paused and not unfollowed
 curl -X POST "https://follower-cluster:9200/products-replica/_ccr/resume_follow" \
   -H 'Content-Type: application/json' \
   -u elastic:password \
@@ -302,7 +310,7 @@ curl -X POST "https://follower-cluster:9200/products-replica/_ccr/resume_follow"
     "max_outstanding_read_requests": 12
   }'
 
-# Option 2: If data has diverged, delete follower and recreate
+# Option 2: If you promoted the follower with unfollow, delete it and recreate a follower index
 curl -X DELETE "https://follower-cluster:9200/products-replica" \
   -u elastic:password
 
@@ -319,7 +327,7 @@ curl -X PUT "https://follower-cluster:9200/products-replica/_ccr/follow" \
 
 ## Bi-Directional Replication Pattern
 
-For active-active setups where both clusters can accept writes:
+For active-active setups where both clusters accept writes to their own leader indices:
 
 ```bash
 # On Cluster A - follow cluster B's indices
