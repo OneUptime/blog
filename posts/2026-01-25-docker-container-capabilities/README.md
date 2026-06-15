@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Security, Linux, DevOps, Container
 
-Description: Configure Linux capabilities in Docker containers to grant specific privileges without running as root, implementing the principle of least privilege for container security.
+Description: Configure Linux capabilities in Docker containers to grant specific privileges without using privileged mode, implementing the principle of least privilege for container security.
 
 ---
 
-Linux capabilities split the traditional root privilege into distinct units. Instead of giving a container full root access, you can grant only the specific capabilities it needs. This reduces the attack surface if a container is compromised while still allowing necessary operations like binding to privileged ports or manipulating network settings.
+Linux capabilities split the traditional root privilege into distinct units. Instead of giving a container full privileged access, you can grant only the specific capabilities it needs. This reduces the attack surface if a container is compromised while still allowing necessary operations like binding to privileged ports on systems that enforce them or manipulating network settings.
 
 ## Understanding Linux Capabilities
 
@@ -36,7 +36,7 @@ Common capabilities:
 |------------|---------|
 | CAP_NET_BIND_SERVICE | Bind to ports below 1024 |
 | CAP_NET_ADMIN | Network configuration (iptables, routing) |
-| CAP_NET_RAW | Use raw sockets (ping, packet capture) |
+| CAP_NET_RAW | Use raw and packet sockets (raw ping, packet capture) |
 | CAP_SYS_ADMIN | System administration (mount, sysctl) |
 | CAP_SYS_PTRACE | Trace processes (debugging) |
 | CAP_CHOWN | Change file ownership |
@@ -55,7 +55,7 @@ Docker containers start with a limited set of capabilities by default:
 docker run --rm alpine cat /proc/1/status | grep Cap
 
 # Decode capability bitmask
-docker run --rm alpine sh -c "apk add -q libcap && capsh --decode=$(cat /proc/1/status | grep CapEff | cut -f2)"
+docker run --rm alpine sh -c 'apk add -q libcap && capsh --decode=$(grep CapEff /proc/1/status | cut -f2)'
 ```
 
 Default capabilities include:
@@ -74,8 +74,8 @@ Remove unnecessary capabilities to reduce attack surface:
 docker run --cap-drop=ALL alpine id
 
 # Drop specific capabilities
-docker run --cap-drop=NET_RAW --cap-drop=CHOWN alpine ping localhost
-# ping: permission denied (requires NET_RAW)
+docker run --cap-drop=NET_RAW alpine sh -c "apk add -q tcpdump && tcpdump -i lo -c 1"
+# tcpdump: Operation not permitted (requires NET_RAW)
 ```
 
 In Docker Compose:
@@ -94,7 +94,7 @@ services:
 Grant specific capabilities without running as privileged:
 
 ```bash
-# Allow binding to port 80 without root
+# Allow binding to port 80 when privileged ports are enforced
 docker run --cap-drop=ALL --cap-add=NET_BIND_SERVICE -p 80:80 nginx:alpine
 
 # Allow network administration
@@ -146,8 +146,8 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_RAW           # Raw socket access
-      - NET_ADMIN         # Network interface access
+      - NET_RAW           # Raw and packet socket access
+      - NET_ADMIN         # Interface configuration and promiscuous mode
     network_mode: host    # Access host network
 ```
 
@@ -160,8 +160,8 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN         # Create tun/tap devices
-      - MKNOD             # Create device nodes
+      - NET_ADMIN         # Configure tun/tap interfaces
+      - MKNOD             # Create device nodes if needed
     devices:
       - /dev/net/tun:/dev/net/tun
 ```
@@ -193,7 +193,7 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_RAW           # ping, tcpdump
+      - NET_RAW           # raw socket tools, tcpdump
       - NET_ADMIN         # ip, iptables
       - SYS_PTRACE        # strace, debugging
     profiles:
@@ -219,12 +219,13 @@ Test if a specific capability is available:
 
 ```bash
 # Test NET_BIND_SERVICE
-docker run --rm --cap-drop=ALL --cap-add=NET_BIND_SERVICE alpine \
+docker run --rm --cap-drop=ALL --cap-add=NET_BIND_SERVICE \
+  --sysctl net.ipv4.ip_unprivileged_port_start=1024 alpine \
   sh -c "apk add -q socat && socat TCP-LISTEN:80 -" &
-# Should succeed
+# Should succeed when privileged ports are enforced
 
 # Test without capability
-docker run --rm --cap-drop=ALL alpine \
+docker run --rm --cap-drop=ALL --sysctl net.ipv4.ip_unprivileged_port_start=1024 alpine \
   sh -c "apk add -q socat && socat TCP-LISTEN:80 -"
 # Should fail: permission denied
 ```
@@ -263,7 +264,7 @@ Determine what capabilities your application actually needs:
 
 ```bash
 # Run with all capabilities and trace system calls
-docker run --rm --cap-add=ALL strace -f myapp 2>&1 | grep -i "permission denied\|operation not permitted"
+docker run --rm --cap-add=ALL myapp:latest strace -f /entrypoint.sh 2>&1 | grep -i "permission denied\|operation not permitted"
 
 # Use ausearch for capability denials (if audit is enabled)
 ausearch -m avc -ts recent | grep capability
@@ -291,7 +292,6 @@ services:
       - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
-      - seccomp:default
     read_only: true
     tmpfs:
       - /tmp:mode=1777,size=100m
@@ -378,4 +378,4 @@ done
 
 ---
 
-Linux capabilities let you grant containers specific privileges without full root access. Always start by dropping all capabilities, then add back only what your application needs. Document the required capabilities and combine them with other security measures like seccomp profiles and read-only filesystems. This defense-in-depth approach limits the damage if a container is compromised.
+Linux capabilities let you grant containers specific privileges without full privileged access. Always start by dropping all capabilities, then add back only what your application needs. Document the required capabilities and combine them with other security measures like seccomp profiles and read-only filesystems. This defense-in-depth approach limits the damage if a container is compromised.
