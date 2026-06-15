@@ -10,6 +10,8 @@ Description: Learn how to use span events in OpenTelemetry to capture discrete o
 
 Spans represent operations over time. But within an operation, discrete events happen at specific moments: an exception is thrown, a cache miss occurs, a retry is attempted. Span events capture these moments without creating new spans, providing detailed context for debugging without cluttering your trace structure.
 
+OpenTelemetry is moving new event and exception recording toward the Logs API. Existing span events remain valid and widely supported, but for new custom instrumentation, prefer the Logs API where your SDK supports it.
+
 ## What Are Span Events?
 
 A span event is a timestamped annotation attached to a span. Each event has:
@@ -40,7 +42,7 @@ Use child spans for:
 ### Node.js
 
 ```javascript
-const { trace } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('checkout-service');
 
@@ -87,7 +89,7 @@ async function processOrder(order) {
     } catch (error) {
       // Record exception as special event
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();
@@ -229,7 +231,7 @@ import io.opentelemetry.api.trace.StatusCode;
 public class OrderProcessor {
     private static final Tracer tracer = GlobalOpenTelemetry.getTracer("checkout-service");
 
-    public Result processOrder(Order order) {
+    public Result processOrder(Order order) throws Exception {
         Span span = tracer.spanBuilder("process-order").startSpan();
 
         try {
@@ -287,6 +289,8 @@ Exceptions are a special type of event. OpenTelemetry provides a dedicated metho
 
 ```javascript
 // Node.js
+const { SpanStatusCode } = require('@opentelemetry/api');
+
 try {
   await riskyOperation();
 } catch (error) {
@@ -295,7 +299,7 @@ try {
   // - exception.message
   // - exception.stacktrace
   span.recordException(error);
-  span.setStatus({ code: 2, message: error.message });
+  span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
   throw error;
 }
 ```
@@ -317,44 +321,50 @@ except Exception as e:
 ### Retry Operations
 
 ```javascript
+const { SpanStatusCode } = require('@opentelemetry/api');
+
 async function fetchWithRetry(url, maxRetries = 3) {
   return tracer.startActiveSpan('fetch-with-retry', async (span) => {
-    span.setAttribute('http.url', url);
-    span.setAttribute('retry.max_attempts', maxRetries);
+    try {
+      span.setAttribute('http.url', url);
+      span.setAttribute('retry.max_attempts', maxRetries);
 
-    let lastError;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      span.addEvent('retry.attempt', {
-        'retry.attempt_number': attempt,
-        'retry.remaining': maxRetries - attempt,
-      });
-
-      try {
-        const response = await fetch(url);
-        span.addEvent('retry.success', {
-          'retry.successful_attempt': attempt,
-        });
-        return response;
-      } catch (error) {
-        lastError = error;
-        span.addEvent('retry.failed', {
+      let lastError;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        span.addEvent('retry.attempt', {
           'retry.attempt_number': attempt,
-          'error.message': error.message,
+          'retry.remaining': maxRetries - attempt,
         });
 
-        if (attempt < maxRetries) {
-          const delay = Math.pow(2, attempt) * 100;
-          span.addEvent('retry.waiting', {
-            'retry.delay_ms': delay,
+        try {
+          const response = await fetch(url);
+          span.addEvent('retry.success', {
+            'retry.successful_attempt': attempt,
           });
-          await new Promise(r => setTimeout(r, delay));
+          return response;
+        } catch (error) {
+          lastError = error;
+          span.addEvent('retry.failed', {
+            'retry.attempt_number': attempt,
+            'error.message': error.message,
+          });
+
+          if (attempt < maxRetries) {
+            const delay = Math.pow(2, attempt) * 100;
+            span.addEvent('retry.waiting', {
+              'retry.delay_ms': delay,
+            });
+            await new Promise(r => setTimeout(r, delay));
+          }
         }
       }
-    }
 
-    span.recordException(lastError);
-    span.setStatus({ code: 2, message: 'Max retries exceeded' });
-    throw lastError;
+      span.recordException(lastError);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: 'Max retries exceeded' });
+      throw lastError;
+    } finally {
+      span.end();
+    }
   });
 }
 ```
@@ -364,31 +374,35 @@ async function fetchWithRetry(url, maxRetries = 3) {
 ```javascript
 async function getFromCache(key) {
   return tracer.startActiveSpan('cache.get', async (span) => {
-    span.setAttribute('cache.key', key);
+    try {
+      span.setAttribute('cache.key', key);
 
-    const cached = await cache.get(key);
+      const cached = await cache.get(key);
 
-    if (cached) {
-      span.addEvent('cache.hit', {
+      if (cached) {
+        span.addEvent('cache.hit', {
+          'cache.key': key,
+          'cache.age_ms': Date.now() - cached.timestamp,
+        });
+        return cached.value;
+      }
+
+      span.addEvent('cache.miss', {
         'cache.key': key,
-        'cache.age_ms': Date.now() - cached.timestamp,
       });
-      return cached.value;
+
+      const value = await fetchFromSource(key);
+
+      span.addEvent('cache.populated', {
+        'cache.key': key,
+        'cache.ttl_seconds': 3600,
+      });
+
+      await cache.set(key, { value, timestamp: Date.now() }, 3600);
+      return value;
+    } finally {
+      span.end();
     }
-
-    span.addEvent('cache.miss', {
-      'cache.key': key,
-    });
-
-    const value = await fetchFromSource(key);
-
-    span.addEvent('cache.populated', {
-      'cache.key': key,
-      'cache.ttl_seconds': 3600,
-    });
-
-    await cache.set(key, { value, timestamp: Date.now() }, 3600);
-    return value;
   });
 }
 ```
@@ -398,31 +412,35 @@ async function getFromCache(key) {
 ```javascript
 async function processWorkflow(workflow) {
   return tracer.startActiveSpan('workflow.process', async (span) => {
-    span.setAttribute('workflow.id', workflow.id);
-    span.setAttribute('workflow.initial_state', workflow.state);
+    try {
+      span.setAttribute('workflow.id', workflow.id);
+      span.setAttribute('workflow.initial_state', workflow.state);
 
-    const transitions = [];
+      const transitions = [];
 
-    while (!workflow.isComplete()) {
-      const previousState = workflow.state;
-      const nextState = await workflow.advance();
+      while (!workflow.isComplete()) {
+        const previousState = workflow.state;
+        const nextState = await workflow.advance();
 
-      transitions.push({ from: previousState, to: nextState });
+        transitions.push({ from: previousState, to: nextState });
 
-      span.addEvent('workflow.state.transition', {
-        'state.from': previousState,
-        'state.to': nextState,
-        'transition.number': transitions.length,
+        span.addEvent('workflow.state.transition', {
+          'state.from': previousState,
+          'state.to': nextState,
+          'transition.number': transitions.length,
+        });
+      }
+
+      span.addEvent('workflow.complete', {
+        'workflow.final_state': workflow.state,
+        'workflow.total_transitions': transitions.length,
       });
+
+      span.setAttribute('workflow.final_state', workflow.state);
+      return workflow;
+    } finally {
+      span.end();
     }
-
-    span.addEvent('workflow.complete', {
-      'workflow.final_state': workflow.state,
-      'workflow.total_transitions': transitions.length,
-    });
-
-    span.setAttribute('workflow.final_state', workflow.state);
-    return workflow;
   });
 }
 ```
@@ -432,35 +450,39 @@ async function processWorkflow(workflow) {
 ```javascript
 async function processLargeFile(file) {
   return tracer.startActiveSpan('file.process', async (span) => {
-    span.setAttribute('file.name', file.name);
-    span.setAttribute('file.size_bytes', file.size);
+    try {
+      span.setAttribute('file.name', file.name);
+      span.setAttribute('file.size_bytes', file.size);
 
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    let processedChunks = 0;
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      let processedChunks = 0;
 
-    span.addEvent('processing.started', {
-      'total_chunks': totalChunks,
-      'chunk_size': CHUNK_SIZE,
-    });
+      span.addEvent('processing.started', {
+        'total_chunks': totalChunks,
+        'chunk_size': CHUNK_SIZE,
+      });
 
-    for await (const chunk of file.chunks()) {
-      await processChunk(chunk);
-      processedChunks++;
+      for await (const chunk of file.chunks()) {
+        await processChunk(chunk);
+        processedChunks++;
 
-      // Add checkpoint events every 10%
-      const progress = Math.floor((processedChunks / totalChunks) * 100);
-      if (progress % 10 === 0) {
-        span.addEvent('processing.checkpoint', {
-          'progress_percent': progress,
-          'chunks_processed': processedChunks,
-          'chunks_remaining': totalChunks - processedChunks,
-        });
+        // Add checkpoint events every 10%
+        const progress = Math.floor((processedChunks / totalChunks) * 100);
+        if (progress % 10 === 0) {
+          span.addEvent('processing.checkpoint', {
+            'progress_percent': progress,
+            'chunks_processed': processedChunks,
+            'chunks_remaining': totalChunks - processedChunks,
+          });
+        }
       }
-    }
 
-    span.addEvent('processing.complete', {
-      'total_chunks_processed': processedChunks,
-    });
+      span.addEvent('processing.complete', {
+        'total_chunks_processed': processedChunks,
+      });
+    } finally {
+      span.end();
+    }
   });
 }
 ```
