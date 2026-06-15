@@ -167,18 +167,8 @@ setInterval(() => rateLimiter.cleanup(), 300000);
 
 // Extract client identifier from request
 function getClientKey(req: Request): string {
-  // Use X-Forwarded-For header if behind a proxy
-  const forwarded = req.headers['x-forwarded-for'];
-
-  if (forwarded) {
-    // X-Forwarded-For can contain multiple IPs, take the first one
-    const forwardedIp = Array.isArray(forwarded)
-      ? forwarded[0]
-      : forwarded.split(',')[0];
-    return forwardedIp.trim();
-  }
-
-  // Fall back to direct IP address
+  // If behind a trusted proxy, configure Express with app.set('trust proxy', ...)
+  // so req.ip is derived safely from X-Forwarded-For.
   return req.ip || req.socket.remoteAddress || 'unknown';
 }
 
@@ -214,6 +204,7 @@ export function rateLimitMiddleware(
 
 // Apply rate limiting to Express app
 // Example usage in your main app file:
+// app.set('trust proxy', 'loopback'); // Adjust this to match your proxy setup
 // app.use(rateLimitMiddleware);
 ```
 
@@ -284,7 +275,7 @@ class DistributedTokenBucket {
     end
 
     -- Save updated state
-    redis.call('HMSET', key, 'tokens', tokens, 'last_refill', last_refill)
+    redis.call('HSET', key, 'tokens', tokens, 'last_refill', last_refill)
 
     -- Set TTL to clean up old keys automatically
     redis.call('EXPIRE', key, 3600)
@@ -367,7 +358,7 @@ function createRateLimitMiddleware(tokensPerRequest: number = 1) {
     next: express.NextFunction
   ) => {
     // Use API key if available, otherwise use IP
-    const clientKey = req.headers['x-api-key'] as string || req.ip;
+    const clientKey = req.get('x-api-key') || req.ip || req.socket.remoteAddress || 'unknown';
 
     try {
       const allowed = await rateLimiter.consume(clientKey, tokensPerRequest);
@@ -392,11 +383,13 @@ function createRateLimitMiddleware(tokensPerRequest: number = 1) {
   };
 }
 
+// Expensive endpoints consume more tokens
+app.post('/api/export', createRateLimitMiddleware(10), (req, res) => {
+  res.json({ message: 'Export started' });
+});
+
 // Apply different rate limits to different endpoints
 app.use('/api', createRateLimitMiddleware(1));
-
-// Expensive endpoints consume more tokens
-app.post('/api/export', createRateLimitMiddleware(10));
 
 app.get('/api/data', (req, res) => {
   res.json({ message: 'Success' });
