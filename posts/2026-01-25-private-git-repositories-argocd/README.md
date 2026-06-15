@@ -14,13 +14,13 @@ Most production ArgoCD setups work with private repositories. Your Kubernetes ma
 
 Different Git providers support different authentication methods:
 
-| Provider | HTTPS Token | SSH Key | Deploy Key | OAuth App | GitHub App |
-|----------|------------|---------|------------|-----------|------------|
-| GitHub | Yes | Yes | Yes | Yes | Yes |
-| GitLab | Yes | Yes | Yes | Yes | No |
-| Bitbucket | Yes | Yes | Yes | Yes | No |
-| Azure DevOps | Yes | Yes | No | Yes | No |
-| Self-hosted | Yes | Yes | Yes | Depends | No |
+| Provider | HTTPS Token | SSH Key | Deploy Key | GitHub App |
+|----------|------------|---------|------------|------------|
+| GitHub | Yes | Yes | Yes | Yes |
+| GitLab | Yes | Yes | Yes | No |
+| Bitbucket | Yes | Yes | Yes | No |
+| Azure DevOps | Yes | Yes | No | No |
+| Self-hosted | Yes | Yes | Yes | No |
 
 ## GitHub Private Repositories
 
@@ -284,6 +284,8 @@ kind: ConfigMap
 metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   git.internal.example.com: |
     -----BEGIN CERTIFICATE-----
@@ -328,6 +330,8 @@ kind: ConfigMap
 metadata:
   name: argocd-ssh-known-hosts-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   ssh_known_hosts: |
     github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
@@ -421,9 +425,9 @@ Set up a rotation schedule:
 ```bash
 #!/bin/bash
 # Rotate GitHub PAT quarterly
-kubectl create secret generic github-creds \
-  --from-literal=password="$NEW_TOKEN" \
-  --dry-run=client -o yaml | kubectl apply -f -
+kubectl patch secret github-private-repo -n argocd \
+  --type='merge' \
+  -p "{\"stringData\":{\"password\":\"$NEW_TOKEN\"}}"
 ```
 
 ### Separate Service Accounts
