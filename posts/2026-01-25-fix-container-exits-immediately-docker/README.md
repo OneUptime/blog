@@ -87,7 +87,7 @@ docker run -d myimage tail -f /dev/null
 docker run -d myimage sleep infinity
 
 # Or start an interactive shell
-docker run -it myimage /bin/bash
+docker run -it myimage /bin/sh
 ```
 
 ### For Long-Running Services
@@ -123,7 +123,7 @@ CMD python app.py
 CMD ["python", "app.py"]
 ```
 
-If your base image does not have `/bin/sh`, shell form fails silently.
+If your base image does not have `/bin/sh`, shell form fails because Docker uses the default shell (`/bin/sh -c` on Linux) unless you change it with the `SHELL` instruction.
 
 ### Check for Typos and Paths
 
@@ -141,7 +141,7 @@ ls -la /app/
 
 ```bash
 # Override entrypoint to get a shell
-docker run -it --entrypoint /bin/sh myimage
+docker run -it --entrypoint /bin/sh myimage -c 'exec /bin/sh'
 
 # Run your command manually to see errors
 /entrypoint.sh
@@ -214,8 +214,6 @@ docker run -e DATABASE_URL=postgres://localhost/db myimage
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -261,7 +259,7 @@ CMD ["/app/entrypoint.sh"]
 
 ## Cause 7: Health Check Failures
 
-Containers can be killed if health checks fail repeatedly.
+Docker health checks do not normally kill a standalone container. They mark the container as `unhealthy`, which can still make the service look failed or trigger action in an orchestrator.
 
 ```bash
 # Check health status
@@ -305,8 +303,11 @@ docker inspect container_name --format='{{.HostConfig.Memory}}'
 # Increase memory limit
 docker run -m 1g myimage
 
-# Or remove the limit for testing
-docker run --memory-swap -1 myimage
+# Or remove the memory limit for testing
+docker run myimage
+
+# Or allow unlimited swap while keeping a memory limit
+docker run -m 1g --memory-swap -1 myimage
 ```
 
 ```yaml
@@ -361,17 +362,17 @@ When logs are not helpful, debug interactively:
 
 ```bash
 # Method 1: Override command to keep container running
-docker run -it myimage /bin/bash
+docker run -it myimage /bin/sh
 # Then manually run your startup commands
 
 # Method 2: Override entrypoint
-docker run -it --entrypoint /bin/bash myimage
+docker run -it --entrypoint /bin/sh myimage -c 'exec /bin/sh'
 # Now test the original entrypoint manually
 ./entrypoint.sh
 
 # Method 3: Exec into a running container (if it stays up briefly)
 docker run -d myimage sleep 30
-docker exec -it <container_id> /bin/bash
+docker exec -it <container_id> /bin/sh
 
 # Method 4: Check filesystem of stopped container
 docker cp <stopped_container>:/app/logs ./logs
