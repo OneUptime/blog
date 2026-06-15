@@ -154,7 +154,7 @@ Sets require hashable elements. If your list contains dictionaries or other muta
 ```python
 def remove_duplicate_dicts(dict_list):
     """
-    Remove duplicate dictionaries from a list.
+    Remove duplicate dictionaries with sortable keys and hashable values from a list.
     Converts each dict to a frozenset for comparison.
     """
     seen = set()
@@ -184,7 +184,7 @@ print(unique_records)
 # Output: [{'name': 'Alice', 'age': 30}, {'name': 'Bob', 'age': 25}, {'name': 'Charlie', 'age': 35}]
 ```
 
-For nested dictionaries, you might need to serialize to JSON:
+For nested dictionaries that contain JSON-serializable data, you might need to serialize to JSON:
 
 ```python
 import json
@@ -291,9 +291,9 @@ def dedupe_case_insensitive(strings):
     result = []
 
     for s in strings:
-        lower = s.lower()
-        if lower not in seen:
-            seen.add(lower)
+        folded = s.casefold()
+        if folded not in seen:
+            seen.add(folded)
             result.append(s)  # Keep original case
 
     return result
@@ -335,7 +335,7 @@ print(result)
 | `dict.fromkeys()` | Yes | O(n) | No |
 | Manual loop | Yes | O(n) | Yes (with modification) |
 | List comprehension | Yes | O(n^2) | Yes |
-| pandas | Yes | O(n) | Yes |
+| pandas | Yes | O(n) | No for raw unhashable values |
 
 ---
 
