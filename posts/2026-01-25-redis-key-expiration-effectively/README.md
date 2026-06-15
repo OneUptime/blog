@@ -58,7 +58,7 @@ PTTL mykey     # Returns milliseconds
 # Remove expiration
 PERSIST mykey
 
-# Set only if key has expiration (Redis 7+)
+# Set only if key exists, return the old value, and set an absolute expiration (Redis 6.2+)
 SET mykey "value" XX GET EXAT 1735689600
 ```
 
@@ -82,7 +82,7 @@ def get_cached_data(key: str, fetch_func, ttl_seconds: int = 300):
     data = fetch_func()
 
     # Cache with expiration
-    r.setex(key, ttl_seconds, json.dumps(data))
+    r.set(key, json.dumps(data), ex=ttl_seconds)
 
     return data
 
@@ -121,7 +121,7 @@ class SlidingWindowCache:
 
     def set(self, key: str, value: str, ttl: int = None):
         """Set value with expiration."""
-        self.r.setex(key, ttl or self.default_ttl, value)
+        self.r.set(key, value, ex=ttl or self.default_ttl)
 
 # Usage
 cache = SlidingWindowCache(r, default_ttl=300)
@@ -149,7 +149,7 @@ class WriteExtendCache:
 
     def set(self, key: str, value: str):
         """Write and extend TTL."""
-        self.r.setex(key, self.ttl, value)
+        self.r.set(key, value, ex=self.ttl)
 
     def increment(self, key: str):
         """Increment counter and extend TTL."""
@@ -183,14 +183,14 @@ class StaggeredCache:
     def set(self, key: str, value: str):
         """Set with randomized TTL."""
         ttl = self._get_ttl()
-        self.r.setex(key, ttl, value)
+        self.r.set(key, value, ex=ttl)
 
     def set_many(self, data: dict):
         """Set multiple keys with different TTLs."""
         pipe = self.r.pipeline()
         for key, value in data.items():
             ttl = self._get_ttl()
-            pipe.setex(key, ttl, value)
+            pipe.set(key, value, ex=ttl)
         pipe.execute()
 
 # Keys expire between 270-330 seconds instead of all at 300
@@ -203,7 +203,7 @@ Refresh cache before it expires to avoid cache misses:
 
 ```python
 import threading
-import time
+import json
 
 class EarlyRefreshCache:
     """Refresh cache before expiration."""
@@ -234,7 +234,7 @@ class EarlyRefreshCache:
     def _fetch_and_cache(self, key: str, fetch_func):
         """Fetch data and cache it."""
         data = fetch_func()
-        self.r.setex(key, self.ttl, json.dumps(data))
+        self.r.set(key, json.dumps(data), ex=self.ttl)
         return json.dumps(data)
 
     def _background_refresh(self, key: str, fetch_func):
@@ -286,8 +286,7 @@ redis-cli --stat
 # Higher = more CPU, faster cleanup
 active-expire-effort 2
 
-# If using Redis 7+, you can set memory limits for expired keys
-# to trigger more aggressive cleanup
+# Memory limits and eviction policies are separate from expiration cleanup
 ```
 
 ### Batch Expiration with SCAN
@@ -368,14 +367,14 @@ thread.start()
 r.set("temp:data", "value")
 
 # Good - always set TTL for temporary data
-r.setex("temp:data", 3600, "value")
+r.set("temp:data", "value", ex=3600)
 ```
 
 ### 2. Overwriting Removes Expiration
 
 ```python
 # Key has 1 hour TTL
-r.setex("mykey", 3600, "value1")
+r.set("mykey", "value1", ex=3600)
 
 # This removes the TTL!
 r.set("mykey", "value2")
@@ -388,25 +387,25 @@ r.set("mykey", "value2", keepttl=True)
 
 ```python
 # Key has TTL
-r.setex("counter", 3600, "10")
+r.set("counter", "10", ex=3600)
 
 # GETSET removes TTL
 old_value = r.getset("counter", "20")
 
-# Use GET + SET with KEEPTTL instead
-old_value = r.get("counter")
-r.set("counter", "20", keepttl=True)
+# Use SET with GET and KEEPTTL instead
+old_value = r.set("counter", "20", get=True, keepttl=True)
 ```
 
-### 4. Hash Fields Cannot Expire Individually
+### 4. Hash Field Expiration Is Version-Specific
 
 ```python
-# You cannot expire individual hash fields
+# Redis 7.4+ can expire individual hash fields
 r.hset("user:123", "name", "John")
-# r.expire("user:123", "name", 3600)  # NOT POSSIBLE
+r.hset("user:123", "session", "session_data")
+r.execute_command("HEXPIRE", "user:123", 3600, "FIELDS", 1, "session")
 
-# Workaround: Use separate keys with a naming convention
-r.setex("user:123:session", 3600, "session_data")
+# On older Redis versions, use separate keys with a naming convention
+r.set("user:123:session", "session_data", ex=3600)
 r.set("user:123:profile", "profile_data")  # No expiration
 ```
 
