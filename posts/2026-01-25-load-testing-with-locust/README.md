@@ -23,11 +23,11 @@ pip install locust
 locust --version
 ```
 
-For better performance on Linux, install with gevent's C extensions:
+If your platform needs pre-built wheels for Locust's compiled dependencies:
 
 ```bash
-# Install with performance optimizations
-pip install locust[gevent]
+# Prefer binary wheels when installing dependencies
+pip install --prefer-binary locust
 ```
 
 ## Your First Locust Test
@@ -304,8 +304,7 @@ services:
     volumes:
       - ./:/mnt/locust
     command: -f /mnt/locust/locustfile.py --worker --master-host master
-    deploy:
-      replicas: 4
+    scale: 4
 ```
 
 ## Custom Metrics and Events
