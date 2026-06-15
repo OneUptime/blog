@@ -150,14 +150,14 @@ spec:
         app: critical-service
     spec:
       topologySpreadConstraints:
-        # Spread across zones first
+        # Spread across zones
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
           whenUnsatisfiable: DoNotSchedule
           labelSelector:
             matchLabels:
               app: critical-service
-        # Then spread across nodes within each zone
+        # Prefer spreading across nodes
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
@@ -169,7 +169,7 @@ spec:
           image: critical-service:1.0.0
 ```
 
-With 9 replicas, 3 zones, and 3 nodes per zone, this creates:
+With 9 replicas, 3 zones, and 3 nodes per zone, this can create:
 - 3 pods per zone
 - 1 pod per node
 
@@ -300,7 +300,7 @@ spec:
               nvidia.com/gpu: 1
 ```
 
-## MinDomains (Kubernetes 1.25+)
+## MinDomains (Kubernetes 1.30+, or earlier with feature gate)
 
 Specify minimum number of domains to spread across:
 
@@ -315,9 +315,9 @@ topologySpreadConstraints:
         app: myapp
 ```
 
-If fewer than 3 zones are available, pods will not schedule.
+If fewer than 3 eligible zones are available, Kubernetes treats the global minimum as 0. With `maxSkew: 1`, it can schedule one matching pod per available zone, but additional pods remain pending once scheduling them would exceed the skew.
 
-## NodeTaintsPolicy (Kubernetes 1.26+)
+## NodeTaintsPolicy (Kubernetes 1.26+, GA in 1.33)
 
 Control how taints affect topology calculations:
 
@@ -333,7 +333,7 @@ topologySpreadConstraints:
 ```
 
 Options:
-- **Honor** - Exclude tainted nodes from domain count
+- **Honor** - Exclude nodes with taints the pod does not tolerate from domain count
 - **Ignore** - Include tainted nodes in domain count
 
 ## Real-World Examples
@@ -455,7 +455,7 @@ kubectl get events --field-selector reason=FailedScheduling
 2. **Use maxSkew: 1** for critical services, **maxSkew: 2** for less critical ones
 3. **Combine with PodDisruptionBudgets** for complete HA strategy
 4. **Monitor pod distribution** as part of your observability
-5. **Test with `kubectl --dry-run`** before applying
+5. **Test with `kubectl apply --dry-run=server -f manifest.yaml`** before applying
 
 ```yaml
 # PDB to complement spread constraints
