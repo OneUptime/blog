@@ -118,6 +118,7 @@ Edit your `postgresql.conf` or use `ALTER SYSTEM` for cluster-wide settings.
 ```sql
 -- Allow more concurrent autovacuum workers
 -- Default is 3, increase for busy databases
+-- Requires a PostgreSQL restart to take effect
 ALTER SYSTEM SET autovacuum_max_workers = 6;
 
 -- Reduce naptime between autovacuum runs
@@ -136,6 +137,7 @@ ALTER SYSTEM SET autovacuum_vacuum_scale_factor = 0.05;
 ALTER SYSTEM SET autovacuum_analyze_scale_factor = 0.02;
 
 -- Reload configuration
+-- Restart is still required for server-start settings
 SELECT pg_reload_conf();
 ```
 
@@ -201,19 +203,20 @@ ALTER TABLE country_codes SET (
 
 ## Handling Transaction ID Wraparound
 
-PostgreSQL uses 32-bit transaction IDs that wrap around after approximately 2 billion transactions. Autovacuum must "freeze" old tuples to prevent data loss.
+PostgreSQL uses 32-bit transaction IDs that wrap around after approximately 4 billion transactions, and old row versions must be frozen before they become more than 2 billion transactions old. Autovacuum must "freeze" old tuples to prevent data loss.
 
 ```sql
 -- Check tables approaching wraparound
 SELECT
-    c.relname AS table_name,
-    age(c.relfrozenxid) AS xid_age,
+    c.oid::regclass AS table_name,
+    GREATEST(age(c.relfrozenxid), age(t.relfrozenxid)) AS xid_age,
     pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size
 FROM pg_class c
+LEFT JOIN pg_class t ON c.reltoastrelid = t.oid
 JOIN pg_namespace n ON c.relnamespace = n.oid
 WHERE c.relkind = 'r'
 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-ORDER BY age(c.relfrozenxid) DESC
+ORDER BY xid_age DESC
 LIMIT 10;
 ```
 
@@ -222,6 +225,7 @@ LIMIT 10;
 ```sql
 -- Lower the age at which autovacuum aggressively freezes tuples
 -- Default is 200 million
+-- Requires a PostgreSQL restart to take effect
 ALTER SYSTEM SET autovacuum_freeze_max_age = 100000000;
 
 -- Set vacuum_freeze_min_age to balance between
@@ -237,15 +241,16 @@ Create a monitoring query to run regularly.
 -- Comprehensive autovacuum health check
 WITH bloat_info AS (
     SELECT
-        schemaname || '.' || relname AS table_name,
-        n_live_tup,
-        n_dead_tup,
-        COALESCE(ROUND(100.0 * n_dead_tup / NULLIF(n_live_tup, 0), 2), 0) AS dead_pct,
-        last_autovacuum,
-        last_autoanalyze,
-        age(relfrozenxid) AS xid_age
+        s.schemaname || '.' || s.relname AS table_name,
+        s.n_live_tup,
+        s.n_dead_tup,
+        COALESCE(ROUND(100.0 * s.n_dead_tup / NULLIF(s.n_live_tup + s.n_dead_tup, 0), 2), 0) AS dead_pct,
+        s.last_autovacuum,
+        s.last_autoanalyze,
+        GREATEST(age(c.relfrozenxid), age(t.relfrozenxid)) AS xid_age
     FROM pg_stat_user_tables s
-    JOIN pg_class c ON c.relname = s.relname
+    JOIN pg_class c ON c.oid = s.relid
+    LEFT JOIN pg_class t ON c.reltoastrelid = t.oid
 )
 SELECT
     table_name,
