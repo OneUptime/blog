@@ -30,11 +30,13 @@ Redis provides:
 ### Python (Flask)
 
 ```python
-from flask import Flask, session
+from datetime import datetime, timedelta
+from flask import Flask, jsonify, request, session
 from flask_session import Session
 import redis
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your-secret-key'
 
 # Configure Redis session
 
@@ -45,7 +47,7 @@ app.config['SESSION_REDIS'] = redis.Redis(
     password='your-password'
 )
 app.config['SESSION_PERMANENT'] = True
-app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
 app.config['SESSION_KEY_PREFIX'] = 'session:'
 
 Session(app)
@@ -85,6 +87,8 @@ const RedisStore = require('connect-redis').default;
 const { createClient } = require('redis');
 
 const app = express();
+
+app.use(express.json());
 
 // Create Redis client
 const redisClient = createClient({
@@ -131,8 +135,13 @@ app.get('/profile', (req, res) => {
 });
 
 app.post('/logout', (req, res) => {
-  req.session.destroy();
-  res.json({ status: 'logged out' });
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Logout failed' });
+    }
+    res.clearCookie('sessionId');
+    res.json({ status: 'logged out' });
+  });
 });
 ```
 
@@ -142,7 +151,7 @@ For more control, implement your own session manager:
 
 ```python
 import redis
-import uuid
+import secrets
 import json
 import time
 from typing import Optional, Dict, Any
@@ -162,7 +171,7 @@ class RedisSessionManager:
 
     def create(self, user_id: str, data: Dict[str, Any] = None) -> str:
         """Create a new session."""
-        session_id = str(uuid.uuid4())
+        session_id = secrets.token_urlsafe(32)
         session_data = {
             'user_id': user_id,
             'created_at': int(time.time()),
@@ -171,7 +180,7 @@ class RedisSessionManager:
         }
 
         key = f"{self.prefix}{session_id}"
-        self.r.setex(key, self.default_ttl, json.dumps(session_data))
+        self.r.set(key, json.dumps(session_data), ex=self.default_ttl)
 
         return session_id
 
@@ -188,7 +197,7 @@ class RedisSessionManager:
         # Extend TTL on access
         if self.extend_on_access:
             session['last_access'] = int(time.time())
-            self.r.setex(key, self.default_ttl, json.dumps(session))
+            self.r.set(key, json.dumps(session), ex=self.default_ttl)
 
         return session
 
@@ -202,7 +211,7 @@ class RedisSessionManager:
 
         current.update(data)
         current['last_access'] = int(time.time())
-        self.r.setex(key, self.default_ttl, json.dumps(current))
+        self.r.set(key, json.dumps(current), ex=self.default_ttl)
 
         return True
 
@@ -269,9 +278,13 @@ sessions.destroy_all_for_user('user123')
 
 ## Using Redis Hashes for Sessions
 
-For better memory efficiency with large sessions:
+For memory-efficient storage of sessions with small fields and field-level access:
 
 ```python
+import secrets
+import time
+from typing import Dict, Optional
+
 class HashBasedSessionManager:
     """Session manager using Redis hashes."""
 
@@ -281,7 +294,7 @@ class HashBasedSessionManager:
         self.ttl = ttl
 
     def create(self, user_id: str, data: Dict = None) -> str:
-        session_id = str(uuid.uuid4())
+        session_id = secrets.token_urlsafe(32)
         key = f"{self.prefix}{session_id}"
 
         # Store as hash
@@ -339,7 +352,9 @@ def generate_secure_session_id() -> str:
 ### Session Fixation Prevention
 
 ```python
-def regenerate_session(session_manager, old_session_id: str) -> str:
+from typing import Optional
+
+def regenerate_session(session_manager, old_session_id: str) -> Optional[str]:
     """Regenerate session ID (call after login)."""
     # Get old session data
     old_data = session_manager.get(old_session_id)
@@ -415,6 +430,7 @@ sessions = RedisSessionManager(master)
 ### Handling Redis Failures
 
 ```python
+import secrets
 from redis.exceptions import ConnectionError, TimeoutError
 
 class ResilientSessionManager(RedisSessionManager):
@@ -442,7 +458,7 @@ class ResilientSessionManager(RedisSessionManager):
             return session_id
         except (ConnectionError, TimeoutError):
             # Create local-only session
-            session_id = str(uuid.uuid4())
+            session_id = secrets.token_urlsafe(32)
             self.local_cache[session_id] = {
                 'user_id': user_id,
                 **(data or {})
