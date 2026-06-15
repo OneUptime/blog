@@ -80,14 +80,15 @@ Or in your startup script:
 }
 ```
 
-### Option 3: Configure HTTPS Agent
+### Option 3: Configure HTTP Client Agents
 
-For libraries like axios or fetch:
+For libraries like axios, or native fetch with Undici:
 
 ```javascript
 const https = require('https');
 const fs = require('fs');
 const axios = require('axios');
+const { Agent } = require('undici');
 
 // Load certificate
 const ca = fs.readFileSync('./certs/self-signed.pem');
@@ -98,15 +99,26 @@ const httpsAgent = new https.Agent({
     rejectUnauthorized: true  // Still verify, just trust our cert
 });
 
-// Use with axios
-const response = await axios.get('https://internal-api.example.com/data', {
-    httpsAgent
-});
+async function requestData() {
+    // Use with axios
+    const axiosResponse = await axios.get('https://internal-api.example.com/data', {
+        httpsAgent
+    });
 
-// Use with native fetch (Node 18+)
-const response = await fetch('https://internal-api.example.com/data', {
-    agent: httpsAgent
-});
+    // Use with native fetch (Node 18+)
+    const fetchDispatcher = new Agent({
+        connect: {
+            ca: ca,
+            rejectUnauthorized: true
+        }
+    });
+
+    const fetchResponse = await fetch('https://internal-api.example.com/data', {
+        dispatcher: fetchDispatcher
+    });
+
+    return { axiosResponse, fetchResponse };
+}
 ```
 
 ### Option 4: Configure Database Clients
@@ -181,11 +193,14 @@ const insecureAgent = new https.Agent({
     rejectUnauthorized: false
 });
 
-// Use only for specific requests
-if (process.env.NODE_ENV === 'development') {
-    const response = await axios.get('https://localhost:8443/api', {
-        httpsAgent: insecureAgent
-    });
+async function requestLocalApi() {
+    // Use only for specific requests
+    if (process.env.NODE_ENV === 'development') {
+        const response = await axios.get('https://localhost:8443/api', {
+            httpsAgent: insecureAgent
+        });
+        return response;
+    }
 }
 ```
 
@@ -220,11 +235,14 @@ function getCertificate(host, port = 443) {
 }
 
 // Usage
-const cert = await getCertificate('internal-api.example.com');
-console.log('Subject:', cert.subject);
-console.log('Issuer:', cert.issuer);
-console.log('Valid from:', cert.valid_from);
-console.log('Valid to:', cert.valid_to);
+getCertificate('internal-api.example.com')
+    .then((cert) => {
+        console.log('Subject:', cert.subject);
+        console.log('Issuer:', cert.issuer);
+        console.log('Valid from:', cert.valid_from);
+        console.log('Valid to:', cert.valid_to);
+    })
+    .catch(console.error);
 ```
 
 ## Creating Proper Self-Signed Certs for Development
@@ -275,7 +293,7 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out s
 
 ## Docker and Kubernetes
 
-Add certificates in containers:
+Add certificates in containers and pass them to Node.js:
 
 ```dockerfile
 # Dockerfile
@@ -284,6 +302,7 @@ FROM node:18-alpine
 # Copy CA certificate
 COPY certs/ca.pem /usr/local/share/ca-certificates/my-ca.crt
 RUN update-ca-certificates
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/my-ca.crt
 
 WORKDIR /app
 COPY package*.json ./
