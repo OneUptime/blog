@@ -26,11 +26,13 @@ Key considerations for Cloud Functions:
 
 ```bash
 npm install @opentelemetry/api \
+  @google-cloud/functions-framework \
   @opentelemetry/sdk-node \
   @opentelemetry/sdk-trace-node \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/resources \
   @opentelemetry/semantic-conventions \
+  @opentelemetry/instrumentation \
   @opentelemetry/instrumentation-http \
   @google-cloud/opentelemetry-cloud-trace-exporter
 ```
@@ -43,27 +45,35 @@ const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { TraceExporter } = require('@google-cloud/opentelemetry-cloud-trace-exporter');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_CLOUD_PROVIDER,
+  ATTR_CLOUD_REGION,
+} = require('@opentelemetry/semantic-conventions');
+const {
+  ATTR_FAAS_NAME,
+  ATTR_FAAS_VERSION,
+} = require('@opentelemetry/semantic-conventions/incubating');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
 
 function initTracing() {
+  const spanProcessors = [];
+
   // Build resource with GCP context
-  const resource = new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]:
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]:
       process.env.OTEL_SERVICE_NAME || process.env.K_SERVICE || 'my-function',
-    [SemanticResourceAttributes.FAAS_NAME]:
+    [ATTR_FAAS_NAME]:
       process.env.FUNCTION_NAME || process.env.K_SERVICE || 'unknown',
-    [SemanticResourceAttributes.FAAS_VERSION]:
+    [ATTR_FAAS_VERSION]:
       process.env.K_REVISION || 'unknown',
-    [SemanticResourceAttributes.CLOUD_PROVIDER]: 'gcp',
-    [SemanticResourceAttributes.CLOUD_REGION]:
+    [ATTR_CLOUD_PROVIDER]: 'gcp',
+    [ATTR_CLOUD_REGION]:
       process.env.FUNCTION_REGION || process.env.GOOGLE_CLOUD_REGION || 'unknown',
     'gcp.project_id': process.env.GCP_PROJECT || process.env.GOOGLE_CLOUD_PROJECT,
   });
-
-  const provider = new NodeTracerProvider({ resource });
 
   // Export to custom OTLP endpoint
   const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
@@ -75,7 +85,7 @@ function initTracing() {
       },
     });
     // Use SimpleSpanProcessor for immediate export (critical for serverless)
-    provider.addSpanProcessor(new SimpleSpanProcessor(otlpExporter));
+    spanProcessors.push(new SimpleSpanProcessor(otlpExporter));
   }
 
   // Optionally also export to Cloud Trace
@@ -83,8 +93,10 @@ function initTracing() {
     const cloudTraceExporter = new TraceExporter({
       projectId: process.env.GCP_PROJECT || process.env.GOOGLE_CLOUD_PROJECT,
     });
-    provider.addSpanProcessor(new SimpleSpanProcessor(cloudTraceExporter));
+    spanProcessors.push(new SimpleSpanProcessor(cloudTraceExporter));
   }
+
+  const provider = new NodeTracerProvider({ resource, spanProcessors });
 
   provider.register();
 
@@ -333,7 +345,7 @@ init_tracing()
 # main.py
 import functions_framework
 from flask import jsonify
-from opentelemetry import trace, context, propagation
+from opentelemetry import trace, propagation
 from opentelemetry.trace import StatusCode
 import tracing  # Initialize tracing
 
@@ -349,34 +361,33 @@ def http_function(request):
     # Extract trace context from request headers
     parent_context = propagation.extract(request.headers)
 
-    with context.with_(parent_context):
-        with tracer.start_as_current_span('handle-request') as span:
-            span.set_attribute('faas.trigger', 'http')
-            span.set_attribute('faas.coldstart', _is_first_invocation)
-            span.set_attribute('http.method', request.method)
-            span.set_attribute('http.url', request.url)
-            span.set_attribute('http.route', request.path)
+    with tracer.start_as_current_span('handle-request', context=parent_context) as span:
+        span.set_attribute('faas.trigger', 'http')
+        span.set_attribute('faas.coldstart', _is_first_invocation)
+        span.set_attribute('http.method', request.method)
+        span.set_attribute('http.url', request.url)
+        span.set_attribute('http.route', request.path)
 
-            if _is_first_invocation:
-                _is_first_invocation = False
-                span.add_event('cold_start')
+        if _is_first_invocation:
+            _is_first_invocation = False
+            span.add_event('cold_start')
 
-            try:
-                # Parse request
-                data = parse_request(request)
-                span.set_attribute('request.data_size', len(str(data)))
+        try:
+            # Parse request
+            data = parse_request(request)
+            span.set_attribute('request.data_size', len(str(data)))
 
-                # Process request
-                result = process_request(data)
+            # Process request
+            result = process_request(data)
 
-                span.set_attribute('response.status', 200)
-                return jsonify(result), 200
+            span.set_attribute('response.status', 200)
+            return jsonify(result), 200
 
-            except Exception as e:
-                span.record_exception(e)
-                span.set_status(StatusCode.ERROR, str(e))
-                span.set_attribute('response.status', 500)
-                return jsonify({'error': 'Internal server error'}), 500
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(StatusCode.ERROR, str(e))
+            span.set_attribute('response.status', 500)
+            return jsonify({'error': 'Internal server error'}), 500
 
 def parse_request(request):
     with tracer.start_as_current_span('parse-request') as span:
@@ -400,14 +411,13 @@ def process_request(data):
 // go.mod
 module my-function
 
-go 1.21
+go 1.24
 
 require (
     github.com/GoogleCloudPlatform/functions-framework-go v1.8.0
     go.opentelemetry.io/otel v1.24.0
     go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.24.0
     go.opentelemetry.io/otel/sdk v1.24.0
-    go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0
 )
 ```
 
@@ -426,6 +436,7 @@ import (
     "sync"
     "time"
 
+    "github.com/GoogleCloudPlatform/functions-framework-go/functions"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
@@ -444,6 +455,7 @@ var (
 )
 
 func init() {
+    functions.HTTP("HttpFunction", HttpFunction)
     initOnce.Do(func() {
         initTracing()
     })
@@ -468,29 +480,30 @@ func initTracing() {
         return
     }
 
-    // Create OTLP exporter
-    endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-    if endpoint == "" {
-        endpoint = "localhost:4318"
+    tpOptions := []trace.TracerProviderOption{trace.WithResource(res)}
+
+    // Create OTLP exporter when an endpoint is configured
+    if endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); endpoint != "" {
+        exporterOptions := []otlptracehttp.Option{
+            otlptracehttp.WithEndpointURL(endpoint),
+        }
+
+        if token := os.Getenv("OTEL_API_TOKEN"); token != "" {
+            exporterOptions = append(exporterOptions, otlptracehttp.WithHeaders(map[string]string{
+                "Authorization": "Bearer " + token,
+            }))
+        }
+
+        exporter, err := otlptracehttp.New(ctx, exporterOptions...)
+        if err != nil {
+            fmt.Printf("Failed to create exporter: %v\n", err)
+        } else {
+            // Syncer exports spans immediately, which is important for short-lived functions.
+            tpOptions = append(tpOptions, trace.WithSyncer(exporter))
+        }
     }
 
-    exporter, err := otlptracehttp.New(ctx,
-        otlptracehttp.WithEndpoint(endpoint),
-        otlptracehttp.WithInsecure(),
-        otlptracehttp.WithHeaders(map[string]string{
-            "Authorization": "Bearer " + os.Getenv("OTEL_API_TOKEN"),
-        }),
-    )
-    if err != nil {
-        fmt.Printf("Failed to create exporter: %v\n", err)
-        return
-    }
-
-    // Create tracer provider with SimpleSpanProcessor for immediate export
-    tp := trace.NewTracerProvider(
-        trace.WithResource(res),
-        trace.WithSyncer(exporter), // Syncer for immediate export
-    )
+    tp := trace.NewTracerProvider(tpOptions...)
 
     otel.SetTracerProvider(tp)
     otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
@@ -567,23 +580,16 @@ Set these environment variables in your Cloud Function:
 ```bash
 # Using gcloud
 gcloud functions deploy my-function \
-  --runtime nodejs18 \
+  --runtime nodejs22 \
   --trigger-http \
-  --set-env-vars \
-    OTEL_SERVICE_NAME=my-function,\
-    OTEL_EXPORTER_OTLP_ENDPOINT=https://your-backend.example.com/v1/traces,\
-    OTEL_API_TOKEN=your-token,\
-    ENABLE_CLOUD_TRACE=false
+  --set-env-vars=OTEL_SERVICE_NAME=my-function,OTEL_EXPORTER_OTLP_ENDPOINT=https://your-backend.example.com/v1/traces,OTEL_API_TOKEN=your-token,ENABLE_CLOUD_TRACE=false
 ```
 
-Or in your `cloudfunctions.yaml`:
+Or put the environment variables in an `env.yaml` file and deploy with `--env-vars-file env.yaml`:
 
 ```yaml
-runtime: nodejs18
-entryPoint: httpFunction
-environmentVariables:
-  OTEL_SERVICE_NAME: my-function
-  OTEL_EXPORTER_OTLP_ENDPOINT: https://your-backend.example.com/v1/traces
+OTEL_SERVICE_NAME: my-function
+OTEL_EXPORTER_OTLP_ENDPOINT: https://your-backend.example.com/v1/traces
 ```
 
 ## Trace Structure
