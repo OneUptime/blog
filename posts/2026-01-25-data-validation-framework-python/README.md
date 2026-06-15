@@ -55,7 +55,7 @@ from enum import Enum
 from typing import (
     Any, Dict, List, Optional, Callable, TypeVar, Generic, Union
 )
-from datetime import datetime
+from datetime import datetime, timezone
 
 class Severity(Enum):
     """Severity levels for validation errors"""
@@ -81,7 +81,7 @@ class ValidationResult:
     errors: List[ValidationError]
     warnings: List[ValidationError]
     info: List[ValidationError]
-    validated_at: datetime = field(default_factory=datetime.utcnow)
+    validated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -121,7 +121,7 @@ class ValidationResult:
                     'field': e.field,
                     'message': e.message,
                     'row': e.row_index,
-                    'value': str(e.value) if e.value else None
+                    'value': str(e.value) if e.value is not None else None
                 }
                 for e in self.errors
             ],
@@ -187,6 +187,7 @@ Common field validators that handle typical validation needs.
 ```python
 # validators/field_validators.py
 # Built-in field-level validation rules
+import math
 import re
 from typing import Any, Dict, Optional, List, Pattern, Union
 from datetime import datetime, date
@@ -199,7 +200,11 @@ class Required(ValidationRule):
         super().__init__("required", severity)
 
     def validate(self, value: Any, context: Dict[str, Any] = None) -> Optional[ValidationError]:
-        if value is None or (isinstance(value, str) and not value.strip()):
+        if (
+            value is None
+            or (isinstance(value, float) and math.isnan(value))
+            or (isinstance(value, str) and not value.strip())
+        ):
             return self.create_error("Field is required", value=value)
         return None
 
@@ -242,6 +247,9 @@ class Range(ValidationRule):
             num_value = float(value)
         except (TypeError, ValueError):
             return self.create_error(f"Cannot convert to number: {value}", value=value)
+
+        if not math.isfinite(num_value):
+            return self.create_error(f"Value must be a finite number: {value}", value=value)
 
         if self.min_value is not None and num_value < self.min_value:
             return self.create_error(
@@ -953,9 +961,10 @@ class DataFrameValidator:
         # Mark invalid rows
         for error in result.errors:
             if error.row_index is not None:
-                df.loc[error.row_index, '_is_valid'] = False
-                current = df.loc[error.row_index, '_validation_errors']
-                df.loc[error.row_index, '_validation_errors'] = (
+                row_label = df.index[error.row_index]
+                df.loc[row_label, '_is_valid'] = False
+                current = df.loc[row_label, '_validation_errors']
+                df.loc[row_label, '_validation_errors'] = (
                     f"{current}; {error.message}" if current else error.message
                 )
 
