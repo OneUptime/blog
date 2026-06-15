@@ -103,14 +103,14 @@ kubectl --context=production-west get pods
 kubectl --context=production-east get pods
 ```
 
-## Using Kubefed for Federation
+## Using KubeFed for Federation
 
-Kubernetes Federation (KubeFed) manages resources across clusters:
+Kubernetes Federation (KubeFed) manages resources across clusters. KubeFed is now archived, so use it mainly for existing installations and evaluate GitOps or service-mesh approaches for new deployments:
 
 ```bash
 # Install kubefedctl
-curl -LO https://github.com/kubernetes-sigs/kubefed/releases/download/v0.9.2/kubefedctl-0.9.2-linux-amd64.tgz
-tar xzf kubefedctl-0.9.2-linux-amd64.tgz
+curl -LO https://github.com/kubernetes-sigs/kubefed/releases/download/v0.10.0/kubefedctl-0.10.0-linux-amd64.tgz
+tar xzf kubefedctl-0.10.0-linux-amd64.tgz
 sudo mv kubefedctl /usr/local/bin/
 
 # Install KubeFed on the host cluster
@@ -309,7 +309,7 @@ spec:
     spec:
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.13.6
+          image: registry.k8s.io/external-dns/external-dns:v0.20.0
           args:
             - --source=service
             - --source=ingress
@@ -341,7 +341,7 @@ For stateful applications across clusters:
 
 ```yaml
 # CockroachDB multi-region deployment example
-# Cluster configuration for geo-distributed database
+# Regional cluster configuration for a geo-distributed database
 apiVersion: crdb.cockroachlabs.com/v1alpha1
 kind: CrdbCluster
 metadata:
@@ -361,7 +361,7 @@ spec:
   nodes: 3
   additionalLabels:
     region: us-west
-  cockroachDBVersion: v23.1.0
+  cockroachDBVersion: v25.1.2
 ```
 
 ## Deployment Workflow
@@ -381,14 +381,18 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        cluster: [production-west, production-east]
+        include:
+          - cluster: production-west
+            kubeconfig_secret: PRODUCTION_WEST_KUBECONFIG
+          - cluster: production-east
+            kubeconfig_secret: PRODUCTION_EAST_KUBECONFIG
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure kubectl
         run: |
-          echo "${{ secrets[format('{0}_KUBECONFIG', matrix.cluster)] }}" > kubeconfig
-          export KUBECONFIG=kubeconfig
+          echo "${{ secrets[matrix.kubeconfig_secret] }}" > "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
 
       - name: Deploy to ${{ matrix.cluster }}
         run: |
@@ -430,10 +434,13 @@ spec:
     matchLabels:
       app: thanos-query
   template:
+    metadata:
+      labels:
+        app: thanos-query
     spec:
       containers:
         - name: thanos-query
-          image: quay.io/thanos/thanos:v0.32.0
+          image: quay.io/thanos/thanos:v0.41.0
           args:
             - query
             - --store=thanos-store-gateway:10901
