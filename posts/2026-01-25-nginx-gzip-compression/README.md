@@ -166,7 +166,7 @@ The `gzip_proxied` directive options:
 | Option | Compresses when |
 |--------|-----------------|
 | off | Never compress proxied |
-| expired | Expires header allows caching |
+| expired | Expires header disables caching |
 | no-cache | Cache-Control: no-cache |
 | no-store | Cache-Control: no-store |
 | private | Cache-Control: private |
@@ -190,6 +190,8 @@ http {
     gzip_types text/plain text/css application/javascript;
 }
 ```
+
+Note: `gzip_static` is provided by a separate Nginx module that may not be included in every build.
 
 Create compressed versions during your build process:
 
@@ -388,7 +390,7 @@ Analyze compression ratios:
 
 ```bash
 # Calculate average compression ratio
-awk '{split($5,a,"/"); if(a[2]>0) sum+=a[2]; count++} END {print sum/count}' \
+awk '{split($9,a,"/"); if(a[2]>0) {sum+=a[2]; count++}} END {if(count>0) print sum/count}' \
     /var/log/nginx/access.log
 ```
 
