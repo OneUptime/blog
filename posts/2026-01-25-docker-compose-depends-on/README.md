@@ -15,7 +15,6 @@ The `depends_on` directive in Docker Compose controls service startup order, but
 At its simplest, `depends_on` ensures one service starts before another:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -31,7 +30,7 @@ services:
 ```
 
 With this configuration:
-1. `database` and `redis` start first (in parallel)
+1. `database` and `redis` start first
 2. `api` starts after `database` and `redis` containers are running
 
 But "running" does not mean "ready." PostgreSQL might still be initializing when the API tries to connect.
@@ -62,7 +61,6 @@ sequenceDiagram
 The solution is health check conditions. Compose waits for the dependency to be healthy, not just running:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -102,7 +100,6 @@ Available conditions:
 Use `service_completed_successfully` for one-time setup containers:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -229,7 +226,6 @@ kafka:
 For multi-tier dependencies, chain them properly:
 
 ```yaml
-version: '3.8'
 services:
   frontend:
     image: nginx:alpine
@@ -300,10 +296,9 @@ services:
 
 ## Handling Restart Scenarios
 
-`depends_on` only applies at initial startup. If a dependency restarts, dependent services do not automatically restart:
+By default, `depends_on` applies at startup. If a dependency restarts because of a runtime restart policy, dependent services do not automatically restart:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -371,7 +366,7 @@ docker compose up api
 ### 1. Missing Health Checks
 
 ```yaml
-# BROKEN: No health check, condition ignored
+# BROKEN: No health check, condition cannot be satisfied
 services:
   api:
     depends_on:
@@ -380,7 +375,7 @@ services:
 
   database:
     image: postgres:15
-    # Missing healthcheck - service_healthy never triggers
+    # Missing healthcheck - service_healthy cannot be satisfied
 ```
 
 ### 2. Overly Strict Health Checks
@@ -416,16 +411,12 @@ services:
 Manage optional dependencies with profiles:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
     depends_on:
       database:
         condition: service_healthy
-    profiles:
-      - default
-      - full
 
   database:
     image: postgres:15
@@ -434,9 +425,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    profiles:
-      - default
-      - full
 
   # Optional debug tools
   pgadmin:
