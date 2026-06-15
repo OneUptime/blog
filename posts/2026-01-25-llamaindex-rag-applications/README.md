@@ -33,12 +33,20 @@ pip install llama-index
 pip install llama-index-llms-openai
 pip install llama-index-embeddings-openai
 
+# Other model integrations used below
+pip install llama-index-llms-anthropic
+pip install llama-index-embeddings-huggingface
+
 # Additional readers for different file types
 pip install llama-index-readers-file
 
 # Vector store integrations
+pip install chromadb
 pip install llama-index-vector-stores-chroma
 pip install llama-index-vector-stores-pinecone
+
+# API deployment
+pip install fastapi uvicorn
 ```
 
 Set up your API key:
@@ -111,8 +119,8 @@ pipeline = IngestionPipeline(
     transformations=[
         # Split text into chunks
         SentenceSplitter(
-            chunk_size=512,      # Characters per chunk
-            chunk_overlap=50,    # Overlap between chunks
+            chunk_size=512,      # Tokens per chunk
+            chunk_overlap=50,    # Token overlap between chunks
             paragraph_separator="\n\n"
         ),
         # Extract titles for better retrieval
@@ -245,13 +253,13 @@ Build a conversational interface that remembers context:
 
 ```python
 from llama_index.core import VectorStoreIndex
-from llama_index.core.memory import ChatMemoryBuffer
+from llama_index.core.memory import Memory
 
 # Build index
 index = VectorStoreIndex.from_documents(documents)
 
 # Create chat engine with memory
-memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
+memory = Memory.from_defaults(session_id="docs_chat", token_limit=3000)
 
 chat_engine = index.as_chat_engine(
     chat_mode="condense_plus_context",  # Reformulates questions using history
@@ -277,9 +285,11 @@ chat_engine.reset()
 Create agents that can reason across multiple data sources:
 
 ```python
-from llama_index.core import VectorStoreIndex, SummaryIndex
+import asyncio
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
+from llama_index.core.agent.workflow import FunctionAgent
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
-from llama_index.agent.openai import OpenAIAgent
+from llama_index.llms.openai import OpenAI
 
 # Create separate indexes for different document types
 api_docs = SimpleDirectoryReader("./docs/api").load_data()
@@ -306,15 +316,18 @@ tutorial_tool = QueryEngineTool(
 )
 
 # Create agent with multiple tools
-agent = OpenAIAgent.from_tools(
-    [api_tool, tutorial_tool],
-    verbose=True,
+agent = FunctionAgent(
+    tools=[api_tool, tutorial_tool],
+    llm=OpenAI(model="gpt-4o-mini"),
     system_prompt="You are a helpful documentation assistant. Use the appropriate tool based on whether the user needs API details or step-by-step guidance."
 )
 
 # Agent decides which tool to use
-response = agent.chat("How do I authenticate API requests?")
-print(response)
+async def main():
+    response = await agent.run("How do I authenticate API requests?")
+    print(response)
+
+asyncio.run(main())
 ```
 
 ## Evaluation and Testing
@@ -345,6 +358,7 @@ relevancy_result = relevancy_evaluator.evaluate_response(
 print(f"Relevancy: {relevancy_result.passing}")
 
 # Run batch evaluation
+import asyncio
 from llama_index.core.evaluation import BatchEvalRunner
 
 eval_questions = [
@@ -361,9 +375,11 @@ runner = BatchEvalRunner(
     workers=4
 )
 
-eval_results = await runner.aevaluate_queries(
-    query_engine=query_engine,
-    queries=eval_questions
+eval_results = asyncio.run(
+    runner.aevaluate_queries(
+        query_engine=query_engine,
+        queries=eval_questions
+    )
 )
 
 # Analyze results
