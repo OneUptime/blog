@@ -71,7 +71,8 @@ server {
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     ssl_certificate /etc/ssl/certs/api.example.com.crt;
@@ -154,7 +155,8 @@ upstream backend {
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     # API requests to API servers
@@ -240,7 +242,8 @@ upstream websocket {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name ws.example.com;
 
     location / {
@@ -365,7 +368,8 @@ proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=api_cache:100m
                  max_size=10g inactive=60m use_temp_path=off;
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     location /api/products {
@@ -404,7 +408,8 @@ server {
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     # Add security headers
@@ -419,14 +424,13 @@ server {
         proxy_set_header X-Internal-Token "";
 
         # Add request ID
-        set $request_id $request_id;
         proxy_set_header X-Request-ID $request_id;
 
         # Hide upstream server info
         proxy_hide_header X-Powered-By;
         proxy_hide_header Server;
 
-        # Modify response headers
+        # Modify response headers (requires ngx_headers_more module)
         more_set_headers "Server: API Gateway";
     }
 
@@ -450,7 +454,8 @@ limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
 limit_req_zone $http_x_api_key zone=key_limit:10m rate=100r/s;
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     location /api/ {
