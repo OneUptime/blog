@@ -52,13 +52,15 @@ Start with a Spring Boot project and add the necessary dependencies. We'll use K
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-dependencies</artifactId>
-            <version>2023.0.0</version>
+            <version>2025.1.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
     </dependencies>
 </dependencyManagement>
 ```
+
+Spring Cloud release trains are tied to Spring Boot versions. This example uses Spring Cloud `2025.1.0`, which targets Spring Boot 4.0.x.
 
 ## Defining Your Events
 
@@ -256,7 +258,7 @@ public Consumer<OrderCreatedEvent> processOrder() {
 
 ## Event Routing and Filtering
 
-Sometimes you need to route events to different destinations based on content. Spring Cloud Stream supports this through function composition.
+Sometimes you need to route events to different destinations based on content. Spring Cloud Stream supports this through dynamic output destinations.
 
 ```java
 @Bean
@@ -276,18 +278,25 @@ public Function<OrderCreatedEvent, Message<OrderCreatedEvent>> routeOrder() {
 
 ## Testing Your Event-Driven Services
 
-Testing event-driven code requires a different approach than testing HTTP endpoints. Spring Cloud Stream provides test binders that work without a real message broker.
+Testing event-driven code requires a different approach than testing HTTP endpoints. Spring Cloud Stream provides test binders that work without a real message broker. Add `spring-cloud-stream-test-binder` as a test dependency:
+
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-stream-test-binder</artifactId>
+    <scope>test</scope>
+</dependency>
+```
+
+Then enable the test binder in your test:
 
 ```java
 @SpringBootTest
-@Import(TestChannelBinderConfiguration.class)
+@EnableTestBinder
 class OrderEventConsumerTest {
 
     @Autowired
     private InputDestination input;
-
-    @Autowired
-    private OutputDestination output;
 
     @Test
     void shouldProcessOrderAndReserveInventory() {
@@ -317,8 +326,8 @@ For integration tests with a real Kafka instance, use Testcontainers:
 class OrderServiceIntegrationTest {
 
     @Container
-    static KafkaContainer kafka = new KafkaContainer(
-        DockerImageName.parse("confluentinc/cp-kafka:7.4.0")
+    static ConfluentKafkaContainer kafka = new ConfluentKafkaContainer(
+        "confluentinc/cp-kafka:7.4.0"
     );
 
     @DynamicPropertySource
