@@ -97,7 +97,7 @@ location /stream-upload/ {
     # Stream request body directly to backend
     proxy_request_buffering off;
 
-    # Required for chunked transfer encoding
+    # Required to stream chunked request bodies upstream
     proxy_http_version 1.1;
 
     # Don't limit body size for streaming
@@ -172,7 +172,7 @@ location / {
     # Chunk size when writing to temp file
     proxy_temp_file_write_size 64k;
 
-    # Maximum temp file size (0 = unlimited)
+    # Maximum temp file size (0 disables temporary files)
     proxy_max_temp_file_size 1024M;
 }
 ```
@@ -217,7 +217,7 @@ server {
         # Disable buffering for SSE
         proxy_buffering off;
 
-        # Required for chunked responses
+        # Keep chunked transfer encoding enabled for HTTP/1.1 clients
         proxy_http_version 1.1;
         chunked_transfer_encoding on;
     }
@@ -235,10 +235,9 @@ location /sse/ {
     # Disable response buffering
     proxy_buffering off;
 
-    # Also disable at application level if needed
-    proxy_set_header X-Accel-Buffering no;
+    # Applications can also send X-Accel-Buffering: no
 
-    # Required for streaming
+    # Use HTTP/1.1 for long-lived upstream connections
     proxy_http_version 1.1;
     proxy_set_header Connection "";
 
@@ -331,7 +330,8 @@ upstream app_backend {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name app.example.com;
 
     ssl_certificate /etc/ssl/certs/app.example.com.crt;
