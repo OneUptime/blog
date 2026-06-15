@@ -76,7 +76,7 @@ server {
         proxy_pass http://backend;
 
         # Active health check configuration
-        health_check interval=5s fails=3 passes=2 uri=/health;
+        health_check interval=5s fails=3 passes=2 uri=/health match=health_check;
     }
 }
 
@@ -119,7 +119,8 @@ backend http_back
     balance roundrobin
 
     # HTTP health check configuration
-    option httpchk GET /health HTTP/1.1\r\nHost:\ localhost
+    option httpchk
+    http-check send meth GET uri /health ver HTTP/1.1 hdr Host localhost
     http-check expect status 200
 
     # Health check intervals
@@ -155,13 +156,8 @@ backend database_proxy
     mode tcp
     balance roundrobin
 
-    # TCP health check
-    option tcp-check
-    tcp-check connect
-
     # MySQL health check
-    tcp-check send-binary 0100000185a23f00  # MySQL ping packet
-    tcp-check expect binary 0500000007
+    option mysql-check user haproxy
 
     server db1 10.0.2.100:3306 check
     server db2 10.0.2.101:3306 check backup
@@ -286,13 +282,14 @@ def deep_health():
 package main
 
 import (
+    "context"
     "database/sql"
     "encoding/json"
     "net/http"
     "sync"
     "time"
 
-    "github.com/go-redis/redis/v8"
+    "github.com/redis/go-redis/v9"
     _ "github.com/lib/pq"
 )
 
@@ -386,12 +383,12 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
         Timestamp: time.Now().Unix(),
     }
 
+    w.Header().Set("Content-Type", "application/json")
     if !allHealthy {
         status.Status = "unhealthy"
         w.WriteHeader(http.StatusServiceUnavailable)
     }
 
-    w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(status)
 }
 
