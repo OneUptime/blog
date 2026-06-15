@@ -264,7 +264,7 @@ CREATE OR REPLACE FUNCTION search_autocomplete(prefix TEXT)
 RETURNS TABLE(suggestion TEXT, article_count BIGINT) AS $$
 BEGIN
     RETURN QUERY
-    SELECT word, ndoc
+    SELECT word, ndoc::BIGINT
     FROM ts_stat('SELECT search_vector FROM articles')
     WHERE word LIKE prefix || '%'
     ORDER BY ndoc DESC
@@ -368,17 +368,15 @@ ANALYZE articles;
 
 ```sql
 -- For write-heavy workloads, use fastupdate
-CREATE INDEX idx_articles_search ON articles
-USING GIN (search_vector)
-WITH (fastupdate = on, gin_pending_list_limit = 4096);
+ALTER INDEX idx_articles_search
+SET (fastupdate = on, gin_pending_list_limit = 4096);
 
 -- fastupdate: Buffers index updates for batch processing
 -- gin_pending_list_limit: Size of pending list in KB
 
 -- For read-heavy workloads, disable fastupdate
-CREATE INDEX idx_articles_search ON articles
-USING GIN (search_vector)
-WITH (fastupdate = off);
+ALTER INDEX idx_articles_search
+SET (fastupdate = off);
 ```
 
 ---
