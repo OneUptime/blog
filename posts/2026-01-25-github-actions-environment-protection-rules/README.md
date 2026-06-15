@@ -112,13 +112,13 @@ jobs:
 
 Configure in Settings > Environments > production:
 - Enable "Required reviewers"
-- Add users or teams who can approve
-- Set minimum number of approvals (1-6)
+- Add up to 6 users or teams who can approve
+- Only one required reviewer needs to approve
 
 When the workflow reaches this job:
 1. It pauses and shows "Waiting for approval"
 2. Designated reviewers receive notification
-3. Any reviewer can approve or reject
+3. One required reviewer can approve or reject
 4. Workflow continues only after approval
 
 ## Wait Timers
@@ -141,8 +141,8 @@ jobs:
 ```
 
 Configure wait timer in environment settings:
-- Set delay from 0 to 43200 minutes (30 days)
-- Timer starts after all required approvals
+- Set delay from 1 to 43200 minutes (30 days)
+- Timer starts when the job is initially triggered; the job continues after required approvals and the wait timer have both passed
 - Useful for staged rollouts or allowing time to verify staging
 
 ## Branch and Tag Restrictions
@@ -150,8 +150,8 @@ Configure wait timer in environment settings:
 Limit which branches can deploy to an environment:
 
 Configure in environment settings:
-- "Deployment branches": Choose "Selected branches"
-- Add patterns like `main`, `release/*`, `v*`
+- "Deployment branches": Choose "Selected branches and tags"
+- Add branch patterns like `main`, `release/*`, and tag patterns like `v*`
 
 ```yaml
 # This workflow only deploys to production from allowed branches
@@ -168,8 +168,10 @@ jobs:
 
 Branch patterns support wildcards:
 - `main` - exact match
-- `release/*` - matches release/v1.0, release/hotfix
-- `v*` - matches v1, v2.0, v2.0.1
+- `release/*` - matches release/v1.0 and release/hotfix, but not release/2026/hotfix
+- `v*` - matches v1, v2.0, v2.0.1 when configured as a tag pattern
+
+Name patterns must be configured for branches or tags individually.
 
 ## Environment Secrets and Variables
 
@@ -210,7 +212,7 @@ Priority order:
 
 ## Custom Deployment Protection Rules
 
-For GitHub Enterprise, create custom protection rules with external services:
+For public repositories on any plan, or private/internal repositories on GitHub Enterprise, create custom protection rules with external services:
 
 ```yaml
 # The workflow waits for external service approval
@@ -369,8 +371,8 @@ jobs:
 For emergencies, repository admins can bypass protection rules:
 
 1. Navigate to the pending deployment
-2. Click "Review deployments"
-3. Select "Approve and deploy" with bypass option
+2. Next to "Deployment protection rules", click "Start all waiting jobs"
+3. Select the environments to bypass, add a comment, and confirm
 
 Note: Bypasses are logged in the audit trail. Use sparingly.
 
@@ -435,7 +437,7 @@ Keep a record of environment settings:
 - Secrets: DATABASE_URL, API_KEY
 
 ### production
-- Required reviewers: @release-team (2 required)
+- Required reviewers: @release-team (one approval required)
 - Wait timer: 5 minutes
 - Branches: main, release/*
 - Secrets: DATABASE_URL, API_KEY, SIGNING_KEY
