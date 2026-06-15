@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: NodeJS, TypeScript, RxJS, Event, Architecture, Design Pattern, Reactive Programming
 
-Description: Learn how to build a type-safe event bus in TypeScript using RxJS, with support for event filtering, replay, error handling, and cross-service communication.
+Description: Learn how to build a type-safe in-process event bus in TypeScript using RxJS, with support for event filtering, replay, error handling, and event aggregation.
 
 ---
 
-Event-driven architecture decouples components by having them communicate through events rather than direct calls. An event bus serves as the central hub for publishing and subscribing to events. RxJS provides powerful primitives for building a robust event bus with features like filtering, buffering, and replay. This guide shows how to build a production-ready event bus with TypeScript and RxJS.
+Event-driven architecture decouples components by having them communicate through events rather than direct calls. An event bus serves as the central hub for publishing and subscribing to events. RxJS provides powerful primitives for building a robust in-process event bus with features like filtering, buffering, and replay. This guide shows how to build a production-ready event bus with TypeScript and RxJS.
 
 ## Why RxJS for an Event Bus?
 
@@ -19,7 +19,7 @@ RxJS (Reactive Extensions for JavaScript) offers several advantages over simple 
 | Type safety | Weak | Strong with generics |
 | Operators | None | 100+ built-in |
 | Replay/buffer | Manual | Built-in |
-| Backpressure | No | Yes |
+| Flow control | Manual | Operators like buffer, throttle, and debounce |
 | Completion | No | Yes |
 | Error propagation | Basic | Sophisticated |
 
@@ -227,7 +227,7 @@ Sometimes subscribers need to receive events that were published before they sub
 // src/events/replay-event-bus.ts
 import { ReplaySubject, Observable, filter, takeUntil, share } from 'rxjs';
 import { EventEnvelope, EventMetadata } from './event-bus';
-import { AppEvent, EventType, EventByType, EventPayload } from './event-types';
+import { EventType, EventByType, EventPayload } from './event-types';
 
 // Event bus that replays recent events to new subscribers
 // Useful for late-joining components that need historical context
@@ -283,7 +283,7 @@ export class ReplayEventBus {
   // Get buffer contents synchronously
   getBufferedEvents(): EventEnvelope[] {
     const events: EventEnvelope[] = [];
-    // Create a subscription that immediately completes after collecting buffered events
+    // ReplaySubject emits buffered events synchronously to this temporary subscription
     this.subject.subscribe(event => events.push(event)).unsubscribe();
     return events;
   }
@@ -388,10 +388,23 @@ Add robust error handling that prevents one failing subscriber from affecting ot
 
 ```typescript
 // src/events/safe-event-bus.ts
-import { Subject, Observable, filter, takeUntil, share, retry, catchError } from 'rxjs';
-import { EMPTY } from 'rxjs';
+import {
+  Subject,
+  Observable,
+  filter,
+  takeUntil,
+  share,
+  retry,
+  catchError,
+  EMPTY,
+  map,
+  concatMap,
+  from,
+  timer,
+  Subscription
+} from 'rxjs';
 import { EventEnvelope, EventMetadata } from './event-bus';
-import { AppEvent, EventType, EventByType, EventPayload } from './event-types';
+import { EventType, EventByType, EventPayload } from './event-types';
 
 export interface ErrorHandler {
   (error: Error, envelope: EventEnvelope): void;
@@ -499,8 +512,6 @@ export class SafeEventBus {
     this.subject.complete();
   }
 }
-
-import { map, concatMap, from, timer, Subscription } from 'rxjs';
 ```
 
 ## Event Aggregation
@@ -514,12 +525,12 @@ import {
   bufferTime,
   bufferCount,
   groupBy,
-  mergeMap,
   scan,
   distinctUntilChanged,
   debounceTime,
   throttleTime,
-  map
+  map,
+  filter
 } from 'rxjs';
 import { EventBus, EventEnvelope } from './event-bus';
 import { EventType, EventByType } from './event-types';
@@ -608,8 +619,6 @@ export class EventAggregator {
     );
   }
 }
-
-import { filter } from 'rxjs';
 ```
 
 ## Usage Examples
