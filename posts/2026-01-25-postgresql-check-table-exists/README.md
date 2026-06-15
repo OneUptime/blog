@@ -42,7 +42,7 @@ The `table_type` column distinguishes between base tables and views:
 
 ## Using pg_catalog.pg_tables
 
-The `pg_tables` view provides PostgreSQL-specific table information and is slightly faster than information_schema.
+The `pg_tables` view provides PostgreSQL-specific table information.
 
 ```sql
 -- Check table existence using pg_tables
@@ -62,10 +62,10 @@ ORDER BY tablename;
 
 ## Using pg_class Directly
 
-For maximum performance, query `pg_class` directly. This is what the views above ultimately query.
+For low-level catalog access, query `pg_class` directly. This is what the views above ultimately query.
 
 ```sql
--- Fastest method: query pg_class with pg_namespace
+-- Direct catalog method: query pg_class with pg_namespace
 SELECT EXISTS (
     SELECT 1
     FROM pg_class c
@@ -85,6 +85,7 @@ SELECT EXISTS (
 -- 't' = TOAST table
 -- 'f' = foreign table
 -- 'p' = partitioned table
+-- 'I' = partitioned index
 ```
 
 ## Using to_regclass()
@@ -278,18 +279,17 @@ SELECT EXISTS (
 
 ## Temporary Tables
 
-Temporary tables require special handling because they exist in a special schema.
+Temporary tables require special handling because they exist in a session-specific temporary schema.
 
 ```sql
 -- Create a temporary table
 CREATE TEMP TABLE temp_results (id INTEGER, value TEXT);
 
--- Check if temp table exists (it's in pg_temp schema)
+-- Check if temp table exists in this session's temporary schema
 SELECT EXISTS (
     SELECT 1
     FROM pg_class c
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname LIKE 'pg_temp%'
+    WHERE c.relnamespace = pg_my_temp_schema()
         AND c.relname = 'temp_results'
 );
 
@@ -319,7 +319,9 @@ SELECT
 FROM pg_inherits
 JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
 JOIN pg_class child ON pg_inherits.inhrelid = child.oid
-WHERE parent.relname = 'events';
+JOIN pg_namespace n ON n.oid = parent.relnamespace
+WHERE n.nspname = 'public'
+    AND parent.relname = 'events';
 ```
 
 ## Performance Comparison
