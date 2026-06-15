@@ -54,6 +54,7 @@ Here is a consumer that routes failed messages to a dead letter topic after exha
 ```java
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -81,12 +82,14 @@ public class DeadLetterConsumer {
             for (ConsumerRecord<String, String> record : records) {
                 int retryCount = 0;
                 boolean processed = false;
+                Exception lastException = null;
 
                 while (retryCount < MAX_RETRIES && !processed) {
                     try {
                         processOrder(record);
                         processed = true;
                     } catch (RetryableException e) {
+                        lastException = e;
                         retryCount++;
                         System.out.printf("Retry %d/%d for offset %d: %s%n",
                             retryCount, MAX_RETRIES, record.offset(), e.getMessage());
@@ -95,6 +98,7 @@ public class DeadLetterConsumer {
                             sleep(calculateBackoff(retryCount));
                         }
                     } catch (NonRetryableException e) {
+                        lastException = e;
                         // Don't retry, send directly to DLT
                         System.err.printf("Non-retryable error at offset %d: %s%n",
                             record.offset(), e.getMessage());
@@ -103,7 +107,7 @@ public class DeadLetterConsumer {
                 }
 
                 if (!processed) {
-                    sendToDeadLetterTopic(record, retryCount);
+                    sendToDeadLetterTopic(record, retryCount, lastException);
                 }
             }
 
@@ -128,7 +132,7 @@ public class DeadLetterConsumer {
         saveToDatabase(order);
     }
 
-    private void sendToDeadLetterTopic(ConsumerRecord<String, String> original, int retryCount) {
+    private void sendToDeadLetterTopic(ConsumerRecord<String, String> original, int retryCount, Exception error) {
         // Create headers with error context
         List<Header> headers = new ArrayList<>();
         headers.add(new RecordHeader("original-topic",
@@ -143,6 +147,12 @@ public class DeadLetterConsumer {
             String.valueOf(retryCount).getBytes(StandardCharsets.UTF_8)));
         headers.add(new RecordHeader("failure-timestamp",
             String.valueOf(System.currentTimeMillis()).getBytes(StandardCharsets.UTF_8)));
+        if (error != null) {
+            headers.add(new RecordHeader("error-class",
+                error.getClass().getName().getBytes(StandardCharsets.UTF_8)));
+            headers.add(new RecordHeader("error-message",
+                String.valueOf(error.getMessage()).getBytes(StandardCharsets.UTF_8)));
+        }
 
         // Copy original headers
         original.headers().forEach(h ->
@@ -157,15 +167,14 @@ public class DeadLetterConsumer {
             headers                  // Add error context
         );
 
-        dlqProducer.send(dlqRecord, (metadata, exception) -> {
-            if (exception != null) {
-                System.err.printf("Failed to send to DLT: %s%n", exception.getMessage());
-                // Consider additional fallback here (local file, alert, etc.)
-            } else {
-                System.out.printf("Sent to DLT: partition=%d, offset=%d%n",
-                    metadata.partition(), metadata.offset());
-            }
-        });
+        try {
+            RecordMetadata metadata = dlqProducer.send(dlqRecord).get();
+            System.out.printf("Sent to DLT: partition=%d, offset=%d%n",
+                metadata.partition(), metadata.offset());
+        } catch (Exception e) {
+            System.err.printf("Failed to send to DLT: %s%n", e.getMessage());
+            throw new RuntimeException("Could not publish failed record to DLT", e);
+        }
     }
 
     private long calculateBackoff(int retryCount) {
@@ -215,9 +224,13 @@ Spring Kafka provides built-in support for dead letter topics:
 ```java
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
+import org.springframework.kafka.annotation.DltHandler;
+import org.springframework.kafka.retrytopic.DltStrategy;
 import org.springframework.kafka.retrytopic.TopicSuffixingStrategy;
+import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
+import org.springframework.messaging.handler.annotation.Header;
 
 @Component
 public class OrderListener {
@@ -269,10 +282,12 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 public class DltMetrics {
 
+    private final MeterRegistry registry;
     private final Counter dltMessagesTotal;
     private final Counter dltMessagesByTopic;
 
     public DltMetrics(MeterRegistry registry) {
+        this.registry = registry;
         this.dltMessagesTotal = Counter.builder("kafka.dlt.messages.total")
             .description("Total messages sent to dead letter topics")
             .register(registry);
@@ -303,7 +318,7 @@ groups:
   - name: kafka-dlt-alerts
     rules:
       - alert: HighDLTVolume
-        expr: rate(kafka_dlt_messages_total[5m]) > 10
+        expr: rate(kafka_dlt_messages_total[5m]) > 10 / 60
         for: 5m
         labels:
           severity: warning
@@ -328,6 +343,8 @@ Build a tool to replay messages from the DLT back to the original topic:
 ```java
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.common.header.Header;
+import org.apache.kafka.common.header.internals.RecordHeader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
@@ -371,9 +388,10 @@ public class DltReprocessor {
 
                     // Add reprocessing marker header
                     List<Header> headers = new ArrayList<>();
-                    headers.add(new RecordHeader("reprocessed-from-dlt", "true".getBytes()));
+                    headers.add(new RecordHeader("reprocessed-from-dlt",
+                        "true".getBytes(StandardCharsets.UTF_8)));
                     headers.add(new RecordHeader("reprocessed-timestamp",
-                        String.valueOf(System.currentTimeMillis()).getBytes()));
+                        String.valueOf(System.currentTimeMillis()).getBytes(StandardCharsets.UTF_8)));
 
                     ProducerRecord<String, String> replayRecord = new ProducerRecord<>(
                         targetTopic,
