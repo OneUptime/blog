@@ -18,11 +18,11 @@ OpenTelemetry SDKs can be configured through:
 2. **Programmatic configuration**: Language-specific APIs
 3. **Configuration files**: For the Collector and some SDKs
 
-Environment variables take precedence and are the recommended approach for production deployments.
+Environment variables are a recommended approach for production deployments, while precedence depends on the SDK and configuration mechanism. For example, `OTEL_CONFIG_FILE` takes precedence over SDK environment variables when declarative configuration is used.
 
 ## Core Environment Variables
 
-These variables work across all OpenTelemetry SDKs:
+These variables are standardized by OpenTelemetry, though support and defaults can vary by SDK:
 
 ### Service Identity
 
@@ -32,22 +32,22 @@ These variables work across all OpenTelemetry SDKs:
 export OTEL_SERVICE_NAME="order-service"
 
 # Optional: Additional resource attributes
-export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production,service.version=1.2.3,team=platform"
+export OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=production,service.version=1.2.3,team=platform"
 ```
 
 ### Exporter Configuration
 
 ```bash
-# OTLP exporter endpoint (for all signals)
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://collector.example.com:4317"
+# OTLP/HTTP exporter endpoint (for all signals)
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://collector.example.com:4318"
 
-# Per-signal endpoints (override the general endpoint)
-export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="https://collector.example.com:4317/v1/traces"
-export OTEL_EXPORTER_OTLP_METRICS_ENDPOINT="https://collector.example.com:4317/v1/metrics"
-export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT="https://collector.example.com:4317/v1/logs"
+# Per-signal OTLP/HTTP endpoints (override the general endpoint and are used as-is)
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="https://collector.example.com:4318/v1/traces"
+export OTEL_EXPORTER_OTLP_METRICS_ENDPOINT="https://collector.example.com:4318/v1/metrics"
+export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT="https://collector.example.com:4318/v1/logs"
 
-# Protocol: grpc or http/protobuf
-export OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
+# Protocol: grpc, http/protobuf, or http/json where supported
+export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
 
 # Headers for authentication
 export OTEL_EXPORTER_OTLP_HEADERS="x-api-key=your-key,Authorization=Bearer token"
@@ -55,8 +55,8 @@ export OTEL_EXPORTER_OTLP_HEADERS="x-api-key=your-key,Authorization=Bearer token
 # Compression: gzip or none
 export OTEL_EXPORTER_OTLP_COMPRESSION="gzip"
 
-# Timeout in milliseconds
-export OTEL_EXPORTER_OTLP_TIMEOUT="30000"
+# Timeout (milliseconds in the specification; some SDKs expose this in seconds)
+export OTEL_EXPORTER_OTLP_TIMEOUT="10000"
 ```
 
 ### Exporter Selection
@@ -87,7 +87,7 @@ export OTEL_TRACES_SAMPLER_ARG="0.1"  # 10% sampling
 
 ```bash
 # Context propagation format
-# Options: tracecontext, baggage, b3, b3multi, jaeger, xray, ottrace
+# Options: tracecontext, baggage, b3, b3multi, jaeger, xray, ottrace, none
 export OTEL_PROPAGATORS="tracecontext,baggage"
 ```
 
@@ -119,30 +119,32 @@ const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-htt
 const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-http');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { BatchLogRecordProcessor } = require('@opentelemetry/sdk-logs');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const {
   ParentBasedSampler,
   TraceIdRatioBasedSampler,
-  AlwaysOnSampler
+  AlwaysOnSampler,
+  AlwaysOffSampler
 } = require('@opentelemetry/sdk-trace-base');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { W3CTraceContextPropagator, W3CBaggagePropagator, CompositePropagator } = require('@opentelemetry/core');
 
 // Build resource with service metadata
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.npm_package_version || '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.DEPLOY_ENV || 'development',
+const resource = resourceFromAttributes({
+  'service.name': process.env.OTEL_SERVICE_NAME || 'my-service',
+  'service.version': process.env.npm_package_version || '1.0.0',
+  'deployment.environment.name': process.env.DEPLOY_ENV || 'development',
   // Custom attributes
   'team': process.env.TEAM_NAME || 'platform',
   'region': process.env.AWS_REGION || 'us-east-1'
 });
 
+const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
+
 // Configure trace exporter
 const traceExporter = new OTLPTraceExporter({
   url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
-       process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/traces',
+       buildOtlpHttpUrl(otlpEndpoint, 'v1/traces'),
   headers: parseHeaders(process.env.OTEL_EXPORTER_OTLP_HEADERS),
   compression: process.env.OTEL_EXPORTER_OTLP_COMPRESSION || 'gzip',
   timeoutMillis: parseInt(process.env.OTEL_EXPORTER_OTLP_TIMEOUT) || 30000
@@ -151,7 +153,7 @@ const traceExporter = new OTLPTraceExporter({
 // Configure metric exporter
 const metricExporter = new OTLPMetricExporter({
   url: process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT ||
-       process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/metrics',
+       buildOtlpHttpUrl(otlpEndpoint, 'v1/metrics'),
   headers: parseHeaders(process.env.OTEL_EXPORTER_OTLP_HEADERS),
   compression: 'gzip'
 });
@@ -159,20 +161,31 @@ const metricExporter = new OTLPMetricExporter({
 // Configure log exporter
 const logExporter = new OTLPLogExporter({
   url: process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT ||
-       process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/logs',
+       buildOtlpHttpUrl(otlpEndpoint, 'v1/logs'),
   headers: parseHeaders(process.env.OTEL_EXPORTER_OTLP_HEADERS)
 });
 
 // Configure sampler based on environment
 function configureSampler() {
   const samplerType = process.env.OTEL_TRACES_SAMPLER || 'parentbased_traceidratio';
-  const samplerArg = parseFloat(process.env.OTEL_TRACES_SAMPLER_ARG) || 0.1;
+  const parsedSamplerArg = parseFloat(process.env.OTEL_TRACES_SAMPLER_ARG);
+  const samplerArg = Number.isNaN(parsedSamplerArg) ? 0.1 : parsedSamplerArg;
 
   switch (samplerType) {
     case 'always_on':
       return new AlwaysOnSampler();
+    case 'always_off':
+      return new AlwaysOffSampler();
     case 'traceidratio':
       return new TraceIdRatioBasedSampler(samplerArg);
+    case 'parentbased_always_on':
+      return new ParentBasedSampler({
+        root: new AlwaysOnSampler()
+      });
+    case 'parentbased_always_off':
+      return new ParentBasedSampler({
+        root: new AlwaysOffSampler()
+      });
     case 'parentbased_traceidratio':
       return new ParentBasedSampler({
         root: new TraceIdRatioBasedSampler(samplerArg)
@@ -202,10 +215,10 @@ const sdk = new NodeSDK({
     exporter: metricExporter,
     exportIntervalMillis: parseInt(process.env.OTEL_METRIC_EXPORT_INTERVAL) || 60000
   }),
-  logRecordProcessor: new BatchLogRecordProcessor(logExporter, {
+  logRecordProcessors: [new BatchLogRecordProcessor(logExporter, {
     maxQueueSize: parseInt(process.env.OTEL_BLRP_MAX_QUEUE_SIZE) || 2048,
     scheduledDelayMillis: parseInt(process.env.OTEL_BLRP_SCHEDULE_DELAY) || 5000
-  }),
+  })],
   instrumentations: [
     getNodeAutoInstrumentations({
       '@opentelemetry/instrumentation-http': {
@@ -223,11 +236,16 @@ const sdk = new NodeSDK({
 
 sdk.start();
 
+function buildOtlpHttpUrl(baseUrl, signalPath) {
+  return `${baseUrl.replace(/\/$/, '')}/${signalPath}`;
+}
+
 // Helper function to parse headers from environment variable
 function parseHeaders(headerString) {
   if (!headerString) return {};
   return headerString.split(',').reduce((acc, pair) => {
-    const [key, value] = pair.split('=');
+    const [key, ...valueParts] = pair.split('=');
+    const value = valueParts.join('=');
     if (key && value) acc[key.trim()] = value.trim();
     return acc;
   }, {});
@@ -255,13 +273,14 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace.sampling import (
     TraceIdRatioBased,
     ParentBased,
-    ALWAYS_ON
+    ALWAYS_ON,
+    ALWAYS_OFF
 )
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
@@ -275,9 +294,9 @@ def configure_opentelemetry():
 
     # Build resource
     resource = Resource.create({
-        SERVICE_NAME: os.getenv("OTEL_SERVICE_NAME", "my-service"),
-        SERVICE_VERSION: os.getenv("SERVICE_VERSION", "1.0.0"),
-        "deployment.environment": os.getenv("DEPLOY_ENV", "development"),
+        "service.name": os.getenv("OTEL_SERVICE_NAME", "my-service"),
+        "service.version": os.getenv("SERVICE_VERSION", "1.0.0"),
+        "deployment.environment.name": os.getenv("DEPLOY_ENV", "development"),
         "team": os.getenv("TEAM_NAME", "platform")
     })
 
@@ -290,10 +309,12 @@ def configure_opentelemetry():
         sampler=sampler
     )
 
+    otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
+
     # Configure trace exporter
     trace_exporter = OTLPSpanExporter(
         endpoint=os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or
-                 os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318") + "/v1/traces",
+                 build_otlp_http_url(otlp_endpoint, "v1/traces"),
         headers=parse_headers(os.getenv("OTEL_EXPORTER_OTLP_HEADERS")),
         timeout=int(os.getenv("OTEL_EXPORTER_OTLP_TIMEOUT", "30"))
     )
@@ -312,7 +333,7 @@ def configure_opentelemetry():
     # Configure metrics
     metric_exporter = OTLPMetricExporter(
         endpoint=os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT") or
-                 os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318") + "/v1/metrics",
+                 build_otlp_http_url(otlp_endpoint, "v1/metrics"),
         headers=parse_headers(os.getenv("OTEL_EXPORTER_OTLP_HEADERS"))
     )
 
@@ -337,6 +358,10 @@ def configure_opentelemetry():
     return trace_provider
 
 
+def build_otlp_http_url(base_url, signal_path):
+    return f"{base_url.rstrip('/')}/{signal_path}"
+
+
 def configure_sampler():
     """
     Configure sampler based on environment variables.
@@ -346,8 +371,14 @@ def configure_sampler():
 
     if sampler_type == "always_on":
         return ALWAYS_ON
+    elif sampler_type == "always_off":
+        return ALWAYS_OFF
     elif sampler_type == "traceidratio":
         return TraceIdRatioBased(sampler_arg)
+    elif sampler_type == "parentbased_always_on":
+        return ParentBased(root=ALWAYS_ON)
+    elif sampler_type == "parentbased_always_off":
+        return ParentBased(root=ALWAYS_OFF)
     elif sampler_type == "parentbased_traceidratio":
         return ParentBased(root=TraceIdRatioBased(sampler_arg))
     else:
@@ -376,7 +407,8 @@ def parse_headers(header_string):
 ```bash
 # .env.development
 OTEL_SERVICE_NAME=my-service-dev
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_TRACES_SAMPLER=always_on
 OTEL_TRACES_EXPORTER=otlp,console
 OTEL_LOG_LEVEL=debug
@@ -387,8 +419,9 @@ OTEL_LOG_LEVEL=debug
 ```bash
 # .env.staging
 OTEL_SERVICE_NAME=my-service
-OTEL_RESOURCE_ATTRIBUTES=deployment.environment=staging
-OTEL_EXPORTER_OTLP_ENDPOINT=https://staging-collector.example.com:4317
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=staging
+OTEL_EXPORTER_OTLP_ENDPOINT=https://staging-collector.example.com:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_TRACES_SAMPLER=parentbased_traceidratio
 OTEL_TRACES_SAMPLER_ARG=0.5
 OTEL_EXPORTER_OTLP_COMPRESSION=gzip
@@ -399,8 +432,9 @@ OTEL_EXPORTER_OTLP_COMPRESSION=gzip
 ```bash
 # .env.production
 OTEL_SERVICE_NAME=my-service
-OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production,region=us-east-1
-OTEL_EXPORTER_OTLP_ENDPOINT=https://collector.example.com:4317
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,region=us-east-1
+OTEL_EXPORTER_OTLP_ENDPOINT=https://collector.example.com:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_EXPORTER_OTLP_HEADERS=x-api-key=${API_KEY}
 OTEL_TRACES_SAMPLER=parentbased_traceidratio
 OTEL_TRACES_SAMPLER_ARG=0.1
@@ -420,7 +454,8 @@ metadata:
   namespace: my-app
 data:
   OTEL_SERVICE_NAME: "order-service"
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.observability:4317"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.observability:4318"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
   OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
   OTEL_TRACES_SAMPLER_ARG: "0.1"
   OTEL_EXPORTER_OTLP_COMPRESSION: "gzip"
@@ -457,8 +492,8 @@ spec:
 |----------|-------------|---------|
 | OTEL_SERVICE_NAME | Service name for resource | unknown_service |
 | OTEL_RESOURCE_ATTRIBUTES | Additional resource attributes | (none) |
-| OTEL_EXPORTER_OTLP_ENDPOINT | OTLP endpoint URL | http://localhost:4317 |
-| OTEL_EXPORTER_OTLP_PROTOCOL | Protocol (grpc, http/protobuf) | grpc |
+| OTEL_EXPORTER_OTLP_ENDPOINT | OTLP endpoint URL | http://localhost:4318 for OTLP/HTTP, http://localhost:4317 for OTLP/gRPC |
+| OTEL_EXPORTER_OTLP_PROTOCOL | Protocol (grpc, http/protobuf, http/json where supported) | SDK-specific; the specification recommends http/protobuf unless an SDK needs grpc for compatibility |
 | OTEL_EXPORTER_OTLP_HEADERS | Headers for requests | (none) |
 | OTEL_EXPORTER_OTLP_COMPRESSION | Compression (gzip, none) | none |
 | OTEL_EXPORTER_OTLP_TIMEOUT | Export timeout (ms) | 10000 |
