@@ -57,11 +57,12 @@ graph TB
 
 import hashlib
 import os
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Optional, List, Dict
 import json
 from pathlib import Path
+from packaging.version import Version
 
 @dataclass
 class FirmwareArtifact:
@@ -76,7 +77,7 @@ class FirmwareArtifact:
     created_at: datetime
     release_notes: str
     min_version: Optional[str] = None  # Minimum version required to update
-    metadata: Dict = None
+    metadata: Dict = field(default_factory=dict)
 
 class ArtifactManager:
     """Manages firmware artifacts"""
@@ -121,7 +122,7 @@ class ArtifactManager:
             size_bytes=len(file_data),
             sha256_hash=sha256_hash,
             signature=signature,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             release_notes=release_notes,
             min_version=min_version
         )
@@ -148,17 +149,19 @@ class ArtifactManager:
     ) -> Optional[FirmwareArtifact]:
         """Get latest available update for a device"""
         async with self.db.acquire() as conn:
-            row = await conn.fetchrow("""
+            rows = await conn.fetch("""
                 SELECT * FROM firmware_artifacts
                 WHERE device_type = $1
-                AND (min_version IS NULL OR min_version <= $2)
-                AND version > $2
                 ORDER BY created_at DESC
-                LIMIT 1
-            """, device_type, current_version)
+            """, device_type)
 
-            if row:
-                return self._row_to_artifact(row)
+            current = Version(current_version)
+            for row in rows:
+                artifact = self._row_to_artifact(row)
+                if artifact.min_version and Version(artifact.min_version) > current:
+                    continue
+                if Version(artifact.version) > current:
+                    return artifact
             return None
 
     async def get_artifact(self, artifact_id: str) -> Optional[FirmwareArtifact]:
@@ -216,11 +219,14 @@ class ArtifactManager:
 # Manages staged OTA deployments
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from enum import Enum
 import asyncio
+import json
 import random
+
+from artifact_manager import FirmwareArtifact
 
 class DeploymentStatus(Enum):
     PENDING = "pending"
@@ -306,7 +312,7 @@ class DeploymentService:
             target_devices=target_device_ids,
             config=config,
             status=DeploymentStatus.PENDING,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
 
         # Store deployment
@@ -340,15 +346,19 @@ class DeploymentService:
             )
 
         # Select devices for this stage
+        targeted_devices = await self._get_targeted_devices(deployment.deployment_id)
         remaining_devices = [
             d for d in deployment.target_devices
-            if d not in await self._get_updated_devices(deployment.deployment_id)
+            if d not in targeted_devices
         ]
 
         stage_count = int(len(deployment.target_devices) * percentage / 100)
+        if deployment.target_devices:
+            stage_count = max(1, stage_count)
+        new_device_count = max(0, stage_count - len(targeted_devices))
         stage_devices = random.sample(
             remaining_devices,
-            min(stage_count, len(remaining_devices))
+            min(new_device_count, len(remaining_devices))
         )
 
         # Notify devices
@@ -402,7 +412,8 @@ class DeploymentService:
             return
 
         # Check if deployment complete
-        if deployment.devices_updated >= len(deployment.target_devices):
+        targeted_devices = await self._get_targeted_devices(deployment.deployment_id)
+        if len(targeted_devices) >= len(deployment.target_devices):
             deployment.status = DeploymentStatus.COMPLETED
             return
 
@@ -438,6 +449,11 @@ class DeploymentService:
             "signature": artifact.signature
         }
 
+        await self.report_update_status(
+            device_id,
+            deployment_id,
+            DeviceUpdateStatus.PENDING
+        )
         await self.notifier.send_to_device(device_id, message)
 
     async def report_update_status(
@@ -455,7 +471,16 @@ class DeploymentService:
                 VALUES ($1, $2, $3, $4, $5)
                 ON CONFLICT (device_id, deployment_id)
                 DO UPDATE SET status = $3, error = $4, updated_at = $5
-            """, device_id, deployment_id, status.value, error, datetime.utcnow())
+            """, device_id, deployment_id, status.value, error, datetime.now(timezone.utc))
+
+    async def _get_targeted_devices(self, deployment_id: str) -> List[str]:
+        """Get list of devices already selected for this deployment"""
+        async with self.db.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT device_id FROM device_update_status
+                WHERE deployment_id = $1
+            """, deployment_id)
+            return [row['device_id'] for row in rows]
 
     async def _get_updated_devices(self, deployment_id: str) -> List[str]:
         """Get list of devices that have completed update"""
@@ -475,7 +500,7 @@ class DeploymentService:
         async with self.db.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT status FROM device_update_status
-                WHERE deployment_id = $1 AND device_id = ANY($2)
+                WHERE deployment_id = $1 AND device_id = ANY($2::text[])
             """, deployment_id, device_ids)
             return [DeviceUpdateStatus(row['status']) for row in rows]
 
@@ -514,6 +539,7 @@ from typing import Optional, Callable
 from enum import Enum
 import logging
 import subprocess
+from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
 
@@ -592,13 +618,15 @@ class OTAClient:
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(update.download_url) as response:
+                download_url = urljoin(self.update_server_url, update.download_url)
+                async with session.get(download_url) as response:
                     if response.status != 200:
                         logger.error(f"Download failed: {response.status}")
                         return None
 
                     # Download with progress tracking
                     total_size = update.size_bytes
+                    progress_interval = max(total_size // 10, 1)
                     downloaded = 0
 
                     with open(file_path, 'wb') as f:
@@ -607,8 +635,8 @@ class OTAClient:
                             downloaded += len(chunk)
 
                             # Report progress
-                            progress = (downloaded / total_size) * 100
-                            if downloaded % (total_size // 10) < 8192:
+                            progress = (downloaded / total_size) * 100 if total_size else 100
+                            if downloaded % progress_interval < 8192:
                                 logger.info(f"Download progress: {progress:.1f}%")
 
             return file_path
@@ -824,6 +852,7 @@ For bandwidth efficiency, implement delta updates:
 import bsdiff4
 import hashlib
 from dataclasses import dataclass
+from typing import Optional
 
 @dataclass
 class DeltaUpdate:
