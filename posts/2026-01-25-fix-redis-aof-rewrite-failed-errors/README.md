@@ -12,7 +12,7 @@ AOF (Append Only File) rewrite is how Redis compacts its persistence log. When t
 
 ## Understanding AOF Rewrite
 
-The AOF file logs every write command. Over time, it contains redundant operations (setting the same key multiple times). Rewrite creates a compact version with just the current state:
+The AOF file logs every write command. Over time, it contains redundant operations (setting the same key multiple times). Rewrite creates a compact version with just the current state. In Redis 7.0 and later, AOF uses a multi-part format with a base file, incremental files, and a manifest:
 
 ```mermaid
 sequenceDiagram
@@ -22,11 +22,12 @@ sequenceDiagram
 
     M->>M: BGREWRITEAOF triggered
     M->>C: fork()
-    M->>M: Continue serving (writes to buffer)
-    C->>C: Generate compact AOF
-    C->>D: Write temp-rewriteaof-xxx.aof
-    M->>D: Append buffer to new AOF
-    D->>D: Rename to appendonly.aof
+    M->>D: Open new incremental AOF
+    M->>M: Continue serving writes
+    C->>C: Generate compact base AOF
+    C->>D: Write temporary base file
+    M->>D: Persist temporary manifest
+    D->>D: Atomically replace AOF manifest
     C->>M: Exit with success
 ```
 
@@ -108,7 +109,7 @@ redis-cli CONFIG SET hash-max-listpack-value 64
 df -h $(redis-cli CONFIG GET dir | tail -1)
 
 # Check AOF file sizes
-ls -lh /var/lib/redis/appendonly.aof*
+ls -lh /var/lib/redis/appendonly.aof* /var/lib/redis/appendonlydir/ 2>/dev/null
 
 # Solutions:
 # 1. Free disk space
@@ -134,7 +135,7 @@ systemctl start redis
 
 ### 3. I/O Bottleneck
 
-Slow disk can cause rewrite to fail or timeout:
+Slow disk can cause rewrite failures, stalls, or fsync delays:
 
 ```bash
 # Monitor disk I/O during rewrite
@@ -168,7 +169,7 @@ chmod 750 /var/lib/redis/
 
 ### 5. Rewrite During High Load
 
-Heavy write load during rewrite can cause buffer overflow:
+Heavy write load during rewrite can increase memory and I/O pressure, especially on Redis versions before 7.0:
 
 ```python
 import redis
@@ -213,6 +214,7 @@ else:
 # In redis.conf
 appendonly yes
 appendfilename "appendonly.aof"
+appenddirname "appendonlydir"  # Redis 7.0+ multi-part AOF directory
 
 # Fsync policy:
 # always - fsync after every write (safest, slowest)
@@ -220,7 +222,7 @@ appendfilename "appendonly.aof"
 # no - let OS handle fsync (fastest, least safe)
 appendfsync everysec
 
-# Prevent fsync during rewrite (reduces I/O contention)
+# Skip fsync in the main process during rewrite (reduces I/O contention; increases crash-loss window)
 no-appendfsync-on-rewrite yes
 
 # Auto rewrite thresholds
@@ -238,8 +240,7 @@ aof-use-rdb-preamble yes
 auto-aof-rewrite-percentage 200    # Rewrite less frequently
 auto-aof-rewrite-min-size 1gb      # Only rewrite large files
 
-# Allow more time for rewrite buffer
-# (Redis 7.0+)
+# Incrementally fsync during AOF rewrite to smooth disk I/O
 aof-rewrite-incremental-fsync yes
 ```
 
@@ -331,9 +332,13 @@ exit 0
 ```bash
 # Check AOF file integrity
 redis-check-aof /var/lib/redis/appendonly.aof
+# Redis 7.0+ multi-part AOF:
+redis-check-aof /var/lib/redis/appendonlydir/appendonly.aof.manifest
 
 # Fix truncated AOF (removes incomplete command at end)
 redis-check-aof --fix /var/lib/redis/appendonly.aof
+# Redis 7.0+ multi-part AOF:
+redis-check-aof --fix /var/lib/redis/appendonlydir/appendonly.aof.manifest
 
 # If unfixable, you may need to use RDB backup
 ```
@@ -400,9 +405,9 @@ save 60 10000
 ```
 
 Benefits:
-- RDB for fast restart (loaded first in AOF with preamble)
-- AOF for durability (captures commands since last RDB)
-- RDB for backups (easy to copy and restore)
+- RDB snapshots for backups and disaster recovery
+- RDB-formatted AOF preamble for faster AOF loading
+- AOF for durability (captures write operations between rewrites)
 
 ---
 
