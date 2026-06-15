@@ -23,7 +23,7 @@ Common sensitive data that appears in logs:
 // Patterns for identifying sensitive data
 
 const sensitivePatterns = {
-  // Personal Identifiable Information (PII)
+  // Personally Identifiable Information (PII)
   email: /[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/g,
   phone: /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g,
   ssn: /\b\d{3}-\d{2}-\d{4}\b/g,
@@ -111,6 +111,20 @@ class LogRedactor {
         continue;
       }
 
+      // Recursively process arrays
+      if (Array.isArray(value)) {
+        result[key] = value.map((item) => {
+          if (typeof item === 'string') {
+            return this.redactString(item);
+          }
+          if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+            return this.redactObject(item as Record<string, unknown>, fullPath);
+          }
+          return item;
+        });
+        continue;
+      }
+
       // Recursively process objects
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
         result[key] = this.redactObject(value as Record<string, unknown>, fullPath);
@@ -130,7 +144,7 @@ class LogRedactor {
     return result;
   }
 
-  private redactString(value: string): string {
+  redactString(value: string): string {
     let result = value;
 
     for (const [type, pattern] of Object.entries(this.config.patterns)) {
@@ -204,11 +218,27 @@ Encrypt logs during storage and transmission:
 // Log encryption implementation
 
 import crypto from 'crypto';
+import fs from 'fs';
+import {
+  KMSClient,
+  GenerateDataKeyCommand,
+  DecryptCommand
+} from '@aws-sdk/client-kms';
 
 interface EncryptionConfig {
-  algorithm: string;
+  algorithm: 'aes-256-gcm';
   keyId: string;
   keyProvider: KeyProvider;
+}
+
+interface DataKey {
+  plaintext: Buffer;
+  encrypted: Buffer;
+}
+
+interface KeyProvider {
+  generateDataKey(keyId: string): Promise<DataKey>;
+  decryptDataKey(encryptedKey: Buffer): Promise<Buffer>;
 }
 
 class LogEncryptor {
@@ -220,17 +250,18 @@ class LogEncryptor {
 
   async encrypt(log: LogEntry): Promise<EncryptedLogEntry> {
     const plaintext = JSON.stringify(log);
-    const key = await this.config.keyProvider.getKey(this.config.keyId);
+    const dataKey = await this.config.keyProvider.generateDataKey(this.config.keyId);
 
     // Generate random IV for each encryption
-    const iv = crypto.randomBytes(16);
+    const iv = crypto.randomBytes(12);
 
-    const cipher = crypto.createCipheriv(this.config.algorithm, key, iv);
+    const cipher = crypto.createCipheriv(this.config.algorithm, dataKey.plaintext, iv);
     let encrypted = cipher.update(plaintext, 'utf8', 'base64');
     encrypted += cipher.final('base64');
 
     // Get auth tag for GCM mode
     const authTag = cipher.getAuthTag();
+    dataKey.plaintext.fill(0);
 
     return {
       _encrypted: true,
@@ -238,6 +269,7 @@ class LogEncryptor {
       _algorithm: this.config.algorithm,
       _iv: iv.toString('base64'),
       _authTag: authTag.toString('base64'),
+      _encryptedDataKey: dataKey.encrypted.toString('base64'),
       _ciphertext: encrypted,
       // Keep some metadata unencrypted for indexing
       timestamp: log.timestamp,
@@ -247,7 +279,8 @@ class LogEncryptor {
   }
 
   async decrypt(encryptedLog: EncryptedLogEntry): Promise<LogEntry> {
-    const key = await this.config.keyProvider.getKey(encryptedLog._keyId);
+    const encryptedDataKey = Buffer.from(encryptedLog._encryptedDataKey, 'base64');
+    const key = await this.config.keyProvider.decryptDataKey(encryptedDataKey);
 
     const iv = Buffer.from(encryptedLog._iv, 'base64');
     const authTag = Buffer.from(encryptedLog._authTag, 'base64');
@@ -257,6 +290,7 @@ class LogEncryptor {
 
     let decrypted = decipher.update(encryptedLog._ciphertext, 'base64', 'utf8');
     decrypted += decipher.final('utf8');
+    key.fill(0);
 
     return JSON.parse(decrypted);
   }
@@ -264,29 +298,39 @@ class LogEncryptor {
 
 // AWS KMS key provider
 class KMSKeyProvider implements KeyProvider {
-  private kms: AWS.KMS;
-  private keyCache: Map<string, Buffer> = new Map();
+  private kms: KMSClient;
 
   constructor() {
-    this.kms = new AWS.KMS();
+    this.kms = new KMSClient({});
   }
 
-  async getKey(keyId: string): Promise<Buffer> {
-    // Check cache first
-    if (this.keyCache.has(keyId)) {
-      return this.keyCache.get(keyId)!;
-    }
-
+  async generateDataKey(keyId: string): Promise<DataKey> {
     // Generate data key from KMS
-    const result = await this.kms.generateDataKey({
+    const result = await this.kms.send(new GenerateDataKeyCommand({
       KeyId: keyId,
       KeySpec: 'AES_256'
-    }).promise();
+    }));
 
-    const key = result.Plaintext as Buffer;
-    this.keyCache.set(keyId, key);
+    if (!result.Plaintext || !result.CiphertextBlob) {
+      throw new Error('KMS did not return a complete data key');
+    }
 
-    return key;
+    return {
+      plaintext: Buffer.from(result.Plaintext),
+      encrypted: Buffer.from(result.CiphertextBlob)
+    };
+  }
+
+  async decryptDataKey(encryptedKey: Buffer): Promise<Buffer> {
+    const result = await this.kms.send(new DecryptCommand({
+      CiphertextBlob: encryptedKey
+    }));
+
+    if (!result.Plaintext) {
+      throw new Error('KMS did not return a plaintext data key');
+    }
+
+    return Buffer.from(result.Plaintext);
   }
 }
 
@@ -339,7 +383,7 @@ interface AccessFilter {
 }
 
 class LogAccessController {
-  private policies: Map<string, AccessPolicy> = new Map();
+  public readonly policies: Map<string, AccessPolicy> = new Map();
 
   addPolicy(policy: AccessPolicy): void {
     this.policies.set(policy.role, policy);
@@ -359,7 +403,7 @@ class LogAccessController {
     for (const policy of userPolicies) {
       if (this.policyAllowsAction(policy, action, logEntry)) {
         // Check filters
-        if (this.policyFiltersMatch(policy, logEntry)) {
+        if (this.policyFiltersMatch(policy, user, logEntry)) {
           return true;
         }
       }
@@ -384,28 +428,38 @@ class LogAccessController {
     if (resource === '*') return true;
 
     // Support glob patterns
-    const pattern = new RegExp('^' + resource.replace(/\*/g, '.*') + '$');
+    const pattern = new RegExp('^' + resource.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
     return pattern.test(logEntry.service) || pattern.test(logEntry.tag || '');
   }
 
-  private policyFiltersMatch(policy: AccessPolicy, logEntry: LogEntry): boolean {
+  private policyFiltersMatch(policy: AccessPolicy, user: User, logEntry: LogEntry): boolean {
     // All filters must match
     for (const filter of policy.filters) {
       const fieldValue = this.getFieldValue(logEntry, filter.field);
+      const expectedValue = this.resolveFilterValue(filter.value, user);
 
       switch (filter.operator) {
         case 'equals':
-          if (fieldValue !== filter.value) return false;
+          if (fieldValue !== expectedValue) return false;
           break;
         case 'contains':
-          if (!String(fieldValue).includes(String(filter.value))) return false;
+          if (!String(fieldValue).includes(String(expectedValue))) return false;
           break;
         case 'in':
-          if (!(filter.value as unknown[]).includes(fieldValue)) return false;
+          if (!Array.isArray(expectedValue) || !expectedValue.includes(fieldValue)) return false;
           break;
       }
     }
     return true;
+  }
+
+  private resolveFilterValue(value: unknown, user: User): unknown {
+    if (typeof value === 'string' && value.startsWith('${user.') && value.endsWith('}')) {
+      const field = value.slice('${user.'.length, -1);
+      return this.getFieldValue(user as unknown as LogEntry, field);
+    }
+
+    return value;
   }
 
   private getFieldValue(logEntry: LogEntry, field: string): unknown {
@@ -531,7 +585,8 @@ class LogAccessAuditor {
           status: 'success',
           metadata: {
             resultsCount: result.logs.length,
-            servicesAccessed: [...new Set(result.logs.map(l => l.service))]
+            servicesAccessed: [...new Set(result.logs.map(l => l.service))],
+            duration_ms: Date.now() - startTime
           }
         }
       });
@@ -549,7 +604,10 @@ class LogAccessAuditor {
         action: { name: 'search_logs' },
         result: {
           status: 'failure',
-          errorMessage: (error as Error).message
+          errorMessage: (error as Error).message,
+          metadata: {
+            duration_ms: Date.now() - startTime
+          }
         }
       });
 
@@ -649,7 +707,7 @@ const complianceChecks: ComplianceCheck[] = [
   },
   {
     name: 'Encryption at Rest',
-    requirement: 'SOC2 CC6.1 - Encryption of data at rest',
+    requirement: 'SOC 2 CC6.1 - Logical access protection for data at rest',
     check: async () => {
       // Verify encryption is enabled
       const encryptionEnabled = process.env.LOG_ENCRYPTION_ENABLED === 'true';
@@ -661,7 +719,7 @@ const complianceChecks: ComplianceCheck[] = [
   },
   {
     name: 'TLS in Transit',
-    requirement: 'SOC2 CC6.7 - Encryption of data in transit',
+    requirement: 'SOC 2 CC6.7 - Protection during transmission',
     check: async () => {
       // Verify TLS configuration
       const logEndpoint = process.env.LOG_ENDPOINT || '';
@@ -687,7 +745,7 @@ const complianceChecks: ComplianceCheck[] = [
   },
   {
     name: 'Audit Trail',
-    requirement: 'SOC2 CC7.2 - Security event monitoring',
+    requirement: 'SOC 2 CC7.2 - Security event monitoring',
     check: async () => {
       // Verify audit logging is enabled
       const auditEnabled = !!auditLogger;
@@ -703,12 +761,12 @@ const complianceChecks: ComplianceCheck[] = [
     check: async () => {
       // Verify retention policy exists
       const retentionDays = parseInt(process.env.LOG_RETENTION_DAYS || '0');
-      const hasRetention = retentionDays > 0 && retentionDays <= 365;
+      const hasRetention = retentionDays > 0;
       return {
         passed: hasRetention,
         details: hasRetention
           ? `Retention policy: ${retentionDays} days`
-          : 'No retention policy or policy exceeds 1 year',
+          : 'No retention policy configured',
         evidence: { retentionDays }
       };
     }
