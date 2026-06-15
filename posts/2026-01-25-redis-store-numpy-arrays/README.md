@@ -51,7 +51,7 @@ print(f"Arrays equal: {np.array_equal(arr, loaded)}")
 
 ## Efficient Storage with tobytes/frombuffer
 
-For better performance, use NumPy's native binary format:
+For better performance, store the array's raw data bytes:
 
 ```python
 import redis
@@ -62,7 +62,7 @@ r = redis.Redis(host='localhost', port=6379, db=0)
 
 def store_array_native(key, array):
     """
-    Store array using NumPy's native binary format.
+    Store array using NumPy's raw byte representation.
     Faster than pickle, but requires storing metadata.
     """
     # Store array data
@@ -399,6 +399,7 @@ import redis
 import numpy as np
 import pickle
 import time
+import lz4.frame
 
 r = redis.Redis(host='localhost', port=6379, db=0)
 
@@ -433,7 +434,7 @@ for name, serialize in methods.items():
 
 | Method | Speed | Size | Use Case |
 |--------|-------|------|----------|
-| pickle | Medium | Larger | Simple, portable |
+| pickle | Medium | Larger | Simple, Python-specific |
 | tobytes | Fast | Exact | Performance critical |
 | tobytes + lz4 | Fast | Smaller | Large arrays, moderate compression |
 | tobytes + zlib | Slow | Smallest | Storage constrained |
