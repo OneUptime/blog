@@ -39,7 +39,7 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
-pip install fastapi uvicorn sqlalchemy asyncpg alembic pydantic-settings
+pip install fastapi uvicorn sqlalchemy asyncpg alembic pydantic-settings email-validator
 ```
 
 ### Project Structure
@@ -81,8 +81,8 @@ Create a database configuration that supports async operations. This setup uses 
 ```python
 # app/database.py
 # Database connection and session management
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.orm import declarative_base
 from app.config import settings
 
 # Create async engine for PostgreSQL
@@ -98,11 +98,9 @@ engine = create_async_engine(
 
 # Session factory for creating database sessions
 # expire_on_commit=False prevents attribute access issues after commit
-AsyncSessionLocal = sessionmaker(
+AsyncSessionLocal = async_sessionmaker(
     engine,
-    class_=AsyncSession,
     expire_on_commit=False,
-    autocommit=False,
     autoflush=False,
 )
 
@@ -129,12 +127,15 @@ Use Pydantic settings for type-safe configuration management:
 ```python
 # app/config.py
 # Application configuration using environment variables
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+
+    # Load settings from .env file
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
     # Database configuration
     DATABASE_URL: str = "postgresql+asyncpg://user:pass@localhost/mydb"
@@ -147,12 +148,6 @@ class Settings(BaseSettings):
     # Security settings
     SECRET_KEY: str = "change-me-in-production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-
-    class Config:
-        # Load settings from .env file
-        env_file = ".env"
-        case_sensitive = True
-
 
 @lru_cache()
 def get_settings() -> Settings:
@@ -579,10 +574,10 @@ app = FastAPI(
 # Configure CORS for frontend applications
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately in production
+    allow_origins=["http://localhost:3000"],  # Configure appropriately in production
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Include routers
@@ -615,7 +610,7 @@ Use Alembic for database migrations to manage schema changes safely:
 
 ```bash
 # Initialize Alembic
-alembic init alembic
+alembic init -t async alembic
 
 # Edit alembic.ini to set your database URL
 # sqlalchemy.url = postgresql+asyncpg://user:pass@localhost/mydb
@@ -623,7 +618,10 @@ alembic init alembic
 
 ```python
 # alembic/env.py (key changes for async support)
-from sqlalchemy.ext.asyncio import create_async_engine
+import asyncio
+from alembic import context
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.models.user import User  # Import all models
 from app.database import Base
 
@@ -631,15 +629,34 @@ from app.database import Base
 target_metadata = Base.metadata
 
 
+config = context.config
+
+
+def do_run_migrations(connection):
+    """Configure Alembic with the current connection."""
+    context.configure(connection=connection, target_metadata=target_metadata)
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_async_migrations():
+    """Run migrations with an async SQLAlchemy engine."""
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+
+    await connectable.dispose()
+
+
 def run_migrations_online():
     """Run migrations in online mode with async engine."""
-    connectable = create_async_engine(config.get_main_option("sqlalchemy.url"))
-
-    async def do_run_migrations(connection):
-        await connection.run_sync(do_migrations)
-
-    import asyncio
-    asyncio.run(do_run_migrations(connectable))
+    asyncio.run(run_async_migrations())
 ```
 
 Generate and apply migrations:
