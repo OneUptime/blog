@@ -19,7 +19,7 @@ Redis might close your connection for several reasons:
 3. Memory pressure causing client eviction
 4. Network issues
 5. TCP keepalive failures
-6. Maxclient limit reached
+6. Maxclients limit reached
 
 ## Diagnosing the Issue
 
@@ -131,7 +131,7 @@ Client-side configuration:
 import redis
 import socket
 
-# Python with TCP keepalive options
+# Python with Linux TCP keepalive options
 r = redis.Redis(
     host='redis-host',
     port=6379,
@@ -158,7 +158,7 @@ const redis = new Redis({
 
 ### 3. Maxclients Limit
 
-When Redis reaches its connection limit, new connections fail and existing ones might be closed.
+When Redis reaches its connection limit, new connections are rejected and closed immediately.
 
 ```bash
 # Check current vs maximum clients
@@ -287,7 +287,7 @@ const redis = new Redis({
     return delay;
   },
   reconnectOnError(err) {
-    const targetErrors = ['READONLY', 'ECONNRESET'];
+    const targetErrors = ['READONLY'];
     if (targetErrors.some(e => err.message.includes(e))) {
       return true;  // Reconnect
     }
