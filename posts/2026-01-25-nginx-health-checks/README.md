@@ -51,7 +51,7 @@ Parameters explained:
 
 ## Defining What Counts as Failure
 
-By default, Nginx considers connection errors and timeouts as failures. Expand this to include HTTP error codes:
+By default, Nginx considers connection errors, timeouts, and invalid upstream responses as unsuccessful attempts. Expand this to include HTTP error codes:
 
 ```nginx
 upstream backend {
@@ -268,7 +268,8 @@ upstream app_backend {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name app.example.com;
 
     ssl_certificate /etc/ssl/certs/app.example.com.crt;
@@ -291,7 +292,7 @@ server {
         proxy_connect_timeout 5s;
         proxy_read_timeout 5s;
 
-        # Don't count health check failures toward upstream health
+        # Do not retry application health requests across multiple upstreams
         proxy_next_upstream off;
 
         access_log off;
@@ -367,14 +368,22 @@ Analyze health patterns:
 
 ```bash
 # Count requests per upstream server
-awk '{print $6}' /var/log/nginx/upstream_health.log | sort | uniq -c
+awk '{for (i=1;i<=NF;i++) if ($i=="upstream:") print $(i+1)}' /var/log/nginx/upstream_health.log | sort | uniq -c
 
 # Find failed upstream responses
 grep -E 'status: (500|502|503|504)' /var/log/nginx/upstream_health.log
 
 # Calculate average response time per server
-awk '{print $6, $8}' /var/log/nginx/upstream_health.log | \
-    awk -F'[: ]' '{sum[$1]+=$3; count[$1]++} END {for(s in sum) print s, sum[s]/count[s]}'
+awk '{
+    for (i=1;i<=NF;i++) {
+        if ($i=="upstream:") upstream=$(i+1)
+        if ($i=="response_time:") response_time=$(i+1)
+    }
+    if (upstream != "" && response_time ~ /^[0-9.]+$/) {
+        sum[upstream]+=response_time; count[upstream]++
+    }
+}
+END {for (upstream in sum) print upstream, sum[upstream]/count[upstream]}' /var/log/nginx/upstream_health.log
 ```
 
 ## Integration with External Monitoring
@@ -386,12 +395,11 @@ Report Nginx health to monitoring systems like OneUptime:
 # Send health metrics to monitoring
 
 NGINX_STATUS=$(curl -s http://localhost/nginx-health)
-ACTIVE_UPSTREAMS=$(curl -s http://localhost/upstream-status | grep -c "up")
 
 # Send to monitoring API
 curl -X POST https://oneuptime.example.com/metrics \
     -H "Content-Type: application/json" \
-    -d "{\"nginx_status\": \"${NGINX_STATUS}\", \"active_upstreams\": ${ACTIVE_UPSTREAMS}}"
+    -d "{\"nginx_status\": \"${NGINX_STATUS}\"}"
 ```
 
 ---
