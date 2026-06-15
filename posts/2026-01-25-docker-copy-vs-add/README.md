@@ -17,8 +17,8 @@ Both COPY and ADD transfer files from your build context into the Docker image. 
 | Copy local files | Yes | Yes |
 | Copy directories | Yes | Yes |
 | Change ownership | Yes (--chown) | Yes (--chown) |
-| Extract tar archives | No | Yes (automatic) |
-| Download from URLs | No | Yes |
+| Extract tar archives | No | Yes (local tar archives by default) |
+| Download from URLs | No | Yes (HTTP(S) and Git) |
 | Predictable behavior | Yes | Depends on source |
 
 ## COPY: The Straightforward Choice
@@ -85,12 +85,12 @@ COPY src /app/src
 
 ## ADD: Extra Features, Extra Complexity
 
-ADD does everything COPY does, plus automatic tar extraction and URL downloading.
+ADD overlaps with COPY for files from the build context, plus automatic local tar extraction and URL downloading.
 
 ### Automatic Tar Extraction
 
 ```dockerfile
-# ADD automatically extracts recognized archive formats
+# ADD automatically extracts recognized local archive formats
 ADD archive.tar.gz /app/
 # Result: Archive contents extracted to /app/
 
@@ -105,12 +105,13 @@ COPY archive.tar.gz /app/
 When you want the archive extracted:
 
 ```dockerfile
+# syntax=docker/dockerfile:1.17
 FROM python:3.11-slim
 
 WORKDIR /app
 
 # Download and extract a release archive
-ADD https://github.com/example/project/releases/v1.0.0.tar.gz /app/
+ADD --unpack=true https://github.com/example/project/releases/v1.0.0.tar.gz /app/
 
 # Or extract a local archive
 ADD vendor-libs.tar.gz /app/libs/
@@ -122,9 +123,9 @@ When you want the archive preserved:
 # Use COPY to keep the archive intact
 COPY archive.tar.gz /app/archive.tar.gz
 
-# Or use ADD with a different destination format
-ADD archive.tar.gz /app/myarchive.tar.gz
-# This copies without extraction because destination has explicit filename
+# Or use ADD with unpacking disabled
+ADD --unpack=false archive.tar.gz /app/myarchive.tar.gz
+# This copies without extraction because --unpack=false is explicit
 ```
 
 ### URL Downloading
@@ -142,16 +143,17 @@ RUN chmod +x /usr/local/bin/script.sh
 **Why URL downloading is discouraged:**
 
 ```dockerfile
-# Problem: No caching control, no checksum verification
+# Problem: No authentication support, no checksum verification unless you use --checksum
 ADD https://example.com/binary /usr/local/bin/binary
 
-# Better approach: Use curl or wget for more control
+# Better approach when you need authentication or custom handling:
+# Use curl or wget for more control
 RUN curl -fsSL https://example.com/binary -o /usr/local/bin/binary \
     && chmod +x /usr/local/bin/binary \
-    && echo "expected-sha256 /usr/local/bin/binary" | sha256sum -c
+    && echo "expected-sha256  /usr/local/bin/binary" | sha256sum -c
 ```
 
-The RUN approach allows checksum verification, better error handling, and combines with other commands to reduce layers.
+The RUN approach allows authentication, custom error handling, and combining the download with related commands. For public artifacts, ADD with `--checksum` can also provide checksum verification and precise cache behavior.
 
 ## When to Use Each
 
