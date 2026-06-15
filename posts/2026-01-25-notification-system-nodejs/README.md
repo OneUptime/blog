@@ -31,6 +31,8 @@ graph TD
 ```javascript
 // src/services/NotificationService.js
 const EventEmitter = require('events');
+const User = require('../models/User');
+const NotificationLog = require('../models/NotificationLog');
 
 class NotificationService extends EventEmitter {
     constructor() {
@@ -221,6 +223,7 @@ module.exports = SMSProvider;
 ```javascript
 // src/providers/PushProvider.js
 const admin = require('firebase-admin');
+const User = require('../models/User');
 
 class PushProvider {
     constructor(config) {
@@ -237,34 +240,44 @@ class PushProvider {
             throw new Error('User has no push tokens');
         }
 
-        const message = {
-            notification: {
-                title: content.title,
-                body: content.body
-            },
-            data: content.data || {},
-            tokens: user.fcmTokens
-        };
+        const data = Object.fromEntries(
+            Object.entries(content.data || {}).map(([key, value]) => [key, String(value)])
+        );
 
-        if (options.badge !== undefined) {
-            message.apns = { payload: { aps: { badge: options.badge } } };
+        let successCount = 0;
+
+        for (let i = 0; i < user.fcmTokens.length; i += 500) {
+            const tokens = user.fcmTokens.slice(i, i + 500);
+            const message = {
+                notification: {
+                    title: content.title,
+                    body: content.body
+                },
+                data,
+                tokens
+            };
+
+            if (options.badge !== undefined) {
+                message.apns = { payload: { aps: { badge: options.badge } } };
+            }
+
+            const result = await this.messaging.sendEachForMulticast(message);
+            successCount += result.successCount;
+
+            // Handle failed tokens
+            if (result.failureCount > 0) {
+                const failedTokens = [];
+                result.responses.forEach((resp, idx) => {
+                    if (!resp.success) {
+                        failedTokens.push(tokens[idx]);
+                    }
+                });
+                // Remove invalid tokens
+                await this.removeInvalidTokens(user.id, failedTokens);
+            }
         }
 
-        const result = await this.messaging.sendMulticast(message);
-
-        // Handle failed tokens
-        if (result.failureCount > 0) {
-            const failedTokens = [];
-            result.responses.forEach((resp, idx) => {
-                if (!resp.success) {
-                    failedTokens.push(user.fcmTokens[idx]);
-                }
-            });
-            // Remove invalid tokens
-            await this.removeInvalidTokens(user.id, failedTokens);
-        }
-
-        return { id: result.successCount > 0 ? 'sent' : 'failed' };
+        return { id: successCount > 0 ? 'sent' : 'failed' };
     }
 
     async removeInvalidTokens(userId, tokens) {
@@ -282,6 +295,8 @@ module.exports = PushProvider;
 
 ```javascript
 // src/providers/InAppProvider.js
+const InAppNotification = require('../models/InAppNotification');
+
 class InAppProvider {
     constructor(io) {
         this.io = io;  // Socket.io instance
@@ -312,7 +327,13 @@ class InAppProvider {
     }
 }
 
-// In-App Notification Model
+module.exports = InAppProvider;
+```
+
+```javascript
+// src/models/InAppNotification.js
+const mongoose = require('mongoose');
+
 const inAppNotificationSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     title: String,
@@ -387,10 +408,9 @@ For reliability, queue notifications:
 ```javascript
 // src/queues/notificationQueue.js
 const Bull = require('bull');
+const notificationService = require('../services/NotificationService');
 
-const notificationQueue = new Bull('notifications', {
-    redis: process.env.REDIS_URL
-});
+const notificationQueue = new Bull('notifications', process.env.REDIS_URL);
 
 // Producer
 async function queueNotification(notification) {
@@ -481,7 +501,7 @@ router.put('/notifications/preferences', auth, async (req, res) => {
                 email: email !== false,
                 sms: sms !== false,
                 push: push !== false,
-                inApp: inApp !== false
+                'in-app': inApp !== false
             }
         }
     );
