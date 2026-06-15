@@ -70,14 +70,14 @@ docker run --rm --name myapp nginx:alpine
 
 ## Docker Compose Name Conflicts
 
-Docker Compose generates container names using a specific pattern: `{project}_{service}_{number}`.
+Docker Compose generates container names from the project name, service name, and replica number. Current Compose versions commonly use a `{project}-{service}-{number}` pattern, while compatibility mode and older Compose versions may use underscores.
 
 ```yaml
 # docker-compose.yml
 services:
   web:
     image: nginx:alpine
-# Creates container named: myproject_web_1
+# Creates container named like: myproject-web-1
 ```
 
 ### Compose Conflict Resolution
@@ -271,7 +271,7 @@ docker container prune --filter "until=24h"
 docker container prune --filter "label=temporary=true"
 
 # Remove all containers matching name pattern
-docker rm $(docker ps -aq --filter "name=myapp-*")
+docker ps -aq --filter "name=myapp-" | xargs -r docker rm
 ```
 
 ### Automated Cleanup Script
@@ -305,7 +305,7 @@ Add to cron:
 docker run -d --name myapp --label cleanup=true nginx:alpine
 
 # Later, remove all containers with that label
-docker rm -f $(docker ps -aq --filter "label=cleanup=true")
+docker ps -aq --filter "label=cleanup=true" | xargs -r docker rm -f
 ```
 
 ### Use --rm for One-Off Containers
