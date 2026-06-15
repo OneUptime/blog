@@ -174,6 +174,7 @@ package outbox
 import (
     "context"
     "database/sql"
+    "fmt"
     "log"
     "time"
 )
@@ -215,8 +216,14 @@ func (r *Relay) Start(ctx context.Context) {
 }
 
 func (r *Relay) processBatch(ctx context.Context) error {
+    tx, err := r.db.BeginTx(ctx, nil)
+    if err != nil {
+        return err
+    }
+    defer tx.Rollback()
+
     // Fetch unprocessed messages
-    rows, err := r.db.QueryContext(ctx, `
+    rows, err := tx.QueryContext(ctx, `
         SELECT id, aggregate_type, aggregate_id, event_type, payload
         FROM outbox
         WHERE processed_at IS NULL
@@ -227,16 +234,23 @@ func (r *Relay) processBatch(ctx context.Context) error {
     if err != nil {
         return err
     }
-    defer rows.Close()
 
     var messages []Message
     for rows.Next() {
         var m Message
         if err := rows.Scan(&m.ID, &m.AggregateType, &m.AggregateID,
                            &m.EventType, &m.Payload); err != nil {
+            rows.Close()
             return err
         }
         messages = append(messages, m)
+    }
+    if err := rows.Err(); err != nil {
+        rows.Close()
+        return err
+    }
+    if err := rows.Close(); err != nil {
+        return err
     }
 
     // Publish each message
@@ -249,7 +263,7 @@ func (r *Relay) processBatch(ctx context.Context) error {
         }
 
         // Mark as processed
-        _, err := r.db.ExecContext(ctx, `
+        _, err := tx.ExecContext(ctx, `
             UPDATE outbox SET processed_at = NOW() WHERE id = $1
         `, msg.ID)
         if err != nil {
@@ -257,11 +271,11 @@ func (r *Relay) processBatch(ctx context.Context) error {
         }
     }
 
-    return nil
+    return tx.Commit()
 }
 ```
 
-The `FOR UPDATE SKIP LOCKED` clause is important. It allows multiple relay instances to run concurrently without processing the same messages. Each instance locks rows it is working on, and others skip those locked rows.
+The `FOR UPDATE SKIP LOCKED` clause is important. Inside the transaction, it allows multiple relay instances to run concurrently without processing the same messages. Each instance locks rows it is working on, and others skip those locked rows until the transaction commits or rolls back.
 
 ## Handling Failures and Retries
 
