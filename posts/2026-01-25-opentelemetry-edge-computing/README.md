@@ -83,13 +83,12 @@ processors:
 
   # Filter out high-volume, low-value telemetry
   filter:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/health"'
-        - 'attributes["http.target"] == "/metrics"'
-    metrics:
-      metric:
-        - 'name == "runtime.uptime"'  # Drop noisy metrics
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["url.path"] == "/health" or span.attributes["http.target"] == "/health"'
+      - 'span.attributes["url.path"] == "/metrics" or span.attributes["http.target"] == "/metrics"'
+    metric_conditions:
+      - 'metric.name == "runtime.uptime"'  # Drop noisy metrics
 
   # Aggregate metrics to reduce cardinality
   metricstransform:
@@ -119,10 +118,12 @@ exporters:
 extensions:
   file_storage:
     directory: /var/lib/otelcol/queue
+    create_directory: true
     timeout: 10s
     compaction:
       on_start: true
       on_rebound: true
+      directory: /var/lib/otelcol/queue/compaction
 
 service:
   extensions: [file_storage]
@@ -147,12 +148,13 @@ For applications running on edge devices, configure the SDK to minimize resource
 // edge-tracing.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+const { CompressionAlgorithm } = require('@opentelemetry/otlp-exporter-base');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ParentBasedSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-base');
 
 // Minimal resource to reduce payload size
-const resource = new Resource({
+const resource = resourceFromAttributes({
   'service.name': process.env.OTEL_SERVICE_NAME,
   'edge.site': process.env.EDGE_SITE_ID,
   'edge.device': process.env.HOSTNAME
@@ -161,7 +163,7 @@ const resource = new Resource({
 // Configure exporter with compression
 const exporter = new OTLPTraceExporter({
   url: 'http://localhost:4318/v1/traces',  // Local collector
-  compression: 'gzip',
+  compression: CompressionAlgorithm.GZIP,
   timeoutMillis: 10000
 });
 
@@ -180,7 +182,7 @@ const sampler = new ParentBasedSampler({
 
 const sdk = new NodeSDK({
   resource,
-  spanProcessor,
+  spanProcessors: [spanProcessor],
   sampler,
   // Minimal auto-instrumentation - only what you need
   instrumentations: []  // Add only essential instrumentations
@@ -252,6 +254,7 @@ Edge devices may lose connectivity. Configure persistent queuing to avoid data l
 extensions:
   file_storage/queue:
     directory: /var/lib/otelcol/queue
+    create_directory: true
     timeout: 10s
     compaction:
       on_start: true
@@ -303,7 +306,7 @@ Aggregate metrics locally before sending to reduce bandwidth:
 processors:
   metricstransform:
     transforms:
-      # Convert histograms to summaries to reduce data
+      # Aggregate histogram label sets to reduce data
       - include: ".*_duration_seconds"
         match_type: regexp
         action: update
@@ -316,8 +319,9 @@ processors:
       - include: http_requests_total
         action: update
         operations:
-          - action: delete_label_value
-            label: path
+          - action: aggregate_labels
+            label_set: [method, status_code]
+            aggregation_type: sum
 ```
 
 ### Delta Metric Export
@@ -325,10 +329,12 @@ processors:
 Send only changes instead of cumulative values:
 
 ```yaml
-exporters:
-  otlphttp:
-    endpoint: "https://central-collector.example.com"
-    metrics_encoding: delta  # Send delta instead of cumulative
+processors:
+  cumulativetodelta:
+    include:
+      match_type: regexp
+      metrics:
+        - ".*"
 ```
 
 ## Central Collector Configuration
@@ -356,11 +362,6 @@ processors:
       - key: collector.type
         value: central
         action: upsert
-
-  # Deduplicate data from retry storms
-  # (when edge sites reconnect and flush queues)
-  groupbyattrs:
-    keys: [trace_id, span_id]
 
 exporters:
   otlphttp:
@@ -399,11 +400,17 @@ kind: Deployment
 metadata:
   name: otel-collector
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector:latest
+          image: otel/opentelemetry-collector-contrib:latest
           resources:
             limits:
               cpu: "500m"
