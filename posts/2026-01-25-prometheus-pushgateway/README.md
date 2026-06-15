@@ -18,16 +18,16 @@ Pushgateway acts as an intermediary cache. Jobs push their metrics to Pushgatewa
 
 Pushgateway is appropriate for:
 
-- Batch jobs (ETL pipelines, data imports)
-- Cron jobs (scheduled tasks, cleanup scripts)
-- Short-lived processes (CI/CD jobs, one-off scripts)
-- Jobs behind firewalls where Prometheus cannot reach
+- Service-level batch jobs (ETL pipelines, data imports)
+- Service-level cron jobs (scheduled tasks, cleanup scripts)
+- Short-lived service-level processes that complete before Prometheus can scrape them
 
 Pushgateway is NOT recommended for:
 
 - Long-running services (use direct scraping instead)
 - Machine-level metrics (use Node Exporter)
 - Service instance monitoring (instances can disappear incorrectly)
+- Jobs that are only unreachable because of firewalls or NAT (move Prometheus closer to the target or use PushProx)
 
 ## Installing Pushgateway
 
@@ -72,7 +72,7 @@ spec:
     spec:
       containers:
         - name: pushgateway
-          image: prom/pushgateway:v1.6.2
+          image: prom/pushgateway:v1.11.3
           args:
             - '--persistence.file=/data/metrics'
             - '--persistence.interval=5m'
@@ -133,8 +133,8 @@ echo "batch_job_duration_seconds 42.5" | \
 cat <<EOF | curl --data-binary @- http://pushgateway:9091/metrics/job/etl_pipeline/instance/server1
 # TYPE batch_job_duration_seconds gauge
 batch_job_duration_seconds 42.5
-# TYPE batch_job_records_processed counter
-batch_job_records_processed 15000
+# TYPE batch_job_records_processed_total counter
+batch_job_records_processed_total 15000
 # TYPE batch_job_last_success_timestamp gauge
 batch_job_last_success_timestamp $(date +%s)
 EOF
@@ -176,9 +176,15 @@ processing_time = Histogram(
     registry=registry
 )
 
-job_success = Gauge(
+last_success = Gauge(
     'batch_job_last_success_timestamp',
     'Timestamp of last successful job run',
+    registry=registry
+)
+
+job_success = Gauge(
+    'batch_job_success',
+    'Whether the batch job succeeded (1) or failed (0)',
     registry=registry
 )
 
@@ -198,7 +204,7 @@ def process_batch():
 
     duration = time.time() - start_time
     job_duration.set(duration)
-    job_success.set(time.time())
+    last_success.set(time.time())
 
     return num_records, duration
 
@@ -206,6 +212,7 @@ def process_batch():
 def main():
     try:
         records, duration = process_batch()
+        job_success.set(1)
         print(f"Processed {records} records in {duration:.2f}s")
 
         # Push metrics to Pushgateway
@@ -219,6 +226,7 @@ def main():
 
     except Exception as e:
         print(f"Error: {e}")
+        job_success.set(0)
         # Push failure metric
         failure_gauge = Gauge(
             'batch_job_failure_timestamp',
@@ -269,6 +277,11 @@ var (
         Name: "batch_job_last_success_timestamp",
         Help: "Timestamp of last successful job run",
     })
+
+    jobSuccess = prometheus.NewGauge(prometheus.GaugeOpts{
+        Name: "batch_job_success",
+        Help: "Whether the batch job succeeded (1) or failed (0)",
+    })
 )
 
 func processBatch() (int, float64) {
@@ -291,10 +304,11 @@ func processBatch() (int, float64) {
 func main() {
     // Create registry and register metrics
     registry := prometheus.NewRegistry()
-    registry.MustRegister(jobDuration, recordsProcessed, lastSuccess)
+    registry.MustRegister(jobDuration, recordsProcessed, lastSuccess, jobSuccess)
 
     // Process batch
     records, duration := processBatch()
+    jobSuccess.Set(1)
     log.Printf("Processed %d records in %.2fs", records, duration)
 
     // Push metrics to Pushgateway
@@ -324,9 +338,10 @@ INSTANCE="db-primary"
 START_TIME=$(date +%s.%N)
 
 # Perform backup
-pg_dump -h localhost -U postgres mydb > /backup/mydb_$(date +%Y%m%d).sql
+BACKUP_FILE="/backup/mydb_$(date +%Y%m%d).sql"
+pg_dump -h localhost -U postgres mydb > "${BACKUP_FILE}"
 BACKUP_STATUS=$?
-BACKUP_SIZE=$(stat -f%z /backup/mydb_$(date +%Y%m%d).sql 2>/dev/null || echo 0)
+BACKUP_SIZE=$(stat -c%s "${BACKUP_FILE}" 2>/dev/null || stat -f%z "${BACKUP_FILE}" 2>/dev/null || echo 0)
 
 # Calculate duration
 END_TIME=$(date +%s.%N)
@@ -374,11 +389,11 @@ graph TB
         subgraph "job=etl_pipeline"
             subgraph "instance=worker-1"
                 M1[batch_job_duration_seconds]
-                M2[batch_job_records_processed]
+                M2[batch_job_records_processed_total]
             end
             subgraph "instance=worker-2"
                 M3[batch_job_duration_seconds]
-                M4[batch_job_records_processed]
+                M4[batch_job_records_processed_total]
             end
         end
         subgraph "job=backup"
@@ -463,23 +478,25 @@ job_completion.set(time.time())
 try:
     process_batch()
     job_success.set(1)
-except Exception as e:
+except Exception:
     job_success.set(0)
-    job_error_message.labels(error=str(e)).set(1)
 finally:
-    push_to_gateway(...)
+    push_to_gateway(
+        'pushgateway:9091',
+        job='etl_pipeline',
+        registry=registry
+    )
 ```
 
-### 3. Use Unique Grouping Keys
+### 3. Use Stable Grouping Keys
 
 ```python
-# Include enough context to identify the job run
+# Use only stable labels that identify the service-level job
 push_to_gateway(
     'pushgateway:9091',
     job='etl_pipeline',
     grouping_key={
-        'instance': hostname,
-        'run_id': run_id,
+        'environment': environment,
     }
 )
 ```
@@ -491,14 +508,14 @@ push_to_gateway(
 0 * * * * curl -X DELETE http://pushgateway:9091/metrics/job/old_job
 ```
 
-### 5. Use Pushadd for Counters
+### 5. Use Pushadd to Preserve Other Metrics
 
-When pushing counters, use `pushadd` instead of `push` to add to existing values:
+Use `pushadd` when you want to replace only metrics with the same name and grouping key while leaving other metrics in the group unchanged:
 
 ```python
 from prometheus_client import pushadd_to_gateway
 
-# pushadd adds to existing counter values
+# pushadd preserves other metric names in the same group
 pushadd_to_gateway(
     'pushgateway:9091',
     job='etl_pipeline',
@@ -517,7 +534,7 @@ Pushgateway has some limitations:
 
 For high-volume scenarios, consider:
 
-- **Remote write**: Push directly to remote storage (Cortex, Thanos, VictoriaMetrics)
+- **Remote write**: Use an agent or collector to send metrics to remote storage (Cortex, Thanos, VictoriaMetrics)
 - **OpenTelemetry Collector**: More flexible metric collection
 - **Custom aggregation**: Aggregate in your application before pushing
 
