@@ -85,7 +85,7 @@ INSERT INTO daily_metrics VALUES
 
 -- Fill gaps with zeros
 SELECT
-    dates.d AS date,
+    dates.d::DATE AS date,
     COALESCE(m.page_views, 0) AS page_views,
     COALESCE(m.unique_visitors, 0) AS unique_visitors
 FROM generate_series(
@@ -93,7 +93,7 @@ FROM generate_series(
     '2026-01-05'::DATE,
     '1 day'::INTERVAL
 ) AS dates(d)
-LEFT JOIN daily_metrics m ON m.metric_date = dates.d
+LEFT JOIN daily_metrics m ON m.metric_date = dates.d::DATE
 ORDER BY dates.d;
 ```
 
@@ -174,14 +174,15 @@ SELECT generate_series(
     '1 hour'::INTERVAL
 ) AS utc_hour;
 
--- Generate in a specific timezone, display in UTC
+-- Generate in a specific timezone, display local and UTC times
 SELECT
-    tz_hour AS local_time,
+    tz_hour AT TIME ZONE 'America/New_York' AS local_time,
     tz_hour AT TIME ZONE 'UTC' AS utc_time
 FROM generate_series(
     '2026-01-25 00:00:00 America/New_York'::TIMESTAMPTZ,
     '2026-01-25 23:00:00 America/New_York'::TIMESTAMPTZ,
-    '1 hour'::INTERVAL
+    '1 hour'::INTERVAL,
+    'America/New_York'
 ) AS tz_hour;
 ```
 
@@ -204,7 +205,7 @@ CREATE TABLE calendar (
     is_holiday BOOLEAN DEFAULT false
 );
 
--- Populate with 10 years of dates
+-- Populate with 11 years of dates
 INSERT INTO calendar (
     date_key, year, quarter, month, month_name,
     week, day_of_week, day_name, is_weekend
@@ -266,12 +267,14 @@ SELECT
     date_trunc('hour', bucket) +
     (EXTRACT(MINUTE FROM bucket)::INTEGER / 5 * 5) * INTERVAL '1 minute' AS five_min_bucket,
     AVG(value) AS avg_value
-FROM generate_series(
-    '2026-01-25 14:00:00'::TIMESTAMP,
-    '2026-01-25 14:59:00'::TIMESTAMP,
-    '1 minute'::INTERVAL
-) AS bucket
-CROSS JOIN (SELECT random() * 100 AS value) AS sample
+FROM (
+    SELECT bucket, random() * 100 AS value
+    FROM generate_series(
+        '2026-01-25 14:00:00'::TIMESTAMP,
+        '2026-01-25 14:59:00'::TIMESTAMP,
+        '1 minute'::INTERVAL
+    ) AS bucket
+) AS sample
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -284,14 +287,14 @@ Combine time series with window functions for cumulative metrics.
 -- Daily cumulative sum
 WITH daily_data AS (
     SELECT
-        dates.d AS date,
+        dates.d::DATE AS date,
         COALESCE(SUM(m.page_views), 0) AS daily_views
     FROM generate_series(
         '2026-01-01'::DATE,
         '2026-01-31'::DATE,
         '1 day'::INTERVAL
     ) AS dates(d)
-    LEFT JOIN daily_metrics m ON m.metric_date = dates.d
+    LEFT JOIN daily_metrics m ON m.metric_date = dates.d::DATE
     GROUP BY dates.d
 )
 SELECT
