@@ -332,7 +332,7 @@ CREATE AGGREGATE weighted_avg(NUMERIC, NUMERIC) (
     SFUNC = weighted_avg_sfunc,
     STYPE = weighted_avg_state,
     FINALFUNC = weighted_avg_ffunc,
-    COMBINEFUNC = weighted_avg_combine,    -- Enables parallel execution
+    COMBINEFUNC = weighted_avg_combine,    -- Supports partial aggregation
     INITCOND = '(0, 0)',
     PARALLEL = SAFE
 );
@@ -373,6 +373,7 @@ CREATE AGGREGATE weighted_avg(NUMERIC, NUMERIC) (
     MSFUNC = weighted_avg_sfunc,           -- Moving state function
     MINVFUNC = weighted_avg_inv_sfunc,     -- Moving inverse function
     MSTYPE = weighted_avg_state,
+    MFINALFUNC = weighted_avg_ffunc,
     MINITCOND = '(0, 0)',
     INITCOND = '(0, 0)',
     PARALLEL = SAFE
