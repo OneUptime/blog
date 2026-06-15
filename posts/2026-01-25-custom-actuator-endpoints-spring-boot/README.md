@@ -52,7 +52,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,custom
+        include: health,info,metrics,application,cache,features,diagnostics
   endpoint:
     health:
       show-details: when-authorized
@@ -71,6 +71,7 @@ package com.example.actuator;
 
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -82,6 +83,13 @@ import java.util.Map;
 @Endpoint(id = "application")
 public class ApplicationEndpoint {
 
+    private final Environment environment;
+    private final Instant startTime = Instant.now();
+
+    public ApplicationEndpoint(Environment environment) {
+        this.environment = environment;
+    }
+
     // ReadOperation maps to HTTP GET requests
     @ReadOperation
     public Map<String, Object> applicationInfo() {
@@ -90,9 +98,9 @@ public class ApplicationEndpoint {
         // Include useful runtime information
         info.put("name", "my-service");
         info.put("version", "2.1.0");
-        info.put("startTime", Instant.now().toString());
+        info.put("startTime", startTime.toString());
         info.put("javaVersion", System.getProperty("java.version"));
-        info.put("activeProfiles", System.getProperty("spring.profiles.active", "default"));
+        info.put("activeProfiles", environment.getActiveProfiles());
 
         return info;
     }
@@ -185,7 +193,6 @@ import org.springframework.boot.actuate.endpoint.annotation.*;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Component
@@ -270,8 +277,8 @@ Health indicators contribute to the overall health status of your application:
 ```java
 package com.example.health;
 
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.stereotype.Component;
 
 import java.sql.Connection;
@@ -321,8 +328,8 @@ Check connectivity to external services your application depends on:
 ```java
 package com.example.health;
 
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
@@ -332,11 +339,10 @@ import java.time.Instant;
 @Component
 public class PaymentServiceHealthIndicator implements HealthIndicator {
 
-    private final RestTemplate restTemplate;
+    private final RestTemplate restTemplate = new RestTemplate();
     private final String paymentServiceUrl;
 
-    public PaymentServiceHealthIndicator(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
+    public PaymentServiceHealthIndicator() {
         this.paymentServiceUrl = "https://api.payment-provider.com/health";
     }
 
@@ -385,9 +391,9 @@ Group related health checks into a composite indicator:
 ```java
 package com.example.health;
 
-import org.springframework.boot.actuate.health.CompositeHealthContributor;
-import org.springframework.boot.actuate.health.HealthContributor;
-import org.springframework.boot.actuate.health.NamedContributor;
+import org.springframework.boot.health.contributor.CompositeHealthContributor;
+import org.springframework.boot.health.contributor.HealthContributor;
+import org.springframework.boot.health.contributor.NamedContributor;
 import org.springframework.stereotype.Component;
 
 import java.util.Iterator;
@@ -432,22 +438,19 @@ This creates a nested health structure at `/actuator/health/externalServices`.
 
 ### Endpoint for Web Only
 
-Use `@WebEndpoint` when the endpoint should only be accessible via HTTP:
+Use `@RestControllerEndpoint` when you need Spring MVC annotations and the endpoint should only be accessible via HTTP:
 
 ```java
 package com.example.actuator;
 
-import org.springframework.boot.actuate.endpoint.web.annotation.WebEndpoint;
 import org.springframework.boot.actuate.endpoint.web.annotation.RestControllerEndpoint;
-import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
 import org.springframework.stereotype.Component;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.Map;
 
-// WebEndpoint provides more control over HTTP responses
+// RestControllerEndpoint provides Spring MVC integration for custom actuator endpoints
 @Component
 @RestControllerEndpoint(id = "diagnostics")
 public class DiagnosticsEndpoint {
@@ -504,6 +507,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 
+import static org.springframework.security.config.Customizer.withDefaults;
+
 @Configuration
 @EnableWebSecurity
 public class ActuatorSecurityConfig {
@@ -525,7 +530,7 @@ public class ActuatorSecurityConfig {
                 // All other requests require authentication
                 .anyRequest().authenticated()
             )
-            .httpBasic();
+            .httpBasic(withDefaults());
 
         return http.build();
     }
@@ -570,6 +575,8 @@ management:
       show-components: when-authorized
       probes:
         enabled: true
+      status:
+        order: down,out-of-service,degraded,up,unknown
     shutdown:
       enabled: false
 ```
@@ -585,9 +592,9 @@ management:
     health:
       group:
         liveness:
-          include: livenessState
+          include: livenessstate
         readiness:
-          include: readinessState,db,redis
+          include: readinessstate,db
 ```
 
 Use these endpoints in your Kubernetes deployment:
@@ -599,14 +606,14 @@ spec:
   - name: app
     livenessProbe:
       httpGet:
-        path: /actuator/health/liveness
-        port: 8080
+        path: /management/health/liveness
+        port: 9090
       initialDelaySeconds: 30
       periodSeconds: 10
     readinessProbe:
       httpGet:
-        path: /actuator/health/readiness
-        port: 8080
+        path: /management/health/readiness
+        port: 9090
       initialDelaySeconds: 10
       periodSeconds: 5
 ```
