@@ -58,7 +58,6 @@ dvc init
 git status
 # .dvc/.gitignore
 # .dvc/config
-# .dvcignore
 
 # Commit DVC initialization
 git add .dvc
@@ -114,11 +113,11 @@ dvc remote add -d myremote ssh://user@server:/path/to/storage
 dvc remote add -d myremote /mnt/shared/dvc-storage
 
 # Configure credentials (for S3)
-dvc remote modify myremote access_key_id 'your-key'
-dvc remote modify myremote secret_access_key 'your-secret'
+dvc remote modify --local myremote access_key_id 'your-key'
+dvc remote modify --local myremote secret_access_key 'your-secret'
 
 # Or use environment variables / IAM roles (recommended)
-dvc remote modify myremote profile 'my-aws-profile'
+dvc remote modify --local myremote profile 'my-aws-profile'
 
 # Push data to remote
 dvc push
@@ -301,7 +300,7 @@ dvc exp run -S train.n_estimators=200 -S train.max_depth=15
 dvc exp run --queue -S train.n_estimators=100
 dvc exp run --queue -S train.n_estimators=200
 dvc exp run --queue -S train.n_estimators=300
-dvc exp run --run-all --parallel 4
+dvc exp run --run-all -j 4
 
 # List experiments
 dvc exp show
@@ -325,7 +324,7 @@ dvc exp remove exp-abc123
 # Show current metrics
 dvc metrics show
 
-# Compare metrics across Git commits
+# Compare metrics with a previous Git commit
 dvc metrics diff HEAD~1
 
 # Compare with specific revision
@@ -389,7 +388,7 @@ dvc push
 git add .
 git commit -m "Customer data v1"
 git tag -a customer-data-v1 -m "Initial customer dataset"
-git push --tags
+git push --follow-tags
 
 # In other projects, import from registry
 dvc import https://github.com/company/data-registry \
