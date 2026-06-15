@@ -10,7 +10,9 @@ Description: Learn how to implement distributed tracing in Spring Boot microserv
 
 In microservices architectures, a single user request often flows through multiple services. When something goes wrong or performance degrades, understanding which service caused the problem becomes difficult. Distributed tracing solves this by assigning a unique trace ID to each request and propagating it across service boundaries.
 
-Spring Cloud Sleuth adds distributed tracing capabilities to Spring Boot applications automatically. Zipkin provides a UI for visualizing traces and analyzing latency. Together, they give you visibility into how requests flow through your system.
+Spring Cloud Sleuth adds distributed tracing capabilities to Spring Boot 2.x applications automatically. Zipkin provides a UI for visualizing traces and analyzing latency. Together, they give you visibility into how requests flow through your system.
+
+Sleuth's last minor version is 3.1 and it does not support Spring Boot 3.x or newer. Use the Sleuth examples below for legacy Spring Boot 2.x services; for Spring Boot 3.x and newer, use Micrometer Tracing as shown in the migration section.
 
 ## Understanding Trace Concepts
 
@@ -80,7 +82,7 @@ Add dependencies to your microservices.
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-dependencies</artifactId>
-            <version>2023.0.0</version>
+            <version>2021.0.9</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -105,6 +107,7 @@ spring:
       remote-fields:
         - x-request-id
         - x-correlation-id
+        - user-id
       correlation-fields:
         - x-request-id
 
@@ -291,9 +294,11 @@ import org.springframework.web.bind.annotation.*;
 public class ApiGatewayController {
 
     private final Tracer tracer;
+    private final OrderService orderService;
 
-    public ApiGatewayController(Tracer tracer) {
+    public ApiGatewayController(Tracer tracer, OrderService orderService) {
         this.tracer = tracer;
+        this.orderService = orderService;
     }
 
     @PostMapping("/api/orders")
@@ -318,9 +323,11 @@ import org.springframework.stereotype.Service;
 public class AuditService {
 
     private final Tracer tracer;
+    private final AuditLog auditLog;
 
-    public AuditService(Tracer tracer) {
+    public AuditService(Tracer tracer, AuditLog auditLog) {
         this.tracer = tracer;
+        this.auditLog = auditLog;
     }
 
     public void logAction(String action) {
@@ -385,6 +392,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class NotificationService {
 
+    private final EmailService emailService;
+
+    public NotificationService(EmailService emailService) {
+        this.emailService = emailService;
+    }
+
     // Trace context is automatically propagated to async methods
     @Async
     public void sendOrderConfirmation(Order order) {
@@ -398,6 +411,7 @@ Configure async executor with Sleuth awareness.
 
 ```java
 import org.springframework.cloud.sleuth.instrument.async.LazyTraceExecutor;
+import org.springframework.beans.factory.BeanFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -477,12 +491,7 @@ spring:
 
     # Skip tracing for health checks
     web:
-      skip-pattern: /actuator/health|/actuator/info
-
-    # Reduce overhead by limiting tag length
-    span:
-      tag:
-        max-length: 128
+      additional-skip-pattern: /actuator/health|/actuator/info
 
   zipkin:
     base-url: http://zipkin.monitoring.svc.cluster.local:9411
@@ -493,21 +502,36 @@ spring:
     # Compression for bandwidth efficiency
     compression:
       enabled: true
-    # Connection pooling
-    http:
-      connection-timeout: 1000
-      read-timeout: 10000
+    # Limit the number of spans queued in memory
+    queued-max-spans: 1000
 ```
+
+When using `spring.zipkin.sender.type: kafka`, include Spring Kafka on the classpath so Sleuth can create a Kafka span sender.
 
 ## Migration to OpenTelemetry
 
-Spring Cloud Sleuth is transitioning to Micrometer Tracing with OpenTelemetry support.
+Spring Cloud Sleuth has moved to Micrometer Tracing. For Spring Boot 3.x and newer, replace Sleuth with Micrometer Tracing and Spring Boot's tracing auto-configuration.
 
 ```xml
 <!-- New dependencies for Micrometer Tracing -->
 <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-micrometer-tracing-opentelemetry</artifactId>
+</dependency>
+
+<dependency>
     <groupId>io.micrometer</groupId>
     <artifactId>micrometer-tracing-bridge-otel</artifactId>
+</dependency>
+
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-zipkin</artifactId>
 </dependency>
 
 <dependency>
@@ -522,9 +546,9 @@ management:
   tracing:
     sampling:
       probability: 0.1
-  zipkin:
-    tracing:
-      endpoint: http://zipkin:9411/api/v2/spans
+    export:
+      zipkin:
+        endpoint: http://zipkin:9411/api/v2/spans
 ```
 
 ## Viewing Traces in Zipkin
