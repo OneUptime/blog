@@ -35,7 +35,7 @@ Add it to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-thiserror = "1.0"
+thiserror = "2.0"
 ```
 
 Now define your error type:
@@ -251,8 +251,9 @@ async fn run_server() -> Result<()> {
     Ok(())
 }
 
-fn main() {
-    if let Err(e) = run_server() {
+#[tokio::main]
+async fn main() {
+    if let Err(e) = run_server().await {
         // Print full error chain
         eprintln!("Error: {:#}", e);
         std::process::exit(1);
