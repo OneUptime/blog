@@ -31,15 +31,16 @@ Syft is a single binary available for all major platforms:
 
 brew install syft
 
-# Linux (download from GitHub releases)
-curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+# Linux (official installer)
+curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
 
 # Using Docker
 docker run --rm anchore/syft:latest --help
 
 # Verify installation
 syft version
-# syft 0.100.0
+# Application: syft
+# Version:    1.x.x
 ```
 
 ## Scanning Container Images
@@ -204,6 +205,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: write
+
 jobs:
   sbom:
     runs-on: ubuntu-latest
@@ -222,14 +226,14 @@ jobs:
           output-file: sbom.spdx.json
 
       - name: Upload SBOM as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: sbom.spdx.json
 
       - name: Attach SBOM to release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: sbom.spdx.json
 ```
@@ -250,7 +254,9 @@ build:
 
 generate-sbom:
   stage: sbom
-  image: anchore/syft:latest
+  image:
+    name: anchore/syft:latest-debug
+    entrypoint: [""]
   script:
     - syft $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA -o spdx-json > sbom.spdx.json
     - syft $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA -o cyclonedx-json > sbom.cdx.json
@@ -287,12 +293,13 @@ Attach SBOMs to container images as attestations using Cosign:
 syft myapp:v1.0 -o spdx-json > sbom.spdx.json
 
 # Create attestation (signs and attaches to image)
-cosign attest --predicate sbom.spdx.json \
+cosign attest --key cosign.key \
+  --predicate sbom.spdx.json \
   --type spdxjson \
   myapp:v1.0
 
 # Verify attestation
-cosign verify-attestation \
+cosign verify-attestation --key cosign.pub \
   --type spdxjson \
   myapp:v1.0
 ```
@@ -303,10 +310,10 @@ Generate SBOMs during docker build:
 
 ```bash
 # Enable BuildKit SBOM generation
-DOCKER_BUILDKIT=1 docker build \
+docker buildx build \
   --sbom=true \
   --output type=local,dest=./output \
-  -t myapp:v1.0 .
+  .
 
 # The SBOM is in ./output/sbom.spdx.json
 ```
@@ -345,11 +352,8 @@ output:
   - "spdx-json"
   - "cyclonedx-json"
 
-# Cataloger settings
-package:
-  cataloger:
-    enabled: true
-    scope: "all-layers"
+# Layer scope
+scope: "all-layers"
 
 # File classifications
 file:
