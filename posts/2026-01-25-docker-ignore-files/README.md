@@ -12,7 +12,7 @@ The `.dockerignore` file tells Docker which files and directories to exclude whe
 
 ## Why .dockerignore Matters
 
-When you run `docker build`, Docker sends the entire build context (usually your project directory) to the Docker daemon. Without a .dockerignore file:
+When you run `docker build`, Docker uses the build context (usually your project directory) as the set of files available to the builder. With the legacy builder, the entire context is sent to the Docker daemon; with BuildKit, Docker loads and transfers the files it needs. In both cases, a .dockerignore file removes unnecessary files from the context before the build. Without a .dockerignore file:
 
 - Build context transfer takes longer
 - Large files slow down every build
@@ -20,14 +20,14 @@ When you run `docker build`, Docker sends the entire build context (usually your
 - Cache invalidation happens more frequently
 
 ```bash
-# See what gets sent to the daemon
+# See what gets sent to the builder
 
-docker build . 2>&1 | head -5
-# Sending build context to Docker daemon  450.2MB
+DOCKER_BUILDKIT=1 docker build --progress=plain . 2>&1 | grep "transferring context"
+# => transferring context: 450.2MB
 
 # With proper .dockerignore
-docker build . 2>&1 | head -5
-# Sending build context to Docker daemon  2.3MB
+DOCKER_BUILDKIT=1 docker build --progress=plain . 2>&1 | grep "transferring context"
+# => transferring context: 2.3MB
 ```
 
 ## Basic Syntax
@@ -37,21 +37,25 @@ The .dockerignore syntax is similar to .gitignore.
 ```bash
 # .dockerignore
 
-# Comments start with #
+# Comments start with # in column 1
 # Blank lines are ignored
 
 # Ignore specific file
 secret.key
 
-# Ignore all files with extension
+# Ignore files with extension in the context root
 *.log
 *.tmp
+
+# Ignore files with extension anywhere in the context
+**/*.log
+**/*.tmp
 
 # Ignore entire directories
 node_modules/
 .git/
 
-# Ignore files starting with pattern
+# Ignore files starting with pattern in the context root
 temp-*
 
 # Ignore files in any subdirectory
@@ -64,13 +68,13 @@ temp-*
 ## Pattern Matching Rules
 
 ```bash
-# Exact file/directory match
+# Exact file/directory match in the context root
 Dockerfile
 docker-compose.yml
 
 # Wildcard (*) matches any sequence except /
-*.log           # matches app.log, error.log
-config-*.json   # matches config-dev.json, config-prod.json
+*.log           # matches app.log, error.log in the context root
+config-*.json   # matches config-dev.json, config-prod.json in the context root
 
 # Double asterisk (**) matches any path
 **/node_modules  # matches node_modules anywhere in tree
@@ -80,11 +84,11 @@ config-*.json   # matches config-dev.json, config-prod.json
 log?.txt         # matches log1.txt, logA.txt
 
 # Negation (!) includes previously excluded files
-*.md             # ignore all markdown
+*.md             # ignore markdown in the context root
 !README.md       # but keep README.md
 
-# Directory matching
-docs/            # ignore docs directory and contents
+# Directory matching in the context root
+docs/            # ignore root docs directory and contents
 ```
 
 ## Essential .dockerignore Template
@@ -98,7 +102,7 @@ docs/            # ignore docs directory and contents
 .gitattributes
 
 # Documentation
-*.md
+**/*.md
 docs/
 LICENSE
 
@@ -122,8 +126,8 @@ Thumbs.db
 **/test/
 **/tests/
 **/__tests__/
-*.test.*
-*.spec.*
+**/*.test.*
+**/*.spec.*
 coverage/
 
 # Build artifacts (will be generated in container)
@@ -138,7 +142,7 @@ vendor/
 venv/
 .venv/
 __pycache__/
-*.pyc
+**/*.pyc
 
 # Environment and secrets
 .env
@@ -149,13 +153,13 @@ credentials/
 secrets/
 
 # Logs
-*.log
-logs/
+**/*.log
+**/logs/
 
 # Temporary files
 tmp/
 temp/
-*.tmp
+**/*.tmp
 ```
 
 ## Language-Specific Examples
@@ -178,9 +182,9 @@ build/
 # Test
 coverage/
 .nyc_output/
-*.test.js
-*.spec.js
-__tests__/
+**/*.test.js
+**/*.spec.js
+**/__tests__/
 jest.config.js
 
 # TypeScript
@@ -234,7 +238,7 @@ build/
 # IDE
 .idea/
 .vscode/
-*.pyc
+**/*.pyc
 
 # Environment
 .env
@@ -300,7 +304,7 @@ Patterns are processed in order. Later patterns can override earlier ones.
 
 ```bash
 # Ignore all markdown files
-*.md
+**/*.md
 
 # But keep the main README
 !README.md
@@ -363,13 +367,13 @@ CMD ["node", "dist/server.js"]
 # Always exclude
 .git
 node_modules/    # Will be installed fresh in container
-*.md
+**/*.md
 docker*
 
 # Test files not needed in build
-*.test.js
-*.spec.js
-__tests__/
+**/*.test.js
+**/*.spec.js
+**/__tests__/
 coverage/
 
 # These are regenerated during build
@@ -407,7 +411,7 @@ node_modules/
 .env.production
 *.env
 
-# Use build args or secrets instead
+# Use build secrets instead
 ```
 
 ### Path Matching Confusion
@@ -437,7 +441,7 @@ node_modules/   # Don't commit dependencies
 
 # .dockerignore - excludes from build context
 .git/           # Not needed in container
-*.md            # Docs not needed in container
+**/*.md         # Docs not needed in container
 tests/          # Tests not needed in production image
 ```
 
