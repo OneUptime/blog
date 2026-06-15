@@ -48,8 +48,6 @@ package main
 
 import (
     "fmt"
-    "sync"
-    "time"
 
     "golang.org/x/sync/singleflight"
 )
@@ -73,7 +71,7 @@ func (s *UserService) GetUserProfile(userID string) (*UserProfile, error) {
         return nil, err
     }
 
-    // shared is true if this result came from another goroutine's request
+    // shared is true if this result was delivered to multiple callers
     if shared {
         fmt.Printf("Request for user %s shared result with other callers\n", userID)
     }
@@ -259,33 +257,25 @@ func (s *Service) GetData(key string) ([]byte, error) {
 }
 ```
 
-## Forget: Handling Retries
+## Forget: Starting a Fresh In-Flight Request
 
-The `Forget` method removes a key from the in-flight map, allowing a new request to start even if one is in progress. This is useful for retry scenarios:
+The `Forget` method removes a key from the in-flight map, allowing a new request to start even if one is in progress. This is useful when a caller wants to stop joining the current in-flight request and force a fresh fetch:
 
 ```go
-func (s *Service) GetDataWithRetry(key string) ([]byte, error) {
-    var lastErr error
+func (s *Service) RefreshData(key string) ([]byte, error) {
+    // Stop future callers from waiting on any existing in-flight request
+    // for this key. That existing request may still complete for callers
+    // that are already waiting on it.
+    s.group.Forget(key)
 
-    for attempt := 0; attempt < 3; attempt++ {
-        result, err, _ := s.group.Do(key, func() (interface{}, error) {
-            return s.fetchFromRemote(key)
-        })
-
-        if err == nil {
-            return result.([]byte), nil
-        }
-
-        lastErr = err
-
-        // Forget the key so the next attempt starts fresh
-        // Without this, retries would share the failed result
-        s.group.Forget(key)
-
-        time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+    result, err, _ := s.group.Do(key, func() (interface{}, error) {
+        return s.fetchFromRemote(key)
+    })
+    if err != nil {
+        return nil, err
     }
 
-    return nil, fmt.Errorf("all retries failed: %w", lastErr)
+    return result.([]byte), nil
 }
 ```
 
@@ -323,7 +313,7 @@ There are a few things to watch out for when implementing request coalescing:
 
 **Memory for keys**: Keys are kept in memory while requests are in flight. For extremely high cardinality keys, this is usually fine since entries are removed once the request completes.
 
-**Panic handling**: singleflight handles panics in the function - the panic is recovered and converted to an error that all callers receive.
+**Panic handling**: singleflight does not convert panics into ordinary errors. If the function panics, callers of `Do` see a panic rather than a normal error return.
 
 ## When to Use Request Coalescing
 
@@ -384,4 +374,4 @@ The key points to remember:
 - Create separate groups or use prefixed keys for different resource types
 - Combine with caching for both concurrent and sequential request optimization
 - Use `DoChan` when you need timeouts
-- Use `Forget` when implementing retries
+- Use `Forget` when future callers should start a fresh in-flight request instead of waiting for the current one
