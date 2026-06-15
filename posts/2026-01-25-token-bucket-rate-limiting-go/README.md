@@ -229,6 +229,8 @@ Wrap it in middleware for easy integration with your HTTP server:
 package ratelimit
 
 import (
+    "math"
+    "net"
     "net/http"
     "strconv"
 )
@@ -236,14 +238,14 @@ import (
 // Middleware returns an HTTP middleware that applies rate limiting
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        // Use client IP as identifier (in production, consider X-Forwarded-For)
-        clientID := r.RemoteAddr
+        // Use client IP as identifier (behind trusted proxies, consider Forwarded or X-Forwarded-For)
+        clientID := clientIP(r)
 
         if !rl.Allow(clientID) {
-            // Set standard rate limit headers
+            // Set common rate limit headers
             w.Header().Set("X-RateLimit-Limit", strconv.FormatFloat(rl.capacity, 'f', 0, 64))
             w.Header().Set("X-RateLimit-Remaining", "0")
-            w.Header().Set("Retry-After", strconv.Itoa(int(1/rl.refillRate)))
+            w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(1/rl.refillRate))))
 
             http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
             return
@@ -251,6 +253,14 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 
         next.ServeHTTP(w, r)
     })
+}
+
+func clientIP(r *http.Request) string {
+    host, _, err := net.SplitHostPort(r.RemoteAddr)
+    if err != nil {
+        return r.RemoteAddr
+    }
+    return host
 }
 ```
 
@@ -290,7 +300,10 @@ Some endpoints are more expensive than others. You can consume multiple tokens f
 ```go
 func expensiveEndpoint(limiter *ratelimit.RateLimiter) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
-        clientID := r.RemoteAddr
+        clientID, _, err := net.SplitHostPort(r.RemoteAddr)
+        if err != nil {
+            clientID = r.RemoteAddr
+        }
 
         // This endpoint costs 10 tokens
         if !limiter.AllowN(clientID, 10) {
@@ -317,7 +330,7 @@ func expensiveEndpoint(limiter *ratelimit.RateLimiter) http.HandlerFunc {
 - User IDs for logged-in users
 - Combination of IP and endpoint for public APIs
 
-**Return proper headers.** Always include `Retry-After` and rate limit headers so clients know when to retry and can implement backoff:
+**Return proper headers.** Always include `Retry-After` and common rate limit headers so clients know when to retry and can implement backoff:
 
 ```go
 w.Header().Set("X-RateLimit-Limit", "100")
