@@ -71,6 +71,9 @@ docker exec mycontainer cat /proc/meminfo
 
 # Check memory pressure events
 docker exec mycontainer cat /sys/fs/cgroup/memory/memory.failcnt
+
+# For cgroup v2 systems
+docker exec mycontainer cat /sys/fs/cgroup/memory.events
 ```
 
 ### Common Memory Issues
@@ -122,7 +125,7 @@ CPU throttling slows down your application without killing it. Symptoms include 
 
 ```bash
 # Check CPU throttling stats
-docker exec mycontainer cat /sys/fs/cgroup/cpu/cpu.stat
+docker exec mycontainer cat /sys/fs/cgroup/cpu,cpuacct/cpu.stat
 
 # Output shows throttling info
 # nr_periods 1000       # Number of scheduling periods
@@ -131,6 +134,7 @@ docker exec mycontainer cat /sys/fs/cgroup/cpu/cpu.stat
 
 # For cgroup v2
 docker exec mycontainer cat /sys/fs/cgroup/cpu.stat
+# cgroup v2 reports throttled_usec instead of throttled_time
 
 # Calculate throttling percentage
 # throttle_percent = nr_throttled / nr_periods * 100
@@ -243,6 +247,7 @@ CPU Set: {{.HostConfig.CpusetCpus}}
 echo ""
 echo "=== Cgroup Stats ==="
 docker exec $CONTAINER cat /sys/fs/cgroup/cpu.stat 2>/dev/null || \
+docker exec $CONTAINER cat /sys/fs/cgroup/cpu,cpuacct/cpu.stat 2>/dev/null || \
 docker exec $CONTAINER cat /sys/fs/cgroup/cpu/cpu.stat 2>/dev/null
 
 echo ""
@@ -267,25 +272,24 @@ docker events --filter container=mycontainer --filter event=oom
 ## Configuring Alerts Based on Resource Usage
 
 ```yaml
-# docker-compose.yml with resource monitoring
-services:
-  api:
-    image: myapp/api:latest
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 1G
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    labels:
-      # Prometheus alerting labels
-      prometheus.io/scrape: "true"
-      prometheus.io/alert.memory_high: "container_memory_usage_bytes > 800000000"
-      prometheus.io/alert.cpu_high: "rate(container_cpu_usage_seconds_total[5m]) > 1.8"
+# prometheus-rules.yml
+groups:
+  - name: container-resource-alerts
+    rules:
+      - alert: ContainerMemoryHigh
+        expr: container_memory_usage_bytes{name="mycontainer"} > 800000000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container memory usage is high"
+      - alert: ContainerCpuHigh
+        expr: rate(container_cpu_usage_seconds_total{name="mycontainer"}[5m]) > 1.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container CPU usage is high"
 ```
 
 Resource Limit Best Practices
