@@ -8,7 +8,7 @@ Description: Learn how to use Go's testing/fstest package to create in-memory fi
 
 ---
 
-Testing code that reads files has traditionally been painful. You either create temporary files that clutter your test directory, or you mock the entire file system with complex interfaces. Go 1.16 introduced the `io/fs` package along with `testing/fstest`, which provides a clean solution: in-memory file systems that behave exactly like real ones.
+Testing code that reads files has traditionally been painful. You either create temporary files that clutter your test directory, or you mock the entire file system with complex interfaces. Go 1.16 introduced the `io/fs` package along with `testing/fstest`, which provides a clean solution: in-memory file systems that implement the same read-only `fs.FS` abstraction as real ones.
 
 ## Why fstest Matters
 
@@ -16,11 +16,11 @@ Before `fstest`, testing file-reading code meant one of these approaches:
 
 | Approach | Problems |
 |----------|----------|
-| **Real files in testdata/** | Slow, requires cleanup, path issues in CI |
+| **Real files in testdata/** | Can be slower, can introduce path issues in CI |
 | **Custom mock interfaces** | Boilerplate, doesn't match real fs behavior |
 | **afero or similar libs** | External dependency, learning curve |
 
-The `testing/fstest` package gives you an in-memory file system that implements `io/fs.FS`. Your code reads from it exactly like a real file system, but everything lives in memory. Tests run faster, require no cleanup, and work the same everywhere.
+The `testing/fstest` package gives you an in-memory file system that implements `io/fs.FS`. Your code reads from it through the same `fs.FS` APIs used with real file systems, but everything lives in memory. Tests run faster, require no cleanup, and work the same everywhere.
 
 ## Basic Usage
 
@@ -212,7 +212,6 @@ package templates
 
 import (
     "io/fs"
-    "path/filepath"
     "strings"
 )
 
