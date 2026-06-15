@@ -54,7 +54,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.9.0
+    targetRevision: 2.6.0
     helm:
       values: |
         installCRDs: true
@@ -70,11 +70,11 @@ spec:
 
 ### Configure Vault Authentication
 
-Create a SecretStore that connects to Vault:
+Create a ClusterSecretStore that connects to Vault:
 
 ```yaml
 # vault-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -97,7 +97,7 @@ spec:
 
 ```yaml
 # database-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -127,7 +127,7 @@ spec:
 
 ```yaml
 # aws-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -159,7 +159,7 @@ metadata:
 ### ExternalSecret for AWS
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-keys
@@ -188,7 +188,17 @@ spec:
 
 ```yaml
 # azure-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: workload-identity-sa
+  namespace: external-secrets
+  annotations:
+    azure.workload.identity/client-id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    azure.workload.identity/tenant-id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+---
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-keyvault
@@ -197,14 +207,16 @@ spec:
     azurekv:
       tenantId: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
       vaultUrl: "https://myvault.vault.azure.net"
-      authType: ManagedIdentity
-      identityId: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+      authType: WorkloadIdentity
+      serviceAccountRef:
+        name: workload-identity-sa
+        namespace: external-secrets
 ```
 
 ### ExternalSecret for Azure
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: azure-secrets
@@ -226,7 +238,7 @@ spec:
 
 ```yaml
 # gcp-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcp-secret-manager
@@ -260,7 +272,7 @@ resources:
 
 ```yaml
 # myapp/base/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-secrets
@@ -304,7 +316,7 @@ Ensure ExternalSecrets are created before the application:
 
 ```yaml
 # external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-secrets
@@ -358,7 +370,7 @@ data:
 Create secrets with custom formatting:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: connection-string
@@ -430,7 +442,7 @@ Use Kustomize overlays for environment-specific secret references:
 
 ```yaml
 # base/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-secrets
@@ -506,7 +518,7 @@ kubectl describe clustersecretstore vault-backend
 For multi-namespace applications:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore  # Not SecretStore
 metadata:
   name: vault-backend
@@ -533,7 +545,7 @@ groups:
     rules:
       - alert: ExternalSecretSyncFailed
         expr: |
-          external_secrets_sync_calls_total{status="error"} > 0
+          increase(externalsecret_sync_calls_error[5m]) > 0
         for: 5m
         annotations:
           summary: "ExternalSecret sync failed"
