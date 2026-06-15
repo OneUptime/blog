@@ -297,9 +297,9 @@ fn main() {
 | Feature | RefCell | Mutex |
 |---------|---------|-------|
 | Thread-safe | No | Yes |
-| Borrow checking | Runtime | Runtime |
-| Performance | Faster | Slower |
-| Deadlock | Panics | Can deadlock |
+| Access control | Runtime borrow checking | Runtime locking |
+| Typical overhead | Lower | Higher |
+| Failure mode | Panics on invalid borrows | Can block, deadlock, or return poisoning errors |
 
 ```rust
 use std::cell::RefCell;
