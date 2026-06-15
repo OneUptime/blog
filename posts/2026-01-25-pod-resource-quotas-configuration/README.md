@@ -12,7 +12,7 @@ Resource quotas in Kubernetes let you limit the total amount of compute resource
 
 ## Understanding Resource Management
 
-Kubernetes provides three mechanisms for resource control:
+Kubernetes provides several mechanisms for resource control:
 
 ```mermaid
 flowchart TD
@@ -145,7 +145,7 @@ kubectl describe limitrange default-limits -n team-alpha
 
 ## How Quotas Affect Deployments
 
-When a ResourceQuota is active, pods must specify resource requests and limits:
+When a ResourceQuota includes compute resources, pods must specify the corresponding resource requests or limits, or rely on LimitRange defaults:
 
 ```yaml
 # deployment-with-resources.yaml
@@ -167,7 +167,7 @@ spec:
       containers:
         - name: api
           image: myapi:1.5.0
-          # Must specify resources when ResourceQuota exists
+          # Specify resources when compute ResourceQuotas exist
           resources:
             requests:
               cpu: "200m"
@@ -210,7 +210,7 @@ metadata:
 spec:
   hard:
     pods: "10"
-  # Only applies to BestEffort QoS pods (no resource limits)
+  # Only applies to BestEffort QoS pods (no CPU or memory requests or limits)
   scopes:
     - BestEffort
 ---
@@ -222,7 +222,7 @@ metadata:
 spec:
   hard:
     pods: "5"
-  # Only applies to pods that are terminating
+  # Only applies to pods with activeDeadlineSeconds set
   scopes:
     - Terminating
 ```
