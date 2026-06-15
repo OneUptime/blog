@@ -64,7 +64,7 @@ Before implementing RASP:
 
 ## Deploying OpenRASP for Java Applications
 
-OpenRASP provides open-source RASP for Java, PHP, and Node.js. Here is how to integrate it with a Java application:
+OpenRASP provides open-source RASP for Java and PHP. Here is how to integrate it with a Java application:
 
 ```dockerfile
 # Dockerfile with OpenRASP agent
@@ -72,11 +72,12 @@ OpenRASP provides open-source RASP for Java, PHP, and Node.js. Here is how to in
 FROM openjdk:17-slim
 
 # Download and extract OpenRASP agent
-RUN apt-get update && apt-get install -y curl unzip && \
-    curl -L https://github.com/baidu/openrasp/releases/download/v1.3.7/rasp-java.zip \
-    -o /tmp/rasp-java.zip && \
-    unzip /tmp/rasp-java.zip -d /opt/ && \
-    rm /tmp/rasp-java.zip
+RUN apt-get update && apt-get install -y curl tar && \
+    curl -L https://github.com/baidu/openrasp/releases/download/v1.3.7/rasp-java.tar.gz \
+    -o /tmp/rasp-java.tar.gz && \
+    tar -xzf /tmp/rasp-java.tar.gz -C /opt/ && \
+    mv /opt/rasp-*/rasp /opt/rasp && \
+    rm -rf /tmp/rasp-java.tar.gz /opt/rasp-*
 
 # Application setup
 WORKDIR /app
@@ -97,10 +98,11 @@ Configure the RASP agent:
 # rasp-config.yaml
 # OpenRASP configuration
 
-# Basic settings
-app_id: "my-java-app"
-app_secret: "your-app-secret"
-master_url: "https://rasp-console.example.com"
+# Remote management
+cloud.enable: true
+cloud.backend_url: "https://rasp-console.example.com"
+cloud.app_id: "my-java-app"
+cloud.app_secret: "your-app-secret"
 
 # Protection mode
 # block - block attacks
@@ -109,75 +111,27 @@ block.status_code: 403
 block.redirect_url: "/blocked"
 
 # Plugin configuration
-plugin:
-  timeout:
-    millis: 100
-  maxstack: 50
+plugin.timeout.millis: 100
+plugin.maxstack: 50
+body.maxbytes: 12288
 
-# Security rules
-security:
-  # SQL injection protection
-  sql_injection:
-    action: block
-    min_length: 15
-    # Whitelist certain patterns
-    whitelist: []
-
-  # Command injection protection
-  command_injection:
-    action: block
-    # Commands that are never allowed
-    blacklist:
-      - "/bin/sh"
-      - "/bin/bash"
-      - "wget"
-      - "curl"
-
-  # Path traversal protection
-  path_traversal:
-    action: block
-    # Allowed directories
-    whitelist:
-      - "/app/data"
-      - "/tmp"
-
-  # SSRF protection
-  ssrf:
-    action: block
-    # Blocked IP ranges
-    blacklist:
-      - "127.0.0.0/8"
-      - "10.0.0.0/8"
-      - "172.16.0.0/12"
-      - "192.168.0.0/16"
-    # Allowed external hosts
-    whitelist:
-      - "api.example.com"
-      - "payment.provider.com"
-
-  # XXE protection
-  xxe:
-    action: block
-
-  # File upload protection
-  file_upload:
-    action: block
-    # Blocked extensions
-    blacklist:
-      - ".php"
-      - ".jsp"
-      - ".exe"
-      - ".sh"
+# Detection algorithms are configured in the OpenRASP JavaScript plugin.
+# Keep block actions enabled in the official plugin, and use hook.white for
+# path-specific exceptions when required.
+hook.white:
+  "localhost:8080/health":
+    - "sql"
+    - "ssrf"
 
 # Logging configuration
-log:
-  maxbackup: 30
-  maxsize: 100
-  # Send logs to external system
-  syslog:
-    enable: true
-    url: "udp://siem.example.com:514"
-    tag: "rasp"
+log.maxbackup: 30
+log.maxburst: 100
+
+# Send logs to external system
+syslog.enable: true
+syslog.url: "tcp://siem.example.com:514"
+syslog.tag: "rasp"
+syslog.facility: 1
 ```
 
 ---
@@ -191,20 +145,20 @@ Falco provides kernel-level runtime security for containers:
 # Helm values for Falco deployment
 
 driver:
-  # Use eBPF driver for better compatibility
-  kind: ebpf
+  # Use modern eBPF driver for kernels with BPF support
+  kind: modern_ebpf
 
 # Falco configuration
 falco:
-  # Output to both syslog and grpc
-  jsonOutput: true
-  jsonIncludeOutputProperty: true
+  # Output alerts as JSON for downstream processing
+  json_output: true
+  json_include_output_property: true
 
   # Rule files to load
-  rulesFile:
+  rules_files:
     - /etc/falco/falco_rules.yaml
-    - /etc/falco/k8s_audit_rules.yaml
-    - /etc/falco/custom_rules.yaml
+    - /etc/falco/falco_rules.local.yaml
+    - /etc/falco/rules.d
 
   # Priority threshold for alerts
   priority: warning
@@ -263,17 +217,29 @@ customRules:
       condition: >
         outbound and
         container and
-        fd.sport in (suspicious_ports)
+        fd.rport in (suspicious_outbound_ports)
       output: >
         Suspicious outbound connection
         (command=%proc.cmdline connection=%fd.name container=%container.name)
       priority: WARNING
       tags: [network, suspicious]
 
-  # Macro definitions
-  macros.yaml: |
+  # List and macro definitions
+  lists_macros.yaml: |
+    - list: crypto_mining_procs
+      items: [xmrig, cgminer, minerd, cpuminer]
+
+    - list: shell_binaries
+      items: [bash, sh, zsh, csh, tcsh, dash]
+
+    - list: suspicious_outbound_ports
+      items: [4444, 5555, 6666, 7777, 8888, 9999]
+
+    - list: allowed_images
+      items: []
+
     - macro: shell_procs
-      condition: proc.name in (bash, sh, zsh, csh, tcsh, dash)
+      condition: proc.name in (shell_binaries)
 
     - macro: sensitive_files
       condition: >
@@ -286,12 +252,6 @@ customRules:
       condition: >
         container.image.repository in (allowed_images)
 
-    - macro: crypto_mining_procs
-      condition: proc.name in (xmrig, cgminer, minerd, cpuminer)
-
-    - macro: suspicious_ports
-      condition: fd.sport in (4444, 5555, 6666, 7777, 8888, 9999)
-
 # Falco Sidekick for alert routing
 falcosidekick:
   enabled: true
@@ -300,7 +260,7 @@ falcosidekick:
       webhookurl: "https://hooks.slack.com/services/XXX"
       minimumpriority: warning
     prometheus:
-      enabled: true
+      extralabels: ""
 ```
 
 Deploy Falco:
@@ -355,7 +315,7 @@ spec:
         - name: RASP_CONFIG
           valueFrom:
             configMapKeyRef:
-              name: rasp-config
+              name: rasp-sidecar-config
               key: config.yaml
         volumeMounts:
         - name: tls
@@ -365,6 +325,19 @@ spec:
       - name: tls
         secret:
           secretName: rasp-injector-tls
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rasp-sidecar-injector
+  namespace: security
+spec:
+  selector:
+    app: rasp-sidecar-injector
+  ports:
+  - port: 443
+    targetPort: 8443
 
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -379,6 +352,7 @@ webhooks:
       namespace: security
       path: /mutate
     caBundle: ${CA_BUNDLE}
+  admissionReviewVersions: ["v1"]
   rules:
   - operations: ["CREATE"]
     apiGroups: [""]
@@ -389,6 +363,7 @@ webhooks:
       rasp-injection: enabled
   failurePolicy: Ignore
   sideEffects: None
+  timeoutSeconds: 5
 ```
 
 Configure the sidecar proxy:
@@ -482,7 +457,6 @@ For Python applications, implement custom RASP middleware:
 import re
 import logging
 import hashlib
-from functools import wraps
 from flask import request, abort, g
 import time
 
@@ -608,8 +582,9 @@ class RASPMiddleware:
             params[f"form:{key}"] = value
 
         # JSON body
-        if request.is_json and request.json:
-            self._flatten_json(request.json, params, "json")
+        json_data = request.get_json(silent=True) if request.is_json else None
+        if json_data:
+            self._flatten_json(json_data, params, "json")
 
         # Headers (selected)
         for header in ['User-Agent', 'Referer', 'Cookie']:
@@ -733,7 +708,7 @@ spec:
 
     - alert: FalcoRuleTriggered
       expr: |
-        sum(rate(falco_events{priority="Critical"}[5m])) > 0
+        sum(rate(falcosidekick_falco_events_total{priority_raw="critical"}[5m])) > 0
       for: 1m
       labels:
         severity: critical
