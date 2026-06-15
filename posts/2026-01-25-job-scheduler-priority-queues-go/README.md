@@ -47,11 +47,11 @@ type Job struct {
     Payload   interface{}
     Handler   func(ctx context.Context, payload interface{}) error
     CreatedAt time.Time
-    index     int // Used internally by the heap
+    index     int // Maintained internally by the priority queue
 }
 ```
 
-The `index` field is required by Go's heap package to track the position of items. We keep it unexported since it's an implementation detail.
+The `index` field is useful if you later want to update or remove jobs with `heap.Fix` or `heap.Remove`. We keep it unexported since it's an implementation detail.
 
 ## Implementing the Priority Queue
 
@@ -232,6 +232,11 @@ func (s *Scheduler) Stop(drain bool) {
         if s.cancelFunc != nil {
             s.cancelFunc()
         }
+        // Drop jobs that have not been picked up by a worker
+        for _, job := range s.queue {
+            job.index = -1
+        }
+        s.queue = s.queue[:0]
     }
 
     // Wake up all waiting workers so they can exit
@@ -250,7 +255,7 @@ func (s *Scheduler) QueueLength() int {
 }
 ```
 
-The `drain` parameter controls whether we wait for all queued jobs to complete or just the ones currently being processed.
+The `drain` parameter controls whether workers finish all queued jobs before exiting. When `drain` is false, pending jobs are discarded and the scheduler cancels the shared context so in-progress handlers can stop early if they observe `ctx.Done()`.
 
 ## Putting It All Together
 
@@ -268,11 +273,10 @@ import (
 )
 
 func main() {
-    // Create a scheduler with 4 workers
-    s := scheduler.NewScheduler(4)
+    // Create a scheduler with 1 worker so priority ordering is easy to see
+    s := scheduler.NewScheduler(1)
 
     ctx := context.Background()
-    s.Start(ctx)
 
     // Submit jobs with different priorities
     s.Submit(&scheduler.Job{
@@ -299,6 +303,8 @@ func main() {
         },
     })
 
+    s.Start(ctx)
+
     // Give jobs time to process
     time.Sleep(time.Second)
 
@@ -307,7 +313,7 @@ func main() {
 }
 ```
 
-Even though the newsletter job was submitted first, the password reset runs first because it has higher priority.
+Even though the newsletter job was submitted first, the password reset runs first because both jobs are queued before the worker starts and the password reset has higher priority.
 
 ## Production Considerations
 
