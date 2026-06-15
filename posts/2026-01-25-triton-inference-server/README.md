@@ -32,7 +32,7 @@ The easiest way to run Triton is with Docker:
 docker pull nvcr.io/nvidia/tritonserver:24.01-py3
 
 # Create model repository structure
-mkdir -p models/my_model/1
+mkdir -p models/text_classifier/1
 
 # Run Triton
 docker run --gpus all -p 8000:8000 -p 8001:8001 -p 8002:8002 \
@@ -327,7 +327,7 @@ grpc_client.async_infer(
 Chain multiple models together:
 
 ```protobuf
-# models/ensemble/config.pbtxt
+# models/nlp_pipeline/config.pbtxt
 name: "nlp_pipeline"
 platform: "ensemble"
 max_batch_size: 32
@@ -489,7 +489,6 @@ spec:
           args:
             - tritonserver
             - --model-repository=/models
-            - --strict-model-config=false
             - --log-verbose=1
           ports:
             - containerPort: 8000
@@ -551,11 +550,11 @@ Triton exposes Prometheus metrics at `/metrics`:
 # Inference count by model
 nv_inference_count{model="text_classifier"}
 
-# Inference latency
-histogram_quantile(0.95, nv_inference_compute_infer_duration_us_bucket{model="text_classifier"})
+# Average inference compute latency in microseconds
+rate(nv_inference_compute_infer_duration_us{model="text_classifier"}[5m]) / rate(nv_inference_request_success{model="text_classifier"}[5m])
 
-# Queue time
-histogram_quantile(0.95, nv_inference_queue_duration_us_bucket{model="text_classifier"})
+# Average queue time in microseconds
+rate(nv_inference_queue_duration_us{model="text_classifier"}[5m]) / rate(nv_inference_request_success{model="text_classifier"}[5m])
 
 # GPU utilization
 nv_gpu_utilization
