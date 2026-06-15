@@ -101,7 +101,6 @@ Once you have the tenant context, every database query needs to be scoped to tha
 
 ```rust
 use deadpool_postgres::{Client, Pool};
-use tokio_postgres::NoTls;
 use uuid::Uuid;
 
 // Wrapper that ensures tenant context is set for every connection
@@ -118,11 +117,11 @@ impl TenantScopedConnection {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let client = pool.get().await?;
 
-        // Set the tenant context for RLS policies
+        // Set the tenant context for RLS policies on this session
         // This variable is checked by PostgreSQL RLS policies
         client
             .execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
+                "SELECT set_config('app.current_tenant_id', $1, false)",
                 &[&tenant_id.to_string()],
             )
             .await?;
@@ -131,7 +130,7 @@ impl TenantScopedConnection {
     }
 
     // Execute a query - tenant filtering happens automatically via RLS
-    pub async fn query<T>(
+    pub async fn query(
         &self,
         statement: &str,
         params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
@@ -170,7 +169,7 @@ CREATE POLICY tenant_isolation_policy ON team_members
     USING (tenant_id = current_setting('app.current_tenant_id')::uuid);
 
 -- The application database user must not be a superuser
--- Superusers bypass RLS entirely
+-- It also must not own these tables or have the BYPASSRLS attribute
 CREATE ROLE app_user WITH LOGIN PASSWORD 'secure_password';
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
 ```
@@ -367,7 +366,7 @@ impl TenantCache {
         tenant_id: Uuid,
         key: &str,
     ) -> Result<Option<T>, Box<dyn std::error::Error>> {
-        let mut conn = self.client.get_async_connection().await?;
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
         let cache_key = self.build_key(tenant_id, key);
 
         let value: Option<String> = conn.get(&cache_key).await?;
@@ -383,9 +382,9 @@ impl TenantCache {
         tenant_id: Uuid,
         key: &str,
         value: &T,
-        ttl_seconds: usize,
+        ttl_seconds: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut conn = self.client.get_async_connection().await?;
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
         let cache_key = self.build_key(tenant_id, key);
         let serialized = serde_json::to_string(value)?;
 
@@ -398,7 +397,7 @@ impl TenantCache {
         &self,
         tenant_id: Uuid,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut conn = self.client.get_async_connection().await?;
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
         let pattern = format!("tenant:{}:*", tenant_id);
 
         let keys: Vec<String> = redis::cmd("KEYS")
