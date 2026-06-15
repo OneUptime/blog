@@ -53,6 +53,14 @@ Build a flexible alerting system that processes logs in real-time:
 // alerting/alert-manager.ts
 // Log-based alerting system
 
+interface LogEntry {
+  timestamp: Date;
+  level: string;
+  message: string;
+  service: string;
+  attributes?: Record<string, string | number | boolean | undefined>;
+}
+
 interface AlertRule {
   id: string;
   name: string;
@@ -203,10 +211,30 @@ class AlertManager {
     }
 
     const parts = rule.threshold.groupBy.map(key => {
-      return `${key}=${log.attributes?.[key] || log[key] || 'unknown'}`;
+      const value = this.getGroupValue(log, key);
+      return `${key}=${value ?? 'unknown'}`;
     });
 
     return parts.join(',');
+  }
+
+  private getGroupValue(log: LogEntry, key: string): string | number | boolean | undefined {
+    if (log.attributes && key in log.attributes) {
+      return log.attributes[key];
+    }
+
+    switch (key) {
+      case 'timestamp':
+        return log.timestamp.toISOString();
+      case 'level':
+        return log.level;
+      case 'message':
+        return log.message;
+      case 'service':
+        return log.service;
+      default:
+        return undefined;
+    }
   }
 
   private maybeFireAlert(state: AlertState, rule: AlertRule): void {
@@ -348,7 +376,7 @@ const alertRules: AlertRule[] = [
     severity: 'medium',
     conditions: {
       attributes: {
-        db_duration_ms: /[5-9]\d{3}|[1-9]\d{4,}/  // > 5000ms
+        db_duration_ms: /[5-9]\d{3}|[1-9]\d{4,}/  // >= 5000ms
       }
     },
     threshold: {
@@ -406,7 +434,7 @@ class AnomalyDetector {
   private history: Map<string, TimeSeriesPoint[]> = new Map();
   private windowSize: number;  // Number of historical points to consider
 
-  constructor(windowSize: number = 168) {  // Default: 1 week of hourly data
+  constructor(windowSize: number = 168) {  // Default: 168 recent aggregation intervals
     this.windowSize = windowSize;
   }
 
@@ -488,17 +516,14 @@ class AnomalyAlertManager {
 
   private checkAnomalies(): void {
     for (const [eventType, count] of this.counters) {
-      // Record this minute's count
-      this.detector.recordValue(eventType, count);
-
-      // Check for anomalies
+      // Check against historical values before recording the current interval
       const anomaly = this.detector.isAnomaly(eventType, count);
       const change = this.detector.isSuddenChange(eventType, count);
 
       if (anomaly.isAnomaly) {
         this.notifier.send({
           ruleName: 'Anomaly Detection',
-          severity: anomaly.zscore > 4 ? 'high' : 'medium',
+          severity: Math.abs(anomaly.zscore) > 4 ? 'high' : 'medium',
           message: `Anomalous ${eventType} rate detected`,
           metadata: {
             current: count,
@@ -518,6 +543,9 @@ class AnomalyAlertManager {
           }
         }, ['slack-alerts']);
       }
+
+      // Record this minute's count after comparing it with existing history
+      this.detector.recordValue(eventType, count);
     }
 
     // Reset counters
@@ -617,7 +645,7 @@ class PagerDutyChannel implements NotificationChannel {
     const payload = {
       routing_key: this.routingKey,
       event_action: 'trigger',
-      dedup_key: `${alert.ruleId}-${alert.groupKey}`,
+      dedup_key: `${alert.ruleId || alert.ruleName}-${alert.groupKey || 'global'}`,
       payload: {
         summary: `${alert.ruleName}: ${alert.message}`,
         severity,
