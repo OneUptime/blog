@@ -175,9 +175,9 @@ fn main() {
 ```rust
 use std::borrow::Cow;
 
-// Accept both &str and String
-fn log_message(message: impl Into<Cow<'static, str>>) {
-    let message: Cow<'static, str> = message.into();
+// Accept both borrowed str values and String
+fn log_message<'a>(message: impl Into<Cow<'a, str>>) {
+    let message: Cow<'a, str> = message.into();
     println!("[LOG] {}", message);
 }
 
@@ -278,8 +278,7 @@ fn main() {
     println!("Borrowed is borrowed: {}", matches!(borrowed, Cow::Borrowed(_)));
     println!("Owned is owned: {}", matches!(owned, Cow::Owned(_)));
 
-    // Or use is_borrowed() method (available for Cow)
-    // println!("borrowed.is_borrowed(): {}", borrowed.is_borrowed());
+    // On stable Rust, use matches! to check the variant.
 }
 ```
 
