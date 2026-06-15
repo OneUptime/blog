@@ -29,7 +29,7 @@ The simplest case is forgetting `mut`:
 ```rust
 fn main() {
     let x = 5;
-    // x += 1;  // Error: cannot borrow as mutable
+    // x += 1;  // Error: cannot assign to immutable variable
 
     // Fix: add mut
     let mut x = 5;
@@ -74,7 +74,7 @@ fn main() {
 
 ## Case 3: Mutable and Immutable Borrows Overlap
 
-This is the most common case. You cannot have mutable and immutable borrows active simultaneously:
+This is the most common case. You cannot have mutable and immutable borrows of the same data active simultaneously:
 
 ```rust
 fn main() {
@@ -229,8 +229,8 @@ fn main() {
 
     increment();
     increment();
-    // Cannot use counter here while closure exists
-    // println!("{}", counter);  // Error if increment still in scope
+    // Cannot use counter before the closure's last use
+    // println!("{}", counter);  // Error if increment is used again later
 
     // Fix: let closure go out of scope
     {
@@ -242,7 +242,7 @@ fn main() {
     }
     println!("Counter: {}", counter);
 
-    // Or use the closure completely
+    // Or use the closure completely before reading counter
     let mut counter = 0;
     let mut increment = || {
         counter += 1;
@@ -256,7 +256,7 @@ fn main() {
 
 ## Case 8: HashMap Entry Pattern
 
-The entry API solves borrow issues with HashMaps:
+The entry API simplifies lookup-or-insert updates with HashMaps:
 
 ```rust
 use std::collections::HashMap;
@@ -265,9 +265,9 @@ fn main() {
     let mut map = HashMap::new();
     map.insert("key", 1);
 
-    // Error pattern:
+    // Verbose pattern:
     // if !map.contains_key("key") {
-    //     map.insert("key", 0);  // Borrow conflict
+    //     map.insert("key", 0);
     // }
     // *map.get_mut("key").unwrap() += 1;
 
