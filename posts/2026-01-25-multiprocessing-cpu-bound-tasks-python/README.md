@@ -70,8 +70,7 @@ import time
 
 def compute_square(n):
     """CPU-intensive computation."""
-    time.sleep(0.1)  # Simulate work
-    return n * n
+    return sum((n + i) * (n + i) for i in range(500_000))
 
 if __name__ == "__main__":
     numbers = list(range(20))
@@ -98,6 +97,9 @@ import multiprocessing
 def process_item(x):
     return x * x
 
+def add_pair(x, y):
+    return x + y
+
 if __name__ == "__main__":
     with multiprocessing.Pool(4) as pool:
         # map - blocks until all complete, preserves order
@@ -123,19 +125,17 @@ if __name__ == "__main__":
 
         # starmap - for functions with multiple arguments
         pairs = [(1, 2), (3, 4), (5, 6)]
-        results = pool.starmap(lambda x, y: x + y, pairs)
+        results = pool.starmap(add_pair, pairs)
 ```
 
 ## ProcessPoolExecutor (Modern API)
 
 ```python
 from concurrent.futures import ProcessPoolExecutor, as_completed
-import time
 
 def heavy_computation(n):
-    """Simulate heavy computation."""
-    time.sleep(0.5)
-    return n * n
+    """CPU-intensive computation."""
+    return sum((n + i) * (n + i) for i in range(1_000_000))
 
 if __name__ == "__main__":
     numbers = range(10)
@@ -337,12 +337,12 @@ def process_image(image_path):
     """Simulate CPU-intensive image processing."""
     # In real code, this would do actual image processing
     # using PIL, OpenCV, etc.
-    time.sleep(0.5)  # Simulate processing time
+    checksum = sum((i * i) % 255 for i in range(1_000_000))
 
     return {
         "path": str(image_path),
         "status": "processed",
-        "size": 1024  # Placeholder
+        "checksum": checksum
     }
 
 def process_images_parallel(image_paths, max_workers=None):
@@ -426,7 +426,7 @@ pool.map(func, items, chunksize=1)
 # Use context manager
 with multiprocessing.Pool(4) as pool:
     results = pool.map(func, items)
-# Pool is automatically closed and joined
+# Pool resources are automatically cleaned up
 ```
 
 ### 5. Handle SIGINT Gracefully
