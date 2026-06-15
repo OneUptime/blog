@@ -48,7 +48,7 @@ print(max_dog.age)  # 5
 
 ## Instance Methods
 
-Methods are functions defined inside a class. They always take `self` as the first parameter:
+Instance methods are functions defined inside a class. They take `self` as the first parameter:
 
 ```python
 class Dog:
