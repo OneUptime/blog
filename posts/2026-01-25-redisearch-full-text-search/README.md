@@ -35,14 +35,14 @@ Run Redis with the RediSearch module using Docker.
 
 docker run -d --name redis-search \
   -p 6379:6379 \
-  redislabs/redisearch:latest
+  redis/redis-stack-server:latest
 
 # Or with persistence
 docker run -d --name redis-search \
   -p 6379:6379 \
   -v redis-search-data:/data \
-  redislabs/redisearch:latest \
-  redis-server --appendonly yes --loadmodule /usr/lib/redis/modules/redisearch.so
+  -e REDIS_ARGS="--appendonly yes" \
+  redis/redis-stack-server:latest
 ```
 
 ## Creating a Search Index
@@ -70,8 +70,8 @@ def create_product_index():
             'name', 'TEXT', 'WEIGHT', '5.0',        # Higher weight = more important in ranking
             'description', 'TEXT', 'WEIGHT', '1.0',
             # TAG fields are for exact matching (categories, status)
-            'category', 'TAG', 'SEPARATOR', ',',
-            'brand', 'TAG',
+            'category', 'TAG', 'SEPARATOR', ',', 'SORTABLE',
+            'brand', 'TAG', 'SORTABLE',
             # NUMERIC fields support range queries
             'price', 'NUMERIC', 'SORTABLE',
             'stock', 'NUMERIC',
@@ -169,7 +169,10 @@ def search_products(query, filters=None, offset=0, limit=10):
 
         # Combine query with filters
         if filter_parts:
-            search_query = f"({query}) {' '.join(filter_parts)}"
+            if query == '*':
+                search_query = ' '.join(filter_parts)
+            else:
+                search_query = f"({query}) {' '.join(filter_parts)}"
 
     # Execute search
     # FT.SEARCH returns results with scores and field values
@@ -177,8 +180,8 @@ def search_products(query, filters=None, offset=0, limit=10):
         'FT.SEARCH', 'idx:products',
         search_query,
         'WITHSCORES',           # Include relevance scores
-        'LIMIT', offset, limit,
         'SORTBY', 'price', 'ASC',  # Sort by price ascending
+        'LIMIT', offset, limit,
     )
 
     return parse_search_results(result)
@@ -250,8 +253,8 @@ def advanced_search_examples():
     r.execute_command('FT.SEARCH', 'idx:products', 'wire*')
 
     # Fuzzy search (match with up to 1 character difference)
-    # %% = 1 char distance, %%% = 2 char distance
-    r.execute_command('FT.SEARCH', 'idx:products', '%%headpones%%')
+    # % = 1 char distance, %% = 2 char distance
+    r.execute_command('FT.SEARCH', 'idx:products', '%headpones%')
 
     # Field-specific search
     r.execute_command('FT.SEARCH', 'idx:products', '@name:keyboard @brand:{KeyMaster}')
@@ -276,6 +279,7 @@ def search_with_highlighting(query):
     result = r.execute_command(
         'FT.SEARCH', 'idx:products',
         query,
+        'WITHSCORES',
         'HIGHLIGHT',                    # Enable highlighting
         'FIELDS', '2', 'name', 'description',  # Fields to highlight
         'TAGS', '<b>', '</b>',         # HTML tags for highlights
