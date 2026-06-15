@@ -66,7 +66,7 @@ Create a new Spring Boot application with the Config Server dependency.
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-dependencies</artifactId>
-            <version>2023.0.0</version>
+            <version>2025.1.2</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -122,8 +122,7 @@ spring:
           username: ${GIT_USERNAME:}
           password: ${GIT_TOKEN:}
 
-# Basic security for the Config Server
-spring:
+  # Basic security for the Config Server
   security:
     user:
       name: ${CONFIG_SERVER_USER:config}
@@ -222,6 +221,16 @@ Add the Config Client dependency to your microservices.
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <dependency>
+        <groupId>org.springframework.retry</groupId>
+        <artifactId>spring-retry</artifactId>
+    </dependency>
+
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-aop</artifactId>
     </dependency>
 </dependencies>
 ```
@@ -454,24 +463,24 @@ Combine multiple configuration sources with priority ordering.
 
 ```yaml
 spring:
+  profiles:
+    active: composite
+
   cloud:
     config:
       server:
         composite:
-          # First source - highest priority
+          # First listed source - highest priority
           - type: git
             uri: https://github.com/your-org/config-overrides
-            order: 1
-          # Second source - lower priority
+          # Second listed source - lower priority
           - type: git
             uri: https://github.com/your-org/config-defaults
-            order: 2
-          # Vault for secrets
+          # Third listed source - lower priority
           - type: vault
             host: vault.example.com
             port: 8200
             scheme: https
-            order: 3
 ```
 
 ## Vault Integration for Secrets
@@ -480,6 +489,9 @@ Integrate with HashiCorp Vault for managing secrets separately from configuratio
 
 ```yaml
 spring:
+  profiles:
+    active: vault
+
   cloud:
     config:
       server:
@@ -524,6 +536,15 @@ spring:
 ```
 
 Or use service discovery with Eureka.
+
+Add the Eureka client dependency to the client application.
+
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+</dependency>
+```
 
 ```yaml
 # Client with service discovery
