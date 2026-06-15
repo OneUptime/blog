@@ -74,7 +74,7 @@ jobs:
 
       # Pass secret to an action
       - name: Login to Docker Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -177,14 +177,14 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
+      issues: write
 
     steps:
       - uses: actions/checkout@v6
 
       # Push to GitHub Container Registry
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -193,7 +193,7 @@ jobs:
       # Comment on PR
       - name: Comment on PR
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -228,7 +228,7 @@ jobs:
 
       # Configure AWS credentials via OIDC (no secrets needed)
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::123456789:role/github-actions-role
           aws-region: us-east-1
@@ -252,7 +252,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: 'projects/123456/locations/global/workloadIdentityPools/github/providers/github'
           service_account: 'deploy@project.iam.gserviceaccount.com'
@@ -263,7 +263,7 @@ jobs:
 
 ## Passing Secrets Between Jobs
 
-Use outputs carefully when passing data between jobs:
+Use outputs carefully when passing data between jobs. For secrets that already exist in GitHub, reference them again in each job instead of passing them through outputs or artifacts:
 
 ```yaml
 jobs:
@@ -276,15 +276,13 @@ jobs:
     steps:
       - name: Generate config
         id: config
-        env:
-          API_KEY: ${{ secrets.API_KEY }}
         run: |
-          # Write secret to file, not output
-          echo "api_key=$API_KEY" > config.env
+          # Write non-secret config to file, not secret values
+          echo "api_mode=production" > config.env
           echo "path=config.env" >> $GITHUB_OUTPUT
 
       - name: Upload config
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: config
           path: config.env
@@ -296,11 +294,13 @@ jobs:
 
     steps:
       - name: Download config
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: config
 
       - name: Deploy with config
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
         run: |
           source config.env
           ./deploy.sh
@@ -387,8 +387,10 @@ Store certificates and keys properly:
 
 ```bash
 # Store a certificate (base64 encode to avoid newline issues)
-base64 -i certificate.pem | gh secret set CERTIFICATE
+base64 < certificate.pem | tr -d '\n' | gh secret set CERTIFICATE
+```
 
+```yaml
 # In workflow, decode the secret
 - name: Setup certificate
   run: |
@@ -405,6 +407,10 @@ Integrate with HashiCorp Vault for dynamic secrets:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v6
