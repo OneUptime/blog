@@ -54,7 +54,11 @@ builder.Services.AddMarten(options =>
 
     // Configure projections
     options.Projections.Add<AccountProjection>(ProjectionLifecycle.Inline);
-});
+
+    // Multi-stream projections are usually best run asynchronously
+    options.Projections.Add<DailyTransactionProjection>(ProjectionLifecycle.Async);
+})
+.AddAsyncDaemon(DaemonMode.Solo);
 
 var app = builder.Build();
 ```
@@ -320,7 +324,7 @@ public class BankAccountService
         _logger.LogInformation("Closed account {AccountId}", accountId);
     }
 
-    // Query the current state without replaying events
+    // Rebuild the current state by live aggregation from the event stream
     public async Task<BankAccount?> GetAccountAsync(
         Guid accountId,
         CancellationToken ct = default)
@@ -584,30 +588,21 @@ public class ConcurrencyAwareBankService
         {
             try
             {
-                // Fetch the stream state including version
-                var state = await _session.Events
-                    .FetchStreamStateAsync(accountId, ct);
+                // Fetch the aggregate and attach optimistic concurrency checks
+                var stream = await _session.Events
+                    .FetchForWriting<BankAccount>(accountId, token: ct);
 
-                if (state == null)
+                if (stream.Aggregate == null)
                     throw new ArgumentException($"Account {accountId} not found");
 
-                // Load aggregate at current version
-                var account = await _session.Events
-                    .AggregateStreamAsync<BankAccount>(accountId, token: ct);
-
-                // Create event
-                var @event = account!.Withdraw(amount, description);
-
-                // Append with expected version for optimistic concurrency
-                _session.Events.Append(
-                    accountId,
-                    state.Version, // Expected version
-                    @event);
+                // Create and append the event through the fetched stream
+                var @event = stream.Aggregate.Withdraw(amount, description);
+                stream.AppendOne(@event);
 
                 await _session.SaveChangesAsync(ct);
                 return; // Success
             }
-            catch (EventStreamUnexpectedMaxEventIdException)
+            catch (ConcurrencyException)
             {
                 // Concurrent modification detected, retry
                 _logger.LogWarning(
