@@ -8,7 +8,7 @@ Description: Master ArgoCD sync waves to control the order of resource deploymen
 
 ---
 
-Kubernetes applies resources in parallel by default, but sometimes order matters. Your application cannot start if the database is not ready. Your pods cannot run if the namespace does not exist. Sync waves give you fine-grained control over deployment ordering.
+Kubernetes controllers reconcile resources independently, but sometimes order matters. Your application cannot start if the database is not ready. Your pods cannot run if the namespace does not exist. Sync waves give you fine-grained control over deployment ordering.
 
 ## What Are Sync Waves?
 
@@ -16,28 +16,28 @@ Sync waves let you group resources and deploy them in sequence. Resources in the
 
 ```mermaid
 flowchart LR
-    subgraph Wave -1
+    subgraph wave_m1[Wave -1]
         CRD[CRDs]
     end
 
-    subgraph Wave 0
+    subgraph wave_0[Wave 0]
         NS[Namespace]
         SA[ServiceAccount]
     end
 
-    subgraph Wave 1
+    subgraph wave_1[Wave 1]
         CM[ConfigMap]
         Secret[Secret]
     end
 
-    subgraph Wave 2
+    subgraph wave_2[Wave 2]
         Deploy[Deployment]
         SVC[Service]
     end
 
-    Wave -1 --> Wave 0
-    Wave 0 --> Wave 1
-    Wave 1 --> Wave 2
+    wave_m1 --> wave_0
+    wave_0 --> wave_1
+    wave_1 --> wave_2
 ```
 
 ArgoCD processes waves from lowest to highest number. Negative numbers run before zero. Resources without a wave annotation default to wave 0.
@@ -111,6 +111,13 @@ spec:
     - name: v1
       served: true
       storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
   scope: Namespaced
   names:
     plural: certificates
@@ -180,7 +187,23 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 data:
-  DATABASE_URL: "postgres://db:5432/myapp"
+  DATABASE_URL: "postgres://postgres:password@postgres:5432/myapp"
+
+---
+# Wave 1: Database service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: myapp
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
 
 ---
 # Wave 1: Database
@@ -205,6 +228,9 @@ spec:
       containers:
         - name: postgres
           image: postgres:15
+          env:
+            - name: POSTGRES_PASSWORD
+              value: password
           ports:
             - containerPort: 5432
 
@@ -255,6 +281,7 @@ kind: Job
 metadata:
   name: db-migrate
   annotations:
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/sync-wave: "2"
     # Clean up after success
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
@@ -267,7 +294,7 @@ spec:
           command: ["./migrate.sh"]
           env:
             - name: DATABASE_URL
-              value: "postgres://postgres:5432/myapp"
+              value: "postgres://postgres:password@postgres:5432/myapp"
       restartPolicy: Never
   backoffLimit: 3
 
@@ -308,6 +335,9 @@ spec:
       containers:
         - name: postgres
           image: postgres:15
+          env:
+            - name: POSTGRES_PASSWORD
+              value: password
           # Health check ensures postgres is ready
           readinessProbe:
             exec:
@@ -329,24 +359,31 @@ spec:
 
 ## Sync Options for Waves
 
-### Skip Health Check
+### Skip Dry Run for Missing Resources
 
-Sometimes you want to proceed without waiting for health:
+Sometimes a controller creates a CRD outside of the same sync. Use `SkipDryRunOnMissingResource=true` so ArgoCD does not fail dry run before that resource type exists:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
 metadata:
-  name: optional-service
+  name: require-team-label
   annotations:
     argocd.argoproj.io/sync-wave: "1"
-    # Do not block next wave on this resource
+    # Skip dry run if the CRD is created by another controller
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Namespace"]
+  parameters:
+    labels: ["team"]
 ```
 
 ### Replace Instead of Apply
 
-Force replacement for resources that cannot be patched:
+Use replace/create instead of apply for resources that cannot use client-side apply:
 
 ```yaml
 apiVersion: batch/v1
@@ -409,16 +446,24 @@ resources:
 patches:
   - target:
       kind: ConfigMap
+      name: myapp-config
     patch: |
-      - op: add
-        path: /metadata/annotations/argocd.argoproj.io~1sync-wave
-        value: "0"
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: myapp-config
+        annotations:
+          argocd.argoproj.io/sync-wave: "0"
   - target:
       kind: Deployment
+      name: myapp
     patch: |
-      - op: add
-        path: /metadata/annotations/argocd.argoproj.io~1sync-wave
-        value: "1"
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: myapp
+        annotations:
+          argocd.argoproj.io/sync-wave: "1"
 ```
 
 ## Debugging Sync Waves
@@ -426,8 +471,8 @@ patches:
 ### Check Sync Status
 
 ```bash
-# See which wave is currently syncing
-argocd app get myapp
+# See sync status and the current operation
+argocd app get myapp --show-operation
 
 # Watch sync progress
 argocd app sync myapp --watch
@@ -436,8 +481,8 @@ argocd app sync myapp --watch
 ### View Resource Order
 
 ```bash
-# List resources with their sync waves
-argocd app resources myapp --orphaned=false
+# Print generated manifests and inspect sync-wave annotations
+argocd app manifests myapp | grep -B 5 "argocd.argoproj.io/sync-wave"
 ```
 
 ### Common Issues
