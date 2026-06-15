@@ -34,7 +34,7 @@ ls -la data/file.txt
 Add a dedicated user for your application:
 
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 # Create app user with specific UID/GID
 RUN addgroup -g 1001 -S appgroup && \
@@ -46,7 +46,7 @@ RUN chown -R appuser:appgroup /app
 
 # Copy files with correct ownership
 COPY --chown=appuser:appgroup package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY --chown=appuser:appgroup . .
 
@@ -91,7 +91,7 @@ docker build --build-arg UID=$(id -u) --build-arg GID=$(id -g) -t myapp .
 ```
 
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 ARG UID=1000
 ARG GID=1000
@@ -112,10 +112,11 @@ USER appuser
 Handle permission setup at runtime:
 
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN apk add --no-cache su-exec && \
+    chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "server.js"]
@@ -159,7 +160,6 @@ docker run --rm -u $(id -u):$(id -g) alpine id
 In Docker Compose:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -173,7 +173,6 @@ services:
 For maximum security, make the root filesystem read-only:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -201,8 +200,9 @@ docker run --rm \
 
 User namespace remapping adds another layer of security by mapping container UIDs to unprivileged host UIDs:
 
+In `/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "userns-remap": "default"
 }
@@ -225,7 +225,6 @@ ls -la test/file
 ### 1. Drop All Capabilities
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -329,7 +328,6 @@ USER webuser
 When not running as root, handle process reaping properly:
 
 ```yaml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -340,7 +338,7 @@ services:
 Or include tini in your image:
 
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 # Install tini
 RUN apk add --no-cache tini
@@ -358,13 +356,13 @@ CMD ["node", "server.js"]
 Here is a production-ready Dockerfile with proper user setup:
 
 ```dockerfile
-FROM node:18-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
-FROM node:18-alpine
+FROM node:24-alpine
 
 # Install tini for proper init
 RUN apk add --no-cache tini
