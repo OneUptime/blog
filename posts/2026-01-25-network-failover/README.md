@@ -79,8 +79,8 @@ backend http_back_with_priorities
     balance roundrobin
     option httpchk GET /health
 
-    # Weighted failover - higher priority servers preferred
-    # If weight-100 servers fail, traffic goes to weight-50, then weight-10
+    # Weighted load distribution - higher-weight servers receive more traffic
+    # Backup servers are used only when all non-backup servers are down
     server primary1 10.0.1.10:8080 check weight 100
     server primary2 10.0.1.11:8080 check weight 100
     server secondary1 10.0.2.10:8080 check weight 50
@@ -110,6 +110,7 @@ def create_failover_configuration():
             'IPAddress': '54.1.2.3',
             'Port': 443,
             'Type': 'HTTPS',
+            'FullyQualifiedDomainName': 'primary-api.example.com',
             'ResourcePath': '/health',
             'RequestInterval': 10,
             'FailureThreshold': 3,
@@ -126,6 +127,7 @@ def create_failover_configuration():
             'IPAddress': '54.4.5.6',
             'Port': 443,
             'Type': 'HTTPS',
+            'FullyQualifiedDomainName': 'secondary-api.example.com',
             'ResourcePath': '/health',
             'RequestInterval': 10,
             'FailureThreshold': 3,
@@ -191,9 +193,11 @@ def create_multivalue_failover():
                 'IPAddress': ip,
                 'Port': 443,
                 'Type': 'HTTPS',
+                'FullyQualifiedDomainName': f'{region}.api.example.com',
                 'ResourcePath': '/health',
                 'RequestInterval': 10,
-                'FailureThreshold': 2
+                'FailureThreshold': 2,
+                'EnableSNI': True
             }
         )
 
@@ -238,7 +242,7 @@ global_defs {
 vrrp_script check_haproxy {
     script "/usr/bin/pgrep haproxy"
     interval 2
-    weight 2
+    weight -20
     fall 3
     rise 2
 }
@@ -285,7 +289,7 @@ global_defs {
 vrrp_script check_haproxy {
     script "/usr/bin/pgrep haproxy"
     interval 2
-    weight 2
+    weight -20
     fall 3
     rise 2
 }
