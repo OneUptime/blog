@@ -12,7 +12,7 @@ Helm is the package manager for Kubernetes, and ArgoCD has first-class support f
 
 ## Helm Support in ArgoCD
 
-ArgoCD does not use `helm install` under the hood. Instead, it runs `helm template` to generate manifests and applies them with `kubectl apply`. This means:
+ArgoCD does not use `helm install` under the hood. Instead, it runs `helm template` to generate manifests and syncs the rendered resources to the cluster. This means:
 
 - No Helm releases stored in the cluster
 - Consistent GitOps behavior
@@ -160,8 +160,8 @@ metadata:
 spec:
   project: default
   source:
-    # OCI registry URL
-    repoURL: oci://ghcr.io/myorg/charts
+    # OCI registry URL (omit oci:// for Helm OCI sources)
+    repoURL: ghcr.io/myorg/charts
     chart: myapp
     targetRevision: 1.0.0
     helm:
@@ -289,15 +289,11 @@ spec:
       restartPolicy: Never
 ```
 
-To disable hook conversion:
+To treat a hook resource as a regular Kubernetes resource, remove the Helm hook annotations from the template:
 
 ```yaml
-spec:
-  source:
-    helm:
-      skipCrds: false
-      # Treat hooks as regular resources
-      passCredentials: false
+metadata:
+  annotations: {}
 ```
 
 ## Managing Dependencies
@@ -467,11 +463,12 @@ helm template myapp ./charts/myapp -f values.yaml
 Values not applied:
 
 ```yaml
-# Wrong: values is a string, not object
+# Wrong: structured values cannot be provided directly under values
 helm:
-  values: "replicas: 3"
+  values:
+    replicas: 3
 
-# Correct: values is a YAML block
+# Correct: values is a YAML block string
 helm:
   values: |
     replicas: 3
