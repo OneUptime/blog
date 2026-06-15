@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, Redis, Distributed Lock, Concurrency, Microservice
 
-Description: A practical guide to implementing distributed locks using Redis and Rust, covering the Redlock algorithm, handling edge cases, and building a production-ready locking service for your microservices.
+Description: A practical guide to implementing distributed locks using Redis and Rust, covering safe lock ownership, handling edge cases, and building a production-ready locking service for your microservices.
 
 ---
 
@@ -12,7 +12,7 @@ When you scale beyond a single process, coordinating access to shared resources 
 
 ## Why Redis for Distributed Locks?
 
-Redis is fast, widely deployed, and has atomic operations that make it well-suited for lock implementations. The `SET NX EX` command lets you atomically set a key only if it does not exist, with an automatic expiration. This is the building block for most Redis-based locking schemes.
+Redis is fast, widely deployed, and has atomic operations that make it well-suited for lock implementations. The `SET NX PX` command lets you atomically set a key only if it does not exist, with an automatic expiration in milliseconds. This is the building block for most Redis-based locking schemes.
 
 Rust, on the other hand, gives you memory safety and fearless concurrency without a garbage collector. When building infrastructure code that other services depend on, those guarantees matter.
 
@@ -27,10 +27,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+redis = { version = "1.2", features = ["tokio-comp", "connection-manager"] }
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
-thiserror = "1.0"
+thiserror = "2.0"
 ```
 
 ## The Basic Lock Implementation
@@ -38,7 +38,7 @@ thiserror = "1.0"
 Let's start with a straightforward lock implementation before adding more sophisticated features:
 
 ```rust
-use redis::{AsyncCommands, Client};
+use redis::Client;
 use std::time::Duration;
 use thiserror::Error;
 use uuid::Uuid;
@@ -74,9 +74,9 @@ impl DistributedLock {
     pub async fn acquire(&self) -> Result<bool, LockError> {
         let mut conn = self.client.get_multiplexed_async_connection().await?;
 
-        // SET key value NX EX seconds
+        // SET key value NX PX milliseconds
         // NX = only set if not exists
-        // EX = expire after seconds
+        // PX = expire after milliseconds
         let result: Option<String> = redis::cmd("SET")
             .arg(&self.key)
             .arg(&self.owner_id)
@@ -117,11 +117,11 @@ The owner ID is critical here. Without it, one process could acquire a lock, tim
 
 ## Adding Lock Extension
 
-Long-running tasks need the ability to extend their lock before it expires. Here is how to add that:
+Long-running tasks need the ability to reset their lock TTL before it expires. Here is how to add that:
 
 ```rust
 impl DistributedLock {
-    pub async fn extend(&self, additional_ttl: Duration) -> Result<bool, LockError> {
+    pub async fn extend(&self, new_ttl: Duration) -> Result<bool, LockError> {
         let mut conn = self.client.get_multiplexed_async_connection().await?;
 
         // Only extend if we still own the lock
@@ -136,7 +136,7 @@ impl DistributedLock {
         let result: i32 = redis::Script::new(script)
             .key(&self.key)
             .arg(&self.owner_id)
-            .arg(additional_ttl.as_millis() as u64)
+            .arg(new_ttl.as_millis() as u64)
             .invoke_async(&mut conn)
             .await?;
 
@@ -145,9 +145,9 @@ impl DistributedLock {
 }
 ```
 
-## A Guard Pattern for Automatic Release
+## A Guard Pattern for Explicit Release
 
-Rust's ownership system lets us build a guard that automatically releases the lock when it goes out of scope:
+Rust's ownership system lets us build a guard that tracks whether the lock was explicitly released:
 
 ```rust
 pub struct LockGuard<'a> {
@@ -174,7 +174,7 @@ impl<'a> LockGuard<'a> {
 impl<'a> Drop for LockGuard<'a> {
     fn drop(&mut self) {
         if !self.released {
-            // Best effort release - we cannot await in drop
+            // We cannot await in drop, so this cannot release asynchronously
             // Consider logging if this happens frequently
             eprintln!("Warning: LockGuard dropped without explicit release");
         }
