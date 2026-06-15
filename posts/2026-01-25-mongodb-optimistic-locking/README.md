@@ -286,14 +286,15 @@ async function updateWithTimestamp(collection, id, updates, lastKnownUpdate) {
 ```javascript
 // Combine optimistic locking with business rule validation
 class OrderService {
-  constructor(db) {
+  constructor(client, db) {
+    this.client = client;
     this.orders = db.collection('orders');
     this.inventory = db.collection('inventory');
   }
 
   async confirmOrder(orderId, expectedVersion) {
     // Use session for multi-document consistency
-    const session = this.orders.client.startSession();
+    const session = this.client.startSession();
 
     try {
       await session.withTransaction(async () => {
@@ -443,8 +444,9 @@ async function saveProduct(product) {
 ## Performance Considerations
 
 ```javascript
-// Index the version field for efficient optimistic updates
-await collection.createIndex({ _id: 1, __v: 1 });
+// The default _id index is usually enough for updates by _id and version.
+// Add compound indexes when optimistic updates match on other fields.
+await collection.createIndex({ productId: 1, __v: 1 });
 
 // For high-contention scenarios, consider:
 // 1. Reducing the scope of locked data
