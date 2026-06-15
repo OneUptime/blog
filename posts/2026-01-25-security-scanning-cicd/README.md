@@ -82,6 +82,9 @@ on:
 jobs:
   semgrep:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     container:
       image: returntocorp/semgrep
 
@@ -100,7 +103,7 @@ jobs:
           .
 
     - name: Upload SARIF results
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: semgrep-results.sarif
 
@@ -121,14 +124,10 @@ Custom Semgrep rules for your codebase:
 rules:
   # Detect hardcoded secrets
   - id: hardcoded-api-key
-    patterns:
-      - pattern-either:
-          - pattern: $X = "AKIA..."
-          - pattern: $X = "sk_live_..."
-          - pattern: $X = "ghp_..."
+    pattern-regex: '(AKIA[0-9A-Z]{16}|sk_live_[0-9A-Za-z]+|ghp_[0-9A-Za-z_]+)'
     message: "Hardcoded API key detected"
     severity: ERROR
-    languages: [python, javascript, go]
+    languages: [generic]
 
   # Detect SQL injection in Python
   - id: sql-injection-python
@@ -180,6 +179,9 @@ on:
 jobs:
   dependency-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
     - uses: actions/checkout@v4
 
@@ -192,15 +194,7 @@ jobs:
     - name: Scan Python dependencies
       run: |
         pip install safety
-        safety check -r requirements.txt --json > safety-results.json || true
-
-        # Check for critical vulnerabilities
-        CRITICAL=$(cat safety-results.json | jq '[.[] | select(.severity == "critical")] | length')
-        if [ "$CRITICAL" -gt 0 ]; then
-          echo "Critical vulnerabilities found in Python dependencies"
-          cat safety-results.json | jq '.[] | select(.severity == "critical")'
-          exit 1
-        fi
+        safety scan --target . --output json > safety-results.json
 
     # JavaScript dependencies with npm audit
     - name: Set up Node
@@ -248,7 +242,7 @@ jobs:
         output: 'trivy-fs-results.sarif'
 
     - name: Upload Trivy results
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: trivy-fs-results.sarif
 ```
@@ -271,6 +265,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  IMAGE_REF: ghcr.io/${{ github.repository }}:${{ github.sha }}
 
 jobs:
   build-and-scan:
@@ -279,25 +274,26 @@ jobs:
       contents: read
       packages: write
       security-events: write
+      id-token: write
 
     steps:
     - uses: actions/checkout@v4
 
     - name: Build container image
       run: |
-        docker build -t ${{ env.IMAGE_NAME }}:${{ github.sha }} .
+        docker build -t ${{ env.IMAGE_REF }} .
 
     # Trivy vulnerability scan
     - name: Trivy vulnerability scan
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: '${{ env.IMAGE_NAME }}:${{ github.sha }}'
+        image-ref: '${{ env.IMAGE_REF }}'
         format: 'sarif'
         output: 'trivy-results.sarif'
         severity: 'CRITICAL,HIGH'
 
     - name: Upload Trivy scan results
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: trivy-results.sarif
 
@@ -305,7 +301,7 @@ jobs:
     - name: Grype vulnerability scan
       uses: anchore/scan-action@v3
       with:
-        image: '${{ env.IMAGE_NAME }}:${{ github.sha }}'
+        image: '${{ env.IMAGE_REF }}'
         fail-build: true
         severity-cutoff: high
         output-format: sarif
@@ -323,13 +319,31 @@ jobs:
         VERSION=$(curl --silent "https://api.github.com/repos/goodwithtech/dockle/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
         curl -L -o dockle.tar.gz https://github.com/goodwithtech/dockle/releases/download/v${VERSION}/dockle_${VERSION}_Linux-64bit.tar.gz
         tar zxvf dockle.tar.gz
-        ./dockle --exit-code 1 --exit-level warn ${{ env.IMAGE_NAME }}:${{ github.sha }}
+        ./dockle --exit-code 1 --exit-level warn ${{ env.IMAGE_REF }}
+
+    - name: Log in to GHCR
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Push container image
+      if: github.event_name != 'pull_request'
+      run: |
+        docker push ${{ env.IMAGE_REF }}
+
+    - name: Install cosign
+      if: github.event_name != 'pull_request'
+      uses: sigstore/cosign-installer@v3
 
     # Sign image if all scans pass
     - name: Sign container image
       if: github.event_name != 'pull_request'
       run: |
-        cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+        DIGEST=$(docker buildx imagetools inspect ${{ env.IMAGE_REF }} --format '{{.Manifest.Digest}}')
+        cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}
 ```
 
 ---
@@ -357,6 +371,9 @@ on:
 jobs:
   iac-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
     - uses: actions/checkout@v4
 
@@ -372,29 +389,36 @@ jobs:
         skip_check: CKV_AWS_18,CKV_AWS_21  # Skip specific checks if needed
 
     - name: Upload Checkov results
-      uses: github/codeql-action/upload-sarif@v2
+      if: success() || failure()
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: checkov-results.sarif
 
-    # tfsec for Terraform-specific scanning
-    - name: tfsec scan
-      uses: aquasecurity/tfsec-action@v1.0.0
+    # Trivy for Terraform-specific scanning
+    - name: Trivy config scan
+      uses: aquasecurity/trivy-action@master
       with:
-        working_directory: terraform/
-        soft_fail: false
+        scan-type: 'config'
+        scan-ref: 'terraform/'
+        exit-code: '1'
+        severity: 'CRITICAL,HIGH'
 
     # Kubescape for Kubernetes manifests
     - name: Kubescape scan
       run: |
         curl -s https://raw.githubusercontent.com/kubescape/kubescape/master/install.sh | /bin/bash
-        kubescape scan framework nsa,mitre kubernetes/ \
+        kubescape scan framework nsa kubernetes/ \
           --format sarif \
-          --output kubescape-results.sarif \
+          --output kubescape-nsa-results.sarif \
+          --compliance-threshold 80
+        kubescape scan framework mitre kubernetes/ \
+          --format sarif \
+          --output kubescape-mitre-results.sarif \
           --compliance-threshold 80
 
     # KICS for additional coverage
     - name: KICS scan
-      uses: checkmarx/kics-github-action@v1.7
+      uses: checkmarx/kics-github-action@v2.1.20
       with:
         path: .
         fail_on: high,medium
@@ -439,7 +463,7 @@ jobs:
 
     # OWASP ZAP baseline scan
     - name: ZAP Baseline Scan
-      uses: zaproxy/action-baseline@v0.10.0
+      uses: zaproxy/action-baseline@v0.15.0
       with:
         target: 'https://staging.example.com'
         rules_file_name: '.zap/rules.tsv'
@@ -447,7 +471,7 @@ jobs:
 
     # OWASP ZAP full scan for more comprehensive testing
     - name: ZAP Full Scan
-      uses: zaproxy/action-full-scan@v0.8.0
+      uses: zaproxy/action-full-scan@v0.13.0
       with:
         target: 'https://staging.example.com'
         rules_file_name: '.zap/rules.tsv'
@@ -540,7 +564,7 @@ jobs:
         fi
 
         # Run IaC scan
-        if ! checkov -d . --framework terraform,kubernetes --check CRITICAL,HIGH; then
+        if ! checkov -d . --framework terraform,kubernetes --quiet; then
           echo "IAC_PASSED=false" >> $GITHUB_OUTPUT
         fi
 
