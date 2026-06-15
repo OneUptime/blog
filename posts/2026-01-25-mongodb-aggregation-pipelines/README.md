@@ -71,18 +71,27 @@ db.orders.aggregate([
     $match: { status: "completed" }
   },
   {
-    $unwind: "$items"  // Flatten the items array
+    $addFields: {
+      orderTotal: {
+        $reduce: {
+          input: "$items",
+          initialValue: 0,
+          in: {
+            $add: [
+              "$$value",
+              { $multiply: ["$$this.quantity", "$$this.price"] }
+            ]
+          }
+        }
+      }
+    }
   },
   {
     $group: {
       _id: "$customerId",
-      totalSpent: {
-        $sum: { $multiply: ["$items.quantity", "$items.price"] }
-      },
+      totalSpent: { $sum: "$orderTotal" },
       orderCount: { $sum: 1 },
-      avgOrderValue: {
-        $avg: { $multiply: ["$items.quantity", "$items.price"] }
-      }
+      avgOrderValue: { $avg: "$orderTotal" }
     }
   },
   {
@@ -416,7 +425,7 @@ db.orders.aggregate([
 
 ## Debugging Pipelines
 
-Use $out or $merge to save intermediate results, or add $limit: 1 to test stages individually.
+Use $out or $merge as the final stage to save intermediate results, or add $limit: 1 to test stages individually.
 
 ```javascript
 // Debug by examining output at each stage
