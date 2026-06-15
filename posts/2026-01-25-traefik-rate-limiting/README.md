@@ -19,7 +19,7 @@ Traefik uses a token bucket algorithm for rate limiting. Think of it as a bucket
 - Tokens are added at a constant rate (the `average` parameter)
 - Each request consumes one token
 - Requests without available tokens get rejected (HTTP 429)
-- The bucket has a maximum capacity (the `burst` parameter)
+- The bucket has a maximum capacity for immediate bursts (the `burst` parameter)
 
 ```mermaid
 flowchart TB
@@ -52,7 +52,7 @@ spec:
   rateLimit:
     # Average requests per second allowed
     average: 100
-    # Maximum burst above the average
+    # Maximum immediate burst while tokens are available
     burst: 50
 ```
 
@@ -83,7 +83,7 @@ spec:
 
 The relationship between `average` and `burst` determines how traffic is shaped:
 
-- **average: 100, burst: 50**: Sustained rate of 100/s, can handle short spikes up to 150/s
+- **average: 100, burst: 50**: Sustained rate of 100/s, can allow up to 50 immediate requests while tokens are available
 - **average: 10, burst: 100**: Low sustained rate but tolerant of occasional traffic bursts
 - **average: 100, burst: 1**: Strict limiting, no bursting allowed
 
@@ -99,7 +99,7 @@ metadata:
 spec:
   rateLimit:
     average: 100   # 100 requests per second baseline
-    burst: 50      # Allow brief spikes to 150/s
+    burst: 50      # Allow up to 50 immediate requests while tokens are available
 
 ---
 # Login endpoint - stricter to prevent brute force
@@ -123,12 +123,12 @@ metadata:
 spec:
   rateLimit:
     average: 10    # Low baseline
-    burst: 200     # Accept large webhook batches
+    burst: 200     # Accept up to 200 immediate requests while tokens are available
 ```
 
 ## Rate Limiting by Source IP
 
-By default, Traefik applies a single rate limit across all clients. To limit per client IP:
+By default, Traefik groups requests by the request's remote address. To make the IP strategy explicit:
 
 ```yaml
 # ip-based-rate-limit.yaml
@@ -144,12 +144,11 @@ spec:
     # Extract client identifier from request
     sourceCriterion:
       ipStrategy:
-        # Depth determines which IP in X-Forwarded-For to use
-        # depth: 0 uses the immediate client IP
+        # depth: 0 uses the request's remote address
         depth: 0
 ```
 
-When behind a load balancer or CDN, adjust the depth:
+When behind a load balancer or CDN that sets `X-Forwarded-For`, adjust `depth` or use `excludedIPs`:
 
 ```yaml
 # rate-limit-behind-proxy.yaml
@@ -164,14 +163,13 @@ spec:
     burst: 100
     sourceCriterion:
       ipStrategy:
-        # depth: 1 skips the first IP (load balancer)
-        # and uses the actual client IP
-        depth: 1
-        # Or exclude specific trusted proxy IPs
+        # Exclude trusted proxies and select the first remaining IP
         excludedIPs:
           - 10.0.0.0/8
           - 172.16.0.0/12
 ```
+
+The `depth` option selects an IP from the right side of `X-Forwarded-For` (`depth: 1` selects the rightmost IP). If `depth` is greater than 0, Traefik ignores `excludedIPs`.
 
 ## Rate Limiting by Header
 
@@ -331,13 +329,13 @@ Track rate limiting effectiveness using Traefik metrics:
 
 ```bash
 # Enable Prometheus metrics in Traefik config
-# Then query for rate limit info
-curl http://traefik:8080/metrics | grep ratelimit
+# Then query request counters and filter for 429 responses in Prometheus
+curl http://traefik:8080/metrics | grep requests_total
 ```
 
 Key metrics to monitor:
 - `traefik_entrypoint_requests_total`: Total requests
-- `traefik_middleware_rate_limit_total`: Requests handled by rate limiter
+- `traefik_router_requests_total`: Total requests per router when router labels are enabled
 - Custom application metrics for 429 responses
 
 ## Testing Rate Limits
@@ -350,9 +348,7 @@ for i in {1..200}; do
   curl -s -o /dev/null -w "%{http_code}\n" https://api.example.com/test
 done | sort | uniq -c
 
-# Expected output shows mix of 200 and 429 responses
-# 150 200
-#  50 429
+# Expected output shows a mix of 2xx and 429 responses after the bucket is exhausted
 
 # Test with specific header
 for i in {1..100}; do
