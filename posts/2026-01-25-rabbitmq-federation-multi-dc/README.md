@@ -44,7 +44,7 @@ Key concepts:
 - **Upstream**: The source broker that has the messages
 - **Downstream**: The broker that receives federated messages
 - **Federation Exchange**: Downstream exchange that pulls messages from upstream
-- **Federation Queue**: Downstream queue that mirrors an upstream queue
+- **Federation Queue**: Downstream queue that retrieves messages from an upstream queue when local consumers need them
 
 ## Prerequisites
 
@@ -58,8 +58,7 @@ rabbitmq-plugins enable rabbitmq_federation
 # Enable management UI extension (optional but helpful)
 rabbitmq-plugins enable rabbitmq_federation_management
 
-# Restart RabbitMQ to apply
-systemctl restart rabbitmq-server
+# No restart is required when enabling plugins against a running node
 ```
 
 ## Configuring Federation Upstreams
@@ -97,13 +96,14 @@ curl -u admin:password -X PUT \
 ```python
 import requests
 from requests.auth import HTTPBasicAuth
+from urllib.parse import quote
 
 def configure_upstream(downstream_host, admin_user, admin_pass,
                        upstream_name, upstream_uri, vhost='/'):
     """Configure a federation upstream"""
 
-    # URL encode the vhost (/ becomes %2f)
-    vhost_encoded = vhost.replace('/', '%2f')
+    # URL encode the vhost (/ becomes %2F)
+    vhost_encoded = quote(vhost, safe='')
 
     url = f"http://{downstream_host}:15672/api/parameters/federation-upstream/{vhost_encoded}/{upstream_name}"
 
@@ -172,18 +172,23 @@ rabbitmqctl set_policy federate-orders "^orders\\." \
 ### Python Policy Configuration
 
 ```python
+import requests
+from requests.auth import HTTPBasicAuth
+from urllib.parse import quote
+
 def set_federation_policy(host, admin_user, admin_pass,
                           policy_name, pattern, upstream_name,
-                          apply_to='exchanges', vhost='/'):
+                          apply_to='exchanges', vhost='/',
+                          definition_key='federation-upstream'):
     """Set a federation policy"""
 
-    vhost_encoded = vhost.replace('/', '%2f')
+    vhost_encoded = quote(vhost, safe='')
     url = f"http://{host}:15672/api/policies/{vhost_encoded}/{policy_name}"
 
     policy = {
         "pattern": pattern,
         "definition": {
-            "federation-upstream": upstream_name
+            definition_key: upstream_name
         },
         "apply-to": apply_to,
         "priority": 0
@@ -294,20 +299,29 @@ def configure_mesh_federation(local_dc, all_dcs):
                 upstream_uri=dc['uri']
             )
 
-    # Create upstream set including all remotes
-    remote_names = [dc['name'] for dc in all_dcs if dc['name'] != local_dc]
-    # Set policy for all upstreams
+    # Use the built-in "all" upstream set, which includes all upstreams
+    set_federation_policy(
+        host=f"{local_dc}-rmq.example.com",
+        admin_user='admin',
+        admin_pass='password',
+        policy_name='federate-all-remotes',
+        pattern='^events\\.',
+        upstream_name='all',
+        apply_to='exchanges',
+        definition_key='federation-upstream-set'
+    )
 ```
 
 ## Authentication for Federation Links
 
-Create dedicated users for federation with limited permissions:
+Create dedicated users for federation and scope their permissions to the vhost and resources they actually federate:
 
 ```bash
 # On upstream broker
 rabbitmqctl add_user federation_user secure_password
-rabbitmqctl set_permissions -p / federation_user "^$" "^$" ".*"
-# Read-only access: can't configure, can't write, can read all
+rabbitmqctl set_permissions -p / federation_user ".*" ".*" ".*"
+# For production, narrow these regexes to the federated exchanges/queues and
+# the internal federation resources RabbitMQ creates on the upstream.
 
 # If using TLS
 rabbitmqctl set_parameter federation-upstream remote-dc \
@@ -320,10 +334,10 @@ Check federation status:
 
 ```bash
 # List federation links
-rabbitmqctl list_federation_links
+rabbitmqctl federation_status
 
 # Output shows status of each link:
-# upstream | exchange | status | local_connection | uri
+# type | name | vhost | upstream_name | status | connection | timestamp
 ```
 
 Using the Management API:
@@ -404,7 +418,7 @@ curl -u admin:password \
 
 ### Multiple Upstreams for Scaling
 
-Define multiple upstream URIs for parallel links:
+Define multiple upstream URIs to let a link choose another node in the same upstream cluster during reconnects:
 
 ```python
 upstream_config = {
@@ -417,6 +431,8 @@ upstream_config = {
     }
 }
 ```
+
+For simultaneous connections to multiple separate clusters, define multiple upstreams instead of multiple URIs in one upstream.
 
 ## Troubleshooting
 
@@ -455,7 +471,7 @@ curl -u admin:pass http://localhost:15672/api/federation-links | \
 
 ## Best Practices
 
-1. **Use dedicated federation users**: Limit permissions to read-only
+1. **Use dedicated federation users**: Grant only the configure/write/read permissions needed for the federated resources
 2. **Enable TLS**: Encrypt federation traffic between data centers
 3. **Set max-hops**: Prevent message loops in bidirectional setups
 4. **Monitor link status**: Alert when links go down
