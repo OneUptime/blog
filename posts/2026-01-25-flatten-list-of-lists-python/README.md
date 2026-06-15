@@ -208,7 +208,7 @@ def flatten_any(nested, ignore_types=(str, bytes)):
 # Works with mixed types
 mixed = [[1, 2], (3, 4), {5, 6}, 'hello']
 flat = list(flatten_any(mixed))
-print(flat)  # [1, 2, 3, 4, 5, 6, 'hello']
+print(flat)  # [1, 2, 3, 4, 5, 6, 'hello'] (set item order may vary)
 
 # Strings stay intact (not flattened to characters)
 ```
@@ -273,7 +273,7 @@ db_results = [
 
 # Get all unique values across all columns
 all_values = set(item for row in db_results for item in row)
-print(all_values)  # {'Alice', 'Bob', 'Charlie', 'Engineering', 'Marketing'}
+print(all_values)  # {'Alice', 'Bob', 'Charlie', 'Engineering', 'Marketing'} (order may vary)
 ```
 
 ### Combining Multiple API Responses
