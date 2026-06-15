@@ -26,7 +26,7 @@ on:
     branches: [main]
 
 env:
-  TF_VERSION: '1.7.0'
+  TF_VERSION: '1.15.6'
   WORKING_DIR: './terraform'
 
 jobs:
@@ -93,7 +93,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: '1.7.0'
+          terraform_version: '1.15.6'
 
       - name: Terraform Init
         run: terraform init
@@ -135,7 +135,7 @@ jobs:
       - name: Check Plan Status
         if: steps.plan.outcome == 'failure'
         run: exit 1
-```
+````
 
 ## Remote State with S3
 
@@ -148,11 +148,11 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "production/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
-````
+```
 
 Workflow with OIDC authentication to AWS:
 
@@ -179,7 +179,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: '1.7.0'
+          terraform_version: '1.15.6'
 
       - name: Terraform Init
         run: terraform init
@@ -277,6 +277,10 @@ jobs:
 
     environment: ${{ matrix.environment }}
 
+    permissions:
+      id-token: write
+      contents: read
+
     steps:
       - uses: actions/checkout@v4
 
@@ -307,6 +311,11 @@ jobs:
   security:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
     steps:
       - uses: actions/checkout@v4
 
@@ -327,7 +336,7 @@ jobs:
 
       # tfsec scanner
       - name: Run tfsec
-        uses: aquasecurity/tfsec-action@v1.0.0
+        uses: aquasecurity/tfsec-action@v1.0.3
         with:
           working_directory: ./terraform
           soft_fail: false
@@ -387,6 +396,9 @@ jobs:
           # Exit code 2 means changes detected
           if [ $EXIT_CODE -eq 2 ]; then
             echo "drift_detected=true" >> $GITHUB_OUTPUT
+          elif [ $EXIT_CODE -eq 1 ]; then
+            echo "drift_detected=false" >> $GITHUB_OUTPUT
+            exit 1
           else
             echo "drift_detected=false" >> $GITHUB_OUTPUT
           fi
@@ -467,8 +479,11 @@ jobs:
       - name: Terraform Plan
         id: plan
         run: |
+          set +e
           terraform plan -detailed-exitcode -out=tfplan
-          echo "exitcode=$?" >> $GITHUB_OUTPUT
+          EXIT_CODE=$?
+          echo "exitcode=$EXIT_CODE" >> $GITHUB_OUTPUT
+          exit $EXIT_CODE
         working-directory: ./terraform
         continue-on-error: true
 
@@ -557,7 +572,7 @@ Pass secrets securely:
     TF_VAR_api_key: ${{ secrets.API_KEY }}
 ```
 
-Or use AWS Secrets Manager / Parameter Store in your Terraform:
+Or read secrets from AWS Secrets Manager / Parameter Store in your Terraform, while keeping Terraform state encrypted and access-controlled because secret values can still be stored in state:
 
 ```hcl
 data "aws_secretsmanager_secret_version" "db_password" {
