@@ -125,8 +125,8 @@ fn main() {
     // Solution 2: Turbofish on method
     let sum = numbers.iter().sum::<i32>();
 
-    // Solution 3: Annotate intermediate iterator
-    let sum = numbers.iter().copied().sum::<i64>();
+    // Solution 3: Convert items before summing into a wider type
+    let sum = numbers.iter().map(|&n| i64::from(n)).sum::<i64>();
 
     println!("Sum: {}", sum);
 }
@@ -139,7 +139,7 @@ Sometimes closure parameter types cannot be inferred.
 ```rust
 fn main() {
     // When closure is used in generic context
-    let processor = |x| x * 2;  // Might need annotation
+    // let processor = |x| x * 2;  // Error: no type context for x
 
     // Solution 1: Annotate closure parameter
     let processor = |x: i32| x * 2;
@@ -185,25 +185,27 @@ fn main() {
 
 ### Scenario 7: Option and Result
 
-Methods like ok_or need type specification.
+Result constructors can need type specification, and Option methods like ok_or infer the error type from the error value.
 
 ```rust
 fn main() {
     let maybe: Option<i32> = Some(42);
 
-    // Error: what error type?
-    // let result = maybe.ok_or("error");
+    // Error: what success type?
+    // let result = Err("error");
 
     // Solution 1: Annotate variable
-    let result: Result<i32, &str> = maybe.ok_or("error");
+    let result: Result<i32, &str> = Err("error");
 
-    // Solution 2: Turbofish (not always available)
-    // For ok_or, the type is inferred from the error value
+    // Solution 2: Turbofish
+    let result = Err::<i32, _>("error");
 
     // Solution 3: Let usage determine type
-    fn process(r: Result<i32, String>) {}
+    fn process(r: &Result<i32, String>) {
+        println!("{:?}", r);
+    }
     let result = maybe.ok_or(String::from("error"));
-    process(result);
+    process(&result);
 
     println!("{:?}", result);
 }
