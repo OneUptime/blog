@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Compression, Performance, Network, Optimization
 
-Description: Learn how to enable wire protocol compression and storage compression in MongoDB to reduce bandwidth usage and storage costs without sacrificing performance.
+Description: Learn how to enable wire protocol compression and storage compression in MongoDB to reduce bandwidth usage and storage costs while balancing CPU and performance tradeoffs.
 
 ---
 
-Data compression in MongoDB operates at two levels: network compression reduces bandwidth between clients and servers, while storage compression shrinks data on disk. Both can significantly reduce costs and improve performance, especially for applications with large documents or high network latency.
+Data compression in MongoDB operates at two levels: network compression reduces bandwidth between clients and servers, while storage compression shrinks data on disk. Both can significantly reduce costs and improve performance for network-bound or I/O-bound workloads, especially for applications with large documents or high network latency.
 
 ## Wire Protocol Compression
 
-MongoDB supports compressing data sent over the network between clients and servers. This reduces bandwidth usage by 60-80% for typical workloads.
+MongoDB supports compressing data sent over the network between clients and servers. The amount of bandwidth reduction depends on your data shape and workload, but repetitive document payloads can see substantial savings.
 
 ```javascript
 // Node.js driver with compression enabled
@@ -20,13 +20,15 @@ const { MongoClient } = require('mongodb');
 
 const client = new MongoClient('mongodb://localhost:27017/mydb', {
   compressors: ['zstd', 'snappy', 'zlib'],  // Preference order
-  zlibCompressionLevel: 6  // 1-9, higher = better compression
+  zlibCompressionLevel: 6  // -1 to 9; higher = better compression, slower speed
 });
 
 // The driver negotiates the best available compressor with the server
+// zstd requires the @mongodb-js/zstd package
+// snappy requires the snappy package
 // zstd offers the best compression ratio with good speed
 // snappy offers the fastest compression with decent ratio
-// zlib is available everywhere but slower
+// zlib is built into Node.js but slower
 ```
 
 Server configuration to enable compression:
@@ -132,7 +134,10 @@ await db.createCollection('compressed_blobs', {
 });
 
 // Check collection compression settings
-const stats = await db.collection('logs').stats();
+const statsResult = await db.collection('logs')
+  .aggregate([{ $collStats: { storageStats: {} } }])
+  .next();
+const stats = statsResult.storageStats;
 console.log('Storage size:', stats.storageSize);
 console.log('Data size:', stats.size);
 console.log('Compression ratio:', (stats.size / stats.storageSize).toFixed(2));
@@ -189,7 +194,10 @@ async function benchmarkCompression(client) {
     const queryTime = Date.now() - queryStart;
 
     // Get storage stats
-    const stats = await collection.stats();
+    const statsResult = await collection
+      .aggregate([{ $collStats: { storageStats: {} } }])
+      .next();
+    const stats = statsResult.storageStats;
 
     results.push({
       algorithm: algo,
@@ -231,6 +239,8 @@ client = MongoClient(
     zlibCompressionLevel=6
 )
 
+# zstd requires the zstandard package; snappy requires python-snappy
+
 # Check connection compression
 server_info = client.server_info()
 print(f"Server version: {server_info['version']}")
@@ -253,7 +263,7 @@ def get_compression_stats(client):
 Document structure affects compression effectiveness.
 
 ```javascript
-// LESS COMPRESSIBLE: Long field names repeated in every document
+// LARGER RAW BSON: Long field names repeated in every document
 const badDoc = {
   customerFirstName: "John",
   customerLastName: "Doe",
@@ -262,7 +272,7 @@ const badDoc = {
   customerStreetAddress: "123 Main St"
 };
 
-// MORE COMPRESSIBLE: Short field names
+// SMALLER RAW BSON: Short field names
 const goodDoc = {
   fn: "John",
   ln: "Doe",
@@ -303,23 +313,27 @@ async function getCompressionReport(db) {
   for (const coll of collections) {
     if (coll.name.startsWith('system.')) continue;
 
-    const stats = await db.collection(coll.name).stats();
+    const statsResult = await db.collection(coll.name)
+      .aggregate([{ $collStats: { storageStats: {} } }])
+      .next();
+    const stats = statsResult.storageStats;
 
     report.push({
       collection: coll.name,
       documents: stats.count,
+      storageSizeBytes: stats.storageSize,
       dataSize: formatBytes(stats.size),
       storageSize: formatBytes(stats.storageSize),
       indexSize: formatBytes(stats.totalIndexSize),
       compressionRatio: (stats.size / Math.max(stats.storageSize, 1)).toFixed(2),
-      avgDocSize: formatBytes(stats.avgObjSize || 0)
+      avgDocSize: formatBytes(stats.avgObjSize || stats.avgObjectSize || 0)
     });
   }
 
   // Sort by storage size descending
-  report.sort((a, b) => parseBytes(b.storageSize) - parseBytes(a.storageSize));
+  report.sort((a, b) => b.storageSizeBytes - a.storageSizeBytes);
 
-  return report;
+  return report.map(({ storageSizeBytes, ...row }) => row);
 }
 
 function formatBytes(bytes) {
@@ -365,6 +379,6 @@ MongoDB compression significantly reduces storage and network costs:
 - Use snappy when CPU is constrained
 - Skip compression for already-compressed data
 - Monitor compression ratios to identify optimization opportunities
-- Keep field names short for better compression effectiveness
+- Keep field names concise when verbose schemas materially increase BSON size
 
-Start with default zstd compression and adjust based on your workload's CPU and I/O characteristics.
+Start with MongoDB's defaults, then test zstd for storage-heavy collections and adjust based on your workload's CPU and I/O characteristics.
