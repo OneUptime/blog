@@ -17,8 +17,6 @@ Assign services to profiles using the `profiles` attribute. Services without pro
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   # Always starts - no profile assigned
   web:
@@ -64,18 +62,19 @@ docker compose --profile debug --profile monitoring up
 Keep development-only services out of production deployments.
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapp/api:latest
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgres://db:5432/app
+      - DATABASE_URL=postgres://postgres:example@db:5432/app
 
   db:
     image: postgres:15
+    environment:
+      - POSTGRES_PASSWORD=example
+      - POSTGRES_DB=app
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -126,8 +125,6 @@ docker compose --profile dev up
 Spin up test infrastructure only when running tests.
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapp/api:latest
@@ -137,6 +134,8 @@ services:
 
   db:
     image: postgres:15
+    environment:
+      - POSTGRES_PASSWORD=example
 
   redis:
     image: redis:7-alpine
@@ -188,8 +187,6 @@ docker compose --profile test --profile e2e up
 Enable detailed debugging when troubleshooting issues.
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapp/api:latest
@@ -239,8 +236,6 @@ services:
 A service can belong to multiple profiles.
 
 ```yaml
-version: '3.8'
-
 services:
   prometheus:
     image: prom/prometheus:latest
@@ -282,8 +277,6 @@ COMPOSE_PROFILES=dev,debug
 Handle dependencies between profiled and non-profiled services.
 
 ```yaml
-version: '3.8'
-
 services:
   # Always runs
   api:
@@ -294,6 +287,8 @@ services:
   # Always runs
   db:
     image: postgres:15
+    environment:
+      - POSTGRES_PASSWORD=example
 
   # Profile service that depends on always-running service
   db-seeder:
@@ -330,8 +325,6 @@ Profiles work alongside override files for maximum flexibility.
 
 ```yaml
 # docker-compose.yml - Base configuration
-version: '3.8'
-
 services:
   api:
     image: myapp/api:latest
@@ -344,8 +337,6 @@ services:
 
 ```yaml
 # docker-compose.override.yml - Development additions
-version: '3.8'
-
 services:
   api:
     volumes:
@@ -365,14 +356,14 @@ The profiler service joins the debug profile through the override file.
 ## Listing Services by Profile
 
 ```bash
-# List all services (including those in profiles)
-docker compose config --services
-
 # List services that would start without profiles
-docker compose ps --services
+docker compose config --services
 
 # List services in specific profile
 docker compose --profile debug config --services
+
+# List all services (including those in profiles)
+docker compose --profile "*" config --services
 
 # View full resolved configuration
 docker compose --profile debug config
@@ -382,8 +373,6 @@ docker compose --profile debug config
 
 ```yaml
 # docker-compose.yml - Complete workflow example
-version: '3.8'
-
 services:
   # Core application - always runs
   frontend:
@@ -403,6 +392,8 @@ services:
 
   db:
     image: postgres:15
+    environment:
+      - POSTGRES_PASSWORD=example
     volumes:
       - pgdata:/var/lib/postgresql/data
 
