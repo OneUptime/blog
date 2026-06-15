@@ -52,7 +52,7 @@ ARG and ENV both define variables, but they serve different purposes.
 | Available at build time | Yes | Yes (if set before) |
 | Available at run time | No | Yes |
 | Can be passed via --build-arg | Yes | No |
-| Persists in final image | No | Yes |
+| Persists in final image | Not as a runtime environment variable, but may appear in image history or metadata | Yes |
 
 ```dockerfile
 FROM node:20-slim
@@ -124,7 +124,7 @@ CMD ["/myapp"]
 docker build \
   --build-arg VERSION=$(git describe --tags) \
   --build-arg GIT_COMMIT=$(git rev-parse HEAD) \
-  --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+  --build-arg BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
   -t myapp:latest .
 ```
 
@@ -142,7 +142,7 @@ COPY package*.json ./
 
 # Install dev dependencies only in development
 RUN if [ "$BUILD_ENV" = "production" ]; then \
-      npm ci --only=production; \
+      npm ci --omit=dev; \
     else \
       npm ci; \
     fi
@@ -189,7 +189,7 @@ WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
 
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Convert ARG to ENV for runtime access
 ENV NODE_ENV=$BUILD_ENV
@@ -201,8 +201,6 @@ CMD ["node", "dist/server.js"]
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   api:
     build:
@@ -254,8 +252,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Use secret mount - not stored in image layers
-RUN --mount=type=secret,id=npm_token \
-    NPM_TOKEN=$(cat /run/secrets/npm_token) \
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc \
     npm ci
 
 COPY . .
@@ -265,7 +262,7 @@ CMD ["node", "server.js"]
 ```bash
 # Pass secret at build time
 DOCKER_BUILDKIT=1 docker build \
-  --secret id=npm_token,src=$HOME/.npmrc \
+  --secret id=npmrc,src=$HOME/.npmrc \
   -t myapp .
 ```
 
@@ -277,8 +274,8 @@ Docker provides predefined ARG variables for proxy configuration.
 FROM ubuntu:22.04
 
 # These are automatically available (no ARG declaration needed)
-# HTTP_PROXY, HTTPS_PROXY, FTP_PROXY, NO_PROXY
-# http_proxy, https_proxy, ftp_proxy, no_proxy
+# HTTP_PROXY, HTTPS_PROXY, FTP_PROXY, NO_PROXY, ALL_PROXY
+# http_proxy, https_proxy, ftp_proxy, no_proxy, all_proxy
 
 # They are used by tools like apt, curl, wget
 RUN apt-get update && apt-get install -y curl
@@ -302,7 +299,7 @@ ARG BASE_IMAGE=node:20-slim
 
 FROM ${BASE_IMAGE}
 
-# This fails - ARG from before FROM is out of scope
+# This prints an empty value - ARG from before FROM is out of scope
 # RUN echo $BASE_IMAGE
 
 # Must redeclare to use within the stage
@@ -317,7 +314,7 @@ graph TD
 
     D[ARG after FROM] --> E[Available in current stage only]
 
-    F[Multi-stage build] --> G[Each stage needs own ARG]
+    F[Multi-stage build] --> G[Unrelated stages need own ARG]
 ```
 
 ## Best Practices
