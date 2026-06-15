@@ -26,7 +26,7 @@ For most teams starting out, I recommend the discriminator column approach. You 
 
 ## Resolving the Current Tenant
 
-Every request needs to know which tenant it belongs to. The most common approach is extracting the tenant from the request - either from a subdomain, a header, or a JWT claim.
+Every request needs to know which tenant it belongs to. The most common approach is extracting the tenant from the request - either from a subdomain, a header, or a JWT claim. In production, validate that tenant identifier against the authenticated user or a signed token; don't trust an arbitrary client-supplied header by itself.
 
 Here's a simple filter that extracts the tenant from the `X-Tenant-ID` header:
 
@@ -94,7 +94,8 @@ First, define a base entity that all tenant-scoped entities will extend:
 ```java
 @MappedSuperclass
 @FilterDef(name = "tenantFilter",
-           parameters = @ParamDef(name = "tenantId", type = String.class))
+           parameters = @ParamDef(name = "tenantId", type = String.class),
+           applyToLoadByKey = true)
 @Filter(name = "tenantFilter", condition = "tenant_id = :tenantId")
 public abstract class TenantAwareEntity {
 
@@ -120,7 +121,7 @@ public abstract class TenantAwareEntity {
 }
 ```
 
-Now create a component that enables the filter for every request:
+Now create a component that enables the filter before service-layer queries:
 
 ```java
 @Component
@@ -143,7 +144,7 @@ public class TenantFilterAspect {
 }
 ```
 
-With this setup, any entity that extends `TenantAwareEntity` will automatically have tenant filtering applied. Queries will only return rows matching the current tenant, and new entities will have the tenant ID set automatically.
+With this setup, any entity that extends `TenantAwareEntity` will automatically have tenant filtering applied when the filter is enabled on the current Hibernate session. Entity queries will only return rows matching the current tenant, direct loads by ID are covered by `applyToLoadByKey = true`, and new entities will have the tenant ID set automatically.
 
 ## Handling Multi-Tenant DataSources
 
@@ -174,7 +175,7 @@ public class DataSourceConfig {
         dataSources.put("tenant-b", createDataSource("jdbc:postgresql://db/tenant_b"));
 
         routingDataSource.setTargetDataSources(dataSources);
-        routingDataSource.setDefaultTargetDataSource(dataSources.get("tenant-a"));
+        routingDataSource.setLenientFallback(false);
 
         return routingDataSource;
     }
