@@ -410,8 +410,8 @@ trait Printable {
     fn print(&self);
 }
 
-// Blanket implementation for all Display types
-impl<T: Display> Printable for T {
+// Blanket implementation for references to Display types
+impl<T: Display + ?Sized> Printable for &T {
     fn print(&self) {
         println!("{}", self);
     }
@@ -432,7 +432,7 @@ impl<T: Display> Printable for Vec<T> {
 }
 
 fn main() {
-    42.print();
+    (&42).print();
     "hello".print();
     vec![1, 2, 3].print();
 }
