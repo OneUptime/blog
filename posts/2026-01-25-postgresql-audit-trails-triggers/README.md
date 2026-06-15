@@ -42,7 +42,7 @@ CREATE INDEX idx_audit_new_data ON audit_log USING gin(new_data);
 
 ## The Generic Audit Trigger Function
 
-This function works with any table. It captures the operation type, extracts primary key values, and stores before/after snapshots.
+This function works with any table that has a primary key. It captures the operation type, extracts primary key values, and stores before/after snapshots.
 
 ```sql
 CREATE OR REPLACE FUNCTION audit_trigger_function()
@@ -53,17 +53,21 @@ DECLARE
     changed_fields TEXT[];
     record_id TEXT;
     current_user_name TEXT;
-    key_column TEXT;
     key_columns TEXT[];
 BEGIN
-    -- Get the primary key column(s) for this table
-    SELECT array_agg(a.attname)
+    -- Get the primary key column(s) for this table in key order
+    SELECT array_agg(a.attname ORDER BY keys.ord)
     INTO key_columns
     FROM pg_index i
+    CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS keys(attnum, ord)
     JOIN pg_attribute a ON a.attrelid = i.indrelid
-        AND a.attnum = ANY(i.indkey)
+        AND a.attnum = keys.attnum
     WHERE i.indrelid = TG_RELID
         AND i.indisprimary;
+
+    IF key_columns IS NULL THEN
+        RAISE EXCEPTION 'audit_trigger_function requires a primary key on %.%', TG_TABLE_SCHEMA, TG_TABLE_NAME;
+    END IF;
 
     -- Get current user from session variable or default to session_user
     current_user_name := COALESCE(
@@ -77,8 +81,8 @@ BEGIN
         old_data := NULL;
 
         -- Build record_id from primary key columns
-        record_id := (SELECT string_agg(new_data->>col, ',')
-                      FROM unnest(key_columns) AS col);
+        record_id := (SELECT string_agg(new_data->>col, ',' ORDER BY ord)
+                      FROM unnest(key_columns) WITH ORDINALITY AS key_col(col, ord));
 
         INSERT INTO audit_log (
             table_name, record_id, action, old_data, new_data,
@@ -96,8 +100,8 @@ BEGIN
         new_data := to_jsonb(NEW);
 
         -- Build record_id from primary key columns
-        record_id := (SELECT string_agg(new_data->>col, ',')
-                      FROM unnest(key_columns) AS col);
+        record_id := (SELECT string_agg(new_data->>col, ',' ORDER BY ord)
+                      FROM unnest(key_columns) WITH ORDINALITY AS key_col(col, ord));
 
         -- Find which fields actually changed
         SELECT array_agg(key)
@@ -124,8 +128,8 @@ BEGIN
         new_data := NULL;
 
         -- Build record_id from primary key columns
-        record_id := (SELECT string_agg(old_data->>col, ',')
-                      FROM unnest(key_columns) AS col);
+        record_id := (SELECT string_agg(old_data->>col, ',' ORDER BY ord)
+                      FROM unnest(key_columns) WITH ORDINALITY AS key_col(col, ord));
 
         INSERT INTO audit_log (
             table_name, record_id, action, old_data, new_data,
@@ -141,12 +145,12 @@ BEGIN
 
     RETURN NULL;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 ```
 
 ## Attaching Triggers to Tables
 
-Apply the audit trigger to any table you want to track.
+Apply the audit trigger to any table with a primary key that you want to track.
 
 ```sql
 -- Create sample tables to audit
@@ -182,7 +186,8 @@ The trigger reads from a session variable to track who made changes. Set this in
 
 ```sql
 -- At the start of each request/transaction
-SET LOCAL app.current_user = 'john.doe@example.com';
+BEGIN;
+SET LOCAL "app.current_user" = 'john.doe@example.com';
 
 -- Now perform your operations
 INSERT INTO customers (email, full_name)
@@ -191,6 +196,8 @@ VALUES ('alice@example.com', 'Alice Smith');
 UPDATE customers
 SET status = 'premium'
 WHERE email = 'alice@example.com';
+
+COMMIT;
 ```
 
 For connection pooling, use `SET LOCAL` which resets after the transaction.
@@ -361,8 +368,8 @@ DROP TABLE audit_log_2025_01;
 Triggers add overhead to every write operation. Here are strategies to minimize impact.
 
 ```sql
--- Use AFTER triggers, not BEFORE
--- AFTER triggers run after the row is locked, reducing contention
+-- Use AFTER triggers when you only need to record final row state
+-- Row-level AFTER trigger return values are ignored, so they cannot alter the row
 
 -- Consider async audit logging for high-throughput tables
 -- Write to a queue table, process with background worker
