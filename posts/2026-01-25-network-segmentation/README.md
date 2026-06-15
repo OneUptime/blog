@@ -135,9 +135,9 @@ iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A INPUT -i lo -j ACCEPT
 
 # DMZ (VLAN 10) Rules
-# Allow incoming HTTP/HTTPS from Internet
-iptables -A INPUT -i eth0 -p tcp --dport 80 -j ACCEPT
-iptables -A INPUT -i eth0 -p tcp --dport 443 -j ACCEPT
+# Allow forwarded HTTP/HTTPS from Internet to DMZ hosts
+iptables -A FORWARD -i eth0 -o eth0.10 -p tcp --dport 80 -j ACCEPT
+iptables -A FORWARD -i eth0 -o eth0.10 -p tcp --dport 443 -j ACCEPT
 
 # DMZ can talk to Application zone on specific ports
 iptables -A FORWARD -i eth0.10 -o eth0.20 -p tcp --dport 8080 -j ACCEPT
@@ -188,14 +188,15 @@ table inet filter {
         # Management zone can access SSH
         iifname "eth0.100" tcp dport 22 accept
 
-        # DMZ accepts HTTP/HTTPS
-        iifname "eth0.10" tcp dport { 80, 443 } accept
     }
 
     chain forward {
         type filter hook forward priority 0; policy drop;
 
         ct state established,related accept
+
+        # Internet to DMZ
+        iifname "eth0" oifname "eth0.10" tcp dport { 80, 443 } accept
 
         # DMZ to Application
         iifname "eth0.10" oifname "eth0.20" tcp dport { 8080, 8443 } accept
@@ -445,8 +446,8 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": frontend
             app: web
-            zone: dmz
       toPorts:
         - ports:
             - port: "8080"
@@ -460,11 +461,23 @@ spec:
   egress:
     - toEndpoints:
         - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": database
             app: postgres
       toPorts:
         - ports:
             - port: "5432"
               protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: "api.stripe.com"
     - toFQDNs:
         - matchName: "api.stripe.com"
       toPorts:
@@ -489,7 +502,7 @@ resource "aws_vpc" "main" {
   }
 }
 
-# DMZ Subnet (Public)
+# DMZ Subnet (Public when associated with an internet gateway route table)
 resource "aws_subnet" "dmz" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
@@ -573,6 +586,7 @@ resource "aws_security_group" "application" {
     security_groups = [aws_security_group.database.id]
   }
 
+  # Allows HTTPS egress when the subnet has NAT or other outbound routing
   egress {
     from_port   = 443
     to_port     = 443
