@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, HTTP Client, Retry, Resilience, Reqwest
 
-Description: Learn how to build production-ready HTTP clients in Rust with retry policies, exponential backoff, and circuit breakers using reqwest and custom middleware.
+Description: Learn how to build production-ready HTTP clients in Rust with retry policies, exponential backoff, and circuit breakers using reqwest and custom client wrappers.
 
 ---
 
@@ -18,12 +18,13 @@ First, add the necessary dependencies to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-rand = "0.8"
-thiserror = "1.0"
+rand = "0.10"
+thiserror = "2.0"
+httpdate = "1.0"
 ```
 
 ## Basic Retry Logic
@@ -42,16 +43,22 @@ async fn fetch_with_retry(
     url: &str,
     max_attempts: u32,
 ) -> Result<String, reqwest::Error> {
+    assert!(max_attempts > 0, "max_attempts must be greater than 0");
+
     let mut last_error = None;
 
     for attempt in 1..=max_attempts {
         match client.get(url).send().await {
             Ok(response) => {
-                if response.status().is_success() {
-                    return response.text().await;
+                let status = response.status();
+                match response.error_for_status() {
+                    Ok(response) => return response.text().await,
+                    Err(e) => {
+                        // Server returned an error status
+                        println!("Attempt {}: Server returned {}", attempt, status);
+                        last_error = Some(e);
+                    }
                 }
-                // Server returned an error status
-                println!("Attempt {}: Server returned {}", attempt, response.status());
             }
             Err(e) => {
                 println!("Attempt {}: Request failed - {}", attempt, e);
@@ -76,7 +83,7 @@ The problem with fixed delays is the thundering herd effect. When a service goes
 Exponential backoff increases the delay between each retry attempt. Adding jitter (randomness) prevents synchronized retries across multiple clients.
 
 ```rust
-use rand::Rng;
+use rand::RngExt;
 use std::time::Duration;
 
 // Configuration for retry behavior
@@ -112,9 +119,9 @@ fn calculate_delay(config: &RetryConfig, attempt: u32) -> Duration {
 
     // Add jitter to prevent synchronized retries
     let final_delay = if config.jitter {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         // Full jitter: random value between 0 and capped_delay
-        rng.gen_range(0.0..capped_delay)
+        rng.random_range(0.0..capped_delay)
     } else {
         capped_delay
     };
@@ -129,7 +136,9 @@ Now let's build a proper HTTP client with built-in retry logic. This implementat
 
 ```rust
 use reqwest::{Client, Response, StatusCode};
+use std::time::{Duration, SystemTime};
 use thiserror::Error;
+use tokio::time::sleep;
 
 #[derive(Error, Debug)]
 pub enum RetryClientError {
@@ -157,7 +166,6 @@ fn is_retryable_status(status: StatusCode) -> bool {
 fn is_retryable_error(error: &reqwest::Error) -> bool {
     error.is_timeout()
         || error.is_connect()
-        || error.is_request()
 }
 
 pub struct RetryClient {
@@ -234,19 +242,30 @@ impl RetryClient {
     // Check for Retry-After header and use it if present
     fn get_retry_delay(&self, response: &Response, attempt: u32) -> Duration {
         if let Some(retry_after) = response.headers().get("retry-after") {
-            if let Ok(seconds) = retry_after.to_str().unwrap_or("").parse::<u64>() {
-                // Cap the server-requested delay at our max
-                return Duration::from_secs(seconds.min(self.config.max_delay_ms / 1000));
+            if let Ok(value) = retry_after.to_str() {
+                if let Ok(seconds) = value.parse::<u64>() {
+                    return self.cap_delay(Duration::from_secs(seconds));
+                }
+
+                if let Ok(retry_time) = httpdate::parse_http_date(value) {
+                    if let Ok(delay) = retry_time.duration_since(SystemTime::now()) {
+                        return self.cap_delay(delay);
+                    }
+                }
             }
         }
         calculate_delay(&self.config, attempt)
+    }
+
+    fn cap_delay(&self, delay: Duration) -> Duration {
+        delay.min(Duration::from_millis(self.config.max_delay_ms))
     }
 }
 ```
 
 ## Adding a Circuit Breaker
 
-When a service is consistently failing, there is no point hammering it with retries. A circuit breaker tracks failures and "opens" when a threshold is reached, failing fast without making network calls. After a cooldown period, it allows a test request through to see if the service has recovered.
+When a service is consistently failing, there is no point hammering it with retries. A circuit breaker tracks failures and "opens" when a threshold is reached, failing fast without making network calls. After a cooldown period, it allows requests through to see if the service has recovered.
 
 ```rust
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -290,7 +309,7 @@ impl CircuitBreaker {
             .unwrap()
             .as_millis() as u64;
 
-        if now - last_failure > self.reset_timeout_ms {
+        if now.saturating_sub(last_failure) > self.reset_timeout_ms {
             CircuitState::HalfOpen
         } else {
             CircuitState::Open
@@ -374,7 +393,7 @@ impl ResilientClient {
                 });
             }
             CircuitState::HalfOpen => {
-                println!("Circuit half-open for {} - testing with single request", host);
+                println!("Circuit half-open for {} - testing request", host);
             }
             CircuitState::Closed => {}
         }
