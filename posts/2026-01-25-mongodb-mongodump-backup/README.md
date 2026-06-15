@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MongoDB, Backup, Mongodump, Disaster Recovery, Database Administration
 
-Description: A comprehensive guide to backing up MongoDB databases using mongodump, including full and incremental backups, compression, restoration procedures, and automation strategies.
+Description: A comprehensive guide to backing up MongoDB databases using mongodump, including full and consistent backups, compression, restoration procedures, and automation strategies.
 
 ---
 
@@ -29,9 +29,9 @@ flowchart TB
 ```
 
 mongodump is ideal when you need:
-- Portable backups across different MongoDB versions
+- Portable backups across compatible MongoDB deployments
 - Selective backup of specific databases or collections
-- Human-readable backup format (BSON/JSON)
+- BSON data files with JSON metadata
 - Cross-platform compatibility
 
 ## Basic mongodump Usage
@@ -94,7 +94,7 @@ chmod 600 /etc/mongo-backup-password
 
 # Reference password file
 mongodump --uri="mongodb://adminUser@localhost:27017/admin" \
-  --password=$(cat /etc/mongo-backup-password) \
+  --password="$(cat /etc/mongo-backup-password)" \
   --out=/backup/full-backup
 ```
 
@@ -159,16 +159,16 @@ mongodump --uri="mongodb://mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=rs
   --out=/backup/full-backup
 ```
 
-### Point-in-Time Backup with Oplog
+### Consistent Backup with Oplog
 
 ```bash
-# Include oplog for point-in-time recovery
+# Include oplog entries for a consistent restore
 mongodump --uri="mongodb://localhost:27017" \
   --oplog \
   --out=/backup/pit-backup
 ```
 
-The oplog captures changes during the backup, enabling consistent restore.
+The oplog captures changes during the backup, enabling a consistent restore. Use `--oplog` only for a full dump of a replica set member; it fails with limiting options such as `--db`, `--collection`, or `--query`.
 
 ## Restoring Backups
 
@@ -189,13 +189,14 @@ mongorestore --uri="mongodb://localhost:27017" \
 ```bash
 # Restore specific database
 mongorestore --uri="mongodb://localhost:27017" \
-  --db=myapp \
-  /backup/full-backup/myapp
+  --nsInclude="myapp.*" \
+  /backup/full-backup
 
 # Restore to different database name
 mongorestore --uri="mongodb://localhost:27017" \
-  --db=myapp_restored \
-  /backup/full-backup/myapp
+  --nsFrom="myapp.*" \
+  --nsTo="myapp_restored.*" \
+  /backup/full-backup
 ```
 
 ### Restore Single Collection
@@ -208,7 +209,7 @@ mongorestore --uri="mongodb://localhost:27017" \
   /backup/full-backup/myapp/orders.bson
 ```
 
-### Point-in-Time Restore
+### Consistent Restore with Oplog
 
 ```bash
 # Restore with oplog replay
@@ -225,10 +226,8 @@ mongorestore --uri="mongodb://localhost:27017" \
   --drop \
   /backup/full-backup
 
-# Skip documents that cause duplicate key errors
+# Continue past duplicate key errors (default behavior)
 mongorestore --uri="mongodb://localhost:27017" \
-  --noIndexRestore \
-  --maintainInsertionOrder \
   /backup/full-backup
 ```
 
@@ -260,15 +259,12 @@ mkdir -p "${BACKUP_PATH}"
 # Run backup
 log "Starting MongoDB backup to ${BACKUP_PATH}"
 
-mongodump \
+if mongodump \
     --uri="${MONGO_URI}" \
     --out="${BACKUP_PATH}" \
     --oplog \
     --gzip \
-    --numParallelCollections=4
-
-# Check backup success
-if [ $? -eq 0 ]; then
+    --numParallelCollections=4; then
     log "Backup completed successfully"
 
     # Calculate backup size
@@ -342,13 +338,14 @@ tar -xzf "${BACKUP_FILE}" -C "${TEMP_DIR}"
 
 mongorestore \
     --uri="mongodb://localhost:27017" \
-    --db=backup_verification_test \
+    --nsFrom="myapp.*" \
+    --nsTo="backup_verification_test.*" \
     --drop \
     --gzip \
-    "${TEMP_DIR}"/*/myapp
+    "${TEMP_DIR}"/*
 
 # Verify document counts
-EXPECTED_COUNT=$(cat "${TEMP_DIR}/*/myapp/orders.metadata.json" | jq '.options.count // 0')
+EXPECTED_COUNT=$(gunzip -c "${TEMP_DIR}"/*/myapp/orders.bson.gz | bsondump --quiet | wc -l)
 ACTUAL_COUNT=$(mongosh --quiet --eval "db.getSiblingDB('backup_verification_test').orders.countDocuments()")
 
 if [ "${EXPECTED_COUNT}" -eq "${ACTUAL_COUNT}" ]; then
@@ -367,7 +364,7 @@ rm -rf "${TEMP_DIR}"
 ### Backup Checklist
 
 - [ ] Backup runs from secondary to reduce primary load
-- [ ] Oplog included for point-in-time recovery
+- [ ] Oplog included for consistent restores
 - [ ] Compression enabled for storage efficiency
 - [ ] Backups verified regularly with test restores
 - [ ] Offsite copies stored (S3, GCS, Azure Blob)
