@@ -19,7 +19,7 @@ Whether you're building a product catalog, documentation search, or log analysis
 First, install the Elasticsearch Python client:
 
 ```bash
-pip install elasticsearch==8.11.0
+pip install elasticsearch
 ```
 
 ### Connecting to Elasticsearch
@@ -71,8 +71,10 @@ Mappings define how Elasticsearch analyzes and stores your data. Getting mapping
 ```python
 # index_setup.py
 # Index creation with proper mappings for full-text search
+from elasticsearch import Elasticsearch
 
 INDEX_NAME = "products"
+INITIAL_INDEX = f"{INDEX_NAME}_v1"
 
 # Define the index mapping
 PRODUCT_MAPPING = {
@@ -164,14 +166,23 @@ def create_index(es: Elasticsearch) -> None:
     Create the products index with mappings.
     Deletes existing index if present (use with caution in production).
     """
-    # Delete existing index if it exists
-    if es.indices.exists(index=INDEX_NAME):
+    # Delete existing index or alias targets if they exist
+    if es.indices.exists_alias(name=INDEX_NAME):
+        old_indices = list(es.indices.get_alias(name=INDEX_NAME).keys())
+        es.indices.delete(index=old_indices)
+        print(f"Deleted existing indices for alias: {INDEX_NAME}")
+    elif es.indices.exists(index=INDEX_NAME):
         es.indices.delete(index=INDEX_NAME)
         print(f"Deleted existing index: {INDEX_NAME}")
 
-    # Create the index with our mapping
-    es.indices.create(index=INDEX_NAME, body=PRODUCT_MAPPING)
-    print(f"Created index: {INDEX_NAME}")
+    # Create the concrete index and point the application alias at it
+    es.indices.create(
+        index=INITIAL_INDEX,
+        settings=PRODUCT_MAPPING["settings"],
+        mappings=PRODUCT_MAPPING["mappings"],
+        aliases={INDEX_NAME: {"is_write_index": True}}
+    )
+    print(f"Created index: {INITIAL_INDEX} with alias: {INDEX_NAME}")
 ```
 
 ---
@@ -186,7 +197,7 @@ Once you have an index, you need to add documents. Elasticsearch supports both s
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 from typing import List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 INDEX_NAME = "products"
 
@@ -202,7 +213,11 @@ def index_single_product(es: Elasticsearch, product: Dict[str, Any]) -> str:
     )
     return response["_id"]
 
-def index_products_bulk(es: Elasticsearch, products: List[Dict[str, Any]]) -> Dict:
+def index_products_bulk(
+    es: Elasticsearch,
+    products: List[Dict[str, Any]],
+    index_name: str = INDEX_NAME
+) -> Dict:
     """
     Index multiple products efficiently using bulk API.
     Much faster than indexing one at a time.
@@ -210,7 +225,7 @@ def index_products_bulk(es: Elasticsearch, products: List[Dict[str, Any]]) -> Di
     # Prepare documents for bulk indexing
     actions = [
         {
-            "_index": INDEX_NAME,
+            "_index": index_name,
             "_source": product
         }
         for product in products
@@ -238,7 +253,7 @@ sample_products = [
         "price": 2499.00,
         "in_stock": True,
         "tags": ["laptop", "apple", "professional"],
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat()
     },
     {
         "name": "Sony WH-1000XM5 Headphones",
@@ -247,7 +262,7 @@ sample_products = [
         "price": 349.00,
         "in_stock": True,
         "tags": ["headphones", "wireless", "noise-canceling"],
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat()
     },
     {
         "name": "Ergonomic Office Chair",
@@ -256,7 +271,7 @@ sample_products = [
         "price": 299.00,
         "in_stock": False,
         "tags": ["chair", "office", "ergonomic"],
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat()
     }
 ]
 ```
@@ -296,7 +311,7 @@ def basic_search(
         "size": size
     }
 
-    response = es.search(index=INDEX_NAME, body=search_body)
+    response = es.search(index=INDEX_NAME, **search_body)
 
     # Extract and return hits with scores
     return [
@@ -360,21 +375,22 @@ def advanced_search(
             "term": {"in_stock": True}
         })
 
-    search_body = {
-        "query": {
+    response = es.search(
+        index=INDEX_NAME,
+        query={
             "bool": {
                 "must": must_clauses if must_clauses else [{"match_all": {}}],
                 "filter": filter_clauses
             }
         },
-        "from": offset,
-        "size": size,
-        "sort": [
+        from_=offset,
+        size=size,
+        sort=[
             {"_score": {"order": "desc"}},
             {"created_at": {"order": "desc"}}
         ],
         # Include aggregations for faceted search
-        "aggs": {
+        aggs={
             "categories": {
                 "terms": {"field": "category", "size": 20}
             },
@@ -390,9 +406,7 @@ def advanced_search(
                 }
             }
         }
-    }
-
-    response = es.search(index=INDEX_NAME, body=search_body)
+    )
 
     return {
         "total": response["hits"]["total"]["value"],
@@ -437,8 +451,9 @@ def autocomplete(
     Return autocomplete suggestions based on partial input.
     Uses the autocomplete analyzer we defined in the mapping.
     """
-    search_body = {
-        "query": {
+    response = es.search(
+        index=INDEX_NAME,
+        query={
             "match": {
                 "name.autocomplete": {
                     "query": prefix,
@@ -446,12 +461,10 @@ def autocomplete(
                 }
             }
         },
-        "size": size,
+        size=size,
         # Only return the fields needed for suggestions
-        "_source": ["name", "category"]
-    }
-
-    response = es.search(index=INDEX_NAME, body=search_body)
+        source=["name", "category"]
+    )
 
     return [
         {
@@ -483,7 +496,7 @@ def search_suggestions(
         }
     }
 
-    response = es.search(index=INDEX_NAME, body=suggest_body, size=0)
+    response = es.search(index=INDEX_NAME, suggest=suggest_body["suggest"], size=0)
 
     suggestions = []
     for suggestion in response["suggest"]["name_suggestion"]:
@@ -589,7 +602,9 @@ Search indices need to stay in sync with your source data.
 # sync.py
 # Document update and delete operations
 from elasticsearch import Elasticsearch
-from typing import Dict, Any
+from typing import Dict, Any, List
+from index_setup import PRODUCT_MAPPING
+from indexing import index_products_bulk
 
 INDEX_NAME = "products"
 
@@ -605,7 +620,7 @@ def update_product(
     es.update(
         index=INDEX_NAME,
         id=doc_id,
-        body={"doc": updates},
+        doc=updates,
         refresh=True
     )
 
@@ -621,23 +636,27 @@ def reindex_all(
     Reindex all products using zero-downtime pattern.
     Creates a new index, populates it, then swaps aliases.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     # Create timestamped index name
-    new_index = f"{INDEX_NAME}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    new_index = f"{INDEX_NAME}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
     # Create new index with current mappings
-    es.indices.create(index=new_index, body=PRODUCT_MAPPING)
+    es.indices.create(
+        index=new_index,
+        settings=PRODUCT_MAPPING["settings"],
+        mappings=PRODUCT_MAPPING["mappings"]
+    )
 
     # Bulk index all products
-    index_products_bulk(es, products)
+    index_products_bulk(es, products, index_name=new_index)
 
     # Point alias to new index
     alias_actions = [
         {"remove": {"index": "*", "alias": INDEX_NAME}},
         {"add": {"index": new_index, "alias": INDEX_NAME}}
     ]
-    es.indices.update_aliases(body={"actions": alias_actions})
+    es.indices.update_aliases(actions=alias_actions)
 ```
 
 ---
@@ -659,5 +678,5 @@ Start with basic multi-match queries and add features like facets and autocomple
 *Running Elasticsearch in production? [OneUptime](https://oneuptime.com) monitors your clusters, tracks query performance, and alerts you before issues impact users.*
 
 **Related Reading:**
-- [How to Build Full-Text Search with Meilisearch in Node.js](https://oneuptime.com/blog/post/2026-01-21-clickhouse-full-text-search/view)
+- [How to Implement Full-Text Search in ClickHouse](https://oneuptime.com/blog/post/2026-01-21-clickhouse-full-text-search/view)
 - [How to Implement Structured Logging with OpenTelemetry in Python](https://oneuptime.com/blog/post/2025-01-06-python-structured-logging-opentelemetry/view)
