@@ -262,9 +262,9 @@ print(f"Map: {map_time:.4f}s")
 ```
 
 The comprehension is faster because:
-1. It avoids repeated method lookups for `append()`
-2. The looping happens at C level
-3. Memory is pre-allocated when size can be determined
+1. It avoids the explicit `result.append(...)` method lookup and call in the loop
+2. CPython uses a dedicated `LIST_APPEND` bytecode instruction for the append step
+3. The exact speed difference depends on the Python implementation, version, and work being done inside the loop
 
 ---
 
