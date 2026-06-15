@@ -132,7 +132,7 @@ DECLARE
     lock_key BIGINT;
     lock_acquired BOOLEAN;
 BEGIN
-    -- Generate a unique lock key from the date
+    -- Generate a deterministic lock key from the date
     lock_key := hashtext(p_date::TEXT);
 
     -- Try to acquire the lock (non-blocking)
@@ -207,50 +207,37 @@ SELECT balance FROM accounts WHERE id = 1;
 UPDATE accounts SET balance = balance - 100 WHERE id = 1;
 
 COMMIT;
--- If another transaction modified the row, this COMMIT will fail
--- with a serialization error, and you must retry
+-- If another transaction creates a serialization conflict, one of the
+-- statements or the COMMIT can fail with a serialization error, and
+-- the application must retry the whole transaction
 ```
 
-Function with retry logic for serializable transactions:
+Function used inside a serializable transaction:
 
 ```sql
-CREATE OR REPLACE FUNCTION transfer_with_retry(
+CREATE OR REPLACE FUNCTION transfer_once(
     from_account INTEGER,
     to_account INTEGER,
-    amount DECIMAL,
-    max_retries INTEGER DEFAULT 3
+    amount DECIMAL
 ) RETURNS BOOLEAN AS $$
-DECLARE
-    retry_count INTEGER := 0;
 BEGIN
-    LOOP
-        BEGIN
-            -- Start serializable transaction
-            -- Note: In a function, we use SAVEPOINT for nested transaction-like behavior
+    -- The caller must run this in a SERIALIZABLE transaction and retry
+    -- the entire transaction if SQLSTATE 40001 is raised.
+    IF (SELECT balance FROM accounts WHERE id = from_account) < amount THEN
+        RAISE EXCEPTION 'Insufficient funds';
+    END IF;
 
-            -- Check source balance
-            IF (SELECT balance FROM accounts WHERE id = from_account) < amount THEN
-                RAISE EXCEPTION 'Insufficient funds';
-            END IF;
+    UPDATE accounts SET balance = balance - amount WHERE id = from_account;
+    UPDATE accounts SET balance = balance + amount WHERE id = to_account;
 
-            -- Perform transfer
-            UPDATE accounts SET balance = balance - amount WHERE id = from_account;
-            UPDATE accounts SET balance = balance + amount WHERE id = to_account;
-
-            RETURN TRUE;
-
-        EXCEPTION
-            WHEN serialization_failure OR deadlock_detected THEN
-                retry_count := retry_count + 1;
-                IF retry_count >= max_retries THEN
-                    RAISE EXCEPTION 'Transfer failed after % retries', max_retries;
-                END IF;
-                -- Wait briefly before retry
-                PERFORM pg_sleep(random() * 0.1);
-        END;
-    END LOOP;
+    RETURN TRUE;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Retry this whole transaction from application code if it fails with SQLSTATE 40001
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+SELECT transfer_once(1, 2, 100);
+COMMIT;
 ```
 
 ## Solution 5: Optimistic Locking with Version Numbers
