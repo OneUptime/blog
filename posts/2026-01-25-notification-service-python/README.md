@@ -45,7 +45,7 @@ First, let's define the data structures that represent notifications in our syst
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 class NotificationType(Enum):
@@ -107,7 +107,7 @@ class Notification:
     context: Dict[str, Any]  # Data for template rendering
     priority: Priority = Priority.NORMAL
     status: NotificationStatus = NotificationStatus.PENDING
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     sent_at: Optional[datetime] = None
     error_message: Optional[str] = None
     retry_count: int = 0
@@ -285,6 +285,8 @@ from dataclasses import dataclass
 from typing import Optional
 import httpx
 import logging
+from google.auth.transport.requests import Request
+from google.oauth2 import service_account
 
 logger = logging.getLogger(__name__)
 
@@ -420,13 +422,26 @@ class SMSProvider(NotificationProvider):
 
 class PushProvider(NotificationProvider):
     """
-    Push notification provider using Firebase Cloud Messaging.
-    Handles sending to multiple device tokens.
+    Push notification provider using Firebase Cloud Messaging HTTP v1.
+    Handles sending to a single device token.
     """
 
-    def __init__(self, server_key: str):
-        self.server_key = server_key
-        self.fcm_url = "https://fcm.googleapis.com/fcm/send"
+    def __init__(self, project_id: str, service_account_file: str):
+        self.project_id = project_id
+        self.fcm_url = (
+            f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
+        )
+        self.credentials = service_account.Credentials.from_service_account_file(
+            service_account_file,
+            scopes=["https://www.googleapis.com/auth/firebase.messaging"]
+        )
+
+    def _get_access_token(self) -> str:
+        """Get an OAuth 2.0 access token for FCM HTTP v1"""
+        credentials = self.credentials
+        if not credentials.valid:
+            credentials.refresh(Request())
+        return credentials.token
 
     async def send(
         self,
@@ -437,37 +452,38 @@ class PushProvider(NotificationProvider):
     ) -> DeliveryResult:
         """Send a push notification via FCM"""
         payload = {
-            "to": recipient,
-            "notification": {
-                "title": subject or "Notification",
-                "body": body
+            "message": {
+                "token": recipient,
+                "notification": {
+                    "title": subject or "Notification",
+                    "body": body
+                },
+                "data": kwargs.get('data', {})
             },
-            "data": kwargs.get('data', {})
         }
 
         try:
+            access_token = self._get_access_token()
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     self.fcm_url,
                     json=payload,
                     headers={
-                        "Authorization": f"key={self.server_key}",
+                        "Authorization": f"Bearer {access_token}",
                         "Content-Type": "application/json"
                     },
                     timeout=30.0
                 )
 
-            data = response.json()
-
-            if data.get('success', 0) > 0:
+            if response.status_code == 200:
+                data = response.json()
                 return DeliveryResult(
                     success=True,
-                    provider_id=data.get('multicast_id')
+                    provider_id=data.get('name')
                 )
             else:
-                # Extract error from results
-                results = data.get('results', [{}])
-                error = results[0].get('error', 'Unknown error')
+                data = response.json()
+                error = data.get('error', {}).get('message', 'Unknown error')
                 return DeliveryResult(success=False, error_message=error)
 
         except Exception as e:
@@ -485,7 +501,7 @@ The main service ties everything together and handles routing notifications to t
 # notification_service.py
 # Main notification service with routing and retry logic
 from typing import Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 import logging
 
@@ -587,7 +603,7 @@ class NotificationService:
         # Update notification based on result
         if result.success:
             notification.status = NotificationStatus.SENT
-            notification.sent_at = datetime.utcnow()
+            notification.sent_at = datetime.now(timezone.utc)
         else:
             notification.status = NotificationStatus.FAILED
             notification.error_message = result.error_message
