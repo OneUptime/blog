@@ -240,27 +240,16 @@ def create_tls_redis_client():
     Supports both mutual TLS and server-only TLS.
     """
 
-    # Create SSL context with certificate verification
-    ssl_context = ssl.create_default_context(
-        ssl.Purpose.SERVER_AUTH,
-        cafile='/etc/redis/tls/ca.crt'
-    )
-
-    # Load client certificate for mutual TLS
-    ssl_context.load_cert_chain(
-        certfile='/etc/redis/tls/redis-client.crt',
-        keyfile='/etc/redis/tls/redis-client.key'
-    )
-
-    # Enforce TLS 1.2 minimum
-    ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
-
     # Create Redis client with TLS
     client = redis.Redis(
         host='redis.example.com',
         port=6379,
         ssl=True,
-        ssl_context=ssl_context,
+        ssl_ca_certs='/etc/redis/tls/ca.crt',
+        ssl_certfile='/etc/redis/tls/redis-client.crt',
+        ssl_keyfile='/etc/redis/tls/redis-client.key',
+        ssl_cert_reqs='required',
+        ssl_min_version=ssl.TLSVersion.TLSv1_2,
         decode_responses=True
     )
 
@@ -273,23 +262,17 @@ def create_tls_connection_pool():
     Reuses connections across multiple operations.
     """
 
-    ssl_context = ssl.create_default_context(
-        ssl.Purpose.SERVER_AUTH,
-        cafile='/etc/redis/tls/ca.crt'
-    )
-
-    ssl_context.load_cert_chain(
-        certfile='/etc/redis/tls/redis-client.crt',
-        keyfile='/etc/redis/tls/redis-client.key'
-    )
-
     # Create connection pool
     pool = redis.ConnectionPool(
         host='redis.example.com',
         port=6379,
         max_connections=20,
         ssl=True,
-        ssl_context=ssl_context
+        ssl_ca_certs='/etc/redis/tls/ca.crt',
+        ssl_certfile='/etc/redis/tls/redis-client.crt',
+        ssl_keyfile='/etc/redis/tls/redis-client.key',
+        ssl_cert_reqs='required',
+        ssl_min_version=ssl.TLSVersion.TLSv1_2
     )
 
     return redis.Redis(connection_pool=pool, decode_responses=True)
@@ -389,7 +372,7 @@ Certificates expire and need to be rotated periodically. Here is a script to aut
 ```bash
 #!/bin/bash
 # rotate-redis-certs.sh
-# Rotates Redis certificates without downtime
+# Rotates Redis certificates and reloads the TLS configuration for new connections
 
 CERT_DIR="/etc/redis/tls"
 BACKUP_DIR="/etc/redis/tls/backup-$(date +%Y%m%d)"
@@ -420,12 +403,13 @@ openssl x509 -req \
 mv "$CERT_DIR/redis-server-new.crt" "$CERT_DIR/redis-server.crt"
 mv "$CERT_DIR/redis-server-new.key" "$CERT_DIR/redis-server.key"
 
-# Reload Redis configuration
+# Reload Redis TLS configuration
 redis-cli --tls \
     --cacert "$CERT_DIR/ca.crt" \
     --cert "$CERT_DIR/redis-client.crt" \
     --key "$CERT_DIR/redis-client.key" \
-    DEBUG RELOAD-TLS
+    CONFIG SET tls-cert-file "$CERT_DIR/redis-server.crt" \
+               tls-key-file "$CERT_DIR/redis-server.key"
 
 echo "Certificate rotation complete"
 ```
