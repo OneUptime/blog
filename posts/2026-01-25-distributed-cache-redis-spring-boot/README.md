@@ -66,17 +66,18 @@ Configure Redis connection in `application.yml`:
 
 ```yaml
 spring:
-  redis:
-    host: localhost
-    port: 6379
-    password: ${REDIS_PASSWORD:}  # Optional password from environment
-    timeout: 2000ms
-    lettuce:
-      pool:
-        max-active: 8      # Maximum connections in the pool
-        max-idle: 8        # Maximum idle connections
-        min-idle: 2        # Minimum idle connections
-        max-wait: -1ms     # Wait indefinitely for connection
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD:}  # Optional password from environment
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8      # Maximum connections in the pool
+          max-idle: 8        # Maximum idle connections
+          min-idle: 2        # Minimum idle connections
+          max-wait: -1ms     # Wait indefinitely for connection
 
   cache:
     type: redis
@@ -158,7 +159,7 @@ public class UserService {
             .orElseThrow(() -> new UserNotFoundException(userId));
     }
 
-    // Cache with a composite key
+    // Cache with a case-normalized key
     @Cacheable(value = "usersByEmail", key = "#email.toLowerCase()")
     public User findByEmail(String email) {
         return userRepository.findByEmail(email.toLowerCase())
@@ -166,7 +167,7 @@ public class UserService {
     }
 
     // Conditional caching - only cache active users
-    @Cacheable(value = "users", key = "#userId", condition = "#result != null && #result.active")
+    @Cacheable(value = "users", key = "#userId", unless = "#result == null || !#result.active")
     public User findActiveUser(Long userId) {
         return userRepository.findByIdAndActiveTrue(userId).orElse(null);
     }
@@ -288,9 +289,9 @@ public class SessionService {
         return (UserSession) redisTemplate.opsForValue().get(key);
     }
 
-    public void extendSession(String sessionId, Duration additionalTime) {
+    public void extendSession(String sessionId, Duration ttl) {
         String key = SESSION_PREFIX + sessionId;
-        redisTemplate.expire(key, additionalTime);
+        redisTemplate.expire(key, ttl);
     }
 
     public void invalidateSession(String sessionId) {
@@ -298,10 +299,19 @@ public class SessionService {
         redisTemplate.delete(key);
     }
 
-    // Bulk operations for efficiency
+    // Bulk operations with SCAN to avoid blocking Redis on large keyspaces
     public void invalidateAllUserSessions(Long userId) {
-        Set<String> keys = redisTemplate.keys(SESSION_PREFIX + "user:" + userId + ":*");
-        if (keys != null && !keys.isEmpty()) {
+        ScanOptions options = ScanOptions.scanOptions()
+            .match(SESSION_PREFIX + "user:" + userId + ":*")
+            .count(1000)
+            .build();
+
+        List<String> keys = new ArrayList<>();
+        try (Cursor<String> cursor = redisTemplate.scan(options)) {
+            cursor.forEachRemaining(keys::add);
+        }
+
+        if (!keys.isEmpty()) {
             redisTemplate.delete(keys);
         }
     }
