@@ -87,13 +87,13 @@ processors:
         from_attribute: host.name
         action: upsert
       - key: k8s.node.name
-        value: ${K8S_NODE_NAME}
+        value: ${env:K8S_NODE_NAME}
         action: upsert
 
 exporters:
   # Send to gateway via OTLP
   otlp:
-    endpoint: "gateway-collector.observability.svc.cluster.local:4317"
+    endpoint: "otel-gateway.observability.svc.cluster.local:4317"
     tls:
       insecure: true  # Use TLS in production
     retry_on_failure:
@@ -121,6 +121,8 @@ service:
 ## Gateway Collector Configuration
 
 The gateway collector handles the heavy processing and exports to your backend.
+
+If you run multiple gateway replicas with tail sampling enabled, use the trace-ID load balancing configuration shown later so each trace is routed to one gateway instance.
 
 ```yaml
 # gateway-collector-config.yaml
@@ -167,17 +169,17 @@ processors:
 
   # Filter out noisy spans
   filter:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/health"'
-        - 'attributes["http.target"] == "/ready"'
-        - 'attributes["http.target"] == "/metrics"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["url.path"] == "/health"'
+      - 'span.attributes["url.path"] == "/ready"'
+      - 'span.attributes["url.path"] == "/metrics"'
 
   # Add environment-level attributes
   resource:
     attributes:
       - key: deployment.environment
-        value: ${DEPLOY_ENV}
+        value: ${env:DEPLOY_ENV}
         action: upsert
       - key: collector.gateway
         value: "true"
@@ -187,7 +189,7 @@ exporters:
   otlphttp:
     endpoint: "https://oneuptime.com/otlp"
     headers:
-      "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
+      "x-oneuptime-token": "${env:ONEUPTIME_TOKEN}"
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -342,9 +344,9 @@ spec:
 
 ## Load Balancing Strategies
 
-### Round Robin (Default)
+### Service Load Balancing (Default)
 
-The Kubernetes Service provides round-robin load balancing by default. This works well for stateless processing.
+The Kubernetes Service load-balances traffic across gateway pods. This works well for stateless processing, but not for tail sampling because spans from the same trace can land on different gateway instances.
 
 ### Consistent Hashing for Tail Sampling
 
@@ -447,7 +449,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     # Your existing pipelines
@@ -460,7 +467,7 @@ Key metrics to watch:
 | `otelcol_receiver_accepted_spans` | Spans received | Sudden drop |
 | `otelcol_exporter_sent_spans` | Spans exported | Divergence from received |
 | `otelcol_exporter_queue_size` | Current queue size | > 80% capacity |
-| `otelcol_processor_dropped_spans` | Dropped spans | > 0 sustained |
+| `otelcol_exporter_enqueue_failed_spans` | Spans that failed to enter the exporter queue | > 0 sustained |
 
 ## Scaling Guidelines
 
@@ -482,4 +489,4 @@ Key implementation points:
 - Enable persistent queuing for reliability
 - Monitor gateway health with internal metrics
 
-This architecture scales from small deployments to handling millions of spans per second.
+With the right sizing and tuning, this architecture can scale from small deployments to very high telemetry volumes.
