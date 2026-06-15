@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix 'relation is not a table' errors in P
 
 ---
 
-The "relation is not a table" error occurs when you try to perform table-specific operations on database objects that are not actually tables. This commonly happens when working with views, materialized views, foreign tables, or sequences. Understanding the different relation types in PostgreSQL will help you avoid and fix these errors.
+The "relation is not a table" error occurs when you try to perform table-specific operations on database objects that are not actually tables. This commonly happens when working with views, materialized views, or sequences. Some operations on foreign tables also depend on the foreign data wrapper. Understanding the different relation types in PostgreSQL will help you avoid and fix these errors.
 
 ---
 
@@ -347,6 +347,7 @@ SELECT get_relation_type('my_relation');
 # Python example: Perform operations based on relation type
 
 import psycopg2
+from psycopg2 import sql
 
 def safe_truncate(conn, relation_name):
     """Truncate only if the relation is a table"""
@@ -366,13 +367,17 @@ def safe_truncate(conn, relation_name):
     relkind = result[0]
 
     if relkind == 'r':  # Regular table
-        cur.execute(f"TRUNCATE {relation_name}")
+        cur.execute(
+            sql.SQL("TRUNCATE {}").format(sql.Identifier(relation_name))
+        )
         conn.commit()
         return f"Truncated table {relation_name}"
     elif relkind == 'v':  # View
         raise ValueError(f"Cannot truncate view '{relation_name}'. Truncate underlying tables instead.")
     elif relkind == 'm':  # Materialized view
-        cur.execute(f"REFRESH MATERIALIZED VIEW {relation_name}")
+        cur.execute(
+            sql.SQL("REFRESH MATERIALIZED VIEW {}").format(sql.Identifier(relation_name))
+        )
         conn.commit()
         return f"Refreshed materialized view {relation_name}"
     else:
@@ -394,15 +399,16 @@ except ValueError as e:
 | Operation | Table | View | Mat. View | Foreign Table | Sequence |
 |-----------|-------|------|-----------|---------------|----------|
 | SELECT | Yes | Yes | Yes | Yes | Yes |
-| INSERT | Yes | Maybe* | No | Yes | No |
-| UPDATE | Yes | Maybe* | No | Yes | No |
-| DELETE | Yes | Maybe* | No | Yes | No |
-| TRUNCATE | Yes | No | No | No | No |
+| INSERT | Yes | Maybe* | No | Maybe** | No |
+| UPDATE | Yes | Maybe* | No | Maybe** | No |
+| DELETE | Yes | Maybe* | No | Maybe** | No |
+| TRUNCATE | Yes | No | No | Maybe** | No |
 | VACUUM | Yes | No | Yes | No | No |
-| ANALYZE | Yes | No | Yes | Yes | No |
+| ANALYZE | Yes | No | Yes | Maybe** | No |
 | REFRESH | No | No | Yes | No | No |
 
 *Views are updatable if they are simple enough or have INSTEAD OF triggers
+**Foreign table support depends on the foreign data wrapper. For example, `postgres_fdw` supports INSERT, UPDATE, DELETE, and TRUNCATE by default, while ANALYZE is supported only when the wrapper can collect statistics.
 
 ---
 
