@@ -36,14 +36,14 @@ fn main() {
     // Sequential - uses one core
     let sum_sequential: i64 = numbers.iter().sum();
 
-    // Parallel - uses all available cores
+    // Parallel - uses Rayon's worker threads
     let sum_parallel: i64 = numbers.par_iter().sum();
 
     println!("Sum: {}", sum_parallel);
 }
 ```
 
-Rayon automatically splits the work into chunks and distributes them across a thread pool. The default pool size matches your CPU core count, but you can configure it if needed.
+Rayon automatically splits the work into chunks and distributes them across a thread pool. By default, Rayon currently uses the `RAYON_NUM_THREADS` environment variable if it is set, or the number of logical CPUs otherwise, but you can configure the pool size if needed.
 
 ## Processing Records in Parallel
 
@@ -219,6 +219,7 @@ The `into_par_iter()` variant takes ownership of the collection, allowing Rayon 
 Sometimes you want to limit parallelism to avoid overwhelming downstream systems or to leave CPU headroom for other processes:
 
 ```rust
+use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
 
 fn main() {
@@ -320,7 +321,7 @@ On my 8-core machine, the parallel version runs about 5x faster for this workloa
 
 **Too-small workloads**: If each item takes microseconds to process, the overhead of parallelism dominates. Consider batching items or sticking with sequential processing.
 
-**Order sensitivity**: Parallel iterators don't preserve order by default. If you need ordered results, use `par_iter().enumerate()` and sort afterward, or accept the performance cost of ordered parallel iteration.
+**Order sensitivity**: Parallel work does not run in input order, even when ordered sources can still collect results in their original order. If side effects or reductions depend on order, use order-aware operations like `find_first`, carry indices with `enumerate()`, or sort afterward.
 
 **Memory allocation pressure**: Creating millions of intermediate allocations in parallel can thrash the allocator. Pre-allocate where possible and prefer in-place transformations.
 
