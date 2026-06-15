@@ -8,7 +8,7 @@ Description: Learn how to configure HTTP keep-alive to reduce connection overhea
 
 ---
 
-Every HTTP request traditionally requires a new TCP connection. That means a three-way handshake, TLS negotiation, and slow-start for every single request. For a page loading 50 resources, that is 50 connection setups. HTTP keep-alive solves this by reusing connections across multiple requests, eliminating the overhead for subsequent requests.
+Without persistent connections, every HTTP request requires a new TCP connection. That means a three-way handshake, TLS negotiation, and slow-start for every single request. For a page loading 50 resources, that can mean 50 connection setups. HTTP keep-alive solves this by reusing connections across multiple requests, eliminating the overhead for subsequent requests.
 
 This guide covers practical keep-alive configuration for servers, clients, and proxies.
 
@@ -102,13 +102,14 @@ http {
 ```nginx
 # High-traffic server configuration
 
+events {
+    worker_connections 4096;       # Per worker
+}
+
 http {
     # Client-side keep-alive
     keepalive_timeout 75s;         # Slightly longer than default
     keepalive_requests 10000;      # High limit for API servers
-
-    # Connection settings
-    worker_connections 4096;       # Per worker
 
     # Buffer sizes
     client_body_buffer_size 16K;
@@ -168,7 +169,7 @@ const server = http.createServer((req, res) => {
 });
 
 // Configure keep-alive settings
-server.keepAliveTimeout = 65000;    // 65 seconds (match Nginx default)
+server.keepAliveTimeout = 65000;    // 65 seconds (match the Nginx setting above)
 server.headersTimeout = 66000;      // Slightly higher than keepAliveTimeout
 server.maxHeadersCount = 100;
 
@@ -411,6 +412,7 @@ data3 = fetch_data('/orders')    # Reuses connection
 package main
 
 import (
+    "io"
     "net"
     "net/http"
     "time"
@@ -460,7 +462,7 @@ func fetchData(url string) ([]byte, error) {
 ## Monitoring Keep-Alive Effectiveness
 
 ```bash
-# Check keep-alive with curl
+# Set TCP keepalive probe timing and inspect connection headers with curl
 curl -v --keepalive-time 60 https://api.example.com/endpoint 2>&1 | grep -i 'connection\|keep-alive'
 
 # Multiple requests on same connection
@@ -511,10 +513,10 @@ HTTP keep-alive significantly reduces latency and server load by reusing connect
 | Idle connections | 32-64 upstream | 10-50 |
 
 Key points:
-- Match keep-alive timeout between client and server
+- Keep client idle timeouts slightly lower than server or proxy idle timeouts where possible
 - Ensure reverse proxies pass keep-alive properly (proxy_http_version 1.1)
 - Monitor connection reuse rates
 - Consider HTTP/2 for multiplexed connections on a single connection
-- Set timeouts higher than any intermediate proxy timeouts
+- Coordinate timeouts with any intermediate proxies or load balancers
 
 Always test keep-alive configuration under load to ensure connections are actually being reused and not accumulating idle connections that consume memory.
