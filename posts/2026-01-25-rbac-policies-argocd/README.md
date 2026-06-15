@@ -38,9 +38,11 @@ Can view everything but change nothing:
 
 ```text
 p, role:readonly, applications, get, */*, allow
+p, role:readonly, applicationsets, get, */*, allow
 p, role:readonly, certificates, get, *, allow
 p, role:readonly, clusters, get, *, allow
 p, role:readonly, repositories, get, *, allow
+p, role:readonly, write-repositories, get, *, allow
 p, role:readonly, projects, get, *, allow
 p, role:readonly, accounts, get, *, allow
 p, role:readonly, gpgkeys, get, *, allow
@@ -52,15 +54,38 @@ p, role:readonly, logs, get, */*, allow
 Full access to everything:
 
 ```text
-p, role:admin, applications, *, */*, allow
-p, role:admin, clusters, *, *, allow
-p, role:admin, repositories, *, *, allow
-p, role:admin, projects, *, *, allow
-p, role:admin, accounts, *, *, allow
-p, role:admin, gpgkeys, *, *, allow
-p, role:admin, certificates, *, *, allow
-p, role:admin, logs, get, */*, allow
+p, role:admin, applications, create, */*, allow
+p, role:admin, applications, update, */*, allow
+p, role:admin, applications, update/*, */*, allow
+p, role:admin, applications, delete, */*, allow
+p, role:admin, applications, delete/*, */*, allow
+p, role:admin, applications, sync, */*, allow
+p, role:admin, applications, override, */*, allow
+p, role:admin, applications, action/*, */*, allow
+p, role:admin, applicationsets, get, */*, allow
+p, role:admin, applicationsets, create, */*, allow
+p, role:admin, applicationsets, update, */*, allow
+p, role:admin, applicationsets, delete, */*, allow
+p, role:admin, certificates, create, *, allow
+p, role:admin, certificates, update, *, allow
+p, role:admin, certificates, delete, *, allow
+p, role:admin, clusters, create, *, allow
+p, role:admin, clusters, update, *, allow
+p, role:admin, clusters, delete, *, allow
+p, role:admin, repositories, create, *, allow
+p, role:admin, repositories, update, *, allow
+p, role:admin, repositories, delete, *, allow
+p, role:admin, write-repositories, create, *, allow
+p, role:admin, write-repositories, update, *, allow
+p, role:admin, write-repositories, delete, *, allow
+p, role:admin, projects, create, *, allow
+p, role:admin, projects, update, *, allow
+p, role:admin, projects, delete, *, allow
+p, role:admin, accounts, update, *, allow
+p, role:admin, gpgkeys, create, *, allow
+p, role:admin, gpgkeys, delete, *, allow
 p, role:admin, exec, create, */*, allow
+g, role:admin, role:readonly
 ```
 
 ## Configuring RBAC
@@ -81,9 +106,6 @@ data:
   policy.csv: |
     # Grant admin to specific user
     g, admin@example.com, role:admin
-
-    # Grant readonly to all authenticated users (default)
-    g, *, role:readonly
 
   # Scopes to use from OIDC tokens
   scopes: '[groups, email]'
@@ -268,20 +290,22 @@ data:
 
 ## Denying Access
 
-Explicitly deny access with the deny effect:
+Explicitly deny access with the deny effect. Any matching `deny` wins over a matching `allow`, so avoid wildcard denies when you need exceptions:
 
 ```yaml
 data:
+  policy.default: role:authenticated
+
   policy.csv: |
     # Everyone can view
     p, role:authenticated, applications, get, */*, allow
 
-    # But nobody can delete production apps except admins
-    p, *, applications, delete, */prod-*, deny
+    # Developers cannot delete production apps
+    p, role:developer, applications, delete, */prod-*, deny
     p, role:admin, applications, delete, */prod-*, allow
 
-    # Deny exec for everyone except SRE
-    p, *, exec, create, */*, deny
+    # Deny exec for developers, allow it for SRE
+    p, role:developer, exec, create, */*, deny
     p, role:sre, exec, create, */*, allow
 ```
 
