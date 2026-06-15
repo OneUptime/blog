@@ -30,7 +30,7 @@ Remote state provides:
 
 AWS S3 is the most common choice for teams on AWS. Here's a production-ready setup:
 
-### Step 1: Create the S3 Bucket and DynamoDB Table
+### Step 1: Create the S3 Bucket
 
 First, create the infrastructure for state storage. This is typically done once, manually or with a separate Terraform configuration:
 
@@ -87,29 +87,8 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   restrict_public_buckets = true
 }
 
-# DynamoDB table for state locking
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-state-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-
-  tags = {
-    Name    = "Terraform Lock Table"
-    Purpose = "terraform-locking"
-  }
-}
-
 output "state_bucket_name" {
   value = aws_s3_bucket.terraform_state.id
-}
-
-output "lock_table_name" {
-  value = aws_dynamodb_table.terraform_locks.name
 }
 ```
 
@@ -126,7 +105,7 @@ terraform {
     key            = "prod/infrastructure/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-state-locks"
+    use_lockfile   = true
 
     # Optional: Use specific KMS key
     # kms_key_id     = "alias/terraform-state"
@@ -185,6 +164,7 @@ terraform {
 
     # Enable state locking (built-in with Azure)
     use_azuread_auth     = true
+    use_cli              = true
   }
 }
 ```
@@ -206,7 +186,8 @@ az storage account create \
 # Create container
 az storage container create \
   --name tfstate \
-  --account-name tfstatecompany
+  --account-name tfstatecompany \
+  --auth-mode login
 ```
 
 ## Google Cloud Storage Backend
@@ -337,7 +318,7 @@ terraform {
     # Only specify static values here
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-state-locks"
+    use_lockfile   = true
   }
 }
 ```
@@ -357,7 +338,7 @@ bucket         = "mycompany-terraform-state"
 key            = "prod/infrastructure/terraform.tfstate"
 region         = "us-east-1"
 encrypt        = true
-dynamodb_table = "terraform-state-locks"
+use_lockfile   = true
 ```
 
 ```bash
@@ -414,10 +395,18 @@ Example IAM policy for Terraform state access:
       "Effect": "Allow",
       "Action": [
         "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::mycompany-terraform-state/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
         "s3:PutObject",
         "s3:DeleteObject"
       ],
-      "Resource": "arn:aws:s3:::mycompany-terraform-state/*"
+      "Resource": "arn:aws:s3:::mycompany-terraform-state/*.tflock"
     },
     {
       "Effect": "Allow",
@@ -425,15 +414,6 @@ Example IAM policy for Terraform state access:
         "s3:ListBucket"
       ],
       "Resource": "arn:aws:s3:::mycompany-terraform-state"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "dynamodb:GetItem",
-        "dynamodb:PutItem",
-        "dynamodb:DeleteItem"
-      ],
-      "Resource": "arn:aws:dynamodb:*:*:table/terraform-state-locks"
     }
   ]
 }
@@ -441,4 +421,4 @@ Example IAM policy for Terraform state access:
 
 ---
 
-Remote state is foundational for production Terraform. Set it up correctly from the start. The combination of S3 (or equivalent) for storage, encryption for security, versioning for recovery, and DynamoDB for locking gives you a solid foundation for team collaboration.
+Remote state is foundational for production Terraform. Set it up correctly from the start. The combination of S3 (or equivalent) for storage, encryption for security, versioning for recovery, and state locking gives you a solid foundation for team collaboration.
