@@ -53,14 +53,14 @@ Add ShedLock to your project. This example uses JDBC with PostgreSQL, but ShedLo
 <dependency>
     <groupId>net.javacrumbs.shedlock</groupId>
     <artifactId>shedlock-spring</artifactId>
-    <version>5.10.0</version>
+    <version>7.7.0</version>
 </dependency>
 
 <!-- JDBC lock provider - use your database -->
 <dependency>
     <groupId>net.javacrumbs.shedlock</groupId>
     <artifactId>shedlock-provider-jdbc-template</artifactId>
-    <version>5.10.0</version>
+    <version>7.7.0</version>
 </dependency>
 ```
 
@@ -68,8 +68,8 @@ For Gradle users:
 
 ```groovy
 // build.gradle
-implementation 'net.javacrumbs.shedlock:shedlock-spring:5.10.0'
-implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:5.10.0'
+implementation 'net.javacrumbs.shedlock:shedlock-spring:7.7.0'
+implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.7.0'
 ```
 
 ### Database Schema
@@ -107,6 +107,7 @@ import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
 import net.javacrumbs.shedlock.spring.annotation.EnableSchedulerLock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import javax.sql.DataSource;
@@ -143,6 +144,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.List;
 
 @Component
 public class ReportScheduler {
@@ -247,7 +249,7 @@ For applications already using Redis, it makes sense to use it for lock storage:
 <dependency>
     <groupId>net.javacrumbs.shedlock</groupId>
     <artifactId>shedlock-provider-redis-spring</artifactId>
-    <version>5.10.0</version>
+    <version>7.7.0</version>
 </dependency>
 ```
 
@@ -282,19 +284,30 @@ Testing locked scheduled tasks requires some setup. You want to verify the task 
 
 ```java
 // ReportSchedulerTest.java
-@SpringBootTest
-@TestPropertySource(properties = {
-    "spring.main.allow-bean-definition-overriding=true"
-})
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
 class ReportSchedulerTest {
 
-    @MockBean
+    @Mock
     private CustomerRepository customerRepository;
 
-    @MockBean
+    @Mock
     private EmailService emailService;
 
-    @Autowired
+    @InjectMocks
     private ReportScheduler reportScheduler;
 
     @Test
@@ -361,17 +374,20 @@ public void processOrders() {
 
 ### Handling Long-Running Tasks
 
-For tasks that might exceed `lockAtMostFor`, consider extending the lock programmatically:
+For tasks that might exceed `lockAtMostFor`, consider extending the lock programmatically if your lock provider supports it:
 
 ```java
-@Autowired
-private LockProvider lockProvider;
+import net.javacrumbs.shedlock.core.LockExtender;
+import java.time.Duration;
+
+import static java.time.Duration.ZERO;
 
 @Scheduled(cron = "0 0 3 * * *")
 @SchedulerLock(name = "longRunningTask", lockAtMostFor = "4h")
 public void longRunningTask() {
-    // For very long tasks, consider breaking into smaller chunks
-    // or using a different approach like job queues
+    // Do a chunk of work, then extend the active lock before it expires
+    LockExtender.extendActiveLock(Duration.ofHours(1), ZERO);
+    // Continue processing
 }
 ```
 
@@ -397,7 +413,7 @@ This gives running tasks time to complete before the instance shuts down.
 
 **Lock duration too short**: If `lockAtMostFor` is shorter than task execution time, another instance might start the same task while the first is still running.
 
-**Missing database table**: ShedLock fails silently if the `shedlock` table doesn't exist. Verify your migration ran successfully.
+**Missing database table**: ShedLock cannot acquire JDBC locks if the `shedlock` table doesn't exist. Verify your migration ran successfully and check the `net.javacrumbs.shedlock` logs when troubleshooting.
 
 **Time zone issues**: Cron expressions use the server's time zone by default. Be explicit with `@Scheduled(cron = "...", zone = "UTC")`.
 
@@ -418,5 +434,5 @@ For applications with more complex scheduling needs - job dependencies, retries,
 ---
 
 **Related Reading:**
-- [Spring Boot Scheduling Documentation](https://docs.spring.io/spring-boot/docs/current/reference/html/features.html#features.task-execution-and-scheduling)
+- [Spring Boot Scheduling Documentation](https://docs.spring.io/spring-boot/reference/features/task-execution-and-scheduling.html)
 - [ShedLock GitHub Repository](https://github.com/lukas-krecan/ShedLock)
