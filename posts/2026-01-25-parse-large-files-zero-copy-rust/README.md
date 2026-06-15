@@ -30,7 +30,7 @@ Zero-copy parsing avoids this by:
 2. Returning references (`&str` or `&[u8]`) into the mapped region
 3. Only allocating when you genuinely need owned data
 
-The result is constant memory usage regardless of file size, and parsing speeds that approach raw disk throughput.
+The result is constant heap usage for the file contents, and parsing speeds that approach raw disk throughput.
 
 ## Memory-Mapped Files with memmap2
 
@@ -50,8 +50,8 @@ fn main() -> std::io::Result<()> {
     println!("File size: {} bytes", mmap.len());
 
     // Access bytes without copying
-    let first_kilobyte = &mmap[..1024];
-    process_chunk(first_kilobyte);
+    let first_chunk = &mmap[..mmap.len().min(1024)];
+    process_chunk(first_chunk);
 
     Ok(())
 }
@@ -141,7 +141,7 @@ fn main() {
 }
 ```
 
-The `Vec` allocation for storing field references is unavoidable, but the field data itself is never copied. For even tighter control, you could use a fixed-size array if you know the column count at compile time.
+This example still allocates a `Vec` to store field references, but the field data itself is never copied. For even tighter control, you could use a fixed-size array if you know the column count at compile time.
 
 ## Handling UTF-8 Validation
 
@@ -153,7 +153,7 @@ If you trust the input encoding, you can skip validation:
 // Only use this if you're certain the input is valid UTF-8
 fn process_line_unchecked(line: &[u8]) {
     let s = unsafe { std::str::from_utf8_unchecked(line) };
-    // Work with s knowing it might be invalid UTF-8
+    // Work with s only because you've guaranteed line is valid UTF-8
 }
 ```
 
@@ -217,7 +217,7 @@ The key insight: defer cloning until absolutely necessary. If you only need to c
 
 ## Putting It Together
 
-Here's a complete example that parses a large log file, filters lines by pattern, and extracts timestamps - all with minimal allocations:
+Here's a complete example that parses a large log file and filters lines by pattern - all with minimal allocations:
 
 ```rust
 use memchr::memchr_iter;
@@ -232,9 +232,7 @@ fn main() -> std::io::Result<()> {
     let mut error_count = 0;
     let mut line_start = 0;
 
-    for newline_pos in memchr_iter(b'\n', &mmap) {
-        let line = &mmap[line_start..newline_pos];
-
+    let mut process_matching_line = |line: &[u8]| {
         // Check for pattern using SIMD search - no string conversion needed
         if memchr::memmem::find(line, pattern).is_some() {
             error_count += 1;
@@ -244,8 +242,18 @@ fn main() -> std::io::Result<()> {
                 eprintln!("{}", s);
             }
         }
+    };
+
+    for newline_pos in memchr_iter(b'\n', &mmap) {
+        let line = &mmap[line_start..newline_pos];
+        process_matching_line(line);
 
         line_start = newline_pos + 1;
+    }
+
+    // Handle final line if file doesn't end with newline
+    if line_start < mmap.len() {
+        process_matching_line(&mmap[line_start..]);
     }
 
     println!("Total errors: {}", error_count);
@@ -257,6 +265,6 @@ This processes multi-gigabyte files using roughly 0 bytes of heap allocation for
 
 ## Wrapping Up
 
-Zero-copy parsing in Rust combines three ingredients: memory-mapped I/O for demand-paging large files, SIMD-accelerated byte scanning via `memchr`, and Rust's borrow checker ensuring your slices remain valid. The result is file processing that scales to arbitrary sizes while keeping memory usage constant.
+Zero-copy parsing in Rust combines three ingredients: memory-mapped I/O for demand-paging large files, SIMD-accelerated byte scanning via `memchr`, and Rust's borrow checker ensuring your slices remain valid. The result is file processing that scales to very large files while keeping heap usage for file contents constant.
 
 Start with memory-mapping your input, iterate using `memchr`, and resist the urge to clone until you truly need owned data. Your log aggregators, data pipelines, and analysis tools will thank you.
