@@ -26,7 +26,7 @@ sequenceDiagram
     PostgreSQL->>Client: Connection established
 ```
 
-Both sides verify each other's certificate against a trusted Certificate Authority (CA). PostgreSQL extracts the username from the certificate's Common Name (CN) or Subject Alternative Name (SAN).
+Both sides verify each other's certificate against a trusted Certificate Authority (CA). PostgreSQL matches the requested database username against the client certificate's Common Name (CN), or against a mapped certificate name when `pg_ident.conf` is used.
 
 ## Setting Up the Certificate Authority
 
@@ -37,8 +37,40 @@ First, create a private CA to sign both server and client certificates.
 # setup_ca.sh - Create a Certificate Authority
 
 CA_DIR="/etc/postgresql/ssl/ca"
-mkdir -p "${CA_DIR}"
+mkdir -p "${CA_DIR}/certs" "${CA_DIR}/newcerts"
 cd "${CA_DIR}"
+touch index.txt
+echo 1000 > serial
+echo 1000 > crlnumber
+
+cat > openssl.cnf << EOF
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+dir = ${CA_DIR}
+certs = \$dir/certs
+new_certs_dir = \$dir/newcerts
+database = \$dir/index.txt
+serial = \$dir/serial
+crlnumber = \$dir/crlnumber
+certificate = \$dir/ca.crt
+private_key = \$dir/ca.key
+default_md = sha256
+default_days = 365
+default_crl_days = 30
+policy = policy_any
+unique_subject = no
+
+[ policy_any ]
+countryName = optional
+stateOrProvinceName = optional
+localityName = optional
+organizationName = optional
+organizationalUnitName = optional
+commonName = supplied
+emailAddress = optional
+EOF
 
 # Generate CA private key
 
@@ -49,6 +81,8 @@ openssl req -new -x509 \
     -days 3650 \
     -key ca.key \
     -out ca.crt \
+    -addext "basicConstraints = critical, CA:TRUE" \
+    -addext "keyUsage = critical, keyCertSign, cRLSign" \
     -subj "/C=US/ST=California/L=San Francisco/O=MyCompany/CN=PostgreSQL CA"
 
 # Secure the CA key
@@ -85,6 +119,7 @@ openssl req -new \
 
 # Create extension file for SAN (Subject Alternative Names)
 cat > server_ext.cnf << EOF
+[server_cert]
 basicConstraints = CA:FALSE
 keyUsage = digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
@@ -96,15 +131,15 @@ DNS.2 = localhost
 IP.1 = 127.0.0.1
 EOF
 
-# Sign with CA
-openssl x509 -req \
+# Sign with CA and record the certificate in the CA database
+openssl ca -batch \
+    -config "${CA_DIR}/openssl.cnf" \
+    -extensions server_cert \
+    -extfile server_ext.cnf \
     -in server.csr \
-    -CA "${CA_DIR}/ca.crt" \
-    -CAkey "${CA_DIR}/ca.key" \
-    -CAcreateserial \
     -out server.crt \
     -days 365 \
-    -extfile server_ext.cnf
+    -notext
 
 # Set ownership for PostgreSQL
 chown postgres:postgres server.key server.crt
@@ -132,6 +167,7 @@ cd "${CLIENT_DIR}/${USERNAME}"
 
 # Generate client private key
 openssl genrsa -out "${USERNAME}.key" 2048
+chmod 600 "${USERNAME}.key"
 
 # Create certificate signing request
 # The CN (Common Name) will be used as the PostgreSQL username
@@ -142,23 +178,26 @@ openssl req -new \
 
 # Create extension file
 cat > client_ext.cnf << EOF
+[client_cert]
 basicConstraints = CA:FALSE
 keyUsage = digitalSignature
 extendedKeyUsage = clientAuth
 EOF
 
-# Sign with CA
-openssl x509 -req \
+# Sign with CA and record the certificate in the CA database
+openssl ca -batch \
+    -config "${CA_DIR}/openssl.cnf" \
+    -extensions client_cert \
+    -extfile client_ext.cnf \
     -in "${USERNAME}.csr" \
-    -CA "${CA_DIR}/ca.crt" \
-    -CAkey "${CA_DIR}/ca.key" \
-    -CAcreateserial \
     -out "${USERNAME}.crt" \
     -days 365 \
-    -extfile client_ext.cnf
+    -notext
 
-# Create PKCS12 bundle for easy distribution
+# Create PKCS12 bundle for easy distribution.
+# pgJDBC expects the PKCS12 alias to be "user".
 openssl pkcs12 -export \
+    -name user \
     -in "${USERNAME}.crt" \
     -inkey "${USERNAME}.key" \
     -out "${USERNAME}.p12" \
@@ -183,8 +222,8 @@ ssl_ca_file = '/etc/postgresql/ssl/ca/ca.crt'
 # Require client certificates
 ssl_crl_file = ''  # Certificate Revocation List (optional but recommended)
 
-# Cipher settings (use strong ciphers only)
-ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL'
+# Cipher settings for TLS 1.2 and older (TLS 1.3 ciphers are configured separately)
+ssl_ciphers = 'HIGH:!aNULL'
 ssl_prefer_server_ciphers = on
 ssl_min_protocol_version = 'TLSv1.2'
 ```
@@ -199,15 +238,15 @@ Configure host-based authentication to require client certificates.
 # Local connections - no SSL needed
 local   all         postgres                    peer
 
-# SSL with client certificate required
-# 'cert' method extracts username from certificate CN
-hostssl all         all         0.0.0.0/0       cert
-
-# Alternative: require cert but also map to specific users
-hostssl all         all         192.168.1.0/24  cert clientcert=verify-full
-
 # For backwards compatibility, allow password auth on specific network
 hostssl all         all         10.0.0.0/8      scram-sha-256
+
+# Require both a valid client certificate and password on a specific network
+hostssl all         all         192.168.1.0/24  scram-sha-256 clientcert=verify-full
+
+# SSL with client certificate required
+# 'cert' method matches the requested username against the certificate CN
+hostssl all         all         0.0.0.0/0       cert
 ```
 
 ### Certificate Name Mapping
@@ -259,12 +298,11 @@ psql "host=db.example.com dbname=mydb user=myuser \
 
 ```python
 import psycopg2
-import ssl
 
 # Connection with client certificate
 conn = psycopg2.connect(
     host="db.example.com",
-    database="mydb",
+    dbname="mydb",
     user="myuser",
     sslmode="verify-full",
     sslcert="/path/to/client.crt",
@@ -274,6 +312,7 @@ conn = psycopg2.connect(
 
 # Verify SSL is in use
 cursor = conn.cursor()
+cursor.execute("CREATE EXTENSION IF NOT EXISTS sslinfo")
 cursor.execute("SELECT ssl_is_used()")
 print(f"SSL enabled: {cursor.fetchone()[0]}")
 ```
@@ -284,19 +323,23 @@ print(f"SSL enabled: {cursor.fetchone()[0]}")
 const { Client } = require('pg');
 const fs = require('fs');
 
-const client = new Client({
-    host: 'db.example.com',
-    database: 'mydb',
-    user: 'myuser',
-    ssl: {
-        rejectUnauthorized: true,
-        ca: fs.readFileSync('/path/to/ca.crt').toString(),
-        key: fs.readFileSync('/path/to/client.key').toString(),
-        cert: fs.readFileSync('/path/to/client.crt').toString()
-    }
-});
+async function main() {
+    const client = new Client({
+        host: 'db.example.com',
+        database: 'mydb',
+        user: 'myuser',
+        ssl: {
+            rejectUnauthorized: true,
+            ca: fs.readFileSync('/path/to/ca.crt').toString(),
+            key: fs.readFileSync('/path/to/client.key').toString(),
+            cert: fs.readFileSync('/path/to/client.crt').toString()
+        }
+    });
 
-await client.connect();
+    await client.connect();
+}
+
+main().catch(console.error);
 ```
 
 ### Using JDBC (Java)
@@ -309,8 +352,8 @@ Properties props = new Properties();
 props.setProperty("user", "myuser");
 props.setProperty("ssl", "true");
 props.setProperty("sslmode", "verify-full");
-props.setProperty("sslcert", "/path/to/client.crt");
-props.setProperty("sslkey", "/path/to/client.key");
+props.setProperty("sslkey", "/path/to/client.p12");
+props.setProperty("sslpassword", "changeme");
 props.setProperty("sslrootcert", "/path/to/ca.crt");
 
 Connection conn = DriverManager.getConnection(
@@ -332,21 +375,13 @@ CERT_TO_REVOKE="$1"
 
 cd "${CA_DIR}"
 
-# Initialize index if it does not exist
-if [ ! -f index.txt ]; then
-    touch index.txt
-    echo 1000 > serial
-fi
-
 # Revoke the certificate
 openssl ca -revoke "${CERT_TO_REVOKE}" \
-    -keyfile ca.key \
-    -cert ca.crt
+    -config openssl.cnf
 
 # Generate new CRL
 openssl ca -gencrl \
-    -keyfile ca.key \
-    -cert ca.crt \
+    -config openssl.cnf \
     -out crl.pem
 
 # Copy CRL to PostgreSQL
@@ -411,6 +446,9 @@ done
 ```sql
 -- Check if SSL is enabled
 SHOW ssl;
+
+-- Install the sslinfo extension before using ssl_* functions
+CREATE EXTENSION IF NOT EXISTS sslinfo;
 
 -- View SSL connection details
 SELECT
