@@ -39,7 +39,7 @@ FROM products;
 SELECT name, attributes->'ratings'->1 AS second_rating
 FROM products;
 
--- Get the last element using negative index (PostgreSQL 12+)
+-- Get the last element using negative index
 SELECT name, attributes->'tags'->-1 AS last_tag
 FROM products;
 ```
