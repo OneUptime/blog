@@ -69,7 +69,7 @@ graph TB
     ST -->|read blocks| S3
     C -->|compact & downsample| S3
     R -->|evaluate rules| Q
-    R -->|upload alerts| S3
+    R -->|upload rule blocks| S3
 
     QF --> Q
     G --> QF
@@ -88,12 +88,11 @@ config:
   bucket: "thanos-metrics"
   endpoint: "s3.us-east-1.amazonaws.com"
   region: "us-east-1"
-  access_key: "${AWS_ACCESS_KEY_ID}"
-  secret_key: "${AWS_SECRET_ACCESS_KEY}"
+  # Use the AWS SDK credential chain, including environment variables,
+  # shared config files, web identity, and IAM roles.
+  aws_sdk_auth: true
   insecure: false
   signature_version2: false
-  # Optional: Use IAM role instead of credentials
-  # aws_sdk_auth: true
   sse_config:
     type: "SSE-S3"
 ```
@@ -103,7 +102,8 @@ config:
 type: GCS
 config:
   bucket: "thanos-metrics"
-  service_account: "/var/secrets/gcs-service-account.json"
+  # Mount the JSON key and set GOOGLE_APPLICATION_CREDENTIALS to this path.
+  # Or inline the service account JSON in the service_account field.
 ```
 
 ```yaml
@@ -281,9 +281,9 @@ spec:
           args:
             - query
             # Connect to sidecars for recent data
-            - '--store=dnssrv+_grpc._tcp.prometheus-sidecar.monitoring.svc.cluster.local'
+            - '--endpoint=dnssrv+_grpc._tcp.prometheus-sidecar.monitoring.svc.cluster.local'
             # Connect to Store Gateway for historical data
-            - '--store=dnssrv+_grpc._tcp.thanos-store.monitoring.svc.cluster.local'
+            - '--endpoint=dnssrv+_grpc._tcp.thanos-store.monitoring.svc.cluster.local'
             # Enable deduplication
             - '--query.replica-label=replica'
             # Auto-downsampling for long time ranges
@@ -584,7 +584,7 @@ services:
       - '--objstore.config-file=/etc/thanos/bucket.yml'
       - '--grpc-address=0.0.0.0:10901'
     volumes:
-      - prometheus_data:/prometheus:ro
+      - prometheus_data:/prometheus
       - ./bucket.yml:/etc/thanos/bucket.yml
     depends_on:
       - prometheus
@@ -594,8 +594,8 @@ services:
     image: quay.io/thanos/thanos:latest
     command:
       - query
-      - '--store=thanos-sidecar:10901'
-      - '--store=thanos-store:10901'
+      - '--endpoint=thanos-sidecar:10901'
+      - '--endpoint=thanos-store:10901'
       - '--http-address=0.0.0.0:9090'
     ports:
       - "19090:9090"
