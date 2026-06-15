@@ -23,7 +23,7 @@ flowchart TB
     Dedicated --> Small{Traffic Level?}
     Small -->|Low| M10[M10<br/>2GB RAM]
     Small -->|Medium| M30[M30<br/>8GB RAM]
-    Small -->|High| M50[M50+<br/>16GB+ RAM]
+    Small -->|High| M50[M50+<br/>32GB+ RAM]
 ```
 
 **Shared Clusters (M0, M2, M5):**
@@ -32,19 +32,22 @@ flowchart TB
 - No SLA guarantees
 
 **Dedicated Clusters (M10+):**
-- Required for production
+- Use for production workloads
+- M30+ recommended; M10/M20 can work for low-traffic applications
 - Predictable performance
 - SLA guarantees
 - Advanced features (VPC peering, private endpoints)
 
 ### Sizing Guidelines
 
+Typical AWS general-class values:
+
 | Metric | M10 | M30 | M50 | M60+ |
 |--------|-----|-----|-----|------|
-| RAM | 2GB | 8GB | 16GB | 32GB+ |
-| Storage | 10-128GB | 40-512GB | 80-4TB | 160-4TB |
+| RAM | 2GB | 8GB | 32GB | 64GB+ |
+| Storage | 10-128GB | 10-512GB | 10GB-4TB | 10GB-4TB |
 | vCPUs | 2 | 4 | 8 | 16+ |
-| Connections | 1,500 | 3,000 | 6,000 | 8,000+ |
+| Connections | 1,500 | 3,000 | 16,000 | 32,000+ |
 
 Choose based on:
 - Working set size (data + indexes that must fit in RAM)
@@ -62,25 +65,28 @@ Never use 0.0.0.0/0 in production. Whitelist specific IPs:
 // Using Atlas Admin API
 const axios = require('axios');
 
-async function addIpToAccessList(projectId, ip, comment) {
+async function addCidrToAccessList(projectId, cidrBlock, comment) {
   await axios.post(
-    `https://cloud.mongodb.com/api/atlas/v1.0/groups/${projectId}/accessList`,
+    `https://cloud.mongodb.com/api/atlas/v2/groups/${projectId}/accessList`,
     [{
-      ipAddress: ip,
+      cidrBlock: cidrBlock,
       comment: comment
     }],
     {
-      auth: {
-        username: process.env.ATLAS_PUBLIC_KEY,
-        password: process.env.ATLAS_PRIVATE_KEY
+      headers: {
+        Authorization: `Bearer ${process.env.ATLAS_ACCESS_TOKEN}`,
+        Accept: 'application/vnd.atlas.2023-01-01+json',
+        'Content-Type': 'application/vnd.atlas.2023-01-01+json'
       }
     }
   );
 }
 
-// Add application server IPs
-await addIpToAccessList(projectId, "10.0.1.50/32", "Production app server 1");
-await addIpToAccessList(projectId, "10.0.1.51/32", "Production app server 2");
+async function configureAccessList(projectId) {
+  // Add application server IPs
+  await addCidrToAccessList(projectId, "10.0.1.50/32", "Production app server 1");
+  await addCidrToAccessList(projectId, "10.0.1.51/32", "Production app server 2");
+}
 ```
 
 ### VPC Peering
@@ -115,34 +121,43 @@ Create dedicated users for each application:
 // Create application user via Admin API
 async function createDatabaseUser(projectId, username, password, roles) {
   await axios.post(
-    `https://cloud.mongodb.com/api/atlas/v1.0/groups/${projectId}/databaseUsers`,
+    `https://cloud.mongodb.com/api/atlas/v2/groups/${projectId}/databaseUsers`,
     {
       databaseName: "admin",
       username: username,
       password: password,
       roles: roles
     },
-    { auth: { username: publicKey, password: privateKey } }
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.ATLAS_ACCESS_TOKEN}`,
+        Accept: 'application/vnd.atlas.2023-01-01+json',
+        'Content-Type': 'application/vnd.atlas.2023-01-01+json'
+      }
+    }
   );
 }
 
-// Application user with minimal permissions
-await createDatabaseUser(projectId, "app-production", "securePassword123", [
-  { roleName: "readWrite", databaseName: "production" }
-]);
+async function configureDatabaseUsers(projectId) {
+  // Application user with minimal permissions
+  await createDatabaseUser(projectId, "app-production", "securePassword123", [
+    { roleName: "readWrite", databaseName: "production" }
+  ]);
 
-// Read-only user for analytics
-await createDatabaseUser(projectId, "analytics-reader", "anotherPassword", [
-  { roleName: "read", databaseName: "production" }
-]);
+  // Read-only user for analytics
+  await createDatabaseUser(projectId, "analytics-reader", "anotherPassword", [
+    { roleName: "read", databaseName: "production" }
+  ]);
+}
 ```
 
 ### Custom Roles
 
 Create granular permissions:
 
-```javascript
-// Custom role for order processing
+Custom role for order processing:
+
+```json
 {
   "roleName": "orderProcessor",
   "databaseName": "admin",
@@ -218,11 +233,11 @@ Recommended settings:
 
 ### Backup Schedule Example
 
-```javascript
-// Atlas API: Configure backup policy
+Atlas API backup policy body:
+
+```json
 {
   "policies": [{
-    "id": "daily",
     "policyItems": [{
       "frequencyInterval": 1,
       "frequencyType": "daily",
@@ -230,7 +245,6 @@ Recommended settings:
       "retentionValue": 7
     }]
   }, {
-    "id": "weekly",
     "policyItems": [{
       "frequencyInterval": 1,
       "frequencyType": "weekly",
@@ -247,10 +261,11 @@ Regularly test backup restoration:
 
 ```bash
 # Restore to new cluster
-atlas backup restores create \
+atlas backups restores start automated \
   --clusterName production-cluster \
   --snapshotId <snapshotId> \
   --targetClusterName restore-test \
+  --targetProjectId <projectId> \
   --projectId <projectId>
 ```
 
@@ -274,19 +289,37 @@ const alerts = [
     threshold: { operator: "LESS_THAN", threshold: 1, units: "HOURS" }
   },
   {
-    eventTypeName: "HOST_DISK_SPACE_USED",
+    eventTypeName: "OUTSIDE_METRIC_THRESHOLD",
     enabled: true,
-    threshold: { operator: "GREATER_THAN", threshold: 80, units: "RAW" }
+    metricThreshold: {
+      metricName: "DISK_PARTITION_SPACE_USED_DATA",
+      operator: "GREATER_THAN",
+      threshold: 80,
+      units: "RAW",
+      mode: "AVERAGE"
+    }
   },
   {
-    eventTypeName: "HOST_CPU_USAGE_NORMALISED",
+    eventTypeName: "OUTSIDE_METRIC_THRESHOLD",
     enabled: true,
-    threshold: { operator: "GREATER_THAN", threshold: 80, units: "RAW" }
+    metricThreshold: {
+      metricName: "NORMALIZED_SYSTEM_CPU_USER",
+      operator: "GREATER_THAN",
+      threshold: 80,
+      units: "RAW",
+      mode: "AVERAGE"
+    }
   },
   {
-    eventTypeName: "CONNECTIONS_PERCENT",
+    eventTypeName: "OUTSIDE_METRIC_THRESHOLD",
     enabled: true,
-    threshold: { operator: "GREATER_THAN", threshold: 80, units: "RAW" }
+    metricThreshold: {
+      metricName: "CONNECTIONS_PERCENT",
+      operator: "GREATER_THAN",
+      threshold: 80,
+      units: "RAW",
+      mode: "AVERAGE"
+    }
   }
 ];
 ```
@@ -321,7 +354,7 @@ Upgrade cluster tier for more resources:
 
 ```bash
 # Scale up cluster
-atlas cluster update production-cluster \
+atlas clusters update production-cluster \
   --projectId <projectId> \
   --tier M50
 
@@ -333,8 +366,7 @@ atlas cluster update production-cluster \
 For very large datasets or high throughput:
 
 ```javascript
-// Enable sharding on collection
-sh.enableSharding("production");
+// On MongoDB 6.0 and later, sh.enableSharding() is not required before sh.shardCollection().
 sh.shardCollection("production.events", { "tenantId": 1, "timestamp": 1 });
 ```
 
@@ -342,24 +374,31 @@ sh.shardCollection("production.events", { "tenantId": 1, "timestamp": 1 });
 
 Configure auto-scaling for variable workloads:
 
-```javascript
-// Auto-scaling configuration
+Auto-scaling configuration:
+
+```json
 {
-  "autoScaling": {
-    "compute": {
-      "enabled": true,
-      "scaleDownEnabled": true
-    },
-    "diskGBEnabled": true
-  },
-  "providerSettings": {
-    "autoScaling": {
-      "compute": {
-        "minInstanceSize": "M30",
-        "maxInstanceSize": "M60"
+  "replicationSpecs": [{
+    "regionConfigs": [{
+      "autoScaling": {
+        "compute": {
+          "enabled": true,
+          "scaleDownEnabled": true,
+          "minInstanceSize": "M30",
+          "maxInstanceSize": "M60"
+        },
+        "diskGB": {
+          "enabled": true
+        }
+      },
+      "providerName": "AWS",
+      "regionName": "US_EAST_1",
+      "electableSpecs": {
+        "instanceSize": "M30",
+        "nodeCount": 3
       }
-    }
-  }
+    }]
+  }]
 }
 ```
 
@@ -419,10 +458,11 @@ Before going live:
 
 ```bash
 # Restore from snapshot
-atlas backup restores create \
+atlas backups restores start automated \
   --clusterName production-cluster \
   --snapshotId <latest-snapshot> \
-  --targetClusterName production-cluster-restored
+  --targetClusterName production-cluster-restored \
+  --targetProjectId <projectId>
 
 # Update application connection strings
 # Validate data integrity
