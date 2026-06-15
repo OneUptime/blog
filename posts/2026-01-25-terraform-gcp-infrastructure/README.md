@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Google Cloud Platform, GCP, Infrastructure as Code, DevOps, Cloud
 
-Description: A practical guide to deploying Google Cloud Platform infrastructure with Terraform, covering VPC networks, compute instances, GKE clusters, Cloud SQL, and Cloud Storage with working examples.
+Description: A practical guide to deploying Google Cloud Platform infrastructure with Terraform, covering VPC networks, compute instances, private GKE clusters, Cloud SQL, and Cloud Storage with working examples.
 
 ---
 
-Google Cloud Platform offers a rich set of services that Terraform can provision and manage. This guide walks through deploying common GCP resources, from basic VPC networks to production-ready GKE clusters and managed databases.
+Google Cloud Platform offers a rich set of services that Terraform can provision and manage. This guide walks through deploying common GCP resources, from basic VPC networks to private GKE clusters and managed databases.
 
 ## Provider Configuration
 
@@ -21,7 +21,12 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
+    }
+
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 7.0"
     }
   }
 }
@@ -125,12 +130,16 @@ flowchart TB
 
         subgraph Private["Private Subnet 10.0.2.0/24"]
             GKE[GKE Cluster]
-            SQL[Cloud SQL]
+        end
+
+        subgraph PSA["Private Service Access Range"]
+            SQL[Cloud SQL private IP]
         end
     end
 
     Internet((Internet)) --> LB
     LB --> GKE
+    GKE --> SQL
     Bastion --> Private
     Private --> NAT[Cloud NAT]
     NAT --> Internet
@@ -244,7 +253,7 @@ resource "google_compute_instance" "web" {
   machine_type = "e2-medium"
   zone         = "${var.region}-a"
 
-  tags = ["web-server", "allow-health-check"]
+  tags = ["web-server", "allow-health-check", "allow-ssh"]
 
   boot_disk {
     initialize_params {
@@ -283,7 +292,7 @@ resource "google_compute_instance" "web" {
 
 ## GKE Kubernetes Cluster
 
-Deploy a production-ready GKE cluster with private nodes.
+Deploy a private GKE cluster with private nodes.
 
 ```hcl
 # Service account for GKE nodes
