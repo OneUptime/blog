@@ -66,12 +66,12 @@ flowchart TB
 
 ## Installing Fluentd
 
-Install Fluentd using the td-agent package, which bundles Fluentd with commonly used plugins:
+Install Fluentd using fluent-package, the stable Fluentd distribution package:
 
 ```bash
 # Ubuntu/Debian installation
 
-curl -fsSL https://toolbelt.treasuredata.com/sh/install-ubuntu-jammy-fluent-package5-lts.sh | sh
+curl -fsSL https://fluentd.cdn.cncf.io/sh/install-ubuntu-jammy-fluent-package6-lts.sh | sh
 
 # Start the service
 sudo systemctl start fluentd
@@ -121,7 +121,7 @@ Fluentd configuration uses a directive-based syntax. Each directive defines a co
   # Suppress repeated warning messages
   suppress_repeated_stacktrace true
 
-  # Enable metrics endpoint for monitoring
+  # Keep Ruby JIT disabled unless you have tested it for your workload
   enable_jit false
 </system>
 
@@ -313,11 +313,8 @@ Filters process log records before routing. Use them to parse, enrich, or filter
   enable_ruby true
 
   <record>
-    # Mask email addresses
-    message ${record["message"].gsub(/[\w+\-.]+@[a-z\d\-.]+\.[a-z]+/i, '[EMAIL REDACTED]')}
-
-    # Mask credit card numbers
-    message ${record["message"].gsub(/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/, '[CARD REDACTED]')}
+    # Mask email addresses and credit card numbers
+    message ${record["message"].to_s.gsub(/[\w+\-.]+@[a-z\d\-.]+\.[a-z]+/i, '[EMAIL REDACTED]').gsub(/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/, '[CARD REDACTED]')}
   </record>
 </filter>
 ```
@@ -338,11 +335,10 @@ Configure where logs should be sent. Fluentd supports multiple simultaneous outp
   port 9200
   scheme https
   user elastic
-  password ${ES_PASSWORD}
+  password "#{ENV['ES_PASSWORD']}"
 
   # Index configuration
   index_name logs
-  type_name _doc
 
   # Use logstash format for time-based indices
   logstash_format true
@@ -380,8 +376,8 @@ Configure where logs should be sent. Fluentd supports multiple simultaneous outp
   @type s3
   @id s3_output
 
-  aws_key_id ${AWS_ACCESS_KEY_ID}
-  aws_sec_key ${AWS_SECRET_ACCESS_KEY}
+  aws_key_id "#{ENV['AWS_ACCESS_KEY_ID']}"
+  aws_sec_key "#{ENV['AWS_SECRET_ACCESS_KEY']}"
   s3_bucket my-logs-bucket
   s3_region us-east-1
 
@@ -520,26 +516,34 @@ Optimize Fluentd for high-volume environments:
   suppress_config_dump true
 </system>
 
-# Optimize buffer settings for throughput
-<buffer>
-  @type file
+# Optimize buffer settings for throughput inside a buffered output
+<match **>
+  @type forward
+  <server>
+    host log-aggregator.example.com
+    port 24224
+  </server>
 
-  # Use multiple threads for flushing
-  flush_thread_count 8
+  <buffer>
+    @type file
 
-  # Larger chunks for better throughput
-  chunk_limit_size 32MB
+    # Use multiple threads for flushing
+    flush_thread_count 8
 
-  # More buffer space
-  total_limit_size 8GB
+    # Larger chunks for better throughput
+    chunk_limit_size 32MB
 
-  # Async flushing
-  flush_mode interval
-  flush_interval 5s
+    # More buffer space
+    total_limit_size 8GB
 
-  # Compress chunks to save disk space
-  compress gzip
-</buffer>
+    # Async flushing
+    flush_mode interval
+    flush_interval 5s
+
+    # Compress chunks to save disk space
+    compress gzip
+  </buffer>
+</match>
 ```
 
 ---
