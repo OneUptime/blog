@@ -32,11 +32,10 @@ npx @backstage/create-app@latest
 
 # Follow the prompts
 ? Enter a name for the app [my-backstage]
-? Select database for the backend [PostgreSQL]
 
 # Start the development server
 cd my-backstage
-yarn dev
+yarn start
 ```
 
 The app starts with a frontend on port 3000 and backend on port 7007.
@@ -106,8 +105,11 @@ auth:
   providers:
     github:
       development:
-        clientId: ${GITHUB_CLIENT_ID}
-        clientSecret: ${GITHUB_CLIENT_SECRET}
+        clientId: ${AUTH_GITHUB_CLIENT_ID}
+        clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+        signIn:
+          resolvers:
+            - resolver: usernameMatchingUserEntityName
 
 # Integration with source control
 integrations:
@@ -126,12 +128,24 @@ catalog:
     # Local example data
     - type: file
       target: ../../examples/entities.yaml
-    # GitHub organization
-    - type: github-org
-      target: https://github.com/acme
-    # Discover catalog files in repositories
-    - type: github-discovery
-      target: https://github.com/acme/*/blob/main/catalog-info.yaml
+  providers:
+    github:
+      acmeDiscovery:
+        organization: acme
+        catalogPath: /catalog-info.yaml
+        filters:
+          branch: 'main'
+          repository: '.*'
+        schedule:
+          frequency: { minutes: 30 }
+          timeout: { minutes: 3 }
+    githubOrg:
+      - id: acme
+        githubUrl: https://github.com
+        orgs: ['acme']
+        schedule:
+          frequency: { hours: 1 }
+          timeout: { minutes: 50 }
 ```
 
 ## Software Catalog
@@ -148,10 +162,8 @@ metadata:
   annotations:
     # Link to GitHub repository
     github.com/project-slug: acme/payment-service
-    # Link to CI/CD
-    github.com/workflows: ci.yml
     # PagerDuty integration
-    pagerduty.com/integration-key: ${PAGERDUTY_KEY}
+    pagerduty.com/service-id: P123456
     # Documentation
     backstage.io/techdocs-ref: dir:.
   tags:
@@ -316,8 +328,8 @@ spec:
           description: Team that owns this service
           ui:field: OwnerPicker
           ui:options:
-            allowedKinds:
-              - Group
+            catalogFilter:
+              kind: Group
 
     - title: Repository Settings
       required:
@@ -409,23 +421,17 @@ kubernetes:
           serviceAccountToken: ${K8S_TOKEN}
 ```
 
-Add to the frontend in `packages/app/src/App.tsx`:
+Add the backend plugin in `packages/backend/src/index.ts`:
 
 ```typescript
-// packages/app/src/App.tsx
-import { EntityKubernetesContent } from '@backstage/plugin-kubernetes';
+// packages/backend/src/index.ts
+const backend = createBackend();
 
-// Add to entity page routes
-const serviceEntityPage = (
-  <EntityLayout>
-    <EntityLayout.Route path="/" title="Overview">
-      <EntityAboutCard />
-    </EntityLayout.Route>
-    <EntityLayout.Route path="/kubernetes" title="Kubernetes">
-      <EntityKubernetesContent />
-    </EntityLayout.Route>
-  </EntityLayout>
-);
+// Other plugins...
+
+backend.add(import('@backstage/plugin-kubernetes-backend'));
+
+backend.start();
 ```
 
 ## Architecture Overview
