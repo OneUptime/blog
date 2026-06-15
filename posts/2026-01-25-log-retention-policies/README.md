@@ -18,7 +18,7 @@ The right retention period depends on many factors: regulatory requirements, ope
 
 Before setting retention policies, consider these factors:
 
-**Compliance Requirements**: GDPR, HIPAA, SOC2, PCI-DSS, and industry regulations often mandate specific retention periods.
+**Compliance Requirements**: GDPR, HIPAA, PCI-DSS, SOC2, and industry requirements may mandate or influence specific retention periods.
 
 **Operational Needs**: How far back do you typically need to investigate? Most debugging happens within 7 days, but some issues take weeks to surface.
 
@@ -58,16 +58,16 @@ flowchart TD
 
 ## Compliance-Based Retention Requirements
 
-Different regulations have different requirements:
+Different regulations and frameworks have different requirements:
 
-| Regulation | Log Type | Minimum Retention |
+| Regulation / Framework | Log Type | Minimum Retention |
 |------------|----------|-------------------|
-| GDPR | Personal data logs | Delete when no longer needed |
-| HIPAA | Healthcare access logs | 6 years |
-| SOC2 | Security audit logs | 1 year minimum |
-| PCI-DSS | Cardholder data access | 1 year, 3 months immediate |
-| GLBA | Financial records | 6 years |
-| SOX | Financial audit trails | 7 years |
+| GDPR | Personal data logs | Keep no longer than necessary for the stated purpose |
+| HIPAA | Security Rule documentation | 6 years |
+| SOC2 | Security audit logs | Defined by your controls and auditor expectations |
+| PCI-DSS | Audit log history | 12 months, 3 months immediately available |
+| GLBA | Customer information activity | Monitor authorized-user activity; dispose of customer information no later than 2 years after most recent use unless an exception applies |
+| SOX | Audit and review records | 7 years |
 
 Implement policies that meet the strictest applicable requirement:
 
@@ -241,7 +241,7 @@ manager.definePolicy({
 
 ## Elasticsearch Index Lifecycle Management
 
-Use ILM for automated retention in Elasticsearch:
+Use ILM for automated retention in Elasticsearch. This example assumes warm and cold nodes are labeled with `node.attr.box_type`:
 
 ```json
 {
@@ -270,7 +270,7 @@ Use ILM for automated retention in Elasticsearch:
           },
           "allocate": {
             "require": {
-              "data": "warm"
+              "box_type": "warm"
             }
           },
           "set_priority": {
@@ -283,7 +283,7 @@ Use ILM for automated retention in Elasticsearch:
         "actions": {
           "allocate": {
             "require": {
-              "data": "cold"
+              "box_type": "cold"
             }
           },
           "set_priority": {
@@ -331,6 +331,17 @@ curl -X PUT "localhost:9200/_index_template/logs-template" \
       "settings": {
         "index.lifecycle.name": "logs-retention-policy",
         "index.lifecycle.rollover_alias": "logs"
+      }
+    }
+  }'
+
+# Create the initial write index for the rollover alias
+curl -X PUT "localhost:9200/logs-000001" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "aliases": {
+      "logs": {
+        "is_write_index": true
       }
     }
   }'
