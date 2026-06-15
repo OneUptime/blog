@@ -77,7 +77,7 @@ public class WebClientConfig {
             .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
             .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
             // Add an API key header for authentication
-            .defaultHeader("X-API-Key", "${USER_SERVICE_API_KEY}")
+            .defaultHeader("X-API-Key", System.getenv("USER_SERVICE_API_KEY"))
             .build();
     }
 }
@@ -298,6 +298,7 @@ import com.example.exception.ResourceNotFoundException;
 import com.example.exception.ServiceException;
 import com.example.model.User;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -317,12 +318,12 @@ public class UserService {
             .retrieve()
             // Handle specific HTTP status codes
             .onStatus(
-                status -> status == HttpStatus.NOT_FOUND,
+                status -> status.isSameCodeAs(HttpStatus.NOT_FOUND),
                 response -> Mono.error(new ResourceNotFoundException("User not found: " + userId))
             )
             // Handle all other error statuses
             .onStatus(
-                HttpStatus::isError,
+                HttpStatusCode::isError,
                 response -> response.bodyToMono(String.class)
                     .flatMap(body -> Mono.error(new ServiceException(
                         "Failed to fetch user: " + response.statusCode() + " - " + body
@@ -341,9 +342,10 @@ Parse error responses into structured objects:
 package com.example.service;
 
 import com.example.exception.ApiException;
+import com.example.exception.ResourceNotFoundException;
 import com.example.model.ApiError;
 import com.example.model.User;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -362,7 +364,7 @@ public class UserService {
             .uri("/users/{id}", userId)
             .retrieve()
             .onStatus(
-                HttpStatus::isError,
+                HttpStatusCode::isError,
                 response -> response.bodyToMono(ApiError.class)
                     .flatMap(error -> Mono.error(new ApiException(
                         error.getCode(),
@@ -649,6 +651,7 @@ Test WebClient calls with OkHttp's MockWebServer:
 ```java
 package com.example.service;
 
+import com.example.exception.ResourceNotFoundException;
 import com.example.model.User;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
