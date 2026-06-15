@@ -25,7 +25,7 @@ enum Message {
     // Struct variant - named fields
     Write { text: String },
 
-    // Tuple variant with single field
+    // Tuple variant with multiple fields
     ChangeColor(u8, u8, u8),
 }
 
