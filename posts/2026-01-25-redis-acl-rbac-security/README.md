@@ -53,7 +53,7 @@ ACL CAT dangerous         # List dangerous commands
 ACL SETUSER readonly on >password123 ~cache:* +@read
 
 # Create an application user with read/write on specific keys
-ACL SETUSER appuser on >securepass ~app:* ~session:* +@read +@write +@connection
+ACL SETUSER appuser on >securepass ~app:* ~session:* +@read +@write +@connection -@admin -@dangerous
 
 # Create an admin user with full access
 ACL SETUSER admin on >adminpass ~* +@all
@@ -66,7 +66,7 @@ ACL LIST
 
 # Test user permissions
 AUTH readonly password123
-SET cache:test "value"    # Should work
+GET cache:test            # Should work
 SET other:test "value"    # Should fail - wrong key pattern
 FLUSHALL                  # Should fail - not in @read category
 ```
@@ -76,39 +76,24 @@ FLUSHALL                  # Should fail - not in @read category
 For production, define ACLs in a configuration file that persists across restarts.
 
 ```conf
-# /etc/redis/users.acl
-
-# Default user - disable or restrict heavily
 user default off
 
-# Application service account
-# Can read/write to app:* and session:* keys
-# Cannot run admin or dangerous commands
 user appservice on >app_secret_password_here ~app:* ~session:* +@read +@write +@connection -@admin -@dangerous
 
-# Cache reader for web tier
-# Read-only access to cache keys
 user cache_reader on >cache_reader_pass ~cache:* +@read +@connection
 
-# Cache writer for backend services
-# Read/write to cache keys only
-user cache_writer on >cache_writer_pass ~cache:* +@read +@write +@connection
+user cache_writer on >cache_writer_pass ~cache:* +@read +@write +@connection -@admin -@dangerous
 
-# Metrics collector
-# Can only interact with metrics keys
 user metrics on >metrics_pass ~metrics:* ~stats:* +get +set +incr +incrby +expire +ttl
 
-# Pub/sub user for event system
-# Can only publish and subscribe, no key access
 user pubsub on >pubsub_pass &events:* +subscribe +publish +psubscribe +punsubscribe
 
-# Admin user with full access
-# Use only for maintenance, not regular operations
 user admin on >very_secure_admin_password ~* +@all
 
-# Replication user for replicas
-user replication on >replication_password ~* +psync +replconf +ping
+user replication on >replication_password +psync +replconf +ping
 ```
+
+If you are using Redis before 8.8, keep comments out of the external ACL file. Comment lines in ACL files are only supported by `ACL LOAD` starting with Redis 8.8.
 
 Load the ACL file in redis.conf:
 
@@ -164,7 +149,7 @@ def create_limited_users():
     admin = redis.Redis(host='localhost', port=6379, password='admin_password')
 
     # User for web application sessions
-    # Can only read/write session keys with specific TTL
+    # Can only read/write session keys and manage TTLs
     admin.execute_command(
         'ACL', 'SETUSER', 'webapp',
         'on',                           # Enable user
@@ -262,7 +247,7 @@ class RedisRBAC:
         'writer': {
             'description': 'Read/write access to application data',
             'keys': ['app:*', 'cache:*'],
-            'commands': ['+@read', '+@write', '+@connection'],
+            'commands': ['+@read', '+@write', '+@connection', '-@admin', '-@dangerous'],
         },
         'queue_worker': {
             'description': 'Access to job queues',
@@ -344,6 +329,8 @@ class RedisRBAC:
 
 
 # Usage
+import redis
+
 admin = redis.Redis(host='localhost', port=6379, password='admin_password')
 rbac = RedisRBAC(admin)
 
@@ -366,12 +353,14 @@ ACL SETUSER default off
 ACL SETUSER default on >strong_password ~temp:* +@read +@connection
 
 # Option 3: Reset to minimal permissions
-ACL SETUSER default resetkeys resetpass off
+ACL SETUSER default reset
 ```
 
 ## Monitoring and Auditing
 
 ```python
+import redis
+
 def audit_redis_security(admin_client):
     """
     Audit Redis security configuration.
@@ -402,11 +391,16 @@ def audit_redis_security(admin_client):
     # Check if default user is properly secured
     default_info = admin_client.execute_command('ACL', 'GETUSER', 'default')
     flags = default_info[1] if len(default_info) > 1 else []
+    flags = [flag.decode() if isinstance(flag, bytes) else flag for flag in flags]
     if 'on' in flags:
         issues.append("Default user is enabled - consider disabling it")
 
     # Check server configuration
-    config = admin_client.config_get('*')
+    config = {
+        (key.decode() if isinstance(key, bytes) else key):
+        (value.decode() if isinstance(value, bytes) else value)
+        for key, value in admin_client.config_get('*').items()
+    }
 
     if config.get('protected-mode') == 'no':
         issues.append("Protected mode is disabled")
