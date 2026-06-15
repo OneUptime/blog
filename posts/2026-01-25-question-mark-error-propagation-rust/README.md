@@ -20,7 +20,7 @@ use std::io::{self, Read};
 
 // Without ? operator - verbose
 fn read_file_verbose(path: &str) -> Result<String, io::Error> {
-    let file = match File::open(path) {
+    let mut file = match File::open(path) {
         Ok(f) => f,
         Err(e) => return Err(e),
     };
@@ -57,10 +57,11 @@ The `?` operator:
 ```rust
 // What ? does behind the scenes
 fn manual_question_mark<T, E>(result: Result<T, E>) -> Result<T, E> {
-    match result {
+    let value = match result {
         Ok(v) => v,       // Continue with value
         Err(e) => return Err(e.into()),  // Return early
-    }
+    };
+    Ok(value)
 }
 ```
 
