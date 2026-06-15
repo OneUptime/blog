@@ -63,8 +63,7 @@ def create_user(user_id, name, email):
         'email': email,
         'created_at': str(time.time())
     })
-    # Initialize empty orders set
-    # The set will store order IDs belonging to this user
+    # The orders set will be created when the first order ID is added
 
 def create_order(order_id, user_id, total, items):
     """Create an order and link it to the user"""
@@ -247,8 +246,8 @@ def update_author_name(author_id, new_name):
 
 def get_recent_posts(limit=20):
     """
-    Get recent posts with author info in single query.
-    No additional lookups needed thanks to denormalization.
+    Get recent posts with author info using batched post lookups.
+    No additional author lookups needed thanks to denormalization.
     """
     post_ids = r.zrevrange('posts:recent', 0, limit - 1)
 
