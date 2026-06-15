@@ -120,11 +120,11 @@ spec:
           expr: |
             100 * (
               sum by (namespace, pod, container) (
-                rate(container_cpu_cfs_throttled_periods_total{container!=""}[5m])
+                rate(container_cpu_cfs_throttled_periods_total{container!="", container!="POD"}[5m])
               )
               /
               sum by (namespace, pod, container) (
-                rate(container_cpu_cfs_periods_total{container!=""}[5m])
+                rate(container_cpu_cfs_periods_total{container!="", container!="POD"}[5m])
               )
             ) > 25
           for: 15m
@@ -139,11 +139,11 @@ spec:
           expr: |
             100 * (
               sum by (namespace, pod, container) (
-                rate(container_cpu_cfs_throttled_periods_total{container!=""}[5m])
+                rate(container_cpu_cfs_throttled_periods_total{container!="", container!="POD"}[5m])
               )
               /
               sum by (namespace, pod, container) (
-                rate(container_cpu_cfs_periods_total{container!=""}[5m])
+                rate(container_cpu_cfs_periods_total{container!="", container!="POD"}[5m])
               )
             ) > 50
           for: 5m
@@ -165,6 +165,7 @@ Only alert on production namespaces:
       sum by (namespace, pod, container) (
         rate(container_cpu_cfs_throttled_periods_total{
           container!="",
+          container!="POD",
           namespace=~"production|prod-.*"
         }[5m])
       )
@@ -172,6 +173,7 @@ Only alert on production namespaces:
       sum by (namespace, pod, container) (
         rate(container_cpu_cfs_periods_total{
           container!="",
+          container!="POD",
           namespace=~"production|prod-.*"
         }[5m])
       )
@@ -196,7 +198,7 @@ Only alert on production namespaces:
   "type": "timeseries",
   "targets": [
     {
-      "expr": "100 * sum by (namespace, pod) (rate(container_cpu_cfs_throttled_periods_total{container!=\"\"}[5m])) / sum by (namespace, pod) (rate(container_cpu_cfs_periods_total{container!=\"\"}[5m]))",
+      "expr": "100 * sum by (namespace, pod) (rate(container_cpu_cfs_throttled_periods_total{container!=\"\", container!=\"POD\"}[5m])) / sum by (namespace, pod) (rate(container_cpu_cfs_periods_total{container!=\"\", container!=\"POD\"}[5m]))",
       "legendFormat": "{{ namespace }}/{{ pod }}"
     }
   ],
@@ -224,7 +226,7 @@ Only alert on production namespaces:
   "type": "timeseries",
   "targets": [
     {
-      "expr": "rate(container_cpu_cfs_throttled_seconds_total{container!=\"\"}[5m])",
+      "expr": "increase(container_cpu_cfs_throttled_seconds_total{container!=\"\", container!=\"POD\"}[5m])",
       "legendFormat": "{{ namespace }}/{{ pod }}/{{ container }}"
     }
   ],
@@ -244,7 +246,7 @@ Only alert on production namespaces:
 # Query Prometheus for current throttling
 kubectl exec -n monitoring prometheus-0 -- promtool query instant \
   http://localhost:9090 \
-  '100 * sum by (namespace, pod) (rate(container_cpu_cfs_throttled_periods_total[5m])) / sum by (namespace, pod) (rate(container_cpu_cfs_periods_total[5m])) > 10'
+  '100 * sum by (namespace, pod) (rate(container_cpu_cfs_throttled_periods_total{container!="", container!="POD"}[5m])) / sum by (namespace, pod) (rate(container_cpu_cfs_periods_total{container!="", container!="POD"}[5m])) > 10'
 ```
 
 ### Check Current CPU Usage vs Limits
@@ -256,20 +258,25 @@ kubectl top pods -n production
 # Compare to limits
 kubectl get pods -n production -o custom-columns=\
 NAME:.metadata.name,\
-CPU_REQUEST:.spec.containers[0].resources.requests.cpu,\
-CPU_LIMIT:.spec.containers[0].resources.limits.cpu
+CPU_REQUESTS:.spec.containers[*].resources.requests.cpu,\
+CPU_LIMITS:.spec.containers[*].resources.limits.cpu
 ```
 
 ### View cgroup Stats Directly
 
 ```bash
 # SSH to node and check cgroup stats
-cat /sys/fs/cgroup/cpu/kubepods/burstable/pod<pod-uid>/<container-id>/cpu.stat
+# cgroup v2:
+cat /sys/fs/cgroup/${POD_CGROUP}/${CONTAINER_CGROUP}/cpu.stat
+
+# cgroup v1:
+cat /sys/fs/cgroup/cpu/kubepods/burstable/pod${POD_UID}/${CONTAINER_ID}/cpu.stat
 
 # Look for:
 # nr_periods: Total CFS periods
 # nr_throttled: Number of throttled periods
-# throttled_time: Total throttled time in nanoseconds
+# throttled_usec: Total throttled time in microseconds (cgroup v2)
+# throttled_time: Total throttled time in nanoseconds (cgroup v1)
 ```
 
 ## Fixing CPU Throttling
@@ -346,9 +353,11 @@ kubectl top pods -n production -l app=myapp
 max_over_time(
   rate(container_cpu_usage_seconds_total{
     namespace="production",
+    container!="",
+    container!="POD",
     pod=~"myapp.*"
   }[5m])
-[7d])
+[7d:])
 ```
 
 Set limits to 2-3x the observed peak.
@@ -379,9 +388,9 @@ kubectl describe vpa myapp-vpa
 
 ```promql
 # Pods where limit is less than 2x request (risk of throttling)
-kube_pod_container_resource_limits{resource="cpu"}
+kube_pod_container_resource_limits{resource="cpu", unit="core"}
   /
-kube_pod_container_resource_requests{resource="cpu"}
+kube_pod_container_resource_requests{resource="cpu", unit="core"}
   < 2
 ```
 
@@ -390,15 +399,15 @@ kube_pod_container_resource_requests{resource="cpu"}
 ```yaml
 - alert: PodCPUNearLimit
   expr: |
-    (
+    100 * (
       sum by (namespace, pod, container) (
-        rate(container_cpu_usage_seconds_total{container!=""}[5m])
+        rate(container_cpu_usage_seconds_total{container!="", container!="POD"}[5m])
       )
       /
       sum by (namespace, pod, container) (
-        kube_pod_container_resource_limits{resource="cpu"}
+        kube_pod_container_resource_limits{resource="cpu", unit="core"}
       )
-    ) > 0.9
+    ) > 90
   for: 15m
   labels:
     severity: warning
