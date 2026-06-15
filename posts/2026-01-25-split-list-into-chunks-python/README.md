@@ -49,7 +49,7 @@ This creates all chunks at once in memory. The last chunk contains whatever rema
 
 ## Method 2: Generator for Memory Efficiency
 
-For large lists, a generator yields one chunk at a time without loading everything into memory.
+For large lists, a generator yields one chunk at a time without building all chunks in memory.
 
 ```python
 def chunk_generator(lst, chunk_size):
@@ -148,8 +148,7 @@ for chunk in chunks:
 
 # Split into chunks of size n
 n = 3
-num_chunks = len(data) // n + (1 if len(data) % n else 0)
-chunks = np.array_split(arr, num_chunks)
+chunks = [arr[i:i + n] for i in range(0, len(arr), n)]
 ```
 
 ## Splitting Into N Equal Parts
@@ -369,7 +368,7 @@ def method_generator_consumed():
 # Generator iteration: Memory efficient for processing
 ```
 
-The generator approach uses constant memory regardless of list size, while the list comprehension uses memory proportional to the number of chunks.
+The generator approach uses constant extra memory for the chunks being produced, while the list comprehension uses memory proportional to the number of chunks.
 
 ## Summary
 
