@@ -25,8 +25,8 @@ Before eviction kicks in, you need to set a memory limit:
 
 maxmemory 2gb
 
-# Or use a percentage (requires Redis 7.0+)
-# maxmemory 75%
+# Or use bytes directly
+# maxmemory 2147483648
 ```
 
 You can also set this at runtime:
@@ -43,13 +43,15 @@ redis-cli CONFIG GET maxmemory
 
 ## Eviction Policies Overview
 
-Redis supports eight eviction policies:
+Redis supports several eviction policies:
 
 | Policy | Description | Use Case |
 |--------|-------------|----------|
 | noeviction | Return errors when memory limit is reached | When data loss is unacceptable |
 | allkeys-lru | Evict least recently used keys | General-purpose caching |
 | volatile-lru | Evict LRU keys with TTL set | Mixed persistent and cache data |
+| allkeys-lrm | Evict least recently modified keys | Preserve recently updated data |
+| volatile-lrm | Evict LRM keys with TTL set | Mixed data with modification patterns |
 | allkeys-lfu | Evict least frequently used keys | Hot/cold access patterns |
 | volatile-lfu | Evict LFU keys with TTL set | Mixed data with frequency patterns |
 | allkeys-random | Evict random keys | When access is uniform |
@@ -125,7 +127,7 @@ LFU eviction removes keys that are accessed least frequently, regardless of rece
 maxmemory-policy allkeys-lfu
 
 # LFU decay time in minutes
-# How long until the frequency counter is halved
+# How long before the frequency counter is decremented when sampled
 # Default is 1 minute
 lfu-decay-time 1
 
@@ -185,9 +187,9 @@ Controls how quickly the frequency counter grows:
 
 ```text
 factor=0:  Counter saturates very quickly
-factor=1:  After 5 hits, counter is ~93% of max
-factor=10: After 1000 hits, counter is ~93% of max (default)
-factor=100: After 10000 hits, counter is ~93% of max
+factor=1:  About 49 after 1,000 hits and saturated by 100,000 hits
+factor=10: About 18 after 1,000 hits and 142 after 100,000 hits (default)
+factor=100: About 11 after 1,000 hits and 49 after 100,000 hits
 ```
 
 ```python
@@ -195,9 +197,11 @@ def analyze_lfu_counter_growth(log_factor: int) -> None:
     """
     Show how the LFU counter grows with different log factors.
     """
-    import math
+    import random
 
-    # Redis LFU counter formula (simplified)
+    rng = random.Random(42)
+
+    # Redis LFU counter probability formula
     def counter_probability(counter, log_factor):
         if counter == 255:  # Max value
             return 0
@@ -214,7 +218,7 @@ def analyze_lfu_counter_growth(log_factor: int) -> None:
         while total_hits < hits:
             p = counter_probability(counter, log_factor)
             # Probabilistic increment
-            if p > 0.5:  # Simplified simulation
+            if rng.random() < p:
                 counter = min(255, counter + 1)
             total_hits += 1
 
@@ -226,10 +230,10 @@ def analyze_lfu_counter_growth(log_factor: int) -> None:
 Controls how quickly frequency counters decrease over time:
 
 ```conf
-# Counter halves every minute (default)
+# Counter is decremented after one minute without access when sampled (default)
 lfu-decay-time 1
 
-# Counter halves every 5 minutes (slower decay)
+# Counter is decremented after five minutes without access when sampled (slower decay)
 lfu-decay-time 5
 
 # No decay (not recommended)
@@ -348,11 +352,11 @@ Can you tolerate key eviction?
   +-- Yes
         |
         v
-      Do all keys have TTL?
-        |
-        +-- No --> Use "allkeys-*"
+      Need to protect keys without TTL?
         |
         +-- Yes --> Use "volatile-*"
+        |
+        +-- No --> Use "allkeys-*"
               |
               v
             Do some keys have hot/cold patterns?
