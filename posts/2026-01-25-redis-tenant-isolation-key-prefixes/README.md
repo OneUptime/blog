@@ -317,13 +317,14 @@ class DatabasePerTenant:
     Alternative isolation strategy using separate Redis databases.
 
     Pros:
-    - Complete isolation at database level
+    - Logical isolation at database namespace level
     - Easy to clear all tenant data (FLUSHDB)
     - No prefix overhead in key names
 
     Cons:
-    - Limited to 16 databases by default
-    - No cross-database operations
+    - Limited to 16 databases by default in standalone Redis
+    - Redis Cluster supports only database 0
+    - Most commands operate only on the selected database
     - Harder to manage connections
     """
 
@@ -351,7 +352,7 @@ class DatabasePerTenant:
         return client.flushdb()
 ```
 
-For most SaaS applications, key prefixes are the better choice. They scale beyond 16 tenants and allow cross-tenant operations when needed (for admin dashboards, for example).
+For most SaaS applications, key prefixes are the better choice. They scale beyond the default standalone database count and allow cross-tenant operations when needed (for admin dashboards, for example).
 
 ## Security Considerations
 
@@ -415,7 +416,7 @@ class SecureTenantRedis:
 | Approach | Scalability | Isolation Level | Complexity |
 |----------|-------------|-----------------|------------|
 | **Key prefixes** | Unlimited tenants | Logical | Low |
-| **Separate databases** | 16 tenants max | Database level | Medium |
+| **Separate databases** | 16 by default in standalone Redis | Logical database namespace | Medium |
 | **Separate Redis instances** | Unlimited | Physical | High |
 
 Key prefixing is the standard approach for multi-tenant Redis usage. It scales well, keeps your infrastructure simple, and provides sufficient isolation when combined with proper validation. Use the tenant-aware client pattern to ensure prefixes are consistently applied throughout your application.
