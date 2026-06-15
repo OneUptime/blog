@@ -58,7 +58,7 @@ graph TB
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Set
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import json
 import asyncpg
@@ -78,7 +78,7 @@ class DeviceGroup:
     parent_group_id: Optional[str] = None
     query: Optional[str] = None  # For dynamic groups
     tags: Dict[str, str] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     device_count: int = 0
 
 @dataclass
@@ -186,13 +186,17 @@ class GroupManager:
     async def _execute_dynamic_query(self, query: str) -> List[str]:
         """Execute dynamic group query"""
         # Query format: field=value,field2=value2
+        allowed_fields = {"device_type", "region", "firmware_version", "status"}
         conditions = []
         values = []
 
         for i, condition in enumerate(query.split(',')):
-            field, value = condition.split('=')
+            field, value = condition.split('=', 1)
+            field = field.strip()
+            if field not in allowed_fields:
+                raise ValueError(f"Unsupported dynamic group field: {field}")
             conditions.append(f"{field} = ${i+1}")
-            values.append(value)
+            values.append(value.strip())
 
         async with self.db.acquire() as conn:
             sql = f"""
@@ -257,7 +261,7 @@ class GroupManager:
 # Execute operations across device fleets
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional, Callable
 from enum import Enum
 import asyncio
@@ -339,7 +343,7 @@ class FleetJobExecutor:
             target_group_id=target_group_id,
             payload=payload,
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             total_devices=len(device_ids),
             pending=len(device_ids),
             concurrency=concurrency,
@@ -361,7 +365,7 @@ class FleetJobExecutor:
             raise ValueError(f"Job {job_id} not found")
 
         job.status = JobStatus.RUNNING
-        job.started_at = datetime.utcnow()
+        job.started_at = datetime.now(timezone.utc)
         await self._update_job_status(job)
 
         # Get target devices
@@ -383,7 +387,7 @@ class FleetJobExecutor:
         job.failed = sum(1 for r in results if isinstance(r, DeviceJobResult) and r.status == "failed")
         job.pending = 0
         job.status = JobStatus.COMPLETED if job.failed == 0 else JobStatus.FAILED
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(timezone.utc)
 
         await self._update_job_status(job)
 
@@ -395,7 +399,7 @@ class FleetJobExecutor:
         device_id: str
     ) -> DeviceJobResult:
         """Execute job on single device"""
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
 
         try:
             # Execute based on job type
@@ -417,7 +421,7 @@ class FleetJobExecutor:
                 job_id=job.job_id,
                 status="success",
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
                 result=result,
                 error=None
             )
@@ -429,7 +433,7 @@ class FleetJobExecutor:
                 job_id=job.job_id,
                 status="failed",
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
                 result=None,
                 error=str(e)
             )
@@ -447,7 +451,10 @@ class FleetJobExecutor:
                 job_id
             )
             if row:
-                return FleetJob(**dict(row))
+                data = dict(row)
+                data["job_type"] = JobType(data["job_type"])
+                data["status"] = JobStatus(data["status"])
+                return FleetJob(**data)
             return None
 
     async def get_job_progress(self, job_id: str) -> Dict:
@@ -488,7 +495,7 @@ class FleetJobExecutor:
 # Monitor fleet health and status
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from enum import Enum
 
@@ -541,7 +548,7 @@ class FleetMonitor:
                     AVG(memory_percent) as avg_memory,
                     AVG(EXTRACT(EPOCH FROM (NOW() - boot_time)) / 3600) as avg_uptime
                 FROM devices
-                WHERE device_id = ANY($1)
+                WHERE device_id = ANY($1::text[])
             """, device_ids)
 
             row = rows[0]
@@ -549,13 +556,13 @@ class FleetMonitor:
             # Get recent alerts
             alert_count = await conn.fetchval("""
                 SELECT COUNT(*) FROM alerts
-                WHERE device_id = ANY($1)
+                WHERE device_id = ANY($1::text[])
                 AND created_at > NOW() - INTERVAL '24 hours'
             """, device_ids)
 
             return FleetHealth(
                 group_id=group_id,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 total_devices=row['total'],
                 online_devices=row['online'],
                 offline_devices=row['offline'],
@@ -586,7 +593,7 @@ class FleetMonitor:
                     MAX(value) as max,
                     COUNT(*) as samples
                 FROM device_metrics
-                WHERE device_id = ANY($1)
+                WHERE device_id = ANY($1::text[])
                 AND metric_name = $2
                 AND timestamp > NOW() - $3 * INTERVAL '1 hour'
                 GROUP BY bucket
@@ -622,7 +629,7 @@ class FleetMonitor:
                         AVG(value) as fleet_avg,
                         STDDEV(value) as fleet_stddev
                     FROM device_metrics
-                    WHERE device_id = ANY($1)
+                    WHERE device_id = ANY($1::text[])
                     AND timestamp > NOW() - INTERVAL '1 hour'
                     GROUP BY metric_name
                 )
@@ -637,7 +644,7 @@ class FleetMonitor:
                     SELECT DISTINCT ON (device_id, metric_name)
                         device_id, metric_name, value
                     FROM device_metrics
-                    WHERE device_id = ANY($1)
+                    WHERE device_id = ANY($1::text[])
                     ORDER BY device_id, metric_name, timestamp DESC
                 ) m
                 JOIN fleet_stats s ON m.metric_name = s.metric_name
@@ -665,7 +672,7 @@ class FleetMonitor:
 # REST API for fleet management
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 
 app = FastAPI(title="Fleet Management API")
@@ -676,7 +683,7 @@ class GroupCreate(BaseModel):
     group_type: str
     parent_id: Optional[str] = None
     query: Optional[str] = None
-    tags: Dict[str, str] = {}
+    tags: Dict[str, str] = Field(default_factory=dict)
 
 class JobCreate(BaseModel):
     job_type: str
