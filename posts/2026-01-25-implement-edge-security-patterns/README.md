@@ -65,8 +65,8 @@ graph TB
 from cryptography import x509
 from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-from datetime import datetime, timedelta
+from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
+from datetime import datetime, timedelta, timezone
 import os
 
 class DeviceCertificateManager:
@@ -104,9 +104,10 @@ class DeviceCertificateManager:
         cert_builder = cert_builder.issuer_name(self.ca_cert.subject)
         cert_builder = cert_builder.public_key(device_key.public_key())
         cert_builder = cert_builder.serial_number(x509.random_serial_number())
-        cert_builder = cert_builder.not_valid_before(datetime.utcnow())
+        now = datetime.now(timezone.utc)
+        cert_builder = cert_builder.not_valid_before(now)
         cert_builder = cert_builder.not_valid_after(
-            datetime.utcnow() + timedelta(days=valid_days)
+            now + timedelta(days=valid_days)
         )
 
         # Add extensions
@@ -117,7 +118,7 @@ class DeviceCertificateManager:
         cert_builder = cert_builder.add_extension(
             x509.KeyUsage(
                 digital_signature=True,
-                key_encipherment=True,
+                key_encipherment=False,
                 content_commitment=False,
                 data_encipherment=False,
                 key_agreement=False,
@@ -162,15 +163,26 @@ class DeviceCertificateManager:
             cert = x509.load_pem_x509_certificate(cert_pem)
 
             # Check if certificate is signed by our CA
-            self.ca_cert.public_key().verify(
-                cert.signature,
-                cert.tbs_certificate_bytes,
-                ec.ECDSA(hashes.SHA256())
-            )
+            ca_public_key = self.ca_cert.public_key()
+            if isinstance(ca_public_key, ec.EllipticCurvePublicKey):
+                ca_public_key.verify(
+                    cert.signature,
+                    cert.tbs_certificate_bytes,
+                    ec.ECDSA(cert.signature_hash_algorithm)
+                )
+            elif isinstance(ca_public_key, rsa.RSAPublicKey):
+                ca_public_key.verify(
+                    cert.signature,
+                    cert.tbs_certificate_bytes,
+                    padding.PKCS1v15(),
+                    cert.signature_hash_algorithm
+                )
+            else:
+                return {"valid": False, "error": "Unsupported CA public key type"}
 
             # Check validity period
-            now = datetime.utcnow()
-            if now < cert.not_valid_before or now > cert.not_valid_after:
+            now = datetime.now(timezone.utc)
+            if now < cert.not_valid_before_utc or now > cert.not_valid_after_utc:
                 return {"valid": False, "error": "Certificate expired or not yet valid"}
 
             # Extract device ID from CN
@@ -179,7 +191,7 @@ class DeviceCertificateManager:
             return {
                 "valid": True,
                 "device_id": cn,
-                "expires": cert.not_valid_after,
+                "expires": cert.not_valid_after_utc,
                 "serial": cert.serial_number
             }
 
@@ -303,7 +315,9 @@ class SecureStorage:
         self.key = master_key or self._derive_key_from_hardware()
 
         # Ensure storage directory exists
-        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+        storage_dir = os.path.dirname(storage_path)
+        if storage_dir:
+            os.makedirs(storage_dir, exist_ok=True)
 
     def _derive_key_from_hardware(self) -> bytes:
         """Derive encryption key from hardware identifier"""
@@ -536,7 +550,7 @@ class E2EEncryption:
 # Zero trust security model for edge devices
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from enum import Enum
 import hashlib
@@ -605,7 +619,7 @@ class ZeroTrustEngine:
             return False, f"Insufficient trust level: {trust_level.name}"
 
         # Check attestation freshness
-        attestation_age = datetime.utcnow() - context.last_attestation
+        attestation_age = datetime.now(timezone.utc) - context.last_attestation
         if attestation_age > policy.required_attestation_age:
             return False, "Attestation too old"
 
@@ -646,7 +660,7 @@ class ZeroTrustEngine:
             factors += 0.3
 
         # Recent attestation
-        attestation_age = datetime.utcnow() - context.last_attestation
+        attestation_age = datetime.now(timezone.utc) - context.last_attestation
         if attestation_age < timedelta(hours=1):
             score += 0.3
         elif attestation_age < timedelta(hours=24):
@@ -680,7 +694,7 @@ class TokenService:
         permissions: List[str]
     ) -> str:
         """Issue a short-lived access token"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         payload = {
             "device_id": device_id,
             "resource": resource,
@@ -718,10 +732,11 @@ class TokenService:
 # Secure boot verification for edge devices
 
 import hashlib
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import List, Dict
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec, padding
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 @dataclass
 class BootMeasurement:
@@ -789,7 +804,7 @@ class SecureBootVerifier:
             ],
             "nonce": nonce.hex(),
             "attestation_hash": attestation_hash,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 ```
 
