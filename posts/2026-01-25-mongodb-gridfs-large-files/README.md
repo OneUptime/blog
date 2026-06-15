@@ -65,6 +65,7 @@ GridFS supports both streaming and buffer-based uploads. Streaming is preferred 
 ```javascript
 const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
 const fs = require('fs');
+const path = require('path');
 
 async function uploadFile(bucket, filePath, metadata = {}) {
   const filename = path.basename(filePath);
@@ -85,13 +86,14 @@ async function uploadFile(bucket, filePath, metadata = {}) {
   const fileStream = fs.createReadStream(filePath);
 
   return new Promise((resolve, reject) => {
-    fileStream
-      .pipe(uploadStream)
-      .on('error', reject)
-      .on('finish', () => {
-        console.log(`File uploaded with ID: ${uploadStream.id}`);
-        resolve(uploadStream.id);
-      });
+    fileStream.on('error', reject);
+    uploadStream.on('error', reject);
+    uploadStream.on('finish', () => {
+      console.log(`File uploaded with ID: ${uploadStream.id}`);
+      resolve(uploadStream.id);
+    });
+
+    fileStream.pipe(uploadStream);
   });
 }
 
@@ -123,10 +125,12 @@ async function uploadFromBuffer(bucket, buffer, filename, metadata = {}) {
   });
 
   return new Promise((resolve, reject) => {
-    uploadStream.end(buffer, (error) => {
-      if (error) reject(error);
-      else resolve(uploadStream.id);
+    uploadStream.on('error', reject);
+    uploadStream.on('finish', () => {
+      resolve(uploadStream.id);
     });
+
+    uploadStream.end(buffer);
   });
 }
 ```
@@ -140,13 +144,14 @@ async function downloadFile(bucket, fileId, destinationPath) {
   const writeStream = fs.createWriteStream(destinationPath);
 
   return new Promise((resolve, reject) => {
-    downloadStream
-      .pipe(writeStream)
-      .on('error', reject)
-      .on('finish', () => {
-        console.log(`File downloaded to: ${destinationPath}`);
-        resolve(destinationPath);
-      });
+    downloadStream.on('error', reject);
+    writeStream.on('error', reject);
+    writeStream.on('finish', () => {
+      console.log(`File downloaded to: ${destinationPath}`);
+      resolve(destinationPath);
+    });
+
+    downloadStream.pipe(writeStream);
   });
 }
 
@@ -156,17 +161,11 @@ async function downloadByFilename(bucket, filename, destinationPath) {
   const writeStream = fs.createWriteStream(destinationPath);
 
   return new Promise((resolve, reject) => {
-    downloadStream
-      .pipe(writeStream)
-      .on('error', (error) => {
-        // Handle file not found
-        if (error.code === 'ENOENT') {
-          reject(new Error(`File not found: ${filename}`));
-        } else {
-          reject(error);
-        }
-      })
-      .on('finish', resolve);
+    downloadStream.on('error', reject);
+    writeStream.on('error', reject);
+    writeStream.on('finish', resolve);
+
+    downloadStream.pipe(writeStream);
   });
 }
 
@@ -192,10 +191,10 @@ Here is a complete example of a file server using Express and GridFS.
 const express = require('express');
 const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
 const multer = require('multer');
-const { Readable } = require('stream');
+const fs = require('fs');
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ dest: 'uploads/' });
 
 let bucket;
 
@@ -215,12 +214,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
   }
 
   try {
-    const { originalname, buffer, mimetype } = req.file;
-
-    // Create readable stream from buffer
-    const readableStream = new Readable();
-    readableStream.push(buffer);
-    readableStream.push(null);
+    const { originalname, path: tempPath, mimetype, size } = req.file;
 
     // Upload to GridFS
     const uploadStream = bucket.openUploadStream(originalname, {
@@ -231,17 +225,27 @@ app.post('/upload', upload.single('file'), async (req, res) => {
       }
     });
 
-    readableStream.pipe(uploadStream);
+    const fileStream = fs.createReadStream(tempPath);
+
+    fileStream.pipe(uploadStream);
 
     uploadStream.on('finish', () => {
+      fs.unlink(tempPath, () => {});
       res.json({
         fileId: uploadStream.id.toString(),
         filename: originalname,
-        size: buffer.length
+        size
       });
     });
 
     uploadStream.on('error', (error) => {
+      fs.unlink(tempPath, () => {});
+      console.error('Upload error:', error);
+      res.status(500).json({ error: 'Upload failed' });
+    });
+
+    fileStream.on('error', (error) => {
+      fs.unlink(tempPath, () => {});
       console.error('Upload error:', error);
       res.status(500).json({ error: 'Upload failed' });
     });
@@ -344,8 +348,31 @@ app.get('/stream/:id', async (req, res) => {
     if (range) {
       // Handle range request for partial content
       const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      let start;
+      let end;
+
+      if (parts[0] === '') {
+        const suffixLength = parseInt(parts[1], 10);
+        start = fileSize - suffixLength;
+        end = fileSize - 1;
+      } else {
+        start = parseInt(parts[0], 10);
+        end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      }
+
+      if (
+        Number.isNaN(start) ||
+        Number.isNaN(end) ||
+        start < 0 ||
+        start >= fileSize ||
+        start > end
+      ) {
+        res.status(416);
+        res.set('Content-Range', `bytes */${fileSize}`);
+        return res.send('Requested range not satisfiable');
+      }
+
+      end = Math.min(end, fileSize - 1);
       const chunkSize = end - start + 1;
 
       res.status(206);
@@ -436,9 +463,9 @@ def delete_file(file_id):
 
 ```javascript
 // Clean up orphaned chunks
-async function cleanupOrphanedChunks(db) {
-  const filesCollection = db.collection('fs.files');
-  const chunksCollection = db.collection('fs.chunks');
+async function cleanupOrphanedChunks(db, bucketName = 'fs') {
+  const filesCollection = db.collection(`${bucketName}.files`);
+  const chunksCollection = db.collection(`${bucketName}.chunks`);
 
   // Find all valid file IDs
   const validIds = await filesCollection.distinct('_id');
@@ -456,7 +483,7 @@ async function cleanupOrphanedChunks(db) {
 
 GridFS is ideal when you need:
 - Files replicated alongside your data
-- Atomic operations with other documents
+- Queryable file metadata alongside your application data
 - Simple deployment without additional services
 
 Consider external storage (S3, GCS) when you need:
