@@ -21,7 +21,7 @@ FATAL: sorry, too many clients already
 FATAL: remaining connection slots are reserved for non-replication superuser connections
 ```
 
-It means PostgreSQL has reached its maximum connection limit, and no more connections can be established. The second error means there are reserved slots for superusers, but regular users cannot connect.
+It means PostgreSQL has reached its maximum connection limit, and no more connections can be established. The second error means there are reserved slots for superusers, or for roles with reserved-connection privileges on PostgreSQL 16+, but regular users cannot connect.
 
 ---
 
@@ -138,13 +138,13 @@ sudo systemctl restart postgresql
 ```ini
 # postgresql.conf
 
-# Terminate idle connections after 10 minutes
+# Terminate sessions idle in a transaction after 10 minutes
 idle_in_transaction_session_timeout = '10min'
 
 # Terminate any session idle for too long (PostgreSQL 14+)
 idle_session_timeout = '30min'
 
-# Statement timeout to kill long-running queries
+# Statement timeout to cancel long-running queries
 statement_timeout = '5min'
 ```
 
@@ -274,6 +274,8 @@ process.on('SIGTERM', async () => {
 ```java
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
 
 public class DatabasePool {
     private static HikariDataSource dataSource;
@@ -309,6 +311,9 @@ public class DatabasePool {
 ### Solution 3: Optimize Connection Usage
 
 ```python
+import psycopg2
+from contextlib import contextmanager
+
 # Bad: Opening new connection for each query
 def bad_query():
     conn = psycopg2.connect(...)
@@ -320,20 +325,18 @@ def bad_query():
 
 # Good: Reuse connections from pool
 def good_query():
-    conn = pool.getconn()
+    conn = connection_pool.getconn()
     try:
         cur = conn.cursor()
         cur.execute("SELECT 1")
         return cur.fetchone()
     finally:
-        pool.putconn(conn)  # Return to pool, not closed
+        connection_pool.putconn(conn)  # Return to pool, not closed
 
 # Better: Context manager ensures cleanup
-from contextlib import contextmanager
-
 @contextmanager
 def get_db_cursor():
-    conn = pool.getconn()
+    conn = connection_pool.getconn()
     try:
         with conn.cursor() as cur:
             yield cur
@@ -342,7 +345,7 @@ def get_db_cursor():
         conn.rollback()
         raise
     finally:
-        pool.putconn(conn)
+        connection_pool.putconn(conn)
 
 # Usage
 with get_db_cursor() as cur:
