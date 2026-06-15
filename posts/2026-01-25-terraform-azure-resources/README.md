@@ -21,12 +21,23 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.7"
     }
   }
 }
 
+variable "subscription_id" {
+  description = "Azure subscription ID"
+  type        = string
+}
+
 provider "azurerm" {
+  subscription_id = var.subscription_id
+
   features {
     # Soft delete protection for key vaults
     key_vault {
@@ -47,11 +58,16 @@ data "azurerm_subscription" "current" {}
 
 # Data source for current client (user/service principal)
 data "azurerm_client_config" "current" {}
+
+# Suffix for globally unique resource names
+resource "random_id" "suffix" {
+  byte_length = 3
+}
 ```
 
 Resource Groups
 
-Everything in Azure lives in a resource group. Create them first.
+Most Azure resources live in a resource group. Create them first.
 
 ```hcl
 variable "location" {
@@ -106,7 +122,7 @@ resource "azurerm_virtual_network" "main" {
   }
 }
 
-# Public subnet for load balancers and bastion
+# Public subnet for load balancers
 resource "azurerm_subnet" "public" {
   name                 = "snet-public"
   resource_group_name  = azurerm_resource_group.network.name
@@ -142,7 +158,7 @@ resource "azurerm_subnet" "bastion" {
   name                 = "AzureBastionSubnet"  # Must be named exactly this
   resource_group_name  = azurerm_resource_group.network.name
   virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = ["10.0.255.0/27"]
+  address_prefixes     = ["10.0.255.0/26"]  # /26 or larger is required for new Bastion deployments
 }
 ```
 
@@ -161,7 +177,7 @@ flowchart TB
             K8S[AKS Cluster]
         end
 
-        subgraph Bastion["Bastion Subnet 10.0.255.0/27"]
+        subgraph Bastion["Bastion Subnet 10.0.255.0/26"]
             B[Azure Bastion]
         end
     end
@@ -240,8 +256,8 @@ resource "azurerm_network_security_group" "web" {
 }
 
 # Associate NSG with subnet
-resource "azurerm_subnet_network_security_group_association" "public" {
-  subnet_id                 = azurerm_subnet.public.id
+resource "azurerm_subnet_network_security_group_association" "private" {
+  subnet_id                 = azurerm_subnet.private.id
   network_security_group_id = azurerm_network_security_group.web.id
 }
 ```
@@ -357,18 +373,18 @@ resource "azurerm_kubernetes_cluster" "main" {
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   dns_prefix          = "aks-main"
-  kubernetes_version  = "1.28"
+  kubernetes_version  = "1.35"
 
   default_node_pool {
-    name                = "system"
-    node_count          = 2
-    vm_size             = "Standard_D2s_v3"
-    vnet_subnet_id      = azurerm_subnet.aks.id
-    enable_auto_scaling = true
-    min_count           = 2
-    max_count           = 5
-    os_disk_size_gb     = 50
-    os_disk_type        = "Managed"
+    name                 = "system"
+    node_count           = 2
+    vm_size              = "Standard_D2s_v3"
+    vnet_subnet_id       = azurerm_subnet.aks.id
+    auto_scaling_enabled = true
+    min_count            = 2
+    max_count            = 5
+    os_disk_size_gb      = 50
+    os_disk_type         = "Managed"
 
     # Availability zones for HA
     zones = ["1", "2", "3"]
@@ -393,7 +409,6 @@ resource "azurerm_kubernetes_cluster" "main" {
 
   # Enable Azure AD integration
   azure_active_directory_role_based_access_control {
-    managed            = true
     azure_rbac_enabled = true
   }
 
@@ -418,7 +433,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "workload" {
   vm_size               = "Standard_D4s_v3"
   node_count            = 2
   vnet_subnet_id        = azurerm_subnet.aks.id
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
   min_count             = 2
   max_count             = 10
 
@@ -454,7 +469,7 @@ Deploy a managed SQL database.
 ```hcl
 # SQL Server
 resource "azurerm_mssql_server" "main" {
-  name                         = "sql-main-${var.environment}"
+  name                         = "sql-main-${var.environment}-${random_id.suffix.hex}"
   location                     = azurerm_resource_group.main.location
   resource_group_name          = azurerm_resource_group.main.name
   version                      = "12.0"
@@ -522,9 +537,9 @@ variable "sql_admin_password" {
 ## Storage Account
 
 ```hcl
-# Storage account with private endpoint
+# Storage account with network rules
 resource "azurerm_storage_account" "main" {
-  name                     = "stmain${var.environment}"
+  name                     = "stmain${random_id.suffix.hex}"
   resource_group_name      = azurerm_resource_group.main.name
   location                 = azurerm_resource_group.main.location
   account_tier             = "Standard"
@@ -557,7 +572,7 @@ resource "azurerm_storage_account" "main" {
 # Blob container
 resource "azurerm_storage_container" "data" {
   name                  = "data"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 ```
