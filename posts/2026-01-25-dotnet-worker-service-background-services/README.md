@@ -88,10 +88,10 @@ var host = builder.Build();
 await host.RunAsync();
 ```
 
-The host calls these methods in order:
+The host manages the `IHostedService` lifecycle like this:
 
 1. `StartAsync` - Called when the host starts
-2. `ExecuteAsync` - Your main processing loop
+2. `ExecuteAsync` - Started by `BackgroundService.StartAsync` for your main processing loop
 3. `StopAsync` - Called when the host shuts down
 
 ## Timed Background Service
@@ -136,7 +136,7 @@ public class TimedBackgroundService : BackgroundService
         _logger.LogInformation("Timed task executing at {Time}", DateTime.UtcNow);
 
         // Create a scope to resolve scoped services
-        using var scope = _scopeFactory.CreateScope();
+        await using var scope = _scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
         try
@@ -201,7 +201,7 @@ public class QueueProcessingService : BackgroundService
     {
         await foreach (var workItem in _queue.Reader.ReadAllAsync(stoppingToken))
         {
-            using var scope = _scopeFactory.CreateScope();
+            await using var scope = _scopeFactory.CreateAsyncScope();
             var processor = scope.ServiceProvider.GetRequiredService<IWorkItemProcessor>();
 
             try
@@ -289,13 +289,14 @@ public class WorkerHealthCheck : IHealthCheck
 // WorkerHealthState.cs - Thread-safe state tracking
 public class WorkerHealthState
 {
-    private DateTime _lastProcessedAt = DateTime.UtcNow;
+    private long _lastProcessedAtTicks = DateTime.UtcNow.Ticks;
 
-    public DateTime LastProcessedAt => _lastProcessedAt;
+    public DateTime LastProcessedAt =>
+        new DateTime(Interlocked.Read(ref _lastProcessedAtTicks), DateTimeKind.Utc);
 
     public void RecordProcessed()
     {
-        Interlocked.Exchange(ref _lastProcessedAt, DateTime.UtcNow);
+        Interlocked.Exchange(ref _lastProcessedAtTicks, DateTime.UtcNow.Ticks);
     }
 }
 ```
@@ -327,7 +328,7 @@ public class GracefulWorker : BackgroundService
                 Interlocked.Increment(ref _activeProcessingCount);
                 try
                 {
-                    await ProcessItemAsync(item, stoppingToken);
+                    await ProcessItemAsync(item);
                 }
                 finally
                 {
@@ -346,28 +347,21 @@ public class GracefulWorker : BackgroundService
     {
         _logger.LogInformation("Worker stopping, completing in-flight work");
 
-        // Wait for active processing to complete
-        var timeout = TimeSpan.FromSeconds(30);
-        var deadline = DateTime.UtcNow.Add(timeout);
-
-        while (_activeProcessingCount > 0 && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(100, cancellationToken);
-        }
+        // Stop accepting new items and let BackgroundService wait for ExecuteAsync to finish
+        _queue.Writer.TryComplete();
+        await base.StopAsync(cancellationToken);
 
         if (_activeProcessingCount > 0)
         {
             _logger.LogWarning("Timeout reached with {Count} items still processing",
                 _activeProcessingCount);
         }
-
-        await base.StopAsync(cancellationToken);
     }
 
-    private async Task ProcessItemAsync(WorkItem item, CancellationToken stoppingToken)
+    private async Task ProcessItemAsync(WorkItem item)
     {
         // Your processing logic here
-        await Task.Delay(100, stoppingToken);
+        await Task.Delay(100);
     }
 }
 ```
@@ -378,7 +372,10 @@ Configure your worker service with proper dependency injection:
 
 ```csharp
 // Program.cs
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
+
+// Listen on the same port used by the Kubernetes health probe
+builder.WebHost.ConfigureKestrel(options => options.ListenAnyIP(8080));
 
 // Load configuration
 builder.Configuration.AddJsonFile("appsettings.json", optional: false);
@@ -401,12 +398,12 @@ builder.Services.AddSingleton<WorkerHealthState>();
 builder.Services.AddHostedService<TimedBackgroundService>();
 builder.Services.AddHostedService<QueueProcessingService>();
 
-var host = builder.Build();
+var app = builder.Build();
 
 // Expose health check endpoint
-host.MapHealthChecks("/health");
+app.MapHealthChecks("/health");
 
-await host.RunAsync();
+await app.RunAsync();
 ```
 
 ## Running Multiple Workers
