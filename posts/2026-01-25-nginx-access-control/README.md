@@ -211,7 +211,8 @@ server {
 
     location /readonly/ {
         # Only allow GET and HEAD
-        limit_except GET HEAD {
+        # Allowing GET also allows HEAD
+        limit_except GET {
             deny all;
         }
 
@@ -330,8 +331,11 @@ map $http_user_agent $bad_bot {
     ~*scanner 1;
 }
 
+# Login rate limit
+limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+
 # Maintenance mode
-map $remote_addr $maintenance_mode {
+geo $maintenance_mode {
     default 1;                # Everyone sees maintenance
     192.168.1.0/24 0;        # Office can access
     10.0.0.5 0;              # Admin can access
@@ -432,7 +436,7 @@ flowchart TD
     D -->|Yes| F{Credentials Valid?}
     F -->|No| G[401 Unauthorized]
     F -->|Yes| H{Method Allowed?}
-    H -->|No| I[405 Method Not Allowed]
+    H -->|No| I[403 Forbidden]
     H -->|Yes| E
 ```
 
@@ -449,7 +453,7 @@ curl -I http://example.com/admin/
 curl -u admin:password http://example.com/protected/
 # Should return 200 with valid credentials
 
-# Test from specific IP (via proxy)
+# Test from specific IP (only works when Nginx trusts the proxy with real_ip_header)
 curl --header "X-Forwarded-For: 192.168.1.100" http://example.com/admin/
 
 # Test blocked user agent
@@ -466,20 +470,18 @@ log_format security '$remote_addr - [$time_local] '
                     '"$request" $status '
                     '"$http_user_agent" "$http_referer"';
 
+map $status $access_denied {
+    401 1;
+    403 1;
+    default 0;
+}
+
 server {
     # Log all requests
     access_log /var/log/nginx/access.log;
 
     # Separate log for security events
     access_log /var/log/nginx/security.log security if=$access_denied;
-
-    set $access_denied 0;
-    if ($status = 403) {
-        set $access_denied 1;
-    }
-    if ($status = 401) {
-        set $access_denied 1;
-    }
 }
 ```
 
