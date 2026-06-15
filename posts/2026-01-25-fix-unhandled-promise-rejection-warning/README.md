@@ -163,13 +163,13 @@ setTimeout(safeAsync(async () => {
 const express = require('express');
 const app = express();
 
-// Problem - async route without error handling
+// Problem in Express 4 - async route without error handling
 app.get('/users', async (req, res) => {
     const users = await User.findAll();  // Unhandled if this throws
     res.json(users);
 });
 
-// Fix 1 - try-catch in every route
+// Fix 1 for Express 4 - try-catch in every route
 app.get('/users', async (req, res, next) => {
     try {
         const users = await User.findAll();
@@ -179,7 +179,7 @@ app.get('/users', async (req, res, next) => {
     }
 });
 
-// Fix 2 - wrapper function
+// Fix 2 for Express 4 - wrapper function
 const asyncHandler = (fn) => (req, res, next) => {
     Promise.resolve(fn(req, res, next)).catch(next);
 };
@@ -194,6 +194,8 @@ app.use((err, req, res, next) => {
     console.error('Route error:', err);
     res.status(500).json({ error: 'Internal server error' });
 });
+
+// In Express 5, returned rejected Promises are passed to next automatically.
 ```
 
 ### Scenario 5: Constructor or Synchronous Context
@@ -360,8 +362,9 @@ process.on('unhandledRejection', (reason) => {
 You can configure this with the `--unhandled-rejections` flag:
 
 ```bash
-# Options: strict, warn, none
+# Options: throw, strict, warn, warn-with-error-code, none
 
+node --unhandled-rejections=throw app.js   # Default: emit unhandledRejection, then crash if there is no handler
 node --unhandled-rejections=strict app.js  # Crash on rejection
 node --unhandled-rejections=warn app.js    # Warn only (old behavior)
 ```
