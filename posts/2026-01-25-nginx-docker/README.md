@@ -140,8 +140,6 @@ Define multi-container deployments with Docker Compose:
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   nginx:
     image: nginx:1.25
@@ -393,8 +391,6 @@ A complete production configuration:
 
 ```yaml
 # docker-compose.prod.yml
-
-version: '3.8'
 
 services:
   nginx:
