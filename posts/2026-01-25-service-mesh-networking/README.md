@@ -56,8 +56,8 @@ export PATH=$PWD/bin:$PATH
 # Install with demo profile (good for learning)
 istioctl install --set profile=demo -y
 
-# Or minimal production profile
-istioctl install --set profile=minimal -y
+# Or the default profile, recommended for production deployments
+istioctl install --set profile=default -y
 
 # Enable sidecar injection for namespace
 kubectl label namespace default istio-injection=enabled
@@ -118,7 +118,7 @@ spec:
 
 ```yaml
 # virtual-service.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-routing
@@ -148,7 +148,7 @@ spec:
           weight: 10
 
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-destination
@@ -175,7 +175,7 @@ spec:
 
 ```yaml
 # fault-injection.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ratings-fault
@@ -201,7 +201,7 @@ spec:
 
 ```yaml
 # circuit-breaker.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-circuit-breaker
@@ -229,7 +229,7 @@ spec:
 
 ```yaml
 # peer-authentication.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -240,7 +240,7 @@ spec:
 
 ---
 # For gradual migration, use PERMISSIVE mode
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: allow-plaintext
@@ -254,7 +254,7 @@ spec:
 
 ```yaml
 # authorization-policy.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: frontend-to-api
@@ -276,7 +276,7 @@ spec:
 
 ---
 # Deny all by default
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -293,8 +293,11 @@ Linkerd is lighter weight than Istio and easier to get started with.
 
 ```bash
 # Install CLI
-curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install | sh
-export PATH=$PATH:$HOME/.linkerd2/bin
+curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install-edge | sh
+export PATH=$HOME/.linkerd2/bin:$PATH
+
+# Install Gateway API CRDs if your cluster does not already have a compatible version
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
 
 # Validate cluster
 linkerd check --pre
@@ -320,22 +323,29 @@ kubectl get deploy -n default -o yaml | linkerd inject - | kubectl apply -f -
 kubectl annotate namespace default linkerd.io/inject=enabled
 ```
 
-### Linkerd Traffic Split
+### Linkerd HTTPRoute Traffic Split
 
 ```yaml
-# traffic-split.yaml
-apiVersion: split.smi-spec.io/v1alpha1
-kind: TrafficSplit
+# http-route-split.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: web-split
   namespace: default
 spec:
-  service: web
-  backends:
-    - service: web-v1
-      weight: 900m  # 90%
-    - service: web-v2
-      weight: 100m  # 10%
+  parentRefs:
+    - name: web
+      group: core
+      kind: Service
+      port: 80
+  rules:
+    - backendRefs:
+        - name: web-v1
+          port: 80
+          weight: 90
+        - name: web-v2
+          port: 80
+          weight: 10
 ```
 
 ### Linkerd Service Profiles
@@ -374,27 +384,18 @@ spec:
 
 ### Istio with Prometheus and Grafana
 
-```yaml
-# monitoring-stack.yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  addonComponents:
-    prometheus:
-      enabled: true
-    grafana:
-      enabled: true
-    kiali:
-      enabled: true
-    tracing:
-      enabled: true
+```bash
+# Install sample observability addons for demos and labs
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 ```
 
 ### Custom Metrics in Istio
 
 ```yaml
 # telemetry.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-metrics
@@ -417,16 +418,16 @@ spec:
 
 ```yaml
 # tracing-config.yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
 spec:
-  meshConfig:
-    enableTracing: true
-    defaultConfig:
-      tracing:
-        sampling: 100.0
-        zipkin:
-          address: zipkin.istio-system:9411
+  tracing:
+    - providers:
+        - name: zipkin
+      randomSamplingPercentage: 100.0
 ```
 
 ### Linkerd Dashboard
@@ -451,7 +452,7 @@ linkerd viz routes deploy/api --to svc/database -o wide
 
 ```yaml
 # istio-gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: main-gateway
@@ -479,7 +480,7 @@ spec:
         httpsRedirect: true
 
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: main-routes
@@ -520,7 +521,7 @@ echo -e "\n=== Envoy Configuration ==="
 istioctl proxy-config clusters deploy/api -n default
 
 echo -e "\n=== Check mTLS Status ==="
-istioctl authn tls-check api.default.svc.cluster.local
+istioctl proxy-config secret deploy/api -n default
 
 echo -e "\n=== Analyze Configuration ==="
 istioctl analyze
