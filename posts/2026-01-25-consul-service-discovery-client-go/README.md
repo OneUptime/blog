@@ -99,7 +99,7 @@ func (c *Client) Register(cfg Config) error {
         HTTP:                           fmt.Sprintf("http://localhost:%d%s", cfg.ServicePort, cfg.HealthPath),
         Interval:                       "10s",
         Timeout:                        "5s",
-        DeregisterCriticalServiceAfter: "30s",
+        DeregisterCriticalServiceAfter: "1m",
     }
 
     // Build the service registration
@@ -122,7 +122,7 @@ func (c *Client) Register(cfg Config) error {
 }
 ```
 
-The health check is critical. Consul will poll your `/health` endpoint (or whatever path you configure) every 10 seconds. If it fails for 30 seconds, Consul automatically deregisters the service. This keeps your service mesh clean and prevents traffic from routing to dead instances.
+The health check is critical. Consul will poll your `/health` endpoint (or whatever path you configure) every 10 seconds. If it stays in the critical state for at least one minute, Consul automatically deregisters the service. This keeps your service mesh clean and prevents traffic from routing to dead instances.
 
 ## Deregistering on Shutdown
 
@@ -252,6 +252,15 @@ func (c *Client) Watch(serviceName string, updates chan<- []ServiceInstance) {
             continue
         }
 
+        if meta.LastIndex < lastIndex {
+            lastIndex = 0
+            continue
+        }
+        if meta.LastIndex == 0 {
+            lastIndex = 1
+            continue
+        }
+
         // Only send update if the index changed
         if meta.LastIndex != lastIndex {
             lastIndex = meta.LastIndex
@@ -286,6 +295,7 @@ Here is a complete example showing how to use the client in a real application:
 package main
 
 import (
+    "fmt"
     "log"
     "net/http"
     "os"
@@ -329,7 +339,7 @@ func main() {
 
     go func() {
         log.Printf("Starting server on port %d", cfg.ServicePort)
-        if err := http.ListenAndServe(":8080", nil); err != nil {
+        if err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.ServicePort), nil); err != nil {
             log.Fatalf("Server failed: %v", err)
         }
     }()
