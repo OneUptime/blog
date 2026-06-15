@@ -8,7 +8,7 @@ Description: A practical guide to managing storage snapshots across cloud provid
 
 ---
 
-Snapshots capture the state of storage volumes at a specific point in time. Unlike full backups that copy all data, snapshots record only changes since the last snapshot, making them fast and storage-efficient. This makes snapshots ideal for frequent protection points, pre-change checkpoints, and rapid recovery scenarios.
+Snapshots capture the state of storage volumes at a specific point in time. Unlike full backups that copy all data each time, modern cloud snapshots are typically incremental after the initial snapshot, making them fast and storage-efficient. This makes snapshots ideal for frequent protection points, pre-change checkpoints, and rapid recovery scenarios.
 
 This guide covers snapshot management across major cloud providers and Kubernetes environments.
 
@@ -16,7 +16,7 @@ This guide covers snapshot management across major cloud providers and Kubernete
 
 Snapshots provide several advantages over traditional backups:
 
-1. **Speed:** Creating a snapshot takes seconds, regardless of volume size
+1. **Speed:** Initiating a snapshot is fast, though completion time depends on volume size and changed data
 2. **Efficiency:** Only changed blocks are stored after the initial snapshot
 3. **Consistency:** Application-consistent snapshots capture coherent state
 4. **Recovery:** Restore entire volumes or create new volumes from snapshots
@@ -61,9 +61,12 @@ aws ec2 create-snapshot \
     --tag-specifications 'ResourceType=snapshot,Tags=[{Key=Name,Value=prod-db-snapshot},{Key=Environment,Value=production}]'
 
 # Create snapshot with instance metadata
-INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+    http://169.254.169.254/latest/meta-data/instance-id)
 VOLUME_ID=$(aws ec2 describe-instances \
-    --instance-id "$INSTANCE_ID" \
+    --instance-ids "$INSTANCE_ID" \
     --query 'Reservations[0].Instances[0].BlockDeviceMappings[0].Ebs.VolumeId' \
     --output text)
 
@@ -107,14 +110,14 @@ aws dlm create-lifecycle-policy \
 aws ec2 copy-snapshot \
     --source-region us-east-1 \
     --source-snapshot-id snap-0123456789abcdef \
-    --destination-region us-west-2 \
+    --region us-west-2 \
     --description "DR copy of prod-db snapshot"
 
 # Automated cross-region in DLM
 # Add to policy-details:
 {
     "CrossRegionCopyRules": [{
-        "TargetRegion": "us-west-2",
+        "Target": "us-west-2",
         "Encrypted": true,
         "CmkArn": "arn:aws:kms:us-west-2:123456789012:key/xxx",
         "CopyTags": true,
@@ -164,31 +167,24 @@ az snapshot create \
 ### Scheduling with Azure Backup
 
 ```bash
-# Create backup vault
-az backup vault create \
-    --name backup-vault \
+# Create Backup vault for Azure Disk Backup
+az dataprotection backup-vault create \
+    --vault-name backup-vault \
     --resource-group myresources \
-    --location eastus
+    --location eastus \
+    --type SystemAssigned \
+    --storage-settings datastore-type="VaultStore" type="LocallyRedundant"
 
-# Create backup policy
-az backup policy create \
+# Create a default Azure Disk policy template, then edit policy.json
+# to set the desired schedule and retention.
+az dataprotection backup-policy get-default-policy-template \
+    --datasource-type AzureDisk > policy.json
+
+az dataprotection backup-policy create \
     --vault-name backup-vault \
     --resource-group myresources \
     --name daily-snapshot-policy \
-    --policy '{
-        "schedulePolicy": {
-            "schedulePolicyType": "SimpleSchedulePolicy",
-            "scheduleRunFrequency": "Daily",
-            "scheduleRunTimes": ["2026-01-25T03:00:00Z"]
-        },
-        "retentionPolicy": {
-            "retentionPolicyType": "LongTermRetentionPolicy",
-            "dailySchedule": {
-                "retentionTimes": ["2026-01-25T03:00:00Z"],
-                "retentionDuration": {"count": 7, "durationType": "Days"}
-            }
-        }
-    }'
+    --policy policy.json
 ```
 
 ### Restoring from Snapshots
@@ -499,7 +495,7 @@ def get_snapshot_metrics(region='us-east-1'):
 
     metrics = {
         'total_count': len(snapshots),
-        'total_size_gb': 0,
+        'provisioned_source_volume_gb': 0,
         'pending': 0,
         'completed': 0,
         'error': 0,
@@ -512,7 +508,7 @@ def get_snapshot_metrics(region='us-east-1'):
     }
 
     for snapshot in snapshots:
-        metrics['total_size_gb'] += snapshot['VolumeSize']
+        metrics['provisioned_source_volume_gb'] += snapshot['VolumeSize']
 
         if snapshot['State'] == 'pending':
             metrics['pending'] += 1
@@ -538,8 +534,8 @@ def report_metrics(metrics):
 
     print("=== Snapshot Metrics Report ===")
     print(f"Total Snapshots: {metrics['total_count']}")
-    print(f"Total Size: {metrics['total_size_gb']} GB")
-    print(f"Estimated Monthly Cost: ${metrics['total_size_gb'] * 0.05:.2f}")
+    print(f"Provisioned Source Volume Size: {metrics['provisioned_source_volume_gb']} GB")
+    print("Cost note: EBS snapshot billing is based on stored changed blocks, not source volume size.")
     print(f"\nStatus:")
     print(f"  Completed: {metrics['completed']}")
     print(f"  Pending: {metrics['pending']}")
