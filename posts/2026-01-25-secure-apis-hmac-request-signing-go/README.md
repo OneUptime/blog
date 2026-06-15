@@ -19,7 +19,7 @@ Traditional API authentication has several weaknesses:
 | **API Key in header** | Can be intercepted, logged, or stolen |
 | **Basic Auth** | Credentials sent with every request |
 | **Bearer tokens** | Token theft allows full access |
-| **HMAC signing** | Secret never transmitted, requests tamper-proof |
+| **HMAC signing** | Secret never transmitted, requests tamper-evident |
 
 HMAC signing works differently. The client computes a hash of the request using a secret key. The server computes the same hash and compares. The secret key never leaves either party. Even if someone intercepts the signed request, they cannot forge new requests without knowing the secret.
 
@@ -28,7 +28,7 @@ HMAC signing works differently. The client computes a hash of the request using 
 A typical HMAC signing scheme includes these components in the signature:
 
 1. HTTP method (GET, POST, etc.)
-2. Request path
+2. Request path and query string
 3. Timestamp (to prevent replay attacks)
 4. Request body hash (for POST/PUT requests)
 5. Any critical headers
@@ -86,10 +86,10 @@ func hashBody(body []byte) string {
 }
 
 // buildCanonicalString creates the string to sign
-// Format: METHOD\nPATH\nTIMESTAMP\nBODY_HASH
-func (c *HMACClient) buildCanonicalString(method, path string, timestamp int64, body []byte) string {
+// Format: METHOD\nPATH_AND_QUERY\nTIMESTAMP\nBODY_HASH
+func (c *HMACClient) buildCanonicalString(method, pathAndQuery string, timestamp int64, body []byte) string {
     bodyHash := hashBody(body)
-    return fmt.Sprintf("%s\n%s\n%d\n%s", method, path, timestamp, bodyHash)
+    return fmt.Sprintf("%s\n%s\n%d\n%s", method, pathAndQuery, timestamp, bodyHash)
 }
 
 // Do executes the request with HMAC signature headers
@@ -110,7 +110,7 @@ func (c *HMACClient) Do(req *http.Request) (*http.Response, error) {
     timestamp := time.Now().Unix()
 
     // Build canonical string and compute signature
-    canonical := c.buildCanonicalString(req.Method, req.URL.Path, timestamp, body)
+    canonical := c.buildCanonicalString(req.Method, req.URL.RequestURI(), timestamp, body)
     signature := c.computeHMAC(canonical)
 
     // Add authentication headers
@@ -225,7 +225,7 @@ func (m *HMACAuthMiddleware) Middleware(next http.Handler) http.Handler {
         r.Body = io.NopCloser(bytes.NewReader(body))
 
         // Compute expected signature
-        expectedSig := m.computeSignature(secretKey, r.Method, r.URL.Path, timestamp, body)
+        expectedSig := m.computeSignature(secretKey, r.Method, r.URL.RequestURI(), timestamp, body)
 
         // Constant-time comparison prevents timing attacks
         if !hmac.Equal([]byte(signature), []byte(expectedSig)) {
@@ -238,14 +238,14 @@ func (m *HMACAuthMiddleware) Middleware(next http.Handler) http.Handler {
     })
 }
 
-func (m *HMACAuthMiddleware) computeSignature(secretKey, method, path string, timestamp int64, body []byte) string {
+func (m *HMACAuthMiddleware) computeSignature(secretKey, method, pathAndQuery string, timestamp int64, body []byte) string {
     // Hash the body
     bodyHash := sha256.New()
     bodyHash.Write(body)
     bodyHashHex := hex.EncodeToString(bodyHash.Sum(nil))
 
     // Build canonical string (must match client exactly)
-    canonical := fmt.Sprintf("%s\n%s\n%d\n%s", method, path, timestamp, bodyHashHex)
+    canonical := fmt.Sprintf("%s\n%s\n%d\n%s", method, pathAndQuery, timestamp, bodyHashHex)
 
     // Compute HMAC
     mac := hmac.New(sha256.New, []byte(secretKey))
@@ -354,9 +354,9 @@ func (s *NonceStore) cleanup() {
 }
 
 // Updated canonical string includes nonce
-// Format: METHOD\nPATH\nTIMESTAMP\nNONCE\nBODY_HASH
-func buildCanonicalStringWithNonce(method, path string, timestamp int64, nonce string, bodyHash string) string {
-    return fmt.Sprintf("%s\n%s\n%d\n%s\n%s", method, path, timestamp, nonce, bodyHash)
+// Format: METHOD\nPATH_AND_QUERY\nTIMESTAMP\nNONCE\nBODY_HASH
+func buildCanonicalStringWithNonce(method, pathAndQuery string, timestamp int64, nonce string, bodyHash string) string {
+    return fmt.Sprintf("%s\n%s\n%d\n%s\n%s", method, pathAndQuery, timestamp, nonce, bodyHash)
 }
 ```
 
@@ -396,14 +396,14 @@ func buildCanonicalHeaders(headers http.Header, signedHeaders []string) string {
 }
 
 // Extended canonical string format
-// METHOD\nPATH\nTIMESTAMP\nSIGNED_HEADERS\nHEADERS_STRING\nBODY_HASH
-func buildFullCanonicalString(method, path string, timestamp int64, headers http.Header, signedHeaders []string, bodyHash string) string {
+// METHOD\nPATH_AND_QUERY\nTIMESTAMP\nSIGNED_HEADERS\nHEADERS_STRING\nBODY_HASH
+func buildFullCanonicalString(method, pathAndQuery string, timestamp int64, headers http.Header, signedHeaders []string, bodyHash string) string {
     headersString := buildCanonicalHeaders(headers, signedHeaders)
     signedHeadersList := strings.Join(signedHeaders, ";")
 
     return fmt.Sprintf("%s\n%s\n%d\n%s\n%s\n%s",
         method,
-        path,
+        pathAndQuery,
         timestamp,
         signedHeadersList,
         headersString,
