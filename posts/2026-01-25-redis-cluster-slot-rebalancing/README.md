@@ -150,6 +150,7 @@ For production environments, use a script with monitoring:
 ```python
 import redis
 import time
+from redis.cluster import ClusterNode
 
 class ClusterRebalancer:
     """
@@ -170,10 +171,9 @@ class ClusterRebalancer:
         cluster_info = self.rc.cluster_slots()
         distribution = {}
 
-        for slot_range in cluster_info:
-            start_slot, end_slot = slot_range[0], slot_range[1]
-            node_info = slot_range[2]
-            node_id = f"{node_info[0]}:{node_info[1]}"
+        for (start_slot, end_slot), nodes in cluster_info.items():
+            host, port = nodes["primary"]
+            node_id = f"{host}:{port}"
 
             slot_count = end_slot - start_slot + 1
             distribution[node_id] = distribution.get(node_id, 0) + slot_count
@@ -242,8 +242,8 @@ class ClusterRebalancer:
 
 # Usage
 startup_nodes = [
-    {"host": "192.168.1.10", "port": 6379},
-    {"host": "192.168.1.11", "port": 6379}
+    ClusterNode("192.168.1.10", 6379),
+    ClusterNode("192.168.1.11", 6379)
 ]
 
 rebalancer = ClusterRebalancer(startup_nodes)
@@ -290,12 +290,12 @@ If a master fails without replicas, you need to handle the situation:
 redis-cli -c -h 192.168.1.10 CLUSTER INFO
 # cluster_state:fail indicates problems
 
-# Manually assign orphaned slots to healthy nodes
-# First identify the failed node's slots from CLUSTER NODES output
-# Then assign them manually:
+# If the data on the failed master is lost, remove the failed node and
+# assign the now-uncovered slots to a healthy master. This creates empty slots.
 redis-cli -c -h 192.168.1.10 CLUSTER ADDSLOTS 5461 5462 5463 ...
 
-# Or use fix command to repair cluster
+# Prefer the fix command for repairing uncovered slots after you understand
+# the data-loss implications:
 redis-cli --cluster fix 192.168.1.10:6379
 ```
 
@@ -403,14 +403,11 @@ redis-cli -c -h 192.168.1.10 INFO memory | grep used_memory_human
 ### Safe Migration Settings
 
 ```bash
-# Set migration timeout (milliseconds)
-redis-cli -c CONFIG SET cluster-migration-barrier 1
+# cluster-migration-barrier controls automatic replica migration, not slot
+# migration timeouts or bandwidth. Configure it only for replica placement:
+redis-cli -c -h 192.168.1.10 -p 6379 CONFIG SET cluster-migration-barrier 1
 
-# Limit migration bandwidth (bytes per second)
-# Configure in redis.conf:
-# cluster-migration-barrier 1
-
-# Use pipeline for bulk operations during migration
+# Tune redis-cli's migration batching and timeout for bulk slot moves
 redis-cli --cluster reshard 192.168.1.10:6379 \
     --cluster-pipeline 1000 \
     --cluster-timeout 60000
