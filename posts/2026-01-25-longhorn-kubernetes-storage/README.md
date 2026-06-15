@@ -8,7 +8,7 @@ Description: Learn how to deploy and configure Longhorn for distributed block st
 
 ---
 
-Longhorn is a lightweight, distributed block storage system built specifically for Kubernetes. Developed by Rancher Labs and now a CNCF sandbox project, it provides replicated persistent volumes without the operational overhead of traditional storage clusters like Ceph. If you want reliable storage for stateful workloads without becoming a full-time storage administrator, Longhorn is worth considering.
+Longhorn is a lightweight, distributed block storage system built specifically for Kubernetes. Developed by Rancher Labs and now a CNCF incubating project, it provides replicated persistent volumes without the operational overhead of traditional storage clusters like Ceph. If you want reliable storage for stateful workloads without becoming a full-time storage administrator, Longhorn is worth considering.
 
 This guide covers installation, volume provisioning, backup configuration, and recovery procedures.
 
@@ -22,14 +22,15 @@ Longhorn addresses common Kubernetes storage pain points:
 4. **UI-driven operations:** Web dashboard for volume management, snapshot creation, and disaster recovery.
 5. **Incremental snapshots:** Fast, space-efficient snapshots with instant restore.
 
-The tradeoff is that Longhorn only provides block storage (ReadWriteOnce). If you need shared filesystems (ReadWriteMany), you will need to pair it with NFS or look at other solutions.
+The tradeoff is that Longhorn's core volume model is replicated block storage. If you need shared filesystems (ReadWriteMany), Longhorn supports RWX volumes by exposing Longhorn volumes through NFSv4 share-manager pods, so each node needs an NFSv4 client installed.
 
 ## Prerequisites
 
 Before installing Longhorn, ensure your cluster meets these requirements:
 
-- Kubernetes 1.21 or higher
-- Each node needs `open-iscsi` installed
+- Kubernetes 1.25 or higher
+- Each node that will host V1 volumes needs `open-iscsi` installed
+- Each node needs an NFSv4 client installed if you use NFS backup targets or ReadWriteMany volumes
 - Nodes should have at least one dedicated disk or partition for storage (optional but recommended)
 - Helm 3.x installed
 
@@ -43,6 +44,7 @@ sudo systemctl enable --now iscsid
 
 # RHEL/CentOS/Fedora
 sudo dnf install -y iscsi-initiator-utils
+sudo sh -c 'echo "InitiatorName=$(/sbin/iscsi-iname)" > /etc/iscsi/initiatorname.iscsi'
 sudo systemctl enable --now iscsid
 
 # Verify iSCSI is running
@@ -64,8 +66,9 @@ kubectl create namespace longhorn-system
 # Install Longhorn
 helm install longhorn longhorn/longhorn \
     --namespace longhorn-system \
+    --create-namespace \
     --set defaultSettings.defaultDataPath="/var/lib/longhorn" \
-    --set defaultSettings.replicaCount=3
+    --set defaultSettings.defaultReplicaCount=3
 
 # Wait for pods to be ready
 kubectl -n longhorn-system get pods -w
@@ -320,23 +323,20 @@ kubectl -n longhorn-system create secret generic aws-credentials \
     --from-literal=AWS_SECRET_ACCESS_KEY=your-secret-key
 ```
 
-Then configure in Longhorn settings (UI or YAML):
+Then configure the default backup target in the Longhorn UI or with the default resource ConfigMap:
 
 ```yaml
-# longhorn-settings.yaml
-apiVersion: longhorn.io/v1beta2
-kind: Setting
+# longhorn-default-resource.yaml
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: backup-target
+  name: longhorn-default-resource
   namespace: longhorn-system
-value: "s3://longhorn-backups@us-east-1/"
----
-apiVersion: longhorn.io/v1beta2
-kind: Setting
-metadata:
-  name: backup-target-credential-secret
-  namespace: longhorn-system
-value: "aws-credentials"
+data:
+  default-resource.yaml: |
+    "backup-target": "s3://longhorn-backups@us-east-1/"
+    "backup-target-credential-secret": "aws-credentials"
+    "backupstore-poll-interval": "300"
 ```
 
 ## Recurring Backup Jobs
@@ -370,6 +370,7 @@ metadata:
   name: postgres-data
   namespace: production
   labels:
+    recurring-job.longhorn.io/source: enabled
     recurring-job-group.longhorn.io/default: enabled
 spec:
   # ... rest of PVC spec
@@ -381,7 +382,11 @@ Restore volumes from backups after cluster recreation:
 
 ```bash
 # List available backups
-kubectl -n longhorn-system get backup
+kubectl -n longhorn-system get backups.longhorn.io
+
+# Get the backup URL and size for the backup you want to restore
+kubectl -n longhorn-system get backup.longhorn.io backup-abc123 -o jsonpath='{.status.url}'
+kubectl -n longhorn-system get backup.longhorn.io backup-abc123 -o jsonpath='{.status.volumeSize}'
 
 # Create a volume from backup via UI or:
 cat <<EOF | kubectl apply -f -
@@ -395,6 +400,7 @@ spec:
   size: "53687091200"
   fromBackup: "s3://longhorn-backups@us-east-1/?backup=backup-abc123&volume=postgres-data"
   numberOfReplicas: 3
+  dataEngine: v1
 EOF
 ```
 
@@ -403,9 +409,8 @@ EOF
 Before taking a node offline for maintenance:
 
 ```bash
-# Disable scheduling on the node
-kubectl -n longhorn-system annotate node worker-01 \
-    node.longhorn.io/disable-scheduling=true
+# Cordon the node; Longhorn automatically disables scheduling on cordoned nodes
+kubectl cordon worker-01
 
 # Drain workloads
 kubectl drain worker-01 --ignore-daemonsets --delete-emptydir-data
@@ -414,8 +419,6 @@ kubectl drain worker-01 --ignore-daemonsets --delete-emptydir-data
 # Monitor progress in the UI
 
 # After maintenance, re-enable scheduling
-kubectl -n longhorn-system annotate node worker-01 \
-    node.longhorn.io/disable-scheduling-
 kubectl uncordon worker-01
 ```
 
