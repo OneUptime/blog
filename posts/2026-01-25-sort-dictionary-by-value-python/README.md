@@ -286,7 +286,7 @@ itemgetter_time = timeit.timeit(
 
 print(f"Lambda: {lambda_time:.4f}s")
 print(f"itemgetter: {itemgetter_time:.4f}s")
-# itemgetter is typically 20-30% faster
+# itemgetter can be faster, depending on your Python version and data
 ```
 
 ## Summary
@@ -302,7 +302,7 @@ print(f"itemgetter: {itemgetter_time:.4f}s")
 Key points:
 
 - Use `sorted()` with `key` parameter to sort by value
-- `itemgetter(1)` is faster than `lambda x: x[1]`
+- `itemgetter(1)` can be faster than `lambda x: x[1]`
 - Use `reverse=True` for descending order
 - Convert result back to `dict()` to maintain dictionary type
 - Use `heapq` for efficient partial sorting of large dictionaries
