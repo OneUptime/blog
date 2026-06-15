@@ -34,7 +34,8 @@ Install kind and create a cluster:
 brew install kind
 
 # Install kind (Linux)
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64
+[ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
+[ $(uname -m) = aarch64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-arm64
 chmod +x ./kind
 sudo mv ./kind /usr/local/bin/kind
 
@@ -75,15 +76,9 @@ nodes:
   - role: worker
   - role: worker
 
-# Configure container registry mirrors for faster pulls
-containerdConfigPatches:
-  - |-
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-      endpoint = ["https://mirror.gcr.io"]
-
 # Network configuration
 networking:
-  # Use Calico for network policies (optional)
+  # Use the default CNI; set this to true before installing Calico or another CNI
   disableDefaultCNI: false
   podSubnet: "10.244.0.0/16"
   serviceSubnet: "10.96.0.0/12"
@@ -125,27 +120,36 @@ Speed up development by using a local registry:
 
 ```bash
 # Create local registry
-docker run -d --restart=always -p 5000:5000 --name registry registry:2
+docker run -d --restart=always -p "127.0.0.1:5001:5000" --network bridge --name kind-registry registry:3
 
-# Connect registry to kind network
-docker network connect kind registry
-
-# Create kind cluster with registry configured
+# Create kind cluster with registry config enabled
 cat <<EOF | kind create cluster --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 containerdConfigPatches:
 - |-
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5000"]
-    endpoint = ["http://registry:5000"]
+  [plugins."io.containerd.grpc.v1.cri".registry]
+    config_path = "/etc/containerd/certs.d"
 EOF
 
+# Configure each kind node to reach the registry container
+REGISTRY_DIR="/etc/containerd/certs.d/localhost:5001"
+for node in $(kind get nodes); do
+  docker exec "$node" mkdir -p "$REGISTRY_DIR"
+  cat <<EOF | docker exec -i "$node" cp /dev/stdin "$REGISTRY_DIR/hosts.toml"
+[host."http://kind-registry:5000"]
+EOF
+done
+
+# Connect registry to kind network
+docker network connect kind kind-registry
+
 # Tag and push images to local registry
-docker build -t localhost:5000/myapp:latest .
-docker push localhost:5000/myapp:latest
+docker build -t localhost:5001/myapp:latest .
+docker push localhost:5001/myapp:latest
 
 # Reference in Kubernetes manifests
-# image: localhost:5000/myapp:latest
+# image: localhost:5001/myapp:latest
 ```
 
 ## Development Workflow with Skaffold
@@ -154,14 +158,14 @@ Skaffold automates the build-push-deploy cycle:
 
 ```yaml
 # skaffold.yaml
-apiVersion: skaffold/v4beta8
+apiVersion: skaffold/v4beta13
 kind: Config
 metadata:
   name: myapp
 
 build:
   artifacts:
-    - image: myapp
+    - image: localhost:5001/myapp
       context: .
       docker:
         dockerfile: Dockerfile
@@ -180,7 +184,7 @@ profiles:
   - name: dev
     build:
       artifacts:
-        - image: myapp
+        - image: localhost:5001/myapp
           sync:
             # Sync source files without rebuilding
             manual:
@@ -239,7 +243,7 @@ spec:
     spec:
       containers:
         - name: myapp
-          image: myapp  # Skaffold replaces with tagged image
+          image: localhost:5001/myapp  # Skaffold replaces with tagged image
           ports:
             - containerPort: 3000
           env:
