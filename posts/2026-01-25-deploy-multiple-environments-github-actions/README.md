@@ -106,6 +106,8 @@ jobs:
 
       - name: Deploy to development
         run: |
+          echo "$KUBECONFIG_DATA" > "$RUNNER_TEMP/kubeconfig"
+          export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
           kubectl set image deployment/myapp \
             myapp=myapp:${{ needs.build.outputs.image-tag }} \
             --namespace development
@@ -127,6 +129,8 @@ jobs:
 
       - name: Deploy to staging
         run: |
+          echo "$KUBECONFIG_DATA" > "$RUNNER_TEMP/kubeconfig"
+          export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
           kubectl set image deployment/myapp \
             myapp=myapp:${{ needs.build.outputs.image-tag }} \
             --namespace staging
@@ -147,6 +151,8 @@ jobs:
 
       - name: Deploy to production
         run: |
+          echo "$KUBECONFIG_DATA" > "$RUNNER_TEMP/kubeconfig"
+          export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
           kubectl set image deployment/myapp \
             myapp=myapp:${{ needs.build.outputs.image-tag }} \
             --namespace production
@@ -204,7 +210,7 @@ Production deployments often require manual approval. Configure this in the envi
       - name: Request approval
         uses: trstringer/manual-approval@v1
         with:
-          secret: ${{ github.TOKEN }}
+          secret: ${{ secrets.GITHUB_TOKEN }}
           approvers: devops-team,lead-engineers
           minimum-approvals: 2
           issue-title: "Deploy ${{ github.sha }} to production"
@@ -257,10 +263,11 @@ name: Preview Environment
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
 
 jobs:
   deploy-preview:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     environment:
       name: preview-${{ github.event.number }}
