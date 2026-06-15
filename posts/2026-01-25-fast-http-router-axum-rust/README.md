@@ -10,7 +10,7 @@ Description: Learn how to build a high-performance HTTP router in Rust using Axu
 
 If you have been following the Rust web ecosystem, you have probably heard of Axum. Built by the Tokio team, Axum is a web framework that prioritizes ergonomics without sacrificing performance. It sits on top of Hyper and Tower, which means you get battle-tested HTTP handling and a rich middleware ecosystem out of the box.
 
-What makes Axum stand out is its type-safe approach to routing. Instead of runtime errors when extracting path parameters or query strings, the compiler catches mistakes before your code ever runs. This alone saves hours of debugging.
+What makes Axum stand out is its type-safe approach to routing. Handler signatures make the expected request data explicit, and Axum turns invalid path parameters or query strings into request rejections instead of unchecked casts or manual parsing. This alone saves hours of debugging.
 
 Let me walk you through building a production-ready HTTP router with Axum.
 
@@ -27,12 +27,12 @@ Update your `Cargo.toml`:
 
 ```toml
 [dependencies]
-axum = "0.7"
+axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower = "0.5"
+tower-http = { version = "0.7", features = ["cors", "trace"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 ```
@@ -43,7 +43,7 @@ Here is a minimal Axum application with a few routes:
 
 ```rust
 use axum::{
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use std::net::SocketAddr;
@@ -78,7 +78,7 @@ async fn health_check() -> &'static str {
 
 ## Path Parameters and Type-Safe Extraction
 
-Axum shines when extracting data from requests. Path parameters are type-checked at compile time:
+Axum shines when extracting data from requests. Path parameters are parsed into the types you declare in the handler signature:
 
 ```rust
 use axum::{
@@ -99,14 +99,15 @@ async fn get_user_post(
 }
 
 let app = Router::new()
-    .route("/users/:user_id", get(get_user))
-    .route("/users/:user_id/posts/:post_id", get(get_user_post));
+    .route("/users/{user_id}", get(get_user))
+    .route("/users/{user_id}/posts/{post_id}", get(get_user_post));
 ```
 
 For structured path parameters, use a struct with serde:
 
 ```rust
 use serde::Deserialize;
+use axum::extract::Path;
 
 #[derive(Deserialize)]
 struct PostParams {
@@ -185,18 +186,18 @@ async fn create_user(
 Real applications need organized route structures. Axum lets you nest routers:
 
 ```rust
-use axum::Router;
+use axum::{routing::get, Router};
 
 fn user_routes() -> Router {
     Router::new()
         .route("/", get(list_users).post(create_user))
-        .route("/:id", get(get_user).put(update_user).delete(delete_user))
+        .route("/{id}", get(get_user).put(update_user).delete(delete_user))
 }
 
 fn post_routes() -> Router {
     Router::new()
         .route("/", get(list_posts).post(create_post))
-        .route("/:id", get(get_post))
+        .route("/{id}", get(get_post))
 }
 
 fn api_v1_routes() -> Router {
@@ -210,7 +211,7 @@ let app = Router::new()
     .route("/health", get(health_check));
 ```
 
-This creates endpoints like `/api/v1/users`, `/api/v1/users/:id`, `/api/v1/posts`, and so on.
+This creates endpoints like `/api/v1/users`, `/api/v1/users/{id}`, `/api/v1/posts`, and so on.
 
 ## Adding State
 
@@ -218,7 +219,7 @@ Most applications need shared state - database pools, configuration, caches. Axu
 
 ```rust
 use axum::{
-    extract::State,
+    extract::{Path, State},
     routing::get,
     Router,
 };
@@ -246,7 +247,7 @@ async fn main() {
     });
 
     let app = Router::new()
-        .route("/users/:id", get(get_user))
+        .route("/users/{id}", get(get_user))
         .with_state(state);
 
     // ... serve the app
@@ -259,6 +260,7 @@ Axum uses Tower for middleware. Here is how to add common middleware layers:
 
 ```rust
 use axum::{
+    routing::get,
     Router,
     middleware,
     extract::Request,
@@ -268,7 +270,6 @@ use tower_http::{
     cors::{CorsLayer, Any},
     trace::TraceLayer,
 };
-use std::time::Duration;
 
 // Custom middleware function
 async fn logging_middleware(
@@ -311,6 +312,7 @@ Proper error handling separates toy projects from production code. Create a cust
 
 ```rust
 use axum::{
+    extract::Path,
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -358,10 +360,8 @@ Here is a complete example putting everything together:
 ```rust
 use axum::{
     extract::{Path, Query, State, Json},
-    http::StatusCode,
-    middleware,
     response::IntoResponse,
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -411,7 +411,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/items", get(list_items))
-        .route("/items/:id", get(get_item))
+        .route("/items/{id}", get(get_item))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
