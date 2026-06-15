@@ -83,17 +83,19 @@ mount | grep /mnt/data
 
 ### Cause 1: Missing Tablespace Directory
 
-The tablespace directory was deleted or never created.
+The tablespace directory was deleted, never created, or is missing because the file system is not mounted.
 
 ```bash
 # Check if directory exists
 ls -la /path/to/tablespace/
 
-# If missing, recreate it
+# If the mount point directory itself is missing, recreate the mount point
 sudo mkdir -p /path/to/tablespace
 sudo chown postgres:postgres /path/to/tablespace
 sudo chmod 700 /path/to/tablespace
 ```
+
+If PostgreSQL data inside the tablespace was deleted, do not try to recover by creating an empty directory. Restore the tablespace contents from a backup or recover the affected objects from logical backups.
 
 ### Cause 2: Broken Symbolic Link
 
@@ -102,9 +104,11 @@ sudo chmod 700 /path/to/tablespace
 ls -la $PGDATA/pg_tblspc/16385
 
 # If broken (shows red in ls), recreate it
+sudo systemctl stop postgresql
 sudo rm $PGDATA/pg_tblspc/16385
 sudo ln -s /correct/path/to/tablespace $PGDATA/pg_tblspc/16385
 sudo chown -h postgres:postgres $PGDATA/pg_tblspc/16385
+sudo systemctl start postgresql
 ```
 
 ### Cause 3: Permission Issues
@@ -169,7 +173,8 @@ SELECT
     END AS type
 FROM pg_class c
 JOIN pg_namespace n ON c.relnamespace = n.oid
-JOIN pg_tablespace t ON c.reltablespace = t.oid
+JOIN pg_database d ON d.datname = current_database()
+JOIN pg_tablespace t ON t.oid = COALESCE(NULLIF(c.reltablespace, 0), d.dattablespace)
 WHERE t.spcname = 'missing_tablespace';
 ```
 
@@ -183,22 +188,10 @@ ALTER TABLE mytable SET TABLESPACE pg_default;
 ALTER INDEX myindex SET TABLESPACE pg_default;
 
 -- Move all tables from one tablespace to another
-DO $$
-DECLARE
-    r RECORD;
-BEGIN
-    FOR r IN
-        SELECT c.relname, n.nspname
-        FROM pg_class c
-        JOIN pg_namespace n ON c.relnamespace = n.oid
-        JOIN pg_tablespace t ON c.reltablespace = t.oid
-        WHERE t.spcname = 'old_tablespace'
-        AND c.relkind = 'r'
-    LOOP
-        EXECUTE format('ALTER TABLE %I.%I SET TABLESPACE pg_default', r.nspname, r.relname);
-        RAISE NOTICE 'Moved table %.%', r.nspname, r.relname;
-    END LOOP;
-END $$;
+ALTER TABLE ALL IN TABLESPACE old_tablespace SET TABLESPACE pg_default;
+
+-- Move all indexes from one tablespace to another
+ALTER INDEX ALL IN TABLESPACE old_tablespace SET TABLESPACE pg_default;
 ```
 
 ### Drop Unusable Tablespace
@@ -215,7 +208,9 @@ SELECT
     c.relkind,
     pg_size_pretty(pg_relation_size(c.oid))
 FROM pg_class c
-WHERE c.reltablespace = (SELECT oid FROM pg_tablespace WHERE spcname = 'broken_tablespace');
+JOIN pg_database d ON d.datname = current_database()
+WHERE COALESCE(NULLIF(c.reltablespace, 0), d.dattablespace) =
+    (SELECT oid FROM pg_tablespace WHERE spcname = 'broken_tablespace');
 ```
 
 ---
@@ -242,10 +237,11 @@ SELECT * FROM pg_tablespace WHERE spcname = 'fast_storage';
 ### Move Database to Tablespace
 
 ```sql
--- Set default tablespace for a database
+-- Move the database's old default-tablespace objects and change its default tablespace
 ALTER DATABASE mydb SET TABLESPACE fast_storage;
 
--- This requires exclusive lock and no active connections
+-- This cannot run inside a transaction block, requires no active connections
+-- to the database, and requires the new tablespace to be empty for this database
 -- You may need to disconnect all users first
 ```
 
@@ -280,7 +276,8 @@ SELECT
     count(*) AS object_count,
     pg_size_pretty(sum(pg_relation_size(c.oid))) AS total_size
 FROM pg_class c
-JOIN pg_tablespace t ON c.reltablespace = t.oid OR (c.reltablespace = 0 AND t.spcname = 'pg_default')
+JOIN pg_database d ON d.datname = current_database()
+JOIN pg_tablespace t ON t.oid = COALESCE(NULLIF(c.reltablespace, 0), d.dattablespace)
 WHERE c.relkind IN ('r', 'i')
 GROUP BY t.spcname
 ORDER BY sum(pg_relation_size(c.oid)) DESC;
@@ -348,8 +345,8 @@ SELECT
     pg_tablespace_location(oid) AS location,
     pg_size_pretty(pg_tablespace_size(oid)) AS size,
     CASE
-        WHEN pg_tablespace_size(oid) > 0 THEN 'OK'
-        ELSE 'EMPTY or ERROR'
+        WHEN pg_tablespace_location(oid) = '' THEN 'BUILT-IN'
+        ELSE 'ACCESSIBLE'
     END AS status
 FROM pg_tablespace;
 ```
@@ -370,7 +367,7 @@ Keep documentation of:
 2. **Monitor disk health** - Set up alerts for disk failures
 3. **Test tablespace access regularly** - Verify directories are accessible
 4. **Document dependencies** - Know which applications use which tablespaces
-5. **Include tablespaces in backups** - pg_dump includes tablespace info
+5. **Include tablespaces in backups** - pg_dump preserves object tablespace selections, and pg_dumpall is needed for cluster-wide tablespace definitions
 6. **Use separate disks carefully** - Benefits must outweigh complexity
 
 ---
@@ -379,7 +376,7 @@ Keep documentation of:
 
 "Cannot open tablespace" errors usually indicate:
 
-1. **Missing directory** - Recreate with correct permissions
+1. **Missing directory** - Recreate only missing mount points, or restore data from backup
 2. **Broken symlink** - Fix or recreate the link
 3. **Permission issues** - Set correct ownership and modes
 4. **Unmounted storage** - Mount the file system
