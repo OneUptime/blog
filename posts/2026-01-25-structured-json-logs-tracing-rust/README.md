@@ -16,7 +16,7 @@ Rust's `tracing` crate, combined with `tracing-subscriber`, gives you a powerful
 
 The `log` crate works, but `tracing` does more. Beyond simple log levels, tracing gives you spans (representing operations over time), structured fields, and better integration with async code. It was built for observability from the ground up.
 
-The key difference is that `tracing` captures context. A span wraps an operation and automatically includes timing, nested relationships, and custom fields in every log message within that span.
+The key difference is that `tracing` captures context. A span wraps an operation over time, can be nested under other spans, and can attach custom fields to log messages emitted within that span.
 
 ## Setting Up Your Dependencies
 
@@ -25,12 +25,13 @@ Add these to your `Cargo.toml`:
 ```toml
 [dependencies]
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter", "time"] }
+tracing-appender = "0.2"
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
 ```
 
-The `json` feature enables JSON formatting, and `env-filter` lets you control log levels via environment variables.
+The `json` feature enables JSON formatting, `env-filter` lets you control log levels via environment variables, and `time` enables the custom timestamp formatter shown later.
 
 ## Basic JSON Logging Setup
 
@@ -38,12 +39,12 @@ Here's a minimal setup that outputs JSON logs to stdout:
 
 ```rust
 use tracing::{info, Level};
-use tracing_subscriber::fmt::format::FmtSpan;
 
 fn main() {
     // Initialize the subscriber with JSON formatting
     tracing_subscriber::fmt()
         .json()
+        .flatten_event(true)        // Put event fields at the top level
         .with_max_level(Level::INFO)
         .with_target(true)          // Include the module path
         .with_current_span(true)    // Include the current span
@@ -74,7 +75,7 @@ Notice how `user_id` and `action` become top-level fields in the JSON. No string
 Spans wrap operations and attach context to all logs within them. This is where tracing really shines:
 
 ```rust
-use tracing::{info, warn, instrument, span, Level};
+use tracing::{info, instrument};
 
 #[instrument(fields(request_id = %request_id, user_id))]
 async fn handle_request(request_id: String, user_id: Option<i64>) -> Result<(), Error> {
@@ -97,7 +98,7 @@ async fn handle_request(request_id: String, user_id: Option<i64>) -> Result<(), 
 #[instrument]
 async fn fetch_user_data() -> Result<UserData, Error> {
     info!("Fetching user data from database");
-    // This log will include the parent span's request_id and user_id
+    // With span lists enabled, this log will include the parent span's request_id and user_id
 
     // Simulate some work
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -106,7 +107,7 @@ async fn fetch_user_data() -> Result<UserData, Error> {
 }
 ```
 
-Every log message inside `handle_request` and any functions it calls will include the `request_id` automatically. You do not have to pass it around or remember to include it.
+With `with_span_list(true)` enabled on the JSON formatter, log messages inside `handle_request` and instrumented functions it calls will include the parent span's `request_id`. You do not have to pass it around or remember to include it.
 
 ## Environment-Based Log Level Control
 
@@ -150,7 +151,6 @@ RUST_LOG=info,my_app::database=debug ./my_app
 The default JSON format works for most cases, but you might need to customize field names or add static fields:
 
 ```rust
-use tracing_subscriber::fmt::format::JsonFields;
 use tracing_subscriber::fmt::time::UtcTime;
 
 fn init_custom_logging() {
@@ -167,6 +167,7 @@ fn init_custom_logging() {
 For more control, you can build a custom layer:
 
 ```rust
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -187,7 +188,8 @@ fn init_with_layers() {
 In a microservices environment, you want every log line to identify which service and instance it came from:
 
 ```rust
-use tracing::subscriber::set_global_default;
+use tracing::{subscriber::set_global_default, Level};
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 
@@ -217,7 +219,7 @@ fn main() {
         service.instance = std::env::var("HOSTNAME").unwrap_or_default()
     ).entered();
 
-    // All subsequent logs will include these fields
+    // All subsequent logs emitted while this guard is alive will include these fields
     run_server();
 }
 ```
@@ -227,7 +229,7 @@ fn main() {
 When errors occur, you want as much context as possible. Here's a pattern that works well:
 
 ```rust
-use tracing::{error, instrument};
+use tracing::{error, info, instrument};
 
 #[derive(Debug)]
 struct OrderError {
@@ -279,7 +281,7 @@ The error logs will include the span's `order_id` and `amount`, plus the error-s
 When using `tokio`, spans need special handling to work correctly across await points:
 
 ```rust
-use tracing::Instrument;
+use tracing::{info, Instrument, Level};
 
 async fn parallel_operations() {
     let span = tracing::span!(Level::INFO, "parallel_work", batch_id = 123);
@@ -315,7 +317,6 @@ For production systems that use file-based log collection:
 
 ```rust
 use std::fs::File;
-use tracing_subscriber::fmt::writer::MakeWriterExt;
 
 fn init_file_logging() {
     let log_file = File::create("app.log").expect("Failed to create log file");
