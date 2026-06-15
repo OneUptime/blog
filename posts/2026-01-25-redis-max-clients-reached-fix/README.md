@@ -82,11 +82,11 @@ The most common cause is applications not closing connections:
 ```python
 import redis
 
-# BAD: Connection leak
+# BAD: Creates a new client and connection pool each call
 def get_user_bad(user_id):
-    r = redis.Redis()  # New connection each call
+    r = redis.Redis()  # New client/pool each call
     return r.get(f'user:{user_id}')
-    # Connection not closed!
+    # Under load, many pools can create many connections
 
 # GOOD: Use connection pool
 pool = redis.ConnectionPool(host='localhost', port=6379, max_connections=50)
@@ -137,8 +137,8 @@ check_pool_status()
 ```javascript
 const Redis = require('ioredis');
 
-// ioredis handles pooling internally
-// But you should still limit connections
+// ioredis uses one connection per Redis instance.
+// Reuse instances instead of creating one per request.
 
 const redis = new Redis({
     host: 'localhost',
@@ -147,12 +147,12 @@ const redis = new Redis({
     maxRetriesPerRequest: 3,
     // Connection timeout
     connectTimeout: 5000,
-    // Enable offline queue (prevents connection storm)
+    // Queue commands until the connection is ready
     enableOfflineQueue: true,
     lazyConnect: true
 });
 
-// For multiple connections, use a pool pattern
+// For multiple named connections, use a reuse pattern
 const connections = new Map();
 
 function getConnection(name = 'default') {
@@ -309,7 +309,7 @@ redis-cli CONFIG SET timeout 300
 # Kill specific client
 redis-cli CLIENT KILL ADDR 192.168.1.100:50000
 
-# Kill idle clients
+# Kill normal clients except the current redis-cli connection (use with care)
 redis-cli CLIENT KILL TYPE normal SKIPME yes
 ```
 
