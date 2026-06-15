@@ -17,7 +17,7 @@ flowchart TD
     A[Original Code] --> B[Create Mutants]
     B --> C[Mutant 1: Change + to -]
     B --> D[Mutant 2: Change true to false]
-    B --> E[Mutant 3: Remove statement]
+    B --> E[Mutant 3: Empty block]
     C --> F[Run Tests]
     D --> F
     E --> F
@@ -35,7 +35,7 @@ For JavaScript/TypeScript projects:
 ```bash
 # Initialize Stryker in your project
 
-npm init stryker
+npm init stryker@latest
 
 # Or install manually
 npm install --save-dev @stryker-mutator/core
@@ -76,9 +76,12 @@ module.exports = {
   tsconfigFile: 'tsconfig.json',
 
   // Reporters
-  reporters: ['html', 'clear-text', 'progress', 'dashboard'],
+  reporters: ['html', 'json', 'clear-text', 'progress', 'dashboard'],
   htmlReporter: {
     fileName: 'reports/mutation/mutation-report.html',
+  },
+  jsonReporter: {
+    fileName: 'reports/mutation/mutation-report.json',
   },
 
   // Thresholds
@@ -256,12 +259,12 @@ a && b  =>  a || b
 if (condition) => if (true)
 if (condition) => if (false)
 
-// Statement removal
-return value;  =>  (removed)
+// Block statement removal
+if (condition) { doWork(); }  =>  if (condition) {}
 
 // Array method replacement
 array.filter() => array
-array.map()    => array
+array.some()   => array.every()
 
 // String mutation
 "hello" => ""
@@ -351,7 +354,7 @@ jobs:
 
       - name: Check mutation score
         run: |
-          SCORE=$(cat reports/mutation/mutation-report.json | jq '.files | to_entries | map(.value.mutationScore) | add / length')
+          SCORE=$(jq '[.files[].mutants[]] as $mutants | ($mutants | map(select(.status == "Killed" or .status == "Timeout" or .status == "Survived" or .status == "NoCoverage"))) as $valid | if ($valid | length) == 0 then 100 else (($valid | map(select(.status == "Killed" or .status == "Timeout")) | length) / ($valid | length) * 100) end' reports/mutation/mutation-report.json)
           echo "Mutation score: $SCORE%"
           if (( $(echo "$SCORE < 80" | bc -l) )); then
             echo "Mutation score below threshold"
@@ -396,7 +399,7 @@ Run on changed files only:
 
 ```bash
 # Get list of changed TypeScript files
-CHANGED_FILES=$(git diff --name-only HEAD~1 | grep '\.ts$' | grep -v '\.spec\.ts$' | tr '\n' ',')
+CHANGED_FILES=$(git diff --name-only HEAD~1 -- '*.ts' | grep -v '\.spec\.ts$' | paste -sd, -)
 
 # Run Stryker on changed files only
 npx stryker run --mutate "$CHANGED_FILES"
