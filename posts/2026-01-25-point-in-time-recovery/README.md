@@ -62,7 +62,7 @@ Edit `postgresql.conf`:
 # Enable WAL archiving
 
 archive_mode = on
-archive_command = 'cp %p /var/lib/postgresql/wal_archive/%f'
+archive_command = 'test ! -f /var/lib/postgresql/wal_archive/%f && cp %p /var/lib/postgresql/wal_archive/%f'
 
 # Alternative: Archive to S3
 # archive_command = 'aws s3 cp %p s3://pg-wal-archive/%f'
@@ -98,7 +98,7 @@ pg_basebackup -h localhost -U postgres \
 
 # For remote backup to S3
 pg_basebackup -h db.example.com -U replication \
-    -D - -Ft | gzip | aws s3 cp - s3://pg-backups/base_$(date +%Y%m%d).tar.gz
+    -D - -Ft -Xfetch | gzip | aws s3 cp - s3://pg-backups/base_$(date +%Y%m%d).tar.gz
 ```
 
 ### Automate Base Backups
@@ -120,8 +120,8 @@ pg_basebackup -h localhost -U postgres \
     -D "${BACKUP_DIR}/${BACKUP_NAME}" \
     -Ft -z -Xs
 
-# Create label file with timestamp
-echo "Backup created: $(date)" > "${BACKUP_DIR}/${BACKUP_NAME}/backup_label"
+# Create metadata file with timestamp
+echo "Backup created: $(date)" > "${BACKUP_DIR}/${BACKUP_NAME}/backup_metadata.txt"
 
 # Remove old backups
 find "$BACKUP_DIR" -maxdepth 1 -type d -name "base_*" -mtime +$RETENTION_DAYS -exec rm -rf {} \;
@@ -158,16 +158,19 @@ sudo rm -rf "$DATA_DIR"/*
 
 # Restore base backup
 sudo tar -xzf "${BASE_BACKUP}/base.tar.gz" -C "$DATA_DIR"
+if [ -f "${BASE_BACKUP}/pg_wal.tar.gz" ]; then
+    sudo tar -xzf "${BASE_BACKUP}/pg_wal.tar.gz" -C "$DATA_DIR/pg_wal"
+fi
 
 # Create recovery configuration
-cat > "${DATA_DIR}/postgresql.auto.conf" <<EOF
+sudo tee -a "${DATA_DIR}/postgresql.auto.conf" > /dev/null <<EOF
 restore_command = 'cp ${WAL_ARCHIVE}/%f %p'
 recovery_target_time = '${RECOVERY_TARGET}'
 recovery_target_action = 'promote'
 EOF
 
 # Create recovery signal file
-touch "${DATA_DIR}/recovery.signal"
+sudo touch "${DATA_DIR}/recovery.signal"
 
 # Set correct ownership
 sudo chown -R postgres:postgres "$DATA_DIR"
@@ -228,9 +231,8 @@ Edit `my.cnf`:
 [mysqld]
 # Enable binary logging
 log_bin = /var/log/mysql/mysql-bin
-binlog_format = ROW
-binlog_row_image = FULL
-expire_logs_days = 7
+binlog_row_image = full
+binlog_expire_logs_seconds = 604800
 max_binlog_size = 100M
 
 # For GTID-based recovery (recommended)
@@ -253,13 +255,13 @@ Use mysqldump or MySQL Enterprise Backup:
 mysqldump -u root -p --all-databases \
     --single-transaction \
     --flush-logs \
-    --master-data=2 \
+    --source-data=2 \
     --routines \
     --triggers \
     > backup_$(date +%Y%m%d_%H%M%S).sql
 
-# The --master-data=2 flag records the binary log position as a comment:
-# -- CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000042', MASTER_LOG_POS=154;
+# The --source-data=2 flag records the binary log position as a comment:
+# -- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='mysql-bin.000042', SOURCE_LOG_POS=154;
 ```
 
 For larger databases, use `xtrabackup`:
@@ -287,15 +289,15 @@ BASE_BACKUP="/backups/backup_20260125_020000.sql"
 BINLOG_DIR="/var/log/mysql"
 RECOVERY_TIME="2026-01-25 15:30:00"
 
-# Stop MySQL
-sudo systemctl stop mysql
+# Stop application writes and restore into a running MySQL server
+sudo systemctl start mysql
 
 # Restore base backup
 mysql -u root -p < "$BASE_BACKUP"
 
 # Find the binlog position from the backup
-# grep "CHANGE MASTER" $BASE_BACKUP
-# -- CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000042', MASTER_LOG_POS=154;
+# grep "CHANGE REPLICATION SOURCE" "$BASE_BACKUP"
+# -- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='mysql-bin.000042', SOURCE_LOG_POS=154;
 
 START_LOG="mysql-bin.000042"
 START_POS="154"
@@ -366,7 +368,7 @@ az sql db restore \
     --name production-db \
     --resource-group mygroup \
     --server myserver \
-    --time "2026-01-25T15:30:00Z"
+    --time "2026-01-25T15:30:00"
 ```
 
 ## Testing PITR
