@@ -173,7 +173,8 @@ db.runCommand({
     discount: {
       bsonType: "double",
       minimum: 0,
-      exclusiveMaximum: 1  // Less than 1 (not 1 or more)
+      maximum: 1,
+      exclusiveMaximum: true  // Less than 1 (not 1 or more)
     },
 
     // Multiple of (useful for currency)
