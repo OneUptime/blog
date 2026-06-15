@@ -53,16 +53,19 @@ Create a certificate authority (CA) and generate certificates for each broker.
 PASSWORD="kafka-ssl-password"
 VALIDITY=365
 CA_CN="Kafka-CA"
+CERT_DIR="${1:-certs}"
 
 # Create directories
-mkdir -p certs/{ca,brokers,clients}
+mkdir -p "$CERT_DIR"/{ca,brokers,clients}
 
 # Generate CA key and certificate
 openssl req -new -x509 \
-    -keyout certs/ca/ca-key.pem \
-    -out certs/ca/ca-cert.pem \
+    -keyout "$CERT_DIR/ca/ca-key.pem" \
+    -out "$CERT_DIR/ca/ca-cert.pem" \
     -days $VALIDITY \
     -subj "/CN=$CA_CN" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
     -passout pass:$PASSWORD
 
 echo "CA certificate created"
@@ -79,48 +82,58 @@ create_broker_cert() {
         -alias $BROKER \
         -keyalg RSA \
         -keysize 2048 \
-        -keystore certs/brokers/$BROKER.keystore.jks \
+        -keystore "$CERT_DIR/brokers/$BROKER.keystore.jks" \
         -storepass $PASSWORD \
         -keypass $PASSWORD \
         -validity $VALIDITY \
-        -dname "CN=$BROKER_HOST"
+        -dname "CN=$BROKER_HOST" \
+        -ext "SAN=DNS:$BROKER_HOST"
 
     # Create certificate signing request
     keytool -certreq -noprompt \
         -alias $BROKER \
-        -keystore certs/brokers/$BROKER.keystore.jks \
-        -file certs/brokers/$BROKER.csr \
-        -storepass $PASSWORD
+        -keystore "$CERT_DIR/brokers/$BROKER.keystore.jks" \
+        -file "$CERT_DIR/brokers/$BROKER.csr" \
+        -storepass $PASSWORD \
+        -ext "SAN=DNS:$BROKER_HOST"
+
+cat > "$CERT_DIR/brokers/$BROKER.ext" <<EOF
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=DNS:$BROKER_HOST
+EOF
 
     # Sign the certificate with CA
     openssl x509 -req \
-        -CA certs/ca/ca-cert.pem \
-        -CAkey certs/ca/ca-key.pem \
-        -in certs/brokers/$BROKER.csr \
-        -out certs/brokers/$BROKER-signed.pem \
+        -CA "$CERT_DIR/ca/ca-cert.pem" \
+        -CAkey "$CERT_DIR/ca/ca-key.pem" \
+        -in "$CERT_DIR/brokers/$BROKER.csr" \
+        -out "$CERT_DIR/brokers/$BROKER-signed.pem" \
         -days $VALIDITY \
         -CAcreateserial \
-        -passin pass:$PASSWORD
+        -passin pass:$PASSWORD \
+        -extfile "$CERT_DIR/brokers/$BROKER.ext"
 
     # Import CA certificate into keystore
     keytool -importcert -noprompt \
         -alias ca-cert \
-        -file certs/ca/ca-cert.pem \
-        -keystore certs/brokers/$BROKER.keystore.jks \
+        -file "$CERT_DIR/ca/ca-cert.pem" \
+        -keystore "$CERT_DIR/brokers/$BROKER.keystore.jks" \
         -storepass $PASSWORD
 
     # Import signed certificate into keystore
     keytool -importcert -noprompt \
         -alias $BROKER \
-        -file certs/brokers/$BROKER-signed.pem \
-        -keystore certs/brokers/$BROKER.keystore.jks \
+        -file "$CERT_DIR/brokers/$BROKER-signed.pem" \
+        -keystore "$CERT_DIR/brokers/$BROKER.keystore.jks" \
         -storepass $PASSWORD
 
     # Create truststore with CA certificate
     keytool -importcert -noprompt \
         -alias ca-cert \
-        -file certs/ca/ca-cert.pem \
-        -keystore certs/brokers/$BROKER.truststore.jks \
+        -file "$CERT_DIR/ca/ca-cert.pem" \
+        -keystore "$CERT_DIR/brokers/$BROKER.truststore.jks" \
         -storepass $PASSWORD
 
     echo "Certificate for $BROKER complete"
@@ -134,8 +147,8 @@ create_broker_cert "kafka3" "kafka3.example.com"
 # Create client truststore (contains only CA cert)
 keytool -importcert -noprompt \
     -alias ca-cert \
-    -file certs/ca/ca-cert.pem \
-    -keystore certs/clients/client.truststore.jks \
+    -file "$CERT_DIR/ca/ca-cert.pem" \
+    -keystore "$CERT_DIR/clients/client.truststore.jks" \
     -storepass $PASSWORD
 
 echo "All certificates generated successfully"
@@ -165,8 +178,11 @@ ssl.key.password=kafka-ssl-password
 ssl.truststore.location=/opt/kafka/certs/kafka1.truststore.jks
 ssl.truststore.password=kafka-ssl-password
 
-# Require client authentication (mutual TLS)
-ssl.client.auth=required
+# Require client authentication on the SSL listener (mutual TLS)
+listener.name.ssl.ssl.client.auth=required
+
+# SASL_SSL clients authenticate with SCRAM, not client certificates
+listener.name.sasl_ssl.ssl.client.auth=none
 
 # TLS protocol versions (disable older versions)
 ssl.enabled.protocols=TLSv1.3,TLSv1.2
@@ -211,15 +227,14 @@ kafka-configs.sh --bootstrap-server kafka1:9092 \
 
 # Enable SASL mechanisms
 sasl.enabled.mechanisms=SCRAM-SHA-512
-sasl.mechanism.inter.broker.protocol=SCRAM-SHA-512
 
-# JAAS configuration for inter-broker communication
+# JAAS configuration for the SASL_SSL listener
 listener.name.sasl_ssl.scram-sha-512.sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
     username="admin" \
     password="admin-secret-password";
 
 # Authorize specific operations
-authorizer.class.name=kafka.security.authorizer.AclAuthorizer
+authorizer.class.name=org.apache.kafka.metadata.authorizer.StandardAuthorizer
 super.users=User:admin
 allow.everyone.if.no.acl.found=false
 ```
@@ -255,7 +270,6 @@ kafka-acls.sh --bootstrap-server kafka1:9094 \
     --allow-principal User:analytics-reader \
     --operation Read \
     --operation Describe \
-    --topic '*' \
     --resource-pattern-type prefixed \
     --topic analytics-
 
@@ -396,7 +410,7 @@ Rotate certificates before they expire without downtime:
 # rotate-certs.sh
 
 # Generate new certificates (same process as initial generation)
-./generate-certs.sh --output certs-new/
+./generate-certs.sh certs-new
 
 # Rolling update: Update one broker at a time
 for broker in kafka1 kafka2 kafka3; do
