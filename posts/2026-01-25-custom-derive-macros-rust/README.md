@@ -171,7 +171,7 @@ Custom derives become more powerful when you add attributes. Let's extend our ma
 ```rust
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Data, Fields, Attribute, Expr, Lit, Meta};
+use syn::{parse_macro_input, Attribute, Data, DeriveInput, Fields, LitStr};
 
 #[proc_macro_derive(ToQueryParams, attributes(query_param))]
 pub fn derive_to_query_params(input: TokenStream) -> TokenStream {
@@ -215,20 +215,23 @@ pub fn derive_to_query_params(input: TokenStream) -> TokenStream {
 
 // Helper function to extract rename value from attributes
 fn get_rename_value(attrs: &[Attribute]) -> Option<String> {
+    let mut rename = None;
+
     for attr in attrs {
         if attr.path().is_ident("query_param") {
-            if let Meta::List(meta_list) = &attr.meta {
-                let tokens = meta_list.tokens.to_string();
-                // Parse "rename = \"value\""
-                if tokens.starts_with("rename") {
-                    if let Some(value) = tokens.split('"').nth(1) {
-                        return Some(value.to_string());
-                    }
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("rename") {
+                    let value = meta.value()?;
+                    let lit: LitStr = value.parse()?;
+                    rename = Some(lit.value());
                 }
-            }
+
+                Ok(())
+            });
         }
     }
-    None
+
+    rename
 }
 ```
 
