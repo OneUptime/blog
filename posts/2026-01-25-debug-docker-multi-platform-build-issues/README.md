@@ -12,7 +12,7 @@ Multi-platform Docker builds let you create images that run on both Intel/AMD (a
 
 ## Understanding Multi-Platform Builds
 
-Docker uses BuildKit and QEMU for multi-platform builds:
+Docker uses BuildKit for multi-platform builds, and can use QEMU when a build has to run binaries for a non-native architecture:
 
 ```mermaid
 graph TD
@@ -34,8 +34,8 @@ docker buildx ls
 docker buildx create --name multiplatform --driver docker-container --bootstrap
 docker buildx use multiplatform
 
-# Verify QEMU support
-docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+# Install QEMU handlers when Docker Desktop or your builder does not provide them
+docker run --privileged --rm tonistiigi/binfmt --install all
 ```
 
 ## Common Build Failures
@@ -52,11 +52,13 @@ Solution:
 
 ```bash
 # Install QEMU handlers
-docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+docker run --privileged --rm tonistiigi/binfmt --install all
 
 # Verify registration
 ls /proc/sys/fs/binfmt_misc/
 # Should show qemu-aarch64, qemu-arm, etc.
+cat /proc/sys/fs/binfmt_misc/qemu-aarch64
+# Flags should include F
 
 # Test emulation
 docker run --rm --platform linux/arm64 alpine uname -m
@@ -72,46 +74,46 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 ```
 
 ### Issue 2: Base Image Missing Platform Support
 
 Error:
 ```text
-ERROR: failed to solve: node:18: no match for platform in manifest
+ERROR: failed to solve: your-base-image:tag: no match for platform in manifest
 ```
 
 Solution: Check if your base image supports the target platform:
 
 ```bash
 # Inspect image manifest
-docker manifest inspect node:18
+docker manifest inspect your-base-image:tag
 
 # Look for platform entries
-docker manifest inspect node:18 | jq '.manifests[].platform'
+docker manifest inspect your-base-image:tag | jq '.manifests[].platform'
 
-# Use specific platform-compatible tag
-# Bad: node:18-alpine (might not have all platforms)
-# Good: node:18-alpine for standard platforms
+# Use a tag whose manifest includes your target platforms
+# Bad: assuming every image or tag supports both amd64 and arm64
+# Good: checking the manifest before choosing the tag
 ```
 
 Choose base images carefully:
 
 ```dockerfile
 # Alpine supports both amd64 and arm64
-FROM alpine:3.19
+FROM alpine:3.24
 
 # Debian/Ubuntu have excellent multi-platform support
 FROM debian:bookworm-slim
 
 # Official language images usually support both
-FROM python:3.11-slim
-FROM node:20-slim
-FROM golang:1.21-alpine
+FROM python:3.13-slim
+FROM node:24-slim
+FROM golang:1.26-alpine
 ```
 
 ### Issue 3: Architecture-Specific Dependencies
@@ -120,11 +122,11 @@ Code that works on amd64 may fail on arm64:
 
 ```dockerfile
 # BROKEN: Architecture-specific binary
-FROM node:18-alpine
+FROM node:24-alpine
 RUN wget https://example.com/tool-linux-amd64 -O /usr/local/bin/tool
 
 # FIXED: Use architecture variable
-FROM node:18-alpine
+FROM node:24-alpine
 ARG TARGETARCH
 RUN wget https://example.com/tool-linux-${TARGETARCH} -O /usr/local/bin/tool && \
     chmod +x /usr/local/bin/tool
@@ -150,12 +152,12 @@ Solutions:
 
 ```dockerfile
 # Option 1: Use pre-built binaries when available
-FROM node:18-alpine
+FROM node:24-alpine
 RUN npm ci --prefer-offline
 
-# Option 2: Cross-compile from native architecture
-FROM --platform=$BUILDPLATFORM node:18-alpine AS builder
-ARG TARGETPLATFORM
+# Option 2: Install target-architecture packages from native architecture
+FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
+ARG TARGETARCH
 ARG BUILDPLATFORM
 
 # Install cross-compilation tools
@@ -164,10 +166,12 @@ RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY package*.json ./
 
-# For Node.js with native modules, use npm_config_arch
-RUN npm_config_arch=${TARGETPLATFORM##*/} npm ci
+# For packages with prebuilt native binaries, use npm's CPU config
+RUN npm_cpu="$TARGETARCH"; \
+    if [ "$TARGETARCH" = "amd64" ]; then npm_cpu="x64"; fi; \
+    npm_config_cpu="$npm_cpu" npm ci
 
-FROM node:18-alpine
+FROM node:24-alpine
 COPY --from=builder /app/node_modules /app/node_modules
 ```
 
@@ -183,17 +187,15 @@ Emulated builds are slow and may timeout:
 Solutions:
 
 ```bash
-# Increase timeout in Docker daemon
-# /etc/docker/daemon.json
-{
-  "max-concurrent-downloads": 3,
-  "max-concurrent-uploads": 3
-}
+# Use a builder with a larger BuildKit step log limit when logs are clipped
+docker buildx create --use --name debug-builder \
+  --driver docker-container \
+  --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=10485760 \
+  --bootstrap
 
 # Use cross-compilation instead of emulation where possible
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --build-arg BUILDKIT_STEP_LOG_MAX_SIZE=10485760 \
   --progress=plain \
   -t myapp:latest .
 ```
@@ -202,7 +204,7 @@ For compiled languages, use cross-compilation:
 
 ```dockerfile
 # Go cross-compilation (no QEMU needed)
-FROM --platform=$BUILDPLATFORM golang:1.21-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -210,7 +212,7 @@ WORKDIR /app
 COPY . .
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o /app/server
 
-FROM alpine:3.19
+FROM alpine:3.24
 COPY --from=builder /app/server /usr/local/bin/
 CMD ["server"]
 ```
@@ -280,7 +282,7 @@ docker run --rm --platform linux/arm64 myapp:arm64-test
 
 ```dockerfile
 # Add debug stage to Dockerfile
-FROM node:18-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 
 FROM base AS debug-deps
@@ -320,7 +322,7 @@ docker run --rm --platform linux/amd64 myapp:latest
 Write Dockerfiles that handle platform differences:
 
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 
 # Set architecture-aware environment variables
 ARG TARGETARCH
@@ -335,7 +337,9 @@ WORKDIR /app
 COPY package*.json ./
 
 # Use platform-appropriate npm settings
-RUN npm ci --target_arch=$TARGETARCH
+RUN npm_cpu="$TARGETARCH"; \
+    if [ "$TARGETARCH" = "amd64" ]; then npm_cpu="x64"; fi; \
+    npm_config_cpu="$npm_cpu" npm ci
 
 COPY . .
 CMD ["node", "server.js"]
@@ -346,7 +350,7 @@ For complex builds:
 ```dockerfile
 # syntax=docker/dockerfile:1.4
 
-FROM --platform=$BUILDPLATFORM node:18-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 
@@ -363,7 +367,7 @@ RUN --mount=type=cache,target=/root/.npm \
 COPY . .
 RUN npm run build
 
-FROM node:18-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
@@ -388,20 +392,20 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and test amd64
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
@@ -409,7 +413,7 @@ jobs:
           tags: test:amd64
 
       - name: Build and test arm64
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/arm64
@@ -417,7 +421,7 @@ jobs:
           tags: test:arm64
 
       - name: Build and push multi-platform
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
