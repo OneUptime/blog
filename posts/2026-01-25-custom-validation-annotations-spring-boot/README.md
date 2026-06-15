@@ -8,7 +8,7 @@ Description: Learn how to build custom validation annotations in Spring Boot usi
 
 ---
 
-Spring Boot ships with a solid set of built-in validation annotations like `@NotNull`, `@Size`, and `@Email`. But real-world applications often need domain-specific rules that go beyond these basics. Maybe you need to validate that a phone number matches a specific format, check that an end date comes after a start date, or verify that a value exists in your database. Custom validation annotations let you encapsulate these rules in reusable, declarative components.
+Spring Boot integrates with a solid set of built-in Jakarta Validation annotations like `@NotNull`, `@Size`, and `@Email`. But real-world applications often need domain-specific rules that go beyond these basics. Maybe you need to validate that a phone number matches a specific format, check that an end date comes on or after a start date, or verify that a value exists in your database. Custom validation annotations let you encapsulate these rules in reusable, declarative components.
 
 This guide walks through building custom validators from scratch, covering both simple field-level validations and more complex cross-field constraints.
 
@@ -19,7 +19,7 @@ Every custom validation annotation in Spring Boot requires two parts:
 1. The annotation itself - defines the constraint metadata
 2. A validator class - implements the validation logic
 
-The Bean Validation API (JSR-380) ties these together through the `@Constraint` annotation.
+The Jakarta Validation API ties these together through the `@Constraint` annotation.
 
 ## Building a Simple Field Validator
 
@@ -128,7 +128,7 @@ public class ContactRequest {
 
 ## Cross-Field Validation
 
-Field-level validators work great for isolated constraints, but sometimes you need to validate relationships between multiple fields. For example, ensuring that an end date comes after a start date.
+Field-level validators work great for isolated constraints, but sometimes you need to validate relationships between multiple fields. For example, ensuring that an end date comes on or after a start date.
 
 ### Create a Class-Level Annotation
 
@@ -146,7 +146,7 @@ import java.lang.annotation.*;
 @Documented
 public @interface ValidDateRange {
 
-    String message() default "End date must be after start date";
+    String message() default "End date must be on or after start date";
 
     Class<?>[] groups() default {};
 
@@ -243,7 +243,7 @@ public class EventRequest {
 
 ## Database-Aware Validation
 
-Sometimes validation requires checking against existing data. For instance, verifying that a username is not already taken. Since validators are Spring beans, you can inject dependencies.
+Sometimes validation requires checking against existing data. For instance, verifying that a username is not already taken. Since Spring can create `ConstraintValidator` instances through its validator factory, you can inject dependencies.
 
 ```java
 package com.example.validation;
@@ -396,6 +396,7 @@ Always test your validators in isolation before integrating them:
 ```java
 package com.example.validation;
 
+import com.example.dto.ContactRequest;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
@@ -434,7 +435,7 @@ class PhoneNumberValidatorTest {
 
         assertThat(violations).hasSize(1);
         assertThat(violations.iterator().next().getMessage())
-            .contains("Invalid phone number");
+            .contains("valid US phone number");
     }
 }
 ```
