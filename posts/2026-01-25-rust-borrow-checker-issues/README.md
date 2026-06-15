@@ -152,7 +152,7 @@ fn main() {
     let indices: Vec<usize> = items
         .iter()
         .enumerate()
-        .filter(|(_, &item)| item == 3)
+        .filter(|(_, item)| **item == 3)
         .map(|(i, _)| i)
         .collect();
 
