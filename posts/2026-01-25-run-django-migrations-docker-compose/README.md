@@ -71,7 +71,7 @@ set -e
 # Function to wait for the database
 wait_for_db() {
     echo "Waiting for database..."
-    while ! nc -z $DB_HOST $DB_PORT; do
+    while ! nc -z "$DB_HOST" "$DB_PORT"; do
         sleep 1
     done
     echo "Database is ready!"
@@ -116,8 +116,6 @@ CMD ["gunicorn", "myproject.wsgi:application", "--bind", "0.0.0.0:8000"]
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   web:
     build: .
@@ -148,8 +146,6 @@ For more control, use a separate service just for migrations:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   # Migration service runs once and exits
   migrate:
@@ -255,8 +251,6 @@ Similar to Kubernetes init containers, use Docker Compose profiles:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   # Init services run first (with init profile)
   db-init:
@@ -276,8 +270,6 @@ services:
     command: gunicorn myproject.wsgi:application --bind 0.0.0.0:8000
     ports:
       - "8000:8000"
-    profiles:
-      - default
     environment:
       DATABASE_URL: postgres://postgres:secret@postgres:5432/myapp
     depends_on:
@@ -314,14 +306,12 @@ When scaling your web service, you need to ensure migrations run only once:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   migrate:
     build: .
     command: python manage.py migrate --noinput
-    deploy:
-      replicas: 1  # Always exactly one
+    environment:
+      DATABASE_URL: postgres://postgres:secret@postgres:5432/myapp
     depends_on:
       postgres:
         condition: service_healthy
@@ -329,14 +319,26 @@ services:
   web:
     build: .
     command: gunicorn myproject.wsgi:application --bind 0.0.0.0:8000
-    deploy:
-      replicas: 3  # Scale as needed
+    scale: 3  # Scale as needed
+    environment:
+      DATABASE_URL: postgres://postgres:secret@postgres:5432/myapp
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: myapp
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 ```
 
-### Using File Locks
+### Using Shared File Locks
 
 If you must run migrations from the entrypoint but have multiple replicas:
 
@@ -344,7 +346,12 @@ If you must run migrations from the entrypoint but have multiple replicas:
 #!/bin/bash
 # entrypoint.sh with locking
 
-LOCK_FILE="/tmp/migration.lock"
+set -e
+
+LOCK_DIR="/migration-locks"
+LOCK_FILE="$LOCK_DIR/migration.lock"
+
+mkdir -p "$LOCK_DIR"
 
 # Try to acquire lock
 if mkdir "$LOCK_FILE" 2>/dev/null; then
@@ -365,7 +372,7 @@ fi
 exec "$@"
 ```
 
-For production, use a distributed lock (Redis, database advisory lock, or Consul).
+Mount `LOCK_DIR` from a shared volume so every replica checks the same path. For production, use a distributed lock (Redis, database advisory lock, or Consul).
 
 ## Production Best Practices
 
