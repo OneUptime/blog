@@ -35,7 +35,7 @@ When you add an element, multiple hash functions map it to positions in a bit ar
 
 ## Setting Up RedisBloom
 
-RedisBloom is a Redis module that provides Bloom Filter functionality. You can run it using Docker:
+RedisBloom provides Bloom Filter functionality for Redis. Starting with Redis 8, these probabilistic data structures are built into Redis Open Source; for Redis Stack 7.x, you can run them using Docker:
 
 ```bash
 # Run Redis with RedisBloom module
@@ -49,7 +49,7 @@ docker run -d --name redis-bloom \
 redis-cli MODULE LIST
 ```
 
-For production environments, you can compile the module from source or use Redis Enterprise which includes RedisBloom.
+For production environments, use Redis Open Source 8 or Redis Enterprise. If you are using Redis Stack 7.x, the `redis/redis-stack-server` image provides the server without Redis Insight.
 
 ---
 
@@ -99,15 +99,14 @@ class EmailDeduplicator:
 
     def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379):
         # Connect to Redis with connection pooling for better performance
-        self.redis_client = redis.Redis(
+        pool = redis.ConnectionPool(
             host=redis_host,
             port=redis_port,
             decode_responses=True,
-            connection_pool=redis.ConnectionPool(
-                host=redis_host,
-                port=redis_port,
-                max_connections=10
-            )
+            max_connections=10
+        )
+        self.redis_client = redis.Redis(
+            connection_pool=pool
         )
         self.filter_name = 'email_dedup_filter'
         self._initialize_filter()
@@ -188,6 +187,7 @@ class EmailDeduplicator:
         """
         new_emails = []
         duplicates = []
+        seen_in_batch = set()
 
         # Generate fingerprints for all emails
         fingerprints = [self.generate_email_fingerprint(e) for e in emails]
@@ -201,10 +201,11 @@ class EmailDeduplicator:
 
         # Separate new emails from duplicates
         for email, fingerprint, exists in zip(emails, fingerprints, existence_results):
-            if exists:
+            if exists or fingerprint in seen_in_batch:
                 duplicates.append(email)
             else:
                 new_emails.append(email)
+                seen_in_batch.add(fingerprint)
                 # Add new emails to the filter
                 self.redis_client.execute_command(
                     'BF.ADD',
@@ -254,7 +255,7 @@ Another common use case is tracking visited URLs in web crawlers:
 
 ```python
 import redis
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse
 import hashlib
 
 class CrawlerURLTracker:
@@ -282,7 +283,22 @@ class CrawlerURLTracker:
         """
         Normalize URL to avoid treating slight variations as different.
         """
-        parsed = urlparse(url.lower())
+        parsed = urlparse(url)
+        scheme = parsed.scheme.lower()
+        hostname = parsed.hostname.lower() if parsed.hostname else ''
+
+        if scheme not in ('http', 'https') or not hostname:
+            return ''
+
+        try:
+            port = parsed.port
+        except ValueError:
+            return ''
+
+        host = f"[{hostname}]" if ':' in hostname else hostname
+        netloc = host
+        if port and not (scheme == 'http' and port == 80) and not (scheme == 'https' and port == 443):
+            netloc = f"{host}:{port}"
 
         # Remove trailing slashes and default ports
         path = parsed.path.rstrip('/')
@@ -290,7 +306,7 @@ class CrawlerURLTracker:
             path = '/'
 
         # Reconstruct normalized URL
-        normalized = f"{parsed.scheme}://{parsed.netloc}{path}"
+        normalized = f"{scheme}://{netloc}{path}"
         if parsed.query:
             # Sort query parameters for consistency
             params = sorted(parsed.query.split('&'))
@@ -304,6 +320,9 @@ class CrawlerURLTracker:
         Returns False if already visited or invalid.
         """
         normalized = self.normalize_url(url)
+        if not normalized:
+            return False
+
         url_hash = hashlib.sha256(normalized.encode()).hexdigest()
 
         # Check if URL exists in filter
@@ -320,6 +339,9 @@ class CrawlerURLTracker:
         Mark a URL as visited.
         """
         normalized = self.normalize_url(url)
+        if not normalized:
+            return
+
         url_hash = hashlib.sha256(normalized.encode()).hexdigest()
 
         self.redis.execute_command(
@@ -335,10 +357,15 @@ class CrawlerURLTracker:
         if not urls:
             return []
 
-        # Normalize and hash all URLs
+        # Normalize and hash all valid URLs
+        normalized_urls = [(url, self.normalize_url(url)) for url in urls]
+        valid_urls = [(url, normalized) for url, normalized in normalized_urls if normalized]
+        if not valid_urls:
+            return []
+
         url_hashes = [
-            hashlib.sha256(self.normalize_url(url).encode()).hexdigest()
-            for url in urls
+            hashlib.sha256(normalized.encode()).hexdigest()
+            for _, normalized in valid_urls
         ]
 
         # Check all at once
@@ -349,7 +376,7 @@ class CrawlerURLTracker:
         )
 
         # Return URLs that are not in the filter
-        return [url for url, exists in zip(urls, results) if not exists]
+        return [url for (url, _), exists in zip(valid_urls, results) if not exists]
 ```
 
 ---
