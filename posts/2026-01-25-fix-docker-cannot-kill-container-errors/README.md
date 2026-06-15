@@ -22,7 +22,7 @@ graph TD
     B --> E[Running but unresponsive]
 
     C --> F[Storage driver issue]
-    D --> G[Zombie process]
+    D --> G[Cleanup failed]
     E --> H[Process in D-state]
     E --> I[Signal not reaching PID 1]
 ```
@@ -45,7 +45,7 @@ docker ps -a --filter "status=dead" --filter "status=removing"
 
 Common state scenarios:
 - `Status: removing` with `Error: ""` - Storage driver hang
-- `Status: dead` - Container process died but cleanup failed
+- `Status: dead` - Container was only partially removed, often because resources were still busy
 - `Status: running` but `docker exec` hangs - Process in uninterruptible sleep
 
 ## Solution 1: Wait and Retry with Force
@@ -54,7 +54,7 @@ Sometimes Docker just needs time to clean up, especially with slow storage:
 
 ```bash
 # Stop with extended timeout (default is 10 seconds)
-docker stop --time=60 problem-container
+docker stop --timeout=60 problem-container
 
 # If stop does not work, try kill with different signals
 docker kill --signal=SIGTERM problem-container
@@ -87,12 +87,8 @@ Warning: Restarting Docker affects all containers on the host. In production, th
 Find and kill the container's main process at the host level:
 
 ```bash
-# Find the container's PID
-docker inspect problem-container --format '{{.State.Pid}}'
-
-# Or find it using the container ID
-CONTAINER_ID=$(docker inspect problem-container --format '{{.Id}}')
-PID=$(cat /sys/fs/cgroup/memory/docker/$CONTAINER_ID/cgroup.procs | head -1)
+# Find the container's PID on the host
+PID=$(docker inspect problem-container --format '{{.State.Pid}}')
 
 # Kill the process directly
 sudo kill -9 $PID
@@ -105,7 +101,7 @@ If the process is in uninterruptible sleep (D state), direct kill will not work 
 
 ```bash
 # Check process state
-ps aux | grep $PID
+ps -o pid,ppid,stat,wchan,comm,args -p "$PID"
 
 # D state means waiting on I/O - often NFS or device mapper
 # Check what the process is waiting on
@@ -115,7 +111,7 @@ sudo cat /proc/$PID/stack
 
 ## Solution 4: Fix Storage Driver Issues
 
-Device mapper and overlay storage drivers can leave containers in a stuck state:
+Legacy devicemapper and overlay storage drivers can leave containers in a stuck state:
 
 ```bash
 # Check for device mapper errors
@@ -139,10 +135,11 @@ For overlay2 storage driver issues:
 
 ```bash
 # Find the container's mount
-mount | grep $CONTAINER_ID
+MERGED_DIR=$(docker inspect problem-container --format '{{.GraphDriver.Data.MergedDir}}')
+mount | grep "$MERGED_DIR"
 
 # Force unmount if stuck
-sudo umount -l /var/lib/docker/overlay2/$CONTAINER_ID/merged
+sudo umount -l "$MERGED_DIR"
 
 # Clean up
 docker rm --force problem-container
@@ -154,7 +151,7 @@ Zombie (defunct) container processes have finished but their parent has not ackn
 
 ```bash
 # Check for zombie processes
-ps aux | awk '$8=="Z" {print}'
+ps aux | awk '$8 ~ /^Z/ {print}'
 
 # Find zombie's parent
 ZOMBIE_PID=12345
@@ -172,11 +169,11 @@ sudo systemctl restart docker
 As a last resort, remove the container's files directly:
 
 ```bash
-# Stop Docker first
-sudo systemctl stop docker
-
-# Find and remove container directory
+# Find the container directory before stopping Docker
 CONTAINER_ID=$(docker inspect problem-container --format '{{.Id}}' 2>/dev/null || echo "")
+
+# Stop Docker
+sudo systemctl stop docker
 
 # If inspect does not work, find by name
 sudo ls -la /var/lib/docker/containers/ | grep -i problem
@@ -265,11 +262,10 @@ exit $EXIT_STATUS
 
 ## Prevention: Use Health Checks and Restart Policies
 
-Proper health checks prevent containers from getting into stuck states:
+Proper health checks help detect unhealthy containers, while restart policies can restart containers that exit with failures:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
 services:
   api:
     image: myapp:latest
@@ -280,10 +276,7 @@ services:
       retries: 3
       start_period: 40s
     stop_grace_period: 30s
-    deploy:
-      restart_policy:
-        condition: on-failure
-        max_attempts: 3
+    restart: on-failure:3
 ```
 
 ## Diagnostic Commands Reference
@@ -313,4 +306,4 @@ sudo ss -tulpn | grep $CONTAINER_PID
 
 ---
 
-A container that will not die points to deeper issues: storage driver problems, unresponsive network mounts, or applications that ignore shutdown signals. Fix the immediate problem with force removal, then address the root cause to prevent recurrence. Proper signal handling and health checks eliminate most stuck container scenarios before they happen.
+A container that will not die points to deeper issues: storage driver problems, unresponsive network mounts, or applications that ignore shutdown signals. Fix the immediate problem with force removal, then address the root cause to prevent recurrence. Proper signal handling, health checks, and restart policies reduce many stuck-container scenarios before they happen.
