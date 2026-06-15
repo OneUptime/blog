@@ -80,7 +80,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
@@ -138,7 +144,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       # Remove or update nodeSelector
       # nodeSelector:
@@ -181,7 +193,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       tolerations:
         # Tolerate the specific taint
@@ -291,9 +309,9 @@ Solutions:
 - Remove hostPort requirement and use NodePort service instead
 - Schedule on a node without the port conflict
 
-## Step 8: PodDisruptionBudget Blocking
+## Step 8: PodDisruptionBudget and Preemption
 
-PDBs can prevent scheduling during rolling updates:
+PDBs do not block ordinary pod placement, but they can affect scheduler preemption:
 
 ```bash
 # Check PDBs in the namespace
@@ -303,7 +321,7 @@ kubectl get pdb -n production
 kubectl describe pdb my-app-pdb -n production
 ```
 
-If too many pods are down, the scheduler may not evict pods to make room.
+If the scheduler needs to preempt lower-priority pods to make room, it tries to choose victims without violating their PDBs. This is best effort, so preemption can still happen even if it violates a PDB.
 
 ## Quick Debugging Script
 
@@ -371,7 +389,13 @@ metadata:
   name: flexible-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: flexible-app
   template:
+    metadata:
+      labels:
+        app: flexible-app
     spec:
       # Reasonable resource requests
       containers:
