@@ -371,7 +371,7 @@ location /events {
 }
 ```
 
-**Connection limits**: Browsers limit connections per domain (typically 6). If your app opens multiple SSE connections, consider multiplexing events over a single connection.
+**Connection limits**: When not using HTTP/2, browsers limit connections per domain (typically 6). With HTTP/2, the maximum number of simultaneous streams is negotiated between the browser and server. If your app opens multiple SSE connections, consider multiplexing events over a single connection.
 
 **Memory leaks**: Always clean up client channels when connections close. The context cancellation pattern shown above handles this properly.
 
