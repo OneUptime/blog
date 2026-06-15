@@ -40,7 +40,7 @@ fn main() {
 
 ## Common Adapters
 
-Adapters transform iterators without consuming them immediately.
+Adapters create new iterators without processing items immediately.
 
 ### map: Transform Each Element
 
@@ -104,7 +104,7 @@ fn main() {
 
     println!("Parsed: {:?}", numbers);
 
-    // Equivalent to filter + map, but more efficient
+    // Equivalent to filter + map, but more concise and avoids unwrap
     let alt: Vec<i32> = strings
         .iter()
         .map(|s| s.parse())
@@ -252,7 +252,7 @@ fn main() {
         ("Eve", 88),
     ];
 
-    // Complex query: names of people scoring > 80, uppercase, sorted
+    // Complex query: names of people scoring > 80, uppercase
     let high_scorers: Vec<String> = data
         .iter()
         .filter(|(_, score)| *score > 80)
@@ -398,8 +398,7 @@ fn main() {
     // Collect triggers computation
     let result: Vec<i32> = numbers.iter().map(|x| x * 2).collect();
 
-    // Prefer iterator methods over manual loops
-    // This is often faster due to LLVM optimizations
+    // Iterator methods often optimize to code comparable to manual loops
     let sum: i32 = numbers.iter().sum();
 
     // Use copied() or cloned() appropriately
@@ -432,6 +431,6 @@ Key points:
 - Chain adapters for complex transformations
 - Use collect with type annotation to specify output collection
 - Implement Iterator trait for custom sequences
-- Iterator methods often optimize better than manual loops
+- Iterator methods often optimize to code comparable to manual loops
 
 Mastering iterators makes Rust code more expressive and often more efficient.
