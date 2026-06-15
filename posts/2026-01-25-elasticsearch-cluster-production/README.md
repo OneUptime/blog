@@ -55,17 +55,20 @@ graph TB
 
     LB --> C1
     LB --> C2
-    C1 --> M1
-    C1 --> M2
-    C1 --> M3
-    C2 --> M1
-    C2 --> M2
-    C2 --> M3
-    M1 --> D1
-    M1 --> D2
-    M2 --> D3
-    M2 --> D4
+    C1 --> D1
+    C1 --> D2
+    C1 --> D3
+    C1 --> D4
+    C2 --> D1
+    C2 --> D2
+    C2 --> D3
+    C2 --> D4
+    M1 -. cluster state .- C1
+    M2 -. cluster state .- C2
+    M3 -. cluster state .- D1
 ```
+
+All nodes communicate over the transport layer; the arrows show the typical client and query path, not a master-to-data proxy path.
 
 ---
 
@@ -121,14 +124,11 @@ discovery.seed_hosts:
   - 192.168.1.12:9300  # master-3
 
 # Initial master nodes for bootstrapping - only needed on first start
+# Remove this setting from every node after the cluster forms
 cluster.initial_master_nodes:
   - master-1
   - master-2
   - master-3
-
-# Prevent split-brain with minimum master nodes
-# For 3 master nodes, quorum is 2
-discovery.zen.minimum_master_nodes: 2
 
 # Path configuration
 path.data: /var/lib/elasticsearch
@@ -143,6 +143,8 @@ xpack.security.transport.ssl.enabled: true
 xpack.security.transport.ssl.verification_mode: certificate
 xpack.security.transport.ssl.keystore.path: elastic-certificates.p12
 xpack.security.transport.ssl.truststore.path: elastic-certificates.p12
+xpack.security.http.ssl.enabled: true
+xpack.security.http.ssl.keystore.path: elastic-certificates.p12
 ```
 
 ---
@@ -172,10 +174,8 @@ discovery.seed_hosts:
   - 192.168.1.11:9300
   - 192.168.1.12:9300
 
-# Data storage paths - use multiple paths for striping across disks
-path.data:
-  - /mnt/ssd1/elasticsearch
-  - /mnt/ssd2/elasticsearch
+# Data storage path - use RAID/LVM if you need to span multiple disks
+path.data: /mnt/elasticsearch
 path.logs: /var/log/elasticsearch
 
 bootstrap.memory_lock: true
@@ -186,6 +186,8 @@ xpack.security.transport.ssl.enabled: true
 xpack.security.transport.ssl.verification_mode: certificate
 xpack.security.transport.ssl.keystore.path: elastic-certificates.p12
 xpack.security.transport.ssl.truststore.path: elastic-certificates.p12
+xpack.security.http.ssl.enabled: true
+xpack.security.http.ssl.keystore.path: elastic-certificates.p12
 ```
 
 ---
@@ -223,13 +225,15 @@ xpack.security.transport.ssl.enabled: true
 xpack.security.transport.ssl.verification_mode: certificate
 xpack.security.transport.ssl.keystore.path: elastic-certificates.p12
 xpack.security.transport.ssl.truststore.path: elastic-certificates.p12
+xpack.security.http.ssl.enabled: true
+xpack.security.http.ssl.keystore.path: elastic-certificates.p12
 ```
 
 ---
 
 ## Step 5: Configure JVM Memory Settings
 
-Proper heap sizing is critical for Elasticsearch performance. Set the heap to no more than 50% of available RAM, and never exceed 31GB.
+Proper heap sizing is critical for Elasticsearch performance. Elasticsearch automatically sizes the heap by default in modern 8.x releases, which is recommended for most production environments. If you override it, set the heap to no more than 50% of available RAM and keep it below the compressed ordinary object pointer threshold. 26GB is safe on most systems, and the threshold can be as high as 30GB on some systems.
 
 ```bash
 # /etc/elasticsearch/jvm.options.d/heap.options
@@ -278,8 +282,10 @@ LimitNPROC=4096
 Disable swap and set virtual memory limits:
 
 ```bash
-# Disable swap entirely
+# Disable swap until the next reboot
 sudo swapoff -a
+
+# To disable it permanently, remove or comment out swap entries in /etc/fstab
 
 # Set vm.max_map_count for Elasticsearch memory mapping
 echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf
@@ -290,7 +296,7 @@ sudo sysctl -p
 
 ## Step 7: Generate and Distribute Certificates
 
-Elasticsearch requires TLS certificates for secure inter-node communication.
+Elasticsearch requires TLS certificates for secure inter-node communication, and production clusters should also enable TLS for HTTP client traffic.
 
 ```bash
 # On one node, generate the certificate authority
@@ -306,6 +312,7 @@ sudo chmod 640 /etc/elasticsearch/elastic-certificates.p12
 
 # Copy certificates to all other nodes
 # Use scp or your preferred method to distribute elastic-certificates.p12
+# For HTTP clients that validate hostnames, generate certificates with the appropriate DNS names and IP addresses.
 ```
 
 ---
@@ -367,16 +374,18 @@ curl -k -u elastic:your_password https://localhost:9200/_cat/master?v
 Set sensible defaults for new indices to ensure proper replication and shard allocation.
 
 ```bash
-# Set default index settings via index template
-curl -k -u elastic:your_password -X PUT "https://localhost:9200/_template/default_settings" -H 'Content-Type: application/json' -d'
+# Set default index settings via composable index template
+curl -k -u elastic:your_password -X PUT "https://localhost:9200/_index_template/default_settings" -H 'Content-Type: application/json' -d'
 {
   "index_patterns": ["*"],
-  "order": 0,
-  "settings": {
-    "number_of_shards": 3,
-    "number_of_replicas": 1,
-    "refresh_interval": "5s",
-    "index.routing.allocation.total_shards_per_node": 2
+  "priority": 0,
+  "template": {
+    "settings": {
+      "number_of_shards": 3,
+      "number_of_replicas": 1,
+      "refresh_interval": "5s",
+      "index.routing.allocation.total_shards_per_node": 2
+    }
   }
 }'
 ```
