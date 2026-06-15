@@ -135,12 +135,36 @@ CREATE TABLE device_configurations (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Remote commands
+CREATE TABLE device_commands (
+    command_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id VARCHAR(64) REFERENCES devices(device_id),
+    command_name VARCHAR(128) NOT NULL,
+    parameters JSONB DEFAULT '{}',
+    status VARCHAR(32) NOT NULL,
+    response JSONB,
+    error TEXT,
+    timeout_seconds INTEGER DEFAULT 60,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+-- Device metrics
+CREATE TABLE device_metrics (
+    metric_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id VARCHAR(64) REFERENCES devices(device_id),
+    metrics JSONB NOT NULL,
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes
 CREATE INDEX idx_devices_status ON devices(status);
 CREATE INDEX idx_devices_type ON devices(device_type);
 CREATE INDEX idx_devices_site ON devices(site_id);
 CREATE INDEX idx_devices_online ON devices(online);
 CREATE INDEX idx_devices_tags ON devices USING GIN(tags);
+CREATE INDEX idx_device_commands_device ON device_commands(device_id);
+CREATE INDEX idx_device_metrics_device_time ON device_metrics(device_id, recorded_at DESC);
 ```
 
 ### Device Registry Service
@@ -359,10 +383,19 @@ class DeviceRegistry:
             online=row['online'],
             last_seen=row['last_seen'],
             site_id=row['site_id'],
-            tags=json.loads(row['tags']) if row['tags'] else {},
-            attributes=json.loads(row['attributes']) if row['attributes'] else {},
+            tags=self._decode_json(row['tags']),
+            attributes=self._decode_json(row['attributes']),
             created_at=row['created_at']
         )
+
+    @staticmethod
+    def _decode_json(value) -> Dict:
+        """Decode JSONB values returned by asyncpg."""
+        if not value:
+            return {}
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
 ```
 
 ---
@@ -377,6 +410,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 import json
+import uuid
 import asyncpg
 from enum import Enum
 
@@ -486,8 +520,8 @@ class ConfigurationManager:
                     config_id=row['config_id'],
                     device_id=row['device_id'],
                     version=row['config_version'],
-                    desired=json.loads(row['desired_config']),
-                    reported=json.loads(row['reported_config']) if row['reported_config'] else None,
+                    desired=self._decode_json(row['desired_config']),
+                    reported=self._decode_json(row['reported_config']) if row['reported_config'] else None,
                     status=ConfigStatus(row['config_status'])
                 )
             return None
@@ -516,6 +550,13 @@ class ConfigurationManager:
             "timestamp": datetime.utcnow().isoformat()
         }
         await self.message_bus.publish(f"devices/{device_id}/config", message)
+
+    @staticmethod
+    def _decode_json(value) -> Dict:
+        """Decode JSONB values returned by asyncpg."""
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
 ```
 
 ---
@@ -623,6 +664,15 @@ class CommandService:
                 command.error = "Command timed out"
                 await self._update_command_status(command_id, CommandStatus.TIMEOUT)
 
+            except Exception as exc:
+                command.status = CommandStatus.FAILED
+                command.error = str(exc)
+                await self._update_command_status(
+                    command_id,
+                    CommandStatus.FAILED,
+                    error=command.error
+                )
+
             finally:
                 self.pending_commands.pop(command_id, None)
 
@@ -670,12 +720,12 @@ class CommandService:
         tasks = []
 
         for device_id in device_ids:
-            task = self.send_command(
+            task = asyncio.create_task(self.send_command(
                 device_id,
                 command_name,
                 parameters,
                 wait_for_response=False
-            )
+            ))
             tasks.append((device_id, task))
 
         for device_id, task in tasks:
@@ -731,6 +781,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from enum import Enum
 import asyncio
+import json
 
 class HealthStatus(Enum):
     HEALTHY = "healthy"
@@ -878,13 +929,15 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 
+# Assume registry, config_manager, and command_service are initialized
+# application dependencies.
 app = FastAPI(title="IoT Device Management API")
 
 class DeviceCreate(BaseModel):
     device_id: str
     device_type: str
-    device_name: Optional[str]
-    serial_number: Optional[str]
+    device_name: Optional[str] = None
+    serial_number: Optional[str] = None
     tags: Dict[str, str] = {}
 
 class ConfigUpdate(BaseModel):
@@ -898,7 +951,7 @@ class CommandRequest(BaseModel):
 @app.post("/devices")
 async def register_device(device: DeviceCreate):
     """Register a new device"""
-    result = await registry.register_device(Device(**device.dict()))
+    result = await registry.register_device(Device(**device.model_dump()))
     return {"status": "registered", "device_id": result.device_id}
 
 @app.get("/devices")
