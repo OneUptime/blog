@@ -47,7 +47,7 @@ server {
 }
 ```
 
-The `immutable` directive tells browsers the file will never change, preventing revalidation requests.
+The `immutable` directive tells browsers the file will not change during its freshness lifetime, preventing revalidation requests while the cached response is still fresh.
 
 ## Proxy Cache Configuration
 
@@ -143,7 +143,7 @@ location /api/ {
     proxy_cache_methods GET HEAD;
 
     # Don't cache responses with Set-Cookie header
-    proxy_no_cache $http_set_cookie;
+    proxy_no_cache $upstream_http_set_cookie;
 
     proxy_cache_valid 200 10m;
     add_header X-Cache-Status $upstream_cache_status;
@@ -219,15 +219,24 @@ location /api/ {
 
 ## Cache Purging
 
-Remove specific items from the cache. This requires the ngx_cache_purge module or manual deletion:
+Remove specific items from the cache. This requires NGINX Plus cache purge support or manual deletion:
 
 ```nginx
-# With ngx_cache_purge module
+# With NGINX Plus cache purge support
+geo $purge_allowed {
+    default   0;
+    127.0.0.1 1;  # Only allow from localhost
+}
 
-location ~ /purge(/.*) {
-    allow 127.0.0.1;  # Only allow from localhost
-    deny all;
-    proxy_cache_purge api_cache $scheme$request_method$host$1;
+map $request_method $purge_method {
+    PURGE   $purge_allowed;
+    default 0;
+}
+
+location /api/ {
+    proxy_pass http://backend;
+    proxy_cache api_cache;
+    proxy_cache_purge $purge_method;
 }
 ```
 
@@ -235,8 +244,8 @@ Without the module, delete files manually:
 
 ```bash
 # Find and delete cached item by URL
-grep -r "KEY: GEThttp://api.example.com/api/users" /var/cache/nginx/proxy/ | \
-    cut -d: -f1 | xargs rm -f
+grep -ra "KEY: httpGETapi.example.com/api/users" /var/cache/nginx/proxy/ | \
+    cut -d: -f1 | xargs -r rm -f
 
 # Or clear entire cache
 rm -rf /var/cache/nginx/proxy/*
@@ -406,8 +415,8 @@ flowchart TD
 Check cache effectiveness:
 
 ```bash
-# View cache status from logs
-grep -o "X-Cache-Status: [A-Z]*" /var/log/nginx/access.log | sort | uniq -c
+# Inspect cache status for a URL
+curl -I https://api.example.com/api/users | grep -i '^X-Cache-Status:'
 
 # Check cache directory size
 du -sh /var/cache/nginx/*
