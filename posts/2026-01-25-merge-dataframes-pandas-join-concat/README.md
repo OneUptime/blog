@@ -190,7 +190,7 @@ print(result)
 
 ## Using join() for Index-Based Operations
 
-The `join()` method is optimized for joining on indices. It is often faster than merge for index-based operations.
+The `join()` method is convenient for joining on indices. It can also join a column from the calling DataFrame to the index of another DataFrame.
 
 ```python
 import pandas as pd
@@ -233,7 +233,7 @@ customers = pd.DataFrame({
     'city': ['NYC', 'LA']
 }, index=pd.Index([101, 102], name='cust_id'))
 
-# Join still works - it matches by index position/value
+# Join still works - it aligns on index values, not index names
 result = orders.join(customers)
 print(result)
 ```
@@ -398,7 +398,7 @@ graph TD
     A[Need to combine DataFrames?] --> B{What type of operation?}
     B -->|Stack rows/columns| C[Use concat]
     B -->|Match on columns| D{Index-based?}
-    D -->|Yes| E[Use join - faster]
+    D -->|Yes| E[Use join - convenient]
     D -->|No| F[Use merge - flexible]
     C --> G[Consider ignore_index=True]
     E --> H[Ensure indices match]
@@ -430,12 +430,9 @@ left_indexed = left.set_index('key')
 right_indexed = right.set_index('key')
 
 # Time comparison (use %timeit in Jupyter)
-# merge on column: ~50ms
-# join on index: ~30ms (after index is set)
-
-# Sorting can speed up merges
-left_sorted = left.sort_values('key')
-right_sorted = right.sort_values('key')
+# pd.merge(left, right, on='key')
+# left_indexed.join(right_indexed, lsuffix='_left', rsuffix='_right')
+# Results vary by data shape, index type, and pandas version.
 ```
 
 ## Common Patterns and Gotchas
