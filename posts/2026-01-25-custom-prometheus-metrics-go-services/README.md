@@ -18,6 +18,7 @@ First, grab the Prometheus Go client library:
 
 ```bash
 go get github.com/prometheus/client_golang/prometheus
+go get github.com/prometheus/client_golang/prometheus/promauto
 go get github.com/prometheus/client_golang/prometheus/promhttp
 ```
 
@@ -82,9 +83,9 @@ var (
     HTTPRequestsTotal = promauto.NewCounterVec(
         prometheus.CounterOpts{
             Name: "http_requests_total",
-            Help: "Total HTTP requests by endpoint and status",
+            Help: "Total HTTP requests by route and status",
         },
-        []string{"method", "endpoint", "status_code"},
+        []string{"method", "route", "status_code"},
     )
 )
 ```
@@ -159,7 +160,7 @@ var (
             // Define bucket boundaries based on your SLOs
             Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
         },
-        []string{"method", "endpoint"},
+        []string{"method", "route"},
     )
 
     DatabaseQueryDuration = promauto.NewHistogram(
@@ -176,9 +177,14 @@ The cleanest way to use histograms is with a timer:
 
 ```go
 func handleRequest(w http.ResponseWriter, r *http.Request) {
-    // Start timer - returns a function that records duration when called
+    route := r.Pattern
+    if route == "" {
+        route = "unknown"
+    }
+
+    // Start timer - ObserveDuration records the elapsed time when called
     timer := prometheus.NewTimer(
-        metrics.RequestDuration.WithLabelValues(r.Method, r.URL.Path),
+        metrics.RequestDuration.WithLabelValues(r.Method, route),
     )
     defer timer.ObserveDuration()
 
@@ -203,19 +209,22 @@ For web services, middleware is the cleanest way to instrument all endpoints:
 ```go
 func MetricsMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        timer := prometheus.NewTimer(
-            metrics.RequestDuration.WithLabelValues(r.Method, r.URL.Path),
-        )
+        start := time.Now()
 
         // Wrap ResponseWriter to capture status code
         wrapped := &responseWriter{ResponseWriter: w, statusCode: 200}
 
         next.ServeHTTP(wrapped, r)
 
-        timer.ObserveDuration()
+        route := r.Pattern
+        if route == "" {
+            route = "unknown"
+        }
+
+        metrics.RequestDuration.WithLabelValues(r.Method, route).Observe(time.Since(start).Seconds())
         metrics.HTTPRequestsTotal.WithLabelValues(
             r.Method,
-            r.URL.Path,
+            route,
             strconv.Itoa(wrapped.statusCode),
         ).Inc()
     })
@@ -255,7 +264,6 @@ Sometimes you need metrics that come from external sources - database stats, cac
 type DatabaseCollector struct {
     db              *sql.DB
     connectionsDesc *prometheus.Desc
-    queriesDesc     *prometheus.Desc
 }
 
 func NewDatabaseCollector(db *sql.DB) *DatabaseCollector {
@@ -267,19 +275,12 @@ func NewDatabaseCollector(db *sql.DB) *DatabaseCollector {
             []string{"state"}, // label names
             nil,
         ),
-        queriesDesc: prometheus.NewDesc(
-            "db_queries_total",
-            "Total queries executed",
-            nil,
-            nil,
-        ),
     }
 }
 
 // Describe sends metric descriptions to Prometheus
 func (c *DatabaseCollector) Describe(ch chan<- *prometheus.Desc) {
     ch <- c.connectionsDesc
-    ch <- c.queriesDesc
 }
 
 // Collect fetches current values and sends them to Prometheus
@@ -301,7 +302,7 @@ func (c *DatabaseCollector) Collect(ch chan<- prometheus.Metric) {
 }
 
 // Register the collector
-func init() {
+func RegisterDatabaseCollector(db *sql.DB) {
     prometheus.MustRegister(NewDatabaseCollector(db))
 }
 ```
@@ -326,14 +327,18 @@ RequestsTotal.WithLabelValues(userID, endpoint).Inc()
 RequestsTotal.WithLabelValues(userType, endpoint).Inc()
 ```
 
+For HTTP metrics, use a route template or handler name like `/orders/{id}` instead of the raw URL path, since raw paths often contain unbounded IDs.
+
 **Initialize label values.** Prometheus only shows metrics after they're first written. Pre-initialize to avoid gaps in your dashboards:
 
 ```go
 func init() {
     // Ensure these series exist with zero values from startup
     for _, method := range []string{"GET", "POST", "PUT", "DELETE"} {
-        for _, status := range []string{"2xx", "4xx", "5xx"} {
-            HTTPRequestsTotal.WithLabelValues(method, status).Add(0)
+        for _, route := range []string{"/orders", "/users"} {
+            for _, status := range []string{"2xx", "4xx", "5xx"} {
+                HTTPRequestsTotal.WithLabelValues(method, route, status).Add(0)
+            }
         }
     }
 }
