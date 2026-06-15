@@ -15,7 +15,7 @@ Training a model is only half the battle. Getting it into production where it ca
 TensorFlow Serving provides production-grade model serving with:
 
 - Efficient model loading and unloading
-- Automatic model versioning and rollback
+- Model version policies for controlled rollouts and rollbacks
 - Request batching for improved throughput
 - gRPC and REST APIs
 - GPU acceleration support
@@ -32,7 +32,8 @@ from tensorflow import keras
 # Create a simple model
 
 model = keras.Sequential([
-    keras.layers.Dense(64, activation='relu', input_shape=(10,)),
+    keras.Input(shape=(10,), name="features"),
+    keras.layers.Dense(64, activation='relu'),
     keras.layers.Dense(32, activation='relu'),
     keras.layers.Dense(1, activation='sigmoid')
 ])
@@ -48,7 +49,10 @@ model.fit(X_train, y_train, epochs=5, verbose=0)
 # Save in SavedModel format
 # The version number (1) is required for TensorFlow Serving
 export_path = "./models/my_model/1"
-model.save(export_path)
+model.export(
+    export_path,
+    input_signature=[tf.TensorSpec(shape=(None, 10), dtype=tf.float32, name="features")]
+)
 
 print(f"Model saved to {export_path}")
 
@@ -144,7 +148,7 @@ request.model_spec.signature_name = "serving_default"
 
 # Add input data
 input_data = np.random.randn(5, 10).astype(np.float32)
-request.inputs["dense_input"].CopyFrom(
+request.inputs["features"].CopyFrom(
     tf.make_tensor_proto(input_data)
 )
 
@@ -152,7 +156,7 @@ request.inputs["dense_input"].CopyFrom(
 response = stub.Predict(request, timeout=10.0)
 
 # Parse response
-output_tensor = tf.make_ndarray(response.outputs["dense_1"])
+output_tensor = tf.make_ndarray(response.outputs["output_0"])
 print(f"Predictions: {output_tensor}")
 ```
 
@@ -325,6 +329,8 @@ data:
 
 Serve multiple model versions simultaneously:
 
+Make sure the server is configured to load the versions you want to query, such as with a `specific` model version policy in `model_config.pbtxt`.
+
 ```python
 import requests
 
@@ -373,7 +379,26 @@ spec:
 
 ## Monitoring with Prometheus
 
-TensorFlow Serving exports metrics at `/monitoring/prometheus/metrics`:
+TensorFlow Serving can export metrics at `/monitoring/prometheus/metrics` when Prometheus monitoring is enabled:
+
+```protobuf
+# monitoring_config.pbtxt
+prometheus_config {
+  enable: true
+  path: "/monitoring/prometheus/metrics"
+}
+```
+
+Pass the monitoring configuration file when starting the server:
+
+```bash
+docker run -p 8501:8501 -p 8500:8500 \
+    --mount type=bind,source=$(pwd)/models/my_model,target=/models/my_model \
+    --mount type=bind,source=$(pwd)/monitoring_config.pbtxt,target=/config/monitoring_config.pbtxt \
+    -e MODEL_NAME=my_model \
+    tensorflow/serving \
+    --monitoring_config_file=/config/monitoring_config.pbtxt
+```
 
 ```yaml
 # prometheus-scrape-config.yaml
@@ -388,16 +413,20 @@ Key metrics to monitor:
 
 ```promql
 # Request rate
-rate(tensorflow_serving_request_count[5m])
+rate(:tensorflow:serving:request_count[5m])
 
-# Request latency
-histogram_quantile(0.95, rate(tensorflow_serving_request_latency_bucket[5m]))
+# Average request latency in microseconds
+rate(:tensorflow:serving:request_latency_sum[5m])
+/
+rate(:tensorflow:serving:request_latency_count[5m])
 
-# Batch size distribution
-histogram_quantile(0.50, rate(tensorflow_serving_batch_size_bucket[5m]))
+# Average batch queueing latency in microseconds
+rate(:tensorflow:serving:batching_session:queuing_latency_sum[5m])
+/
+rate(:tensorflow:serving:batching_session:queuing_latency_count[5m])
 
-# Model load time
-tensorflow_serving_model_load_latency_seconds
+# Request error rate
+rate(:tensorflow:serving:request_count{status!="OK"}[5m])
 ```
 
 ## Python Client Library
@@ -443,8 +472,8 @@ class TFServingClient:
         self,
         model_name: str,
         inputs: np.ndarray,
-        input_name: str = "dense_input",
-        output_name: str = "dense_1"
+        input_name: str = "features",
+        output_name: str = "output_0"
     ) -> np.ndarray:
         """Make prediction using gRPC API."""
         request = predict_pb2.PredictRequest()
