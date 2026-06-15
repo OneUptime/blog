@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, State Management, DevOps, Infrastructure as Code, DynamoDB
 
-Description: Learn how to implement state locking in Terraform to prevent concurrent modifications and state corruption. Covers DynamoDB for AWS, Blob leases for Azure, and Terraform Cloud locking.
+Description: Learn how to implement state locking in Terraform to prevent concurrent modifications and state corruption. Covers S3 lockfiles for AWS, Blob leases for Azure, and HCP Terraform locking.
 
 ---
 
@@ -44,11 +44,31 @@ sequenceDiagram
     Bob->>State: Release lock
 ```
 
-## DynamoDB Locking for S3 Backend
+## S3 Locking for S3 Backend
 
-The most common setup for AWS users combines S3 for state storage with DynamoDB for locking.
+The recommended setup for AWS users is S3 for state storage with S3 native lockfiles for locking. Older configurations used DynamoDB for locking, but Terraform now deprecates the `dynamodb_table` backend argument and recommends `use_lockfile` instead.
 
-### Step 1: Create the DynamoDB Table
+### Step 1: Configure the Backend
+
+```hcl
+# backend.tf
+
+terraform {
+  backend "s3" {
+    bucket       = "mycompany-terraform-state"
+    key          = "prod/infrastructure/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+
+    # Enable state locking
+    use_lockfile = true
+  }
+}
+```
+
+### Step 2: Optional Legacy DynamoDB Table
+
+If you need to support older Terraform versions during a migration, create the DynamoDB table with a string partition key named `LockID`:
 
 ```hcl
 # lock-table.tf
@@ -86,41 +106,60 @@ aws dynamodb create-table \
   --region us-east-1
 ```
 
-### Step 2: Configure the Backend
+### Step 3: Optional Legacy DynamoDB Backend Argument
+
+For migration only, you can configure both S3 lockfiles and the deprecated DynamoDB locking argument. Terraform must acquire both locks when both are configured.
 
 ```hcl
 # backend.tf
 
 terraform {
   backend "s3" {
-    bucket         = "mycompany-terraform-state"
-    key            = "prod/infrastructure/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
+    bucket       = "mycompany-terraform-state"
+    key          = "prod/infrastructure/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
 
-    # Enable state locking
+    # Preferred S3 native locking
+    use_lockfile = true
+
+    # Deprecated: use only while migrating older configurations
     dynamodb_table = "terraform-state-locks"
   }
 }
 ```
 
-### Step 3: Initialize and Verify
+### Step 4: Initialize and Verify
 
 ```bash
 # Initialize with the backend
 
 terraform init
 
-# Run a plan to verify locking works
-terraform plan
+# Run an apply to verify locking works
+terraform apply
 
-# You'll see locking messages:
+# If acquiring the lock takes longer than expected, you'll see:
 # Acquiring state lock. This may take a few moments...
 # ...
 # Releasing state lock. This may take a few moments...
 ```
 
-## How DynamoDB Locking Works
+## How S3 Locking Works
+
+When you run `terraform apply`:
+
+1. Terraform creates a lockfile object next to the state object
+2. Other Terraform operations see the lock and wait or fail
+3. After completion, Terraform deletes the lockfile object
+
+With the backend example above, the lockfile is stored at:
+
+```text
+s3://mycompany-terraform-state/prod/infrastructure/terraform.tfstate.tflock
+```
+
+## How Legacy DynamoDB Locking Works
 
 When you run `terraform apply`:
 
@@ -144,10 +183,10 @@ aws dynamodb scan --table-name terraform-state-locks
 
 ## Handling Lock Timeouts
 
-If a process crashes while holding a lock, the lock remains. Handle this carefully:
+If a process crashes while holding a lock, the lock may remain. Handle this carefully:
 
 ```bash
-# Check who holds the lock
+# For legacy DynamoDB locking, check who holds the lock
 aws dynamodb get-item \
   --table-name terraform-state-locks \
   --key '{"LockID": {"S": "mycompany-terraform-state/prod/infrastructure/terraform.tfstate"}}'
@@ -171,20 +210,18 @@ terraform {
     key                  = "prod/infrastructure.tfstate"
 
     # Locking is automatic with Azure blobs
-    # Uses 60-second lease that auto-renews
   }
 }
 ```
 
 Azure blob leases:
-- Automatically acquired when Terraform starts
-- Auto-renewed every 60 seconds during operation
+- Automatically acquired for operations that could write state
 - Released when operation completes
-- Expire after 60 seconds if process crashes
+- May need to be broken manually if automatic unlocking fails
 
 ## Google Cloud Storage Locking
 
-GCS supports object locking natively:
+The GCS backend supports state locking:
 
 ```hcl
 terraform {
@@ -193,14 +230,13 @@ terraform {
     prefix = "prod/infrastructure"
 
     # Locking is enabled by default
-    # Uses object metadata for coordination
   }
 }
 ```
 
-## Terraform Cloud Locking
+## HCP Terraform Locking
 
-Terraform Cloud and Enterprise handle locking automatically:
+HCP Terraform and Terraform Enterprise handle locking automatically:
 
 ```hcl
 terraform {
@@ -214,10 +250,10 @@ terraform {
 }
 ```
 
-Terraform Cloud features:
+HCP Terraform features:
 - Built-in locking per workspace
 - Lock information visible in UI
-- Admin can unlock stuck workspaces
+- Admin can unlock workspaces or force-cancel stuck runs
 - Run queue prevents concurrent operations
 
 ## Consul Backend Locking
@@ -246,12 +282,12 @@ In rare cases, you might need to disable locking:
 # Disable locking for this operation only
 terraform apply -lock=false
 
-# Set lock timeout (default is 0, which waits indefinitely)
+# Set lock timeout (default is 0s, which fails immediately)
 terraform apply -lock-timeout=5m
 ```
 
 When to disable:
-- During disaster recovery when lock table is unavailable
+- During disaster recovery when locking infrastructure is unavailable
 - Never in normal operations
 
 ## IAM Permissions for Locking
@@ -265,19 +301,33 @@ Your Terraform execution role needs these permissions:
     {
       "Effect": "Allow",
       "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
         "s3:ListBucket"
       ],
+      "Resource": "arn:aws:s3:::mycompany-terraform-state"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
       "Resource": [
-        "arn:aws:s3:::mycompany-terraform-state",
-        "arn:aws:s3:::mycompany-terraform-state/*"
+        "arn:aws:s3:::mycompany-terraform-state/prod/infrastructure/terraform.tfstate"
       ]
     },
     {
       "Effect": "Allow",
       "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::mycompany-terraform-state/prod/infrastructure/terraform.tfstate.tflock"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:DescribeTable",
         "dynamodb:GetItem",
         "dynamodb:PutItem",
         "dynamodb:DeleteItem"
@@ -288,42 +338,42 @@ Your Terraform execution role needs these permissions:
 }
 ```
 
-## Lock Table Per Environment
+## Lockfile Per Environment
 
-For better isolation, use separate lock tables:
+For better isolation, use separate state keys. Each state key gets its own `.tflock` object:
 
 ```hcl
 # environments/dev/backend.tf
 terraform {
   backend "s3" {
-    bucket         = "mycompany-terraform-state"
-    key            = "dev/infrastructure/terraform.tfstate"
-    dynamodb_table = "terraform-locks-dev"
-    region         = "us-east-1"
-    encrypt        = true
+    bucket       = "mycompany-terraform-state"
+    key          = "dev/infrastructure/terraform.tfstate"
+    use_lockfile = true
+    region       = "us-east-1"
+    encrypt      = true
   }
 }
 
 # environments/prod/backend.tf
 terraform {
   backend "s3" {
-    bucket         = "mycompany-terraform-state"
-    key            = "prod/infrastructure/terraform.tfstate"
-    dynamodb_table = "terraform-locks-prod"
-    region         = "us-east-1"
-    encrypt        = true
+    bucket       = "mycompany-terraform-state"
+    key          = "prod/infrastructure/terraform.tfstate"
+    use_lockfile = true
+    region       = "us-east-1"
+    encrypt      = true
   }
 }
 ```
 
 ## Monitoring Lock Activity
 
-Set up CloudWatch alarms for stuck locks:
+CloudWatch metrics do not expose the age of an individual Terraform lock. If you still use legacy DynamoDB locking, you can alarm on unusual lock table activity:
 
 ```hcl
-# Alert if a lock exists for more than 1 hour
-resource "aws_cloudwatch_metric_alarm" "stuck_lock" {
-  alarm_name          = "terraform-stuck-lock"
+# Alert on unusual read activity in the legacy lock table
+resource "aws_cloudwatch_metric_alarm" "lock_table_activity" {
+  alarm_name          = "terraform-lock-table-activity"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "ConsumedReadCapacityUnits"
@@ -331,7 +381,7 @@ resource "aws_cloudwatch_metric_alarm" "stuck_lock" {
   period              = 3600
   statistic           = "Sum"
   threshold           = 100
-  alarm_description   = "Possible stuck Terraform lock"
+  alarm_description   = "Unusual Terraform lock table activity"
 
   dimensions = {
     TableName = "terraform-state-locks"
@@ -344,10 +394,10 @@ resource "aws_cloudwatch_metric_alarm" "stuck_lock" {
 ## Best Practices
 
 1. **Always enable locking** in team environments
-2. **Use PAY_PER_REQUEST** billing for DynamoDB to avoid capacity issues
+2. **Use S3 native lockfiles** for the S3 backend
 3. **Never force-unlock** without verifying no operation is running
 4. **Set lock timeouts** in CI/CD to fail fast
-5. **Monitor for stuck locks** with alerts
+5. **Monitor lock activity** with alerts
 6. **Document unlock procedures** for your team
 
 ## Troubleshooting
@@ -376,7 +426,7 @@ Steps:
 Error: Error acquiring state lock: ResourceNotFoundException
 ```
 
-Solution: Create the DynamoDB table or check the table name spelling.
+Solution: For legacy DynamoDB locking, create the DynamoDB table or check the table name spelling. For new S3 backends, remove `dynamodb_table` and use `use_lockfile = true`.
 
 ### Insufficient Permissions
 
@@ -384,8 +434,8 @@ Solution: Create the DynamoDB table or check the table name spelling.
 Error: Error acquiring state lock: AccessDeniedException
 ```
 
-Solution: Add the required DynamoDB permissions to your IAM role.
+Solution: Add the required S3 lockfile permissions, and add DynamoDB permissions only if you still use legacy DynamoDB locking.
 
 ---
 
-State locking is essential for team collaboration with Terraform. DynamoDB provides reliable locking for AWS backends, while other providers have their own mechanisms. Always enable locking and document your unlock procedures for emergencies.
+State locking is essential for team collaboration with Terraform. S3 native lockfiles provide locking for AWS backends, while other providers have their own mechanisms. Always enable locking and document your unlock procedures for emergencies.
