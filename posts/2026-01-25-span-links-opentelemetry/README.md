@@ -15,7 +15,7 @@ Traditional distributed traces follow a parent-child relationship. A service cal
 A span link is a reference from one span to another span context. Unlike the parent-child relationship, links are:
 
 - **Non-hierarchical**: Links do not establish a parent-child relationship
-- **Multi-directional**: A span can link to multiple other spans
+- **Many-to-many**: A span can link to multiple other spans
 - **Cross-trace**: Links can connect spans from different traces
 - **Attributable**: Each link can carry its own attributes
 
@@ -32,7 +32,7 @@ Here is how to create span links in different languages.
 ### Node.js
 
 ```javascript
-const { trace, SpanKind } = require('@opentelemetry/api');
+const { trace, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('batch-processor');
 
@@ -61,7 +61,7 @@ async function processBatch(messages) {
       return { success: true, processed: messages.length };
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();
@@ -163,29 +163,23 @@ import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.*;
 import io.opentelemetry.api.common.Attributes;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class BatchProcessor {
     private static final Tracer tracer = GlobalOpenTelemetry.getTracer("batch-processor");
 
     public Result processBatch(List<Message> messages) {
-        // Build links from message contexts
-        List<LinkData> links = messages.stream()
-            .map(msg -> LinkData.create(
+        SpanBuilder spanBuilder = tracer.spanBuilder("process-batch")
+            .setSpanKind(SpanKind.CONSUMER);
+
+        // Add links from message contexts
+        for (Message msg : messages) {
+            spanBuilder.addLink(
                 msg.getSpanContext(),
                 Attributes.builder()
                     .put("messaging.message_id", msg.getId())
                     .put("messaging.source", msg.getSource())
                     .build()
-            ))
-            .collect(Collectors.toList());
-
-        SpanBuilder spanBuilder = tracer.spanBuilder("process-batch")
-            .setSpanKind(SpanKind.CONSUMER);
-
-        // Add all links
-        for (LinkData link : links) {
-            spanBuilder.addLink(link.getSpanContext(), link.getAttributes());
+            );
         }
 
         Span span = spanBuilder.startSpan();
@@ -217,7 +211,7 @@ public class BatchProcessor {
 When a consumer processes messages from multiple producers:
 
 ```javascript
-const { trace, SpanKind, propagation } = require('@opentelemetry/api');
+const { context, trace, SpanKind, propagation } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('queue-consumer');
 
@@ -238,7 +232,7 @@ async function consumeMessages(messages) {
         'messaging.kafka.offset': msg.offset,
       },
     };
-  }).filter(link => link.context); // Filter out invalid contexts
+  }).filter(link => link.context && trace.isSpanContextValid(link.context)); // Filter out invalid contexts
 
   return tracer.startActiveSpan('consume-messages', {
     kind: SpanKind.CONSUMER,
@@ -439,6 +433,8 @@ To create links, you need the span context from the original operation. Here is 
 ### In Message Headers
 
 ```javascript
+const { context, propagation, trace } = require('@opentelemetry/api');
+
 // Producer: Inject context into message
 function publishMessage(topic, payload) {
   const headers = {};
