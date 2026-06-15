@@ -38,7 +38,7 @@ graph TB
         EN[Good Performance]
         EN1[Partial Matching]
         EN2[Larger Index Size]
-        EN3[Best for Fuzzy Matching]
+        EN3[Best for Partial Matching]
     end
 
     subgraph "Search-as-you-type"
@@ -85,7 +85,7 @@ curl -X PUT "localhost:9200/products_suggest" -H 'Content-Type: application/json
 }'
 
 # Index products with suggestions
-curl -X POST "localhost:9200/products_suggest/_bulk" -H 'Content-Type: application/json' -d'
+curl -X POST "localhost:9200/products_suggest/_bulk" -H 'Content-Type: application/x-ndjson' --data-binary '
 {"index": {}}
 {"name": "iPhone 15 Pro", "name_suggest": {"input": ["iPhone 15 Pro", "iPhone", "Apple iPhone"], "weight": 100}, "category": "Electronics", "popularity": 95}
 {"index": {}}
@@ -136,14 +136,14 @@ curl -X GET "localhost:9200/products_suggest/_search?pretty" -H 'Content-Type: a
   }
 }'
 
-# Completion with category filter using contexts
-curl -X GET "localhost:9200/products_suggest/_search?pretty" -H 'Content-Type: application/json' -d'
+# Completion with category filter using contexts (run after the context-aware setup below)
+curl -X GET "localhost:9200/products_context/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "suggest": {
     "product_suggest": {
       "prefix": "mac",
       "completion": {
-        "field": "name_suggest",
+        "field": "suggest",
         "size": 5,
         "contexts": {
           "category": ["Electronics"]
@@ -173,11 +173,6 @@ curl -X PUT "localhost:9200/products_context" -H 'Content-Type: application/json
           {
             "name": "category",
             "type": "category"
-          },
-          {
-            "name": "location",
-            "type": "geo",
-            "precision": 4
           }
         ]
       }
@@ -188,12 +183,11 @@ curl -X PUT "localhost:9200/products_context" -H 'Content-Type: application/json
 # Index with contexts
 curl -X POST "localhost:9200/products_context/_doc" -H 'Content-Type: application/json' -d'
 {
-  "name": "iPhone 15 Pro",
+  "name": "MacBook Pro 16",
   "suggest": {
-    "input": "iPhone 15 Pro",
+    "input": "MacBook Pro 16",
     "contexts": {
-      "category": ["Electronics", "Phones"],
-      "location": {"lat": 40.7128, "lon": -74.0060}
+      "category": ["Electronics", "Laptops"]
     }
   }
 }'
@@ -247,7 +241,8 @@ curl -X PUT "localhost:9200/products_ngram" -H 'Content-Type: application/json' 
         "search_analyzer": "autocomplete_search"
       },
       "name_exact": {
-        "type": "keyword"
+        "type": "text",
+        "analyzer": "standard"
       },
       "category": {
         "type": "keyword"
@@ -268,7 +263,7 @@ curl -X POST "localhost:9200/products_ngram/_analyze?pretty" -H 'Content-Type: a
 # Output: [i, ip, iph, ipho, iphon, iphone]
 
 # Index products
-curl -X POST "localhost:9200/products_ngram/_bulk" -H 'Content-Type: application/json' -d'
+curl -X POST "localhost:9200/products_ngram/_bulk" -H 'Content-Type: application/x-ndjson' --data-binary '
 {"index": {}}
 {"name": "iPhone 15 Pro", "name_exact": "iPhone 15 Pro", "category": "Electronics", "popularity": 95}
 {"index": {}}
@@ -302,7 +297,7 @@ curl -X GET "localhost:9200/products_ngram/_search?pretty" -H 'Content-Type: app
   "size": 5
 }'
 
-# Autocomplete with boosting exact matches
+# Autocomplete with boosting phrase-prefix matches
 curl -X GET "localhost:9200/products_ngram/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "query": {
@@ -370,7 +365,7 @@ curl -X PUT "localhost:9200/products_sayt" -H 'Content-Type: application/json' -
 }'
 
 # Index products
-curl -X POST "localhost:9200/products_sayt/_bulk" -H 'Content-Type: application/json' -d'
+curl -X POST "localhost:9200/products_sayt/_bulk" -H 'Content-Type: application/x-ndjson' --data-binary '
 {"index": {}}
 {"name": "iPhone 15 Pro Max", "description": "Latest Apple smartphone", "category": "Electronics", "popularity": 95, "price": 1199}
 {"index": {}}
@@ -389,7 +384,7 @@ curl -X POST "localhost:9200/products_sayt/_bulk" -H 'Content-Type: application/
 ### Querying Search-as-you-type
 
 ```bash
-# Multi-match across all generated fields
+# Multi-match across the root and shingle fields
 curl -X GET "localhost:9200/products_sayt/_search?pretty" -H 'Content-Type: application/json' -d'
 {
   "query": {
@@ -399,8 +394,7 @@ curl -X GET "localhost:9200/products_sayt/_search?pretty" -H 'Content-Type: appl
       "fields": [
         "name",
         "name._2gram",
-        "name._3gram",
-        "name._index_prefix"
+        "name._3gram"
       ]
     }
   },
@@ -417,14 +411,15 @@ curl -X GET "localhost:9200/products_sayt/_search?pretty" -H 'Content-Type: appl
       "fields": [
         "name",
         "name._2gram",
-        "name._3gram",
-        "name._index_prefix"
+        "name._3gram"
       ]
     }
   },
   "highlight": {
     "fields": {
-      "name": {}
+      "name": {
+        "matched_fields": ["name._index_prefix"]
+      }
     }
   },
   "size": 5
@@ -443,8 +438,7 @@ curl -X GET "localhost:9200/products_sayt/_search?pretty" -H 'Content-Type: appl
             "fields": [
               "name",
               "name._2gram",
-              "name._3gram",
-              "name._index_prefix"
+              "name._3gram"
             ]
           }
         }
@@ -499,20 +493,18 @@ class AutocompleteService:
 
         self.es.indices.create(
             index=index_name,
-            body={
-                "mappings": {
-                    "properties": {
-                        "name": {"type": "text"},
-                        "suggest": {
-                            "type": "completion",
-                            "analyzer": "simple",
-                            "contexts": [
-                                {"name": "category", "type": "category"}
-                            ]
-                        },
-                        "category": {"type": "keyword"},
-                        "popularity": {"type": "integer"}
-                    }
+            mappings={
+                "properties": {
+                    "name": {"type": "text"},
+                    "suggest": {
+                        "type": "completion",
+                        "analyzer": "simple",
+                        "contexts": [
+                            {"name": "category", "type": "category"}
+                        ]
+                    },
+                    "category": {"type": "keyword"},
+                    "popularity": {"type": "integer"}
                 }
             }
         )
@@ -526,40 +518,38 @@ class AutocompleteService:
 
         self.es.indices.create(
             index=index_name,
-            body={
-                "settings": {
-                    "analysis": {
-                        "filter": {
-                            "edge_ngram_filter": {
-                                "type": "edge_ngram",
-                                "min_gram": 1,
-                                "max_gram": 20
-                            }
+            settings={
+                "analysis": {
+                    "filter": {
+                        "edge_ngram_filter": {
+                            "type": "edge_ngram",
+                            "min_gram": 1,
+                            "max_gram": 20
+                        }
+                    },
+                    "analyzer": {
+                        "autocomplete_index": {
+                            "type": "custom",
+                            "tokenizer": "standard",
+                            "filter": ["lowercase", "edge_ngram_filter"]
                         },
-                        "analyzer": {
-                            "autocomplete_index": {
-                                "type": "custom",
-                                "tokenizer": "standard",
-                                "filter": ["lowercase", "edge_ngram_filter"]
-                            },
-                            "autocomplete_search": {
-                                "type": "custom",
-                                "tokenizer": "standard",
-                                "filter": ["lowercase"]
-                            }
+                        "autocomplete_search": {
+                            "type": "custom",
+                            "tokenizer": "standard",
+                            "filter": ["lowercase"]
                         }
                     }
                 },
-                "mappings": {
-                    "properties": {
-                        "name": {
-                            "type": "text",
-                            "analyzer": "autocomplete_index",
-                            "search_analyzer": "autocomplete_search"
-                        },
-                        "category": {"type": "keyword"},
-                        "popularity": {"type": "integer"}
-                    }
+            },
+            mappings={
+                "properties": {
+                    "name": {
+                        "type": "text",
+                        "analyzer": "autocomplete_index",
+                        "search_analyzer": "autocomplete_search"
+                    },
+                    "category": {"type": "keyword"},
+                    "popularity": {"type": "integer"}
                 }
             }
         )
@@ -573,16 +563,14 @@ class AutocompleteService:
 
         self.es.indices.create(
             index=index_name,
-            body={
-                "mappings": {
-                    "properties": {
-                        "name": {
-                            "type": "search_as_you_type",
-                            "max_shingle_size": 3
-                        },
-                        "category": {"type": "keyword"},
-                        "popularity": {"type": "integer"}
-                    }
+            mappings={
+                "properties": {
+                    "name": {
+                        "type": "search_as_you_type",
+                        "max_shingle_size": 3
+                    },
+                    "category": {"type": "keyword"},
+                    "popularity": {"type": "integer"}
                 }
             }
         )
@@ -616,7 +604,7 @@ class AutocompleteService:
                 "popularity": popularity
             }
 
-        self.es.index(index=index_name, body=doc)
+        self.es.index(index=index_name, document=doc)
         return True
 
     def _generate_inputs(self, name: str) -> List[str]:
@@ -658,12 +646,10 @@ class AutocompleteService:
 
         response = self.es.search(
             index=index_name,
-            body={
-                "suggest": {
-                    "autocomplete": {
-                        "prefix": prefix,
-                        "completion": completion_config
-                    }
+            suggest={
+                "autocomplete": {
+                    "prefix": prefix,
+                    "completion": completion_config
                 }
             }
         )
@@ -699,15 +685,13 @@ class AutocompleteService:
 
         response = self.es.search(
             index=index_name,
-            body={
-                "query": {"bool": bool_query},
-                "sort": [
-                    "_score",
-                    {"popularity": "desc"}
-                ],
-                "size": size,
-                "_source": ["name", "category", "popularity"]
-            }
+            query={"bool": bool_query},
+            sort=[
+                "_score",
+                {"popularity": "desc"}
+            ],
+            size=size,
+            source=["name", "category", "popularity"]
         )
 
         return [
@@ -736,8 +720,7 @@ class AutocompleteService:
                 "fields": [
                     "name",
                     "name._2gram",
-                    "name._3gram",
-                    "name._index_prefix"
+                    "name._3gram"
                 ]
             }
         }
@@ -749,15 +732,13 @@ class AutocompleteService:
 
         response = self.es.search(
             index=index_name,
-            body={
-                "query": {"bool": bool_query},
-                "sort": [
-                    "_score",
-                    {"popularity": "desc"}
-                ],
-                "size": size,
-                "_source": ["name", "category", "popularity"]
-            }
+            query={"bool": bool_query},
+            sort=[
+                "_score",
+                {"popularity": "desc"}
+            ],
+            size=size,
+            source=["name", "category", "popularity"]
         )
 
         return [
@@ -818,6 +799,7 @@ if __name__ == "__main__":
             "products_completion", name, cat, pop,
             AutocompleteMethod.COMPLETION
         )
+    service.es.indices.refresh(index="products_completion")
 
     print("\nCompletion suggestions for 'iph':")
     for s in service.suggest_completion("products_completion", "iph"):
