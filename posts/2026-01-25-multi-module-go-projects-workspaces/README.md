@@ -128,14 +128,14 @@ Each module maintains its own `go.sum` for checksums. The workspace only affects
 
 ## Syncing Dependencies Across Modules
 
-When multiple modules depend on the same external package, version conflicts can happen. Use `go work sync` to align versions across all workspace modules.
+When multiple modules depend on the same external package, the workspace build list uses Go's Minimal Version Selection algorithm. Use `go work sync` to write the workspace's selected dependency versions back to the modules that need them.
 
 ```bash
 # Sync dependency versions across all modules in the workspace
 go work sync
 ```
 
-This updates each module's `go.mod` to use consistent versions of shared dependencies. Run this after adding new dependencies or when you see version mismatch warnings.
+This updates each module's `go.mod` with the relevant dependency versions from the workspace build list. Run this after adding new dependencies or when workspace modules have drifted apart.
 
 ## CI/CD Considerations
 
@@ -210,12 +210,12 @@ Restructure your code to break the cycle, usually by extracting the shared depen
 
 Since workspaces override versions, you might develop against a local `shared` that has breaking changes, but `api/go.mod` still says `v1.0.0`. When someone clones without the workspace, they get the old version.
 
-Keep module versions updated as you develop. When `shared` has significant changes, bump the version in both `shared/go.mod` and update the requirement in consuming modules.
+Keep module versions updated as you develop. When `shared` has significant changes, tag a new release for that module and update the requirement in consuming modules.
 
 ```bash
-# Update the shared module version after making changes
+# Release the shared module after making changes
 cd shared
-# Edit go.mod to bump version, then tag it
+# Commit the change, then tag the module release in version control
 cd ../api
 go get github.com/myorg/myproject/shared@v1.1.0
 ```
