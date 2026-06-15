@@ -12,7 +12,7 @@ Network policies define which traffic is allowed between services in your infras
 
 ## The Default Problem
 
-By default, most systems allow all network traffic. In Kubernetes, any pod can talk to any other pod. In cloud environments, instances in the same VPC can communicate freely. This "allow all" default makes initial setup easy but creates security risks.
+By default, many systems allow broad internal network traffic. In Kubernetes, any pod can talk to any other pod. In cloud environments, default security groups or permissive internal rules can allow more instance-to-instance communication than intended. This "allow all" default makes initial setup easy but creates security risks.
 
 ```mermaid
 flowchart LR
@@ -37,7 +37,7 @@ flowchart LR
 
 ## Kubernetes NetworkPolicies
 
-Kubernetes NetworkPolicies control pod-to-pod communication. They require a CNI plugin that supports policies (Calico, Cilium, Weave Net).
+Kubernetes NetworkPolicies control pod-to-pod communication. They require a CNI plugin that supports policies (Calico, Cilium, Antrea, or another policy-capable CNI).
 
 ### Default Deny All Ingress
 
@@ -142,7 +142,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: monitoring
+              kubernetes.io/metadata.name: monitoring
           podSelector:
             matchLabels:
               app: prometheus
@@ -172,7 +172,9 @@ spec:
   egress:
     # Allow DNS resolution
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -381,6 +383,18 @@ database_sg = create_security_group(
     'Security group for database servers'
 )
 
+# Remove the default outbound allow-all rule from each new security group
+for sg_id in (frontend_sg, api_sg, database_sg):
+    ec2.revoke_security_group_egress(
+        GroupId=sg_id,
+        IpPermissions=[
+            {
+                'IpProtocol': '-1',
+                'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+            }
+        ]
+    )
+
 # Frontend: Allow HTTP/HTTPS from anywhere, SSH from bastion
 ec2.authorize_security_group_ingress(
     GroupId=frontend_sg,
@@ -406,6 +420,21 @@ ec2.authorize_security_group_ingress(
     ]
 )
 
+# Frontend: Allow outbound API calls
+ec2.authorize_security_group_egress(
+    GroupId=frontend_sg,
+    IpPermissions=[
+        {
+            'IpProtocol': 'tcp',
+            'FromPort': 8080,
+            'ToPort': 8080,
+            'UserIdGroupPairs': [
+                {'GroupId': api_sg, 'Description': 'API access from frontend'}
+            ]
+        }
+    ]
+)
+
 # API: Allow traffic only from frontend security group
 ec2.authorize_security_group_ingress(
     GroupId=api_sg,
@@ -423,6 +452,21 @@ ec2.authorize_security_group_ingress(
             'FromPort': 22,
             'ToPort': 22,
             'IpRanges': [{'CidrIp': '10.0.100.0/24', 'Description': 'SSH from management'}]
+        }
+    ]
+)
+
+# API: Allow outbound database calls
+ec2.authorize_security_group_egress(
+    GroupId=api_sg,
+    IpPermissions=[
+        {
+            'IpProtocol': 'tcp',
+            'FromPort': 5432,
+            'ToPort': 5432,
+            'UserIdGroupPairs': [
+                {'GroupId': database_sg, 'Description': 'PostgreSQL from API'}
+            ]
         }
     ]
 )
@@ -457,30 +501,39 @@ Verify policies work as expected before relying on them:
 
 NAMESPACE="production"
 
-# Deploy a test pod for connectivity checks
-kubectl run nettest --image=nicolaka/netshoot -n $NAMESPACE \
-    --labels="app=nettest" --command -- sleep infinity
+# Deploy a frontend-labeled test pod for ingress connectivity checks
+kubectl run frontend-nettest --image=nicolaka/netshoot -n $NAMESPACE \
+    --labels="app=frontend" --command -- sleep infinity
 
 # Wait for pod to be ready
-kubectl wait --for=condition=Ready pod/nettest -n $NAMESPACE --timeout=60s
+kubectl wait --for=condition=Ready pod/frontend-nettest -n $NAMESPACE --timeout=60s
 
 # Test connectivity to allowed services
 echo "Testing allowed connection to api-server:"
-kubectl exec -n $NAMESPACE nettest -- \
+kubectl exec -n $NAMESPACE frontend-nettest -- \
     curl -s --connect-timeout 5 http://api-server:8080/health && echo "SUCCESS" || echo "FAILED"
 
 # Test connectivity to blocked services (should fail)
 echo "Testing blocked connection to database (should fail):"
-kubectl exec -n $NAMESPACE nettest -- \
+kubectl exec -n $NAMESPACE frontend-nettest -- \
     nc -zv postgresql 5432 -w 5 2>&1 && echo "UNEXPECTED SUCCESS" || echo "BLOCKED (expected)"
+
+# Cleanup frontend test pod
+kubectl delete pod frontend-nettest -n $NAMESPACE
+
+# Deploy an API-labeled test pod for egress connectivity checks
+kubectl run api-nettest --image=nicolaka/netshoot -n $NAMESPACE \
+    --labels="app=api-server" --command -- sleep infinity
+
+kubectl wait --for=condition=Ready pod/api-nettest -n $NAMESPACE --timeout=60s
 
 # Test egress to external services
 echo "Testing allowed egress to external HTTPS:"
-kubectl exec -n $NAMESPACE nettest -- \
+kubectl exec -n $NAMESPACE api-nettest -- \
     curl -s --connect-timeout 5 https://api.github.com && echo "SUCCESS" || echo "FAILED"
 
 # Cleanup
-kubectl delete pod nettest -n $NAMESPACE
+kubectl delete pod api-nettest -n $NAMESPACE
 ```
 
 ## Monitoring Policy Violations
@@ -521,13 +574,13 @@ Query policy violation logs:
 # View Calico flow logs for denied connections
 kubectl logs -n calico-system -l k8s-app=calico-node | grep "DENY"
 
-# Set up Prometheus alerts for policy violations
+# Set up Prometheus alerts for Calico Cloud policy metrics
 # prometheus-rules.yaml
 groups:
   - name: network-policy-alerts
     rules:
       - alert: NetworkPolicyViolation
-        expr: increase(calico_denied_packets_total[5m]) > 10
+        expr: increase(calico_denied_packets[5m]) > 10
         for: 2m
         labels:
           severity: warning
