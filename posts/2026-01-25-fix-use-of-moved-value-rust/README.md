@@ -27,7 +27,7 @@ fn main() {
 Error message:
 
 ```text
-error[E0382]: use of moved value: `s1`
+error[E0382]: borrow of moved value: `s1`
  --> src/main.rs:5:20
   |
 2 |     let s1 = String::from("hello");
@@ -36,7 +36,7 @@ error[E0382]: use of moved value: `s1`
   |              -- value moved here
 4 |
 5 |     println!("{}", s1);
-  |                    ^^ value used here after move
+  |                    ^^ value borrowed here after move
 ```
 
 ## Copy vs Move Types
