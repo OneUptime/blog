@@ -98,9 +98,9 @@ async function chargeCard(paymentDetails) {
     return result;
 
   } catch (error) {
-    // Record exception with additional attributes
-    span.recordException(error, {
-      // Add context about what was being attempted
+    // Record exception and add span attributes with additional context
+    span.recordException(error);
+    span.setAttributes({
       'exception.context': 'payment_gateway_charge',
       'payment.gateway': 'stripe',
       'payment.idempotency_key': paymentDetails.idempotencyKey
@@ -147,8 +147,9 @@ function errorMiddleware(err, req, res, next) {
   const span = trace.getSpan(context.active());
 
   if (span) {
-    // Record the exception
-    span.recordException(err, {
+    // Record the exception and add request context to the span
+    span.recordException(err);
+    span.setAttributes({
       'http.request_id': req.headers['x-request-id'],
       'http.path': req.path,
       'http.method': req.method,
@@ -249,7 +250,12 @@ def traced_operation(name, attributes=None, record_exceptions=True):
         with traced_operation("fetch-user", {"user.id": user_id}):
             user = fetch_user(user_id)
     """
-    with tracer.start_as_current_span(name, attributes=attributes) as span:
+    with tracer.start_as_current_span(
+        name,
+        attributes=attributes,
+        record_exception=False,
+        set_status_on_exception=False
+    ) as span:
         try:
             yield span
         except Exception as e:
@@ -304,6 +310,7 @@ def process_batch(items):
 from flask import Flask, request, g
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
+from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
 
@@ -313,6 +320,7 @@ def handle_exception(error):
     Global error handler that records exceptions to the current span.
     """
     span = trace.get_current_span()
+    status_code = error.code if isinstance(error, HTTPException) else getattr(error, "status_code", 500)
 
     if span.is_recording():
         # Record the exception with request context
@@ -326,11 +334,6 @@ def handle_exception(error):
         # Categorize and set status
         error_type = type(error).__name__
         span.set_attribute("error.type", error_type)
-
-        if hasattr(error, "status_code"):
-            status_code = error.status_code
-        else:
-            status_code = 500
 
         span.set_status(Status(StatusCode.ERROR, str(error)))
 
@@ -351,12 +354,12 @@ When you call `recordException()`, OpenTelemetry creates a span event with stand
 | exception.message | Error message | "Invalid input" |
 | exception.stacktrace | Full stack trace | "Traceback..." |
 
-You can add custom attributes for additional context:
+Add custom attributes to the span for additional context:
 
 ```javascript
-span.recordException(error, {
-  // Standard attributes are added automatically
-  // Add custom attributes for your use case
+span.recordException(error);
+span.setAttributes({
+  // Add custom span attributes for your use case
   'error.category': 'validation',
   'error.field': 'email',
   'error.expected_format': 'valid email address',
