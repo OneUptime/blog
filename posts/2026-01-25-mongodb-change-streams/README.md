@@ -85,18 +85,18 @@ async function watchWithIterator() {
 
 ## Change Event Structure
 
-Every change event contains these fields:
+Change events can contain these fields, depending on the operation type:
 
 ```javascript
 {
   // Unique identifier for this change event
   "_id": { "_data": "..." },
 
-  // Type: insert, update, replace, delete, drop, rename, dropDatabase
+  // Type: insert, update, replace, delete, drop, rename, dropDatabase, invalidate, etc.
   "operationType": "update",
 
   // When the change occurred
-  "clusterTime": Timestamp({ t: 1706180400, i: 1 }),
+  "clusterTime": new Timestamp({ t: 1706180400, i: 1 }),
 
   // Namespace
   "ns": { "db": "shop", "coll": "orders" },
@@ -122,22 +122,22 @@ Use aggregation pipeline stages to filter events:
 
 ```javascript
 // Only watch for specific operation types
-const changeStream = collection.watch([
+const insertUpdateStream = collection.watch([
   { $match: { operationType: { $in: ['insert', 'update'] } } }
 ]);
 
-// Filter by document fields
-const changeStream = collection.watch([
+// Filter by document fields (for inserts/replaces, or updates with fullDocument enabled)
+const pendingHighValueStream = collection.watch([
   {
     $match: {
       'fullDocument.status': 'pending',
       'fullDocument.amount': { $gt: 1000 }
     }
   }
-]);
+], { fullDocument: 'updateLookup' });
 
 // Filter by updated fields
-const changeStream = collection.watch([
+const statusUpdateStream = collection.watch([
   {
     $match: {
       'updateDescription.updatedFields.status': { $exists: true }
@@ -231,10 +231,12 @@ async function loadResumeToken() {
 ### Resume vs Start Options
 
 ```javascript
-// Resume from specific token (exact position)
+const { Timestamp } = require('mongodb');
+
+// Resume after the operation represented by a specific token
 collection.watch([], { resumeAfter: token });
 
-// Start after specific token (next event)
+// Start a new stream after a specific token (useful after invalidate events)
 collection.watch([], { startAfter: token });
 
 // Start from specific time
@@ -397,7 +399,7 @@ async function resilientChangeStream() {
       }
 
     } catch (error) {
-      if (error.code === 40573) {
+      if (error.code === 286) {
         // Resume token expired, start fresh
         console.log('Resume token expired, starting from current time');
         resumeToken = null;
@@ -426,7 +428,7 @@ const oplogInfo = await client.db('local').collection('oplog.rs')
     { $group: { _id: null, oldest: { $min: '$ts' }, newest: { $max: '$ts' } } }
   ]).toArray();
 
-const windowMs = (oplogInfo[0].newest.getTime() - oplogInfo[0].oldest.getTime()) * 1000;
+const windowMs = (oplogInfo[0].newest.t - oplogInfo[0].oldest.t) * 1000;
 console.log(`Oplog window: ${windowMs / 3600000} hours`);
 ```
 
